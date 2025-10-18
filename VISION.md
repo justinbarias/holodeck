@@ -669,6 +669,393 @@ test_cases:
 
 ---
 
+## 🔄 Experiments & Multi-Agent Orchestration
+
+Group related agents and coordinate their execution using `experiment.yaml`. Experiments enable hypothesis testing, multi-agent workflows, and comparative agent evaluation.
+
+### Single-Agent Experiments
+
+Run multiple agent variants in a single experiment for A/B testing and comparative analysis:
+
+**experiment.yaml:**
+```yaml
+name: "customer-support-experiment"
+description: "A/B test different customer support agent configurations"
+
+agents:
+  - name: "support-basic"
+    path: agents/support-basic/agent.yaml
+    description: "Basic support agent with FAQ search"
+
+  - name: "support-advanced"
+    path: agents/support-advanced/agent.yaml
+    description: "Advanced support agent with order lookup and ticket creation"
+
+# Option 1: Inline test cases
+test_cases:
+  - name: "Basic FAQ handling"
+    input: "What is your return policy?"
+    expected_tools: ["search_knowledge_base"]
+
+  - name: "Order status check"
+    input: "Where is my order #12345?"
+    ground_truth: "Your order shipped on Jan 15 and arrives Jan 18"
+    expected_tools: ["check_order_status"]
+    evaluations:
+      - f1_score
+      - bleu
+
+evaluations:
+  - metric: groundedness
+    threshold: 4.0
+  - metric: relevance
+    threshold: 4.0
+  - metric: latency
+    max_ms: 2000
+
+reporting:
+  compare_metrics: true
+  output_format: html
+  save_to: results/experiment-run-1.html
+```
+
+**Option 2: Test cases from file:**
+```yaml
+name: "customer-support-experiment"
+description: "A/B test different customer support agent configurations"
+
+agents:
+  - name: "support-basic"
+    path: agents/support-basic/agent.yaml
+  - name: "support-advanced"
+    path: agents/support-advanced/agent.yaml
+
+# Reference external test cases file
+test_cases:
+  file: tests/comprehensive-tests.yaml
+
+evaluations:
+  - metric: groundedness
+    threshold: 4.0
+  - metric: relevance
+    threshold: 4.0
+```
+
+**Project structure:**
+```
+customer-support-experiment/
+├── experiment.yaml
+├── agents/
+│   ├── support-basic/
+│   │   ├── agent.yaml
+│   │   └── instructions/
+│   └── support-advanced/
+│       ├── agent.yaml
+│       └── instructions/
+├── tests/
+│   └── comprehensive-tests.yaml
+└── results/
+    └── experiment-run-1.html
+```
+
+**Run the experiment:**
+```bash
+# Run all agents in the experiment against all test cases
+agentlab experiment run experiment.yaml
+
+# Compare results across all agents
+agentlab experiment results experiment.yaml --compare
+
+# Generate report
+agentlab experiment report experiment.yaml --format html
+```
+
+### Multi-Agent Orchestration
+
+Coordinate multiple agents working together using orchestration patterns from the [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/overview).
+
+#### Supported Orchestration Patterns
+
+**1. Sequential Pattern**
+
+Agents execute one after another. Each agent receives the output of the previous agent as input. Ideal for workflows where later steps depend on earlier results.
+
+**Use case:** Document processing pipeline (parse → extract entities → summarize)
+
+```yaml
+name: "document-processing-experiment"
+description: "Sequential multi-agent document processing workflow"
+
+orchestration:
+  pattern: sequential
+  agents:
+    - name: "document-parser"
+      path: agents/document-parser/agent.yaml
+      description: "Extract text and structure from documents"
+
+    - name: "entity-extractor"
+      path: agents/entity-extractor/agent.yaml
+      description: "Extract named entities and relationships"
+
+    - name: "summarizer"
+      path: agents/summarizer/agent.yaml
+      description: "Generate summary of extracted information"
+
+test_cases:
+  - name: "Simple document"
+    input: "Parse this contract and summarize key terms"
+    files:
+      - path: tests/fixtures/simple-contract.pdf
+        type: pdf
+    ground_truth: "Key terms: 2-year term, $10k annual fee, auto-renewal"
+    evaluations:
+      - coherence
+      - groundedness
+
+evaluations:
+  - metric: coherence
+    threshold: 4.0
+  - metric: accuracy
+    threshold: 0.85
+```
+
+**2. Concurrent (Parallel) Pattern**
+
+Agents execute simultaneously with independent contexts. Results are aggregated from all agents. Ideal for scenarios where tasks are independent and can run in parallel.
+
+**Use case:** Multi-aspect analysis (sentiment + keywords + compliance checks)
+
+```yaml
+name: "multi-aspect-analysis-experiment"
+description: "Parallel analysis of different document aspects"
+
+orchestration:
+  pattern: concurrent
+  agents:
+    - name: "sentiment-analyzer"
+      path: agents/sentiment/agent.yaml
+      description: "Analyze sentiment and tone"
+
+    - name: "keyword-extractor"
+      path: agents/keywords/agent.yaml
+      description: "Extract key topics and themes"
+
+    - name: "compliance-checker"
+      path: agents/compliance/agent.yaml
+      description: "Check for regulatory compliance issues"
+
+  aggregation:
+    strategy: merge
+    output_format: json
+
+test_cases:
+  file: tests/analysis-test-cases.yaml
+```
+
+**3. Handoff Pattern**
+
+Agents pass work to specialized agents based on task type or content characteristics. One agent analyzes the input and routes it to the most appropriate specialist agent. Ideal for routing to domain experts.
+
+**Use case:** Customer service routing (billing specialist vs. technical support vs. sales)
+
+```yaml
+name: "customer-service-system-experiment"
+description: "Handoff-based customer service routing"
+
+orchestration:
+  pattern: handoff
+
+  router:
+    name: "service-router"
+    path: agents/service-router/agent.yaml
+    description: "Analyzes inquiries and routes to specialists"
+
+  specialists:
+    - name: "billing-specialist"
+      path: agents/billing-specialist/agent.yaml
+      description: "Handles billing and payment inquiries"
+
+    - name: "technical-support"
+      path: agents/technical-support/agent.yaml
+      description: "Handles technical issues"
+
+    - name: "sales-agent"
+      path: agents/sales-agent/agent.yaml
+      description: "Handles sales inquiries and upsell opportunities"
+
+test_cases:
+  - name: "Route billing inquiry"
+    input: "Why was I charged twice for my subscription?"
+    expected_tools: ["billing-specialist"]
+    ground_truth: "Routed to billing specialist and issue resolved"
+
+  - name: "Route technical issue"
+    input: "The app keeps crashing on my phone"
+    expected_tools: ["technical-support"]
+    ground_truth: "Routed to technical support and solution provided"
+
+evaluations:
+  - metric: routing_accuracy
+    threshold: 0.95
+  - metric: resolution_time
+    max_ms: 5000
+```
+
+**4. Group Chat Pattern**
+
+Multiple agents collaborate in a discussion to solve problems together. Agents can see all previous messages and contribute ideas iteratively. Ideal for brainstorming, debate, and collaborative problem-solving.
+
+**Use case:** Research team collaboration (literature reviewer + data analyst + methodologist)
+
+```yaml
+name: "research-team-experiment"
+description: "Group chat for collaborative research analysis"
+
+orchestration:
+  pattern: group_chat
+
+  participants:
+    - name: "literature-reviewer"
+      path: agents/literature-reviewer/agent.yaml
+      role: "Finds and summarizes relevant research papers"
+
+    - name: "data-analyst"
+      path: agents/data-analyst/agent.yaml
+      role: "Analyzes datasets and validates findings"
+
+    - name: "methodology-expert"
+      path: agents/methodology-expert/agent.yaml
+      role: "Ensures research methodology is sound"
+
+  chat_config:
+    max_rounds: 10
+    termination_condition: "consensus_reached"
+    moderator: "literature-reviewer"
+
+test_cases:
+  file: tests/research-collaboration-cases.yaml
+
+evaluations:
+  - metric: solution_quality
+    threshold: 4.5
+  - metric: collaboration_score
+    threshold: 0.85
+```
+
+**5. Magentic Pattern**
+
+A specialized pattern for creating emergent AI behaviors through dynamic agent orchestration. Agents adapt their behavior based on context and feedback. Ideal for complex, unpredictable domains requiring adaptive strategies.
+
+**Use case:** Adaptive problem-solving (agent adjusts strategy based on obstacles)
+
+```yaml
+name: "adaptive-problem-solving-experiment"
+description: "Magentic pattern for adaptive AI agent coordination"
+
+orchestration:
+  pattern: magentic
+
+  primary_agent:
+    name: "problem-solver"
+    path: agents/problem-solver/agent.yaml
+    description: "Main problem-solving agent"
+
+  adaptation_agents:
+    - name: "strategy-advisor"
+      path: agents/strategy-advisor/agent.yaml
+      description: "Suggests alternative strategies when stuck"
+
+    - name: "validator"
+      path: agents/validator/agent.yaml
+      description: "Validates solutions and provides feedback"
+
+test_cases:
+  file: tests/adaptive-problem-solving-cases.yaml
+
+evaluations:
+  - metric: adaptability
+    threshold: 0.8
+  - metric: solution_success_rate
+    threshold: 0.9
+```
+
+### Experiment Features
+
+**Test Variants:**
+```yaml
+test_cases:
+  - name: "Basic query"
+    input: "What is your return policy?"
+    expected_tools: ["search_knowledge_base"]
+
+  - name: "Complex query"
+    input: "Can I return items after 60 days if I have a receipt and they're in original packaging?"
+    expected_tools: ["search_knowledge_base"]
+
+test_variants:
+  # Run same test cases for each agent
+  - variant: baseline
+    description: "Standard test execution"
+
+  - variant: stress
+    description: "High-load test execution"
+    parameters:
+      concurrent_requests: 100
+```
+
+**Experiment Versioning & Tags:**
+```yaml
+name: "customer-support-experiment"
+version: "1.2.0"
+tags:
+  - "production-ready"
+  - "cost-optimized"
+  - "low-latency"
+
+metadata:
+  author: "support-team"
+  created: "2024-01-15"
+  baseline_experiment: "v1.1.0"
+```
+
+**Conditional Execution:**
+```yaml
+orchestration:
+  pattern: sequential
+  agents:
+    - name: "agent-1"
+      path: agents/agent-1/agent.yaml
+      condition: "always"
+
+    - name: "agent-2"
+      path: agents/agent-2/agent.yaml
+      condition: "if_succeeded"
+
+    - name: "agent-3"
+      path: agents/agent-3/agent.yaml
+      condition: "if_failed"
+```
+
+**CLI Commands:**
+```bash
+# Run experiment
+agentlab experiment run experiment.yaml
+
+# Validate orchestration configuration
+agentlab experiment run experiment.yaml --validate-orchestration
+
+# Test individual agents in orchestration
+agentlab experiment debug experiment.yaml --agent document-parser
+
+# Stream results from parallel execution
+agentlab experiment run experiment.yaml --stream
+
+# Generate comparison report
+agentlab experiment report experiment.yaml --format html --output results/report.html
+```
+
+---
+
 ## 🏗️ Architecture
 
 ```
