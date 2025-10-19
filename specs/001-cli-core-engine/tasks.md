@@ -13,30 +13,39 @@
 
 This task list implements **User Story 1: Define Agent Configuration** using TDD methodology. Tests are written first, then implementation follows. All tasks are organized by dependency and parallelizability to enable efficient implementation.
 
-- **Total Tasks**: 28
+- **Total Tasks**: 77 (48 implementation + 29 documentation)
 - **Setup Phase**: 3 tasks
-- **Foundational Phase**: 5 tasks (includes test setup)
-- **US1 Phase**: 20 tasks (tests written first, then implementation)
-- **Parallel Opportunities**: 12 tasks marked [P]
+- **Foundational Phase**: 10 tasks (includes test setup)
+- **US1 Phase**: 35 tasks (tests written first, then implementation + testing)
+- **Documentation Phase**: 29 tasks (setup, configuration docs, examples, API docs, architecture, code quality)
+- **Parallel Opportunities**: 24 tasks marked [P]
 - **Independent Test Criteria**: Full config loading/validation workflow testable end-to-end
 
 **MVP Scope**: Complete Phase 1 (Setup) + Phase 2 (Foundational) + Phase 3 (US1) for standalone agent.yaml validation capability.
 
-**Estimated Timeline**: ~45-55 hours development (includes TDD overhead, ~50% test code)
+**Full Scope**: MVP + Phase 4 (Documentation & Polish) for production-ready release with comprehensive docs.
+
+**Estimated Timeline**:
+
+- MVP Implementation: ~45-55 hours development (includes TDD overhead, ~50% test code)
+- Documentation Phase: ~20-25 hours (writing guides, examples, API docs, architecture)
+- **Total**: ~65-80 hours for full production-ready release
 
 ---
 
 ## Phase 1: Setup & Project Initialization
 
-*Initialize project structure, dependencies, and development environment.*
+_Initialize project structure, dependencies, and development environment._
 
 ### Phase 1 Goals
+
 - Project scaffold ready
 - Dependencies installed
 - Development tools configured
 - Basic module structure in place
 
 ### Phase 1 Independent Test Criteria
+
 - `poetry install` completes without errors
 - `pytest --version` shows pytest available
 - `python -m agentlab --version` outputs version (placeholder OK)
@@ -54,9 +63,10 @@ This task list implements **User Story 1: Define Agent Configuration** using TDD
 
 ## Phase 2: Foundational - Core Configuration Infrastructure
 
-*Implement shared error handling, utilities, and data model foundations needed by all user stories.*
+_Implement shared error handling, utilities, and data model foundations needed by all user stories._
 
 ### Phase 2 Goals
+
 - Custom exception hierarchy for configuration errors
 - Base validation utilities
 - Environment variable support
@@ -64,6 +74,7 @@ This task list implements **User Story 1: Define Agent Configuration** using TDD
 - Test fixtures and conftest setup
 
 ### Phase 2 Independent Test Criteria
+
 - Custom exceptions raise with clear messages
 - Environment variable substitution works (${VAR_NAME} pattern)
 - Default configurations load successfully
@@ -92,12 +103,14 @@ This task list implements **User Story 1: Define Agent Configuration** using TDD
 
 ## Phase 3: User Story 1 - Define Agent Configuration
 
-*Implement core configuration schema, loading, and validation for agent.yaml files.*
+_Implement core configuration schema, loading, and validation for agent.yaml files._
 
 ### US1 Goals
+
 Enable developers to define AI agents entirely through YAML configuration. Parse agent.yaml, validate against schema, support model providers (OpenAI, Azure, Anthropic), instructions (file/inline), tools (vectorstore, function, MCP, prompt), evaluations with flexible model configuration.
 
 ### US1 Independent Test Criteria
+
 - Valid agent.yaml parses without errors
 - Invalid agent.yaml shows clear validation messages
 - Configuration composition (file + inline references) works
@@ -177,23 +190,65 @@ Enable developers to define AI agents entirely through YAML configuration. Parse
 
 ## Phase 4: Documentation & Polish
 
-*Documentation, examples, and cross-cutting quality improvements.*
+_Documentation, examples, and cross-cutting quality improvements._
 
 ### Phase 4 Goals
+
 - API documentation clear and comprehensive
 - Example agent.yaml files available
 - Type hints complete and mypy-compliant
 - Code formatting and linting pass
+- mkdocs documentation site configured
+- Developer guide and user guide complete
 
 ---
 
-### Tasks
+### Phase 4a: Documentation Setup & Configuration
 
-- [ ] T049 [P] Create docstrings for all public classes in `src/agentlab/config/` and `src/agentlab/models/`: module docstring, class docstring, method docstring with examples
-- [ ] T050 [P] Add type hints to all functions in `src/agentlab/config/loader.py` and `src/agentlab/models/`: full type coverage, no `Any` types where avoidable
-- [ ] T051 Create example agent files in `docs/examples/`: basic_agent.yaml, with_tools.yaml, with_evaluations.yaml, with_global_config.yaml showing all major options
-- [ ] T052 Run linting & formatting: `ruff check src/` and `black --check src/`, fix any violations
-- [ ] T053 Run type checking: `mypy src/agentlab/ --strict`, fix any type errors
+- [x] T049 [P] Setup mkdocs-material infrastructure: create `mkdocs.yml` with site config, navigation structure, theme settings (material), plugins (search, minify)
+- [x] T050 [P] Create docs/ directory structure: `docs/{index.md, getting-started, guides, examples, api, architecture}` folders
+- [x] T051 [P] Create docs/index.md: project overview, quick start, links to key sections
+- [x] T052 Create docs/getting-started/installation.md: installation instructions, setup venv, dependencies, verification steps
+- [x] T053 Create docs/getting-started/quickstart.md: minimal agent.yaml example, loading config, error handling examples
+
+### Phase 4b: Configuration Documentation
+
+- [ ] T054 [P] Create docs/guides/agent-configuration.md: Agent schema overview, all fields explained, constraints, examples
+- [ ] T055 [P] Create docs/guides/tools.md: Tool types reference (vectorstore, function, mcp, prompt), each with fields, examples, best practices
+- [ ] T056 [P] Create docs/guides/evaluations.md: Evaluation system, metrics, model configuration at different levels, examples
+- [ ] T057 [P] Create docs/guides/global-config.md: Global config (~/.agentlab/config.yaml), precedence rules, precedence diagram, environment variables
+- [ ] T058 Create docs/guides/file-references.md: How file paths work (relative, absolute), instruction files, tool files, file resolution algorithm
+
+### Phase 4c: Example Documentation
+
+- [ ] T059 [P] Create docs/examples/basic_agent.yaml: minimal valid agent with inline instructions, comment documentation
+- [ ] T060 [P] Create docs/examples/with_tools.yaml: agent with all tool types (vectorstore, function, mcp, prompt), well-commented
+- [ ] T061 [P] Create docs/examples/with_evaluations.yaml: agent with evaluation metrics, per-metric model override examples
+- [ ] T062 [P] Create docs/examples/with_global_config.yaml: shows agent.yaml + global config, demonstrates precedence
+- [ ] T063 Create docs/examples/README.md: explanation of each example, how to use them, when to use each pattern
+
+### Phase 4d: API Documentation
+
+- [ ] T064 [P] Generate docstrings for all public classes in `src/agentlab/config/`: module docstring, class docstring, method docstring with parameter/return docs
+- [ ] T065 [P] Generate docstrings for all public classes in `src/agentlab/models/`: module docstring, class docstring, field descriptions
+- [ ] T066 [P] Create docs/api/config-loader.md: ConfigLoader API reference, all methods documented, examples, error handling
+- [ ] T067 [P] Create docs/api/models.md: All Pydantic models documented (Agent, Tool, LLMProvider, Evaluation, TestCase, GlobalConfig), field types, constraints
+
+### Phase 4e: Architecture & Developer Guides
+
+- [ ] T068 Create docs/architecture/overview.md: architectural diagram ASCII art, component interactions, data flow diagram
+- [ ] T069 Create docs/architecture/configuration-loading.md: detailed flow diagram (parse → substitute → merge → validate), error handling strategy
+- [ ] T070 Create docs/contributing.md: development setup, running tests, code style guide, commit message format, PR workflow
+- [ ] T071 Create docs/CHANGELOG.md: version 0.1.0 release notes, features implemented, known limitations
+
+### Phase 4f: Code Quality & Final Validation
+
+- [ ] T072 [P] Add type hints to all functions in `src/agentlab/config/loader.py` and `src/agentlab/models/`: full type coverage, no `Any` types where avoidable
+- [ ] T073 Run linting & formatting: `make format` and `make format-check`, fix any violations
+- [ ] T074 Run type checking: `make type-check`, fix any type errors
+- [ ] T075 Run security checks: `make security`, address any findings
+- [ ] T076 Build docs site locally: `mkdocs serve`, verify all pages render correctly, check links, verify navigation
+- [ ] T077 Final test run: `make test-coverage`, verify ≥80% coverage, run `make ci` for full pipeline
 
 ---
 
@@ -216,40 +271,62 @@ Phase 1 (Setup)
               ├─ T039-T042 (Loader Implementation)
               ├─ T043-T045 (Integration Tests)
               ├─ T046-T048 (Test Execution & Coverage)
-              └─→ Phase 4 (Polish)
-                   ├─ T049, T050, T051 [P]
-                   └─ T052, T053
+              └─→ Phase 4 (Documentation & Polish)
+                   ├─ T049-T053 (Docs Setup) [P]
+                   ├─ T054-T058 (Config Docs) [P]
+                   ├─ T059-T063 (Examples) [P]
+                   ├─ T064-T067 (API Docs) [P]
+                   ├─ T068-T071 (Architecture & Dev Guides) [some serial]
+                   └─ T072-T077 (Code Quality & Validation) [some serial]
 ```
 
 ### Critical Path (Longest Dependency Chain)
-T001 → T002 → T003 → T004-T008 → T009-T013 → T034-T038 → T039-T042 → T043-T048 → T052-T053
-**Estimated Critical Path**: ~40 hours
+
+T001 → T002 → T003 → T004-T008 → T009-T013 → T034-T038 → T039-T042 → T043-T048 → T072-T077
+**Estimated Critical Path**: ~50-55 hours
 
 ### Parallelizable Opportunities (TDD Batches)
 
 **After Phase 2 Foundational complete (T013)**:
+
 - **Batch 1 (Tests)**: T014-T018, T024-T025, T028-T030 write tests in parallel [P]
 - **Batch 2 (Implementation)**: T019-T023, T026-T027, T031-T033 implement in parallel after tests pass [P]
 
 **After Loader tests pass (T038)**:
+
 - **Batch 3 (Loader Impl)**: T039-T042 sequential (depends on test feedback)
 
-**Late Phase (Polish)**:
-- T049, T050, T051 can run in parallel [P]
+**After Phase 3 tests complete (T048)**:
 
-**Example Parallel Execution (TDD)**:
+- **Batch 4 (Docs Setup)**: T049-T053 can run in parallel with T064-T065 [P]
+- **Batch 5 (Config Guides)**: T054-T058 can run in parallel [P]
+- **Batch 6 (Examples)**: T059-T063 can run in parallel [P]
+- **Batch 7 (API Docs)**: T064-T067 can run in parallel [P]
+- **Batch 8 (Architecture)**: T068-T071 mostly sequential (arch overview first, then depends on it)
+- **Batch 9 (Code Quality)**: T072-T077 mostly sequential (code changes first, then validation)
+
+**Example Parallel Execution (Full Pipeline)**:
+
 ```
-Sequential (setup):       T001-T003
-Sequential (foundation):  T004-T013
-Parallel (model tests):   [T014, T015, T016, T017, T018, T024, T025, T028, T029, T030]
-Parallel (model impl):    [T019, T020, T021, T022, T023, T026, T027, T031, T032, T033]
-Sequential (loader):      T034-T038 → T039-T042
-Sequential (integration): T043-T045 → T046-T048
-Parallel (polish):        [T049, T050, T051]
-Sequential (final):       T052-T053
+Sequential (setup):         T001-T003
+Sequential (foundation):    T004-T013
+Parallel (model tests):     [T014-T018, T024-T025, T028-T030]
+Parallel (model impl):      [T019-T023, T026-T027, T031-T033]
+Sequential (loader):        T034-T038 → T039-T042
+Sequential (integration):   T043-T045 → T046-T048
+Parallel (docs setup):      [T049-T053, T064-T065]
+Parallel (config guides):   [T054-T058]
+Parallel (examples):        [T059-T063]
+Parallel (API docs):        [T066-T067]
+Sequential (architecture):  T068 → T069 → T070-T071
+Sequential (final):         T072-T073-T074-T075-T076-T077
 ```
 
-**Estimated Speedup**: 3-4x on model development with parallel TDD cycles.
+**Estimated Speedup**:
+
+- MVP Implementation: 3-4x on model development with parallel TDD cycles
+- Documentation: 2-3x with parallel guide/example writing
+- **Overall**: 2x total project speedup with aggressive parallelization
 
 ---
 
@@ -260,12 +337,14 @@ Each feature (Tool, LLMProvider, Evaluation, TestCase, Agent, GlobalConfig, Load
 ### TDD Cycle Steps (Example: Tool Models)
 
 1. **Write Tests First** (T014-T018)
+
    ```bash
    pytest tests/unit/test_tool_models.py -v
    # Tests fail (RED phase)
    ```
 
 2. **Implement Minimal Code** (T019-T023)
+
    ```bash
    # Implement models to satisfy tests
    pytest tests/unit/test_tool_models.py -v
@@ -280,6 +359,7 @@ Each feature (Tool, LLMProvider, Evaluation, TestCase, Agent, GlobalConfig, Load
    ```
 
 ### Benefits of TDD for This Feature
+
 - Tests document expected behavior (configuration validation rules)
 - Catches edge cases early (tool type discrimination, file validation)
 - Validation errors are explicit and testable
@@ -291,6 +371,7 @@ Each feature (Tool, LLMProvider, Evaluation, TestCase, Agent, GlobalConfig, Load
 ## Implementation Notes
 
 ### Configuration Loading Flow
+
 ```python
 1. User runs agent with agent.yaml path
 2. ConfigLoader.load_agent_yaml(path) called
@@ -303,19 +384,23 @@ Each feature (Tool, LLMProvider, Evaluation, TestCase, Agent, GlobalConfig, Load
 ```
 
 ### Error Handling Strategy
+
 - All Pydantic ValidationErrors caught and converted to ConfigError
 - Error messages include: field name, expected type, actual value, file path (if applicable)
 - File not found errors show full path and suggestion to create file
 - For nested validation errors: flatten hierarchy and show user-friendly paths
 
 ### Testing Strategy (TDD)
+
 1. **Unit Tests** (RED → GREEN → REFACTOR)
+
    - Each Pydantic model: test valid data, invalid data, edge cases
    - Loader: test YAML parsing, file resolution, env var substitution
    - Validation: test error messages readable, contains actionable information
    - **Tests written first**, implementation follows
 
 2. **Integration Tests** (After all models & loader complete)
+
    - Full workflow: create agent.yaml, create global config, load both, verify precedence
    - File reference resolution: instructions file, tool file
    - Error scenarios: missing files, invalid YAML, missing required fields
@@ -325,13 +410,16 @@ Each feature (Tool, LLMProvider, Evaluation, TestCase, Agent, GlobalConfig, Load
    - Run `pytest --cov=src/agentlab tests/` after T048
 
 ### Performance Targets
+
 - Config parsing: <100ms per agent.yaml
 - Global config loading: <50ms
 - Full loading + validation: <200ms
 - Measured in test suite (pytest with timing)
 
 ### Global Configuration Precedence
+
 As clarified in spec.md session 2025-10-19:
+
 ```
 Priority 1 (Highest): agent.yaml explicit settings
 Priority 2 (Medium):  Environment variables (e.g., OPENAI_API_KEY)
@@ -373,18 +461,25 @@ After all Phase 1-4 tasks complete and tests pass:
 
 ## Appendix: Task ID Reference
 
-| ID Range | Phase | Purpose | TDD Stage |
-|----------|-------|---------|-----------|
-| T001-T003 | 1 | Setup & project initialization | - |
-| T004-T013 | 2 | Foundational infrastructure | Tests (T004-T008) → Impl (T009-T013) |
-| T014-T048 | 3 | US1 implementation (TDD cycle) | Tests → Impl → Test Execution |
-| T049-T053 | 4 | Polish & documentation | - |
+| ID Range  | Phase | Purpose                                  | TDD Stage                            |
+| --------- | ----- | ---------------------------------------- | ------------------------------------ |
+| T001-T003 | 1     | Setup & project initialization           | -                                    |
+| T004-T013 | 2     | Foundational infrastructure              | Tests (T004-T008) → Impl (T009-T013) |
+| T014-T048 | 3     | US1 implementation (TDD cycle)           | Tests → Impl → Test Execution        |
+| T049-T077 | 4     | Polish, documentation & final validation | -                                    |
+| T049-T053 | 4a    | Documentation setup & configuration      | -                                    |
+| T054-T058 | 4b    | Configuration documentation              | -                                    |
+| T059-T063 | 4c    | Example documentation                    | -                                    |
+| T064-T067 | 4d    | API documentation                        | -                                    |
+| T068-T071 | 4e    | Architecture & developer guides          | -                                    |
+| T072-T077 | 4f    | Code quality & final validation          | -                                    |
 
 ---
 
 ## Appendix: Test File Checklist
 
 **Unit Test Files** (Write First):
+
 - [ ] `tests/unit/test_errors.py`
 - [ ] `tests/unit/test_env_loader.py`
 - [ ] `tests/unit/test_defaults.py`
@@ -398,6 +493,7 @@ After all Phase 1-4 tasks complete and tests pass:
 - [ ] `tests/unit/test_config_loader.py`
 
 **Integration Test Files**:
+
 - [ ] `tests/integration/test_config_end_to_end.py`
 
 ---
@@ -405,6 +501,7 @@ After all Phase 1-4 tasks complete and tests pass:
 ## Appendix: Source Code File Checklist
 
 **Source Code Files** (Implement After Tests):
+
 - [ ] `src/agentlab/__init__.py`
 - [ ] `src/agentlab/lib/__init__.py`
 - [ ] `src/agentlab/lib/errors.py`
@@ -422,17 +519,49 @@ After all Phase 1-4 tasks complete and tests pass:
 - [ ] `src/agentlab/models/config.py`
 
 **Test Fixtures**:
+
 - [ ] `tests/fixtures/agents/minimal_agent.yaml`
 - [ ] `tests/fixtures/agents/valid_agent.yaml`
 - [ ] `tests/fixtures/agents/invalid_agent.yaml`
 - [ ] `tests/fixtures/agents/with_tools.yaml`
 - [ ] `tests/fixtures/agents/with_evaluations.yaml`
 
-**Documentation**:
-- [ ] `docs/examples/basic_agent.yaml`
-- [ ] `docs/examples/with_tools.yaml`
-- [ ] `docs/examples/with_evaluations.yaml`
-- [ ] `docs/examples/with_global_config.yaml`
+**Documentation (Phase 4)**:
+
+Configuration & Setup:
+
+- [ ] `mkdocs.yml` - mkdocs-material configuration
+- [ ] `docs/index.md` - Project overview and quick start
+- [ ] `docs/getting-started/installation.md` - Installation instructions
+- [ ] `docs/getting-started/quickstart.md` - Quick start guide
+
+Guides & References:
+
+- [ ] `docs/guides/agent-configuration.md` - Agent schema documentation
+- [ ] `docs/guides/tools.md` - Tool types reference
+- [ ] `docs/guides/evaluations.md` - Evaluation system guide
+- [ ] `docs/guides/global-config.md` - Global config & precedence
+- [ ] `docs/guides/file-references.md` - File path resolution
+
+Examples:
+
+- [ ] `docs/examples/basic_agent.yaml` - Minimal agent example
+- [ ] `docs/examples/with_tools.yaml` - Agent with all tool types
+- [ ] `docs/examples/with_evaluations.yaml` - Agent with evaluations
+- [ ] `docs/examples/with_global_config.yaml` - Agent with global config
+- [ ] `docs/examples/README.md` - Example usage guide
+
+API Documentation:
+
+- [ ] `docs/api/config-loader.md` - ConfigLoader API reference
+- [ ] `docs/api/models.md` - All Pydantic models documented
+
+Architecture & Developer:
+
+- [ ] `docs/architecture/overview.md` - Architecture overview
+- [ ] `docs/architecture/configuration-loading.md` - Config loading flow
+- [ ] `docs/contributing.md` - Development guide & contribution workflow
+- [ ] `docs/CHANGELOG.md` - Release notes for v0.1.0
 
 ---
 

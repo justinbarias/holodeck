@@ -1,0 +1,85 @@
+site_name: AgentLab Documentation
+site_description: AI Agent Experimentation Platform - Define agents in YAML, no code required
+site_url: https://docs.agentlab.ai/
+repo_url: https://github.com/justinbarias/agentlab
+repo_name: justinbarias/agentlab
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.ico
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+  palette:
+    - scheme: light
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: dark
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quickstart: getting-started/quickstart.md
+  - Guides:
+    - Agent Configuration: guides/agent-configuration.md
+    - Tools: guides/tools.md
+    - Evaluations: guides/evaluations.md
+    - Global Configuration: guides/global-config.md
+    - File References: guides/file-references.md
+  - Examples:
+    - Overview: examples/README.md
+    - Basic Agent: examples/basic_agent.yaml
+    - With Tools: examples/with_tools.yaml
+    - With Evaluations: examples/with_evaluations.yaml
+    - With Global Config: examples/with_global_config.yaml
+  - API Reference:
+    - Models: api/models.md
+    - ConfigLoader: api/config-loader.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Configuration Loading: architecture/configuration-loading.md
+  - Developer:
+    - Contributing: contributing.md
+    - Changelog: CHANGELOG.md
+
+plugins:
+  - search:
+      lang: en
+
+markdown_extensions:
+  - pymdownx.highlight:
+      use_pygments: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - toc:
+      permalink: true
+  - tables
+  - pymdownx.tasklist
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  version: 0.1.0
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/anthropics/agentlab
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/anthropic

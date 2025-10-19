@@ -30,3 +30,6 @@ bandit-report.json
 coverage.xml
 metrics/*
 .secrets.baseline
+
+# mkdocs site
+/site
