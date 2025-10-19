@@ -44,6 +44,7 @@ jobs:
           bandit -r src/
           safety check
       - name: Deploy docs
+        if: github.ref == 'refs/heads/main'
         run: |
           mkdocs build -d site/
           cd site/
