@@ -57,7 +57,7 @@ _Initialize project structure, dependencies, and development environment._
 
 - [x] T001 Create project structure per plan.md: `src/holodeck/{config,models,cli,lib}/`, `tests/{unit,integration,fixtures}/`
 - [x] T002 Create `pyproject.toml` with core dependencies: Pydantic v2, PyYAML, python-dotenv, pytest, pytest-cov, ruff, black, mypy
-- [x] T003 Create `src/holodeck/__init__.py` with version export: `__version__ = "0.1.0"`
+- [x] T003 Create `src/holodeck/__init__.py` with version export: `__version__ = "0.0.1"`
 
 ---
 
@@ -236,19 +236,19 @@ _Documentation, examples, and cross-cutting quality improvements._
 
 ### Phase 4e: Architecture & Developer Guides
 
-- [ ] T068 Create docs/architecture/overview.md: architectural diagram ASCII art, component interactions, data flow diagram
-- [ ] T069 Create docs/architecture/configuration-loading.md: detailed flow diagram (parse → substitute → merge → validate), error handling strategy
-- [ ] T070 Create docs/contributing.md: development setup, running tests, code style guide, commit message format, PR workflow
-- [ ] T071 Create docs/CHANGELOG.md: version 0.1.0 release notes, features implemented, known limitations
+- [ ] T068 ~~SKIP~~ - Skip architecture overview diagram
+- [ ] T069 ~~SKIP~~ - Skip detailed configuration loading flow diagram
+- [x] T070 Create docs/contributing.md: development setup, running tests, code style guide, commit message format, PR workflow
+- [x] T071 Create docs/CHANGELOG.md: version 0.0.1 release notes, features implemented, known limitations
 
 ### Phase 4f: Code Quality & Final Validation
 
-- [ ] T072 [P] Add type hints to all functions in `src/holodeck/config/loader.py` and `src/holodeck/models/`: full type coverage, no `Any` types where avoidable
-- [ ] T073 Run linting & formatting: `make format` and `make format-check`, fix any violations
-- [ ] T074 Run type checking: `make type-check`, fix any type errors
-- [ ] T075 Run security checks: `make security`, address any findings
-- [ ] T076 Build docs site locally: `mkdocs serve`, verify all pages render correctly, check links, verify navigation
-- [ ] T077 Final test run: `make test-coverage`, verify ≥80% coverage, run `make ci` for full pipeline
+- [x] T072 [P] Add type hints to all functions in `src/holodeck/config/loader.py` and `src/holodeck/models/`: full type coverage, no `Any` types where avoidable
+- [x] T073 Run linting & formatting: `make format` and `make format-check`, fix any violations
+- [x] T074 Run type checking: `make type-check`, fix any type errors
+- [x] T075 Run security checks: `make security`, address any findings
+- [x] T076 Build docs site locally: `mkdocs build`, verify all pages render correctly, check links, verify navigation
+- [x] T077 Final test run: `make test-coverage`, verify ≥80% coverage, run `make ci` for full pipeline
 
 ---
 
@@ -276,7 +276,8 @@ Phase 1 (Setup)
                    ├─ T054-T058 (Config Docs) [P]
                    ├─ T059-T063 (Examples) [P]
                    ├─ T064-T067 (API Docs) [P]
-                   ├─ T068-T071 (Architecture & Dev Guides) [some serial]
+                   ├─ T068-T069 (SKIPPED - Architecture diagrams)
+                   ├─ T070-T071 (Contributing & CHANGELOG)
                    └─ T072-T077 (Code Quality & Validation) [some serial]
 ```
 
@@ -302,7 +303,7 @@ T001 → T002 → T003 → T004-T008 → T009-T013 → T034-T038 → T039-T042 �
 - **Batch 5 (Config Guides)**: T054-T058 can run in parallel [P]
 - **Batch 6 (Examples)**: T059-T063 can run in parallel [P]
 - **Batch 7 (API Docs)**: T064-T067 can run in parallel [P]
-- **Batch 8 (Architecture)**: T068-T071 mostly sequential (arch overview first, then depends on it)
+- **Batch 8 (Contributing & Changelog)**: T070-T071 sequential (contributing setup, then changelog)
 - **Batch 9 (Code Quality)**: T072-T077 mostly sequential (code changes first, then validation)
 
 **Example Parallel Execution (Full Pipeline)**:
@@ -318,7 +319,8 @@ Parallel (docs setup):      [T049-T053, T064-T065]
 Parallel (config guides):   [T054-T058]
 Parallel (examples):        [T059-T063]
 Parallel (API docs):        [T066-T067]
-Sequential (architecture):  T068 → T069 → T070-T071
+Skipped (architecture):     T068, T069
+Sequential (contrib):       T070-T071
 Sequential (final):         T072-T073-T074-T075-T076-T077
 ```
 
@@ -558,10 +560,10 @@ API Documentation:
 
 Architecture & Developer:
 
-- [ ] `docs/architecture/overview.md` - Architecture overview
-- [ ] `docs/architecture/configuration-loading.md` - Config loading flow
+- [~~SKIP~~] `docs/architecture/overview.md` - Architecture overview (skipped)
+- [~~SKIP~~] `docs/architecture/configuration-loading.md` - Config loading flow (skipped)
 - [ ] `docs/contributing.md` - Development guide & contribution workflow
-- [ ] `docs/CHANGELOG.md` - Release notes for v0.1.0
+- [ ] `docs/CHANGELOG.md` - Release notes for v0.0.1
 
 ---
 

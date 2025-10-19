@@ -14,7 +14,7 @@ Main features:
 from holodeck.config.loader import ConfigLoader
 from holodeck.lib.errors import ConfigError, HoloDeckError, ValidationError
 
-__version__ = "0.1.0"
+__version__ = "0.0.1"
 
 __all__ = [
     "__version__",

@@ -1,6 +1,6 @@
 [project]
 name = "holodeck"
-version = "0.1.0"
+version = "0.0.1"
 description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
 requires-python = ">=3.14,<4.0"
 dependencies = [
