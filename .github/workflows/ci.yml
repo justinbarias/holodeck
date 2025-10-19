@@ -44,4 +44,14 @@ jobs:
           bandit -r src/
           safety check
       - name: Deploy docs
-        run: mkdocs gh-deploy --force
+        run: |
+          mkdocs build -d site/
+          cd site/
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Deploy documentation"
+          git push -f https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository_owner }}/holodeck-docs.git main:main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
