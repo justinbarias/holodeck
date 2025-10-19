@@ -13,7 +13,7 @@ Get HoloDeck up and running in minutes.
 ### 1. Install from PyPI
 
 ```bash
-pip install holodeck
+pip install holodeck-ai
 ```
 
 This installs the latest stable version and all required dependencies:

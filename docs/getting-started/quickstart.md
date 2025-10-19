@@ -7,7 +7,7 @@ Get up and running with HoloDeck in 5 minutes. This guide covers loading a confi
 Ensure you've completed the [Installation Guide](installation.md):
 
 ```bash
-pip install holodeck
+pip install holodeck-ai
 python -m holodeck --version  # Should output: holodeck 0.1.0
 ```
 
@@ -461,7 +461,7 @@ Your model provider is invalid. Use one of:
 HoloDeck isn't installed. Run:
 
 ```bash
-pip install holodeck
+pip install holodeck-ai
 ```
 
 ## Getting Help

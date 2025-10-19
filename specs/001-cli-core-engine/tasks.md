@@ -213,11 +213,11 @@ _Documentation, examples, and cross-cutting quality improvements._
 
 ### Phase 4b: Configuration Documentation
 
-- [ ] T054 [P] Create docs/guides/agent-configuration.md: Agent schema overview, all fields explained, constraints, examples
-- [ ] T055 [P] Create docs/guides/tools.md: Tool types reference (vectorstore, function, mcp, prompt), each with fields, examples, best practices
-- [ ] T056 [P] Create docs/guides/evaluations.md: Evaluation system, metrics, model configuration at different levels, examples
-- [ ] T057 [P] Create docs/guides/global-config.md: Global config (~/.holodeck/config.yaml), precedence rules, precedence diagram, environment variables
-- [ ] T058 Create docs/guides/file-references.md: How file paths work (relative, absolute), instruction files, tool files, file resolution algorithm
+- [x] T054 [P] Create docs/guides/agent-configuration.md: Agent schema overview, all fields explained, constraints, examples
+- [x] T055 [P] Create docs/guides/tools.md: Tool types reference (vectorstore, function, mcp, prompt), each with fields, examples, best practices
+- [x] T056 [P] Create docs/guides/evaluations.md: Evaluation system, metrics, model configuration at different levels, examples
+- [x] T057 [P] Create docs/guides/global-config.md: Global config (~/.holodeck/config.yaml), precedence rules, precedence diagram, environment variables
+- [x] T058 Create docs/guides/file-references.md: How file paths work (relative, absolute), instruction files, tool files, file resolution algorithm
 
 ### Phase 4c: Example Documentation
 

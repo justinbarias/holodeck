@@ -28,7 +28,7 @@ HoloDeck is an open-source experimentation platform that enables teams to create
 ### Installation
 
 ```bash
-pip install holodeck
+pip install holodeck-ai
 ```
 
 ### Create Your First Agent

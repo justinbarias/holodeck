@@ -1,5 +1,7 @@
 # HoloDeck - AI Agent Experimentation Platform
 
+![HoloDeck Logo](assets/holodeck.png)
+
 **HoloDeck** is an open-source experimentation platform for building, testing, and deploying AI agents through **YAML configuration**. Define intelligent agents entirely through configuration—no code required.
 
 ## Key Features
@@ -16,7 +18,7 @@
 ### 1. Install HoloDeck
 
 ```bash
-pip install holodeck
+pip install holodeck-ai
 ```
 
 ### 2. Create a Simple Agent
