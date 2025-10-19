@@ -76,7 +76,6 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-        environment: pypi
 
       - name: Deploy docs
         if: github.ref == 'refs/heads/main'
