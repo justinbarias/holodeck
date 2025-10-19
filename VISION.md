@@ -1056,6 +1056,131 @@ agentlab experiment report experiment.yaml --format html --output results/report
 
 ---
 
+## 📊 Competitive Analysis
+
+AgentLab fills a critical gap: **the only open-source, self-hosted platform designed specifically for building, testing, and orchestrating AI agents through pure YAML configuration.** Built for software engineers with native CI/CD integration.
+
+### vs. **LangSmith** (LangChain Team)
+
+| Aspect | AgentLab | LangSmith |
+|--------|----------|-----------|
+| **Deployment Model** | Self-hosted (open-source) | **SaaS only** (cloud-dependent) |
+| **CI/CD Integration** | **Native CLI** - integrates in any CI/CD pipeline (GitHub Actions, GitLab CI, Jenkins, etc.) | API-based, requires cloud connectivity |
+| **Agent Definition** | Pure YAML (no code) | Python code + LangChain SDK |
+| **Primary Focus** | Agent experimentation & deployment | Production observability & tracing |
+| **Agent Orchestration** | Multi-agent patterns (sequential, concurrent, handoff) | Not designed for multi-agent workflows |
+| **Evaluation** | Built-in AI + NLP metrics, integrated | Custom evals, trace-based monitoring |
+| **Use Case** | Build agents fast, test hypotheses, deploy locally | Monitor & debug production LLM apps |
+| **Vendor Lock-in** | None (MIT open-source) | Complete (SaaS dependency) |
+| **Cost** | Free (self-hosted) | Per-request pricing for tracing |
+| **Infrastructure** | Your machine (CLI) or simple cloud deployment | Requires LangSmith cloud subscription |
+
+**Key Difference**: LangSmith is production monitoring/observability as a managed service. AgentLab is agent development and experimentation as self-hosted infrastructure with native CI/CD.
+
+---
+
+### vs. **MLflow GenAI** (Databricks)
+
+| Aspect | AgentLab | MLflow GenAI |
+|--------|----------|--------------|
+| **CI/CD Integration** | **CLI-native** - single commands for test, validate, deploy in pipelines | Python SDK + REST API, requires infrastructure setup |
+| **Infrastructure** | Lightweight, portable | **Heavy infrastructure** (ML tracking, Databricks-dependent) |
+| **Deployment Model** | Open-source, self-hosted CLI | Enterprise ML platform (often requires Databricks) |
+| **Agent Support** | Purpose-built for agents | Not designed for agents; focuses on model evaluation |
+| **Focus** | Build and deploy agents | ML experiment tracking and model comparison |
+| **Vectorstore Integration** | Native first-class support | External integrations required |
+| **Multi-Agent** | Native orchestration patterns | Single model/variant comparison focus |
+| **Evaluation** | Integrated, no-code | Modular evaluation metrics (Python-heavy) |
+| **Deployment** | Single CLI command | Requires ML infrastructure setup |
+| **Complexity** | Minimal (YAML) | High (ML engineering mindset required) |
+| **Best For** | Software engineers building agents | Data science teams with ML infrastructure |
+
+**Key Difference**: MLflow is a bloated ML infrastructure platform. AgentLab is a lightweight, CLI-first agent platform designed for CI/CD integration.
+
+---
+
+### vs. **Microsoft PromptFlow**
+
+| Aspect | AgentLab | PromptFlow |
+|--------|----------|-----------|
+| **CI/CD Integration** | **CLI-first design** - test, validate, deploy via shell commands in any CI system | Python SDK + Azure-centric tooling, requires infrastructure |
+| **Scope** | **Full agent lifecycle** (build, test, deploy agents) | **Individual tools & functions only** (not agent-level) |
+| **Design Target** | Multi-agent workflows & orchestration | Single tool/AI function development |
+| **Configuration** | Pure YAML (100% no-code) | Visual flow graphs + low-code Python |
+| **Agent Orchestration** | Native multi-agent patterns (sequential, concurrent, handoff, group chat) | Not designed for multi-agent orchestration |
+| **Evaluation** | Integrated with agent execution | Per-tool evaluation nodes |
+| **Deployment** | Local CLI, cloud plugins (simple) | Azure Container Apps (cloud-focused) |
+| **Self-Hosted** | ✅ Full support | ⚠️ Limited (designed for Azure) |
+| **Open Source** | ✅ MIT (true open-source) | ✅ MIT (but Azure-first philosophy) |
+| **Use Case** | Build complete agents, integrate in CI/CD pipelines | Debug and test individual AI functions |
+
+**Key Difference**: PromptFlow is a tool development environment. AgentLab is an agent development and deployment platform with CI/CD as a first-class concern.
+
+---
+
+### Why AgentLab is Unique
+
+**AgentLab solves a problem none of these platforms address:**
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  The Agent Development Gap                               │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  LangSmith    → Production observability (SaaS-only)    │
+│  MLflow       → Model tracking (heavy infrastructure)    │
+│  PromptFlow   → Function/tool development (not agents)  │
+│                                                          │
+│  ❌ None support multi-agent orchestration              │
+│  ❌ None enable pure no-code agent definition            │
+│  ❌ None designed for CI/CD pipeline integration        │
+│  ❌ None combine testing + evaluation + deployment      │
+│                                                          │
+│  ✅ AgentLab fills ALL these gaps                       │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Decision Matrix: Choose AgentLab When You Need...
+
+| Requirement | AgentLab | LangSmith | MLflow | PromptFlow |
+|-------------|----------|-----------|--------|-----------|
+| **Self-hosted agent development** | ✅ | ❌ | ⚠️ | ⚠️ |
+| **Zero-code agent definition** | ✅✅ | ❌ | ❌ | ❌ |
+| **Multi-agent orchestration** | ✅✅ | ❌ | ❌ | ❌ |
+| **CI/CD pipeline integration** | ✅✅ | ❌ | ⚠️ | ⚠️ |
+| **Local deployment (no cloud)** | ✅✅ | ❌ | ❌ | ⚠️ |
+| **Lightweight (<50MB footprint)** | ✅✅ | N/A | ❌ | ✅ |
+| **Built-in evaluation framework** | ✅ | ✅ | ✅ | ✅ |
+| **Production observability** | ⚠️ | ✅✅ | ✅ | ✅ |
+| **Open-source & vendor-free** | ✅ | ❌ | ✅ | ✅ |
+| **Individual tool debugging** | ⚠️ | ✅ | ✅ | ✅✅ |
+| **Enterprise features** | 🔮 v0.5 | ✅ | ✅ | ✅ |
+
+---
+
+### When to Use AgentLab
+
+✅ **Choose AgentLab if you want to**:
+- Build AI agents **without writing code** (pure YAML, no Python required)
+- Orchestrate **multiple agents** in coordinated workflows (sequential, concurrent, handoff, group chat, magentic patterns)
+- Integrate agent testing & validation into **CI/CD pipelines** (GitHub Actions, GitLab CI, Jenkins, etc.)
+- Deploy agents instantly to local FastAPI endpoints or cloud
+- Test hypotheses rapidly with integrated evaluation metrics
+- Use vector search and structured data as first-class tools
+- Connect via MCP protocol for standardized integrations
+- Stay 100% open-source and self-hosted (no vendor lock-in)
+- Iterate from prototype to production in minutes, with version control
+
+❌ **Consider alternatives if you need to**:
+- Monitor production LLM apps in real-time → **LangSmith** (but accept SaaS dependency + cost)
+- Track ML experiments across teams → **MLflow** (but accept heavy infrastructure + Databricks)
+- Debug individual AI functions/tools → **PromptFlow** (but accept limited to single-tool scope)
+
+---
+
 ## 🏗️ Architecture
 
 ```
