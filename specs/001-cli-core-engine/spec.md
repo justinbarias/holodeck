@@ -52,6 +52,24 @@ A developer wants to quickly bootstrap a new AI agent project without writing co
 
 ---
 
+### User Story 2.5 - Configure Global Settings (Priority: P1)
+
+A developer wants to configure global AgentLab settings once (API keys, vector store connections, deployment defaults) so they can be reused across multiple agent projects without repeating configuration.
+
+**Why this priority**: Critical for practical multi-project workflows. Developers need centralized credential management before they can use agents across different projects. Essential for MVP user experience.
+
+**Independent Test**: Can be fully tested by creating/updating `~/.agentlab/config.yaml` and verifying that agent projects can load credentials from global config. Validates configuration precedence works correctly.
+
+**Acceptance Scenarios**:
+
+1. **Given** a user creates `~/.agentlab/config.yaml` with provider credentials, **When** they run an agent that references those providers, **Then** the agent successfully uses credentials from global config
+2. **Given** global config specifies vectorstore connections (Redis, Postgres), **When** an agent.yaml tool references a vectorstore, **Then** the agent uses the connection details from global config
+3. **Given** both global config and agent.yaml specify the same provider, **When** the agent initializes, **Then** agent.yaml settings take precedence over global config
+4. **Given** global config specifies environment variables with `${VARIABLE_NAME}` syntax, **When** the config is loaded, **Then** environment variables are properly substituted
+5. **Given** a developer sets deployment defaults in global config, **When** they run `agentlab deploy`, **Then** the deployment uses those defaults (unless overridden by CLI flags)
+
+---
+
 ### User Story 3 - Execute Agent Against Test Cases (Priority: P1)
 
 A developer runs their agent through predefined test cases to verify behavior. They want to see if the agent produces expected outputs and uses the correct tools, with evaluation metrics applied.
@@ -230,11 +248,15 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - What happens when an agent.yaml file contains invalid YAML syntax?
 - What happens when a referenced tool file (tools/custom.py) doesn't exist?
 - What happens when the LLM provider API key is missing or invalid?
+- What happens when the global config file `~/.agentlab/config.yaml` doesn't exist? (Should gracefully fall back to env vars or agent.yaml credentials)
+- What happens when environment variable substitution in global config references an undefined variable?
+- What happens when both global config and agent.yaml specify conflicting credentials? (agent.yaml takes precedence)
 - What happens when a test case references a tool that's not defined in agent.yaml?
 - What happens when an evaluation metric fails to calculate (e.g., LLM call times out)?
 - How does the system handle very long agent conversations in chat mode (memory management)?
 - What happens when multiple tools are called simultaneously by the agent?
 - How are concurrent requests handled in the deployed API?
+- When a user exits chat mode and re-runs it, should previous conversations be available? (Clarified: No persistence by default in v0.1 to keep implementation lightweight)
 
 ## Requirements *(mandatory)*
 
@@ -250,6 +272,15 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - **FR-001**: System MUST provide `agentlab init <project_name>` command that creates project directory with agent.yaml, instructions/, tools/, tests/, and data/ folders
 - **FR-002**: System MUST support multiple project templates (e.g., `--template conversational`, `--template research`, `--template customer-support`) with sensible defaults for each
 - **FR-003**: System MUST provide `agentlab --version` command showing the installed AgentLab version
+
+**Global Configuration**
+
+- **FR-003a**: System MUST support global configuration file at `~/.agentlab/config.yaml` for provider credentials, vector store connections, and deployment defaults
+- **FR-003b**: System MUST support provider configuration for LLM providers (openai, azure_openai, anthropic) with API keys and endpoints
+- **FR-003c**: System MUST support vectorstore configuration (Redis, Postgres) for vector database connections at the global level
+- **FR-003d**: System MUST support deployment defaults configuration (default_port, rate_limit, auth settings) in global config
+- **FR-003e**: System MUST support environment variable substitution in global config using `${VARIABLE_NAME}` syntax
+- **FR-003f**: System MUST load provider credentials from global config if not explicitly specified in agent.yaml or environment variables (precedence: agent.yaml > env vars > global config)
 
 **Agent Configuration & Loading**
 
@@ -297,7 +328,9 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - **FR-029a**: System MUST isolate session state per session_id; requests to the same session_id are serialized to prevent race conditions
 - **FR-029b**: System MUST generate and return a session_id in the response if not provided in the request
 - **FR-030**: System MUST provide `/health` GET endpoint returning 200 status when service is running
-- **FR-031**: System MUST include request/response logging for debugging deployed agents
+- **FR-031**: System MUST include structured JSON logging for all requests/responses in deployed agents with fields: timestamp, request_id, session_id, message_input, tool_calls, response, duration_ms, error
+- **FR-031a**: System MUST rotate logs daily with 7-day retention by default; log location: `~/.agentlab/logs/agent-<name>.log`
+- **FR-031b**: System MUST support log configuration in agent.yaml (log_level, rotation_days, retention_days) to override defaults
 
 **Error Handling & Validation**
 
@@ -326,6 +359,10 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - Q: How should chat mode manage conversation memory and session state? → A: Chat memory strategy is configurable. v0.1 CLI experimentation mode defaults to in-memory (last N messages). For API deployment, strategy becomes configurable via agent.yaml (Redis cache, database, or in-memory).
 - Q: How should the API handle concurrent requests and session state isolation? → A: Session isolation via session_id. Each request includes session_id; API maintains separate conversation history per session. Requests to the same session_id are serialized (queued) to prevent race conditions.
 - Q: When evaluation metrics fail (LLM timeout, rate limit), should failed metrics fail the entire test? → A: Soft failure: Test continues; failed metrics show "ERROR" status with logged error details. Agent reasoning is validated even if some metrics can't be calculated. Prevents external API issues from breaking feedback loops.
+- Q: How should global configuration interact with agent.yaml and environment variables? → A: Three-level precedence: agent.yaml (highest) > environment variables > global config (lowest). If agent.yaml specifies a provider, it overrides global config. If neither agent.yaml nor env vars specify credentials, system loads from global config. Missing global config file is not an error; system gracefully falls back to env vars or agent.yaml settings.
+- Q: When agents are deployed as local APIs, how should request/response logging be implemented? → A: Structured JSON logs to file with rotation policy. Logs MUST include: timestamp, request_id, session_id, message_input, tool_calls, response, duration_ms, error (if any). Logs are rotated daily with 7-day retention by default. Format enables easy parsing for monitoring/aggregation and supports future OpenTelemetry integration.
+- Q: What should be the default retry behavior when tools fail? → A: No automatic retries by default. Errors are logged and returned as empty string context to the agent for continued reasoning. This aligns with graceful degradation principle and keeps initial implementation simple. Users can define custom retry logic via middleware hooks if needed.
+- Q: For chat mode in CLI, should conversation history persist across sessions? → A: No persistence by default. Conversation history resets each session. This keeps v0.1 implementation lightweight, prevents unbounded memory growth, and aligns with CLI as an experimentation/exploration tool. Users can enable persistence via agent.yaml configuration if needed in future versions.
 
 ## Success Criteria *(mandatory)*
 
