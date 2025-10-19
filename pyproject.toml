@@ -1,6 +1,6 @@
 [project]
 name = "holodeck-ai"
-version = "0.0.1"
+dynamic = ["version"]
 description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
 requires-python = ">=3.14,<4.0"
 dependencies = [
@@ -37,6 +37,9 @@ dev = [
 [build-system]
 requires = ["setuptools>=61", "setuptools_scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
 
 [tool.setuptools.packages.find]
 where = ["src"]
