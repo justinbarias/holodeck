@@ -1,15 +1,17 @@
 [project]
-name = "agentlab"
-version = "0.1.0"
-description = "AgentLab - Experimentation-driven agent experimentation and deployment"
+name = "holodeck"
+version = "0.0.1"
+description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
 requires-python = ">=3.14,<4.0"
 dependencies = [
     "requests (>=2.32.5,<3.0.0)",
     "pydantic>=2.0.0",
+    "pyyaml>=6.0.0",
     "python-dotenv>=1.0.0",
     "python-dateutil>=2.8.0",
     "urllib3 (>=2.5.0,<3.0.0)",
     "cryptography (>=46.0.2,<47.0.0)",
+    "mkdocs-material (>=9.6.22,<10.0.0)",
 ]
 
 [project.optional-dependencies]
@@ -23,10 +25,12 @@ dev = [
     "mypy>=1.5.0",
     "pre-commit>=3.3.0",
     "tox>=4.0.0",
-    "bandit>=1.7.0",
-    "safety>=2.3.0",
+    "bandit[toml]>=1.8.0",
+    "safety>=3.0.0",
     "detect-secrets>=1.4.0",
     "poetry>=1.7.0",
+    "types-PyYAML>=6.0.12",
+    "mkdocstrings[python]>=0.25.0",
 ]
 
 [build-system]
@@ -38,12 +42,12 @@ where = ["src"]
 
 [tool.black]
 line-length = 88
-target-version = ['py314']
+target-version = ['py313']
 include = '\.pyi?$'
 
 [tool.ruff]
 line-length = 88
-target-version = "py314"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = [
@@ -79,6 +83,13 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 
+# Relax strict checking for test files
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_any_expr = false
+
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
@@ -94,6 +105,11 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
 ]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = []
+tests = []
 
 [tool.pdoc]
 output-dir = "docs/api"

@@ -1,0 +1,96 @@
+site_name: HoloDeck Documentation
+site_description: AI Agent Experimentation Platform - Define agents in YAML, no code required
+site_url: https://docs.holodeck.ai/
+repo_url: https://github.com/justinbarias/holodeck
+repo_name: justinbarias/holodeck
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: assets/holodeck.png
+  favicon: assets/holodeck.png
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quickstart: getting-started/quickstart.md
+  - Guides:
+    - Agent Configuration: guides/agent-configuration.md
+    - Tools: guides/tools.md
+    - Evaluations: guides/evaluations.md
+    - Global Configuration: guides/global-config.md
+    - File References: guides/file-references.md
+  - Examples:
+    - Overview: examples/README.md
+    - Basic Agent: examples/basic_agent.yaml
+    - With Tools: examples/with_tools.yaml
+    - With Evaluations: examples/with_evaluations.yaml
+    - With Global Config: examples/with_global_config.yaml
+  - API Reference:
+    - Models: api/models.md
+    - ConfigLoader: api/config-loader.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Configuration Loading: architecture/configuration-loading.md
+  - Developer:
+    - Contributing: contributing.md
+    - Changelog: CHANGELOG.md
+
+plugins:
+  - search:
+      lang: en
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            merge_init_into_class: true
+            show_source: true
+            inherited_members: true
+            filters:
+              - "!^_"  # private
+            show_root_heading: true
+            show_root_full_path: false
+
+markdown_extensions:
+  - pymdownx.highlight:
+      use_pygments: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - toc:
+      permalink: true
+  - tables
+  - pymdownx.tasklist
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  version: 0.1.0
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/anthropics/holodeck
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/anthropic

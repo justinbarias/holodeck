@@ -1,4 +1,4 @@
-# AgentLab
+# HoloDeck
 
 A robust Python tool for collecting and analyzing code metrics with best practices for quality, security, and testing.
 
@@ -23,12 +23,14 @@ A robust Python tool for collecting and analyzing code metrics with best practic
 ### Installation
 
 1. Clone the repository:
+
 ```bash
 git clone <repository-url>
-cd agentlab
+cd holodeck
 ```
 
 2. Create and activate a virtual environment:
+
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Unix/macOS
@@ -37,6 +39,7 @@ source .venv/bin/activate  # Unix/macOS
 ```
 
 3. Install dependencies:
+
 ```bash
 make install
 # or
@@ -45,6 +48,7 @@ pre-commit install
 ```
 
 4. Copy the environment template and configure:
+
 ```bash
 cp .env.example .env
 # Edit .env with your configuration
@@ -53,9 +57,9 @@ cp .env.example .env
 ## Project Structure
 
 ```
-agentlab/
+holodeck/
 ├── src/
-│   └── agentlab/
+│   └── holodeck/
 │       ├── __init__.py
 │       ├── core/
 │       ├── utils/
@@ -108,6 +112,7 @@ make ci
 Run `make help` to see all available commands. Key commands include:
 
 ### Installation & Setup
+
 - `make init` - Initialize project (create venv, install deps, setup pre-commit)
 - `make install` or `make install-dev` - Install development dependencies
 - `make install-prod` - Install production dependencies only
@@ -132,6 +137,7 @@ poetry remove package-name
 Poetry will automatically update `pyproject.toml` and install the package.
 
 ### Testing
+
 - `make test` - Run all tests
 - `make test-unit` - Run unit tests only
 - `make test-integration` - Run integration tests only
@@ -140,6 +146,7 @@ Poetry will automatically update `pyproject.toml` and install the package.
 - `make test-parallel` - Run tests in parallel (requires pytest-xdist)
 
 ### Code Quality
+
 - `make format` - Format code with Black and isort
 - `make format-check` - Check code formatting without changes
 - `make lint` - Run all linters (Ruff, Bandit)
@@ -149,21 +156,25 @@ Poetry will automatically update `pyproject.toml` and install the package.
 - `make pre-commit` - Run pre-commit hooks on all files
 
 ### CI/CD
+
 - `make ci` - Run complete CI pipeline locally
 - `make ci-azure` - Run CI checks formatted for Azure DevOps
 - `make ci-fast` - Run fast CI checks (no coverage, parallel tests)
 
 ### Build & Documentation
+
 - `make build` - Build distribution packages
 - `make build-check` - Build and validate package
 - `make docs` - Build documentation
 - `make docs-serve` - Serve documentation locally
 
 ### Cleanup
+
 - `make clean` - Clean temporary files and caches
 - `make clean-all` - Deep clean including virtual environment
 
 ### Development Helpers
+
 - `make run` - Run the application
 - `make shell` - Start Python shell with project context
 - `make debug` - Run with debugger

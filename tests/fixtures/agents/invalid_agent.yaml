@@ -1,0 +1,7 @@
+# Invalid agent configuration for testing error handling
+name: invalid-agent
+
+# Missing required 'model' field
+
+instructions:
+  inline: This agent is missing required configuration

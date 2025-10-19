@@ -1,0 +1,124 @@
+# Agent with Global Config and Precedence Example
+#
+# This example demonstrates:
+# - Agent-specific configuration overriding global defaults
+# - Environment variable substitution (${VAR_NAME})
+# - Configuration precedence: agent.yaml > env vars > global config
+#
+# Assumes ~/.holodeck/config.yaml contains:
+#   model:
+#     provider: openai
+#     name: gpt-4o-mini
+#     temperature: 0.7
+#   deployment:
+#     endpoint_prefix: /api/v1
+#
+# Usage:
+#   export AZURE_API_KEY=your-api-key
+#   export AZURE_ENDPOINT=https://your-instance.openai.azure.com/
+#   holodeck run with_global_config.yaml
+
+name: multi-environment-agent
+description: |
+  Agent demonstrating configuration inheritance from global config
+  with environment-specific overrides
+
+# Override global model provider for this agent
+model:
+  provider: azure_openai
+  name: gpt-4-turbo
+  temperature: 0.5  # Overrides global 0.7
+  max_tokens: 4096  # Adds to global config
+  endpoint: ${AZURE_ENDPOINT}  # From environment variable
+
+instructions:
+  inline: |
+    You are an intelligent assistant running in a multi-environment setup.
+    Your configuration demonstrates:
+    1. Global defaults from ~/.holodeck/config.yaml
+    2. Agent-specific overrides in this file
+    3. Runtime environment variables for sensitive data
+
+    Available contexts:
+    - Global settings provide baseline configuration
+    - Agent-level settings override globals for this agent only
+    - Environment variables (${VAR_NAME}) are resolved at runtime
+
+    Use appropriate tool for the task and maintain security best practices.
+
+tools:
+  # Tool using global configuration as fallback
+  - name: secure-api-client
+    description: Call external APIs with proper authentication
+    type: function
+    file: ./tools/api_client.py
+    function: call_secure_api
+    parameters:
+      endpoint:
+        type: string
+        description: API endpoint (e.g., https://api.example.com/data)
+      auth_token:
+        type: string
+        description: Authentication token from environment
+      timeout_seconds:
+        type: integer
+        description: Request timeout in seconds
+
+  # Vectorstore using global deployment endpoint
+  - name: knowledge-base
+    description: Search product knowledge base
+    type: vectorstore
+    source: ./data/kb/
+    chunk_size: 256
+    chunk_overlap: 64
+    vector_field: text
+
+evaluations:
+  # Use default model from global config
+  # If global config specifies openai/gpt-4o-mini, that will be used here
+  # Agent's model (azure_openai) only applies to agent execution, not evaluations
+  metrics:
+    - metric: relevance
+      threshold: 3.5
+      enabled: true
+      scale: 5
+
+test_cases:
+  - name: "API integration test"
+    input: |
+      Call the user management API and retrieve all active users.
+      How many are in the sales department?
+    expected_tools:
+      - secure-api-client
+    ground_truth: |
+      Should return count of active users in sales department
+      using the endpoint specified in AZURE_ENDPOINT environment variable
+
+  - name: "Knowledge base search"
+    input: "What are the system requirements for our product?"
+    expected_tools:
+      - knowledge-base
+    ground_truth: |
+      Should retrieve and summarize system requirements
+      from the knowledge base stored in ./data/kb/
+
+# Configuration notes
+# ==================
+# Precedence demonstration:
+#
+# 1. HIGHEST: Agent-specific settings (this file)
+#    - model.provider: azure_openai (explicit in agent.yaml)
+#    - model.temperature: 0.5 (explicit in agent.yaml)
+#
+# 2. MEDIUM: Environment variables
+#    - AZURE_ENDPOINT: resolved at runtime
+#    - AZURE_API_KEY: would be used if referenced
+#
+# 3. LOWEST: Global config (~/.holodeck/config.yaml)
+#    - Used as defaults if not overridden above
+#    - Example: deployment.endpoint_prefix applied if not set in agent
+#
+# Env var substitution:
+#   ${AZURE_ENDPOINT} → reads AZURE_ENDPOINT environment variable
+#   ${HOME} → reads HOME environment variable
+#   Missing vars cause ConfigError at load time

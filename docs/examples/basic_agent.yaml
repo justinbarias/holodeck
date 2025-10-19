@@ -1,0 +1,28 @@
+# Basic Agent Example
+#
+# This is a minimal, valid agent configuration demonstrating:
+# - Simple agent metadata
+# - OpenAI model provider
+# - Inline system instructions
+# - No tools or evaluations (can run standalone)
+#
+# Usage: holodeck run basic_agent.yaml
+
+name: customer-support-agent
+description: Basic customer support agent with OpenAI integration
+
+model:
+  provider: openai
+  name: gpt-4o-mini
+  temperature: 0.7
+  max_tokens: 2048
+
+instructions:
+  inline: |
+    You are a helpful customer support agent. Your role is to:
+    1. Listen carefully to customer issues
+    2. Ask clarifying questions if needed
+    3. Provide clear, actionable solutions
+    4. Escalate to human agent if issue is complex
+
+    Be empathetic, professional, and concise in all responses.
