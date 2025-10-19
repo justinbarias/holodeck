@@ -229,10 +229,10 @@ _Documentation, examples, and cross-cutting quality improvements._
 
 ### Phase 4d: API Documentation
 
-- [ ] T064 [P] Generate docstrings for all public classes in `src/holodeck/config/`: module docstring, class docstring, method docstring with parameter/return docs
-- [ ] T065 [P] Generate docstrings for all public classes in `src/holodeck/models/`: module docstring, class docstring, field descriptions
-- [ ] T066 [P] Create docs/api/config-loader.md: ConfigLoader API reference, all methods documented, examples, error handling
-- [ ] T067 [P] Create docs/api/models.md: All Pydantic models documented (Agent, Tool, LLMProvider, Evaluation, TestCase, GlobalConfig), field types, constraints
+- [x] T064 [P] Generate docstrings for all public classes in `src/holodeck/config/`: module docstring, class docstring, method docstring with parameter/return docs
+- [x] T065 [P] Generate docstrings for all public classes in `src/holodeck/models/`: module docstring, class docstring, field descriptions
+- [x] T066 [P] Create docs/api/config-loader.md: ConfigLoader API reference, all methods documented, examples, error handling
+- [x] T067 [P] Create docs/api/models.md: All Pydantic models documented (Agent, Tool, LLMProvider, Evaluation, TestCase, GlobalConfig), field types, constraints
 
 ### Phase 4e: Architecture & Developer Guides
 

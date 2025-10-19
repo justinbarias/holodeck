@@ -30,6 +30,7 @@ dev = [
     "detect-secrets>=1.4.0",
     "poetry>=1.7.0",
     "types-PyYAML>=6.0.12",
+    "mkdocstrings[python]>=0.25.0",
 ]
 
 [build-system]
