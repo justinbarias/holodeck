@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make format)",
+      "Bash(make format-check)",
+      "Bash(make lint)",
+      "Bash(make lint-fix)",
+      "Bash(make type-check)",
+      "Bash(make security)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

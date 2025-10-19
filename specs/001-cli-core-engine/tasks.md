@@ -150,28 +150,28 @@ Enable developers to define AI agents entirely through YAML configuration. Parse
 
 ### US1 Phase 3d: ConfigLoader Tests & Implementation
 
-- [ ] T034 Write loader tests in `tests/unit/test_config_loader.py`: test load_agent_yaml() with valid YAML, test load_agent_yaml() with invalid YAML, test load_agent_yaml() with missing required fields, test parse_yaml() returns dict
-- [ ] T035 Write global config tests in `tests/unit/test_config_loader.py`: test load_global_config() reads ~/.agentlab/config.yaml, test load_global_config() returns empty config if file missing, test load_global_config() applies env var substitution
-- [ ] T036 Write precedence tests in `tests/unit/test_config_loader.py`: test merge_configs() agent.yaml overrides env vars, test merge_configs() env vars override global config, test merge_configs() respects precedence hierarchy
-- [ ] T037 Write file resolution tests in `tests/unit/test_config_loader.py`: test resolve_file_path() resolves relative to agent.yaml directory, test resolve_file_path() raises error if file not found, test resolve_file_path() with absolute paths
-- [ ] T038 Write error handling tests in `tests/unit/test_config_loader.py`: test validation errors converted to ConfigError, test error messages include field name and expected type, test file not found errors include full path
+- [x] T034 Write loader tests in `tests/unit/test_config_loader.py`: test load_agent_yaml() with valid YAML, test load_agent_yaml() with invalid YAML, test load_agent_yaml() with missing required fields, test parse_yaml() returns dict
+- [x] T035 Write global config tests in `tests/unit/test_config_loader.py`: test load_global_config() reads ~/.agentlab/config.yaml, test load_global_config() returns empty config if file missing, test load_global_config() applies env var substitution
+- [x] T036 Write precedence tests in `tests/unit/test_config_loader.py`: test merge_configs() agent.yaml overrides env vars, test merge_configs() env vars override global config, test merge_configs() respects precedence hierarchy
+- [x] T037 Write file resolution tests in `tests/unit/test_config_loader.py`: test resolve_file_path() resolves relative to agent.yaml directory, test resolve_file_path() raises error if file not found, test resolve_file_path() with absolute paths
+- [x] T038 Write error handling tests in `tests/unit/test_config_loader.py`: test validation errors converted to ConfigError, test error messages include field name and expected type, test file not found errors include full path
 
-- [ ] T039 [US1] Create ConfigLoader class in `src/agentlab/config/loader.py`: load_agent_yaml(path), parse_yaml(), return Agent instance (satisfy T034)
-- [ ] T040 [US1] Implement global config loading in ConfigLoader: load_global_config() method, env var substitution, merge with agent.yaml (satisfy T035, T036)
-- [ ] T041 [US1] Implement file reference resolution in ConfigLoader: resolve_file_path() for instructions and tool files, validation of file existence (satisfy T037)
-- [ ] T042 [US1] Implement error handling in ConfigLoader: catch Pydantic errors, convert to ConfigError with human messages (satisfy T038)
+- [x] T039 [US1] Create ConfigLoader class in `src/agentlab/config/loader.py`: load_agent_yaml(path), parse_yaml(), return Agent instance (satisfy T034)
+- [x] T040 [US1] Implement global config loading in ConfigLoader: load_global_config() method, env var substitution, merge with agent.yaml (satisfy T035, T036)
+- [x] T041 [US1] Implement file reference resolution in ConfigLoader: resolve_file_path() for instructions and tool files, validation of file existence (satisfy T037)
+- [x] T042 [US1] Implement error handling in ConfigLoader: catch Pydantic errors, convert to ConfigError with human messages (satisfy T038)
 
 ---
 
 ### US1 Phase 3e: Integration Tests
 
-- [ ] T043 Write integration test in `tests/integration/test_config_end_to_end.py`: full workflow (load agent.yaml with tools, merge global config, resolve file references, return Agent instance)
-- [ ] T044 Write integration test in `tests/integration/test_config_end_to_end.py`: error scenario (missing required field, invalid YAML, missing file reference, should raise ConfigError with actionable message)
-- [ ] T045 Write integration test in `tests/integration/test_config_end_to_end.py`: precedence scenario (create agent.yaml, global config, env vars; verify correct precedence)
+- [x] T043 Write integration test in `tests/integration/test_config_end_to_end.py`: full workflow (load agent.yaml with tools, merge global config, resolve file references, return Agent instance)
+- [x] T044 Write integration test in `tests/integration/test_config_end_to_end.py`: error scenario (missing required field, invalid YAML, missing file reference, should raise ConfigError with actionable message)
+- [x] T045 Write integration test in `tests/integration/test_config_end_to_end.py`: precedence scenario (create agent.yaml, global config, env vars; verify correct precedence)
 
-- [ ] T046 [US1] Execute integration tests: `pytest tests/integration/test_config_end_to_end.py -v`, all tests pass
-- [ ] T047 [US1] Execute all unit tests: `pytest tests/unit/ -v`, all tests pass, coverage ≥80%
-- [ ] T048 [US1] Generate coverage report: `pytest --cov=src/agentlab tests/`, verify ≥80% coverage on all modules
+- [x] T046 [US1] Execute integration tests: `pytest tests/integration/test_config_end_to_end.py -v`, all tests pass
+- [x] T047 [US1] Execute all unit tests: `pytest tests/unit/ -v`, all tests pass, coverage ≥80%
+- [x] T048 [US1] Generate coverage report: `pytest --cov=src/agentlab tests/`, verify ≥80% coverage on all modules
 
 ---
 

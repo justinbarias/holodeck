@@ -214,3 +214,26 @@ The project uses Poetry for dependency management but supports standard pip inst
 - ⏳ Deployment engine (not started)
 
 When implementing features, refer to VISION.md for detailed specifications and examples.
+
+## Workflow
+
+This project uses spec-kit.
+
+All work should use the following workflow:
+
+- Create a spec /speckit.specify
+- Clarify the spec /speckit.clarify
+- Create a plan /speckit.plan
+- Create the tasks /speckit.tasks
+- Implement each task using /speckit.implement
+
+Every time you finish a task, always run the code quality make commands:
+
+```bash
+make format             # Format with Black + Ruff
+make format-check       # Check formatting (CI-safe)
+make lint               # Run Ruff + Bandit
+make lint-fix           # Auto-fix linting issues
+make type-check         # MyPy type checking
+make security           # Safety + Bandit + detect-secrets
+```
