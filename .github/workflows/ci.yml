@@ -53,6 +53,6 @@ jobs:
           git checkout -b main
           git add .
           git commit -m "Deploy documentation"
-          git push -f https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository_owner }}/holodeck-docs.git main:main
+          git push -f https://${{ secrets.DOCS_DEPLOY_TOKEN }}@github.com/${{ github.repository_owner }}/holodeck-docs.git main:main
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCS_DEPLOY_TOKEN: ${{ secrets.DOCS_DEPLOY_TOKEN }}
