@@ -26,6 +26,17 @@ jobs:
           cache: 'pip'
           cache-dependency-path: 'pyproject.toml'
 
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            .venv
+          key: python-deps-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            python-deps-${{ runner.os }}-${{ matrix.python-version }}-
+            python-deps-${{ runner.os }}-
+
       - name: Cache pre-commit environments
         uses: actions/cache@v4
         with:
@@ -64,6 +75,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+        environment: pypi
 
       - name: Deploy docs
         if: github.ref == 'refs/heads/main'
