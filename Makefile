@@ -123,10 +123,8 @@ test-parallel: ## Run tests in parallel (requires pytest-xdist)
 
 lint: ## Run all linters
 	@echo "$(GREEN)Running linters...$(NC)"
-	@echo "Running ruff..."
+	@echo "Running ruff (includes security checks)..."
 	ruff check $(SRC_DIR) $(TEST_DIR)
-	@echo "Running bandit security linter..."
-	bandit -r $(SRC_DIR) -ll
 	@echo "$(GREEN)✓ Linting complete$(NC)"
 
 lint-fix: ## Run linters with auto-fix
@@ -155,8 +153,8 @@ security: ## Run security checks
 	@echo "$(GREEN)Running security checks...$(NC)"
 	@echo "Checking for known vulnerabilities..."
 	safety check --json
-	@echo "Scanning for security issues..."
-	bandit -r $(SRC_DIR) -f json -o bandit-report.json
+	@echo "Scanning for security issues with Ruff..."
+	ruff check $(SRC_DIR) --select S
 	@echo "Checking for hardcoded secrets..."
 	detect-secrets scan --baseline .secrets.baseline
 	@echo "$(GREEN)✓ Security checks complete$(NC)"

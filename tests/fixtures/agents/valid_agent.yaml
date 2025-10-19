@@ -1,0 +1,49 @@
+# Valid agent configuration with all major features
+name: customer-support-agent
+description: Customer support agent with tools and evaluations
+
+model:
+  provider: openai
+  name: gpt-4o
+  temperature: 0.7
+  max_tokens: 2048
+
+instructions:
+  inline: |
+    You are a helpful customer support agent.
+    Answer customer questions with empathy and accuracy.
+
+tools:
+  - name: search_faq
+    type: vectorstore
+    description: Search customer FAQ database
+    source: data/faqs.md
+    embedding_model: text-embedding-3-small
+
+  - name: check_status
+    type: function
+    description: Check order status
+    file: tools/orders.py
+    function: get_order_status
+
+  - name: web_search
+    type: mcp
+    description: Search the web for information
+    server: "@modelcontextprotocol/server-web"
+
+evaluations:
+  model:
+    provider: openai
+    name: gpt-4o-mini
+  metrics:
+    - metric: groundedness
+      threshold: 4.0
+      enabled: true
+    - metric: relevance
+      threshold: 4.0
+      enabled: true
+
+test_cases:
+  - input: "What are your business hours?"
+    expected_tools: [search_faq]
+    ground_truth: "Business hours vary by location. Check our website for details."

@@ -27,9 +27,3 @@ repos:
       - id: mypy
         args: [--ignore-missing-imports]
         additional_dependencies: [pydantic>=2.0.0, types-requests]
-
-  - repo: https://github.com/pycqa/bandit
-    rev: 1.7.10
-    hooks:
-      - id: bandit
-        args: ["-r", "src", "-ll"]

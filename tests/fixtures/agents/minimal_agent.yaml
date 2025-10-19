@@ -1,0 +1,10 @@
+# Minimal agent configuration for testing basic functionality
+name: minimal-agent
+description: A minimal agent with only required fields
+
+model:
+  provider: openai
+  name: gpt-4o-mini
+
+instructions:
+  inline: You are a helpful assistant.

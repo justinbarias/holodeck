@@ -6,6 +6,7 @@ requires-python = ">=3.14,<4.0"
 dependencies = [
     "requests (>=2.32.5,<3.0.0)",
     "pydantic>=2.0.0",
+    "pyyaml>=6.0.0",
     "python-dotenv>=1.0.0",
     "python-dateutil>=2.8.0",
     "urllib3 (>=2.5.0,<3.0.0)",
@@ -23,8 +24,8 @@ dev = [
     "mypy>=1.5.0",
     "pre-commit>=3.3.0",
     "tox>=4.0.0",
-    "bandit>=1.7.0",
-    "safety>=2.3.0",
+    "bandit[toml]>=1.8.0",
+    "safety>=3.0.0",
     "detect-secrets>=1.4.0",
     "poetry>=1.7.0",
 ]
@@ -38,12 +39,12 @@ where = ["src"]
 
 [tool.black]
 line-length = 88
-target-version = ['py314']
+target-version = ['py313']
 include = '\.pyi?$'
 
 [tool.ruff]
 line-length = 88
-target-version = "py314"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = [
@@ -94,6 +95,11 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
 ]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = []
+tests = []
 
 [tool.pdoc]
 output-dir = "docs/api"

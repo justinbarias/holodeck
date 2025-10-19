@@ -46,9 +46,9 @@ This task list implements **User Story 1: Define Agent Configuration** using TDD
 
 ### Tasks
 
-- [ ] T001 Create project structure per plan.md: `src/agentlab/{config,models,cli,lib}/`, `tests/{unit,integration,fixtures}/`
-- [ ] T002 Create `pyproject.toml` with core dependencies: Pydantic v2, PyYAML, python-dotenv, pytest, pytest-cov, ruff, black, mypy
-- [ ] T003 Create `src/agentlab/__init__.py` with version export: `__version__ = "0.1.0"`
+- [x] T001 Create project structure per plan.md: `src/agentlab/{config,models,cli,lib}/`, `tests/{unit,integration,fixtures}/`
+- [x] T002 Create `pyproject.toml` with core dependencies: Pydantic v2, PyYAML, python-dotenv, pytest, pytest-cov, ruff, black, mypy
+- [x] T003 Create `src/agentlab/__init__.py` with version export: `__version__ = "0.1.0"`
 
 ---
 
@@ -74,19 +74,19 @@ This task list implements **User Story 1: Define Agent Configuration** using TDD
 
 ### Phase 2 - Tests First
 
-- [ ] T004 [P] Write exception tests in `tests/unit/test_errors.py`: test ConfigError message formatting, test ValidationError with field details, test FileNotFoundError with path suggestion
-- [ ] T005 [P] Write env loader tests in `tests/unit/test_env_loader.py`: test substitute_env_vars() with existing vars, test with missing vars, test ${VAR_NAME} pattern parsing
-- [ ] T006 [P] Write defaults tests in `tests/unit/test_defaults.py`: test default model config loads, test default tool config, test default evaluation config
-- [ ] T007 [P] Write validator utility tests in `tests/unit/test_validator.py`: test normalize_errors() returns human-readable format, test flatten_pydantic_errors() with nested errors
-- [ ] T008 Create conftest.py in `tests/`: setup pytest fixtures, configure coverage thresholds (min 80%), setup temp directories for file-based tests
+- [x] T004 [P] Write exception tests in `tests/unit/test_errors.py`: test ConfigError message formatting, test ValidationError with field details, test FileNotFoundError with path suggestion
+- [x] T005 [P] Write env loader tests in `tests/unit/test_env_loader.py`: test substitute_env_vars() with existing vars, test with missing vars, test ${VAR_NAME} pattern parsing
+- [x] T006 [P] Write defaults tests in `tests/unit/test_defaults.py`: test default model config loads, test default tool config, test default evaluation config
+- [x] T007 [P] Write validator utility tests in `tests/unit/test_validator.py`: test normalize_errors() returns human-readable format, test flatten_pydantic_errors() with nested errors
+- [x] T008 Create conftest.py in `tests/`: setup pytest fixtures, configure coverage thresholds (min 80%), setup temp directories for file-based tests
 
 ### Phase 2 - Implementation
 
-- [ ] T009 [P] Create custom exception hierarchy in `src/agentlab/lib/errors.py`: ConfigError, ValidationError, FileNotFoundError subtypes with clear messages (satisfy T004)
-- [ ] T010 [P] Create environment variable utilities in `src/agentlab/config/env_loader.py`: substitute_env_vars() function supporting ${VAR_NAME} pattern (satisfy T005)
-- [ ] T011 [P] Create default configurations in `src/agentlab/config/defaults.py`: default model config, default tool config, default evaluation config (satisfy T006)
-- [ ] T012 Create validation utilities in `src/agentlab/config/validator.py`: normalize_errors(), flatten_pydantic_errors() for human-readable messages (satisfy T007)
-- [ ] T013 Create test fixtures in `tests/fixtures/agents/`: minimal_agent.yaml, valid_agent.yaml, invalid_agent.yaml for test reuse (satisfy T008)
+- [x] T009 [P] Create custom exception hierarchy in `src/agentlab/lib/errors.py`: ConfigError, ValidationError, FileNotFoundError subtypes with clear messages (satisfy T004)
+- [x] T010 [P] Create environment variable utilities in `src/agentlab/config/env_loader.py`: substitute_env_vars() function supporting ${VAR_NAME} pattern (satisfy T005)
+- [x] T011 [P] Create default configurations in `src/agentlab/config/defaults.py`: default model config, default tool config, default evaluation config (satisfy T006)
+- [x] T012 Create validation utilities in `src/agentlab/config/validator.py`: normalize_errors(), flatten_pydantic_errors() for human-readable messages (satisfy T007)
+- [x] T013 Create test fixtures in `tests/fixtures/agents/`: minimal_agent.yaml, valid_agent.yaml, invalid_agent.yaml for test reuse (satisfy T008)
 
 ---
 
