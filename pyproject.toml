@@ -1,5 +1,5 @@
 [project]
-name = "holodeck"
+name = "holodeck-ai"
 version = "0.0.1"
 description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
 requires-python = ">=3.14,<4.0"
@@ -12,6 +12,7 @@ dependencies = [
     "urllib3 (>=2.5.0,<3.0.0)",
     "cryptography (>=46.0.2,<47.0.0)",
     "mkdocs-material (>=9.6.22,<10.0.0)",
+    "twine (>=6.2.0,<7.0.0)",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +35,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=61", "setuptools_scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

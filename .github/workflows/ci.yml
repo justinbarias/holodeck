@@ -9,6 +9,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       matrix:
         python-version: ["3.14"]
@@ -17,11 +21,38 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            pip-${{ runner.os }}-${{ matrix.python-version }}-
+            pip-${{ runner.os }}-
+
+      - name: Cache installed Python packages
+        uses: actions/cache@v4
+        id: cache-packages
+        with:
+          path: ${{ env.pythonLocation }}
+          key: python-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
+          restore-keys: |
+            python-${{ runner.os }}-${{ matrix.python-version }}-
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-
+
       - name: Install dependencies
+        if: steps.cache-packages.outputs.cache-hit != 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
@@ -43,6 +74,14 @@ jobs:
         run: |
           bandit -r src/
           safety check
+
+      - name: Build package
+        run: python -m build
+
+      - name: Publish to PyPI
+        if: github.ref == 'refs/heads/main'
+        uses: pypa/gh-action-pypi-publish@release/v1
+
       - name: Deploy docs
         if: github.ref == 'refs/heads/main'
         run: |
