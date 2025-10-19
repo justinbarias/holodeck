@@ -9,6 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       contents: read
       id-token: write
@@ -20,30 +21,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
           cache-dependency-path: 'pyproject.toml'
 
-      - name: Cache Python dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pip
-            .venv
-          key: python-deps-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            python-deps-${{ runner.os }}-${{ matrix.python-version }}-
-            python-deps-${{ runner.os }}-
-
       - name: Cache pre-commit environments
         uses: actions/cache@v4
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
           restore-keys: |
-            pre-commit-${{ runner.os }}-
+            pre-commit-
 
       - name: Install dependencies
         run: |
