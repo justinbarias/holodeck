@@ -43,3 +43,5 @@ jobs:
         run: |
           bandit -r src/
           safety check
+      - name: Deploy docs
+        run: mkdocs gh-deploy --force
