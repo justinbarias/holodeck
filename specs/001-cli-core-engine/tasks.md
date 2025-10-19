@@ -221,11 +221,11 @@ _Documentation, examples, and cross-cutting quality improvements._
 
 ### Phase 4c: Example Documentation
 
-- [ ] T059 [P] Create docs/examples/basic_agent.yaml: minimal valid agent with inline instructions, comment documentation
-- [ ] T060 [P] Create docs/examples/with_tools.yaml: agent with all tool types (vectorstore, function, mcp, prompt), well-commented
-- [ ] T061 [P] Create docs/examples/with_evaluations.yaml: agent with evaluation metrics, per-metric model override examples
-- [ ] T062 [P] Create docs/examples/with_global_config.yaml: shows agent.yaml + global config, demonstrates precedence
-- [ ] T063 Create docs/examples/README.md: explanation of each example, how to use them, when to use each pattern
+- [x] T059 [P] Create docs/examples/basic_agent.yaml: minimal valid agent with inline instructions, comment documentation
+- [x] T060 [P] Create docs/examples/with_tools.yaml: agent with all tool types (vectorstore, function, mcp, prompt), well-commented
+- [x] T061 [P] Create docs/examples/with_evaluations.yaml: agent with evaluation metrics, per-metric model override examples
+- [x] T062 [P] Create docs/examples/with_global_config.yaml: shows agent.yaml + global config, demonstrates precedence
+- [x] T063 Create docs/examples/README.md: explanation of each example, how to use them, when to use each pattern
 
 ### Phase 4d: API Documentation
 

@@ -1,0 +1,101 @@
+# Agent with Multiple Tool Types Example
+#
+# This example demonstrates all four tool types:
+# 1. Vectorstore - semantic search over documents
+# 2. Function - custom Python function execution
+# 3. MCP - standardized integrations (e.g., filesystem)
+# 4. Prompt - LLM-powered semantic functions
+#
+# Usage: holodeck run with_tools.yaml
+
+name: knowledge-agent
+description: Agent with comprehensive tool integration
+
+model:
+  provider: anthropic
+  name: claude-3-5-sonnet-20241022
+  temperature: 0.5
+
+instructions:
+  file: instructions.txt  # References external file (relative to this YAML)
+
+tools:
+  # Tool 1: Vectorstore - semantic search over documentation
+  - name: docs-search
+    description: Search through product documentation using semantic similarity
+    type: vectorstore
+    source: ./data/docs/  # Local directory with documents
+    chunk_size: 512
+    chunk_overlap: 128
+    vector_field: content  # Field to vectorize
+    meta_fields:
+      - source
+      - section
+      - updated_at
+
+  # Tool 2: Function - custom Python implementation
+  - name: calculate-discount
+    description: Calculate order discount based on customer tier and amount
+    type: function
+    file: ./tools/discount_calculator.py  # Path to Python file
+    function: calculate_discount  # Function name in the file
+    parameters:
+      customer_tier:
+        type: string
+        description: "Customer tier: 'bronze', 'silver', 'gold', 'platinum'"
+      order_amount:
+        type: float
+        description: Order amount in USD
+      applied_coupon:
+        type: string
+        description: "Optional coupon code (e.g., 'SUMMER20')"
+
+  # Tool 3: MCP - standardized integrations
+  - name: file-browser
+    description: Read and explore files on the filesystem (MCP server)
+    type: mcp
+    server: "@modelcontextprotocol/server-filesystem"
+    config:
+      allowed_directories:
+        - /Users/shared/documents
+        - /Users/shared/projects
+      max_file_size_mb: 10
+
+  # Tool 4: Prompt-based tool - LLM-powered semantic function
+  - name: sentiment-analyzer
+    description: Analyze sentiment and extract key emotions from text
+    type: prompt
+    template: |
+      Analyze the following text for sentiment and emotions.
+
+      Text: {text}
+
+      Provide JSON output with:
+      - overall_sentiment: 'positive', 'negative', or 'neutral'
+      - confidence: 0.0-1.0
+      - key_emotions: list of identified emotions
+      - reasoning: brief explanation
+
+      Response:
+    parameters:
+      text:
+        type: string
+        description: Text to analyze
+    model:  # Optional: use different model for this tool
+      provider: openai
+      name: gpt-4o-mini
+      temperature: 0.3
+
+# Optional: Test cases for this agent
+test_cases:
+  - name: "Test doc search capability"
+    input: "How do I reset my password?"
+    expected_tools:
+      - docs-search
+    ground_truth: "The response should reference documentation on password reset"
+
+  - name: "Test discount calculation"
+    input: "What's the best price for a gold customer spending $500?"
+    expected_tools:
+      - calculate-discount
+    ground_truth: "Should provide discount percentage or final price"

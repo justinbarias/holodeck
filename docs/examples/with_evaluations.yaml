@@ -1,0 +1,126 @@
+# Agent with Evaluations Example
+#
+# This example demonstrates the evaluation framework with:
+# - Global evaluation model configuration
+# - Per-metric model overrides
+# - Different metric types (AI-powered and NLP-based)
+# - Soft failure configuration
+# - Threshold-based pass/fail criteria
+#
+# Usage: holodeck evaluate with_evaluations.yaml
+
+name: qa-agent
+description: Quality assurance agent with comprehensive evaluation
+
+model:
+  provider: anthropic
+  name: claude-3-5-sonnet-20241022
+  temperature: 0.3
+  max_tokens: 1024
+
+instructions:
+  inline: |
+    You are a quality assurance specialist. Your task is to:
+    1. Review provided content
+    2. Check for accuracy and completeness
+    3. Identify issues or improvements needed
+    4. Provide actionable feedback
+
+evaluations:
+  # Global model used for all metrics (can be overridden per metric)
+  model:
+    provider: openai
+    name: gpt-4o
+    temperature: 0.2
+
+  metrics:
+    # AI-powered metric: Groundedness
+    # Evaluates if response is grounded in provided context
+    - metric: groundedness
+      threshold: 4.0  # Minimum score on 1-5 scale
+      enabled: true
+      scale: 5
+      fail_on_error: false  # Soft failure - continues on error
+
+    # AI-powered metric: Relevance
+    # Evaluates if response directly addresses the query
+    - metric: relevance
+      threshold: 4.0
+      enabled: true
+      scale: 5
+      fail_on_error: false
+
+    # AI-powered metric: Coherence
+    # Evaluates logical flow and clarity
+    - metric: coherence
+      threshold: 3.5
+      enabled: true
+      scale: 5
+      fail_on_error: false
+
+    # NLP metric: F1 Score
+    # Measures precision/recall against ground truth
+    - metric: f1_score
+      threshold: 0.8
+      enabled: true
+      scale: 100  # 0-100 percentage scale
+      fail_on_error: true  # Hard failure for critical metric
+
+    # NLP metric: ROUGE
+    # Measures n-gram overlap with reference text
+    - metric: rouge
+      threshold: 0.75
+      enabled: true
+      scale: 100
+      fail_on_error: false
+
+    # Custom metric with per-metric model override
+    # Uses GPT-4o instead of the default Claude model
+    - metric: custom_accuracy
+      threshold: 0.9
+      enabled: true
+      scale: 100
+      fail_on_error: false
+      model:  # Override global model for this metric only
+        provider: openai
+        name: gpt-4o
+        temperature: 0.1
+      custom_prompt: |
+        Evaluate the response for accuracy in technical content.
+        Score 0-100 based on correctness of technical details.
+
+test_cases:
+  - name: "Review product specification"
+    input: |
+      Please review this product spec for completeness:
+      - Feature: User authentication
+      - Requirement: Support OAuth2.0
+      - Status: In development
+      - Timeline: Q4 2025
+    ground_truth: |
+      The specification is incomplete. Missing:
+      1. Security requirements (encryption, token expiration)
+      2. Error handling scenarios
+      3. Testing strategy
+      4. Rollback plan
+    evaluations:
+      - groundedness
+      - relevance
+      - f1_score
+
+  - name: "Technical documentation quality"
+    input: |
+      Evaluate this API documentation:
+      GET /api/users/{id} - Retrieve user by ID
+      Returns: User object
+      Errors: 404 if not found, 401 if unauthorized
+    ground_truth: |
+      Documentation is clear but needs:
+      1. Request/response schema details
+      2. Example payloads
+      3. Rate limiting information
+      4. Pagination for list endpoints (if applicable)
+    evaluations:
+      - relevance
+      - coherence
+      - custom_accuracy
