@@ -20,23 +20,7 @@
   - Demonstrated to users independently
 -->
 
-### User Story 1 - Initialize New Agent Project (Priority: P1)
-
-A developer wants to quickly bootstrap a new AI agent project without writing code. They use the CLI to create a project template with all necessary files and directory structure.
-
-**Why this priority**: Foundational experience - users cannot proceed without this. Essential for onboarding and MVP viability.
-
-**Independent Test**: Can be fully tested by running `agentlab init <name>` and verifying all expected files/directories are created. Delivers immediate value for project setup.
-
-**Acceptance Scenarios**:
-
-1. **Given** the user has AgentLab installed, **When** they run `agentlab init customer-support --template conversational`, **Then** a new directory is created with agent.yaml, instructions/, data/, tools/, and tests/ folders
-2. **Given** the user initializes a project, **When** they examine the generated agent.yaml, **Then** it contains valid YAML structure with model, instructions, and tools sections ready for customization
-3. **Given** the user runs init without specifying a template, **When** the command completes, **Then** a basic default template is used with sensible defaults
-
----
-
-### User Story 2 - Define Agent Configuration (Priority: P1)
+### User Story 1 - Define Agent Configuration (Priority: P1)
 
 A developer edits the agent.yaml file to configure their AI agent's behavior: model provider, instructions, tools, and evaluations. The YAML configuration should be intuitive and validate correctness.
 
@@ -49,6 +33,22 @@ A developer edits the agent.yaml file to configure their AI agent's behavior: mo
 1. **Given** an agent.yaml file with model, instructions, and tools defined, **When** AgentLab parses the configuration, **Then** no validation errors occur and all sections are correctly loaded
 2. **Given** an agent.yaml with missing required fields, **When** AgentLab attempts to load it, **Then** clear validation error messages indicate what's missing
 3. **Given** an agent.yaml specifying OpenAI as provider with gpt-4o model, **When** the agent executes, **Then** it uses the configured LLM provider and model
+
+---
+
+### User Story 2 - Initialize New Agent Project (Priority: P1)
+
+A developer wants to quickly bootstrap a new AI agent project without writing code. They use the CLI to create a project template with all necessary files and directory structure.
+
+**Why this priority**: Foundational experience - users cannot proceed without this. Essential for onboarding and MVP viability.
+
+**Independent Test**: Can be fully tested by running `agentlab init <name>` and verifying all expected files/directories are created. Delivers immediate value for project setup.
+
+**Acceptance Scenarios**:
+
+1. **Given** the user has AgentLab installed, **When** they run `agentlab init customer-support --template conversational`, **Then** a new directory is created with agent.yaml, instructions/, data/, tools/, and tests/ folders
+2. **Given** the user initializes a project, **When** they examine the generated agent.yaml, **Then** it contains valid YAML structure with model, instructions, and tools sections ready for customization
+3. **Given** the user runs init without specifying a template, **When** the command completes, **Then** a basic default template is used with sensible defaults
 
 ---
 
