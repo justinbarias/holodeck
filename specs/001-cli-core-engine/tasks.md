@@ -112,39 +112,39 @@ Enable developers to define AI agents entirely through YAML configuration. Parse
 
 ### US1 Phase 3a: Tool Model Tests & Implementation
 
-- [ ] T014 [P] Write tests for Tool base model in `tests/unit/test_tool_models.py`: test type field is required, test type discriminator validates tool type, test abstract fields not allowed
-- [ ] T015 [P] Write tests for VectorstoreTool in `tests/unit/test_tool_models.py`: test source required, test vector_field XOR vector_fields validation, test chunk_size/chunk_overlap optional with defaults, test embedding_model optional
-- [ ] T016 [P] Write tests for FunctionTool in `tests/unit/test_tool_models.py`: test file and function required, test parameters schema optional, test description optional
-- [ ] T017 [P] Write tests for MCPTool in `tests/unit/test_tool_models.py`: test server required, test config dict optional, test description optional
-- [ ] T018 [P] Write tests for PromptTool in `tests/unit/test_tool_models.py`: test template (inline XOR file), test parameters schema validation, test model config optional, test description optional
+- [x] T014 [P] Write tests for Tool base model in `tests/unit/test_tool_models.py`: test type field is required, test type discriminator validates tool type, test abstract fields not allowed
+- [x] T015 [P] Write tests for VectorstoreTool in `tests/unit/test_tool_models.py`: test source required, test vector_field XOR vector_fields validation, test chunk_size/chunk_overlap optional with defaults, test embedding_model optional
+- [x] T016 [P] Write tests for FunctionTool in `tests/unit/test_tool_models.py`: test file and function required, test parameters schema optional, test description optional
+- [x] T017 [P] Write tests for MCPTool in `tests/unit/test_tool_models.py`: test server required, test config dict optional, test description optional
+- [x] T018 [P] Write tests for PromptTool in `tests/unit/test_tool_models.py`: test template (inline XOR file), test parameters schema validation, test model config optional, test description optional
 
-- [ ] T019 [P] [US1] Create Tool base model in `src/agentlab/models/tool.py`: type field (vectorstore|function|mcp|prompt), discriminated union for subtypes (satisfy T014)
-- [ ] T020 [P] [US1] Create VectorstoreTool in `src/agentlab/models/tool.py`: implement all fields with validation (satisfy T015)
-- [ ] T021 [P] [US1] Create FunctionTool in `src/agentlab/models/tool.py`: implement all fields with validation (satisfy T016)
-- [ ] T022 [P] [US1] Create MCPTool in `src/agentlab/models/tool.py`: implement all fields with validation (satisfy T017)
-- [ ] T023 [P] [US1] Create PromptTool in `src/agentlab/models/tool.py`: implement all fields with validation (satisfy T018)
+- [x] T019 [P] [US1] Create Tool base model in `src/agentlab/models/tool.py`: type field (vectorstore|function|mcp|prompt), discriminated union for subtypes (satisfy T014)
+- [x] T020 [P] [US1] Create VectorstoreTool in `src/agentlab/models/tool.py`: implement all fields with validation (satisfy T015)
+- [x] T021 [P] [US1] Create FunctionTool in `src/agentlab/models/tool.py`: implement all fields with validation (satisfy T016)
+- [x] T022 [P] [US1] Create MCPTool in `src/agentlab/models/tool.py`: implement all fields with validation (satisfy T017)
+- [x] T023 [P] [US1] Create PromptTool in `src/agentlab/models/tool.py`: implement all fields with validation (satisfy T018)
 
 ---
 
 ### US1 Phase 3b: LLM Provider & Evaluation Models Tests & Implementation
 
-- [ ] T024 [P] Write tests for LLMProvider in `tests/unit/test_llm_models.py`: test provider field required (enum), test name required, test temperature range 0-2, test max_tokens > 0, test endpoint required for azure_openai
-- [ ] T025 [P] Write tests for EvaluationMetric in `tests/unit/test_evaluation_models.py`: test metric name required, test threshold required and numeric, test enabled optional (default true), test model optional for per-metric override
+- [x] T024 [P] Write tests for LLMProvider in `tests/unit/test_llm_models.py`: test provider field required (enum), test name required, test temperature range 0-2, test max_tokens > 0, test endpoint required for azure_openai
+- [x] T025 [P] Write tests for EvaluationMetric in `tests/unit/test_evaluation_models.py`: test metric name required, test threshold required and numeric, test enabled optional (default true), test model optional for per-metric override
 
-- [ ] T026 [P] [US1] Create LLMProvider model in `src/agentlab/models/llm.py`: provider enum (openai|azure_openai|anthropic), name, temperature, max_tokens, endpoint (satisfy T024)
-- [ ] T027 [P] [US1] Create EvaluationMetric model in `src/agentlab/models/evaluation.py`: metric name, threshold, enabled, model optional (satisfy T025)
+- [x] T026 [P] [US1] Create LLMProvider model in `src/agentlab/models/llm.py`: provider enum (openai|azure_openai|anthropic), name, temperature, max_tokens, endpoint (satisfy T024)
+- [x] T027 [P] [US1] Create EvaluationMetric model in `src/agentlab/models/evaluation.py`: metric name, threshold, enabled, model optional (satisfy T025)
 
 ---
 
 ### US1 Phase 3c: Test Case & Agent Models Tests & Implementation
 
-- [ ] T028 [P] Write tests for TestCase in `tests/unit/test_testcase_models.py`: test input required (string), test expected_tools optional (list), test ground_truth optional (string), test evaluations optional (list)
-- [ ] T029 Write tests for Agent in `tests/unit/test_agent_models.py`: test name required, test description optional, test model required (LLMProvider), test instructions file XOR inline, test tools optional (list), test evaluations optional (list), test test_cases optional (list)
-- [ ] T030 Write tests for GlobalConfig in `tests/unit/test_globalconfig_models.py`: test providers dict, test vectorstores dict, test deployment dict, test all sections optional
+- [x] T028 [P] Write tests for TestCase in `tests/unit/test_testcase_models.py`: test input required (string), test expected_tools optional (list), test ground_truth optional (string), test evaluations optional (list)
+- [x] T029 Write tests for Agent in `tests/unit/test_agent_models.py`: test name required, test description optional, test model required (LLMProvider), test instructions file XOR inline, test tools optional (list), test evaluations optional (list), test test_cases optional (list)
+- [x] T030 Write tests for GlobalConfig in `tests/unit/test_globalconfig_models.py`: test providers dict, test vectorstores dict, test deployment dict, test all sections optional
 
-- [ ] T031 [P] [US1] Create TestCase model in `src/agentlab/models/test_case.py`: implement with all field validations (satisfy T028)
-- [ ] T032 [US1] Create Agent model in `src/agentlab/models/agent.py`: implement with all field validations (satisfy T029)
-- [ ] T033 [US1] Create GlobalConfig model in `src/agentlab/models/config.py`: implement with all field validations (satisfy T030)
+- [x] T031 [P] [US1] Create TestCase model in `src/agentlab/models/test_case.py`: implement with all field validations (satisfy T028)
+- [x] T032 [US1] Create Agent model in `src/agentlab/models/agent.py`: implement with all field validations (satisfy T029)
+- [x] T033 [US1] Create GlobalConfig model in `src/agentlab/models/config.py`: implement with all field validations (satisfy T030)
 
 ---
 

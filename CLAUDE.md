@@ -2,10 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Important instructions.
-
-Always refer to @VISION.md when making any changes to the project constitution, spec, and anything non-code related artifacts.
-
 ## Project Overview
 
 AgentLab is an open-source experimentation platform for building, testing, and deploying AI agents through YAML configuration. The project is currently in early development (pre-v0.1) with no implementation code yet - only vision and architecture documentation.

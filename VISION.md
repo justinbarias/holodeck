@@ -41,6 +41,7 @@ cd customer-support
 ```
 
 This creates:
+
 ```
 customer-support/
 ├── agent.yaml              # Agent configuration
@@ -107,6 +108,7 @@ agentlab chat agent.yaml
 ```
 
 **Output:**
+
 ```
 🧪 Running AgentLab Tests...
 
@@ -135,6 +137,7 @@ agentlab deploy agent.yaml --port 8000
 ```
 
 **API Endpoints:**
+
 ```bash
 # Chat with agent
 curl -X POST http://localhost:8000/v1/chat \
@@ -193,6 +196,7 @@ tools:
 Extend agent capabilities with a rich ecosystem of tools and plugins:
 
 #### 1. Vector Search Tools
+
 ```yaml
 tools:
   - name: search_docs
@@ -204,6 +208,7 @@ tools:
 ```
 
 #### 2. Custom Function Tools
+
 ```yaml
 tools:
   - name: calculate_shipping
@@ -221,6 +226,7 @@ tools:
 ```
 
 #### 3. MCP (Model Context Protocol) Tools
+
 AgentLab supports the Model Context Protocol for standardized tool integration:
 
 ```yaml
@@ -246,6 +252,7 @@ tools:
 ```
 
 **Custom MCP Server:**
+
 ```yaml
 tools:
   - name: custom_mcp
@@ -257,9 +264,11 @@ tools:
 ```
 
 #### 4. Prompt-Based Tools (Semantic Functions)
+
 Define AI-powered tools using natural language prompts:
 
 **Inline Prompt Tool:**
+
 ```yaml
 tools:
   - name: summarize_text
@@ -282,6 +291,7 @@ tools:
 ```
 
 **File-Based Prompt Tool:**
+
 ```yaml
 tools:
   - name: extract_entities
@@ -294,6 +304,7 @@ tools:
 ```
 
 **Example Prompt File (`tools/prompts/extract_entities.md`):**
+
 ```markdown
 ---
 name: extract_entities
@@ -320,6 +331,7 @@ Return the results as a JSON object with entity types as keys and lists of entit
 ```
 
 #### 5. Plugin Packages
+
 Install pre-built plugin packages from the AgentLab registry:
 
 ```yaml
@@ -344,6 +356,7 @@ plugins:
 ```
 
 **Install plugins:**
+
 ```bash
 agentlab plugin install @agentlab/plugins-web
 agentlab plugin install @agentlab/plugins-data
@@ -355,18 +368,21 @@ agentlab plugin list
 Built-in evaluation metrics with configurable AI models:
 
 **AI-Powered Metrics:**
+
 - **Groundedness** - Is the response grounded in provided context?
 - **Relevance** - Is the response relevant to the user's query?
 - **Coherence** - Is the response logically coherent?
 - **Safety** - Does the response avoid harmful content?
 
 **NLP Metrics:**
+
 - **F1 Score** - Precision and recall balance
 - **BLEU** - Translation/generation quality
 - **ROUGE** - Summarization quality
 - **METEOR** - Semantic similarity
 
 **Basic Configuration:**
+
 ```yaml
 evaluations:
   - metric: groundedness
@@ -384,6 +400,7 @@ evaluations:
 ```
 
 **Specify Evaluation Model:**
+
 ```yaml
 evaluations:
   model:
@@ -406,6 +423,7 @@ evaluations:
 ```
 
 **Per-Metric Model Configuration:**
+
 ```yaml
 evaluations:
   default_model:
@@ -418,7 +436,7 @@ evaluations:
       threshold: 4.0
       model:
         provider: openai
-        name: gpt-4o  # Use more powerful model for groundedness
+        name: gpt-4o # Use more powerful model for groundedness
         temperature: 0.0
 
     - metric: relevance
@@ -438,6 +456,7 @@ evaluations:
 ```
 
 **Advanced Configuration:**
+
 ```yaml
 evaluations:
   model:
@@ -450,7 +469,7 @@ evaluations:
   metrics:
     - metric: groundedness
       threshold: 4.0
-      scale: 5  # 1-5 scale
+      scale: 5 # 1-5 scale
       enabled: true
       fail_on_error: true
 
@@ -475,6 +494,7 @@ evaluations:
 Define structured test scenarios with support for multimodal inputs:
 
 #### Basic Text Test Cases
+
 ```yaml
 test_cases:
   - name: "Basic FAQ handling"
@@ -493,6 +513,7 @@ test_cases:
 #### Multimodal Test Cases with Files
 
 **Image Input:**
+
 ```yaml
 test_cases:
   - name: "Product image analysis"
@@ -513,6 +534,7 @@ test_cases:
 ```
 
 **PDF Document Input:**
+
 ```yaml
 test_cases:
   - name: "Contract analysis"
@@ -528,11 +550,12 @@ test_cases:
     files:
       - path: tests/fixtures/invoice-2024-01.pdf
         type: pdf
-        pages: [1, 2, 3]  # Specific pages to process
+        pages: [1, 2, 3] # Specific pages to process
     ground_truth: "Total amount due: $1,234.56"
 ```
 
 **Text File Input:**
+
 ```yaml
 test_cases:
   - name: "Code review"
@@ -553,6 +576,7 @@ test_cases:
 ```
 
 **Office Document Input:**
+
 ```yaml
 test_cases:
   - name: "Excel data analysis"
@@ -576,11 +600,12 @@ test_cases:
     files:
       - path: tests/fixtures/quarterly-review.pptx
         type: powerpoint
-        slides: [1, 5, 10]  # Specific slides
+        slides: [1, 5, 10] # Specific slides
     expected_tools: ["presentation_analyzer"]
 ```
 
 **Multiple Files (Mixed Media):**
+
 ```yaml
 test_cases:
   - name: "Insurance claim processing"
@@ -614,6 +639,7 @@ test_cases:
 ```
 
 **File Configuration Options:**
+
 ```yaml
 test_cases:
   - name: "Advanced file processing"
@@ -621,35 +647,36 @@ test_cases:
     files:
       - path: tests/fixtures/report.pdf
         type: pdf
-        pages: [1, 3, 5]           # Specific pages
-        extract_images: true       # Extract embedded images
-        ocr: true                  # Apply OCR to scanned pages
+        pages: [1, 3, 5] # Specific pages
+        extract_images: true # Extract embedded images
+        ocr: true # Apply OCR to scanned pages
 
       - path: tests/fixtures/data.xlsx
         type: excel
-        sheet: "Summary"           # Specific sheet
-        range: "A1:E100"          # Cell range
+        sheet: "Summary" # Specific sheet
+        range: "A1:E100" # Cell range
 
       - path: tests/fixtures/photo.jpg
         type: image
-        resize: [800, 600]        # Resize before processing
-        format: jpeg              # Convert format
+        resize: [800, 600] # Resize before processing
+        format: jpeg # Convert format
 
       - path: tests/fixtures/large-log.txt
         type: text
         encoding: utf-8
-        max_lines: 1000           # Limit lines read
-        tail: true                # Read from end
+        max_lines: 1000 # Limit lines read
+        tail: true # Read from end
 
       - path: tests/fixtures/presentation.pptx
         type: powerpoint
         slides: [1, 2, 3]
-        extract_notes: true       # Include speaker notes
-        extract_images: true      # Extract slide images
+        extract_notes: true # Include speaker notes
+        extract_images: true # Extract slide images
     expected_tools: ["multi_format_processor"]
 ```
 
 **File Input from URLs:**
+
 ```yaml
 test_cases:
   - name: "Remote file analysis"
@@ -657,7 +684,7 @@ test_cases:
     files:
       - url: "https://example.com/reports/annual-report.pdf"
         type: pdf
-        cache: true              # Cache for reuse
+        cache: true # Cache for reuse
 
       - url: "https://example.com/data/sales.csv"
         type: csv
@@ -678,6 +705,7 @@ Group related agents and coordinate their execution using `experiment.yaml`. Exp
 Run multiple agent variants in a single experiment for A/B testing and comparative analysis:
 
 **experiment.yaml:**
+
 ```yaml
 name: "customer-support-experiment"
 description: "A/B test different customer support agent configurations"
@@ -720,6 +748,7 @@ reporting:
 ```
 
 **Option 2: Test cases from file:**
+
 ```yaml
 name: "customer-support-experiment"
 description: "A/B test different customer support agent configurations"
@@ -742,6 +771,7 @@ evaluations:
 ```
 
 **Project structure:**
+
 ```
 customer-support-experiment/
 ├── experiment.yaml
@@ -759,6 +789,7 @@ customer-support-experiment/
 ```
 
 **Run the experiment:**
+
 ```bash
 # Run all agents in the experiment against all test cases
 agentlab experiment run experiment.yaml
@@ -982,6 +1013,7 @@ evaluations:
 ### Experiment Features
 
 **Test Variants:**
+
 ```yaml
 test_cases:
   - name: "Basic query"
@@ -1004,6 +1036,7 @@ test_variants:
 ```
 
 **Experiment Versioning & Tags:**
+
 ```yaml
 name: "customer-support-experiment"
 version: "1.2.0"
@@ -1019,6 +1052,7 @@ metadata:
 ```
 
 **Conditional Execution:**
+
 ```yaml
 orchestration:
   pattern: sequential
@@ -1037,6 +1071,7 @@ orchestration:
 ```
 
 **CLI Commands:**
+
 ```bash
 # Run experiment
 agentlab experiment run experiment.yaml
@@ -1062,18 +1097,18 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 
 ### vs. **LangSmith** (LangChain Team)
 
-| Aspect | AgentLab | LangSmith |
-|--------|----------|-----------|
-| **Deployment Model** | Self-hosted (open-source) | **SaaS only** (cloud-dependent) |
-| **CI/CD Integration** | **Native CLI** - integrates in any CI/CD pipeline (GitHub Actions, GitLab CI, Jenkins, etc.) | API-based, requires cloud connectivity |
-| **Agent Definition** | Pure YAML (no code) | Python code + LangChain SDK |
-| **Primary Focus** | Agent experimentation & deployment | Production observability & tracing |
-| **Agent Orchestration** | Multi-agent patterns (sequential, concurrent, handoff) | Not designed for multi-agent workflows |
-| **Evaluation** | Built-in AI + NLP metrics, integrated | Custom evals, trace-based monitoring |
-| **Use Case** | Build agents fast, test hypotheses, deploy locally | Monitor & debug production LLM apps |
-| **Vendor Lock-in** | None (MIT open-source) | Complete (SaaS dependency) |
-| **Cost** | Free (self-hosted) | Per-request pricing for tracing |
-| **Infrastructure** | Your machine (CLI) or simple cloud deployment | Requires LangSmith cloud subscription |
+| Aspect                  | AgentLab                                                                                     | LangSmith                              |
+| ----------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Deployment Model**    | Self-hosted (open-source)                                                                    | **SaaS only** (cloud-dependent)        |
+| **CI/CD Integration**   | **Native CLI** - integrates in any CI/CD pipeline (GitHub Actions, GitLab CI, Jenkins, etc.) | API-based, requires cloud connectivity |
+| **Agent Definition**    | Pure YAML (no code)                                                                          | Python code + LangChain SDK            |
+| **Primary Focus**       | Agent experimentation & deployment                                                           | Production observability & tracing     |
+| **Agent Orchestration** | Multi-agent patterns (sequential, concurrent, handoff)                                       | Not designed for multi-agent workflows |
+| **Evaluation**          | Built-in AI + NLP metrics, integrated                                                        | Custom evals, trace-based monitoring   |
+| **Use Case**            | Build agents fast, test hypotheses, deploy locally                                           | Monitor & debug production LLM apps    |
+| **Vendor Lock-in**      | None (MIT open-source)                                                                       | Complete (SaaS dependency)             |
+| **Cost**                | Free (self-hosted)                                                                           | Per-request pricing for tracing        |
+| **Infrastructure**      | Your machine (CLI) or simple cloud deployment                                                | Requires LangSmith cloud subscription  |
 
 **Key Difference**: LangSmith is production monitoring/observability as a managed service. AgentLab is agent development and experimentation as self-hosted infrastructure with native CI/CD.
 
@@ -1081,19 +1116,19 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 
 ### vs. **MLflow GenAI** (Databricks)
 
-| Aspect | AgentLab | MLflow GenAI |
-|--------|----------|--------------|
-| **CI/CD Integration** | **CLI-native** - single commands for test, validate, deploy in pipelines | Python SDK + REST API, requires infrastructure setup |
-| **Infrastructure** | Lightweight, portable | **Heavy infrastructure** (ML tracking, Databricks-dependent) |
-| **Deployment Model** | Open-source, self-hosted CLI | Enterprise ML platform (often requires Databricks) |
-| **Agent Support** | Purpose-built for agents | Not designed for agents; focuses on model evaluation |
-| **Focus** | Build and deploy agents | ML experiment tracking and model comparison |
-| **Vectorstore Integration** | Native first-class support | External integrations required |
-| **Multi-Agent** | Native orchestration patterns | Single model/variant comparison focus |
-| **Evaluation** | Integrated, no-code | Modular evaluation metrics (Python-heavy) |
-| **Deployment** | Single CLI command | Requires ML infrastructure setup |
-| **Complexity** | Minimal (YAML) | High (ML engineering mindset required) |
-| **Best For** | Software engineers building agents | Data science teams with ML infrastructure |
+| Aspect                      | AgentLab                                                                 | MLflow GenAI                                                 |
+| --------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| **CI/CD Integration**       | **CLI-native** - single commands for test, validate, deploy in pipelines | Python SDK + REST API, requires infrastructure setup         |
+| **Infrastructure**          | Lightweight, portable                                                    | **Heavy infrastructure** (ML tracking, Databricks-dependent) |
+| **Deployment Model**        | Open-source, self-hosted CLI                                             | Enterprise ML platform (often requires Databricks)           |
+| **Agent Support**           | Purpose-built for agents                                                 | Not designed for agents; focuses on model evaluation         |
+| **Focus**                   | Build and deploy agents                                                  | ML experiment tracking and model comparison                  |
+| **Vectorstore Integration** | Native first-class support                                               | External integrations required                               |
+| **Multi-Agent**             | Native orchestration patterns                                            | Single model/variant comparison focus                        |
+| **Evaluation**              | Integrated, no-code                                                      | Modular evaluation metrics (Python-heavy)                    |
+| **Deployment**              | Single CLI command                                                       | Requires ML infrastructure setup                             |
+| **Complexity**              | Minimal (YAML)                                                           | High (ML engineering mindset required)                       |
+| **Best For**                | Software engineers building agents                                       | Data science teams with ML infrastructure                    |
 
 **Key Difference**: MLflow is a bloated ML infrastructure platform. AgentLab is a lightweight, CLI-first agent platform designed for CI/CD integration.
 
@@ -1101,18 +1136,18 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 
 ### vs. **Microsoft PromptFlow**
 
-| Aspect | AgentLab | PromptFlow |
-|--------|----------|-----------|
-| **CI/CD Integration** | **CLI-first design** - test, validate, deploy via shell commands in any CI system | Python SDK + Azure-centric tooling, requires infrastructure |
-| **Scope** | **Full agent lifecycle** (build, test, deploy agents) | **Individual tools & functions only** (not agent-level) |
-| **Design Target** | Multi-agent workflows & orchestration | Single tool/AI function development |
-| **Configuration** | Pure YAML (100% no-code) | Visual flow graphs + low-code Python |
-| **Agent Orchestration** | Native multi-agent patterns (sequential, concurrent, handoff, group chat) | Not designed for multi-agent orchestration |
-| **Evaluation** | Integrated with agent execution | Per-tool evaluation nodes |
-| **Deployment** | Local CLI, cloud plugins (simple) | Azure Container Apps (cloud-focused) |
-| **Self-Hosted** | ✅ Full support | ⚠️ Limited (designed for Azure) |
-| **Open Source** | ✅ MIT (true open-source) | ✅ MIT (but Azure-first philosophy) |
-| **Use Case** | Build complete agents, integrate in CI/CD pipelines | Debug and test individual AI functions |
+| Aspect                  | AgentLab                                                                          | PromptFlow                                                  |
+| ----------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| **CI/CD Integration**   | **CLI-first design** - test, validate, deploy via shell commands in any CI system | Python SDK + Azure-centric tooling, requires infrastructure |
+| **Scope**               | **Full agent lifecycle** (build, test, deploy agents)                             | **Individual tools & functions only** (not agent-level)     |
+| **Design Target**       | Multi-agent workflows & orchestration                                             | Single tool/AI function development                         |
+| **Configuration**       | Pure YAML (100% no-code)                                                          | Visual flow graphs + low-code Python                        |
+| **Agent Orchestration** | Native multi-agent patterns (sequential, concurrent, handoff, group chat)         | Not designed for multi-agent orchestration                  |
+| **Evaluation**          | Integrated with agent execution                                                   | Per-tool evaluation nodes                                   |
+| **Deployment**          | Local CLI, cloud plugins (simple)                                                 | Azure Container Apps (cloud-focused)                        |
+| **Self-Hosted**         | ✅ Full support                                                                   | ⚠️ Limited (designed for Azure)                             |
+| **Open Source**         | ✅ MIT (true open-source)                                                         | ✅ MIT (but Azure-first philosophy)                         |
+| **Use Case**            | Build complete agents, integrate in CI/CD pipelines                               | Debug and test individual AI functions                      |
 
 **Key Difference**: PromptFlow is a tool development environment. AgentLab is an agent development and deployment platform with CI/CD as a first-class concern.
 
@@ -1145,25 +1180,26 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 
 ### Decision Matrix: Choose AgentLab When You Need...
 
-| Requirement | AgentLab | LangSmith | MLflow | PromptFlow |
-|-------------|----------|-----------|--------|-----------|
-| **Self-hosted agent development** | ✅ | ❌ | ⚠️ | ⚠️ |
-| **Zero-code agent definition** | ✅✅ | ❌ | ❌ | ❌ |
-| **Multi-agent orchestration** | ✅✅ | ❌ | ❌ | ❌ |
-| **CI/CD pipeline integration** | ✅✅ | ❌ | ⚠️ | ⚠️ |
-| **Local deployment (no cloud)** | ✅✅ | ❌ | ❌ | ⚠️ |
-| **Lightweight (<50MB footprint)** | ✅✅ | N/A | ❌ | ✅ |
-| **Built-in evaluation framework** | ✅ | ✅ | ✅ | ✅ |
-| **Production observability** | ⚠️ | ✅✅ | ✅ | ✅ |
-| **Open-source & vendor-free** | ✅ | ❌ | ✅ | ✅ |
-| **Individual tool debugging** | ⚠️ | ✅ | ✅ | ✅✅ |
-| **Enterprise features** | 🔮 v0.5 | ✅ | ✅ | ✅ |
+| Requirement                       | AgentLab | LangSmith | MLflow | PromptFlow |
+| --------------------------------- | -------- | --------- | ------ | ---------- |
+| **Self-hosted agent development** | ✅       | ❌        | ⚠️     | ⚠️         |
+| **Zero-code agent definition**    | ✅✅     | ❌        | ❌     | ❌         |
+| **Multi-agent orchestration**     | ✅✅     | ❌        | ❌     | ❌         |
+| **CI/CD pipeline integration**    | ✅✅     | ❌        | ⚠️     | ⚠️         |
+| **Local deployment (no cloud)**   | ✅✅     | ❌        | ❌     | ⚠️         |
+| **Lightweight (<50MB footprint)** | ✅✅     | N/A       | ❌     | ✅         |
+| **Built-in evaluation framework** | ✅       | ✅        | ✅     | ✅         |
+| **Production observability**      | ⚠️       | ✅✅      | ✅     | ✅         |
+| **Open-source & vendor-free**     | ✅       | ❌        | ✅     | ✅         |
+| **Individual tool debugging**     | ⚠️       | ✅        | ✅     | ✅✅       |
+| **Enterprise features**           | 🔮 v0.5  | ✅        | ✅     | ✅         |
 
 ---
 
 ### When to Use AgentLab
 
 ✅ **Choose AgentLab if you want to**:
+
 - Build AI agents **without writing code** (pure YAML, no Python required)
 - Orchestrate **multiple agents** in coordinated workflows (sequential, concurrent, handoff, group chat, magentic patterns)
 - Integrate agent testing & validation into **CI/CD pipelines** (GitHub Actions, GitLab CI, Jenkins, etc.)
@@ -1175,6 +1211,7 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 - Iterate from prototype to production in minutes, with version control
 
 ❌ **Consider alternatives if you need to**:
+
 - Monitor production LLM apps in real-time → **LangSmith** (but accept SaaS dependency + cost)
 - Track ML experiments across teams → **MLflow** (but accept heavy infrastructure + Databricks)
 - Debug individual AI functions/tools → **PromptFlow** (but accept limited to single-tool scope)
@@ -1206,24 +1243,28 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 ## 🎯 Use Cases
 
 ### Customer Support Agent
+
 ```bash
 agentlab init support --template customer-support
 # Pre-configured with: FAQ search, ticket creation, sentiment analysis
 ```
 
 ### Research Assistant
+
 ```bash
 agentlab init research --template research-assistant
 # Pre-configured with: Web search, paper search, summarization
 ```
 
 ### Code Assistant
+
 ```bash
 agentlab init coder --template code-assistant
 # Pre-configured with: Code search, documentation lookup, testing
 ```
 
 ### Sales Agent
+
 ```bash
 agentlab init sales --template sales-agent
 # Pre-configured with: Product search, CRM integration, lead qualification
@@ -1256,7 +1297,7 @@ vectorstores:
 
 deployment:
   default_port: 8000
-  rate_limit: 100  # requests per minute
+  rate_limit: 100 # requests per minute
   auth:
     type: bearer
     token: "${API_TOKEN}"
@@ -1281,6 +1322,7 @@ AgentLab provides comprehensive observability with native **OpenTelemetry** supp
 AgentLab automatically instruments your agents with OpenTelemetry traces, metrics, and logs following the [OpenTelemetry Semantic Conventions for Generative AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
 
 **Basic Configuration:**
+
 ```yaml
 # agent.yaml
 observability:
@@ -1289,16 +1331,16 @@ observability:
 
   opentelemetry:
     enabled: true
-    endpoint: "http://localhost:4318"  # OTLP endpoint
-    protocol: grpc  # or http/protobuf
+    endpoint: "http://localhost:4318" # OTLP endpoint
+    protocol: grpc # or http/protobuf
 
     traces:
       enabled: true
-      sample_rate: 1.0  # Sample 100% of traces
+      sample_rate: 1.0 # Sample 100% of traces
 
     metrics:
       enabled: true
-      interval: 60  # Export metrics every 60s
+      interval: 60 # Export metrics every 60s
 
     logs:
       enabled: true
@@ -1306,6 +1348,7 @@ observability:
 ```
 
 **Export to Observability Platforms:**
+
 ```yaml
 observability:
   opentelemetry:
@@ -1318,18 +1361,18 @@ observability:
         headers:
           api-key: "${JAEGER_API_KEY}"
 
-    # Prometheus (metrics)
+      # Prometheus (metrics)
       - type: prometheus
         endpoint: "http://prometheus:9090"
-        port: 8889  # Expose metrics on this port
+        port: 8889 # Expose metrics on this port
 
-    # Datadog
+      # Datadog
       - type: otlp
         endpoint: "https://api.datadoghq.com"
         headers:
           DD-API-KEY: "${DATADOG_API_KEY}"
 
-    # Honeycomb
+      # Honeycomb
       - type: otlp
         endpoint: "https://api.honeycomb.io"
         headers:
@@ -1342,23 +1385,24 @@ observability:
 AgentLab automatically captures standard GenAI attributes according to OpenTelemetry semantic conventions:
 
 **Trace Attributes:**
+
 ```yaml
 # Automatically captured for every LLM call
-gen_ai.system: "openai"              # LLM provider
-gen_ai.request.model: "gpt-4o"       # Model name
+gen_ai.system: "openai" # LLM provider
+gen_ai.request.model: "gpt-4o" # Model name
 gen_ai.request.temperature: 0.7
 gen_ai.request.max_tokens: 1000
 gen_ai.request.top_p: 1.0
 
-gen_ai.response.id: "chatcmpl-123"   # Response ID
+gen_ai.response.id: "chatcmpl-123" # Response ID
 gen_ai.response.model: "gpt-4o-2024-05-13"
 gen_ai.response.finish_reasons: ["stop"]
 
-gen_ai.usage.prompt_tokens: 50       # Token usage
+gen_ai.usage.prompt_tokens: 50 # Token usage
 gen_ai.usage.completion_tokens: 120
 gen_ai.usage.total_tokens: 170
 
-gen_ai.prompt.0.role: "system"       # Prompt messages
+gen_ai.prompt.0.role: "system" # Prompt messages
 gen_ai.prompt.0.content: "You are..."
 gen_ai.prompt.1.role: "user"
 gen_ai.prompt.1.content: "What is..."
@@ -1368,6 +1412,7 @@ gen_ai.completion.0.content: "The answer is..."
 ```
 
 **Custom Attributes:**
+
 ```yaml
 observability:
   opentelemetry:
@@ -1381,12 +1426,14 @@ observability:
 ### Built-in Metrics
 
 **Request Metrics:**
+
 - `gen_ai.client.operation.duration` - Operation duration histogram
 - `gen_ai.client.token.usage` - Token usage counter
 - `gen_ai.client.request.count` - Request counter
 - `gen_ai.client.error.count` - Error counter
 
 **Agent-Specific Metrics:**
+
 - `agentlab.agent.requests.total` - Total agent requests
 - `agentlab.agent.requests.duration` - Request duration histogram
 - `agentlab.agent.tokens.total` - Total tokens used
@@ -1396,6 +1443,7 @@ observability:
 - `agentlab.evaluations.score` - Evaluation scores gauge
 
 **Custom Metrics:**
+
 ```yaml
 observability:
   custom_metrics:
@@ -1438,23 +1486,24 @@ customer-support-agent
 ```
 
 **Configure Span Details:**
+
 ```yaml
 observability:
   opentelemetry:
     traces:
-      capture_content: true     # Capture prompt/completion content
-      capture_tokens: true      # Capture token counts
-      capture_tools: true       # Capture tool calls
+      capture_content: true # Capture prompt/completion content
+      capture_tokens: true # Capture token counts
+      capture_tools: true # Capture tool calls
       capture_evaluations: true # Capture evaluation results
 
       # Control content size
-      max_content_length: 1000  # Truncate long content
+      max_content_length: 1000 # Truncate long content
 
       # Sensitive data filtering
       redact_patterns:
-        - pattern: '\b\d{3}-\d{2}-\d{4}\b'  # SSN
+        - pattern: '\b\d{3}-\d{2}-\d{4}\b' # SSN
           replacement: "[REDACTED-SSN]"
-        - pattern: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'  # Email
+        - pattern: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b' # Email
           replacement: "[REDACTED-EMAIL]"
 ```
 
@@ -1484,6 +1533,7 @@ observability:
 ```
 
 **Example Log Output:**
+
 ```json
 {
   "timestamp": "2024-01-15T10:30:00Z",
@@ -1507,6 +1557,7 @@ observability:
 ### Dashboards & Visualization
 
 **CLI Monitoring:**
+
 ```bash
 # View live metrics
 agentlab monitor agent.yaml
@@ -1522,6 +1573,7 @@ agentlab monitor agent.yaml --export metrics.json
 ```
 
 **Grafana Dashboards:**
+
 ```bash
 # Export Grafana dashboard
 agentlab observability export-dashboard --format grafana
@@ -1531,6 +1583,7 @@ agentlab observability export-config --format prometheus
 ```
 
 **Pre-built Dashboard Templates:**
+
 - Agent Performance Overview
 - Token Usage & Cost Analysis
 - Tool Invocation Analytics
@@ -1540,6 +1593,7 @@ agentlab observability export-config --format prometheus
 ### Integration Examples
 
 **Jaeger (Distributed Tracing):**
+
 ```yaml
 observability:
   opentelemetry:
@@ -1551,6 +1605,7 @@ observability:
 ```
 
 **Prometheus + Grafana (Metrics):**
+
 ```yaml
 observability:
   opentelemetry:
@@ -1560,6 +1615,7 @@ observability:
 ```
 
 **Datadog (Full Stack):**
+
 ```yaml
 observability:
   opentelemetry:
@@ -1571,6 +1627,7 @@ observability:
 ```
 
 **LangSmith:**
+
 ```yaml
 observability:
   langsmith:
@@ -1579,10 +1636,11 @@ observability:
     project: "customer-support-agent"
 
   opentelemetry:
-    enabled: true  # Can use both simultaneously
+    enabled: true # Can use both simultaneously
 ```
 
 **Custom OTLP Collector:**
+
 ```yaml
 observability:
   opentelemetry:
@@ -1610,7 +1668,7 @@ observability:
     pricing:
       openai:
         gpt-4o:
-          input: 0.0025   # per 1K tokens
+          input: 0.0025 # per 1K tokens
           output: 0.0100
         gpt-4o-mini:
           input: 0.00015
@@ -1618,7 +1676,7 @@ observability:
 
     # Cost alerts
     alerts:
-      - threshold: 100.00  # USD
+      - threshold: 100.00 # USD
         period: daily
         notify: "${ALERT_EMAIL}"
 
@@ -1634,41 +1692,20 @@ observability:
   performance:
     # Automatic performance tracking
     latency_targets:
-      p50: 1000   # ms
+      p50: 1000 # ms
       p95: 3000
       p99: 5000
 
     # Alerts
     alerts:
       - metric: gen_ai.client.operation.duration
-        threshold_p99: 5000  # ms
+        threshold_p99: 5000 # ms
         notify: "${ONCALL_EMAIL}"
 
       - metric: gen_ai.client.error.count
         threshold: 10
         period: 5m
         notify: "${ONCALL_EMAIL}"
-```
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-```bash
-# Clone repository
-git clone https://github.com/agentlab/agentlab.git
-cd agentlab
-
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Run linting
-ruff check .
 ```
 
 ---
@@ -1703,12 +1740,14 @@ MIT License - see [LICENSE](LICENSE) for details
 ## 🙏 Acknowledgments
 
 Built with:
+
 - [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Agent framework, Vector Store abstractions
 - [FastAPI](https://fastapi.tiangolo.com/) - API deployment
 - [Azure AI Evaluation](https://github.com/Azure/azure-sdk-for-python/tree/azure-ai-evaluation_1.11.2/sdk/evaluation/azure-ai-evaluation) - Evaluation metrics
 - [Redis](https://redis.io/) - Vector storage
 
 Inspired by:
+
 - Microsoft PromptFlow
 - OpenAI Evals
 - LlamaIndex
