@@ -11,10 +11,16 @@ Main features:
 - OpenTelemetry observability
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from holodeck.config.loader import ConfigLoader
 from holodeck.lib.errors import ConfigError, HoloDeckError, ValidationError
 
-__version__ = "0.0.1"
+try:
+    __version__ = version("holodeck")
+except PackageNotFoundError:
+    # Package not installed, development mode
+    __version__ = "0.0.0.dev0"
 
 __all__ = [
     "__version__",
