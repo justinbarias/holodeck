@@ -276,8 +276,9 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - **FR-018**: System MUST provide `agentlab test agent.yaml` command that runs all test cases defined in agent.yaml against the agent
 - **FR-019**: System MUST support test cases with input, expected_tools, and ground_truth fields for validation
 - **FR-020**: System MUST execute configured evaluation metrics (AI-powered like groundedness/relevance, and NLP-based like F1/BLEU/ROUGE) on test results
+- **FR-020a**: System MUST handle failed evaluation metrics gracefully; failed metrics show "ERROR" status with logged details; test continues to validate agent reasoning even if metrics can't be calculated
 - **FR-021**: System MUST compare actual tool usage against expected_tools and report pass/fail for each test case
-- **FR-022**: System MUST provide clear test output showing which tests passed, which failed, and why (evaluation scores, tool mismatches, etc.)
+- **FR-022**: System MUST provide clear test output showing which tests passed, which failed, and why (evaluation scores, tool mismatches, metric errors, etc.)
 - **FR-023**: System MUST support ground_truth comparison when provided to calculate accuracy-based metrics
 
 **Interactive Testing**
@@ -285,12 +286,16 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - **FR-024**: System MUST provide `agentlab chat agent.yaml` command that starts an interactive terminal session with the agent
 - **FR-025**: System MUST accept user input in chat mode and display agent responses with visible tool execution trace
 - **FR-026**: System MUST gracefully handle session termination (e.g., 'exit' or Ctrl+C) in chat mode
+- **FR-026a**: System MUST maintain conversation history in chat mode; v0.1 CLI defaults to in-memory storage of last N messages (configurable, e.g., 20 messages)
+- **FR-026b**: System MUST support memory strategy configuration for API deployments (in-memory, Redis, database); CLI mode uses in-memory by default
 
 **Local Deployment**
 
 - **FR-027**: System MUST provide `agentlab deploy agent.yaml` command that starts a local FastAPI server with the agent
 - **FR-028**: System MUST support `--port` option to specify which port the API server runs on (default: 8000)
 - **FR-029**: System MUST provide `/v1/chat` POST endpoint accepting JSON with message and optional session_id, returning agent response
+- **FR-029a**: System MUST isolate session state per session_id; requests to the same session_id are serialized to prevent race conditions
+- **FR-029b**: System MUST generate and return a session_id in the response if not provided in the request
 - **FR-030**: System MUST provide `/health` GET endpoint returning 200 status when service is running
 - **FR-031**: System MUST include request/response logging for debugging deployed agents
 
@@ -300,6 +305,8 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - **FR-033**: System MUST provide clear error messages when referenced files (instructions, tools, data) don't exist
 - **FR-034**: System MUST provide clear error messages when LLM API calls fail (auth errors, rate limits, model not found)
 - **FR-035**: System MUST provide clear error messages when evaluation metrics fail to calculate
+- **FR-036**: System MUST NOT block agent execution when tool calls fail; failed tools MUST log errors and return empty string context to the agent for continued reasoning
+- **FR-037**: System MUST support middleware hooks for extensible tool error recovery (e.g., custom retry logic, fallback strategies) without blocking default graceful-degradation behavior
 
 ### Key Entities
 
@@ -308,6 +315,17 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - **TestCase**: Represents a single test scenario with input, optional ground_truth, expected_tools, and evaluation requirements
 - **EvaluationMetric**: Represents a metric that measures test result quality (groundedness, relevance, F1, etc.) with configurable threshold
 - **Project**: Represents the directory structure created by `agentlab init` containing agent.yaml and supporting files
+- **SearchResult** (NEW): Represents a vectorstore search result with structured fields: `matched_content` (string), `metadata_dict` (dict), `source_reference` (string), and `relevance_score` (float). Must be modeled as a concrete type/class in implementation for consistent handling across tool execution pipeline
+
+## Clarifications
+
+### Session 2025-10-19
+
+- Q: How should vectorstore search results be structured to support agent reasoning and test assertions? → A: Each result returns {matched_content, metadata_dict, source_reference, relevance_score} as a concrete SearchResult type/class for consistent handling across tool execution pipeline.
+- Q: When tools fail (network errors, exceptions, timeouts), should errors block agent execution? → A: Errors should not block execution by default. Failed tool errors are logged, but return an empty string in the context to the agent. Error recovery/retry behavior must be extensible through middleware hooks for custom strategies.
+- Q: How should chat mode manage conversation memory and session state? → A: Chat memory strategy is configurable. v0.1 CLI experimentation mode defaults to in-memory (last N messages). For API deployment, strategy becomes configurable via agent.yaml (Redis cache, database, or in-memory).
+- Q: How should the API handle concurrent requests and session state isolation? → A: Session isolation via session_id. Each request includes session_id; API maintains separate conversation history per session. Requests to the same session_id are serialized (queued) to prevent race conditions.
+- Q: When evaluation metrics fail (LLM timeout, rate limit), should failed metrics fail the entire test? → A: Soft failure: Test continues; failed metrics show "ERROR" status with logged error details. Agent reasoning is validated even if some metrics can't be calculated. Prevents external API issues from breaking feedback loops.
 
 ## Success Criteria *(mandatory)*
 
