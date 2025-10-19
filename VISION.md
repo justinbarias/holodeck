@@ -1,10 +1,10 @@
-# 🧪 AgentLab
+# 🧪 HoloDeck
 
 **Build, Test, and Deploy AI Agents — No Code Required**
 
-AgentLab is an open-source experimentation platform that enables teams to create, evaluate, and deploy AI agents through simple YAML configuration. Go from hypothesis to production API in minutes, not weeks.
+HoloDeck is an open-source experimentation platform that enables teams to create, evaluate, and deploy AI agents through simple YAML configuration. Go from hypothesis to production API in minutes, not weeks.
 
-[![PyPI version](https://badge.fury.io/py/agentlab.svg)](https://badge.fury.io/py/agentlab)
+[![PyPI version](https://badge.fury.io/py/holodeck.svg)](https://badge.fury.io/py/holodeck)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
@@ -28,14 +28,14 @@ AgentLab is an open-source experimentation platform that enables teams to create
 ### Installation
 
 ```bash
-pip install agentlab
+pip install holodeck
 ```
 
 ### Create Your First Agent
 
 ```bash
 # Initialize a new agent workspace
-agentlab init customer-support --template conversational
+holodeck init customer-support --template conversational
 
 cd customer-support
 ```
@@ -101,16 +101,16 @@ test_cases:
 
 ```bash
 # Run test cases with evaluations
-agentlab test agent.yaml
+holodeck test agent.yaml
 
 # Interactive testing
-agentlab chat agent.yaml
+holodeck chat agent.yaml
 ```
 
 **Output:**
 
 ```
-🧪 Running AgentLab Tests...
+🧪 Running HoloDeck Tests...
 
 ✅ Test 1/2: What are your business hours?
    Groundedness: 4.2/5.0 ✓
@@ -131,7 +131,7 @@ agentlab chat agent.yaml
 
 ```bash
 # Deploy locally
-agentlab deploy agent.yaml --port 8000
+holodeck deploy agent.yaml --port 8000
 
 # Agent is now live at http://localhost:8000
 ```
@@ -160,13 +160,13 @@ curl http://localhost:8000/health
 
 ```bash
 # Deploy to Azure Container Apps
-agentlab deploy agent.yaml --cloud azure --region westus2
+holodeck deploy agent.yaml --cloud azure --region westus2
 
 # Deploy to AWS Lambda
-agentlab deploy agent.yaml --cloud aws --region us-east-1
+holodeck deploy agent.yaml --cloud aws --region us-east-1
 
 # Deploy to Cloud Run (GCP)
-agentlab deploy agent.yaml --cloud gcp --region us-central1
+holodeck deploy agent.yaml --cloud gcp --region us-central1
 ```
 
 ---
@@ -227,7 +227,7 @@ tools:
 
 #### 3. MCP (Model Context Protocol) Tools
 
-AgentLab supports the Model Context Protocol for standardized tool integration:
+HoloDeck supports the Model Context Protocol for standardized tool integration:
 
 ```yaml
 tools:
@@ -332,23 +332,23 @@ Return the results as a JSON object with entity types as keys and lists of entit
 
 #### 5. Plugin Packages
 
-Install pre-built plugin packages from the AgentLab registry:
+Install pre-built plugin packages from the HoloDeck registry:
 
 ```yaml
 plugins:
-  - package: "@agentlab/plugins-web"
+  - package: "@holodeck/plugins-web"
     tools:
       - web_search
       - web_scrape
       - html_to_markdown
 
-  - package: "@agentlab/plugins-data"
+  - package: "@holodeck/plugins-data"
     tools:
       - csv_query
       - excel_read
       - json_transform
 
-  - package: "@agentlab/plugins-communication"
+  - package: "@holodeck/plugins-communication"
     tools:
       - send_email
       - send_slack
@@ -358,9 +358,9 @@ plugins:
 **Install plugins:**
 
 ```bash
-agentlab plugin install @agentlab/plugins-web
-agentlab plugin install @agentlab/plugins-data
-agentlab plugin list
+holodeck plugin install @holodeck/plugins-web
+holodeck plugin install @holodeck/plugins-data
+holodeck plugin list
 ```
 
 ### Evaluations
@@ -792,13 +792,13 @@ customer-support-experiment/
 
 ```bash
 # Run all agents in the experiment against all test cases
-agentlab experiment run experiment.yaml
+holodeck experiment run experiment.yaml
 
 # Compare results across all agents
-agentlab experiment results experiment.yaml --compare
+holodeck experiment results experiment.yaml --compare
 
 # Generate report
-agentlab experiment report experiment.yaml --format html
+holodeck experiment report experiment.yaml --format html
 ```
 
 ### Multi-Agent Orchestration
@@ -1074,30 +1074,30 @@ orchestration:
 
 ```bash
 # Run experiment
-agentlab experiment run experiment.yaml
+holodeck experiment run experiment.yaml
 
 # Validate orchestration configuration
-agentlab experiment run experiment.yaml --validate-orchestration
+holodeck experiment run experiment.yaml --validate-orchestration
 
 # Test individual agents in orchestration
-agentlab experiment debug experiment.yaml --agent document-parser
+holodeck experiment debug experiment.yaml --agent document-parser
 
 # Stream results from parallel execution
-agentlab experiment run experiment.yaml --stream
+holodeck experiment run experiment.yaml --stream
 
 # Generate comparison report
-agentlab experiment report experiment.yaml --format html --output results/report.html
+holodeck experiment report experiment.yaml --format html --output results/report.html
 ```
 
 ---
 
 ## 📊 Competitive Analysis
 
-AgentLab fills a critical gap: **the only open-source, self-hosted platform designed specifically for building, testing, and orchestrating AI agents through pure YAML configuration.** Built for software engineers with native CI/CD integration.
+HoloDeck fills a critical gap: **the only open-source, self-hosted platform designed specifically for building, testing, and orchestrating AI agents through pure YAML configuration.** Built for software engineers with native CI/CD integration.
 
 ### vs. **LangSmith** (LangChain Team)
 
-| Aspect                  | AgentLab                                                                                     | LangSmith                              |
+| Aspect                  | HoloDeck                                                                                     | LangSmith                              |
 | ----------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------- |
 | **Deployment Model**    | Self-hosted (open-source)                                                                    | **SaaS only** (cloud-dependent)        |
 | **CI/CD Integration**   | **Native CLI** - integrates in any CI/CD pipeline (GitHub Actions, GitLab CI, Jenkins, etc.) | API-based, requires cloud connectivity |
@@ -1110,13 +1110,13 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 | **Cost**                | Free (self-hosted)                                                                           | Per-request pricing for tracing        |
 | **Infrastructure**      | Your machine (CLI) or simple cloud deployment                                                | Requires LangSmith cloud subscription  |
 
-**Key Difference**: LangSmith is production monitoring/observability as a managed service. AgentLab is agent development and experimentation as self-hosted infrastructure with native CI/CD.
+**Key Difference**: LangSmith is production monitoring/observability as a managed service. HoloDeck is agent development and experimentation as self-hosted infrastructure with native CI/CD.
 
 ---
 
 ### vs. **MLflow GenAI** (Databricks)
 
-| Aspect                      | AgentLab                                                                 | MLflow GenAI                                                 |
+| Aspect                      | HoloDeck                                                                 | MLflow GenAI                                                 |
 | --------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------ |
 | **CI/CD Integration**       | **CLI-native** - single commands for test, validate, deploy in pipelines | Python SDK + REST API, requires infrastructure setup         |
 | **Infrastructure**          | Lightweight, portable                                                    | **Heavy infrastructure** (ML tracking, Databricks-dependent) |
@@ -1130,13 +1130,13 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 | **Complexity**              | Minimal (YAML)                                                           | High (ML engineering mindset required)                       |
 | **Best For**                | Software engineers building agents                                       | Data science teams with ML infrastructure                    |
 
-**Key Difference**: MLflow is a bloated ML infrastructure platform. AgentLab is a lightweight, CLI-first agent platform designed for CI/CD integration.
+**Key Difference**: MLflow is a bloated ML infrastructure platform. HoloDeck is a lightweight, CLI-first agent platform designed for CI/CD integration.
 
 ---
 
 ### vs. **Microsoft PromptFlow**
 
-| Aspect                  | AgentLab                                                                          | PromptFlow                                                  |
+| Aspect                  | HoloDeck                                                                          | PromptFlow                                                  |
 | ----------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | **CI/CD Integration**   | **CLI-first design** - test, validate, deploy via shell commands in any CI system | Python SDK + Azure-centric tooling, requires infrastructure |
 | **Scope**               | **Full agent lifecycle** (build, test, deploy agents)                             | **Individual tools & functions only** (not agent-level)     |
@@ -1149,13 +1149,13 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 | **Open Source**         | ✅ MIT (true open-source)                                                         | ✅ MIT (but Azure-first philosophy)                         |
 | **Use Case**            | Build complete agents, integrate in CI/CD pipelines                               | Debug and test individual AI functions                      |
 
-**Key Difference**: PromptFlow is a tool development environment. AgentLab is an agent development and deployment platform with CI/CD as a first-class concern.
+**Key Difference**: PromptFlow is a tool development environment. HoloDeck is an agent development and deployment platform with CI/CD as a first-class concern.
 
 ---
 
-### Why AgentLab is Unique
+### Why HoloDeck is Unique
 
-**AgentLab solves a problem none of these platforms address:**
+**HoloDeck solves a problem none of these platforms address:**
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -1171,16 +1171,16 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 │  ❌ None designed for CI/CD pipeline integration        │
 │  ❌ None combine testing + evaluation + deployment      │
 │                                                          │
-│  ✅ AgentLab fills ALL these gaps                       │
+│  ✅ HoloDeck fills ALL these gaps                       │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### Decision Matrix: Choose AgentLab When You Need...
+### Decision Matrix: Choose HoloDeck When You Need...
 
-| Requirement                       | AgentLab | LangSmith | MLflow | PromptFlow |
+| Requirement                       | HoloDeck | LangSmith | MLflow | PromptFlow |
 | --------------------------------- | -------- | --------- | ------ | ---------- |
 | **Self-hosted agent development** | ✅       | ❌        | ⚠️     | ⚠️         |
 | **Zero-code agent definition**    | ✅✅     | ❌        | ❌     | ❌         |
@@ -1196,9 +1196,9 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 
 ---
 
-### When to Use AgentLab
+### When to Use HoloDeck
 
-✅ **Choose AgentLab if you want to**:
+✅ **Choose HoloDeck if you want to**:
 
 - Build AI agents **without writing code** (pure YAML, no Python required)
 - Orchestrate **multiple agents** in coordinated workflows (sequential, concurrent, handoff, group chat, magentic patterns)
@@ -1222,7 +1222,7 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    AGENTLAB PLATFORM                     │
+│                    HOLODECK PLATFORM                     │
 └─────────────────────────────────────────────────────────┘
                            │
         ┌──────────────────┼──────────────────┐
@@ -1245,28 +1245,28 @@ AgentLab fills a critical gap: **the only open-source, self-hosted platform desi
 ### Customer Support Agent
 
 ```bash
-agentlab init support --template customer-support
+holodeck init support --template customer-support
 # Pre-configured with: FAQ search, ticket creation, sentiment analysis
 ```
 
 ### Research Assistant
 
 ```bash
-agentlab init research --template research-assistant
+holodeck init research --template research-assistant
 # Pre-configured with: Web search, paper search, summarization
 ```
 
 ### Code Assistant
 
 ```bash
-agentlab init coder --template code-assistant
+holodeck init coder --template code-assistant
 # Pre-configured with: Code search, documentation lookup, testing
 ```
 
 ### Sales Agent
 
 ```bash
-agentlab init sales --template sales-agent
+holodeck init sales --template sales-agent
 # Pre-configured with: Product search, CRM integration, lead qualification
 ```
 
@@ -1276,7 +1276,7 @@ agentlab init sales --template sales-agent
 
 ### Global Configuration
 
-Create `~/.agentlab/config.yaml`:
+Create `~/.holodeck/config.yaml`:
 
 ```yaml
 providers:
@@ -1315,11 +1315,11 @@ export REDIS_URL="redis://localhost:6379"
 
 ## 📊 Monitoring & Observability
 
-AgentLab provides comprehensive observability with native **OpenTelemetry** support and **Semantic Conventions for Generative AI**.
+HoloDeck provides comprehensive observability with native **OpenTelemetry** support and **Semantic Conventions for Generative AI**.
 
 ### OpenTelemetry Integration
 
-AgentLab automatically instruments your agents with OpenTelemetry traces, metrics, and logs following the [OpenTelemetry Semantic Conventions for Generative AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
+HoloDeck automatically instruments your agents with OpenTelemetry traces, metrics, and logs following the [OpenTelemetry Semantic Conventions for Generative AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
 
 **Basic Configuration:**
 
@@ -1377,12 +1377,12 @@ observability:
         endpoint: "https://api.honeycomb.io"
         headers:
           x-honeycomb-team: "${HONEYCOMB_API_KEY}"
-          x-honeycomb-dataset: "agentlab"
+          x-honeycomb-dataset: "holodeck"
 ```
 
 ### Semantic Conventions for Generative AI
 
-AgentLab automatically captures standard GenAI attributes according to OpenTelemetry semantic conventions:
+HoloDeck automatically captures standard GenAI attributes according to OpenTelemetry semantic conventions:
 
 **Trace Attributes:**
 
@@ -1434,13 +1434,13 @@ observability:
 
 **Agent-Specific Metrics:**
 
-- `agentlab.agent.requests.total` - Total agent requests
-- `agentlab.agent.requests.duration` - Request duration histogram
-- `agentlab.agent.tokens.total` - Total tokens used
-- `agentlab.agent.cost.total` - Total cost (USD)
-- `agentlab.tools.invocations.total` - Tool invocation count
-- `agentlab.tools.duration` - Tool execution duration
-- `agentlab.evaluations.score` - Evaluation scores gauge
+- `holodeck.agent.requests.total` - Total agent requests
+- `holodeck.agent.requests.duration` - Request duration histogram
+- `holodeck.agent.tokens.total` - Total tokens used
+- `holodeck.agent.cost.total` - Total cost (USD)
+- `holodeck.tools.invocations.total` - Tool invocation count
+- `holodeck.tools.duration` - Tool execution duration
+- `holodeck.evaluations.score` - Evaluation scores gauge
 
 **Custom Metrics:**
 
@@ -1461,7 +1461,7 @@ observability:
 
 ### Distributed Tracing
 
-AgentLab creates detailed trace spans for every operation:
+HoloDeck creates detailed trace spans for every operation:
 
 ```yaml
 # Trace hierarchy example
@@ -1509,7 +1509,7 @@ observability:
 
 ### Logs with Context
 
-AgentLab integrates logs with traces for full observability:
+HoloDeck integrates logs with traces for full observability:
 
 ```yaml
 observability:
@@ -1560,26 +1560,26 @@ observability:
 
 ```bash
 # View live metrics
-agentlab monitor agent.yaml
+holodeck monitor agent.yaml
 
 # View traces
-agentlab monitor agent.yaml --traces
+holodeck monitor agent.yaml --traces
 
 # View specific metrics
-agentlab monitor agent.yaml --metric gen_ai.client.token.usage
+holodeck monitor agent.yaml --metric gen_ai.client.token.usage
 
 # Export to file
-agentlab monitor agent.yaml --export metrics.json
+holodeck monitor agent.yaml --export metrics.json
 ```
 
 **Grafana Dashboards:**
 
 ```bash
 # Export Grafana dashboard
-agentlab observability export-dashboard --format grafana
+holodeck observability export-dashboard --format grafana
 
 # Export Prometheus config
-agentlab observability export-config --format prometheus
+holodeck observability export-config --format prometheus
 ```
 
 **Pre-built Dashboard Templates:**
@@ -1657,7 +1657,7 @@ observability:
 
 ### Cost Tracking
 
-AgentLab automatically tracks costs based on token usage and model pricing:
+HoloDeck automatically tracks costs based on token usage and model pricing:
 
 ```yaml
 observability:
@@ -1712,10 +1712,10 @@ observability:
 
 ## 📚 Documentation
 
-- **[Full Documentation](https://agentlab.dev/docs)**
-- **[API Reference](https://agentlab.dev/api)**
-- **[Examples](https://github.com/agentlab/agentlab/tree/main/examples)**
-- **[Tutorials](https://agentlab.dev/tutorials)**
+- **[Full Documentation](https://holodeck.dev/docs)**
+- **[API Reference](https://holodeck.dev/api)**
+- **[Examples](https://github.com/holodeck/holodeck/tree/main/examples)**
+- **[Tutorials](https://holodeck.dev/tutorials)**
 
 ---
 
@@ -1756,19 +1756,19 @@ Inspired by:
 
 ## 💬 Community
 
-- **Discord**: [Join our community](https://discord.gg/agentlab)
-- **Twitter**: [@agentlabdev](https://twitter.com/agentlabdev)
-- **GitHub Discussions**: [Ask questions](https://github.com/agentlab/agentlab/discussions)
+- **Discord**: [Join our community](https://discord.gg/holodeck)
+- **Twitter**: [@holodeckdev](https://twitter.com/holodeckdev)
+- **GitHub Discussions**: [Ask questions](https://github.com/holodeck/holodeck/discussions)
 
 ---
 
 <p align="center">
-  Made with ❤️ by the AgentLab team
+  Made with ❤️ by the HoloDeck team
 </p>
 
 <p align="center">
-  <a href="https://agentlab.dev">Website</a> •
-  <a href="https://agentlab.dev/docs">Docs</a> •
-  <a href="https://github.com/agentlab/agentlab/examples">Examples</a> •
-  <a href="https://discord.gg/agentlab">Discord</a>
+  <a href="https://holodeck.dev">Website</a> •
+  <a href="https://holodeck.dev/docs">Docs</a> •
+  <a href="https://github.com/holodeck/holodeck/examples">Examples</a> •
+  <a href="https://discord.gg/holodeck">Discord</a>
 </p>

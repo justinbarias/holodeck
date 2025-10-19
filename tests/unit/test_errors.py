@@ -1,30 +1,30 @@
-"""Tests for custom exception hierarchy in agentlab.lib.errors."""
+"""Tests for custom exception hierarchy in holodeck.lib.errors."""
 
-from agentlab.lib.errors import (
-    AgentLabError,
+from holodeck.lib.errors import (
     ConfigError,
     FileNotFoundError,
+    HoloDeckError,
     ValidationError,
 )
 
 
-class TestAgentLabError:
-    """Tests for base AgentLabError exception."""
+class TestHoloDeckError:
+    """Tests for base HoloDeckError exception."""
 
-    def test_agentlab_error_creates_with_message(self) -> None:
-        """Test that AgentLabError can be created with a message."""
-        error = AgentLabError("Test error message")
+    def test_holodeck_error_creates_with_message(self) -> None:
+        """Test that HoloDeckError can be created with a message."""
+        error = HoloDeckError("Test error message")
         assert str(error) == "Test error message"
 
-    def test_agentlab_error_is_exception(self) -> None:
-        """Test that AgentLabError is an Exception subclass."""
-        error = AgentLabError("Test")
+    def test_holodeck_error_is_exception(self) -> None:
+        """Test that HoloDeckError is an Exception subclass."""
+        error = HoloDeckError("Test")
         assert isinstance(error, Exception)
 
-    def test_agentlab_error_preserves_message(self) -> None:
-        """Test that AgentLabError preserves the original message."""
+    def test_holodeck_error_preserves_message(self) -> None:
+        """Test that HoloDeckError preserves the original message."""
         msg = "Detailed error description"
-        error = AgentLabError(msg)
+        error = HoloDeckError(msg)
         assert error.args[0] == msg
 
 
@@ -37,10 +37,10 @@ class TestConfigError:
         assert "name" in str(error)
         assert "required" in str(error).lower()
 
-    def test_config_error_is_agentlab_error(self) -> None:
-        """Test that ConfigError is an AgentLabError subclass."""
+    def test_config_error_is_holodeck_error(self) -> None:
+        """Test that ConfigError is an HoloDeckError subclass."""
         error = ConfigError("test_field", "Test message")
-        assert isinstance(error, AgentLabError)
+        assert isinstance(error, HoloDeckError)
 
     def test_config_error_includes_field_name(self) -> None:
         """Test that ConfigError includes field name in error message."""
@@ -71,15 +71,15 @@ class TestValidationError:
         assert "model.temperature" in error_str
         assert "0-2" in error_str or "0 and 2" in error_str
 
-    def test_validation_error_is_agentlab_error(self) -> None:
-        """Test that ValidationError is an AgentLabError subclass."""
+    def test_validation_error_is_holodeck_error(self) -> None:
+        """Test that ValidationError is an HoloDeckError subclass."""
         error = ValidationError(
             field="test",
             message="Test message",
             expected="str",
             actual="int",
         )
-        assert isinstance(error, AgentLabError)
+        assert isinstance(error, HoloDeckError)
 
     def test_validation_error_formats_nested_field(self) -> None:
         """Test ValidationError formats nested field paths."""
@@ -115,10 +115,10 @@ class TestFileNotFoundError:
         error = FileNotFoundError(path, "Agent configuration file not found")
         assert path in str(error)
 
-    def test_file_not_found_error_is_agentlab_error(self) -> None:
-        """Test that FileNotFoundError is an AgentLabError subclass."""
+    def test_file_not_found_error_is_holodeck_error(self) -> None:
+        """Test that FileNotFoundError is an HoloDeckError subclass."""
         error = FileNotFoundError("missing.yaml", "Not found")
-        assert isinstance(error, AgentLabError)
+        assert isinstance(error, HoloDeckError)
 
     def test_file_not_found_error_suggests_path(self) -> None:
         """Test FileNotFoundError includes suggestion for path."""

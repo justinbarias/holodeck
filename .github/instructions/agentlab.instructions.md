@@ -2,7 +2,7 @@ This file provides guidance to Github Copilot when working with code in this rep
 
 ## Project Overview
 
-AgentLab is an open-source experimentation platform for building, testing, and deploying AI agents through YAML configuration. The project is currently in early development (pre-v0.1) with no implementation code yet - only vision and architecture documentation.
+HoloDeck is an open-source experimentation platform for building, testing, and deploying AI agents through YAML configuration. The project is currently in early development (pre-v0.1) with no implementation code yet - only vision and architecture documentation.
 
 **Key Principle**: No-code agent definition. Users should define agents, tools, evaluations, and deployments entirely through YAML files without writing code.
 
@@ -16,7 +16,7 @@ The platform is designed around three core engines:
 
 ### Tool & Plugin System
 
-AgentLab supports multiple tool types that extend agent capabilities:
+HoloDeck supports multiple tool types that extend agent capabilities:
 
 - **Vector Search Tools**: Redis/Postgres-backed semantic search
 - **Custom Function Tools**: Python functions loaded from `tools/*.py`
@@ -29,6 +29,7 @@ Critical design decision: API integrations should use MCP, not custom API tool t
 ### Evaluation System
 
 Evaluations can specify models at three levels:
+
 - Global default for all metrics
 - Per-evaluation-run model configuration
 - Per-metric model override (e.g., GPT-4o for critical metrics, GPT-4o-mini for others)
@@ -38,6 +39,7 @@ AI-powered metrics follow Azure AI Evaluation patterns. NLP metrics don't requir
 ### Test Cases with Multimodal Support
 
 Test cases support rich file inputs:
+
 - **Images**: JPG, PNG with OCR
 - **Documents**: PDF (full or page ranges), Word, PowerPoint (slide selection)
 - **Data**: Excel (sheet/range selection), CSV, text files
@@ -49,6 +51,7 @@ Each test can validate `expected_tools` usage and compare against `ground_truth`
 ### Observability
 
 Native OpenTelemetry integration following [GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/):
+
 - Automatic trace/metric/log instrumentation
 - Standard attributes: `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.*`
 - Support for Jaeger, Prometheus, Datadog, Honeycomb, LangSmith
@@ -105,6 +108,7 @@ make clean-all          # Deep clean including venv
 Follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
 
 Key conventions enforced by tooling:
+
 - **Formatting**: Black (88 char line length)
 - **Linting**: Ruff (pycodestyle, pyflakes, isort, flake8-bugbear, pyupgrade, pep8-naming, flake8-simplify, flake8-bandit)
 - **Type Checking**: MyPy with strict settings
@@ -112,6 +116,7 @@ Key conventions enforced by tooling:
 - **Target**: Python 3.14+
 
 Additional requirements from existing CLAUDE.md:
+
 - Clear, concise docstrings (PEP 257)
 - Type hints using `typing` module
 - Break down complex functions
@@ -121,8 +126,8 @@ Additional requirements from existing CLAUDE.md:
 ## Project Structure
 
 ```
-agentlab/
-├── src/agentlab/          # Main package (empty - implementation pending)
+holodeck/
+├── src/holodeck/          # Main package (empty - implementation pending)
 ├── tests/
 │   ├── unit/              # Unit tests
 │   ├── integration/       # Integration tests
@@ -164,12 +169,12 @@ model:
   temperature: float
   max_tokens: int
 instructions:
-  file: path  # OR
+  file: path # OR
   inline: string
-tools: []      # vectorstore|function|mcp|prompt|plugin types
+tools: [] # vectorstore|function|mcp|prompt|plugin types
 evaluations:
-  model: {}    # Global eval model
-  metrics: []  # Per-metric configuration
+  model: {} # Global eval model
+  metrics: [] # Per-metric configuration
 test_cases: [] # With multimodal file support
 observability:
   opentelemetry: {}
@@ -187,6 +192,7 @@ observability:
 ## Dependencies
 
 Core dependencies (see `pyproject.toml`):
+
 - Semantic Kernel: Agent framework and vector store abstractions
 - FastAPI: API deployment
 - Azure AI Evaluation: Evaluation metrics
@@ -198,6 +204,7 @@ The project uses Poetry for dependency management but supports standard pip inst
 ## Implementation Status
 
 **Current State**: Pre-implementation (v0.1 roadmap)
+
 - ✅ Vision and architecture defined (VISION.md)
 - ✅ Development environment and tooling configured
 - ⏳ Core agent engine (not started)

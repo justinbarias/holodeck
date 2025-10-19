@@ -6,9 +6,9 @@ from typing import Any
 import pytest
 import yaml
 
-from agentlab.config.loader import ConfigLoader
-from agentlab.lib.errors import ConfigError, FileNotFoundError
-from agentlab.models.agent import Agent
+from holodeck.config.loader import ConfigLoader
+from holodeck.lib.errors import ConfigError, FileNotFoundError
+from holodeck.models.agent import Agent
 
 
 class TestConfigEndToEndWorkflow:
@@ -28,9 +28,9 @@ class TestConfigEndToEndWorkflow:
         """
         # Setup global config (contains infrastructure settings, not Agent fields)
         monkeypatch.setenv("HOME", str(temp_dir))
-        agentlab_dir = temp_dir / ".agentlab"
-        agentlab_dir.mkdir()
-        global_config_file = agentlab_dir / "config.yaml"
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
         global_config_file.write_text(
             yaml.dump(
                 {
@@ -374,9 +374,9 @@ class TestConfigPrecedenceScenarios:
         """
         # Setup global config (infrastructure settings)
         monkeypatch.setenv("HOME", str(temp_dir))
-        agentlab_dir = temp_dir / ".agentlab"
-        agentlab_dir.mkdir()
-        global_config_file = agentlab_dir / "config.yaml"
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
         global_config_file.write_text(
             yaml.dump(
                 {

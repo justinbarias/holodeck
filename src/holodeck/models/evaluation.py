@@ -6,7 +6,7 @@ configuration for specifying evaluation criteria and metrics.
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from agentlab.models.llm import LLMProvider
+from holodeck.models.llm import LLMProvider
 
 
 class EvaluationMetric(BaseModel):

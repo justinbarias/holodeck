@@ -1,6 +1,6 @@
 """Global configuration models.
 
-This module defines global configuration models stored in ~/.agentlab/config.yaml
+This module defines global configuration models stored in ~/.holodeck/config.yaml
 for sharing default settings across multiple agents.
 """
 
@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from agentlab.models.llm import LLMProvider
+from holodeck.models.llm import LLMProvider
 
 
 class VectorstoreConfig(BaseModel):
@@ -71,7 +71,7 @@ class DeploymentConfig(BaseModel):
 class GlobalConfig(BaseModel):
     """Global configuration entity.
 
-    Configuration stored in ~/.agentlab/config.yaml for sharing defaults
+    Configuration stored in ~/.holodeck/config.yaml for sharing defaults
     across multiple agents, including LLM providers, vectorstores, and
     deployment settings.
     """

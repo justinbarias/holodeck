@@ -1,6 +1,6 @@
-# AgentLab - AI Agent Experimentation Platform
+# HoloDeck - AI Agent Experimentation Platform
 
-**AgentLab** is an open-source experimentation platform for building, testing, and deploying AI agents through **YAML configuration**. Define intelligent agents entirely through configuration—no code required.
+**HoloDeck** is an open-source experimentation platform for building, testing, and deploying AI agents through **YAML configuration**. Define intelligent agents entirely through configuration—no code required.
 
 ## Key Features
 
@@ -13,10 +13,10 @@
 
 ## Quick Start
 
-### 1. Install AgentLab
+### 1. Install HoloDeck
 
 ```bash
-pip install agentlab
+pip install holodeck
 ```
 
 ### 2. Create a Simple Agent
@@ -40,7 +40,7 @@ instructions:
 ### 3. Load and Use the Agent
 
 ```python
-from agentlab.config.loader import ConfigLoader
+from holodeck.config.loader import ConfigLoader
 
 # Load agent configuration
 loader = ConfigLoader()
@@ -151,6 +151,7 @@ MIT License - See LICENSE file for details
 ---
 
 **Next Steps**:
+
 - [Get started with installation →](getting-started/installation.md)
 - [Try the quickstart →](getting-started/quickstart.md)
 - [Explore examples →](examples/README.md)

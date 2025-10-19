@@ -3,10 +3,7 @@
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 
-from agentlab.config.validator import (
-    flatten_pydantic_errors,
-    normalize_errors,
-)
+from holodeck.config.validator import flatten_pydantic_errors, normalize_errors
 
 
 class SampleModel(BaseModel):

@@ -1,7 +1,7 @@
 [project]
-name = "agentlab"
+name = "holodeck"
 version = "0.1.0"
-description = "AgentLab - Experimentation-driven agent experimentation and deployment"
+description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
 requires-python = ">=3.14,<4.0"
 dependencies = [
     "requests (>=2.32.5,<3.0.0)",

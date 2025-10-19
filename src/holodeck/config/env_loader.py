@@ -4,7 +4,7 @@ import os
 import re
 from typing import Any
 
-from agentlab.lib.errors import ConfigError
+from holodeck.lib.errors import ConfigError
 
 
 def substitute_env_vars(text: str) -> str:

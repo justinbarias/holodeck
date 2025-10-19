@@ -1,4 +1,4 @@
-"""Configuration loader for AgentLab agents.
+"""Configuration loader for HoloDeck agents.
 
 This module provides the ConfigLoader class for loading, parsing, and validating
 agent configuration from YAML files.
@@ -10,10 +10,10 @@ from typing import Any
 import yaml
 from pydantic import ValidationError as PydanticValidationError
 
-from agentlab.config.env_loader import substitute_env_vars
-from agentlab.config.validator import flatten_pydantic_errors
-from agentlab.lib.errors import ConfigError, FileNotFoundError
-from agentlab.models.agent import Agent
+from holodeck.config.env_loader import substitute_env_vars
+from holodeck.config.validator import flatten_pydantic_errors
+from holodeck.lib.errors import ConfigError, FileNotFoundError
+from holodeck.models.agent import Agent
 
 
 class ConfigLoader:
@@ -21,7 +21,7 @@ class ConfigLoader:
 
     This class handles:
     - Parsing YAML files into Python dictionaries
-    - Loading global configuration from ~/.agentlab/config.yaml
+    - Loading global configuration from ~/.holodeck/config.yaml
     - Merging configurations with proper precedence
     - Resolving file references (instructions, tools)
     - Converting validation errors into human-readable messages
@@ -112,7 +112,7 @@ class ConfigLoader:
             ) from e
 
     def load_global_config(self) -> dict[str, Any]:
-        """Load global configuration from ~/.agentlab/config.yaml.
+        """Load global configuration from ~/.holodeck/config.yaml.
 
         Returns:
             Dictionary containing global configuration, or empty dict if
@@ -122,7 +122,7 @@ class ConfigLoader:
             ConfigError: If YAML parsing fails (but not if file is missing)
         """
         home_dir = Path.home()
-        global_config_path = home_dir / ".agentlab" / "config.yaml"
+        global_config_path = home_dir / ".holodeck" / "config.yaml"
 
         if not global_config_path.exists():
             return {}
@@ -151,11 +151,11 @@ class ConfigLoader:
         Precedence (highest to lowest):
         1. agent.yaml explicit settings
         2. Environment variables (already substituted)
-        3. ~/.agentlab/config.yaml global settings
+        3. ~/.holodeck/config.yaml global settings
 
         Args:
             agent_config: Configuration from agent.yaml
-            global_config: Configuration from ~/.agentlab/config.yaml
+            global_config: Configuration from ~/.holodeck/config.yaml
 
         Returns:
             Merged configuration dictionary

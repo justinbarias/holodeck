@@ -1,4 +1,4 @@
-"""Validation utilities for AgentLab configuration."""
+"""Validation utilities for HoloDeck configuration."""
 
 from typing import Any
 

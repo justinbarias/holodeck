@@ -1,4 +1,4 @@
-"""Pytest configuration and shared fixtures for AgentLab tests."""
+"""Pytest configuration and shared fixtures for HoloDeck tests."""
 
 import os
 import shutil

@@ -1,10 +1,10 @@
-"""Tests for GlobalConfig model in agentlab.models.config."""
+"""Tests for GlobalConfig model in holodeck.models.config."""
 
 import pytest
 from pydantic import ValidationError
 
-from agentlab.models.config import DeploymentConfig, GlobalConfig, VectorstoreConfig
-from agentlab.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.config import DeploymentConfig, GlobalConfig, VectorstoreConfig
+from holodeck.models.llm import LLMProvider, ProviderEnum
 
 
 class TestVectorstoreConfig:
@@ -14,10 +14,10 @@ class TestVectorstoreConfig:
         """Test creating a valid VectorstoreConfig."""
         config = VectorstoreConfig(
             provider="postgres",
-            connection_string="postgresql://localhost/agentlab",
+            connection_string="postgresql://localhost/holodeck",
         )
         assert config.provider == "postgres"
-        assert config.connection_string == "postgresql://localhost/agentlab"
+        assert config.connection_string == "postgresql://localhost/holodeck"
 
     def test_vectorstore_config_provider_required(self) -> None:
         """Test that provider is required."""
@@ -110,7 +110,7 @@ class TestGlobalConfig:
         """Test GlobalConfig with vectorstores."""
         vectorstore = VectorstoreConfig(
             provider="postgres",
-            connection_string="postgresql://localhost/agentlab",
+            connection_string="postgresql://localhost/holodeck",
         )
         config = GlobalConfig(vectorstores={"knowledge_base": vectorstore})
         assert "knowledge_base" in config.vectorstores
@@ -140,7 +140,7 @@ class TestGlobalConfig:
         )
         deployment = DeploymentConfig(
             type="kubernetes",
-            settings={"namespace": "agentlab"},
+            settings={"namespace": "holodeck"},
         )
 
         config = GlobalConfig(

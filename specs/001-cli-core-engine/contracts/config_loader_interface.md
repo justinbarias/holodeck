@@ -1,11 +1,12 @@
 # ConfigLoader Interface Contract
 
 **User Story**: US1 - Define Agent Configuration
-**Interface**: `agentlab.config.loader.ConfigLoader`
+**Interface**: `holodeck.config.loader.ConfigLoader`
 
 ## Purpose
 
 Core interface for loading and validating agent.yaml files. This is the primary contract between:
+
 - YAML file on disk
 - Validated Python Agent object
 - Error handling system
@@ -17,18 +18,22 @@ Core interface for loading and validating agent.yaml files. This is the primary 
 **Purpose**: Load and validate an agent.yaml file.
 
 **Parameters**:
+
 - `file_path` (str): Absolute path to agent.yaml file
 
 **Returns**:
+
 - `Agent`: Validated agent configuration object
 
 **Raises**:
+
 - `ConfigFileNotFoundError`: If file_path doesn't exist
 - `InvalidYAMLError`: If YAML syntax is malformed
 - `ValidationError`: If configuration fails schema validation
 - `EnvironmentVariableError`: If environment variable can't be resolved
 
 **Example**:
+
 ```python
 loader = ConfigLoader()
 agent = loader.load("/path/to/agent.yaml")
@@ -36,6 +41,7 @@ agent = loader.load("/path/to/agent.yaml")
 ```
 
 **Acceptance Criteria**:
+
 - ✅ Loads valid agent.yaml without errors
 - ✅ Raises clear error if file doesn't exist
 - ✅ Raises clear error if YAML is malformed
@@ -49,15 +55,18 @@ agent = loader.load("/path/to/agent.yaml")
 **Purpose**: Load agent configuration from a YAML string (useful for testing and programmatic config).
 
 **Parameters**:
+
 - `yaml_content` (str): YAML configuration as string
 - `base_path` (str, optional): Base directory for relative file references
 
 **Returns**:
+
 - `Agent`: Validated agent configuration object
 
 **Raises**: Same as `load()`
 
 **Acceptance Criteria**:
+
 - ✅ Parses YAML string correctly
 - ✅ Uses base_path for file resolution if provided
 - ✅ Falls back to current directory if base_path not provided
@@ -69,14 +78,17 @@ agent = loader.load("/path/to/agent.yaml")
 **Purpose**: Validate an already-loaded Agent object (useful after programmatic construction).
 
 **Parameters**:
+
 - `agent` (Agent): Agent object to validate
 
 **Returns**:
+
 - `ValidationResult`:
   - `is_valid` (bool): True if valid
   - `errors` (List[str]): Human-readable error messages
 
 **Acceptance Criteria**:
+
 - ✅ Returns ValidationResult with is_valid flag
 - ✅ Error messages are actionable
 - ✅ All validation rules from data-model.md are checked
@@ -105,6 +117,7 @@ All ConfigLoader errors MUST:
 ### Example Error Messages
 
 ✅ **GOOD**:
+
 ```
 [ERROR] Missing required field: instructions
   Location: agent.yaml
@@ -119,6 +132,7 @@ All ConfigLoader errors MUST:
 ```
 
 ✅ **GOOD**:
+
 ```
 [ERROR] Invalid tool configuration: vectorstore tool 'search_docs' references missing file
   Location: agent.yaml:15
@@ -128,6 +142,7 @@ All ConfigLoader errors MUST:
 ```
 
 ❌ **BAD**:
+
 ```
 [ERROR] Validation error in __root__
 ```
@@ -139,23 +154,28 @@ All ConfigLoader errors MUST:
 ConfigLoader MUST follow this process:
 
 1. **Read file** (or parse string)
+
    - File must exist and be readable
    - YAML must be syntactically valid
 
 2. **Parse YAML** → Dict
+
    - Use PyYAML or equivalent
 
 3. **Resolve environment variables**
+
    - Pattern: `${VAR_NAME}` or `$VAR_NAME`
    - Replace with environment variable value
    - Raise error if variable not found
 
 4. **Validate against schema** (Pydantic)
+
    - Check types
    - Check constraints
    - Check relationships
 
 5. **Validate file references**
+
    - Resolve relative paths from agent.yaml directory
    - Check files exist
    - Raise error with suggested fixes if missing

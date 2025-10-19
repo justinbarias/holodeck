@@ -1,9 +1,9 @@
-"""Tests for LLM Provider models in agentlab.models.llm."""
+"""Tests for LLM Provider models in holodeck.models.llm."""
 
 import pytest
 from pydantic import ValidationError
 
-from agentlab.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.llm import LLMProvider, ProviderEnum
 
 
 class TestLLMProvider:

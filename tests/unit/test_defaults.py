@@ -1,6 +1,6 @@
 """Tests for default configuration templates."""
 
-from agentlab.config.defaults import (
+from holodeck.config.defaults import (
     get_default_evaluation_config,
     get_default_model_config,
     get_default_tool_config,

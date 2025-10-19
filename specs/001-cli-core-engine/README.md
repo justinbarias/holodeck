@@ -1,6 +1,6 @@
 # v0.1: CLI & Core Agent Engine - Specification
 
-This directory contains the specification for AgentLab v0.1, which introduces the foundational CLI commands and core agent execution engine.
+This directory contains the specification for HoloDeck v0.1, which introduces the foundational CLI commands and core agent execution engine.
 
 ## Files
 
@@ -9,7 +9,8 @@ This directory contains the specification for AgentLab v0.1, which introduces th
 
 ## Overview
 
-AgentLab v0.1 delivers the essential tools for developers to:
+HoloDeck v0.1 delivers the essential tools for developers to:
+
 1. Initialize new agent projects via CLI
 2. Define agents entirely through YAML configuration
 3. Test agents against predefined test cases with evaluation metrics
@@ -18,18 +19,19 @@ AgentLab v0.1 delivers the essential tools for developers to:
 
 ## Key Statistics
 
-| Metric | Count |
-|--------|-------|
-| User Stories | 11 (7 base + 4 vectorstore sub-stories; 9 P1, 2 P2) |
+| Metric                  | Count                                                   |
+| ----------------------- | ------------------------------------------------------- |
+| User Stories            | 11 (7 base + 4 vectorstore sub-stories; 9 P1, 2 P2)     |
 | Functional Requirements | 35 (9 core + 4 vectorstore sub-requirements + 22 other) |
-| Success Criteria | 10 |
-| Edge Cases | 8 |
-| Acceptance Scenarios | 50+ (comprehensive tool coverage) |
-| Core Entities | 5 |
+| Success Criteria        | 10                                                      |
+| Edge Cases              | 8                                                       |
+| Acceptance Scenarios    | 50+ (comprehensive tool coverage)                       |
+| Core Entities           | 5                                                       |
 
 ## Feature Scope
 
 ### In Scope (v0.1)
+
 - CLI commands: `init`, `test`, `chat`, `deploy`, `--version`
 - Agent YAML configuration with multiple LLM providers
 - Tool system with four explicit types:
@@ -45,6 +47,7 @@ AgentLab v0.1 delivers the essential tools for developers to:
 - Comprehensive error handling and validation
 
 ### Out of Scope (v0.2+)
+
 - Cloud deployment (Azure, AWS, GCP)
 - Multi-agent orchestration (sequential, concurrent, handoff, group chat, magentic)
 - Web UI for no-code editing
@@ -58,6 +61,7 @@ AgentLab v0.1 delivers the essential tools for developers to:
 ## Priority Breakdown
 
 **Foundation (P1) - Must Have**
+
 1. Project initialization
 2. Agent configuration via YAML
 3. Test case execution
@@ -68,9 +72,7 @@ AgentLab v0.1 delivers the essential tools for developers to:
    - Prompt-based tools (type: prompt)
 5. System instructions loading
 
-**Enhancement (P2) - Nice to Have**
-6. Interactive chat mode
-7. Local API deployment
+**Enhancement (P2) - Nice to Have** 6. Interactive chat mode 7. Local API deployment
 
 ## Success Criteria Highlights
 

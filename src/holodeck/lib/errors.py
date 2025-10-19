@@ -1,17 +1,17 @@
-"""Custom exception hierarchy for AgentLab configuration and operations."""
+"""Custom exception hierarchy for HoloDeck configuration and operations."""
 
 
-class AgentLabError(Exception):
-    """Base exception for all AgentLab errors.
+class HoloDeckError(Exception):
+    """Base exception for all HoloDeck errors.
 
-    All AgentLab-specific exceptions inherit from this class, enabling
+    All HoloDeck-specific exceptions inherit from this class, enabling
     centralized exception handling and error tracking.
     """
 
     pass
 
 
-class ConfigError(AgentLabError):
+class ConfigError(HoloDeckError):
     """Exception raised for configuration errors.
 
     This exception is raised when configuration loading or parsing fails.
@@ -35,7 +35,7 @@ class ConfigError(AgentLabError):
         super().__init__(f"Configuration error in '{field}': {message}")
 
 
-class ValidationError(AgentLabError):
+class ValidationError(HoloDeckError):
     """Exception raised for validation errors during configuration parsing.
 
     Provides detailed information about what was expected versus what was received,
@@ -75,7 +75,7 @@ class ValidationError(AgentLabError):
         super().__init__(full_message)
 
 
-class FileNotFoundError(AgentLabError):
+class FileNotFoundError(HoloDeckError):
     """Exception raised when a configuration file is not found.
 
     Includes the file path and helpful suggestions for resolving the issue.

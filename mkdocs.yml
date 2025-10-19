@@ -1,8 +1,8 @@
-site_name: AgentLab Documentation
+site_name: HoloDeck Documentation
 site_description: AI Agent Experimentation Platform - Define agents in YAML, no code required
-site_url: https://docs.agentlab.ai/
-repo_url: https://github.com/justinbarias/agentlab
-repo_name: justinbarias/agentlab
+site_url: https://docs.holodeck.ai/
+repo_url: https://github.com/justinbarias/holodeck
+repo_name: justinbarias/holodeck
 edit_uri: edit/main/docs/
 
 theme:
@@ -80,6 +80,6 @@ extra:
   version: 0.1.0
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/anthropics/agentlab
+      link: https://github.com/anthropics/holodeck
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/anthropic

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AgentLab is an open-source experimentation platform for building, testing, and deploying AI agents through YAML configuration. The project is currently in early development (pre-v0.1) with no implementation code yet - only vision and architecture documentation.
+HoloDeck is an open-source experimentation platform for building, testing, and deploying AI agents through YAML configuration. The project is currently in early development (pre-v0.1) with no implementation code yet - only vision and architecture documentation.
 
 **Key Principle**: No-code agent definition. Users should define agents, tools, evaluations, and deployments entirely through YAML files without writing code.
 
@@ -18,7 +18,7 @@ The platform is designed around three core engines:
 
 ### Tool & Plugin System
 
-AgentLab supports multiple tool types that extend agent capabilities:
+HoloDeck supports multiple tool types that extend agent capabilities:
 
 - **Vector Search Tools**: Redis/Postgres-backed semantic search
 - **Custom Function Tools**: Python functions loaded from `tools/*.py`
@@ -128,8 +128,8 @@ Additional requirements from existing CLAUDE.md:
 ## Project Structure
 
 ```
-agentlab/
-├── src/agentlab/          # Main package (empty - implementation pending)
+holodeck/
+├── src/holodeck/          # Main package (empty - implementation pending)
 ├── tests/
 │   ├── unit/              # Unit tests
 │   ├── integration/       # Integration tests

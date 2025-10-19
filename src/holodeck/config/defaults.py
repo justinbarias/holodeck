@@ -1,4 +1,4 @@
-"""Default configuration templates for AgentLab."""
+"""Default configuration templates for HoloDeck."""
 
 from typing import Any
 

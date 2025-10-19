@@ -8,9 +8,9 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from agentlab.models.evaluation import EvaluationConfig
-from agentlab.models.llm import LLMProvider
-from agentlab.models.test_case import TestCaseModel
+from holodeck.models.evaluation import EvaluationConfig
+from holodeck.models.llm import LLMProvider
+from holodeck.models.test_case import TestCaseModel
 
 
 class Instructions(BaseModel):

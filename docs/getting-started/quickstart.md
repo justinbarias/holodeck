@@ -1,14 +1,14 @@
 # Quickstart Guide
 
-Get up and running with AgentLab in 5 minutes. This guide covers loading a configuration, handling errors, and understanding the basics.
+Get up and running with HoloDeck in 5 minutes. This guide covers loading a configuration, handling errors, and understanding the basics.
 
 ## Before You Start
 
 Ensure you've completed the [Installation Guide](installation.md):
 
 ```bash
-pip install agentlab
-python -m agentlab --version  # Should output: agentlab 0.1.0
+pip install holodeck
+python -m holodeck --version  # Should output: holodeck 0.1.0
 ```
 
 Set up your API key (example for OpenAI):
@@ -23,7 +23,7 @@ Create a file called `my-agent.yaml`:
 
 ```yaml
 name: "Quick Start Agent"
-description: "A simple agent to get started with AgentLab"
+description: "A simple agent to get started with HoloDeck"
 model:
   provider: "openai"
   name: "gpt-4o-mini"
@@ -36,6 +36,7 @@ instructions:
 ```
 
 This minimal agent has:
+
 - **name**: Human-readable agent name
 - **model**: LLM provider and configuration
 - **instructions**: How the agent should behave (inline text or file reference)
@@ -45,7 +46,7 @@ This minimal agent has:
 Create a Python script `load_agent.py`:
 
 ```python
-from agentlab.config.loader import ConfigLoader
+from holodeck.config.loader import ConfigLoader
 
 # Create a loader
 loader = ConfigLoader()
@@ -70,7 +71,7 @@ Expected output:
 
 ```
 Agent Name: Quick Start Agent
-Description: A simple agent to get started with AgentLab
+Description: A simple agent to get started with HoloDeck
 Model: gpt-4o-mini
 Provider: openai
 ```
@@ -80,8 +81,8 @@ Provider: openai
 Real-world scenarios require error handling. Update `load_agent.py`:
 
 ```python
-from agentlab.config.loader import ConfigLoader
-from agentlab.lib.errors import ConfigError
+from holodeck.config.loader import ConfigLoader
+from holodeck.lib.errors import ConfigError
 
 loader = ConfigLoader()
 
@@ -122,8 +123,8 @@ name: "Incomplete Agent"
 Load it and see what happens:
 
 ```python
-from agentlab.config.loader import ConfigLoader
-from agentlab.lib.errors import ConfigError
+from holodeck.config.loader import ConfigLoader
+from holodeck.lib.errors import ConfigError
 
 try:
     agent = ConfigLoader().load_agent_yaml("invalid-agent.yaml")
@@ -153,7 +154,7 @@ instructions: |
  bad spacing
 ```
 
-AgentLab will catch parsing errors:
+HoloDeck will catch parsing errors:
 
 ```python
 try:
@@ -167,7 +168,7 @@ except ConfigError as e:
 ```yaml
 name: "Bad Model Config"
 model:
-  provider: "invalid_provider"  # ❌ Not a valid provider
+  provider: "invalid_provider" # ❌ Not a valid provider
   name: "gpt-4o"
 instructions:
   inline: "Help"
@@ -195,7 +196,7 @@ model:
   max_tokens: 2000
 
 instructions:
-  file: "instructions.md"  # Load from file
+  file: "instructions.md" # Load from file
 
 tools:
   - type: "vectorstore"
@@ -225,25 +226,29 @@ evaluations:
 For longer instructions, use a separate file:
 
 **instructions.md**:
+
 ```markdown
 You are a research assistant focused on providing accurate, cited information.
 
 ## Guidelines
+
 1. Always cite your sources
 2. Use web search for current information
 3. Provide comprehensive summaries
 4. Flag uncertain information
 
 ## Constraints
+
 - Keep responses under 2000 tokens
 - Prefer primary sources over secondary
 ```
 
 **agent.yaml**:
+
 ```yaml
 name: Research Assistant
 instructions:
-  file: "instructions.md"  # Relative to agent.yaml location
+  file: "instructions.md" # Relative to agent.yaml location
 ```
 
 Load it:
@@ -259,6 +264,7 @@ print(agent.instructions)  # Will contain full instructions from file
 Use environment variables for sensitive data:
 
 **agent.yaml**:
+
 ```yaml
 name: "Configured Agent"
 model:
@@ -269,6 +275,7 @@ instructions:
 ```
 
 Your `.env` file:
+
 ```bash
 OPENAI_API_KEY=sk-...
 OPENAI_ORG_ID=org-...
@@ -280,7 +287,7 @@ Load and use:
 from dotenv import load_dotenv
 load_dotenv()  # Loads .env file
 
-from agentlab.config.loader import ConfigLoader
+from holodeck.config.loader import ConfigLoader
 agent = ConfigLoader().load_agent_yaml("agent.yaml")
 # API keys are now available from environment
 ```
@@ -290,6 +297,7 @@ agent = ConfigLoader().load_agent_yaml("agent.yaml")
 Here's a complete working example with best practices:
 
 **agent.yaml**:
+
 ```yaml
 name: "Smart Assistant"
 description: "An intelligent assistant with search capabilities"
@@ -316,12 +324,13 @@ test_cases:
 ```
 
 **main.py**:
+
 ```python
 #!/usr/bin/env python3
-"""Example: Load and validate an AgentLab agent."""
+"""Example: Load and validate an HoloDeck agent."""
 
-from agentlab.config.loader import ConfigLoader
-from agentlab.lib.errors import ConfigError
+from holodeck.config.loader import ConfigLoader
+from holodeck.lib.errors import ConfigError
 
 def main():
     try:
@@ -366,8 +375,8 @@ python main.py
 ### Pattern 1: Load and Validate Only
 
 ```python
-from agentlab.config.loader import ConfigLoader
-from agentlab.lib.errors import ConfigError
+from holodeck.config.loader import ConfigLoader
+from holodeck.lib.errors import ConfigError
 
 try:
     agent = ConfigLoader().load_agent_yaml("agent.yaml")
@@ -379,8 +388,8 @@ except ConfigError as e:
 ### Pattern 2: Graceful Degradation
 
 ```python
-from agentlab.config.loader import ConfigLoader
-from agentlab.lib.errors import ConfigError
+from holodeck.config.loader import ConfigLoader
+from holodeck.lib.errors import ConfigError
 
 loader = ConfigLoader()
 agent = None
@@ -396,8 +405,8 @@ except ConfigError as e:
 
 ```python
 from pathlib import Path
-from agentlab.config.loader import ConfigLoader
-from agentlab.lib.errors import ConfigError
+from holodeck.config.loader import ConfigLoader
+from holodeck.lib.errors import ConfigError
 
 agents = []
 errors = []
@@ -426,6 +435,7 @@ print(f"Loaded {len(agents)} agents, {len(errors)} errors")
 ### "ConfigError: Field 'X' is required"
 
 Your YAML is missing a required field. Check:
+
 - `name` - Agent name
 - `model` - LLM provider configuration
 - `instructions` - Agent behavior instructions
@@ -433,6 +443,7 @@ Your YAML is missing a required field. Check:
 ### "FileNotFoundError: agent.yaml not found"
 
 The loader couldn't find `agent.yaml`. Ensure:
+
 - File exists: `ls -la agent.yaml`
 - Correct path: Use absolute path if needed `loader.load_agent_yaml("/full/path/agent.yaml")`
 - Working directory: `pwd` shows correct location
@@ -440,19 +451,21 @@ The loader couldn't find `agent.yaml`. Ensure:
 ### "ConfigError: Field 'provider' must be one of..."
 
 Your model provider is invalid. Use one of:
+
 - `openai` (default)
 - `azure_openai` (requires AZURE_OPENAI_ENDPOINT)
 - `anthropic` (default: claude-3-sonnet)
 
-### "Module not found: agentlab"
+### "Module not found: holodeck"
 
-AgentLab isn't installed. Run:
+HoloDeck isn't installed. Run:
+
 ```bash
-pip install agentlab
+pip install holodeck
 ```
 
 ## Getting Help
 
-- 🐛 **Report bugs**: [GitHub Issues](https://github.com/anthropics/agentlab/issues)
-- 💬 **Ask questions**: [GitHub Discussions](https://github.com/anthropics/agentlab/discussions)
-- 📚 **Full docs**: [https://docs.agentlab.ai](https://docs.agentlab.ai)
+- 🐛 **Report bugs**: [GitHub Issues](https://github.com/anthropics/holodeck/issues)
+- 💬 **Ask questions**: [GitHub Discussions](https://github.com/anthropics/holodeck/discussions)
+- 📚 **Full docs**: [https://docs.holodeck.ai](https://docs.holodeck.ai)

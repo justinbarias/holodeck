@@ -1,9 +1,9 @@
-"""Tests for Tool models in agentlab.models.tool."""
+"""Tests for Tool models in holodeck.models.tool."""
 
 import pytest
 from pydantic import ValidationError
 
-from agentlab.models.tool import (
+from holodeck.models.tool import (
     FunctionTool,
     MCPTool,
     PromptTool,

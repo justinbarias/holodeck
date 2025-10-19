@@ -17,7 +17,7 @@ Templates Updated:
 Follow-up TODOs: None - constitution now fully synchronized with VISION.md and CLAUDE.md
 -->
 
-# AgentLab Constitution
+# HoloDeck Constitution
 
 ## Core Principles
 
@@ -29,7 +29,7 @@ test cases. All agent behavior specification MUST be expressible through
 YAML configuration without custom code implementation.
 
 **Rationale**: Lowering barriers to entry and enabling non-technical users
-to build production agents. This principle drives the entire AgentLab design
+to build production agents. This principle drives the entire HoloDeck design
 and differentiates the platform from code-first frameworks.
 
 ### II. MCP for API Integrations
@@ -52,7 +52,7 @@ Office documents, text, CSV, URLs) and SHOULD validate agent tool
 selection via `expected_tools`. Each test case MUST include either ground
 truth data or expected evaluation scores for validation.
 
-**Rationale**: Multimodal test support is core to AgentLab's value
+**Rationale**: Multimodal test support is core to HoloDeck's value
 proposition—agents must handle real-world document-heavy workflows.
 Test-first approach ensures quality and provides regression detection.
 
@@ -85,7 +85,7 @@ not just evaluation perfection.
 
 ## Architecture Constraints
 
-AgentLab MUST maintain three distinct, decoupled engines:
+HoloDeck MUST maintain three distinct, decoupled engines:
 
 1. **Agent Engine**: LLM interactions, tool execution, memory, vector stores
 2. **Evaluation Framework**: AI-powered metrics + NLP metrics with flexible model selection
@@ -113,6 +113,7 @@ cover edge cases explicitly.
 ## Governance
 
 **Amendment Procedure**:
+
 1. Proposed amendment MUST justify why current principle(s) are insufficient
 2. Impact assessment MUST cover all five core principles and dependent architecture
 3. Migration path MUST be documented if amendment breaks existing compliance
@@ -120,11 +121,13 @@ cover edge cases explicitly.
    checklist) are updated or explicitly exempted
 
 **Versioning Policy**:
+
 - MAJOR bump: Principle removal or redefinition (backward incompatible)
 - MINOR bump: New principle added or existing principle scope expanded
 - PATCH bump: Clarifications, wording refinements, non-semantic fixes
 
 **Compliance Review**:
+
 - Every feature specification (spec.md) MUST include Constitution Check
   section (see plan-template.md)
 - Every pull request MUST verify compliance before merge
@@ -134,7 +137,7 @@ cover edge cases explicitly.
 **Runtime Guidance**:
 Development workflow details (make commands, git workflow, pre-commit
 configuration, etc.) are documented in CLAUDE.md and Makefile—NOT in this
-Constitution. This Constitution establishes *principles*; CLAUDE.md
+Constitution. This Constitution establishes _principles_; CLAUDE.md
 operationalizes them.
 
 **Version**: 1.0.1 | **Ratified**: 2025-10-19 | **Last Amended**: 2025-10-19

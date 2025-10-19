@@ -1,9 +1,9 @@
-"""Tests for TestCase model in agentlab.models.test_case."""
+"""Tests for TestCase model in holodeck.models.test_case."""
 
 import pytest
 from pydantic import ValidationError
 
-from agentlab.models.test_case import FileInput, TestCase
+from holodeck.models.test_case import FileInput, TestCase
 
 
 class TestFileInput:

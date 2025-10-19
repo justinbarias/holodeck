@@ -1,6 +1,6 @@
 # Installation Guide
 
-Get AgentLab up and running in minutes.
+Get HoloDeck up and running in minutes.
 
 ## Prerequisites
 
@@ -13,10 +13,11 @@ Get AgentLab up and running in minutes.
 ### 1. Install from PyPI
 
 ```bash
-pip install agentlab
+pip install holodeck
 ```
 
 This installs the latest stable version and all required dependencies:
+
 - `pydantic` - Configuration validation
 - `pyyaml` - YAML parsing
 - `python-dotenv` - Environment variable support
@@ -24,29 +25,29 @@ This installs the latest stable version and all required dependencies:
 
 ### 2. Verify Installation
 
-Check that AgentLab is installed correctly:
+Check that HoloDeck is installed correctly:
 
 ```bash
-python -m agentlab --version
-# Output: agentlab 0.1.0
+python -m holodeck --version
+# Output: holodeck 0.1.0
 ```
 
 Try importing the main module:
 
 ```python
-from agentlab.config.loader import ConfigLoader
-print("✓ AgentLab installed successfully!")
+from holodeck.config.loader import ConfigLoader
+print("✓ HoloDeck installed successfully!")
 ```
 
 ## Development Setup
 
-For development or contributing to AgentLab:
+For development or contributing to HoloDeck:
 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/anthropics/agentlab.git
-cd agentlab
+git clone https://github.com/anthropics/holodeck.git
+cd holodeck
 ```
 
 ### 2. Initialize Development Environment
@@ -57,6 +58,7 @@ make init
 ```
 
 This command:
+
 - Creates a Python virtual environment in `.venv/`
 - Installs dependencies (`poetry install`)
 - Installs pre-commit hooks
@@ -94,13 +96,13 @@ After installation, verify everything works:
 python --version
 # Expected: Python 3.14.x
 
-# ✓ Check AgentLab is installed
-python -c "import agentlab; print(agentlab.__version__)"
+# ✓ Check HoloDeck is installed
+python -c "import holodeck; print(holodeck.__version__)"
 # Expected: 0.1.0
 
 # ✓ Check ConfigLoader works
 python << 'EOF'
-from agentlab.config.loader import ConfigLoader
+from holodeck.config.loader import ConfigLoader
 loader = ConfigLoader()
 print("✓ ConfigLoader imported successfully")
 EOF
@@ -118,7 +120,7 @@ EOF
 
 # ✓ Load and validate the agent (requires OPENAI_API_KEY env var)
 python << 'EOF'
-from agentlab.config.loader import ConfigLoader
+from holodeck.config.loader import ConfigLoader
 loader = ConfigLoader()
 agent = loader.load_agent_yaml("test-agent.yaml")
 print(f"✓ Agent loaded: {agent.name}")
@@ -127,7 +129,7 @@ EOF
 
 ## Environment Variables
 
-AgentLab uses environment variables for API credentials. Set these in your shell or `.env` file:
+HoloDeck uses environment variables for API credentials. Set these in your shell or `.env` file:
 
 ### OpenAI
 
@@ -165,7 +167,7 @@ Then load it in your Python script:
 from dotenv import load_dotenv
 load_dotenv()
 
-from agentlab.config.loader import ConfigLoader
+from holodeck.config.loader import ConfigLoader
 # Now all env vars from .env are available
 ```
 
@@ -191,6 +193,7 @@ make install-dev
 ```
 
 This adds:
+
 - `pytest-cov` - Code coverage measurement
 - `pytest-xdist` - Parallel test execution
 - `black` - Code formatter
@@ -232,16 +235,16 @@ sudo apt-get install python3.14 python3.14-venv
 # On Windows, download from python.org
 ```
 
-### "ModuleNotFoundError: No module named 'agentlab'"
+### "ModuleNotFoundError: No module named 'holodeck'"
 
-Make sure AgentLab is installed:
+Make sure HoloDeck is installed:
 
 ```bash
 # Verify installation
-pip show agentlab
+pip show holodeck
 
 # Reinstall if needed
-pip install --upgrade agentlab
+pip install --upgrade holodeck
 ```
 
 ### "OPENAI_API_KEY not found"
@@ -282,5 +285,5 @@ source .venv/bin/activate
 ## Getting Help
 
 - **Installation Issues**: Check [Troubleshooting](#troubleshooting) section
-- **GitHub Issues**: Report bugs at [github.com/anthropics/agentlab/issues](https://github.com/anthropics/agentlab/issues)
-- **Documentation**: Visit [docs.agentlab.ai](https://docs.agentlab.ai)
+- **GitHub Issues**: Report bugs at [github.com/anthropics/holodeck/issues](https://github.com/anthropics/holodeck/issues)
+- **Documentation**: Visit [docs.holodeck.ai](https://docs.holodeck.ai)

@@ -27,8 +27,9 @@ instructions:
 ```
 
 **Test**:
+
 ```python
-from agentlab.config.loader import ConfigLoader
+from holodeck.config.loader import ConfigLoader
 
 loader = ConfigLoader()
 agent = loader.load("minimal_agent.yaml")
@@ -83,6 +84,7 @@ test_cases:
 ```
 
 **Test**:
+
 ```python
 agent = loader.load("full_agent.yaml")
 
@@ -110,6 +112,7 @@ instructions:
 ```
 
 **Test**:
+
 ```python
 with pytest.raises(ValidationError) as exc:
     loader.load("invalid_missing_field.yaml")
@@ -135,10 +138,11 @@ instructions:
 test_cases:
   - input: Query
     expected_tools:
-      - non_existent_tool  # ERROR: tool not defined
+      - non_existent_tool # ERROR: tool not defined
 ```
 
 **Test**:
+
 ```python
 with pytest.raises(ValidationError) as exc:
     loader.load("invalid_tool_ref.yaml")
@@ -160,10 +164,11 @@ model:
   provider: openai
   name: gpt-4o
 instructions:
-  file: missing/instructions.md  # ERROR: file doesn't exist
+  file: missing/instructions.md # ERROR: file doesn't exist
 ```
 
 **Test**:
+
 ```python
 with pytest.raises(ConfigFileNotFoundError) as exc:
     loader.load("invalid_file_ref.yaml")
@@ -190,6 +195,7 @@ instructions:
 ```
 
 **Test**:
+
 ```python
 import os
 os.environ["OPENAI_API_KEY"] = "sk-test123"
@@ -221,6 +227,7 @@ instructions:
 ```
 
 **Test 7c**:
+
 ```python
 with pytest.raises(ValidationError) as exc:
     loader.load("invalid_both_instructions.yaml")
@@ -277,6 +284,7 @@ tools:
 ```
 
 **Test**:
+
 ```python
 agent = loader.load("tools_all_types.yaml")
 
@@ -296,19 +304,20 @@ assert agent.tools[3].type == "prompt"
 evaluations:
   model:
     provider: openai
-    name: gpt-4o-mini  # Default for all metrics
+    name: gpt-4o-mini # Default for all metrics
   metrics:
     - metric: groundedness
       threshold: 4.0
-      model:  # Override for this metric
+      model: # Override for this metric
         provider: openai
-        name: gpt-4o  # Use expensive model for critical metric
+        name: gpt-4o # Use expensive model for critical metric
     - metric: relevance
       threshold: 4.0
       # Uses default gpt-4o-mini
 ```
 
 **Test**:
+
 ```python
 agent = loader.load("evaluation_overrides.yaml")
 
@@ -329,6 +338,7 @@ assert agent.evaluations.metrics[1].model is None  # Fallback to global
 ### Scenario 10: Load Time Performance
 
 **Test**:
+
 ```python
 import time
 
@@ -352,7 +362,7 @@ Run tests with:
 pytest tests/unit/test_config_*.py tests/integration/test_config_*.py -v
 
 # With coverage
-pytest tests/unit/test_config_*.py --cov=agentlab.config --cov-report=html
+pytest tests/unit/test_config_*.py --cov=holodeck.config --cov-report=html
 
 # Watch mode
 pytest-watch tests/unit/test_config_*.py
@@ -388,12 +398,15 @@ tests/fixtures/agents/tools/
 ## Independent Test Criteria (from spec.md)
 
 ✅ **Acceptance Scenario 1**: YAML parses without errors, all sections loaded
+
 - Tests: Scenario 1, 2, 8
 
 ✅ **Acceptance Scenario 2**: Missing fields → clear validation errors
+
 - Tests: Scenario 3, 4, 5, 7c
 
 ✅ **Acceptance Scenario 3**: Configuration applied correctly (provider & model used)
+
 - Tests: Scenario 6, 9 (model selection)
 
 **Definition of Done for US1**: All 3 acceptance scenarios passing with clear error messages.

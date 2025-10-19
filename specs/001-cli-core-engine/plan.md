@@ -11,6 +11,7 @@
 **US1 Goal**: Enable developers to define AI agents through pure YAML configuration. The agent.yaml schema must support model providers (OpenAI, Azure, Anthropic), instructions (file or inline), tool definitions (vectorstore, function, MCP, prompt), and evaluations with flexible model configuration. Configuration MUST be validated with clear error messages. This is foundational—agents cannot execute without a valid configuration.
 
 **Technical Approach**:
+
 1. Design agent.yaml schema (Pydantic models) with comprehensive validation
 2. Implement ConfigLoader to parse YAML and validate against schema
 3. Create type-safe data structures (Agent, Tool, Evaluation, TestCase entities)
@@ -21,6 +22,7 @@
 
 **Language/Version**: Python 3.14+ (per CLAUDE.md)
 **Primary Dependencies**:
+
 - Pydantic v2 (schema validation, data models)
 - PyYAML (configuration parsing)
 - python-dotenv (environment variable support for API keys)
@@ -32,26 +34,28 @@
 **Project Type**: Single Python package (CLI-first)
 **Performance Goals**: Configuration parsing <100ms per agent.yaml file (measured in tests)
 **Constraints**:
+
 - Zero external API calls during config validation (validation must be synchronous, fast)
 - All validation errors must be human-readable (surface Pydantic errors with custom messages)
 - Support for environment variable interpolation in config (e.g., `${OPENAI_API_KEY}`)
 
 **Scale/Scope**:
+
 - Single agent configuration per agent.yaml (no multi-agent mixing in one file)
 - Support up to 50 tools per agent
 - Support up to 100 test cases per agent.yaml
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
-| Principle | Requirement | US1 Status | Justification |
-|-----------|-------------|-----------|---------------|
-| **I. No-Code-First** | Agent config via YAML only, no Python code required | ✅ PASS | Schema driven by Pydantic models; configuration entirely declarative |
-| **II. MCP for APIs** | API integrations use MCP servers, not custom tools | ✅ PASS | US1 defines tool type definitions; MCP tool type already in schema |
-| **III. Test-First Multimodal** | Test cases support multimodal inputs + expected_tools | ✅ PASS | Test case schema includes file support, expected_tools field |
-| **IV. OpenTelemetry Native** | Tracing/metrics instrumentation from day one | ⚠️ DEFERRED | US1 focuses on config schema; observability integration in Phase 3+ (US3) |
-| **V. Evaluation Flexibility** | Model config at 3 levels (global/run/metric) | ✅ PASS | EvaluationMetric schema supports per-metric model override |
+| Principle                      | Requirement                                           | US1 Status  | Justification                                                             |
+| ------------------------------ | ----------------------------------------------------- | ----------- | ------------------------------------------------------------------------- |
+| **I. No-Code-First**           | Agent config via YAML only, no Python code required   | ✅ PASS     | Schema driven by Pydantic models; configuration entirely declarative      |
+| **II. MCP for APIs**           | API integrations use MCP servers, not custom tools    | ✅ PASS     | US1 defines tool type definitions; MCP tool type already in schema        |
+| **III. Test-First Multimodal** | Test cases support multimodal inputs + expected_tools | ✅ PASS     | Test case schema includes file support, expected_tools field              |
+| **IV. OpenTelemetry Native**   | Tracing/metrics instrumentation from day one          | ⚠️ DEFERRED | US1 focuses on config schema; observability integration in Phase 3+ (US3) |
+| **V. Evaluation Flexibility**  | Model config at 3 levels (global/run/metric)          | ✅ PASS     | EvaluationMetric schema supports per-metric model override                |
 
 **Gate Result**: ✅ **PASS** - No blocking violations. Observability deferred to agent execution phase (post-US1).
 
@@ -74,7 +78,7 @@ specs/[###-feature]/
 ### Source Code (repository root)
 
 ```
-src/agentlab/
+src/holodeck/
 ├── config/                           # US1: Configuration loading & validation
 │   ├── __init__.py
 │   ├── schema.py                     # Pydantic models (Agent, Tool, Evaluation, TestCase)
@@ -112,13 +116,14 @@ tests/
 ```
 
 **Structure Decision**: Single Python package (Option 1). US1 requires:
-- `src/agentlab/config/`: Core configuration loading (ConfigLoader, schema validation)
-- `src/agentlab/models/`: Type-safe data models (Pydantic)
+
+- `src/holodeck/config/`: Core configuration loading (ConfigLoader, schema validation)
+- `src/holodeck/models/`: Type-safe data models (Pydantic)
 - `tests/`: Unit + integration tests for config loading and validation
 
 ## Complexity Tracking
 
-*No violations - all constraints can be met.*
+_No violations - all constraints can be met._
 
 ---
 
@@ -147,6 +152,7 @@ All unknowns resolved. No NEEDS CLARIFICATION remaining.
 ### Phase 2: Implementation (Next: `/speckit.tasks`)
 
 Tasks for ConfigLoader implementation:
+
 1. Define Pydantic models (schema.py)
 2. Implement ConfigLoader class (loader.py)
 3. Error handling & validation (validator.py)
@@ -166,25 +172,25 @@ Tasks for ConfigLoader implementation:
 
 ## Design Decisions
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| **Config Schema** | Pydantic v2 | Type-safe, built-in validation, excellent error messages |
-| **YAML Parser** | PyYAML | Industry standard, simple API, adequate performance |
-| **Error Handling** | Custom exceptions + human messages | Constitution requires clear, actionable errors |
+| Decision            | Choice                                     | Rationale                                                   |
+| ------------------- | ------------------------------------------ | ----------------------------------------------------------- |
+| **Config Schema**   | Pydantic v2                                | Type-safe, built-in validation, excellent error messages    |
+| **YAML Parser**     | PyYAML                                     | Industry standard, simple API, adequate performance         |
+| **Error Handling**  | Custom exceptions + human messages         | Constitution requires clear, actionable errors              |
 | **Tool Validation** | Type-discriminated union (Tool type field) | Clean separation of concerns, extensible for new tool types |
-| **File Resolution** | Relative to agent.yaml directory | Portable, matches industry convention (Docker, k8s, etc.) |
-| **Env Var Pattern** | `${VAR_NAME}` | YAML-safe, matches HashiCorp/Terraform convention |
+| **File Resolution** | Relative to agent.yaml directory           | Portable, matches industry convention (Docker, k8s, etc.)   |
+| **Env Var Pattern** | `${VAR_NAME}`                              | YAML-safe, matches HashiCorp/Terraform convention           |
 
 ---
 
 ## Risks & Mitigations
 
-| Risk | Mitigation |
-|------|-----------|
-| Pydantic error messages too technical | Custom validator wraps Pydantic errors in human language |
-| Circular file references | Validate file exists before loading to prevent infinite loops |
-| Large YAML files slow to parse | Performance budget (< 100ms) covered in tests |
-| Complex nested tool validation | Type-discriminated union keeps validation per-tool-type simple |
+| Risk                                  | Mitigation                                                     |
+| ------------------------------------- | -------------------------------------------------------------- |
+| Pydantic error messages too technical | Custom validator wraps Pydantic errors in human language       |
+| Circular file references              | Validate file exists before loading to prevent infinite loops  |
+| Large YAML files slow to parse        | Performance budget (< 100ms) covered in tests                  |
+| Complex nested tool validation        | Type-discriminated union keeps validation per-tool-type simple |
 
 ---
 
@@ -202,6 +208,7 @@ specs/001-cli-core-engine/
 ```
 
 This structure ensures:
+
 - Clear separation of planning (Phase 1) from implementation (Phase 2+)
 - Frozen spec.md vs. living plan.md
 - Design artifacts (data-model, contracts, quickstart) before tasks

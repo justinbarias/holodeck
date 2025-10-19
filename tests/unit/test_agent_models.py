@@ -1,13 +1,13 @@
-"""Tests for Agent model in agentlab.models.agent."""
+"""Tests for Agent model in holodeck.models.agent."""
 
 import pytest
 from pydantic import ValidationError
 
-from agentlab.models.agent import Agent, Instructions
-from agentlab.models.evaluation import EvaluationConfig, EvaluationMetric
-from agentlab.models.llm import LLMProvider, ProviderEnum
-from agentlab.models.test_case import TestCase
-from agentlab.models.tool import VectorstoreTool
+from holodeck.models.agent import Agent, Instructions
+from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
+from holodeck.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.test_case import TestCase
+from holodeck.models.tool import VectorstoreTool
 
 
 class TestInstructions:

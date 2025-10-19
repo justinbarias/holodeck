@@ -1,10 +1,10 @@
-"""Tests for Evaluation models in agentlab.models.evaluation."""
+"""Tests for Evaluation models in holodeck.models.evaluation."""
 
 import pytest
 from pydantic import ValidationError
 
-from agentlab.models.evaluation import EvaluationMetric
-from agentlab.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.evaluation import EvaluationMetric
+from holodeck.models.llm import LLMProvider, ProviderEnum
 
 
 class TestEvaluationMetric:

@@ -1,4 +1,4 @@
-"""Tests for ConfigLoader in agentlab.config.loader."""
+"""Tests for ConfigLoader in holodeck.config.loader."""
 
 import os
 from pathlib import Path
@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 import yaml
 
-from agentlab.config.loader import ConfigLoader
-from agentlab.lib.errors import ConfigError, FileNotFoundError, ValidationError
-from agentlab.models.agent import Agent
+from holodeck.config.loader import ConfigLoader
+from holodeck.lib.errors import ConfigError, FileNotFoundError, ValidationError
+from holodeck.models.agent import Agent
 
 
 class TestParseYaml:
@@ -261,7 +261,7 @@ class TestGlobalConfigLoading:
     def test_load_global_config_from_file(
         self, temp_dir: Path, monkeypatch: Any
     ) -> None:
-        """Test load_global_config reads from ~/.agentlab/config.yaml."""
+        """Test load_global_config reads from ~/.holodeck/config.yaml."""
         global_config = temp_dir / "global_config.yaml"
         config_content = {
             "providers": {"openai": {"api_key": "test-key"}},
@@ -272,10 +272,10 @@ class TestGlobalConfigLoading:
         # Patch the home directory
         monkeypatch.setenv("HOME", str(temp_dir))
 
-        # Create .agentlab directory
-        agentlab_dir = temp_dir / ".agentlab"
-        agentlab_dir.mkdir()
-        actual_config_file = agentlab_dir / "config.yaml"
+        # Create .holodeck directory
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        actual_config_file = holodeck_dir / "config.yaml"
         actual_config_file.write_text(yaml.dump(config_content))
 
         result = loader.load_global_config()
@@ -306,10 +306,10 @@ class TestGlobalConfigLoading:
         monkeypatch.setenv("HOME", str(temp_dir))
         monkeypatch.setenv("TEST_API_KEY", "secret-123")
 
-        # Create .agentlab directory
-        agentlab_dir = temp_dir / ".agentlab"
-        agentlab_dir.mkdir()
-        actual_config_file = agentlab_dir / "config.yaml"
+        # Create .holodeck directory
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        actual_config_file = holodeck_dir / "config.yaml"
         actual_config_file.write_text(config_content)
 
         loader = ConfigLoader()

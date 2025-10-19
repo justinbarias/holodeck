@@ -5,7 +5,7 @@
 **Status**: Draft
 **Input**: Inferred from VISION.md v0.1 roadmap - CLI commands and core agent execution engine
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 <!--
   IMPORTANT: User stories should be PRIORITIZED as user journeys ordered by importance.
@@ -26,12 +26,12 @@ A developer edits the agent.yaml file to configure their AI agent's behavior: mo
 
 **Why this priority**: Core feature required before any agent can run. Enables the no-code vision - users should define agents entirely through YAML.
 
-**Independent Test**: Can be fully tested by editing agent.yaml and running `agentlab test` to verify configuration is parsed and applied correctly. Validates the YAML schema works as intended.
+**Independent Test**: Can be fully tested by editing agent.yaml and running `holodeck test` to verify configuration is parsed and applied correctly. Validates the YAML schema works as intended.
 
 **Acceptance Scenarios**:
 
-1. **Given** an agent.yaml file with model, instructions, and tools defined, **When** AgentLab parses the configuration, **Then** no validation errors occur and all sections are correctly loaded
-2. **Given** an agent.yaml with missing required fields, **When** AgentLab attempts to load it, **Then** clear validation error messages indicate what's missing
+1. **Given** an agent.yaml file with model, instructions, and tools defined, **When** HoloDeck parses the configuration, **Then** no validation errors occur and all sections are correctly loaded
+2. **Given** an agent.yaml with missing required fields, **When** HoloDeck attempts to load it, **Then** clear validation error messages indicate what's missing
 3. **Given** an agent.yaml specifying OpenAI as provider with gpt-4o model, **When** the agent executes, **Then** it uses the configured LLM provider and model
 
 ---
@@ -42,11 +42,11 @@ A developer wants to quickly bootstrap a new AI agent project without writing co
 
 **Why this priority**: Foundational experience - users cannot proceed without this. Essential for onboarding and MVP viability.
 
-**Independent Test**: Can be fully tested by running `agentlab init <name>` and verifying all expected files/directories are created. Delivers immediate value for project setup.
+**Independent Test**: Can be fully tested by running `holodeck init <name>` and verifying all expected files/directories are created. Delivers immediate value for project setup.
 
 **Acceptance Scenarios**:
 
-1. **Given** the user has AgentLab installed, **When** they run `agentlab init customer-support --template conversational`, **Then** a new directory is created with agent.yaml, instructions/, data/, tools/, and tests/ folders
+1. **Given** the user has HoloDeck installed, **When** they run `holodeck init customer-support --template conversational`, **Then** a new directory is created with agent.yaml, instructions/, data/, tools/, and tests/ folders
 2. **Given** the user initializes a project, **When** they examine the generated agent.yaml, **Then** it contains valid YAML structure with model, instructions, and tools sections ready for customization
 3. **Given** the user runs init without specifying a template, **When** the command completes, **Then** a basic default template is used with sensible defaults
 
@@ -54,19 +54,19 @@ A developer wants to quickly bootstrap a new AI agent project without writing co
 
 ### User Story 2.5 - Configure Global Settings (Priority: P1)
 
-A developer wants to configure global AgentLab settings once (API keys, vector store connections, deployment defaults) so they can be reused across multiple agent projects without repeating configuration.
+A developer wants to configure global HoloDeck settings once (API keys, vector store connections, deployment defaults) so they can be reused across multiple agent projects without repeating configuration.
 
 **Why this priority**: Critical for practical multi-project workflows. Developers need centralized credential management before they can use agents across different projects. Essential for MVP user experience.
 
-**Independent Test**: Can be fully tested by creating/updating `~/.agentlab/config.yaml` and verifying that agent projects can load credentials from global config. Validates configuration precedence works correctly.
+**Independent Test**: Can be fully tested by creating/updating `~/.holodeck/config.yaml` and verifying that agent projects can load credentials from global config. Validates configuration precedence works correctly.
 
 **Acceptance Scenarios**:
 
-1. **Given** a user creates `~/.agentlab/config.yaml` with provider credentials, **When** they run an agent that references those providers, **Then** the agent successfully uses credentials from global config
+1. **Given** a user creates `~/.holodeck/config.yaml` with provider credentials, **When** they run an agent that references those providers, **Then** the agent successfully uses credentials from global config
 2. **Given** global config specifies vectorstore connections (Redis, Postgres), **When** an agent.yaml tool references a vectorstore, **Then** the agent uses the connection details from global config
 3. **Given** both global config and agent.yaml specify the same provider, **When** the agent initializes, **Then** agent.yaml settings take precedence over global config
 4. **Given** global config specifies environment variables with `${VARIABLE_NAME}` syntax, **When** the config is loaded, **Then** environment variables are properly substituted
-5. **Given** a developer sets deployment defaults in global config, **When** they run `agentlab deploy`, **Then** the deployment uses those defaults (unless overridden by CLI flags)
+5. **Given** a developer sets deployment defaults in global config, **When** they run `holodeck deploy`, **Then** the deployment uses those defaults (unless overridden by CLI flags)
 
 ---
 
@@ -76,12 +76,12 @@ A developer runs their agent through predefined test cases to verify behavior. T
 
 **Why this priority**: Essential for the hypothesis-driven testing promise. Without this, developers can't validate agent behavior before deployment.
 
-**Independent Test**: Can be fully tested by defining test cases and running `agentlab test agent.yaml`. Validates agents execute correctly and evaluations work.
+**Independent Test**: Can be fully tested by defining test cases and running `holodeck test agent.yaml`. Validates agents execute correctly and evaluations work.
 
 **Acceptance Scenarios**:
 
-1. **Given** test cases with input and ground_truth defined, **When** `agentlab test` executes, **Then** each test case runs and produces agent responses
-2. **Given** test cases with expected_tools specified, **When** the agent executes, **Then** AgentLab tracks which tools were called and compares against expected_tools
+1. **Given** test cases with input and ground_truth defined, **When** `holodeck test` executes, **Then** each test case runs and produces agent responses
+2. **Given** test cases with expected_tools specified, **When** the agent executes, **Then** HoloDeck tracks which tools were called and compares against expected_tools
 3. **Given** evaluations configured in agent.yaml, **When** tests execute, **Then** evaluation metrics (groundedness, relevance, etc.) are calculated and displayed with pass/fail status
 
 ---
@@ -92,11 +92,11 @@ A developer wants to chat with their agent interactively in the terminal to test
 
 **Why this priority**: Important for developer experience and debugging. Enables rapid iteration and learning but not blocking for MVP.
 
-**Independent Test**: Can be fully tested by running `agentlab chat agent.yaml` and having a conversation session. Validates real-time agent interaction works.
+**Independent Test**: Can be fully tested by running `holodeck chat agent.yaml` and having a conversation session. Validates real-time agent interaction works.
 
 **Acceptance Scenarios**:
 
-1. **Given** an initialized agent, **When** the user runs `agentlab chat agent.yaml`, **Then** an interactive prompt appears accepting user input
+1. **Given** an initialized agent, **When** the user runs `holodeck chat agent.yaml`, **Then** an interactive prompt appears accepting user input
 2. **Given** user input in the chat interface, **When** the user sends a message, **Then** the agent processes it and returns a response with visible tool execution
 3. **Given** an active chat session, **When** the user types 'exit', **Then** the session ends gracefully
 
@@ -108,11 +108,11 @@ A developer wants to deploy their tested agent as a running FastAPI server local
 
 **Why this priority**: Enables production validation before cloud deployment. Important for workflow but P2 since initial testing can work without it.
 
-**Independent Test**: Can be fully tested by running `agentlab deploy agent.yaml --port 8000` and hitting the API endpoints with curl/client. Validates local deployment works.
+**Independent Test**: Can be fully tested by running `holodeck deploy agent.yaml --port 8000` and hitting the API endpoints with curl/client. Validates local deployment works.
 
 **Acceptance Scenarios**:
 
-1. **Given** a valid agent.yaml, **When** `agentlab deploy agent.yaml --port 8000` is executed, **Then** a FastAPI server starts and listens on port 8000
+1. **Given** a valid agent.yaml, **When** `holodeck deploy agent.yaml --port 8000` is executed, **Then** a FastAPI server starts and listens on port 8000
 2. **Given** a running deployed agent, **When** a POST request is sent to `/v1/chat` with a message, **Then** the agent processes the request and returns a JSON response
 3. **Given** a deployed agent, **When** a request is sent to `/health`, **Then** the endpoint returns a 200 status indicating the service is healthy
 
@@ -166,7 +166,7 @@ The vectorstore tool supports structured data (CSV, JSON) with flexible field se
 1. **Given** a vectorstore tool with `source: data/articles.json` and `vector_field: content` (flat structure), **When** the agent calls this tool, **Then** the "content" field from each JSON object is embedded
 2. **Given** a nested JSON structure with `record_path: items` and `vector_field: description`, **When** the agent loads the data, **Then** each object in the "items" array is treated as a separate record with its "description" field embedded
 3. **Given** a nested JSON with `record_path: data.records` (dot notation for nested access), **When** the agent executes, **Then** the tool correctly navigates to nested arrays using path notation
-4. **Given** a nested JSON with `record_path: items` and `record_prefix: record_` and `meta_prefix: meta_`, **When** the agent initializes, **Then** fields from record path are prefixed with "record_" and metadata fields are prefixed with "meta_" in the output
+4. **Given** a nested JSON with `record_path: items` and `record_prefix: record_` and `meta_prefix: meta_`, **When** the agent initializes, **Then** fields from record path are prefixed with "record*" and metadata fields are prefixed with "meta*" in the output
 5. **Given** a complex JSON with `meta` specified as `[id, category, tags, author]`, **When** the agent searches, **Then** these fields are stored as metadata and returned with search results without being vectorized
 6. **Given** a JSON with multiple text fields and no explicit `vector_field` specified, **When** the agent initializes, **Then** all text-type fields are combined and vectorized per record
 7. **Given** a JSON structure with mixed data types, **When** the tool processes records, **Then** numeric, boolean, and null fields are included in metadata without vectorization
@@ -248,7 +248,7 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - What happens when an agent.yaml file contains invalid YAML syntax?
 - What happens when a referenced tool file (tools/custom.py) doesn't exist?
 - What happens when the LLM provider API key is missing or invalid?
-- What happens when the global config file `~/.agentlab/config.yaml` doesn't exist? (Should gracefully fall back to env vars or agent.yaml credentials)
+- What happens when the global config file `~/.holodeck/config.yaml` doesn't exist? (Should gracefully fall back to env vars or agent.yaml credentials)
 - What happens when environment variable substitution in global config references an undefined variable?
 - What happens when both global config and agent.yaml specify conflicting credentials? (agent.yaml takes precedence)
 - What happens when a test case references a tool that's not defined in agent.yaml?
@@ -258,7 +258,7 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - How are concurrent requests handled in the deployed API?
 - When a user exits chat mode and re-runs it, should previous conversations be available? (Clarified: No persistence by default in v0.1 to keep implementation lightweight)
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 <!--
   ACTION REQUIRED: The content in this section represents placeholders.
@@ -269,13 +269,13 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 
 **CLI & Project Initialization**
 
-- **FR-001**: System MUST provide `agentlab init <project_name>` command that creates project directory with agent.yaml, instructions/, tools/, tests/, and data/ folders
+- **FR-001**: System MUST provide `holodeck init <project_name>` command that creates project directory with agent.yaml, instructions/, tools/, tests/, and data/ folders
 - **FR-002**: System MUST support multiple project templates (e.g., `--template conversational`, `--template research`, `--template customer-support`) with sensible defaults for each
-- **FR-003**: System MUST provide `agentlab --version` command showing the installed AgentLab version
+- **FR-003**: System MUST provide `holodeck --version` command showing the installed HoloDeck version
 
 **Global Configuration**
 
-- **FR-003a**: System MUST support global configuration file at `~/.agentlab/config.yaml` for provider credentials, vector store connections, and deployment defaults
+- **FR-003a**: System MUST support global configuration file at `~/.holodeck/config.yaml` for provider credentials, vector store connections, and deployment defaults
 - **FR-003b**: System MUST support provider configuration for LLM providers (openai, azure_openai, anthropic) with API keys and endpoints
 - **FR-003c**: System MUST support vectorstore configuration (Redis, Postgres) for vector database connections at the global level
 - **FR-003d**: System MUST support deployment defaults configuration (default_port, rate_limit, auth settings) in global config
@@ -304,7 +304,7 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 
 **Testing & Evaluation**
 
-- **FR-018**: System MUST provide `agentlab test agent.yaml` command that runs all test cases defined in agent.yaml against the agent
+- **FR-018**: System MUST provide `holodeck test agent.yaml` command that runs all test cases defined in agent.yaml against the agent
 - **FR-019**: System MUST support test cases with input, expected_tools, and ground_truth fields for validation
 - **FR-020**: System MUST execute configured evaluation metrics (AI-powered like groundedness/relevance, and NLP-based like F1/BLEU/ROUGE) on test results
 - **FR-020a**: System MUST handle failed evaluation metrics gracefully; failed metrics show "ERROR" status with logged details; test continues to validate agent reasoning even if metrics can't be calculated
@@ -314,7 +314,7 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 
 **Interactive Testing**
 
-- **FR-024**: System MUST provide `agentlab chat agent.yaml` command that starts an interactive terminal session with the agent
+- **FR-024**: System MUST provide `holodeck chat agent.yaml` command that starts an interactive terminal session with the agent
 - **FR-025**: System MUST accept user input in chat mode and display agent responses with visible tool execution trace
 - **FR-026**: System MUST gracefully handle session termination (e.g., 'exit' or Ctrl+C) in chat mode
 - **FR-026a**: System MUST maintain conversation history in chat mode; v0.1 CLI defaults to in-memory storage of last N messages (configurable, e.g., 20 messages)
@@ -322,14 +322,14 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 
 **Local Deployment**
 
-- **FR-027**: System MUST provide `agentlab deploy agent.yaml` command that starts a local FastAPI server with the agent
+- **FR-027**: System MUST provide `holodeck deploy agent.yaml` command that starts a local FastAPI server with the agent
 - **FR-028**: System MUST support `--port` option to specify which port the API server runs on (default: 8000)
 - **FR-029**: System MUST provide `/v1/chat` POST endpoint accepting JSON with message and optional session_id, returning agent response
 - **FR-029a**: System MUST isolate session state per session_id; requests to the same session_id are serialized to prevent race conditions
 - **FR-029b**: System MUST generate and return a session_id in the response if not provided in the request
 - **FR-030**: System MUST provide `/health` GET endpoint returning 200 status when service is running
 - **FR-031**: System MUST include structured JSON logging for all requests/responses in deployed agents with fields: timestamp, request_id, session_id, message_input, tool_calls, response, duration_ms, error
-- **FR-031a**: System MUST rotate logs daily with 7-day retention by default; log location: `~/.agentlab/logs/agent-<name>.log`
+- **FR-031a**: System MUST rotate logs daily with 7-day retention by default; log location: `~/.holodeck/logs/agent-<name>.log`
 - **FR-031b**: System MUST support log configuration in agent.yaml (log_level, rotation_days, retention_days) to override defaults
 
 **Error Handling & Validation**
@@ -347,7 +347,7 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - **Tool**: Represents an agent's capability - can be vectorstore search (type: vectorstore), custom Python function (type: function), MCP integration (type: mcp), or prompt-based semantic function (type: prompt)
 - **TestCase**: Represents a single test scenario with input, optional ground_truth, expected_tools, and evaluation requirements
 - **EvaluationMetric**: Represents a metric that measures test result quality (groundedness, relevance, F1, etc.) with configurable threshold
-- **Project**: Represents the directory structure created by `agentlab init` containing agent.yaml and supporting files
+- **Project**: Represents the directory structure created by `holodeck init` containing agent.yaml and supporting files
 - **SearchResult** (NEW): Represents a vectorstore search result with structured fields: `matched_content` (string), `metadata_dict` (dict), `source_reference` (string), and `relevance_score` (float). Must be modeled as a concrete type/class in implementation for consistent handling across tool execution pipeline
 
 ## Clarifications
@@ -364,7 +364,7 @@ The agent engine loads instructions from a file (typically system-prompt.md) or 
 - Q: What should be the default retry behavior when tools fail? → A: No automatic retries by default. Errors are logged and returned as empty string context to the agent for continued reasoning. This aligns with graceful degradation principle and keeps initial implementation simple. Users can define custom retry logic via middleware hooks if needed.
 - Q: For chat mode in CLI, should conversation history persist across sessions? → A: No persistence by default. Conversation history resets each session. This keeps v0.1 implementation lightweight, prevents unbounded memory growth, and aligns with CLI as an experimentation/exploration tool. Users can enable persistence via agent.yaml configuration if needed in future versions.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 <!--
   ACTION REQUIRED: Define measurable success criteria.

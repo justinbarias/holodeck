@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from agentlab.config.env_loader import substitute_env_vars
-from agentlab.lib.errors import ConfigError
+from holodeck.config.env_loader import substitute_env_vars
+from holodeck.lib.errors import ConfigError
 
 
 class TestSubstituteEnvVars:
