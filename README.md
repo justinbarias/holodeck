@@ -4,7 +4,7 @@
 
 HoloDeck is an open-source experimentation platform that enables teams to create, evaluate, and deploy AI agents through simple YAML configuration. Go from hypothesis to production API in minutes, not weeks.
 
-[![PyPI version](https://badge.fury.io/py/holodeck.svg)](https://badge.fury.io/py/holodeck)
+[![PyPI version](https://badge.fury.io/py/holodeck-ai.svg)](https://badge.fury.io/py/holodeck-ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
