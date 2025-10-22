@@ -51,10 +51,6 @@ files:
     path: data/faqs.md
     template: false
     required: true
-  tests/example_test_cases.yaml:
-    path: tests/example_test_cases.yaml
-    template: true
-    required: true
   .gitignore:
     path: .gitignore
     template: false

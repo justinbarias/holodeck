@@ -25,5 +25,28 @@ tools:
     index: papers
     top_k: 5
 
-# Test Cases
-test_cases: []
+# Test Cases (sample test cases for learning)
+test_cases:
+  - name: "Literature search"
+    input: "Find recent papers on machine learning"
+    expected_tools:
+      - search_papers
+    ground_truth: "Should return top 5 relevant papers on machine learning"
+
+  - name: "Synthesis of findings"
+    input: "Compare approaches to language model optimization"
+    expected_tools:
+      - search_papers
+    ground_truth: "Should identify key papers and synthesize comparison insights"
+
+  - name: "Research gap identification"
+    input: "What are the current gaps in multimodal AI research?"
+    expected_tools:
+      - search_papers
+    ground_truth: "Should identify underexplored areas and suggest research directions"
+
+  - name: "Citation analysis"
+    input: "Who are the key researchers in zero-shot learning?"
+    expected_tools:
+      - search_papers
+    ground_truth: "Should list influential papers and identify key researchers"

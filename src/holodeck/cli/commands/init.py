@@ -32,10 +32,7 @@ from holodeck.models.project_config import ProjectInitInput
     help="Overwrite existing project directory",
 )
 def init(
-    project_name: str,
-    template: str,
-    description: str | None,
-    force: bool,
+    project_name: str, template: str, description: str | None, force: bool
 ) -> None:
     """Initialize a new HoloDeck agent project.
 
@@ -95,9 +92,8 @@ def init(
             click.echo("  2. Edit agent.yaml to configure your agent")
             click.echo("  3. Edit instructions/system-prompt.md to customize behavior")
             click.echo("  4. Add tools in tools/ directory")
-            click.echo(
-                "  5. Run tests with: holodeck test tests/example_test_cases.yaml"
-            )  # noqa: E501
+            click.echo("  5. Update test_cases in agent.yaml")
+            click.echo("  6. Run tests with: holodeck test agent.yaml")
             click.echo()
         else:
             # Display error message

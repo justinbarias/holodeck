@@ -66,25 +66,22 @@ src/holodeck/
 ├── templates/                         # Built-in bundled templates (resources)
 │   ├── __init__.py
 │   ├── conversational/
-│   │   ├── agent.yaml.j2              # Jinja2 template (validates against AgentConfig)
+│   │   ├── agent.yaml.j2              # Jinja2 template with embedded test_cases (validates against AgentConfig)
 │   │   ├── instructions/system-prompt.md.j2
 │   │   ├── tools/README.md.j2
 │   │   ├── data/faqs.md
-│   │   ├── tests/example_test_cases.yaml.j2
 │   │   └── manifest.yaml              # Template metadata (name, description, defaults)
 │   ├── research/
-│   │   ├── agent.yaml.j2
+│   │   ├── agent.yaml.j2              # Jinja2 template with embedded test_cases
 │   │   ├── instructions/system-prompt.md.j2
 │   │   ├── tools/README.md.j2
 │   │   ├── data/papers_index.json
-│   │   ├── tests/example_test_cases.yaml.j2
 │   │   └── manifest.yaml
 │   └── customer-support/
-│       ├── agent.yaml.j2
+│       ├── agent.yaml.j2              # Jinja2 template with embedded test_cases
 │       ├── instructions/system-prompt.md.j2
 │       ├── tools/README.md.j2
 │       ├── data/sample_issues.csv
-│       ├── tests/example_test_cases.yaml.j2
 │       └── manifest.yaml
 └── lib/
     └── template_engine.py             # TemplateRenderer (validates output against AgentConfig model)

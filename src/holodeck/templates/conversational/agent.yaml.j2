@@ -19,5 +19,19 @@ instructions:
 # Tools Configuration (add tools here)
 tools: []
 
-# Test Cases (add test cases here)
-test_cases: []
+# Test Cases (sample test cases for learning)
+test_cases:
+  - name: "Simple greeting"
+    input: "Hello, how are you?"
+    expected_tools: []
+    ground_truth: "Should respond politely and offer assistance"
+
+  - name: "Multi-turn conversation"
+    input: "Can you help me learn Python?"
+    expected_tools: []
+    ground_truth: "Should provide helpful Python learning resources and tips"
+
+  - name: "Handling unknown queries"
+    input: "Can you help me with quantum physics?"
+    expected_tools: []
+    ground_truth: "Should acknowledge the topic and offer to help or clarify limitations"

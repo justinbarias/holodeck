@@ -39,7 +39,9 @@ See `../tools/README.md` for detailed instructions on adding tools.
 
 ### How do I test the agent?
 
-Run: `holodeck test --test-file tests/example_test_cases.yaml`
+Run: `holodeck test agent.yaml`
+
+Test cases are embedded in the `agent.yaml` file under the `test_cases` field.
 
 ### How do I customize the system prompt?
 
@@ -55,7 +57,7 @@ Edit `agent.yaml` and modify the `model` section with your preferred provider an
 
 - Check your system prompt in `instructions/system-prompt.md`
 - Verify tool configurations in `agent.yaml`
-- Review test cases in `tests/example_test_cases.yaml`
+- Review test cases in the `test_cases` field of `agent.yaml`
 
 ### Changes aren't taking effect
 
