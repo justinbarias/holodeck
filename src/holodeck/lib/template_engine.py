@@ -19,7 +19,6 @@ from jinja2 import (
     select_autoescape,
 )
 
-from holodeck.cli.exceptions import InitError, ValidationError
 from holodeck.models.agent import Agent
 
 
@@ -73,6 +72,8 @@ class TemplateRenderer:
             FileNotFoundError: If template file doesn't exist
             InitError: If rendering fails (syntax errors, undefined variables, etc.)
         """
+        from holodeck.cli.exceptions import InitError
+
         template_file = Path(template_path)
 
         if not template_file.exists():
@@ -127,6 +128,8 @@ class TemplateRenderer:
             ValidationError: If YAML is invalid or doesn't match schema
             InitError: If parsing fails
         """
+        from holodeck.cli.exceptions import InitError, ValidationError
+
         try:
             # Parse YAML
             data = yaml.safe_load(yaml_content)
@@ -179,11 +182,13 @@ class TemplateRenderer:
         # Render template first
         rendered = self.render_template(template_path, variables)
 
-        # Determine if this is a YAML file based on template path
+        # Determine if this is agent.yaml specifically (not all YAML files)
         template_file = Path(template_path)
-        is_yaml = template_file.stem.endswith((".yaml", ".yml"))
+        is_agent_yaml = (
+            template_file.name == "agent.yaml.j2" or template_file.stem == "agent.yaml"
+        )
 
-        if is_yaml:
+        if is_agent_yaml:
             # Validate YAML against schema
             # This will raise ValidationError if invalid
             self.validate_agent_config(rendered)

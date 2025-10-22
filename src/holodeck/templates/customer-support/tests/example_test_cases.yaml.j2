@@ -1,0 +1,41 @@
+# Example Test Cases for {{ project_name }}
+# Test cases for customer support agent
+
+test_cases:
+  - name: "Simple issue resolution"
+    input: "I forgot my password, can you help?"
+    expected_tools:
+      - search_kb
+    ground_truth: "Should provide password reset instructions"
+
+  - name: "Account issue acknowledgment"
+    input: "I was charged twice for my order"
+    expected_tools:
+      - lookup_customer
+      - create_ticket
+    ground_truth: "Should acknowledge issue and offer to create support ticket"
+
+  - name: "Knowledge base search"
+    input: "How do I update my billing information?"
+    expected_tools:
+      - search_kb
+    ground_truth: "Should find and provide billing update instructions"
+
+  - name: "Issue requiring escalation"
+    input: "I need to dispute a charge from last month"
+    expected_tools:
+      - lookup_customer
+      - create_ticket
+    ground_truth: "Should create support ticket and offer human escalation"
+
+  - name: "Troubleshooting flow"
+    input: "I can't log into my account"
+    expected_tools:
+      - lookup_customer
+      - search_kb
+    ground_truth: "Should provide troubleshooting steps and offer escalation if needed"
+
+# How to use:
+# 1. Populate data/sample_issues.csv with real support tickets
+# 2. Run: holodeck test --test-file tests/example_test_cases.yaml
+# 3. Evaluate agent responses against ground truth

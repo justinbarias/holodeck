@@ -1,0 +1,29 @@
+# Example Test Cases for {{ project_name }}
+# This file demonstrates how to structure test cases for your agent
+
+test_cases:
+  - name: "Simple greeting"
+    input: "Hello, how are you?"
+    expected_tools: []
+    ground_truth: "Should respond politely and offer assistance"
+
+  - name: "Multi-turn conversation"
+    input: "Can you help me learn Python?"
+    expected_tools: []
+    ground_truth: "Should provide helpful Python learning resources and tips"
+
+  - name: "Handling unknown queries"
+    input: "Can you help me with quantum physics?"
+    expected_tools: []
+    ground_truth: "Should acknowledge the topic and offer to help or clarify limitations"
+
+# How to use these tests:
+# 1. Edit the test cases above to match your agent's capabilities
+# 2. Run: holodeck test --test-file tests/example_test_cases.yaml
+# 3. View results: holodeck test --test-file tests/example_test_cases.yaml --format json
+#
+# You can:
+# - Add more test cases by copying the structure above
+# - Add tools expected to be called in expected_tools
+# - Add input files (images, documents, etc.) to the input section
+# - Set success criteria and evaluation metrics

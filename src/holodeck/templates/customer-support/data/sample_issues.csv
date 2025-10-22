@@ -1,0 +1,19 @@
+customer_id,issue_type,description,priority,status,created_date
+cust_001,password_reset,Customer forgot password and locked out,medium,open,2024-01-15
+cust_002,billing,Double charge on invoice #12345,high,open,2024-01-15
+cust_003,account,Update billing information,low,open,2024-01-15
+cust_004,dispute,Disputed charge from December,high,open,2024-01-15
+cust_005,access,Cannot login to account,medium,open,2024-01-15
+
+# This is sample data to demonstrate the format
+# Replace with real customer support tickets from your system
+#
+# Columns:
+# - customer_id: Unique customer identifier
+# - issue_type: Category of issue (password_reset, billing, account, dispute, access, etc.)
+# - description: Detailed description of the issue
+# - priority: low, medium, high, urgent
+# - status: open, in_progress, resolved, escalated
+# - created_date: When the issue was reported (YYYY-MM-DD format)
+#
+# Use this data for training and testing your support agent
