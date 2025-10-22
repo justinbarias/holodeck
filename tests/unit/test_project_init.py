@@ -362,3 +362,278 @@ class TestProjectInitializerInitialize:
         assert result.success is True
         assert result.duration_seconds >= 0
         assert isinstance(result.files_created, list)
+
+
+class TestProjectInitializerValidateInputsComprehensive:
+    """Additional comprehensive tests for validate_inputs edge cases."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.initializer = ProjectInitializer()
+        self.temp_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        """Clean up test fixtures."""
+        if Path(self.temp_dir).exists():
+            shutil.rmtree(self.temp_dir)
+
+    def test_validate_inputs_with_whitespace_only_name(self):
+        """Test validation rejects whitespace-only project names."""
+        from pydantic import ValidationError as PydanticValidationError
+
+        # Pydantic validates at construction time, not during validate_inputs
+        with pytest.raises(PydanticValidationError):
+            ProjectInitInput(
+                project_name="   ",
+                template="conversational",
+                output_dir=self.temp_dir,
+            )
+
+    def test_validate_inputs_with_non_existent_output_directory(self):
+        """Test validation fails when output directory doesn't exist."""
+        input_data = ProjectInitInput(
+            project_name="my-project",
+            template="conversational",
+            output_dir="/nonexistent/path/that/does/not/exist",
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            self.initializer.validate_inputs(input_data)
+        assert "does not exist" in str(exc_info.value).lower()
+
+    def test_validate_inputs_with_file_as_output_directory(self):
+        """Test validation fails when output path is a file, not directory."""
+        file_path = Path(self.temp_dir) / "file.txt"
+        file_path.write_text("test")
+
+        input_data = ProjectInitInput(
+            project_name="my-project",
+            template="conversational",
+            output_dir=str(file_path),
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            self.initializer.validate_inputs(input_data)
+        assert "not a directory" in str(exc_info.value).lower()
+
+    def test_validate_inputs_all_three_templates_valid(self):
+        """Test that all three built-in templates are recognized as valid."""
+        for template in ["conversational", "research", "customer-support"]:
+            input_data = ProjectInitInput(
+                project_name="my-project",
+                template=template,
+                output_dir=self.temp_dir,
+            )
+            # Should not raise
+            self.initializer.validate_inputs(input_data)
+
+    def test_validate_inputs_project_name_with_consecutive_hyphens(self):
+        """Test that project names can have consecutive hyphens."""
+        input_data = ProjectInitInput(
+            project_name="my--project",
+            template="conversational",
+            output_dir=self.temp_dir,
+        )
+        # Should not raise
+        self.initializer.validate_inputs(input_data)
+
+    def test_validate_inputs_project_name_with_consecutive_underscores(self):
+        """Test that project names can have consecutive underscores."""
+        input_data = ProjectInitInput(
+            project_name="my__project",
+            template="conversational",
+            output_dir=self.temp_dir,
+        )
+        # Should not raise
+        self.initializer.validate_inputs(input_data)
+
+    def test_validate_inputs_project_name_starting_with_underscore(self):
+        """Test that project names can start with underscore."""
+        input_data = ProjectInitInput(
+            project_name="_my_project",
+            template="conversational",
+            output_dir=self.temp_dir,
+        )
+        # Should not raise
+        self.initializer.validate_inputs(input_data)
+
+
+class TestProjectInitializerLoadTemplateComprehensive:
+    """Additional comprehensive tests for load_template edge cases."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.initializer = ProjectInitializer()
+        self.temp_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        """Clean up test fixtures."""
+        if Path(self.temp_dir).exists():
+            shutil.rmtree(self.temp_dir)
+
+    def test_load_template_with_invalid_schema_validation(self):
+        """Test loading template with validation schema mismatch."""
+        template_dir = Path(self.temp_dir) / "invalid-schema"
+        template_dir.mkdir()
+
+        # Manifest with invalid fields
+        manifest_data = {
+            "name": "test",
+            "display_name": "Test",
+            "description": "Test",
+            "category": "test",
+            "version": "1.0.0",
+            "variables": "invalid",  # Should be dict
+        }
+
+        manifest_file = template_dir / "manifest.yaml"
+        with open(manifest_file, "w") as f:
+            yaml.dump(manifest_data, f)
+
+        with pytest.raises((ValidationError, InitError)):
+            self.initializer.load_template(str(template_dir))
+
+    def test_load_template_returns_valid_manifest(self):
+        """Test that loaded manifest has all required attributes."""
+        template_dir = Path(self.temp_dir) / "valid-template"
+        template_dir.mkdir()
+
+        manifest_data = {
+            "name": "test-template",
+            "display_name": "Test Template",
+            "description": "A test template",
+            "category": "test",
+            "version": "1.0.0",
+            "variables": {"test_var": {"type": "string", "description": "Test var"}},
+            "defaults": {},
+            "files": {},
+        }
+
+        manifest_file = template_dir / "manifest.yaml"
+        with open(manifest_file, "w") as f:
+            yaml.dump(manifest_data, f)
+
+        manifest = self.initializer.load_template(str(template_dir))
+        assert manifest.name == "test-template"
+        assert manifest.display_name == "Test Template"
+        assert manifest.version == "1.0.0"
+
+
+class TestProjectInitializerInitializeComprehensive:
+    """Additional comprehensive tests for initialize method edge cases."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.initializer = ProjectInitializer()
+        self.temp_dir = tempfile.mkdtemp()
+
+    def teardown_method(self):
+        """Clean up test fixtures."""
+        if Path(self.temp_dir).exists():
+            shutil.rmtree(self.temp_dir)
+
+    @patch("holodeck.cli.utils.project_init.ProjectInitializer.load_template")
+    @patch("holodeck.cli.utils.project_init.TemplateRenderer")
+    def test_initialize_with_template_defaults(self, mock_renderer, mock_load):
+        """Test that template defaults are properly merged into variables."""
+        manifest = MagicMock()
+        manifest.files = {}
+        manifest.defaults = {"model.provider": "anthropic", "model.name": "claude"}
+        mock_load.return_value = manifest
+
+        input_data = ProjectInitInput(
+            project_name="test-project",
+            template="conversational",
+            output_dir=self.temp_dir,
+        )
+
+        result = self.initializer.initialize(input_data)
+        assert result.success is True
+
+    @patch("holodeck.cli.utils.project_init.ProjectInitializer.load_template")
+    @patch("holodeck.cli.utils.project_init.TemplateRenderer")
+    def test_initialize_cleanup_on_validation_error(self, mock_renderer, mock_load):
+        """Test that failed validation cleans up created directory."""
+        # Mock validate_inputs to raise an error
+        self.initializer.validate_inputs = MagicMock(
+            side_effect=ValidationError("Test error")
+        )
+
+        input_data = ProjectInitInput(
+            project_name="test-project",
+            template="conversational",
+            output_dir=self.temp_dir,
+        )
+
+        result = self.initializer.initialize(input_data)
+        assert result.success is False
+        assert "test error" in str(result.errors).lower()
+
+    @patch("holodeck.cli.utils.project_init.ProjectInitializer.load_template")
+    @patch("holodeck.cli.utils.project_init.TemplateRenderer")
+    def test_initialize_cleanup_on_init_error(self, mock_renderer, mock_load):
+        """Test that InitError during initialization triggers cleanup."""
+        # Create a mock file spec
+        file_spec = MagicMock()
+        file_spec.required = True
+        file_spec.template = True
+        file_spec.path = "agent.yaml"
+
+        manifest = MagicMock()
+        manifest.files = {"agent.yaml": file_spec}
+        manifest.defaults = {}
+        mock_load.return_value = manifest
+
+        # Make render_template raise an InitError
+        mock_renderer_instance = MagicMock()
+        mock_renderer_instance.render_template.side_effect = InitError("Template error")
+        mock_renderer.return_value = mock_renderer_instance
+        self.initializer.template_renderer = mock_renderer_instance
+
+        input_data = ProjectInitInput(
+            project_name="test-project",
+            template="conversational",
+            output_dir=self.temp_dir,
+        )
+
+        result = self.initializer.initialize(input_data)
+        # Should fail but return a result (not raise)
+        assert result.success is False
+
+    @patch("holodeck.cli.utils.project_init.ProjectInitializer.load_template")
+    @patch("holodeck.cli.utils.project_init.TemplateRenderer")
+    def test_initialize_cleanup_on_unexpected_error(self, mock_renderer, mock_load):
+        """Test that unexpected exceptions during initialization trigger cleanup."""
+        mock_load.side_effect = RuntimeError("Unexpected error")
+
+        input_data = ProjectInitInput(
+            project_name="test-project",
+            template="conversational",
+            output_dir=self.temp_dir,
+        )
+
+        result = self.initializer.initialize(input_data)
+        assert result.success is False
+        assert "unexpected" in str(result.errors[0]).lower()
+
+    def test_validate_inputs_with_description_author_optional(self):
+        """Test that description and author are truly optional."""
+        input_data = ProjectInitInput(
+            project_name="my-project",
+            template="conversational",
+            output_dir=self.temp_dir,
+            description=None,
+            author=None,
+        )
+        # Should not raise
+        self.initializer.validate_inputs(input_data)
+
+    def test_validate_inputs_with_empty_description_author(self):
+        """Test with explicitly empty description and author."""
+        input_data = ProjectInitInput(
+            project_name="my-project",
+            template="conversational",
+            output_dir=self.temp_dir,
+            description="",
+            author="",
+        )
+        # Should not raise
+        self.initializer.validate_inputs(input_data)

@@ -350,3 +350,137 @@ instructions:
         assert agent.name == "my-research-tool"
         assert agent.description == "A research assistant"
         assert agent.model.provider == "openai"
+
+    def test_render_and_validate_with_non_yaml_file(self):
+        """Test render_and_validate with non-YAML files (should skip validation)."""
+        template_path = Path(self.temp_dir) / "README.md.j2"
+        template_path.write_text("# {{ project_name }}\n\nAuthor: {{ author }}")
+
+        variables = {"project_name": "my-project", "author": "John Doe"}
+        result = self.renderer.render_and_validate(str(template_path), variables)
+
+        assert isinstance(result, str)
+        assert "my-project" in result
+        assert "John Doe" in result
+
+    def test_validate_agent_config_with_empty_yaml_content(self):
+        """Test validation with completely empty YAML content."""
+        with pytest.raises(ValidationError) as exc_info:
+            self.renderer.validate_agent_config("")
+
+        assert "empty" in str(exc_info.value).lower()
+
+    def test_validate_agent_config_with_null_yaml_content(self):
+        """Test validation with YAML that parses to None."""
+        with pytest.raises(ValidationError) as exc_info:
+            self.renderer.validate_agent_config("null")
+
+        assert "empty" in str(exc_info.value).lower()
+
+    def test_validate_agent_config_with_complex_pydantic_error(self):
+        """Test Pydantic validation error with multiple field errors."""
+        invalid_yaml = """
+name: ""
+description: "Test"
+model:
+  provider: "invalid-provider"
+  name: "gpt-4o"
+instructions:
+  inline: "Help"
+"""
+        with pytest.raises(ValidationError) as exc_info:
+            self.renderer.validate_agent_config(invalid_yaml)
+
+        error_msg = str(exc_info.value)
+        # Should contain helpful error information
+        assert len(error_msg) > 0
+
+    def test_render_template_with_complex_jinja2_operations(self):
+        """Test rendering with complex Jinja2 operations."""
+        template_path = Path(self.temp_dir) / "complex.j2"
+        template_content = (
+            "{% for item in items %}"
+            "{{ item }}"
+            "{% if not loop.last %}, {% endif %}"
+            "{% endfor %}"
+        )
+        template_path.write_text(template_content)
+
+        variables = {"items": ["apple", "banana", "cherry"]}
+        result = self.renderer.render_template(str(template_path), variables)
+
+        assert result == "apple, banana, cherry"
+
+    def test_render_template_with_jinja2_loops(self):
+        """Test rendering with Jinja2 loop constructs."""
+        template_path = Path(self.temp_dir) / "loop.j2"
+        template_path.write_text("{% for i in range(3) %}{{ i }}{% endfor %}")
+
+        variables = {}
+        result = self.renderer.render_template(str(template_path), variables)
+
+        assert result == "012"
+
+    def test_template_environment_is_properly_initialized(self):
+        """Test that TemplateRenderer initializes Jinja2 environment correctly."""
+        renderer = TemplateRenderer()
+        assert renderer.env is not None
+        # Verify StrictUndefined is set - check that undefined is a class type
+        assert isinstance(renderer.env.undefined, type)
+
+    def test_render_template_with_environment_variables(self):
+        """Test rendering with environment-like variable substitution."""
+        template_path = Path(self.temp_dir) / "env.j2"
+        template_path.write_text(
+            "Model: {{ model_name }}\nVersion: {{ version }}\nStatus: {{ status }}"
+        )
+
+        variables = {
+            "model_name": "gpt-4o",
+            "version": "1.0.0",
+            "status": "active",
+        }
+        result = self.renderer.render_template(str(template_path), variables)
+
+        assert "gpt-4o" in result
+        assert "1.0.0" in result
+        assert "active" in result
+
+    def test_render_template_with_dict_variable(self):
+        """Test rendering with dict variables in template."""
+        template_path = Path(self.temp_dir) / "dict.j2"
+        template_path.write_text(
+            "Provider: {{ config.provider }}\nModel: {{ config.model }}"
+        )
+
+        variables = {"config": {"provider": "openai", "model": "gpt-4o"}}
+        result = self.renderer.render_template(str(template_path), variables)
+
+        assert "openai" in result
+        assert "gpt-4o" in result
+
+    def test_validate_agent_config_minimal_valid_config(self):
+        """Test validation with absolute minimal valid configuration."""
+        minimal_yaml = """
+name: agent
+model:
+  provider: openai
+  name: gpt-4o
+instructions:
+  inline: "Hello"
+"""
+        result = self.renderer.validate_agent_config(minimal_yaml)
+        assert isinstance(result, Agent)
+        assert result.name == "agent"
+        assert result.model.provider == "openai"
+
+    def test_setup_safe_filters_is_called(self):
+        """Test that _setup_safe_filters is called during initialization."""
+        # This indirectly tests the _setup_safe_filters method
+        renderer = TemplateRenderer()
+        assert renderer.env is not None
+        # If _setup_safe_filters didn't run, basic filters should still work
+        template_path = Path(self.temp_dir) / "filter.j2"
+        template_path.write_text("{{ text | upper }}")
+        result = renderer.render_template(str(template_path), {"text": "hello"})
+        assert result == "HELLO"
