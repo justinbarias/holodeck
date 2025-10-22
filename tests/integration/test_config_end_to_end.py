@@ -231,6 +231,71 @@ class TestConfigEndToEndWorkflow:
         }
         assert "vectorstore" in tool_types or len(agent.tools) > 0
 
+    def test_end_to_end_api_key_from_global_config_merges_into_agent(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test that api_key from global config merges into agent config.
+
+        Validates:
+        1. Global config with provider api_key is loaded
+        2. Agent config specifies provider without api_key
+        3. ConfigLoader merges api_key from global config into agent's model
+        4. Agent instance has access to merged api_key configuration
+        """
+        # Setup global config with api_key
+        monkeypatch.setenv("HOME", str(temp_dir))
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key-123")
+
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+        global_config_file.write_text(
+            yaml.dump(
+                {
+                    "providers": {
+                        "openai": {
+                            "api_key": "${OPENAI_API_KEY}",
+                            "organization": "test-org",
+                        }
+                    }
+                }
+            )
+        )
+
+        # Setup agent YAML without api_key
+        agent_yaml_dir = temp_dir / "agent_config"
+        agent_yaml_dir.mkdir()
+        agent_yaml_file = agent_yaml_dir / "agent.yaml"
+
+        agent_config = {
+            "name": "api_key_test_agent",
+            "description": "Agent to test api_key merging",
+            "model": {
+                "provider": "openai",
+                "name": "gpt-4o",
+                "temperature": 0.7,
+            },
+            "instructions": {"inline": "You are a helpful assistant."},
+        }
+        agent_yaml_file.write_text(yaml.dump(agent_config))
+
+        # Load agent through ConfigLoader
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml_file))
+
+        # Verify agent loaded successfully
+        assert isinstance(agent, Agent)
+        assert agent.name == "api_key_test_agent"
+        assert agent.model.provider.value == "openai"
+
+        # Verify global config was loaded with api_key
+        global_config = loader.load_global_config()
+        assert "providers" in global_config
+        assert "openai" in global_config["providers"]
+        assert "api_key" in global_config["providers"]["openai"]
+        # After env substitution, api_key should be the actual value
+        assert global_config["providers"]["openai"]["api_key"] == "sk-test-key-123"
+
 
 class TestConfigErrorScenarios:
     """Error scenario tests for configuration loading (T044)."""
