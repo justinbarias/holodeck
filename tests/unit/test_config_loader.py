@@ -477,3 +477,110 @@ instructions:
 
         assert agent.name == "test_agent"
         assert agent.description == "An agent built with env vars"
+
+
+class TestGlobalConfigEmpty:
+    """Tests for empty/malformed global config files."""
+
+    def test_load_global_config_empty_file(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test load_global_config with empty file returns empty dict."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+
+        # Create .holodeck directory
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+        global_config_file.write_text("")  # Empty file
+
+        loader = ConfigLoader()
+        result = loader.load_global_config()
+
+        assert isinstance(result, dict)
+        assert len(result) == 0
+
+    def test_load_global_config_invalid_yaml_syntax(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test load_global_config with invalid YAML syntax raises ConfigError."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+
+        # Create .holodeck directory
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+        global_config_file.write_text("invalid: [yaml: syntax: here")
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.load_global_config()
+
+        assert "global_config_parse" in str(exc_info.value)
+
+
+class TestLoadInstructions:
+    """Tests for load_instructions method."""
+
+    def test_load_instructions_from_file(self, temp_dir: Path) -> None:
+        """Test load_instructions reads from file."""
+        # Create agent.yaml
+        agent_yaml = temp_dir / "agent.yaml"
+        agent_yaml.write_text("")
+
+        # Create instructions file
+        instructions_file = temp_dir / "instructions.md"
+        instructions_content = (
+            "You are a helpful assistant. Always be kind and accurate."
+        )
+        instructions_file.write_text(instructions_content)
+
+        # Create agent with file reference
+        yaml_content = {
+            "name": "test_agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"file": "instructions.md"},
+        }
+        agent_yaml.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        instructions = loader.load_instructions(str(agent_yaml), agent)
+
+        assert instructions == instructions_content
+        assert "helpful assistant" in instructions
+
+    def test_load_instructions_inline(self, temp_dir: Path) -> None:
+        """Test load_instructions returns inline content when present."""
+        agent_yaml = temp_dir / "agent.yaml"
+        inline_content = "You are a test agent with inline instructions."
+
+        yaml_content = {
+            "name": "test_agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": inline_content},
+        }
+        agent_yaml.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        instructions = loader.load_instructions(str(agent_yaml), agent)
+
+        assert instructions == inline_content
+
+    def test_load_instructions_file_not_found(self, temp_dir: Path) -> None:
+        """Test load_instructions raises error when file doesn't exist."""
+        agent_yaml = temp_dir / "agent.yaml"
+
+        yaml_content = {
+            "name": "test_agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"file": "nonexistent.md"},
+        }
+        agent_yaml.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+
+        with pytest.raises(FileNotFoundError):
+            loader.load_instructions(str(agent_yaml), agent)
