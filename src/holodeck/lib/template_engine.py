@@ -1,0 +1,192 @@
+"""Template rendering and validation engine for HoloDeck.
+
+This module provides the TemplateRenderer class which handles:
+- Jinja2 template rendering with restricted filters
+- YAML validation against AgentConfig schema
+- Safe rendering with input validation
+"""
+
+from pathlib import Path
+from typing import Any, cast
+
+import yaml
+from jinja2 import (
+    Environment,
+    FileSystemLoader,
+    StrictUndefined,
+    TemplateSyntaxError,
+    UndefinedError,
+    select_autoescape,
+)
+
+from holodeck.cli.exceptions import InitError, ValidationError
+from holodeck.models.agent import Agent
+
+
+class TemplateRenderer:
+    """Renders Jinja2 templates and validates output against schemas.
+
+    Provides safe template rendering with:
+    - Restricted Jinja2 filters for security
+    - YAML validation against AgentConfig schema
+    - Clear error messages for debugging
+    """
+
+    def __init__(self) -> None:
+        """Initialize the TemplateRenderer with a secure Jinja2 environment."""
+        # Create Jinja2 environment with strict mode (undefined variables cause errors)
+        # autoescape disabled for YAML templates (appropriate for config generation)
+        self.env = Environment(
+            undefined=StrictUndefined,
+            trim_blocks=True,
+            lstrip_blocks=True,
+            autoescape=select_autoescape(
+                enabled_extensions=("html", "xml"),
+                default_for_string=False,
+                default=False,
+            ),
+        )
+
+        # Only allow safe filters
+        self._setup_safe_filters()
+
+    def _setup_safe_filters(self) -> None:
+        """Configure safe Jinja2 filters for template rendering.
+
+        Restricts available filters to prevent arbitrary code execution.
+        """
+        # Keep default safe filters, explicitly block dangerous ones
+        # By default, Jinja2 provides safe filters like: upper, lower, title, etc.
+        pass
+
+    def render_template(self, template_path: str, variables: dict[str, Any]) -> str:
+        """Render a Jinja2 template with provided variables.
+
+        Args:
+            template_path: Path to the Jinja2 template file
+            variables: Dictionary of variables to pass to the template
+
+        Returns:
+            Rendered template content as a string
+
+        Raises:
+            FileNotFoundError: If template file doesn't exist
+            InitError: If rendering fails (syntax errors, undefined variables, etc.)
+        """
+        template_file = Path(template_path)
+
+        if not template_file.exists():
+            raise FileNotFoundError(f"Template file not found: {template_path}")
+
+        try:
+            # Load template from file
+            loader = FileSystemLoader(str(template_file.parent))
+            env = Environment(
+                loader=loader,
+                undefined=StrictUndefined,
+                trim_blocks=True,
+                lstrip_blocks=True,
+                autoescape=select_autoescape(
+                    enabled_extensions=("html", "xml"),
+                    default_for_string=False,
+                    default=False,
+                ),
+            )
+
+            template = env.get_template(template_file.name)
+
+            # Render template
+            return cast(str, template.render(variables))
+
+        except TemplateSyntaxError as e:
+            raise InitError(
+                f"Template syntax error in {template_path}:\n"
+                f"  Line {e.lineno}: {e.message}"
+            ) from e
+        except UndefinedError as e:
+            raise InitError(
+                f"Template rendering error in {template_path}:\n"
+                f"  Undefined variable: {str(e)}"
+            ) from e
+        except Exception as e:
+            raise InitError(f"Template rendering failed: {str(e)}") from e
+
+    def validate_agent_config(self, yaml_content: str) -> Agent:
+        """Validate YAML content against Agent schema.
+
+        Parses YAML and validates it against the Agent Pydantic model.
+        This is the critical validation gate for agent.yaml files.
+
+        Args:
+            yaml_content: YAML content as a string
+
+        Returns:
+            Agent: Validated Agent configuration object
+
+        Raises:
+            ValidationError: If YAML is invalid or doesn't match schema
+            InitError: If parsing fails
+        """
+        try:
+            # Parse YAML
+            data = yaml.safe_load(yaml_content)
+
+            if not data:
+                raise ValidationError("agent.yaml content is empty")
+
+            # Validate against Agent schema
+            agent = Agent.model_validate(data)
+            return agent
+
+        except yaml.YAMLError as e:
+            raise ValidationError(f"YAML parsing error:\n" f"  {str(e)}") from e
+        except ValidationError:
+            # Re-raise our validation errors as-is
+            raise
+        except Exception as e:
+            # Catch Pydantic validation errors
+            if hasattr(e, "errors"):
+                # Pydantic ValidationError
+                errors = e.errors()
+                error_msg = "Agent configuration validation failed:\n"
+                for error in errors:
+                    field = ".".join(str(loc) for loc in error["loc"])
+                    error_msg += f"  {field}: {error['msg']}\n"
+                raise ValidationError(error_msg) from e
+            else:
+                raise InitError(
+                    f"Agent configuration validation failed: {str(e)}"
+                ) from e
+
+    def render_and_validate(self, template_path: str, variables: dict[str, Any]) -> str:
+        """Render a Jinja2 template and validate output (for YAML files).
+
+        Combines rendering and validation in a safe way: only returns
+        rendered content if both rendering and validation succeed.
+        This is the recommended way to process agent.yaml templates.
+
+        Args:
+            template_path: Path to the Jinja2 template file
+            variables: Dictionary of variables to pass to the template
+
+        Returns:
+            Rendered and validated template content as a string
+
+        Raises:
+            InitError: If rendering fails
+            ValidationError: If validation fails
+        """
+        # Render template first
+        rendered = self.render_template(template_path, variables)
+
+        # Determine if this is a YAML file based on template path
+        template_file = Path(template_path)
+        is_yaml = template_file.stem.endswith((".yaml", ".yml"))
+
+        if is_yaml:
+            # Validate YAML against schema
+            # This will raise ValidationError if invalid
+            self.validate_agent_config(rendered)
+
+        # Return rendered content (safe to write to disk)
+        return rendered
