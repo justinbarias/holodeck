@@ -82,17 +82,17 @@ All implementation is test-first. Each task includes:
 
 ### Core Tasks
 
-- [ ] T001 Create Python package structure in `src/holodeck/` with `__init__.py` files and CLI entry point
-- [ ] T002 [P] Add Click, Pyyaml, Jinja2 dependencies to `pyproject.toml` with version pins
-- [ ] T003 [P] Write test for Click CLI group functionality in `tests/unit/test_cli_setup.py`
-- [ ] T004 [P] Implement Click CLI group in `src/holodeck/cli/__init__.py` and register init command (test-driven from T003)
-- [ ] T005 Write tests for exception classes in `tests/unit/test_exceptions.py` (ValidationError, InitError, TemplateError)
-- [ ] T006 Implement base error/exception classes in `src/holodeck/lib/exceptions.py` (test-driven from T005)
-- [ ] T007 [P] Write tests for Pydantic models in `tests/unit/test_models.py`: ProjectInitInput, ProjectInitResult, TemplateManifest
-- [ ] T008 [P] Implement Pydantic models in `src/holodeck/models/project_config.py` and `src/holodeck/models/template_manifest.py` (test-driven from T007)
-- [ ] T009 Setup pytest test structure with conftest.py in `tests/conftest.py` with markers (@pytest.mark.unit, @pytest.mark.integration)
-- [ ] T010 [P] Create `.gitignore` template in `src/holodeck/templates/_static/.gitignore` for all projects
-- [ ] T011 Create test fixtures directory `tests/fixtures/` and `tests/fixtures/conftest.py` with temp project helpers
+- [x] T001 Create Python package structure in `src/holodeck/` with `__init__.py` files and CLI entry point
+- [x] T002 [P] Add Click, Pyyaml, Jinja2 dependencies to `pyproject.toml` with version pins
+- [x] T003 [P] Write test for Click CLI group functionality in `tests/unit/test_cli_setup.py`
+- [x] T004 [P] Implement Click CLI group in `src/holodeck/cli/__init__.py` and register init command (test-driven from T003)
+- [x] T005 Write tests for exception classes in `tests/unit/test_exceptions.py` (ValidationError, InitError, TemplateError)
+- [x] T006 Implement base error/exception classes in `src/holodeck/lib/exceptions.py` (test-driven from T005)
+- [x] T007 [P] Write tests for Pydantic models in `tests/unit/test_models.py`: ProjectInitInput, ProjectInitResult, TemplateManifest
+- [x] T008 [P] Implement Pydantic models in `src/holodeck/models/project_config.py` and `src/holodeck/models/template_manifest.py` (test-driven from T007)
+- [x] T009 Setup pytest test structure with conftest.py in `tests/conftest.py` with markers (@pytest.mark.unit, @pytest.mark.integration)
+- [x] T010 [P] Create `.gitignore` template in `src/holodeck/templates/_static/.gitignore` for all projects
+- [x] T011 Create test fixtures directory `tests/fixtures/` and `tests/fixtures/conftest.py` with temp project helpers
 
 **Acceptance Criteria**:
 - ✓ All imports work without errors
