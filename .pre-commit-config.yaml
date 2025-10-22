@@ -27,4 +27,4 @@ repos:
       - id: mypy
         args: [--ignore-missing-imports, --no-error-summary, --install-types, --non-interactive]
         exclude: ^tests/
-        additional_dependencies: [pydantic>=2.0.0, types-requests]
+        additional_dependencies: [pydantic>=2.0.0, types-requests, types-jinja2]

@@ -7,7 +7,7 @@ This module provides the TemplateRenderer class which handles:
 """
 
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import yaml
 from jinja2 import (
@@ -97,7 +97,7 @@ class TemplateRenderer:
             template = env.get_template(template_file.name)
 
             # Render template
-            return cast(str, template.render(variables))
+            return template.render(variables)
 
         except TemplateSyntaxError as e:
             raise InitError(
