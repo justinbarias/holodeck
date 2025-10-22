@@ -1,3 +1,5 @@
-"""CLI entry point for HoloDeck."""
+"""HoloDeck CLI - Command-line interface for agent initialization."""
 
-__all__: list[str] = []
+from holodeck.cli.main import __version__, main
+
+__all__ = ["main", "__version__"]
