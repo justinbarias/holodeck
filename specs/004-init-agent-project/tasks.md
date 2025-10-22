@@ -109,24 +109,24 @@ All implementation is test-first. Each task includes:
 
 ### Unit Tests First (TDD)
 
-- [ ] T012 Write unit tests for `ProjectInitializer.validate_inputs()` in `tests/unit/test_project_init.py` covering: valid names, invalid names (special chars, leading digits), missing template, directory permissions check
-- [ ] T013 Write unit tests for `ProjectInitializer.load_template()` in `tests/unit/test_project_init.py` covering: valid manifest, missing manifest, malformed YAML
-- [ ] T014 [P] Write unit tests for `ProjectInitializer.initialize()` in `tests/unit/test_project_init.py` covering: successful creation, directory exists (no --force), partial cleanup on error
-- [ ] T015 Write unit tests for `TemplateRenderer.render_template()` in `tests/unit/test_template_engine.py` covering: valid Jinja2 templates, template variable substitution, missing variables
-- [ ] T016 [P] Write unit tests for `TemplateRenderer.validate_agent_config()` in `tests/unit/test_template_engine.py` covering: valid YAML, invalid YAML, schema validation pass/fail
-- [ ] T017 Write unit tests for error handling in `tests/unit/test_template_engine.py` covering: rendering failures, validation failures, clear error messages
+- [x] T012 Write unit tests for `ProjectInitializer.validate_inputs()` in `tests/unit/test_project_init.py` covering: valid names, invalid names (special chars, leading digits), missing template, directory permissions check
+- [x] T013 Write unit tests for `ProjectInitializer.load_template()` in `tests/unit/test_project_init.py` covering: valid manifest, missing manifest, malformed YAML
+- [x] T014 [P] Write unit tests for `ProjectInitializer.initialize()` in `tests/unit/test_project_init.py` covering: successful creation, directory exists (no --force), partial cleanup on error
+- [x] T015 Write unit tests for `TemplateRenderer.render_template()` in `tests/unit/test_template_engine.py` covering: valid Jinja2 templates, template variable substitution, missing variables
+- [x] T016 [P] Write unit tests for `TemplateRenderer.validate_agent_config()` in `tests/unit/test_template_engine.py` covering: valid YAML, invalid YAML, schema validation pass/fail
+- [x] T017 Write unit tests for error handling in `tests/unit/test_template_engine.py` covering: rendering failures, validation failures, clear error messages
 
 ### Core Logic Implementation (TDD)
 
-- [ ] T018 Implement `ProjectInitializer` class in `src/holodeck/cli/utils/project_init.py` with methods: `validate_inputs()`, `load_template()`, `initialize()` to pass T012-T014 tests
-- [ ] T019 Implement `ProjectInitializer.validate_inputs()`: name pattern validation, template existence check, directory permissions check (test-driven from T012)
-- [ ] T020 [P] Implement `ProjectInitializer.load_template()`: load TemplateManifest from YAML, validate manifest schema (test-driven from T013)
-- [ ] T021 Implement `ProjectInitializer.initialize()`: directory creation, file writing, all-or-nothing cleanup semantics (test-driven from T014)
-- [ ] T022 [P] Create `TemplateRenderer` class in `src/holodeck/lib/template_engine.py` with methods: `render_template()`, `validate_agent_config()`, `render_and_validate()` (test-driven from T015-T017)
-- [ ] T023 Implement Jinja2 environment setup with restricted filters for safety in `TemplateRenderer.__init__()` (test-driven from T015)
-- [ ] T024 [P] Implement `validate_agent_config()` method that validates rendered YAML against AgentConfig schema (test-driven from T016)
-- [ ] T025 Implement error handling for template rendering failures with clear messages (test-driven from T017)
-- [ ] T026 [P] Ensure `AgentConfig` model is available: import from core models package or create in `src/holodeck/models/agent_config.py`
+- [x] T018 Implement `ProjectInitializer` class in `src/holodeck/cli/utils/project_init.py` with methods: `validate_inputs()`, `load_template()`, `initialize()` to pass T012-T014 tests
+- [x] T019 Implement `ProjectInitializer.validate_inputs()`: name pattern validation, template existence check, directory permissions check (test-driven from T012)
+- [x] T020 [P] Implement `ProjectInitializer.load_template()`: load TemplateManifest from YAML, validate manifest schema (test-driven from T013)
+- [x] T021 Implement `ProjectInitializer.initialize()`: directory creation, file writing, all-or-nothing cleanup semantics (test-driven from T014)
+- [x] T022 [P] Create `TemplateRenderer` class in `src/holodeck/lib/template_engine.py` with methods: `render_template()`, `validate_agent_config()`, `render_and_validate()` (test-driven from T015-T017)
+- [x] T023 Implement Jinja2 environment setup with restricted filters for safety in `TemplateRenderer.__init__()` (test-driven from T015)
+- [x] T024 [P] Implement `validate_agent_config()` method that validates rendered YAML against AgentConfig schema (test-driven from T016)
+- [x] T025 Implement error handling for template rendering failures with clear messages (test-driven from T017)
+- [x] T026 [P] Ensure `AgentConfig` model is available: import from core models package or create in `src/holodeck/models/agent_config.py`
 
 **Acceptance Criteria**:
 - ✓ All unit tests pass (T012-T017)

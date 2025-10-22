@@ -72,9 +72,12 @@ check_feature_branch() {
         return 0
     fi
 
-    if [[ ! "$branch" =~ ^[0-9]{3}- ]]; then
+    # Allow both patterns:
+    # - 001-feature-name (direct numeric prefix)
+    # - feature/001-feature-name (prefixed with type/ like feature/, bugfix/, etc.)
+    if [[ ! "$branch" =~ ^([0-9]{3}-|[a-zA-Z]+/[0-9]{3}-) ]]; then
         echo "ERROR: Not on a feature branch. Current branch: $branch" >&2
-        echo "Feature branches should be named like: 001-feature-name" >&2
+        echo "Feature branches should be named like: 001-feature-name or feature/001-feature-name" >&2
         return 1
     fi
 
@@ -85,19 +88,27 @@ get_feature_dir() { echo "$1/specs/$2"; }
 
 # Find feature directory by numeric prefix instead of exact branch match
 # This allows multiple branches to work on the same spec (e.g., 004-fix-bug, 004-add-feature)
+# Supports both patterns: 004-feature or feature/004-feature
 find_feature_dir_by_prefix() {
     local repo_root="$1"
     local branch_name="$2"
     local specs_dir="$repo_root/specs"
+    local prefix=""
 
-    # Extract numeric prefix from branch (e.g., "004" from "004-whatever")
-    if [[ ! "$branch_name" =~ ^([0-9]{3})- ]]; then
+    # Extract numeric prefix from branch in two patterns:
+    # Pattern 1: "004-whatever" -> extract "004"
+    # Pattern 2: "feature/004-whatever" -> extract "004"
+    if [[ "$branch_name" =~ ^([0-9]{3})- ]]; then
+        # Direct numeric pattern: 004-whatever
+        prefix="${BASH_REMATCH[1]}"
+    elif [[ "$branch_name" =~ ^[a-zA-Z]+/([0-9]{3})- ]]; then
+        # Prefixed pattern: feature/004-whatever
+        prefix="${BASH_REMATCH[1]}"
+    else
         # If branch doesn't have numeric prefix, fall back to exact match
         echo "$specs_dir/$branch_name"
         return
     fi
-
-    local prefix="${BASH_REMATCH[1]}"
 
     # Search for directories in specs/ that start with this prefix
     local matches=()
