@@ -13,7 +13,7 @@ from pydantic import ValidationError
 @pytest.mark.unit
 def test_project_init_input_model_exists() -> None:
     """Test that ProjectInitInput model can be imported."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     assert ProjectInitInput is not None
 
@@ -21,7 +21,7 @@ def test_project_init_input_model_exists() -> None:
 @pytest.mark.unit
 def test_project_init_result_model_exists() -> None:
     """Test that ProjectInitResult model can be imported."""
-    from holodeck.cli.models import ProjectInitResult
+    from holodeck.models.project_config import ProjectInitResult
 
     assert ProjectInitResult is not None
 
@@ -29,7 +29,7 @@ def test_project_init_result_model_exists() -> None:
 @pytest.mark.unit
 def test_template_manifest_model_exists() -> None:
     """Test that TemplateManifest model can be imported."""
-    from holodeck.cli.models import TemplateManifest
+    from holodeck.models.template_manifest import TemplateManifest
 
     assert TemplateManifest is not None
 
@@ -37,7 +37,7 @@ def test_template_manifest_model_exists() -> None:
 @pytest.mark.unit
 def test_project_init_input_valid_creation() -> None:
     """Test that ProjectInitInput can be created with valid data."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     data = {
         "project_name": "test-project",
@@ -52,7 +52,7 @@ def test_project_init_input_valid_creation() -> None:
 @pytest.mark.unit
 def test_project_init_input_missing_project_name() -> None:
     """Test that ProjectInitInput requires project_name."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     data = {
         "template": "conversational",
@@ -64,7 +64,7 @@ def test_project_init_input_missing_project_name() -> None:
 @pytest.mark.unit
 def test_project_init_input_missing_template() -> None:
     """Test that ProjectInitInput requires template."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     data = {
         "project_name": "test-project",
@@ -76,7 +76,7 @@ def test_project_init_input_missing_template() -> None:
 @pytest.mark.unit
 def test_project_init_result_valid_creation() -> None:
     """Test that ProjectInitResult can be created with valid data."""
-    from holodeck.cli.models import ProjectInitResult
+    from holodeck.models.project_config import ProjectInitResult
 
     data = {
         "success": True,
@@ -98,7 +98,7 @@ def test_project_init_result_valid_creation() -> None:
 @pytest.mark.unit
 def test_template_manifest_valid_creation() -> None:
     """Test that TemplateManifest can be created with valid data."""
-    from holodeck.cli.models import TemplateManifest
+    from holodeck.models.template_manifest import TemplateManifest
 
     data: dict[str, Any] = {
         "name": "conversational",
@@ -131,7 +131,7 @@ def test_template_manifest_valid_creation() -> None:
 @pytest.mark.unit
 def test_project_init_input_optional_fields() -> None:
     """Test that ProjectInitInput allows optional fields."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     data = {
         "project_name": "test-project",
@@ -148,7 +148,7 @@ def test_project_init_input_optional_fields() -> None:
 @pytest.mark.unit
 def test_project_init_input_empty_project_name() -> None:
     """Test that ProjectInitInput rejects empty project name."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     data = {
         "project_name": "",
@@ -162,7 +162,7 @@ def test_project_init_input_empty_project_name() -> None:
 @pytest.mark.unit
 def test_project_init_input_project_name_too_long() -> None:
     """Test that ProjectInitInput rejects overly long project name."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     data = {
         "project_name": "a" * 65,  # Over 64 character limit
@@ -176,7 +176,7 @@ def test_project_init_input_project_name_too_long() -> None:
 @pytest.mark.unit
 def test_project_init_input_project_name_starts_with_digit() -> None:
     """Test that ProjectInitInput rejects project name starting with digit."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     data = {
         "project_name": "123project",
@@ -190,7 +190,7 @@ def test_project_init_input_project_name_starts_with_digit() -> None:
 @pytest.mark.unit
 def test_project_init_input_project_name_invalid_chars() -> None:
     """Test that ProjectInitInput rejects project names with invalid characters."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     invalid_names = [
         "my project",  # space
@@ -212,7 +212,7 @@ def test_project_init_input_project_name_invalid_chars() -> None:
 @pytest.mark.unit
 def test_project_init_input_project_name_valid_special_chars() -> None:
     """Test that ProjectInitInput accepts hyphens and underscores."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     valid_names = [
         "my-project",
@@ -233,7 +233,7 @@ def test_project_init_input_project_name_valid_special_chars() -> None:
 @pytest.mark.unit
 def test_project_init_input_invalid_template() -> None:
     """Test that ProjectInitInput rejects unknown template."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     data = {
         "project_name": "test-project",
@@ -247,7 +247,7 @@ def test_project_init_input_invalid_template() -> None:
 @pytest.mark.unit
 def test_project_init_input_description_too_long() -> None:
     """Test that ProjectInitInput rejects overly long description."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     data = {
         "project_name": "test-project",
@@ -262,7 +262,7 @@ def test_project_init_input_description_too_long() -> None:
 @pytest.mark.unit
 def test_project_init_input_author_too_long() -> None:
     """Test that ProjectInitInput rejects overly long author name."""
-    from holodeck.cli.models import ProjectInitInput
+    from holodeck.models.project_config import ProjectInitInput
 
     data = {
         "project_name": "test-project",
@@ -277,7 +277,7 @@ def test_project_init_input_author_too_long() -> None:
 @pytest.mark.unit
 def test_template_manifest_invalid_version_no_dots() -> None:
     """Test that TemplateManifest rejects version without dots."""
-    from holodeck.cli.models import TemplateManifest
+    from holodeck.models.template_manifest import TemplateManifest
 
     data: dict[str, Any] = {
         "name": "conversational",
@@ -294,7 +294,7 @@ def test_template_manifest_invalid_version_no_dots() -> None:
 @pytest.mark.unit
 def test_template_manifest_invalid_version_too_many_dots() -> None:
     """Test that TemplateManifest rejects version with too many parts."""
-    from holodeck.cli.models import TemplateManifest
+    from holodeck.models.template_manifest import TemplateManifest
 
     data: dict[str, Any] = {
         "name": "conversational",
@@ -311,7 +311,7 @@ def test_template_manifest_invalid_version_too_many_dots() -> None:
 @pytest.mark.unit
 def test_template_manifest_invalid_version_non_integer() -> None:
     """Test that TemplateManifest rejects version with non-integer parts."""
-    from holodeck.cli.models import TemplateManifest
+    from holodeck.models.template_manifest import TemplateManifest
 
     invalid_versions = ["1.a.0", "1.0.b", "a.b.c"]
 
