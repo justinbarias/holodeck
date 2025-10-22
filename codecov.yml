@@ -16,6 +16,11 @@ comment:
   hide_project_coverage: false
 
 status:
-  project: true
-  patch: true
-  changes: true
+  project:
+    default:
+      target: auto
+      threshold: 0%
+  patch:
+    default:
+      target: auto
+      threshold: 0%
