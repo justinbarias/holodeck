@@ -5,6 +5,7 @@ coverage:
 
 ignore:
   - "tests"
+  - ".*/__init__\\.py"
 
 comment:
   layout: "reach,diff,flags,tree"
