@@ -36,7 +36,7 @@ class TestConfigEndToEndWorkflow:
             yaml.dump(
                 {
                     "deployment": {
-                        "environment": "production",
+                        "type": "kubernetes",
                     },
                 }
             )
@@ -449,7 +449,7 @@ class TestConfigPrecedenceScenarios:
             yaml.dump(
                 {
                     "deployment": {
-                        "default_provider": "anthropic",
+                        "type": "azure",
                     },
                 }
             )
