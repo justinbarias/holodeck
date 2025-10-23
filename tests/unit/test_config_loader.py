@@ -1129,3 +1129,215 @@ class TestMergeConfigsAdvanced:
         merged = loader.merge_configs(agent_config, global_config)
 
         assert merged == {}
+
+
+class TestGlobalConfigValidationFailures:
+    """Tests for GlobalConfig validation failure scenarios."""
+
+    def test_load_global_config_invalid_vectorstore_provider(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test load_global_config with empty vectorstore provider."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+
+        # Create .holodeck directory
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+
+        # Invalid config with empty provider
+        config_content = {
+            "vectorstores": {
+                "postgres_store": {
+                    "provider": "",  # Empty provider - invalid
+                    "connection_string": "postgresql://localhost/holodeck",
+                }
+            }
+        }
+        global_config_file.write_text(yaml.dump(config_content))
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.load_global_config()
+
+        assert "global_config_validation" in str(exc_info.value)
+        assert "provider" in str(exc_info.value).lower()
+
+    def test_load_global_config_invalid_vectorstore_connection_string(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test load_global_config with empty vectorstore connection_string."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+
+        # Invalid config with empty connection_string
+        config_content = {
+            "vectorstores": {
+                "postgres_store": {
+                    "provider": "postgres",
+                    "connection_string": "",  # Empty - invalid
+                }
+            }
+        }
+        global_config_file.write_text(yaml.dump(config_content))
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.load_global_config()
+
+        assert "global_config_validation" in str(exc_info.value)
+
+    def test_load_global_config_invalid_deployment_type(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test load_global_config with empty deployment type."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+
+        # Invalid config with empty deployment type
+        config_content = {
+            "deployment": {
+                "type": "",  # Empty - invalid
+                "settings": {"replicas": 3},
+            }
+        }
+        global_config_file.write_text(yaml.dump(config_content))
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.load_global_config()
+
+        assert "global_config_validation" in str(exc_info.value)
+
+    def test_load_global_config_missing_required_vectorstore_field(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test load_global_config with missing required vectorstore field."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+
+        # Missing connection_string - required field
+        config_content = {
+            "vectorstores": {
+                "postgres_store": {
+                    "provider": "postgres",
+                    # Missing required connection_string
+                }
+            }
+        }
+        global_config_file.write_text(yaml.dump(config_content))
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.load_global_config()
+
+        assert "global_config_validation" in str(exc_info.value)
+
+    def test_load_global_config_extra_fields_not_allowed(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test load_global_config rejects extra fields."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+
+        # Config with extra field not in model
+        config_content = {
+            "providers": {
+                "openai": {
+                    "provider": "openai",
+                    "name": "gpt-4o",
+                }
+            },
+            "unknown_field": "should_not_be_allowed",  # Extra field
+        }
+        global_config_file.write_text(yaml.dump(config_content))
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.load_global_config()
+
+        assert "global_config_validation" in str(exc_info.value)
+
+    def test_load_global_config_invalid_llm_provider(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test load_global_config with invalid LLM provider configuration."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+
+        # Invalid LLM provider config - missing required name field
+        config_content = {
+            "providers": {
+                "openai": {
+                    "provider": "openai",
+                    # Missing required name field
+                }
+            }
+        }
+        global_config_file.write_text(yaml.dump(config_content))
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.load_global_config()
+
+        assert "global_config_validation" in str(exc_info.value)
+
+    def test_load_global_config_valid_with_all_sections(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test load_global_config succeeds with all valid sections."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+
+        config_content = {
+            "providers": {
+                "openai": {
+                    "provider": "openai",
+                    "name": "gpt-4o",
+                    "temperature": 0.7,
+                    "max_tokens": 2000,
+                }
+            },
+            "vectorstores": {
+                "postgres_store": {
+                    "provider": "postgres",
+                    "connection_string": "postgresql://localhost/holodeck",
+                    "options": {"pool_size": 10},
+                }
+            },
+            "deployment": {
+                "type": "docker",
+                "settings": {"image": "holodeck:latest"},
+            },
+        }
+        global_config_file.write_text(yaml.dump(config_content))
+
+        loader = ConfigLoader()
+        result = loader.load_global_config()
+
+        assert result is not None
+        assert isinstance(result, GlobalConfig)
+        assert result.providers is not None
+        assert "openai" in result.providers
+        assert result.vectorstores is not None
+        assert "postgres_store" in result.vectorstores
+        assert result.deployment is not None
+        assert result.deployment.type == "docker"
