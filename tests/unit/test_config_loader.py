@@ -10,6 +10,7 @@ import yaml
 from holodeck.config.loader import ConfigLoader
 from holodeck.lib.errors import ConfigError, FileNotFoundError, ValidationError
 from holodeck.models.agent import Agent
+from holodeck.models.config import GlobalConfig
 
 
 class TestParseYaml:
@@ -264,7 +265,12 @@ class TestGlobalConfigLoading:
         """Test load_global_config reads from ~/.holodeck/config.yaml."""
         global_config = temp_dir / "global_config.yaml"
         config_content = {
-            "providers": {"openai": {"api_key": "test-key"}},
+            "providers": {
+                "openai": {
+                    "provider": "openai",
+                    "name": "gpt-4o",
+                }
+            },
         }
         global_config.write_text(yaml.dump(config_content))
 
@@ -280,45 +286,54 @@ class TestGlobalConfigLoading:
 
         result = loader.load_global_config()
 
-        assert isinstance(result, dict)
-        assert "providers" in result
+        assert isinstance(result, GlobalConfig)
+        assert result.providers is not None
+        assert "openai" in result.providers
 
     def test_load_global_config_missing_returns_empty(
         self, temp_dir: Path, monkeypatch: Any
     ) -> None:
-        """Test load_global_config returns empty dict if file missing."""
+        """Test load_global_config returns None if file missing."""
         loader = ConfigLoader()
         monkeypatch.setenv("HOME", str(temp_dir))
 
         result = loader.load_global_config()
 
-        assert isinstance(result, dict)
-        assert len(result) == 0 or result == {}
+        assert result is None
 
     def test_load_global_config_with_env_substitution(
         self, temp_dir: Path, monkeypatch: Any
     ) -> None:
         """Test load_global_config applies env var substitution."""
         global_config = temp_dir / "config.yaml"
-        config_content = "api_key: ${TEST_API_KEY}"
-        global_config.write_text(config_content)
+        config_content = {
+            "providers": {
+                "openai": {
+                    "provider": "openai",
+                    "name": "${TEST_MODEL_NAME}",
+                }
+            }
+        }
+        global_config.write_text(yaml.dump(config_content))
 
         monkeypatch.setenv("HOME", str(temp_dir))
-        monkeypatch.setenv("TEST_API_KEY", "secret-123")
+        monkeypatch.setenv("TEST_MODEL_NAME", "gpt-4o-substituted")
 
         # Create .holodeck directory
         holodeck_dir = temp_dir / ".holodeck"
         holodeck_dir.mkdir()
         actual_config_file = holodeck_dir / "config.yaml"
-        actual_config_file.write_text(config_content)
+        actual_config_file.write_text(yaml.dump(config_content))
 
         loader = ConfigLoader()
         result = loader.load_global_config()
 
-        # After substitution, the api_key should contain the env value
-        if result:
-            result_str = yaml.dump(result)
-            assert "secret-123" in result_str or result.get("api_key") == "secret-123"
+        # After substitution, the name should contain the env value
+        assert result is not None
+        assert isinstance(result, GlobalConfig)
+        assert result.providers is not None
+        assert "openai" in result.providers
+        assert result.providers["openai"].name == "gpt-4o-substituted"
 
 
 class TestConfigPrecedence:
@@ -335,9 +350,15 @@ class TestConfigPrecedence:
             "model": {"provider": "openai", "name": "gpt-4o"},
             "instructions": {"inline": "Test"},
         }
-        global_config = {
-            "providers": {"default": "anthropic"},
+        global_config_dict = {
+            "providers": {
+                "anthropic": {
+                    "provider": "anthropic",
+                    "name": "claude-3-opus",
+                }
+            },
         }
+        global_config = GlobalConfig(**global_config_dict)
 
         loader = ConfigLoader()
         merged = loader.merge_configs(agent_config, global_config)
@@ -350,7 +371,12 @@ class TestConfigPrecedence:
         monkeypatch.setenv("TEST_MODEL", "gpt-4o")
 
         agent_config = {"name": "test"}
-        global_config = {"default_model": "gpt-3.5"}
+        global_config_dict = {
+            "deployment": {
+                "type": "docker",
+            }
+        }
+        global_config = GlobalConfig(**global_config_dict)
 
         loader = ConfigLoader()
         merged = loader.merge_configs(agent_config, global_config)
@@ -365,10 +391,16 @@ class TestConfigPrecedence:
             "model": {"provider": "openai", "name": "gpt-4o"},
             "instructions": {"inline": "Test"},
         }
-        global_config = {
-            "default_temperature": 0.5,
-            "providers": {"openai": {"api_key": "key-123"}},
+        global_config_dict = {
+            "providers": {
+                "openai": {
+                    "provider": "openai",
+                    "name": "gpt-4o",
+                    "temperature": 0.5,
+                }
+            },
         }
+        global_config = GlobalConfig(**global_config_dict)
 
         loader = ConfigLoader()
         merged = loader.merge_configs(agent_config, global_config)
@@ -485,7 +517,7 @@ class TestGlobalConfigEmpty:
     def test_load_global_config_empty_file(
         self, temp_dir: Path, monkeypatch: Any
     ) -> None:
-        """Test load_global_config with empty file returns empty dict."""
+        """Test load_global_config with empty file returns None."""
         monkeypatch.setenv("HOME", str(temp_dir))
 
         # Create .holodeck directory
@@ -497,8 +529,7 @@ class TestGlobalConfigEmpty:
         loader = ConfigLoader()
         result = loader.load_global_config()
 
-        assert isinstance(result, dict)
-        assert len(result) == 0
+        assert result is None
 
     def test_load_global_config_invalid_yaml_syntax(
         self, temp_dir: Path, monkeypatch: Any
