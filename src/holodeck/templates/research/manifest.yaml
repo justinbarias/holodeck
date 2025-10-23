@@ -1,0 +1,57 @@
+# Template Manifest for Research Agent
+# This defines the structure and variables for the research template
+
+name: research
+display_name: Research Agent
+description: AI assistant for document analysis and research
+category: research-analysis
+version: 1.0.0
+
+variables:
+  project_name:
+    type: string
+    description: Name of the agent project
+    required: true
+  description:
+    type: string
+    description: Brief description of the research focus
+    required: false
+    default: "TODO: Add research description"
+  author:
+    type: string
+    description: Name of the researcher/creator
+    required: false
+    default: ""
+  model_temperature:
+    type: number
+    description: Temperature for model responses (0-2)
+    required: false
+    default: 0.3
+
+defaults:
+  model.provider: "openai"
+  model.name: "gpt-4o"
+  model.temperature: 0.3
+  model.max_tokens: 8192
+
+files:
+  agent.yaml:
+    path: agent.yaml
+    template: true
+    required: true
+  instructions/system-prompt.md:
+    path: instructions/system-prompt.md
+    template: true
+    required: true
+  tools/README.md:
+    path: tools/README.md
+    template: true
+    required: true
+  data/papers_index.json:
+    path: data/papers_index.json
+    template: false
+    required: true
+  .gitignore:
+    path: .gitignore
+    template: false
+    required: false

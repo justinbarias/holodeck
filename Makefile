@@ -146,7 +146,7 @@ format-check: ## Check code formatting without changes
 
 type-check: ## Run type checking with mypy
 	@echo "$(GREEN)Running type checks...$(NC)"
-	mypy $(SRC_DIR) --ignore-missing-imports
+	mypy $(SRC_DIR) --ignore-missing-imports --no-error-summary --install-types --non-interactive
 	@echo "$(GREEN)✓ Type checking complete$(NC)"
 
 security: ## Run security checks
@@ -242,7 +242,7 @@ ci-github-annotations: ## Generate GitHub annotations from test/lint results
 		issues = json.load(sys.stdin) if sys.stdin.isatty() == False else []; \
 		[print(f\"::warning file={i['filename']},line={i['location']['row']},col={i['location']['column']},title={i['code']}::{i['message']}\") for i in issues]" 2>/dev/null || true
 	@# Parse mypy output for type errors
-	@mypy $(SRC_DIR) --no-error-summary 2>&1 | \
+	@mypy $(SRC_DIR) --ignore-missing-imports --no-error-summary --install-types --non-interactive 2>&1 | \
 		grep -E "^[^:]+:[0-9]+:" | \
 		while read line; do \
 			file=$$(echo "$$line" | cut -d: -f1); \

@@ -56,16 +56,16 @@ A developer wants to start with a project template tailored to their use case (c
 
 ### User Story 3 - Generate Sample Files and Examples (Priority: P1)
 
-A developer wants to see working examples within their new project - sample instructions, example test cases, and starter data files - so they understand how to configure and use HoloDeck without consulting external documentation.
+A developer wants to see working examples within their new project - sample instructions, example test cases embedded in agent.yaml, and starter data files - so they understand how to configure and use HoloDeck without consulting external documentation.
 
 **Why this priority**: Critical for self-service learning and reducing friction. Examples demonstrate the no-code vision and show best practices. Users can learn by examining the template files.
 
-**Independent Test**: Can be fully tested by running `holodeck init <name> --template <type>` and verifying generated files contain appropriate example content (sample instructions, test case structure, data loading examples). Validates examples are present and properly formatted.
+**Independent Test**: Can be fully tested by running `holodeck init <name> --template <type>` and verifying generated files contain appropriate example content (sample instructions, test cases embedded in agent.yaml, data loading examples). Validates examples are present and properly formatted.
 
 **Acceptance Scenarios**:
 
 1. **Given** a project is initialized with a template, **When** the user examines `instructions/system-prompt.md`, **Then** it contains a well-written system prompt appropriate for the template type that the agent can immediately use
-2. **Given** a project is initialized with a template, **When** the user looks at `tests/example_test_cases.yaml`, **Then** it includes 2-3 sample test cases with input, expected_tools, and ground_truth fields demonstrating the test structure
+2. **Given** a project is initialized with a template, **When** the user examines `agent.yaml`, **Then** it includes a `test_cases` field with 2-3 sample test cases with input, expected_tools, and ground_truth fields demonstrating the test structure
 3. **Given** a project is initialized with a template, **When** the user examines `data/` folder, **Then** it contains example data files (sample CSV, JSON, or markdown) with clear field names and structure appropriate to the template
 4. **Given** the `tools/` directory is created, **When** the user examines it, **Then** it includes a `README.md` or inline comments in `__init__.py` explaining how to add custom Python functions
 5. **Given** the template includes a vector search example, **When** the user examines the sample tool configuration in agent.yaml, **Then** it shows proper syntax with file paths, vector_field, and meta_fields
@@ -124,16 +124,16 @@ A developer wants to provide descriptive metadata about their agent (name, descr
 **CLI Command & Project Creation**
 
 - **FR-001**: System MUST provide `holodeck init <project_name>` command that creates a new project directory with the specified name
-- **FR-002**: System MUST create the following directory structure inside the project directory: `agent.yaml` (configuration file), `instructions/` (folder for system prompts), `tools/` (folder for custom functions), `data/` (folder for data files), `tests/` (folder for test cases)
+- **FR-002**: System MUST create the following directory structure inside the project directory: `agent.yaml` (configuration file), `instructions/` (folder for system prompts), `tools/` (folder for custom functions), `data/` (folder for data files)
 - **FR-003**: System MUST support multiple project templates via `--template <template_name>` option with at least three templates: `conversational`, `research`, and `customer-support`
 - **FR-004**: System MUST use `conversational` as the default template when `--template` is not specified
 - **FR-005**: System MUST validate the project name and reject invalid names (alphanumeric characters, hyphens, and underscores only; no leading numbers)
 
 **Generated Files & Content**
 
-- **FR-006**: System MUST generate a valid agent.yaml file with placeholder sections for model, instructions, and tools
+- **FR-006**: System MUST generate a valid agent.yaml file with placeholder sections for model, instructions, tools, and test_cases
 - **FR-007**: System MUST include a sample system prompt file at `instructions/system-prompt.md` appropriate to the selected template
-- **FR-008**: System MUST include example test cases file at `tests/example_test_cases.yaml` with 2-3 sample test cases showing structure (input, expected_tools, ground_truth)
+- **FR-008**: System MUST include 2-3 sample test cases in the `test_cases` field within agent.yaml showing structure (input, expected_tools, ground_truth)
 - **FR-009**: System MUST include sample data files in the `data/` folder appropriate to the template type
 - **FR-010**: System MUST include a `tools/README.md` explaining how to add custom Python functions
 - **FR-011**: System MUST include a `.gitignore` file excluding standard Python artifacts (.venv/, __pycache__/, *.pyc, .env)
@@ -178,11 +178,11 @@ A developer wants to provide descriptive metadata about their agent (name, descr
 
 - **SC-001**: Developers can initialize a new agent project with a single command and have a working project structure in under 30 seconds
 - **SC-002**: Generated agent.yaml is immediately parseable and contains no validation errors
-- **SC-003**: All generated files (instructions, test cases, data samples) are present and properly formatted
+- **SC-003**: All generated files (instructions, embedded test cases, data samples) are present and properly formatted
 - **SC-004**: At least 80% of first-time users complete project initialization without errors on their first attempt
 - **SC-005**: Users can identify how to customize generated project files within 2 minutes of opening the template
-- **SC-006**: Sample test cases in generated files follow HoloDeck test case schema perfectly (0 schema validation errors)
-- **SC-007**: Users can run `holodeck test` immediately after `holodeck init` without additional setup (leveraging generated example files)
+- **SC-006**: Sample test cases embedded in agent.yaml follow HoloDeck test case schema perfectly (0 schema validation errors)
+- **SC-007**: Users can run `holodeck test` immediately after `holodeck init` without additional setup (leveraging generated example test cases in agent.yaml)
 
 ---
 

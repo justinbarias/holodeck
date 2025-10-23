@@ -1,0 +1,112 @@
+# Support Tools for {{ project_name }}
+
+This directory contains tool definitions for your customer support agent.
+
+## Built-in Tools
+
+Your support agent comes with three essential tools:
+
+### 1. lookup_customer
+Retrieves customer account information
+```python
+lookup_customer(customer_id: str) -> dict
+```
+
+Example:
+```python
+info = lookup_customer("cust_12345")
+# Returns: {name, account_status, recent_purchases, etc.}
+```
+
+### 2. create_ticket
+Creates support tickets for issue tracking
+```python
+create_ticket(customer_id: str, issue_type: str, description: str, priority: str) -> str
+```
+
+Example:
+```python
+ticket_id = create_ticket(
+    customer_id="cust_12345",
+    issue_type="billing",
+    description="Double charge on invoice",
+    priority="high"
+)
+# Returns: "TICKET_98765"
+```
+
+### 3. search_kb
+Searches the knowledge base for solutions
+```python
+search_kb(query: str, category: str = None) -> list
+```
+
+Example:
+```python
+results = search_kb("how to reset password", category="account")
+# Returns: [article1, article2, article3]
+```
+
+## Adding Custom Tools
+
+To add more tools (e.g., billing, returns, shipping):
+
+1. Create a Python function file:
+   ```python
+   # tools/billing_tools.py
+   def get_invoice(invoice_id: str) -> dict:
+       """Retrieve invoice details"""
+       pass
+   ```
+
+2. Register in `agent.yaml`:
+   ```yaml
+   tools:
+     - type: function
+       name: get_invoice
+       description: "Retrieve invoice details"
+   ```
+
+3. Test in your test cases
+
+## Tool Integration Patterns
+
+### Case 1: Simple Lookup + Response
+```
+Customer: "What's my account balance?"
+→ lookup_customer(customer_id)
+→ Return balance from response
+```
+
+### Case 2: Issue Documentation
+```
+Customer: "I want to report a problem"
+→ create_ticket(customer_id, issue_type, description)
+→ Return ticket number and follow-up info
+```
+
+### Case 3: Knowledge Base Search
+```
+Customer: "How do I...?"
+→ search_kb(query)
+→ Return relevant articles
+```
+
+## Testing Tools
+
+Run integration tests with:
+```bash
+holodeck test agent.yaml
+```
+
+Test cases are embedded in `agent.yaml` under the `test_cases` field.
+
+## Best Practices
+
+- Always look up customer before accessing their data
+- Create tickets for complex issues
+- Search KB first before suggesting escalation
+- Confirm customer understands solution
+- Document unusual issues for KB improvement
+
+For more details, see [HoloDeck Customer Support Guide](https://docs.holodeck.dev/customer-support).
