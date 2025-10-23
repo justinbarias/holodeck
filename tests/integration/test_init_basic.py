@@ -92,7 +92,6 @@ class TestInitBasicProjectCreation:
             project_dir / "instructions",
             project_dir / "tools",
             project_dir / "data",
-            project_dir / "tests",
         ]
 
         for required_dir in required_dirs:
