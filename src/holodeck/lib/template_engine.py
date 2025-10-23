@@ -96,7 +96,7 @@ class TemplateRenderer:
             template = env.get_template(template_file.name)
 
             # Render template
-            return cast(str, template.render(variables))
+            return template.render(variables)
 
         except TemplateSyntaxError as e:
             raise InitError(

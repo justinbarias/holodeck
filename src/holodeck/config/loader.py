@@ -150,7 +150,8 @@ class ConfigLoader:
                     error_text = "\n".join(error_messages)
                     raise ConfigError(
                         "global_config_validation",
-                        f"Invalid global configuration in {global_config_path}:\n{error_text}",
+                        f"Invalid global configuration in "
+                        f"{global_config_path}:\n{error_text}",
                     ) from e
         except yaml.YAMLError as e:
             raise ConfigError(
