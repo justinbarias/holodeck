@@ -9,6 +9,7 @@ import yaml
 from holodeck.config.loader import ConfigLoader
 from holodeck.lib.errors import ConfigError, FileNotFoundError
 from holodeck.models.agent import Agent
+from holodeck.models.config import GlobalConfig
 
 
 class TestConfigEndToEndWorkflow:
@@ -35,7 +36,7 @@ class TestConfigEndToEndWorkflow:
             yaml.dump(
                 {
                     "deployment": {
-                        "environment": "production",
+                        "type": "kubernetes",
                     },
                 }
             )
@@ -231,6 +232,73 @@ class TestConfigEndToEndWorkflow:
         }
         assert "vectorstore" in tool_types or len(agent.tools) > 0
 
+    def test_end_to_end_api_key_from_global_config_merges_into_agent(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test that api_key from global config merges into agent config.
+
+        Validates:
+        1. Global config with provider configuration is loaded
+        2. Agent config specifies provider
+        3. ConfigLoader loads global config as GlobalConfig model
+        4. Agent instance is successfully created
+        """
+        # Setup global config with provider configuration
+        monkeypatch.setenv("HOME", str(temp_dir))
+        monkeypatch.setenv("OPENAI_MODEL_NAME", "gpt-4o-global")
+
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        global_config_file = holodeck_dir / "config.yaml"
+        global_config_file.write_text(
+            yaml.dump(
+                {
+                    "providers": {
+                        "openai": {
+                            "provider": "openai",
+                            "name": "${OPENAI_MODEL_NAME}",
+                            "temperature": 0.5,
+                        }
+                    }
+                }
+            )
+        )
+
+        # Setup agent YAML
+        agent_yaml_dir = temp_dir / "agent_config"
+        agent_yaml_dir.mkdir()
+        agent_yaml_file = agent_yaml_dir / "agent.yaml"
+
+        agent_config = {
+            "name": "api_key_test_agent",
+            "description": "Agent to test global config loading",
+            "model": {
+                "provider": "openai",
+                "name": "gpt-4o",
+                "temperature": 0.7,
+            },
+            "instructions": {"inline": "You are a helpful assistant."},
+        }
+        agent_yaml_file.write_text(yaml.dump(agent_config))
+
+        # Load agent through ConfigLoader
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml_file))
+
+        # Verify agent loaded successfully
+        assert isinstance(agent, Agent)
+        assert agent.name == "api_key_test_agent"
+        assert agent.model.provider.value == "openai"
+
+        # Verify global config was loaded as GlobalConfig model
+        global_config = loader.load_global_config()
+        assert isinstance(global_config, GlobalConfig)
+        assert global_config.providers is not None
+        assert "openai" in global_config.providers
+        # After env substitution, name should be the actual value
+        assert global_config.providers["openai"].name == "gpt-4o-global"
+        assert global_config.providers["openai"].temperature == 0.5
+
 
 class TestConfigErrorScenarios:
     """Error scenario tests for configuration loading (T044)."""
@@ -381,7 +449,7 @@ class TestConfigPrecedenceScenarios:
             yaml.dump(
                 {
                     "deployment": {
-                        "default_provider": "anthropic",
+                        "type": "azure",
                     },
                 }
             )

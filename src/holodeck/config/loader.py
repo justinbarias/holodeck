@@ -14,6 +14,7 @@ from holodeck.config.env_loader import substitute_env_vars
 from holodeck.config.validator import flatten_pydantic_errors
 from holodeck.lib.errors import ConfigError, FileNotFoundError
 from holodeck.models.agent import Agent
+from holodeck.models.config import GlobalConfig
 
 
 class ConfigLoader:
@@ -111,32 +112,47 @@ class ConfigLoader:
                 f"Invalid agent configuration in {file_path}:\n{error_text}",
             ) from e
 
-    def load_global_config(self) -> dict[str, Any]:
+    def load_global_config(self) -> GlobalConfig | None:
         """Load global configuration from ~/.holodeck/config.yaml.
 
         Returns:
-            Dictionary containing global configuration, or empty dict if
-            file doesn't exist
+            GlobalConfig instance containing global configuration, or None if
+            file doesn't exist or is empty
 
         Raises:
-            ConfigError: If YAML parsing fails (but not if file is missing)
+            ConfigError: If YAML parsing fails or validation fails
         """
         home_dir = Path.home()
         global_config_path = home_dir / ".holodeck" / "config.yaml"
 
         if not global_config_path.exists():
-            return {}
+            return None
 
         try:
             with open(global_config_path, encoding="utf-8") as f:
                 content = yaml.safe_load(f)
                 if content is None:
-                    return {}
+                    return None
 
                 # Apply environment variable substitution to global config
                 config_str = yaml.dump(content)
                 substituted = substitute_env_vars(config_str)
-                return yaml.safe_load(substituted) or {}
+                config_dict = yaml.safe_load(substituted)
+
+                if not config_dict:
+                    return None
+
+                # Validate and create GlobalConfig instance
+                try:
+                    return GlobalConfig(**config_dict)
+                except PydanticValidationError as e:
+                    error_messages = flatten_pydantic_errors(e)
+                    error_text = "\n".join(error_messages)
+                    raise ConfigError(
+                        "global_config_validation",
+                        f"Invalid global configuration in "
+                        f"{global_config_path}:\n{error_text}",
+                    ) from e
         except yaml.YAMLError as e:
             raise ConfigError(
                 "global_config_parse",
@@ -144,7 +160,7 @@ class ConfigLoader:
             ) from e
 
     def merge_configs(
-        self, agent_config: dict[str, Any], global_config: dict[str, Any]
+        self, agent_config: dict[str, Any], global_config: GlobalConfig | None
     ) -> dict[str, Any]:
         """Merge agent config with global config using proper precedence.
 
@@ -155,7 +171,7 @@ class ConfigLoader:
 
         Args:
             agent_config: Configuration from agent.yaml
-            global_config: Configuration from ~/.holodeck/config.yaml
+            global_config: GlobalConfig instance from ~/.holodeck/config.yaml
 
         Returns:
             Merged configuration dictionary
