@@ -195,3 +195,29 @@ class TemplateRenderer:
 
         # Return rendered content (safe to write to disk)
         return rendered
+
+    @staticmethod
+    def list_available_templates() -> list[str]:
+        """List all available built-in templates.
+
+        Discovers templates from the templates/ directory structure.
+
+        Returns:
+            List of template names (e.g., ['conversational', 'research',
+            'customer-support'])
+        """
+        templates_dir = Path(__file__).parent.parent / "templates"
+
+        if not templates_dir.exists():
+            return []
+
+        # List all directories that have a manifest.yaml (valid templates)
+        templates = []
+        for template_dir in templates_dir.iterdir():
+            if template_dir.is_dir() and not template_dir.name.startswith("_"):
+                # Check if it has manifest.yaml
+                manifest = template_dir / "manifest.yaml"
+                if manifest.exists():
+                    templates.append(template_dir.name)
+
+        return sorted(templates)
