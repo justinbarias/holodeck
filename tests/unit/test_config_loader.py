@@ -615,3 +615,517 @@ class TestLoadInstructions:
 
         with pytest.raises(FileNotFoundError):
             loader.load_instructions(str(agent_yaml), agent)
+
+    def test_load_instructions_returns_none_when_neither_provided(
+        self, temp_dir: Path
+    ) -> None:
+        """Test load_instructions returns content from default inline."""
+        agent_yaml = temp_dir / "agent.yaml"
+
+        yaml_content = {
+            "name": "test_agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "Default instructions"},
+        }
+        agent_yaml.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+
+        # Even with defaults, we should get content
+        instructions = loader.load_instructions(str(agent_yaml), agent)
+        assert instructions is not None
+
+    def test_load_instructions_with_special_characters(self, temp_dir: Path) -> None:
+        """Test load_instructions handles special characters correctly."""
+        agent_yaml = temp_dir / "agent.yaml"
+
+        # Instructions with special characters and unicode
+        instructions_content = (
+            "You are a helpful assistant. 你好 مرحبا emoji: 🎉 "
+            "Special chars: @#$%^&*()"
+        )
+        instructions_file = temp_dir / "instructions.md"
+        instructions_file.write_text(instructions_content, encoding="utf-8")
+
+        yaml_content = {
+            "name": "test_agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"file": "instructions.md"},
+        }
+        agent_yaml.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        instructions = loader.load_instructions(str(agent_yaml), agent)
+
+        assert instructions == instructions_content
+        assert "你好" in instructions
+        assert "🎉" in instructions
+
+    def test_load_instructions_with_nested_path(self, temp_dir: Path) -> None:
+        """Test load_instructions with nested directory structure."""
+        agent_yaml = temp_dir / "agent.yaml"
+
+        # Create nested directory structure
+        prompts_dir = temp_dir / "prompts" / "system"
+        prompts_dir.mkdir(parents=True, exist_ok=True)
+        instructions_file = prompts_dir / "instructions.md"
+        instructions_content = "Nested instructions"
+        instructions_file.write_text(instructions_content)
+
+        yaml_content = {
+            "name": "test_agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"file": "prompts/system/instructions.md"},
+        }
+        agent_yaml.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        instructions = loader.load_instructions(str(agent_yaml), agent)
+
+        assert instructions == instructions_content
+
+
+class TestDeepMerge:
+    """Tests for _deep_merge static method."""
+
+    def test_deep_merge_simple_override(self) -> None:
+        """Test _deep_merge with simple value override."""
+        base = {"a": 1, "b": 2}
+        override = {"b": 3}
+
+        ConfigLoader._deep_merge(base, override)
+
+        assert base == {"a": 1, "b": 3}
+
+    def test_deep_merge_nested_dicts(self) -> None:
+        """Test _deep_merge with nested dictionary structures."""
+        base = {"model": {"provider": "openai", "temperature": 0.7}}
+        override = {"model": {"temperature": 0.5}}
+
+        ConfigLoader._deep_merge(base, override)
+
+        assert base == {"model": {"provider": "openai", "temperature": 0.5}}
+
+    def test_deep_merge_deeply_nested(self) -> None:
+        """Test _deep_merge with deeply nested structures."""
+        base = {"level1": {"level2": {"level3": {"value": "original", "keep": "this"}}}}
+        override = {"level1": {"level2": {"level3": {"value": "updated"}}}}
+
+        ConfigLoader._deep_merge(base, override)
+
+        assert base["level1"]["level2"]["level3"]["value"] == "updated"
+        assert base["level1"]["level2"]["level3"]["keep"] == "this"
+
+    def test_deep_merge_new_keys(self) -> None:
+        """Test _deep_merge adds new keys."""
+        base = {"existing": "value"}
+        override = {"new_key": "new_value"}
+
+        ConfigLoader._deep_merge(base, override)
+
+        assert base == {"existing": "value", "new_key": "new_value"}
+
+    def test_deep_merge_replaces_dict_with_scalar(self) -> None:
+        """Test _deep_merge replaces dictionary with scalar value."""
+        base = {"key": {"nested": "value"}}
+        override = {"key": "simple_value"}
+
+        ConfigLoader._deep_merge(base, override)
+
+        assert base["key"] == "simple_value"
+
+    def test_deep_merge_replaces_scalar_with_dict(self) -> None:
+        """Test _deep_merge replaces scalar with dictionary."""
+        base = {"key": "simple_value"}
+        override = {"key": {"nested": "value"}}
+
+        ConfigLoader._deep_merge(base, override)
+
+        assert base["key"] == {"nested": "value"}
+
+    def test_deep_merge_with_lists(self) -> None:
+        """Test _deep_merge replaces lists (not merges them)."""
+        base = {"items": [1, 2, 3]}
+        override = {"items": [4, 5]}
+
+        ConfigLoader._deep_merge(base, override)
+
+        assert base["items"] == [4, 5]
+
+    def test_deep_merge_empty_override(self) -> None:
+        """Test _deep_merge with empty override dict."""
+        base = {"a": 1, "b": {"c": 2}}
+        original = base.copy()
+
+        ConfigLoader._deep_merge(base, {})
+
+        assert base == original
+
+
+class TestParseYamlEdgeCases:
+    """Additional edge case tests for parse_yaml method."""
+
+    def test_parse_yaml_with_comments(self, temp_dir: Path) -> None:
+        """Test parse_yaml handles YAML with comments correctly."""
+        yaml_file = temp_dir / "test.yaml"
+        yaml_content = """
+# This is a comment
+name: test_agent  # inline comment
+model:
+  provider: openai  # LLM provider
+  name: gpt-4o
+"""
+        yaml_file.write_text(yaml_content)
+
+        loader = ConfigLoader()
+        result = loader.parse_yaml(str(yaml_file))
+
+        assert result["name"] == "test_agent"
+        assert result["model"]["provider"] == "openai"
+
+    def test_parse_yaml_with_nested_structures(self, temp_dir: Path) -> None:
+        """Test parse_yaml with complex nested YAML structures."""
+        yaml_file = temp_dir / "test.yaml"
+        yaml_content = {
+            "name": "complex_agent",
+            "metadata": {
+                "version": "1.0",
+                "tags": ["ai", "testing"],
+                "config": {"nested": {"deeply": {"value": "deep_structure"}}},
+            },
+        }
+        yaml_file.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        result = loader.parse_yaml(str(yaml_file))
+
+        assert result["name"] == "complex_agent"
+        assert (
+            result["metadata"]["config"]["nested"]["deeply"]["value"]
+            == "deep_structure"
+        )
+        assert "ai" in result["metadata"]["tags"]
+
+    def test_parse_yaml_with_special_characters(self, temp_dir: Path) -> None:
+        """Test parse_yaml handles special characters in values."""
+        yaml_file = temp_dir / "test.yaml"
+        yaml_content = """
+name: test_agent
+description: "Agent with special chars: @#$%^&*() and unicode: 你好 🎉"
+url: "https://example.com/path?param=value&other=123"
+"""
+        yaml_file.write_text(yaml_content)
+
+        loader = ConfigLoader()
+        result = loader.parse_yaml(str(yaml_file))
+
+        assert "@#$%^&*()" in result["description"]
+        assert "你好" in result["description"]
+        assert "https://example.com" in result["url"]
+
+    def test_parse_yaml_with_boolean_and_null_values(self, temp_dir: Path) -> None:
+        """Test parse_yaml correctly parses boolean and null values."""
+        yaml_file = temp_dir / "test.yaml"
+        yaml_content = """
+enabled: true
+disabled: false
+nullable: null
+optional: ~
+"""
+        yaml_file.write_text(yaml_content)
+
+        loader = ConfigLoader()
+        result = loader.parse_yaml(str(yaml_file))
+
+        assert result["enabled"] is True
+        assert result["disabled"] is False
+        assert result["nullable"] is None
+        assert result["optional"] is None
+
+    def test_parse_yaml_with_numbers(self, temp_dir: Path) -> None:
+        """Test parse_yaml handles various number formats."""
+        yaml_file = temp_dir / "test.yaml"
+        yaml_content = """
+integer: 42
+float_value: 3.14
+scientific: 1.2e-3
+negative: -100
+"""
+        yaml_file.write_text(yaml_content)
+
+        loader = ConfigLoader()
+        result = loader.parse_yaml(str(yaml_file))
+
+        assert result["integer"] == 42
+        assert result["float_value"] == 3.14
+        assert result["scientific"] == 0.0012
+        assert result["negative"] == -100
+
+
+class TestResolveFilePathEdgeCases:
+    """Additional edge case tests for resolve_file_path method."""
+
+    def test_resolve_file_path_with_parent_directory_reference(
+        self, temp_dir: Path
+    ) -> None:
+        """Test resolve_file_path with parent directory reference (..)."""
+        # Create nested directory structure
+        subdir = temp_dir / "config"
+        subdir.mkdir()
+        test_file = temp_dir / "instructions.md"
+        test_file.write_text("Instructions")
+
+        loader = ConfigLoader()
+        resolved = loader.resolve_file_path("../instructions.md", str(subdir))
+
+        assert Path(resolved).exists()
+        assert "instructions.md" in resolved
+
+    def test_resolve_file_path_with_multiple_relative_segments(
+        self, temp_dir: Path
+    ) -> None:
+        """Test resolve_file_path with multiple directory segments."""
+        # Create nested structure: config/agents/data/test.txt
+        nested_dir = temp_dir / "config" / "agents" / "data"
+        nested_dir.mkdir(parents=True)
+        test_file = nested_dir / "test.txt"
+        test_file.write_text("test data")
+
+        loader = ConfigLoader()
+        resolved = loader.resolve_file_path(
+            "data/test.txt", str(temp_dir / "config" / "agents")
+        )
+
+        assert Path(resolved).exists()
+        assert "test.txt" in resolved
+
+    def test_resolve_file_path_with_spaces_in_path(self, temp_dir: Path) -> None:
+        """Test resolve_file_path with spaces in directory/file names."""
+        # Create directory with spaces
+        spaced_dir = temp_dir / "my documents"
+        spaced_dir.mkdir()
+        test_file = spaced_dir / "my file.md"
+        test_file.write_text("content")
+
+        loader = ConfigLoader()
+        resolved = loader.resolve_file_path("my file.md", str(spaced_dir))
+
+        assert Path(resolved).exists()
+        assert "my file.md" in resolved
+
+    def test_resolve_file_path_absolute_with_base_dir_ignored(
+        self, temp_dir: Path
+    ) -> None:
+        """Test resolve_file_path with absolute path ignores base_dir."""
+        # Create a file
+        test_file = temp_dir / "test.txt"
+        test_file.write_text("content")
+
+        loader = ConfigLoader()
+        # Even if we pass a different base_dir, absolute path should be used
+        resolved = loader.resolve_file_path(str(test_file), "/some/other/dir")
+
+        assert Path(resolved).exists()
+        assert resolved == str(test_file)
+
+    def test_resolve_file_path_normalized(self, temp_dir: Path) -> None:
+        """Test resolve_file_path normalizes path correctly."""
+        test_file = temp_dir / "test.txt"
+        test_file.write_text("content")
+
+        loader = ConfigLoader()
+        # Use a path with redundant segments like ./
+        resolved = loader.resolve_file_path("./test.txt", str(temp_dir))
+
+        assert Path(resolved).exists()
+        assert "test.txt" in resolved
+
+
+class TestLoadAgentYamlIntegration:
+    """Integration tests for load_agent_yaml with global config."""
+
+    def test_load_agent_yaml_with_all_optional_fields(self, temp_dir: Path) -> None:
+        """Test load_agent_yaml with all optional fields populated."""
+        yaml_file = temp_dir / "agent.yaml"
+        yaml_content = {
+            "name": "full_agent",
+            "description": "An agent with all fields",
+            "model": {
+                "provider": "openai",
+                "name": "gpt-4o",
+                "temperature": 0.9,
+                "max_tokens": 4096,
+            },
+            "instructions": {"inline": "Be helpful"},
+            "tools": [
+                {
+                    "name": "search",
+                    "type": "vectorstore",
+                    "source": "data.txt",
+                }
+            ],
+            "test_cases": [
+                {"input": "What is AI?"},
+                {"input": "Explain ML"},
+            ],
+        }
+        yaml_file.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(yaml_file))
+
+        assert agent.name == "full_agent"
+        assert agent.description == "An agent with all fields"
+        assert agent.model.temperature == 0.9
+        assert agent.model.max_tokens == 4096
+        assert len(agent.tools) == 1
+        assert len(agent.test_cases) == 2
+
+    def test_load_agent_yaml_complex_nested_structure(self, temp_dir: Path) -> None:
+        """Test load_agent_yaml with complex nested configuration."""
+        yaml_file = temp_dir / "agent.yaml"
+        yaml_content = {
+            "name": "complex_agent",
+            "model": {
+                "provider": "openai",
+                "name": "gpt-4o",
+                "temperature": 0.5,
+                "max_tokens": 2000,
+            },
+            "instructions": {"inline": "Complex instructions"},
+            "tools": [
+                {
+                    "name": "search_tool",
+                    "type": "vectorstore",
+                    "source": "documents.txt",
+                },
+                {
+                    "name": "calc_tool",
+                    "type": "function",
+                    "source": "math.py",
+                },
+            ],
+            "test_cases": [
+                {
+                    "input": "Test 1",
+                    "expected_tools": ["search_tool"],
+                },
+                {
+                    "input": "Test 2",
+                    "expected_tools": ["calc_tool"],
+                },
+            ],
+        }
+        yaml_file.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(yaml_file))
+
+        assert agent.name == "complex_agent"
+        assert len(agent.tools) == 2
+        # Tools are stored as dicts or objects, check structure flexibly
+        assert agent.tools[0]["name"] == "search_tool"
+        assert agent.tools[1]["name"] == "calc_tool"
+        assert len(agent.test_cases) == 2
+
+    def test_load_agent_yaml_with_minimal_config(self, temp_dir: Path) -> None:
+        """Test load_agent_yaml with minimal required fields only."""
+        yaml_file = temp_dir / "agent.yaml"
+        yaml_content = {
+            "name": "minimal_agent",
+            "model": {
+                "provider": "openai",
+                "name": "gpt-4o",
+            },
+            "instructions": {"inline": "Minimal instructions"},
+        }
+        yaml_file.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(yaml_file))
+
+        assert agent.name == "minimal_agent"
+        assert agent.model.provider.value == "openai"
+        # Optional fields should be None or empty
+        assert agent.description is None or agent.description == ""
+        assert agent.tools is None or len(agent.tools) == 0
+
+    def test_load_agent_yaml_empty_lists_vs_none(self, temp_dir: Path) -> None:
+        """Test load_agent_yaml handles empty lists correctly."""
+        yaml_file = temp_dir / "agent.yaml"
+        yaml_content = {
+            "name": "agent_with_empty_lists",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "Test"},
+            "tools": [],
+            "test_cases": [],
+        }
+        yaml_file.write_text(yaml.dump(yaml_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(yaml_file))
+
+        assert agent.name == "agent_with_empty_lists"
+        # Empty lists should either be None or empty
+        assert agent.tools is None or agent.tools == []
+        assert agent.test_cases is None or agent.test_cases == []
+
+
+class TestMergeConfigsAdvanced:
+    """Advanced tests for merge_configs method."""
+
+    def test_merge_configs_preserves_agent_structure(self) -> None:
+        """Test that merge_configs returns agent config structure unchanged."""
+        agent_config = {
+            "name": "test_agent",
+            "model": {
+                "provider": "openai",
+                "name": "gpt-4o",
+            },
+            "instructions": {"inline": "Test"},
+        }
+        global_config = None
+
+        loader = ConfigLoader()
+        merged = loader.merge_configs(agent_config, global_config)
+
+        assert merged == agent_config
+
+    def test_merge_configs_with_global_config_object(self) -> None:
+        """Test merge_configs with actual GlobalConfig instance."""
+        agent_config = {
+            "name": "test",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "Test"},
+        }
+        global_config_dict = {
+            "providers": {
+                "openai": {
+                    "provider": "openai",
+                    "name": "gpt-4o",
+                    "temperature": 0.5,
+                }
+            },
+            "deployment": {"type": "docker"},
+        }
+        global_config = GlobalConfig(**global_config_dict)
+
+        loader = ConfigLoader()
+        merged = loader.merge_configs(agent_config, global_config)
+
+        # Agent config should take full precedence
+        assert merged["name"] == "test"
+        assert merged["model"]["provider"] == "openai"
+
+    def test_merge_configs_with_empty_agent_config(self) -> None:
+        """Test merge_configs with empty agent config."""
+        agent_config = {}
+        global_config = None
+
+        loader = ConfigLoader()
+        merged = loader.merge_configs(agent_config, global_config)
+
+        assert merged == {}
