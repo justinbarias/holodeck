@@ -1,0 +1,88 @@
+# Tools for {{ project_name }}
+
+This directory contains tool definitions for your agent.
+
+## Overview
+
+Tools extend your agent's capabilities beyond language model responses. This conversational agent template comes with an empty tools directory to get you started.
+
+## Types of Tools
+
+HoloDeck supports several tool types:
+
+### 1. Function Tools
+
+Custom Python functions that your agent can call. Create a new file in this directory:
+
+```python
+# tools/get_weather.py
+def get_weather(location: str) -> str:
+    """Get current weather for a location."""
+    # Implementation here
+    return f"Weather for {location}"
+```
+
+Then reference it in `agent.yaml`:
+
+```yaml
+tools:
+  - type: function
+    name: get_weather
+    description: Get current weather
+```
+
+### 2. Vector Search Tools
+
+Search semantic databases for relevant information:
+
+```yaml
+tools:
+  - type: vector_search
+    name: search_docs
+    vector_store: postgres  # or redis
+    index: documentation
+```
+
+### 3. MCP (Model Context Protocol) Tools
+
+Use standardized MCP servers for integrations:
+
+```yaml
+tools:
+  - type: mcp
+    name: filesystem
+    server: stdio
+    command: mcp-filesystem
+```
+
+### 4. Prompt-Based Tools
+
+AI-powered semantic functions defined via templates:
+
+```yaml
+tools:
+  - type: prompt
+    name: summarize
+    template: tools/summarize.md
+```
+
+## Getting Started
+
+1. **For simple functions**: Add Python files here and reference in `agent.yaml`
+2. **For vector search**: Set up a Postgres or Redis instance and configure in agent.yaml
+3. **For external APIs**: Use MCP servers for standard integrations
+4. **For AI functions**: Create template-based tools for semantic operations
+
+## Testing Tools
+
+Once you've added tools, test them using:
+
+```bash
+holodeck test agent.yaml
+```
+
+Example test cases are embedded in `agent.yaml` under the `test_cases` field. Edit them to test your tools.
+
+## Documentation
+
+For more information on tools in HoloDeck, see the [HoloDeck documentation](https://docs.holodeck.dev).

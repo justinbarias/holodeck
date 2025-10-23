@@ -146,25 +146,25 @@ All implementation is test-first. Each task includes:
 
 ### Integration Tests First (TDD)
 
-- [ ] T027 [US1] Write integration test for basic project creation in `tests/integration/test_init_basic.py`: verify `holodeck init test-project` creates directory, agent.yaml, and all folders
-- [ ] T028 [US1] Write integration test for default template selection in `tests/integration/test_init_basic.py`: verify conversational is default when --template omitted
-- [ ] T029 [US1] [P] Write integration test for overwrite behavior in `tests/integration/test_init_basic.py`: prompt user when dir exists, accept --force flag
-- [ ] T030 [US1] Write integration test for success message in `tests/integration/test_init_basic.py`: verify output shows location and next steps
-- [ ] T031 [US1] Write integration test for Ctrl+C handling in `tests/integration/test_init_basic.py`: verify cleanup on interrupt
+- [x] T027 [US1] Write integration test for basic project creation in `tests/integration/test_init_basic.py`: verify `holodeck init test-project` creates directory, agent.yaml, and all folders
+- [x] T028 [US1] Write integration test for default template selection in `tests/integration/test_init_basic.py`: verify conversational is default when --template omitted
+- [x] T029 [US1] [P] Write integration test for overwrite behavior in `tests/integration/test_init_basic.py`: prompt user when dir exists, accept --force flag
+- [x] T030 [US1] Write integration test for success message in `tests/integration/test_init_basic.py`: verify output shows location and next steps
+- [x] T031 [US1] Write integration test for Ctrl+C handling in `tests/integration/test_init_basic.py`: verify cleanup on interrupt
 
 ### Template Creation (TDD)
 
-- [ ] T032 [US1] Create default `conversational` template directory structure in `src/holodeck/templates/conversational/` (with tests from T027-T031)
-- [ ] T033 [US1] Create `conversational/manifest.yaml` with template metadata, variables, and file list in `src/holodeck/templates/conversational/manifest.yaml`
-- [ ] T034 [US1] Create `conversational/agent.yaml.j2` Jinja2 template with default model (OpenAI), instructions placeholder, and tools section in `src/holodeck/templates/conversational/agent.yaml.j2`
-- [ ] T035 [US1] Create `conversational/instructions/system-prompt.md.j2` with sample conversational system prompt in `src/holodeck/templates/conversational/instructions/system-prompt.md.j2`
+- [x] T032 [US1] Create default `conversational` template directory structure in `src/holodeck/templates/conversational/` (with tests from T027-T031)
+- [x] T033 [US1] Create `conversational/manifest.yaml` with template metadata, variables, and file list in `src/holodeck/templates/conversational/manifest.yaml`
+- [x] T034 [US1] Create `conversational/agent.yaml.j2` Jinja2 template with default model (OpenAI), instructions placeholder, and tools section in `src/holodeck/templates/conversational/agent.yaml.j2`
+- [x] T035 [US1] Create `conversational/instructions/system-prompt.md.j2` with sample conversational system prompt in `src/holodeck/templates/conversational/instructions/system-prompt.md.j2`
 
 ### CLI Implementation (TDD)
 
-- [ ] T036 [US1] Implement Click command in `src/holodeck/cli/commands/init.py` with arguments (project_name) and options (--template, --description, --author, --force) to pass T027-T031 tests
-- [ ] T037 [US1] [P] Implement command handler that calls `ProjectInitializer.initialize()` and formats result messages in `src/holodeck/cli/commands/init.py` (test-driven from T030)
-- [ ] T038 [US1] Implement overwrite prompt when directory exists (unless --force) in `src/holodeck/cli/commands/init.py` (test-driven from T029)
-- [ ] T039 [US1] Handle Ctrl+C gracefully with cleanup in `src/holodeck/cli/commands/init.py` (test-driven from T031)
+- [x] T036 [US1] Implement Click command in `src/holodeck/cli/commands/init.py` with arguments (project_name) and options (--template, --description, --author, --force) to pass T027-T031 tests
+- [x] T037 [US1] [P] Implement command handler that calls `ProjectInitializer.initialize()` and formats result messages in `src/holodeck/cli/commands/init.py` (test-driven from T030)
+- [x] T038 [US1] Implement overwrite prompt when directory exists (unless --force) in `src/holodeck/cli/commands/init.py` (test-driven from T029)
+- [x] T039 [US1] Handle Ctrl+C gracefully with cleanup in `src/holodeck/cli/commands/init.py` (test-driven from T031)
 
 **Acceptance Criteria (US1)**:
 - ✓ All integration tests pass (T027-T031)
@@ -235,13 +235,13 @@ All implementation is test-first. Each task includes:
 - [ ] T061 [US3] Create `conversational/instructions/system-prompt.md.j2` with detailed conversational agent instructions in `src/holodeck/templates/conversational/instructions/system-prompt.md.j2` (test-driven from T058)
 - [ ] T062 [US3] Create `conversational/tools/README.md.j2` with instructions for adding custom functions in `src/holodeck/templates/conversational/tools/README.md.j2` (test-driven from T056)
 - [ ] T063 [US3] Create `conversational/data/faqs.md` with sample FAQ data for vector search in `src/holodeck/templates/conversational/data/faqs.md` (test-driven from T059)
-- [ ] T064 [US3] Create `conversational/tests/example_test_cases.yaml.j2` with 2-3 sample test cases in `src/holodeck/templates/conversational/tests/example_test_cases.yaml.j2` (test-driven from T057)
+- [ ] T064 [US3] Update `conversational/agent.yaml.j2` to include 2-3 sample test cases in `test_cases` field in `src/holodeck/templates/conversational/agent.yaml.j2` (test-driven from T057)
 - [ ] T065 [US3] [P] Create `research/tools/README.md.j2` in `src/holodeck/templates/research/tools/README.md.j2` (test-driven from T056)
 - [ ] T066 [US3] Create `research/data/papers_index.json` with sample research papers index in `src/holodeck/templates/research/data/papers_index.json` (test-driven from T059)
-- [ ] T067 [US3] Create `research/tests/example_test_cases.yaml.j2` with research-focused test cases in `src/holodeck/templates/research/tests/example_test_cases.yaml.j2` (test-driven from T057)
+- [ ] T067 [US3] Update `research/agent.yaml.j2` to include research-focused test cases in `test_cases` field in `src/holodeck/templates/research/agent.yaml.j2` (test-driven from T057)
 - [ ] T068 [US3] Create `customer-support/tools/README.md.j2` in `src/holodeck/templates/customer-support/tools/README.md.j2` (test-driven from T056)
 - [ ] T069 [US3] Create `customer-support/data/sample_issues.csv` with sample customer issues in `src/holodeck/templates/customer-support/data/sample_issues.csv` (test-driven from T059)
-- [ ] T070 [US3] Create `customer-support/tests/example_test_cases.yaml.j2` with support ticket test cases in `src/holodeck/templates/customer-support/tests/example_test_cases.yaml.j2` (test-driven from T057)
+- [ ] T070 [US3] Update `customer-support/agent.yaml.j2` to include support ticket test cases in `test_cases` field in `src/holodeck/templates/customer-support/agent.yaml.j2` (test-driven from T057)
 
 ### Template Manifest Updates (TDD)
 

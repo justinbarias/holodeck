@@ -1,0 +1,64 @@
+# Research Tools for {{ project_name }}
+
+This directory contains tool definitions for your research agent.
+
+## Tools Configuration
+
+Your research agent comes configured with a vector search tool for semantic document search.
+
+### Vector Search Tool
+
+The agent has access to:
+- **search_papers**: Search the research paper database
+  - Returns top 5 most relevant papers
+  - Uses semantic similarity matching
+  - Requires: Postgres vector database
+
+## Setting Up Vector Search
+
+1. **Initialize the vector database**:
+   ```bash
+   holodeck setup-vector-store postgres --index papers
+   ```
+
+2. **Load documents**:
+   ```bash
+   holodeck load-documents data/papers_index.json --index papers
+   ```
+
+3. **Test the search**:
+   ```bash
+   holodeck test agent.yaml
+   ```
+
+## Adding More Tools
+
+For additional tools, follow the patterns in the main HoloDeck documentation:
+
+### Function Tools
+Create Python files to add custom functions your agent can call.
+
+### MCP (Model Context Protocol) Tools
+Use standardized integrations for external services:
+- GitHub API
+- Filesystem access
+- Database queries
+- Custom servers
+
+### Prompt-Based Tools
+Define semantic functions via templates for NLP tasks.
+
+## Limitations
+
+- Vector search requires pre-loaded documents
+- Search quality depends on document indexing
+- Custom tools need to be registered in agent.yaml
+
+## Next Steps
+
+1. Populate `data/papers_index.json` with your research papers
+2. Update vector store with document embeddings
+3. Test with the test cases in agent.yaml
+4. Add more tools as needed
+
+For full documentation, see [HoloDeck Tools Guide](https://docs.holodeck.dev/tools).

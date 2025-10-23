@@ -4,7 +4,13 @@ This module implements the 'holodeck init' command which creates a new
 project directory with templates, configuration, and example files.
 """
 
+from pathlib import Path
+
 import click
+
+from holodeck.cli.exceptions import InitError, ValidationError
+from holodeck.cli.utils.project_init import ProjectInitializer
+from holodeck.models.project_config import ProjectInitInput
 
 
 @click.command(name="init")
@@ -21,21 +27,12 @@ import click
     help="Brief description of the agent",
 )
 @click.option(
-    "--author",
-    default=None,
-    help="Project creator name",
-)
-@click.option(
     "--force",
     is_flag=True,
     help="Overwrite existing project directory",
 )
 def init(
-    project_name: str,
-    template: str,
-    description: str | None,
-    author: str | None,
-    force: bool,
+    project_name: str, template: str, description: str | None, force: bool
 ) -> None:
     """Initialize a new HoloDeck agent project.
 
@@ -45,14 +42,80 @@ def init(
 
         holodeck init my-agent
 
-        holodeck init my-agent --template research --author "Jane Doe"
+        holodeck init my-agent --template research --description "My AI assistant"
     """
-    # Placeholder - implementation will be in T036-T039
-    click.echo(f"Initializing project: {project_name}")
-    click.echo(f"Template: {template}")
-    if description:
-        click.echo(f"Description: {description}")
-    if author:
-        click.echo(f"Author: {author}")
-    if force:
-        click.echo("Force mode enabled")
+    try:
+        # Get current working directory as output directory
+        output_dir = Path.cwd()
+
+        # Check if project directory already exists (unless force)
+        project_dir = output_dir / project_name
+        if project_dir.exists() and not force:
+            # Prompt user for confirmation
+            if click.confirm(
+                f"Project directory '{project_name}' already exists. "
+                "Do you want to overwrite it?",
+                default=False,
+            ):
+                force = True
+            else:
+                click.echo("Initialization cancelled.")
+                return
+
+        # Create project initialization input
+        init_input = ProjectInitInput(
+            project_name=project_name,
+            template=template,
+            description=description,
+            author="",
+            output_dir=str(output_dir),
+            overwrite=force,
+        )
+
+        # Initialize project
+        initializer = ProjectInitializer()
+        result = initializer.initialize(init_input)
+
+        # Handle result
+        if result.success:
+            # Display success message
+            click.echo()  # Blank line for readability
+            click.secho("✓ Project initialized successfully!", fg="green", bold=True)
+            click.echo()
+            click.echo(f"Project: {result.project_name}")
+            click.echo(f"Location: {result.project_path}")
+            click.echo(f"Template: {result.template_used}")
+            click.echo(f"Time: {result.duration_seconds:.2f}s")
+            click.echo()
+            click.echo("Next steps:")
+            click.echo(f"  1. cd {result.project_name}")
+            click.echo("  2. Edit agent.yaml to configure your agent")
+            click.echo("  3. Edit instructions/system-prompt.md to customize behavior")
+            click.echo("  4. Add tools in tools/ directory")
+            click.echo("  5. Update test_cases in agent.yaml")
+            click.echo("  6. Run tests with: holodeck test agent.yaml")
+            click.echo()
+        else:
+            # Display error message
+            click.secho("✗ Project initialization failed", fg="red", bold=True)
+            click.echo()
+            for error in result.errors:
+                click.secho(f"Error: {error}", fg="red")
+            click.echo()
+            raise click.Abort()
+
+    except KeyboardInterrupt as e:
+        # Handle Ctrl+C gracefully with cleanup
+        click.echo()
+        click.secho("Initialization cancelled by user.", fg="yellow")
+        raise click.Abort() from e
+
+    except (ValidationError, InitError) as e:
+        # Handle known errors
+        click.secho(f"Error: {str(e)}", fg="red")
+        raise click.Abort() from e
+
+    except Exception as e:
+        # Handle unexpected errors
+        click.secho(f"Unexpected error: {str(e)}", fg="red")
+        raise click.Abort() from e

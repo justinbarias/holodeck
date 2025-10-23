@@ -1,0 +1,57 @@
+# Template Manifest for Customer Support Agent
+# This defines the structure and variables for the customer support template
+
+name: customer-support
+display_name: Customer Support Agent
+description: AI assistant for customer service and support
+category: customer-support
+version: 1.0.0
+
+variables:
+  project_name:
+    type: string
+    description: Name of the agent project
+    required: true
+  description:
+    type: string
+    description: Brief description of support focus
+    required: false
+    default: "TODO: Add support agent description"
+  author:
+    type: string
+    description: Name of support team lead
+    required: false
+    default: ""
+  model_temperature:
+    type: number
+    description: Temperature for model responses (0-2)
+    required: false
+    default: 0.5
+
+defaults:
+  model.provider: "openai"
+  model.name: "gpt-4o"
+  model.temperature: 0.5
+  model.max_tokens: 4096
+
+files:
+  agent.yaml:
+    path: agent.yaml
+    template: true
+    required: true
+  instructions/system-prompt.md:
+    path: instructions/system-prompt.md
+    template: true
+    required: true
+  tools/README.md:
+    path: tools/README.md
+    template: true
+    required: true
+  data/sample_issues.csv:
+    path: data/sample_issues.csv
+    template: false
+    required: true
+  .gitignore:
+    path: .gitignore
+    template: false
+    required: false

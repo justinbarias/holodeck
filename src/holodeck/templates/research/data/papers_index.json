@@ -1,0 +1,16 @@
+{
+  "papers": [
+    {
+      "id": "paper_001",
+      "title": "Sample Research Paper",
+      "authors": ["John Doe", "Jane Smith"],
+      "year": 2024,
+      "abstract": "This is a sample research paper abstract. Replace with your actual research papers.",
+      "url": "https://arxiv.org/example",
+      "keywords": ["machine learning", "research"]
+    }
+  ],
+  "version": "1.0",
+  "last_updated": "2024-01-01",
+  "instructions": "Replace this sample data with your actual research papers. Each paper should include: id, title, authors, year, abstract, url (optional), and keywords for search."
+}

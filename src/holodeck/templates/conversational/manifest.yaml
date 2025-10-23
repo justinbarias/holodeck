@@ -1,0 +1,57 @@
+# Template Manifest for Conversational Agent
+# This defines the structure and variables for the conversational template
+
+name: conversational
+display_name: Conversational Agent
+description: AI assistant for multi-turn conversations
+category: conversational-ai
+version: 1.0.0
+
+variables:
+  project_name:
+    type: string
+    description: Name of the agent project
+    required: true
+  description:
+    type: string
+    description: Brief description of the agent purpose
+    required: false
+    default: "TODO: Add agent description"
+  author:
+    type: string
+    description: Name of the project creator
+    required: false
+    default: ""
+  model_temperature:
+    type: number
+    description: Temperature for model creativity (0-2)
+    required: false
+    default: 0.7
+
+defaults:
+  model.provider: "openai"
+  model.name: "gpt-4o"
+  model.temperature: 0.7
+  model.max_tokens: 4096
+
+files:
+  agent.yaml:
+    path: agent.yaml
+    template: true
+    required: true
+  instructions/system-prompt.md:
+    path: instructions/system-prompt.md
+    template: true
+    required: true
+  tools/README.md:
+    path: tools/README.md
+    template: true
+    required: true
+  data/faqs.md:
+    path: data/faqs.md
+    template: false
+    required: true
+  .gitignore:
+    path: .gitignore
+    template: false
+    required: false

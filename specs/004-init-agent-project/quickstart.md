@@ -30,15 +30,13 @@ holodeck init my-agent --description "My AI assistant" --author "Alice"
 
 ```
 my-chatbot/
-├── agent.yaml                    # Main agent configuration (edit this!)
+├── agent.yaml                    # Main agent configuration with embedded test cases
 ├── instructions/
 │   └── system-prompt.md          # Agent system prompt (edit this!)
 ├── tools/
 │   └── README.md                 # How to add custom functions
 ├── data/
 │   └── faqs.md                   # Sample data for vector search
-├── tests/
-│   └── example_test_cases.yaml   # Example test structure (edit and run!)
 └── .gitignore                    # Standard Python ignores
 ```
 
@@ -93,11 +91,10 @@ holodeck deploy agent.yaml --port 8000
 - `conversational/`, `research/`, `customer-support/` directories
 - Each template:
   - `manifest.yaml`: Template metadata and variables
-  - `agent.yaml.j2`: Jinja2 template for agent config
+  - `agent.yaml.j2`: Jinja2 template for agent config (includes test_cases field)
   - `instructions/system-prompt.md.j2`: System prompt template
   - `tools/README.md.j2`: Tools directory guidance
   - `data/*`: Sample data files
-  - `tests/example_test_cases.yaml.j2`: Example test structure
   - `.gitignore`: Standard Python ignores
 
 ### Key Implementation Patterns
@@ -220,10 +217,6 @@ files:
     path: data/faqs.md
     template: false
     required: false
-  tests/example_test_cases.yaml:
-    path: tests/example_test_cases.yaml
-    template: true
-    required: true
   .gitignore:
     path: .gitignore
     template: false
