@@ -73,9 +73,11 @@ class ProjectInitInput(BaseModel):
         Raises:
             ValueError: If template is not recognized
         """
-        valid_templates = {"conversational", "research", "customer-support"}
-        if v not in valid_templates:
-            templates_list = ", ".join(sorted(valid_templates))
+        from holodeck.lib.template_engine import TemplateRenderer
+
+        available_templates = set(TemplateRenderer.list_available_templates())
+        if v not in available_templates:
+            templates_list = ", ".join(sorted(available_templates))
             msg = f"Unknown template: {v}. Valid templates: {templates_list}"
             raise ValueError(msg)
         return v

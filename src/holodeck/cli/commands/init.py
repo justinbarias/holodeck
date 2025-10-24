@@ -10,7 +10,30 @@ import click
 
 from holodeck.cli.exceptions import InitError, ValidationError
 from holodeck.cli.utils.project_init import ProjectInitializer
+from holodeck.lib.template_engine import TemplateRenderer
 from holodeck.models.project_config import ProjectInitInput
+
+
+def validate_template(ctx: click.Context, param: click.Parameter, value: str) -> str:
+    """Validate template parameter and provide helpful error messages.
+
+    Args:
+        ctx: Click context
+        param: Click parameter
+        value: Template name provided by user
+
+    Returns:
+        The validated template name
+
+    Raises:
+        click.BadParameter: If template is invalid
+    """
+    available = TemplateRenderer.list_available_templates()
+    if value not in available:
+        raise click.BadParameter(
+            f"Unknown template '{value}'. Available templates: {', '.join(available)}"
+        )
+    return value
 
 
 @click.command(name="init")
@@ -18,8 +41,9 @@ from holodeck.models.project_config import ProjectInitInput
 @click.option(
     "--template",
     default="conversational",
-    type=click.Choice(["conversational", "research", "customer-support"]),
-    help="Project template to use",
+    type=str,
+    callback=validate_template,
+    help="Project template (conversational, research, customer-support)",
 )
 @click.option(
     "--description",
@@ -38,11 +62,16 @@ def init(
 
     Creates a new project directory with configuration, examples, and test cases.
 
-    Example:
+    Available templates: conversational (default), research, customer-support
+
+    Examples:
 
         holodeck init my-agent
 
-        holodeck init my-agent --template research --description "My AI assistant"
+        holodeck init my-agent --template research
+
+        holodeck init my-agent --template customer-support \\
+            --description "Support chatbot"
     """
     try:
         # Get current working directory as output directory

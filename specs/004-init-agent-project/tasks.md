@@ -184,28 +184,28 @@ All implementation is test-first. Each task includes:
 
 ### Integration Tests First (TDD)
 
-- [ ] T040 [US2] Write integration test for research template in `tests/integration/test_init_templates.py`: verify `holodeck init <name> --template research` creates research project
-- [ ] T041 [US2] Write integration test for customer-support template in `tests/integration/test_init_templates.py`: verify `holodeck init <name> --template customer-support` creates support project
-- [ ] T042 [US2] [P] Write test for invalid template selection error handling in `tests/integration/test_init_templates.py`: show list of templates on error
-- [ ] T043 [US2] Write test that all 3 templates produce valid agent.yaml files in `tests/integration/test_init_templates.py`: schema validation
-- [ ] T044 [US2] Write test for template-specific instructions in `tests/integration/test_init_templates.py`: research has vector search, support has functions
+- [x] T040 [US2] Write integration test for research template in `tests/integration/test_init_templates.py`: verify `holodeck init <name> --template research` creates research project
+- [x] T041 [US2] Write integration test for customer-support template in `tests/integration/test_init_templates.py`: verify `holodeck init <name> --template customer-support` creates support project
+- [x] T042 [US2] [P] Write test for invalid template selection error handling in `tests/integration/test_init_templates.py`: show list of templates on error
+- [x] T043 [US2] Write test that all 3 templates produce valid agent.yaml files in `tests/integration/test_init_templates.py`: schema validation
+- [x] T044 [US2] Write test for template-specific instructions in `tests/integration/test_init_templates.py`: research has vector search, support has functions
 
 ### Template Development (TDD)
 
-- [ ] T045 [US2] Create `research` template directory in `src/holodeck/templates/research/` (driven by T040)
-- [ ] T046 [US2] Create `research/manifest.yaml` with research-focused variables and defaults in `src/holodeck/templates/research/manifest.yaml`
-- [ ] T047 [US2] Create `research/agent.yaml.j2` with research instructions and vector search tool example in `src/holodeck/templates/research/agent.yaml.j2`
-- [ ] T048 [US2] Create `research/instructions/system-prompt.md.j2` with research analysis system prompt in `src/holodeck/templates/research/instructions/system-prompt.md.j2`
-- [ ] T049 [US2] [P] Create `customer-support` template directory in `src/holodeck/templates/customer-support/` (driven by T041)
-- [ ] T050 [US2] Create `customer-support/manifest.yaml` with customer-support variables and defaults in `src/holodeck/templates/customer-support/manifest.yaml`
-- [ ] T051 [US2] Create `customer-support/agent.yaml.j2` with support instructions and function tool examples in `src/holodeck/templates/customer-support/agent.yaml.j2`
-- [ ] T052 [US2] Create `customer-support/instructions/system-prompt.md.j2` with support agent system prompt in `src/holodeck/templates/customer-support/instructions/system-prompt.md.j2`
+- [x] T045 [US2] Create `research` template directory in `src/holodeck/templates/research/` (driven by T040)
+- [x] T046 [US2] Create `research/manifest.yaml` with research-focused variables and defaults in `src/holodeck/templates/research/manifest.yaml`
+- [x] T047 [US2] Create `research/agent.yaml.j2` with research instructions and vector search tool example in `src/holodeck/templates/research/agent.yaml.j2`
+- [x] T048 [US2] Create `research/instructions/system-prompt.md.j2` with research analysis system prompt in `src/holodeck/templates/research/instructions/system-prompt.md.j2`
+- [x] T049 [US2] [P] Create `customer-support` template directory in `src/holodeck/templates/customer-support/` (driven by T041)
+- [x] T050 [US2] Create `customer-support/manifest.yaml` with customer-support variables and defaults in `src/holodeck/templates/customer-support/manifest.yaml`
+- [x] T051 [US2] Create `customer-support/agent.yaml.j2` with support instructions and function tool examples in `src/holodeck/templates/customer-support/agent.yaml.j2`
+- [x] T052 [US2] Create `customer-support/instructions/system-prompt.md.j2` with support agent system prompt in `src/holodeck/templates/customer-support/instructions/system-prompt.md.j2`
 
 ### Template Management (TDD)
 
-- [ ] T053 [US2] [P] Create template discovery function in `src/holodeck/lib/template_engine.py` that lists available templates (driven by T042)
-- [ ] T054 [US2] Update `ProjectInitializer.load_template()` to validate template choice against available templates in `src/holodeck/cli/utils/project_init.py` (driven by T042)
-- [ ] T055 [US2] Update help text and error messages to list available templates in `src/holodeck/cli/commands/init.py` (driven by T042)
+- [x] T053 [US2] [P] Create template discovery function in `src/holodeck/lib/template_engine.py` that lists available templates (driven by T042)
+- [x] T054 [US2] Update `ProjectInitializer.load_template()` to validate template choice against available templates in `src/holodeck/cli/utils/project_init.py` (driven by T042)
+- [x] T055 [US2] Update help text and error messages to list available templates in `src/holodeck/cli/commands/init.py` (driven by T042)
 
 **Acceptance Criteria (US2)**:
 - ✓ All integration tests pass (T040-T044)

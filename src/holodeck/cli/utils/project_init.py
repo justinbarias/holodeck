@@ -33,12 +33,11 @@ class ProjectInitializer:
     PROJECT_NAME_PATTERN = r"^[a-zA-Z_][a-zA-Z0-9_-]*$"
     MAX_PROJECT_NAME_LENGTH = 64
 
-    # List of available built-in templates
-    AVAILABLE_TEMPLATES = {"conversational", "research", "customer-support"}
-
     def __init__(self) -> None:
         """Initialize the ProjectInitializer."""
         self.template_renderer = TemplateRenderer()
+        # Get available templates from discovery function
+        self.available_templates = set(TemplateRenderer.list_available_templates())
 
     def validate_inputs(self, input_data: ProjectInitInput) -> None:
         """Validate user inputs for project initialization.
@@ -77,8 +76,8 @@ class ProjectInitializer:
             )
 
         # Check template exists
-        if input_data.template not in self.AVAILABLE_TEMPLATES:
-            templates_list = ", ".join(sorted(self.AVAILABLE_TEMPLATES))
+        if input_data.template not in self.available_templates:
+            templates_list = ", ".join(sorted(self.available_templates))
             raise ValidationError(
                 f"Unknown template: '{input_data.template}'. "
                 f"Available templates: {templates_list}"
