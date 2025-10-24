@@ -224,29 +224,29 @@ All implementation is test-first. Each task includes:
 
 ### Integration Tests First (TDD)
 
-- [ ] T056 [US3] [P] Write test that all template files are generated in `tests/integration/test_init_examples.py`: verify instructions, tools/README, data, tests folders
-- [ ] T057 [US3] Write test that example test cases YAML is valid in `tests/integration/test_init_examples.py`: 2-3 valid examples per template
-- [ ] T058 [US3] Write test that instructions are present and non-empty in `tests/integration/test_init_examples.py`: template-specific content
-- [ ] T059 [US3] Write test that data files are present with proper formatting in `tests/integration/test_init_examples.py`: CSV, JSON, Markdown valid
-- [ ] T060 [US3] Write test for learning experience: examples discoverable and understandable in `tests/integration/test_init_examples.py`
+- [x] T056 [US3] [P] Write test that all template files are generated in `tests/integration/test_init_examples.py`: verify instructions, tools/README, data, tests folders
+- [x] T057 [US3] Write test that example test cases YAML is valid in `tests/integration/test_init_examples.py`: 2-3 valid examples per template
+- [x] T058 [US3] Write test that instructions are present and non-empty in `tests/integration/test_init_examples.py`: template-specific content
+- [x] T059 [US3] Write test that data files are present with proper formatting in `tests/integration/test_init_examples.py`: CSV, JSON, Markdown valid
+- [x] T060 [US3] Write test for learning experience: examples discoverable and understandable in `tests/integration/test_init_examples.py`
 
 ### Example Files & Templates (TDD)
 
-- [ ] T061 [US3] Create `conversational/instructions/system-prompt.md.j2` with detailed conversational agent instructions in `src/holodeck/templates/conversational/instructions/system-prompt.md.j2` (test-driven from T058)
-- [ ] T062 [US3] Create `conversational/tools/README.md.j2` with instructions for adding custom functions in `src/holodeck/templates/conversational/tools/README.md.j2` (test-driven from T056)
-- [ ] T063 [US3] Create `conversational/data/faqs.md` with sample FAQ data for vector search in `src/holodeck/templates/conversational/data/faqs.md` (test-driven from T059)
-- [ ] T064 [US3] Update `conversational/agent.yaml.j2` to include 2-3 sample test cases in `test_cases` field in `src/holodeck/templates/conversational/agent.yaml.j2` (test-driven from T057)
-- [ ] T065 [US3] [P] Create `research/tools/README.md.j2` in `src/holodeck/templates/research/tools/README.md.j2` (test-driven from T056)
-- [ ] T066 [US3] Create `research/data/papers_index.json` with sample research papers index in `src/holodeck/templates/research/data/papers_index.json` (test-driven from T059)
-- [ ] T067 [US3] Update `research/agent.yaml.j2` to include research-focused test cases in `test_cases` field in `src/holodeck/templates/research/agent.yaml.j2` (test-driven from T057)
-- [ ] T068 [US3] Create `customer-support/tools/README.md.j2` in `src/holodeck/templates/customer-support/tools/README.md.j2` (test-driven from T056)
-- [ ] T069 [US3] Create `customer-support/data/sample_issues.csv` with sample customer issues in `src/holodeck/templates/customer-support/data/sample_issues.csv` (test-driven from T059)
-- [ ] T070 [US3] Update `customer-support/agent.yaml.j2` to include support ticket test cases in `test_cases` field in `src/holodeck/templates/customer-support/agent.yaml.j2` (test-driven from T057)
+- [x] T061 [US3] Create `conversational/instructions/system-prompt.md.j2` with detailed conversational agent instructions in `src/holodeck/templates/conversational/instructions/system-prompt.md.j2` (test-driven from T058)
+- [x] T062 [US3] Create `conversational/tools/README.md.j2` with instructions for adding custom functions in `src/holodeck/templates/conversational/tools/README.md.j2` (test-driven from T056)
+- [x] T063 [US3] Create `conversational/data/faqs.md` with sample FAQ data for vector search in `src/holodeck/templates/conversational/data/faqs.md` (test-driven from T059)
+- [x] T064 [US3] Update `conversational/agent.yaml.j2` to include 2-3 sample test cases in `test_cases` field in `src/holodeck/templates/conversational/agent.yaml.j2` (test-driven from T057)
+- [x] T065 [US3] [P] Create `research/tools/README.md.j2` in `src/holodeck/templates/research/tools/README.md.j2` (test-driven from T056)
+- [x] T066 [US3] Create `research/data/papers_index.json` with sample research papers index in `src/holodeck/templates/research/data/papers_index.json` (test-driven from T059)
+- [x] T067 [US3] Update `research/agent.yaml.j2` to include research-focused test cases in `test_cases` field in `src/holodeck/templates/research/agent.yaml.j2` (test-driven from T057)
+- [x] T068 [US3] Create `customer-support/tools/README.md.j2` in `src/holodeck/templates/customer-support/tools/README.md.j2` (test-driven from T056)
+- [x] T069 [US3] Create `customer-support/data/sample_issues.csv` with sample customer issues in `src/holodeck/templates/customer-support/data/sample_issues.csv` (test-driven from T059)
+- [x] T070 [US3] Update `customer-support/agent.yaml.j2` to include support ticket test cases in `test_cases` field in `src/holodeck/templates/customer-support/agent.yaml.j2` (test-driven from T057)
 
 ### Template Manifest Updates (TDD)
 
-- [ ] T071 [US3] Update all template manifests to include file list with template/static flags in manifest.yaml files (test-driven from T056)
-- [ ] T072 [US3] Ensure all `.j2` files have proper variable substitution for project_name, description, etc. (test-driven from T056)
+- [x] T071 [US3] Update all template manifests to include file list with template/static flags in manifest.yaml files (test-driven from T056)
+- [x] T072 [US3] Ensure all `.j2` files have proper variable substitution for project_name, description, etc. (test-driven from T056)
 
 **Acceptance Criteria (US3)**:
 - ✓ All integration tests pass (T056-T060)
