@@ -13,6 +13,7 @@ Tests cover:
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
@@ -27,7 +28,7 @@ class TestInitCommandBasic:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(catch_exceptions=False)
         self.temp_dir = tempfile.mkdtemp()
 
     def teardown_method(self):
@@ -94,7 +95,7 @@ class TestInitCommandBasic:
             assert "Time:" in result.output or "s" in result.output
 
     @patch("holodeck.cli.commands.init.ProjectInitializer")
-    def test_init_command_calls_initializer(self, mock_initializer_class):
+    def test_init_command_calls_initializer(self, mock_initializer_class: Any) -> None:
         """Test init command calls ProjectInitializer with correct parameters."""
         mock_result = MagicMock(spec=ProjectInitResult)
         mock_result.success = True
@@ -103,7 +104,10 @@ class TestInitCommandBasic:
         mock_result.template_used = "conversational"
         mock_result.duration_seconds = 0.5
         mock_result.errors = []
-
+        mock_result.files_created = [
+            "agent.yaml",
+            "instructions/system-prompt.md",
+        ]
         mock_initializer = MagicMock()
         mock_initializer.initialize.return_value = mock_result
         mock_initializer_class.return_value = mock_initializer
@@ -119,7 +123,7 @@ class TestInitCommandTemplates:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(catch_exceptions=False)
         self.temp_dir = tempfile.mkdtemp()
 
     def teardown_method(self):
@@ -166,7 +170,7 @@ class TestInitCommandExistingDirectory:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(catch_exceptions=False)
         self.temp_dir = tempfile.mkdtemp()
 
     def teardown_method(self):
@@ -248,7 +252,7 @@ class TestInitCommandErrorHandling:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(catch_exceptions=False)
         self.temp_dir = tempfile.mkdtemp()
 
     def teardown_method(self):
@@ -257,7 +261,9 @@ class TestInitCommandErrorHandling:
             shutil.rmtree(self.temp_dir)
 
     @patch("holodeck.cli.commands.init.ProjectInitializer")
-    def test_init_command_handles_validation_error(self, mock_initializer_class):
+    def test_init_command_handles_validation_error(
+        self, mock_initializer_class: Any
+    ) -> None:
         """Test init command handles ValidationError gracefully."""
         mock_initializer = MagicMock()
         mock_initializer.initialize.side_effect = ValidationError(
@@ -271,7 +277,7 @@ class TestInitCommandErrorHandling:
             assert "Error:" in result.output
 
     @patch("holodeck.cli.commands.init.ProjectInitializer")
-    def test_init_command_handles_init_error(self, mock_initializer_class):
+    def test_init_command_handles_init_error(self, mock_initializer_class: Any) -> None:
         """Test init command handles InitError gracefully."""
         mock_initializer = MagicMock()
         mock_initializer.initialize.side_effect = InitError(
@@ -285,7 +291,9 @@ class TestInitCommandErrorHandling:
             assert "Error:" in result.output
 
     @patch("holodeck.cli.commands.init.ProjectInitializer")
-    def test_init_command_handles_unexpected_error(self, mock_initializer_class):
+    def test_init_command_handles_unexpected_error(
+        self, mock_initializer_class: Any
+    ) -> None:
         """Test init command handles unexpected errors gracefully."""
         mock_initializer = MagicMock()
         mock_initializer.initialize.side_effect = RuntimeError("Something went wrong")
@@ -297,7 +305,9 @@ class TestInitCommandErrorHandling:
             assert "Unexpected error" in result.output
 
     @patch("holodeck.cli.commands.init.ProjectInitializer")
-    def test_init_command_handles_keyboard_interrupt(self, mock_initializer_class):
+    def test_init_command_handles_keyboard_interrupt(
+        self, mock_initializer_class: Any
+    ) -> None:
         """Test init command handles KeyboardInterrupt (Ctrl+C) gracefully."""
         mock_initializer = MagicMock()
         mock_initializer.initialize.side_effect = KeyboardInterrupt()
@@ -309,7 +319,9 @@ class TestInitCommandErrorHandling:
             assert "cancelled by user" in result.output.lower()
 
     @patch("holodeck.cli.commands.init.ProjectInitializer")
-    def test_init_command_displays_initialization_failure(self, mock_initializer_class):
+    def test_init_command_displays_initialization_failure(
+        self, mock_initializer_class: Any
+    ) -> None:
         """Test init command displays failure message when initialization fails."""
         mock_result = MagicMock(spec=ProjectInitResult)
         mock_result.success = False
@@ -331,7 +343,7 @@ class TestInitCommandIntegration:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(catch_exceptions=False)
         self.temp_dir = tempfile.mkdtemp()
 
     def teardown_method(self):
@@ -387,7 +399,7 @@ class TestInitCommandOutput:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(catch_exceptions=False)
         self.temp_dir = tempfile.mkdtemp()
 
     def teardown_method(self):
@@ -440,7 +452,7 @@ class TestInitCommandEdgeCases:
 
     def setup_method(self):
         """Set up test fixtures."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(catch_exceptions=False)
         self.temp_dir = tempfile.mkdtemp()
 
     def teardown_method(self):

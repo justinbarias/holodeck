@@ -115,6 +115,26 @@ def init(
             click.echo(f"Location: {result.project_path}")
             click.echo(f"Template: {result.template_used}")
             click.echo(f"Time: {result.duration_seconds:.2f}s")
+
+            # Show created files (first 10, then summary)
+            if result.files_created:
+                click.echo()
+                click.echo("Files created:")
+                # Show key files first (config, instructions, tools, data)
+                key_files = [
+                    f
+                    for f in result.files_created
+                    if "agent.yaml" in f
+                    or "system-prompt" in f
+                    or "tools" in f
+                    or "data" in f
+                ]
+                for file_path in key_files[:5]:
+                    click.echo(f"  • {file_path}")
+                if len(result.files_created) > 5:
+                    remaining = len(result.files_created) - 5
+                    click.echo(f"  ... and {remaining} more file(s)")
+
             click.echo()
             click.echo("Next steps:")
             click.echo(f"  1. cd {result.project_name}")
