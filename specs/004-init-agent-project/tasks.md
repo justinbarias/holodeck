@@ -265,20 +265,20 @@ All implementation is test-first. Each task includes:
 
 ### Validation Tests First (TDD)
 
-- [ ] T073 [US4] [P] Write test for valid project structure verification in `tests/integration/test_init_validation.py`: all directories and files exist
-- [ ] T074 [US4] Write test for agent.yaml YAML syntax validation rejection in `tests/integration/test_init_validation.py`: invalid YAML shows errors with line numbers
-- [ ] T075 [US4] Write test for AgentConfig schema validation with invalid YAML rejection in `tests/integration/test_init_validation.py`: missing required fields caught
-- [ ] T076 [US4] Write test for error message clarity and actionability in `tests/integration/test_init_validation.py`: helpful next steps provided
-- [ ] T077 [US4] Write test for partial cleanup on failure in `tests/integration/test_init_validation.py`: partial directories removed after error
+- [x] T073 [US4] [P] Write test for valid project structure verification in `tests/integration/test_init_validation.py`: all directories and files exist
+- [x] T074 [US4] Write test for agent.yaml YAML syntax validation rejection in `tests/integration/test_init_validation.py`: invalid YAML shows errors with line numbers
+- [x] T075 [US4] Write test for AgentConfig schema validation with invalid YAML rejection in `tests/integration/test_init_validation.py`: missing required fields caught
+- [x] T076 [US4] Write test for error message clarity and actionability in `tests/integration/test_init_validation.py`: helpful next steps provided
+- [x] T077 [US4] Write test for partial cleanup on failure in `tests/integration/test_init_validation.py`: partial directories removed after error
 
 ### Validation Implementation (TDD)
 
-- [ ] T078 [US4] Implement directory validation in `ProjectInitializer.initialize()` in `src/holodeck/cli/utils/project_init.py` (test-driven from T073)
-- [ ] T079 [US4] Implement YAML syntax validation for agent.yaml before write in `TemplateRenderer.validate_agent_config()` in `src/holodeck/lib/template_engine.py` (test-driven from T074)
-- [ ] T080 [US4] Implement AgentConfig schema validation after YAML parse in `TemplateRenderer.validate_agent_config()` in `src/holodeck/lib/template_engine.py` (test-driven from T075)
-- [ ] T081 [US4] Create detailed error messages for validation failures (schema errors with line numbers) in `src/holodeck/lib/exceptions.py` (test-driven from T076)
-- [ ] T082 [US4] Implement success message showing all created files and paths in `src/holodeck/cli/commands/init.py` (test-driven from T073)
-- [ ] T083 [US4] Implement failure cleanup (remove partial directories) in `ProjectInitializer.initialize()` in `src/holodeck/cli/utils/project_init.py` (test-driven from T077)
+- [x] T078 [US4] Implement directory validation in `ProjectInitializer.initialize()` in `src/holodeck/cli/utils/project_init.py` (test-driven from T073)
+- [x] T079 [US4] Implement YAML syntax validation for agent.yaml before write in `TemplateRenderer.validate_agent_config()` in `src/holodeck/lib/template_engine.py` (test-driven from T074)
+- [x] T080 [US4] Implement AgentConfig schema validation after YAML parse in `TemplateRenderer.validate_agent_config()` in `src/holodeck/lib/template_engine.py` (test-driven from T075)
+- [x] T081 [US4] Create detailed error messages for validation failures (schema errors with line numbers) in `src/holodeck/lib/exceptions.py` (test-driven from T076)
+- [x] T082 [US4] Implement success message showing all created files and paths in `src/holodeck/cli/commands/init.py` (test-driven from T073)
+- [x] T083 [US4] Implement failure cleanup (remove partial directories) in `ProjectInitializer.initialize()` in `src/holodeck/cli/utils/project_init.py` (test-driven from T077)
 
 **Acceptance Criteria (US4)**:
 - ✓ All required directories are created
