@@ -15,6 +15,7 @@ dependencies = [
     "cryptography (>=46.0.2,<47.0.0)",
     "mkdocs-material (>=9.6.22,<10.0.0)",
     "twine (>=6.2.0,<7.0.0)",
+    "jsonschema>=4.0.0,<5.0.0",
 ]
 
 [project.optional-dependencies]
