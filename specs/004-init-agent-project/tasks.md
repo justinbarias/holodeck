@@ -367,6 +367,10 @@ All implementation is test-first. Each task includes:
 - [ ] T116 Add version flag support: `holodeck --version` in `src/holodeck/cli/__init__.py` (test-driven from T112)
 - [ ] T117 Update README.md with `holodeck init` command documentation (test-driven from T113)
 - [ ] T118 Create QUICKSTART.md in repo root with user-facing getting started guide (test-driven from T114)
+- [ ] T118a Update `docs/guides/agent-configuration.md` to document author field and metadata
+- [ ] T118b Update `docs/getting-started/quickstart.md` with --description and --author examples
+- [ ] T118c Update `docs/api/models.md` to reflect new Agent.author field
+- [ ] T118d Ensure all `src/holodeck/models/__init__.py` exports latest models (Agent with author field)
 
 ### Quality Assurance Tests & Checks (TDD)
 

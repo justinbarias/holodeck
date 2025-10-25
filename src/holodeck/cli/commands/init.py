@@ -80,7 +80,10 @@ def init(
         holodeck init my-agent --template research
 
         holodeck init my-agent --template customer-support \\
-            --description "Support chatbot"
+            --description "Support chatbot" --author "Your Name"
+
+        holodeck init my-chatbot --description "Customer support chatbot" \\
+            --author "Alice Johnson"
     """
     try:
         # Get current working directory as output directory
