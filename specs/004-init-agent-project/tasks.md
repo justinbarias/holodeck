@@ -327,12 +327,12 @@ All implementation is test-first. Each task includes:
 
 ### Edge Case & Error Scenario Tests First (TDD)
 
-- [ ] T094 [P] Write tests for special characters in project name in `tests/integration/test_init_edge_cases.py`: should fail gracefully with clear message
-- [ ] T095 Write tests for very long project names in `tests/integration/test_init_edge_cases.py`: should truncate or reject
-- [ ] T096 [P] Write tests for read-only filesystem in `tests/integration/test_init_edge_cases.py`: permission error shown
-- [ ] T097 Write tests for disk full scenario in `tests/integration/test_init_edge_cases.py`: cleanup on failure
-- [ ] T098 [P] Write tests for corrupted template manifest in `tests/integration/test_init_edge_cases.py`: helpful error message
-- [ ] T099 Write tests for rapid consecutive init commands in `tests/integration/test_init_edge_cases.py`: no race conditions
+- [x] T094 [P] Write tests for special characters in project name in `tests/integration/test_init_edge_cases.py`: should fail gracefully with clear message
+- [x] T095 Write tests for very long project names in `tests/integration/test_init_edge_cases.py`: should truncate or reject
+- [x] T096 [P] Write tests for read-only filesystem in `tests/integration/test_init_edge_cases.py`: permission error shown
+- [x] T097 Write tests for disk full scenario in `tests/integration/test_init_edge_cases.py`: cleanup on failure
+- [x] T098 [P] Write tests for corrupted template manifest in `tests/integration/test_init_edge_cases.py`: helpful error message
+- [x] T099 Write tests for rapid consecutive init commands in `tests/integration/test_init_edge_cases.py`: no race conditions
 
 ### Edge Case & Error Handling Implementation (TDD)
 
@@ -345,65 +345,65 @@ All implementation is test-first. Each task includes:
 
 ### Performance Tests First (TDD)
 
-- [ ] T106 [P] Write test for initialization time < 30 seconds per SC-001 in `tests/integration/test_init_performance.py`: profile and verify
-- [ ] T107 Write test for template rendering < 5 seconds per file in `tests/integration/test_init_performance.py`
-- [ ] T108 Write test for file I/O < 5 seconds total in `tests/integration/test_init_performance.py`
+- [x] T106 [P] Write test for initialization time < 30 seconds per SC-001 in `tests/integration/test_init_performance.py`: profile and verify
+- [x] T107 Write test for template rendering < 5 seconds per file in `tests/integration/test_init_performance.py`
+- [x] T108 Write test for file I/O < 5 seconds total in `tests/integration/test_init_performance.py`
 
 ### Performance Optimization (TDD)
 
-- [ ] T109 Optimize template rendering if test T107 fails (test-driven from T107)
-- [ ] T110 Optimize file I/O if test T108 fails (test-driven from T108)
+- [x] T109 Optimize template rendering if test T107 fails (test-driven from T107)
+- [x] T110 Optimize file I/O if test T108 fails (test-driven from T108)
 
 ### Documentation Tests & Help (TDD)
 
-- [ ] T111 [P] Write test for CLI help text completeness in `tests/unit/test_cli_help.py`: examples present and clear
-- [ ] T112 Write test for version flag: `holodeck init --version` in `tests/unit/test_cli_help.py`
-- [ ] T113 Write test that README.md documents `holodeck init` command in `tests/unit/test_documentation.py`
-- [ ] T114 Write test for QUICKSTART.md accuracy in `tests/unit/test_documentation.py`: all examples work
+- [x] T111 [P] Write test for CLI help text completeness in `tests/unit/test_cli_help.py`: examples present and clear
+- [x] T112 Write test for version flag: `holodeck init --version` in `tests/unit/test_cli_help.py`
+- [x] T113 Write test that README.md documents `holodeck init` command in `tests/unit/test_documentation.py`
+- [x] T114 Write test for QUICKSTART.md accuracy in `tests/unit/test_documentation.py`: all examples work
 
 ### Documentation Implementation (TDD)
 
-- [ ] T115 Update CLI help text with examples in `src/holodeck/cli/commands/init.py` (test-driven from T111)
-- [ ] T116 Add version flag support: `holodeck --version` in `src/holodeck/cli/__init__.py` (test-driven from T112)
-- [ ] T117 Update README.md with `holodeck init` command documentation (test-driven from T113)
-- [ ] T118 Create QUICKSTART.md in repo root with user-facing getting started guide (test-driven from T114)
-- [ ] T118a Update `docs/guides/agent-configuration.md` to document author field and metadata
-- [ ] T118b Update `docs/getting-started/quickstart.md` with --description and --author examples
-- [ ] T118c Update `docs/api/models.md` to reflect new Agent.author field
-- [ ] T118d Ensure all `src/holodeck/models/__init__.py` exports latest models (Agent with author field)
+- [x] T115 Update CLI help text with examples in `src/holodeck/cli/commands/init.py` (test-driven from T111)
+- [x] T116 Add version flag support: `holodeck --version` in `src/holodeck/cli/__init__.py` (test-driven from T112)
+- [x] T117 Update README.md with `holodeck init` command documentation (test-driven from T113)
+- [x] T118 Create QUICKSTART.md in repo root with user-facing getting started guide (test-driven from T114)
+- [x] T118a Update `docs/guides/agent-configuration.md` to document author field and metadata
+- [x] T118b Update `docs/getting-started/quickstart.md` with --description and --author examples
+- [x] T118c Update `docs/api/models.md` to reflect new Agent.author field
+- [x] T118d Ensure all `src/holodeck/models/__init__.py` exports latest models (Agent with author field)
 
 ### Quality Assurance Tests & Checks (TDD)
 
-- [ ] T119 [P] Write test that verifies 80%+ code coverage in `tests/unit/test_coverage.py`: coverage report generated
-- [ ] T120 Write test to verify all linting passes in `tests/unit/test_linting.py`: runs `make lint` successfully
-- [ ] T121 Write test to verify all type checking passes in `tests/unit/test_typing.py`: runs `make type-check` successfully
-- [ ] T122 Write test to verify all security checks pass in `tests/unit/test_security.py`: runs `make security` successfully
-- [ ] T123 [P] Write test to verify formatting compliance in `tests/unit/test_formatting.py`: runs `make format-check` successfully
+- [x] T119 [P] Write test that verifies 80%+ code coverage in `tests/unit/test_coverage.py`: coverage report generated
+- [x] T120 Write test to verify all linting passes in `tests/unit/test_linting.py`: runs `make lint` successfully
+- [x] T121 Write test to verify all type checking passes in `tests/unit/test_typing.py`: runs `make type-check` successfully
+- [x] T122 Write test to verify all security checks pass in `tests/unit/test_security.py`: runs `make security` successfully
+- [x] T123 [P] Write test to verify formatting compliance in `tests/unit/test_formatting.py`: runs `make format-check` successfully
 
 ### Quality Assurance Implementation & Verification (TDD)
 
-- [ ] T124 Run full test suite and verify 80%+ coverage (test-driven from T119): `pytest tests/ --cov`
-- [ ] T125 Run linting checks and fix violations (test-driven from T120): `make lint-fix`
-- [ ] T126 Run type checking for strict compliance (test-driven from T121): `make type-check`
-- [ ] T127 Run security checks and verify no issues (test-driven from T122): `make security`
-- [ ] T128 [P] Run formatting and ensure compliance (test-driven from T123): `make format`
-- [ ] T129 Run integration tests end-to-end with fresh environment
+- [x] T124 Run full test suite and verify 80%+ coverage (test-driven from T119): `pytest tests/ --cov`
+- [x] T125 Run linting checks and fix violations (test-driven from T120): `make lint-fix`
+- [x] T126 Run type checking for strict compliance (test-driven from T121): `make type-check`
+- [x] T127 Run security checks and verify no issues (test-driven from T122): `make security`
+- [x] T128 [P] Run formatting and ensure compliance (test-driven from T123): `make format`
+- [x] T129 Run integration tests end-to-end with fresh environment
 
 ### Pre-Release Verification Tests (TDD)
 
-- [ ] T130 [P] Write test verifying all user story acceptance criteria met in `tests/integration/test_acceptance_criteria.py`: US1-US5 all pass
-- [ ] T131 Write test that all templates generate valid projects in `tests/integration/test_template_validation.py`: each template creates usable project
-- [ ] T132 Write test that generated projects work with `holodeck test` command in `tests/integration/test_generated_project_usability.py`
+- [x] T130 [P] Write test verifying all user story acceptance criteria met in `tests/integration/test_acceptance_criteria.py`: US1-US5 all pass
+- [x] T131 Write test that all templates generate valid projects in `tests/integration/test_template_validation.py`: each template creates usable project
+- [x] T132 Write test that generated projects work with `holodeck test` command in `tests/integration/test_generated_project_usability.py`
 
 ### Pre-Release Verification (TDD)
 
-- [ ] T133 Verify all user story acceptance criteria are met (test-driven from T130)
-- [ ] T134 Create test project with each template (test-driven from T131)
-- [ ] T135 [P] Verify generated projects are usable with `holodeck test` (test-driven from T132)
-- [ ] T136 Verify error messages are user-friendly (manual user testing)
-- [ ] T137 Update CHANGELOG.md with feature description and CLI usage
-- [ ] T138 Verify documentation is complete and links work
-- [ ] T139 Run `make ci` locally and verify all checks pass
+- [x] T133 Verify all user story acceptance criteria are met (test-driven from T130)
+- [x] T134 Create test project with each template (test-driven from T131)
+- [x] T135 [P] Verify generated projects are usable with `holodeck test` (test-driven from T132)
+- [x] T136 Verify error messages are user-friendly (manual user testing)
+- [x] T137 Update CHANGELOG.md with feature description and CLI usage
+- [x] T138 Verify documentation is complete and links work
+- [x] T139 Run `make ci` locally and verify all checks pass
 
 **Acceptance Criteria (Phase 8)**:
 - ✓ 80%+ test coverage across all modules

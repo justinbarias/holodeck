@@ -43,22 +43,22 @@ def validate_template(ctx: click.Context, param: click.Parameter, value: str) ->
     default="conversational",
     type=str,
     callback=validate_template,
-    help="Project template (conversational, research, customer-support)",
+    help="Project template: conversational (default), research, or customer-support",
 )
 @click.option(
     "--description",
     default=None,
-    help="Brief description of the agent",
+    help="Brief description of what the agent does",
 )
 @click.option(
     "--author",
     default=None,
-    help="Name of the project creator",
+    help="Name of the project creator or organization",
 )
 @click.option(
     "--force",
     is_flag=True,
-    help="Overwrite existing project directory",
+    help="Overwrite existing project directory without prompting",
 )
 def init(
     project_name: str,
@@ -69,21 +69,42 @@ def init(
 ) -> None:
     """Initialize a new HoloDeck agent project.
 
-    Creates a new project directory with configuration, examples, and test cases.
+    Creates a new project directory with all required configuration files,
+    example instructions, tools templates, test cases, and data files.
 
-    Available templates: conversational (default), research, customer-support
+    The generated project includes agent.yaml (main configuration), instructions/
+    (system prompts), tools/ (custom function templates), data/ (sample datasets),
+    and tests/ (evaluation test cases).
 
-    Examples:
+    TEMPLATES:
 
-        holodeck init my-agent
+        conversational  - General-purpose conversational agent (default)
+        research        - Research/analysis agent with vector search examples
+        customer-support - Customer support agent with function tools
 
-        holodeck init my-agent --template research
+    EXAMPLES:
 
-        holodeck init my-agent --template customer-support \\
-            --description "Support chatbot" --author "Your Name"
+        Basic project with default (conversational) template:
 
-        holodeck init my-chatbot --description "Customer support chatbot" \\
-            --author "Alice Johnson"
+            holodeck init my-chatbot
+
+        Research-focused agent with metadata:
+
+            holodeck init research-agent --template research \\
+                --description "Research paper analysis and summarization" \\
+                --author "Data Team"
+
+        Customer support agent:
+
+            holodeck init support-bot --template customer-support \\
+                --description "Intelligent customer support chatbot" \\
+                --author "Support Team"
+
+        Overwrite existing project:
+
+            holodeck init my-agent --force
+
+    For more information, see: https://holodeck.ai/docs/getting-started
     """
     try:
         # Get current working directory as output directory
