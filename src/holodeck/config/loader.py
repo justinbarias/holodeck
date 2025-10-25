@@ -4,6 +4,7 @@ This module provides the ConfigLoader class for loading, parsing, and validating
 agent configuration from YAML files.
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from holodeck.config.validator import flatten_pydantic_errors
 from holodeck.lib.errors import ConfigError, FileNotFoundError
 from holodeck.models.agent import Agent
 from holodeck.models.config import GlobalConfig
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigLoader:
@@ -113,28 +116,94 @@ class ConfigLoader:
             ) from e
 
     def load_global_config(self) -> GlobalConfig | None:
-        """Load global configuration from ~/.holodeck/config.yaml.
+        """Load global configuration from ~/.holodeck/config.yml|config.yaml.
+
+        Searches for config files with the following precedence:
+        1. ~/.holodeck/config.yml (preferred)
+        2. ~/.holodeck/config.yaml (fallback)
 
         Returns:
             GlobalConfig instance containing global configuration, or None if
-            file doesn't exist or is empty
+            no config file exists or is empty
 
         Raises:
             ConfigError: If YAML parsing fails or validation fails
         """
         home_dir = Path.home()
-        global_config_path = home_dir / ".holodeck" / "config.yaml"
+        holodeck_dir = home_dir / ".holodeck"
+        return self._load_config_file(
+            holodeck_dir, "global_config", "global configuration"
+        )
 
-        if not global_config_path.exists():
+    def load_project_config(self, project_dir: str) -> GlobalConfig | None:
+        """Load project-level configuration from config.yml|config.yaml.
+
+        Searches for config files with the following precedence:
+        1. config.yml (preferred)
+        2. config.yaml (fallback)
+
+        Args:
+            project_dir: Path to project root directory
+
+        Returns:
+            GlobalConfig instance containing project configuration, or None if
+            no config file exists or is empty
+
+        Raises:
+            ConfigError: If YAML parsing fails or validation fails
+        """
+        project_path = Path(project_dir)
+        return self._load_config_file(
+            project_path, "project_config", "project configuration"
+        )
+
+    def _load_config_file(
+        self, config_dir: Path, error_code: str, config_name: str
+    ) -> GlobalConfig | None:
+        """Load configuration file from directory with .yml/.yaml preference.
+
+        Private helper method to load global or project configuration files.
+
+        Args:
+            config_dir: Directory to search for config files
+            error_code: Error code prefix (e.g., "global_config", "project_config")
+            config_name: Human-readable config name for error messages
+
+        Returns:
+            GlobalConfig instance containing configuration, or None if
+            no config file exists or is empty
+
+        Raises:
+            ConfigError: If YAML parsing fails or validation fails
+        """
+        # Check for both .yml and .yaml with .yml preference
+        yml_path = config_dir / "config.yml"
+        yaml_path = config_dir / "config.yaml"
+
+        # Determine which file to use
+        config_path = None
+        if yml_path.exists():
+            config_path = yml_path
+            # Log info if both files exist
+            if yaml_path.exists():
+                logger.info(
+                    f"Both {yml_path} and {yaml_path} exist. "
+                    f"Using {yml_path} (prefer .yml extension)."
+                )
+        elif yaml_path.exists():
+            config_path = yaml_path
+
+        # If no config file found, return None
+        if config_path is None:
             return None
 
         try:
-            with open(global_config_path, encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 content = yaml.safe_load(f)
                 if content is None:
                     return None
 
-                # Apply environment variable substitution to global config
+                # Apply environment variable substitution
                 config_str = yaml.dump(content)
                 substituted = substitute_env_vars(config_str)
                 config_dict = yaml.safe_load(substituted)
@@ -149,14 +218,13 @@ class ConfigLoader:
                     error_messages = flatten_pydantic_errors(e)
                     error_text = "\n".join(error_messages)
                     raise ConfigError(
-                        "global_config_validation",
-                        f"Invalid global configuration in "
-                        f"{global_config_path}:\n{error_text}",
+                        f"{error_code}_validation",
+                        f"Invalid {config_name} in {config_path}:\n{error_text}",
                     ) from e
         except yaml.YAMLError as e:
             raise ConfigError(
-                "global_config_parse",
-                f"Failed to parse global config at {global_config_path}: {str(e)}",
+                f"{error_code}_parse",
+                f"Failed to parse {config_name} at {config_path}: {str(e)}",
             ) from e
 
     def merge_configs(
