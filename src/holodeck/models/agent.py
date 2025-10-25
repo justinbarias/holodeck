@@ -60,6 +60,7 @@ class Agent(BaseModel):
 
     name: str = Field(..., description="Agent identifier")
     description: str | None = Field(None, description="Human-readable description")
+    author: str | None = Field(None, description="Author of the agent")
     model: LLMProvider = Field(..., description="LLM provider configuration")
     instructions: Instructions = Field(
         ..., description="System instructions (file or inline)"
@@ -86,6 +87,14 @@ class Agent(BaseModel):
         """Validate description is not empty if provided."""
         if v is not None and (not v or not v.strip()):
             raise ValueError("description must be non-empty if provided")
+        return v
+
+    @field_validator("author")
+    @classmethod
+    def validate_author(cls, v: str | None) -> str | None:
+        """Validate author is not empty if provided."""
+        if v is not None and (not v or not v.strip()):
+            raise ValueError("author must be non-empty if provided")
         return v
 
     @field_validator("tools")

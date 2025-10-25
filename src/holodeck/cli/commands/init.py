@@ -51,12 +51,21 @@ def validate_template(ctx: click.Context, param: click.Parameter, value: str) ->
     help="Brief description of the agent",
 )
 @click.option(
+    "--author",
+    default=None,
+    help="Name of the project creator",
+)
+@click.option(
     "--force",
     is_flag=True,
     help="Overwrite existing project directory",
 )
 def init(
-    project_name: str, template: str, description: str | None, force: bool
+    project_name: str,
+    template: str,
+    description: str | None,
+    author: str | None,
+    force: bool,
 ) -> None:
     """Initialize a new HoloDeck agent project.
 
@@ -96,7 +105,7 @@ def init(
             project_name=project_name,
             template=template,
             description=description,
-            author="",
+            author=author,
             output_dir=str(output_dir),
             overwrite=force,
         )

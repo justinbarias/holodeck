@@ -3,7 +3,9 @@
 # Template: customer-support
 
 name: "{{ project_name }}"
-description: "{{ description }}"
+description: {{ description | tojson }}
+{% if author %}author: {{ author | tojson }}
+{% endif %}
 
 # Model Configuration - Balanced for friendly support
 model:

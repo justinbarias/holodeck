@@ -297,19 +297,19 @@ All implementation is test-first. Each task includes:
 
 ### Metadata Tests First (TDD)
 
-- [ ] T084 [US5] [P] Write test for --description flag in generated agent.yaml in `tests/integration/test_init_metadata.py`: metadata persisted correctly
-- [ ] T085 [US5] Write test for --author flag in generated agent.yaml in `tests/integration/test_init_metadata.py`: author field populated
-- [ ] T086 [US5] Write test for metadata with special characters and escaping in `tests/integration/test_init_metadata.py`: quotes, newlines handled safely
-- [ ] T087 [US5] Write test for missing metadata defaults (placeholder text) in `tests/integration/test_init_metadata.py`: sensible defaults provided
+- [x] T084 [US5] [P] Write test for --description flag in generated agent.yaml in `tests/integration/test_init_metadata.py`: metadata persisted correctly
+- [x] T085 [US5] Write test for --author flag in generated agent.yaml in `tests/integration/test_init_metadata.py`: author field populated
+- [x] T086 [US5] Write test for metadata with special characters and escaping in `tests/integration/test_init_metadata.py`: quotes, newlines handled safely
+- [x] T087 [US5] Write test for missing metadata defaults (placeholder text) in `tests/integration/test_init_metadata.py`: sensible defaults provided
 
 ### Metadata Implementation (TDD)
 
-- [ ] T088 [US5] Update `ProjectInitInput` model to include optional description and author fields in `src/holodeck/models/project_config.py` (test-driven from T084-T085)
-- [ ] T089 [US5] Update `ProjectInitializer.validate_inputs()` to validate metadata fields (max length, valid characters) in `src/holodeck/cli/utils/project_init.py` (test-driven from T086)
-- [ ] T090 [US5] Update CLI command to accept --description and --author flags in `src/holodeck/cli/commands/init.py` (test-driven from T084-T085)
-- [ ] T091 [US5] Pass metadata to template renderer in `ProjectInitializer.initialize()` in `src/holodeck/cli/utils/project_init.py` (test-driven from T084-T085)
-- [ ] T092 [US5] Update all template manifests to include description and author variables in manifest.yaml files (test-driven from T087)
-- [ ] T093 [US5] Update all `agent.yaml.j2` templates to include description and author fields in agent.yaml.j2 files (test-driven from T084-T085)
+- [x] T088 [US5] Update `ProjectInitInput` model to include optional description and author fields in `src/holodeck/models/project_config.py` (test-driven from T084-T085)
+- [x] T089 [US5] Update `ProjectInitializer.validate_inputs()` to validate metadata fields (max length, valid characters) in `src/holodeck/cli/utils/project_init.py` (test-driven from T086)
+- [x] T090 [US5] Update CLI command to accept --description and --author flags in `src/holodeck/cli/commands/init.py` (test-driven from T084-T085)
+- [x] T091 [US5] Pass metadata to template renderer in `ProjectInitializer.initialize()` in `src/holodeck/cli/utils/project_init.py` (test-driven from T084-T085)
+- [x] T092 [US5] Update all template manifests to include description and author variables in manifest.yaml files (test-driven from T087)
+- [x] T093 [US5] Update all `agent.yaml.j2` templates to include description and author fields in agent.yaml.j2 files (test-driven from T084-T085)
 
 **Acceptance Criteria (US5)**:
 - ✓ `holodeck init <name> --description "text"` stores description in agent.yaml
