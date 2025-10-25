@@ -19,6 +19,7 @@ All configuration is declarative—no code required.
 ```yaml
 name: my-agent                    # Required: Agent name
 description: Agent description    # Optional: What this agent does
+author: "Your Name"               # Optional: Who created this agent
 
 model:                            # Required: LLM configuration
   provider: openai                # Required: openai|azure_openai|anthropic
@@ -58,6 +59,22 @@ name: customer-support
 ```yaml
 description: Handles customer support queries with ticket creation
 ```
+
+## Agent Author
+
+- **Required**: No
+- **Type**: String
+- **Constraints**: Max 256 characters
+- **Purpose**: Document who created or maintains this agent
+
+```yaml
+author: "Alice Johnson"
+```
+
+This field is useful for:
+- Attribution and credit in multi-team environments
+- Understanding who to contact for questions about the agent
+- Tracking agent ownership and maintenance responsibility
 
 ## Model Configuration
 

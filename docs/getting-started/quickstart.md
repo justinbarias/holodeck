@@ -24,6 +24,7 @@ Create a file called `my-agent.yaml`:
 ```yaml
 name: "Quick Start Agent"
 description: "A simple agent to get started with HoloDeck"
+author: "Your Name"
 model:
   provider: "openai"
   name: "gpt-4o-mini"
@@ -57,6 +58,8 @@ agent = loader.load_agent_yaml("my-agent.yaml")
 # Access agent properties
 print(f"Agent Name: {agent.name}")
 print(f"Description: {agent.description}")
+if agent.author:
+    print(f"Author: {agent.author}")
 print(f"Model: {agent.model.name}")
 print(f"Provider: {agent.model.provider}")
 ```
@@ -188,6 +191,7 @@ Expand your agent with tools and test cases:
 ```yaml
 name: "Research Assistant"
 description: "An agent that searches and analyzes information"
+author: "Alice Johnson"
 
 model:
   provider: "openai"
@@ -301,6 +305,7 @@ Here's a complete working example with best practices:
 ```yaml
 name: "Smart Assistant"
 description: "An intelligent assistant with search capabilities"
+author: "DevOps Team"
 
 model:
   provider: "openai"

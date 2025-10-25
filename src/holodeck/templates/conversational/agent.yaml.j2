@@ -3,7 +3,9 @@
 # Template: conversational
 
 name: "{{ project_name }}"
-description: "{{ description }}"
+description: {{ description | tojson }}
+{% if author %}author: {{ author | tojson }}
+{% endif %}
 
 # Model Configuration
 model:

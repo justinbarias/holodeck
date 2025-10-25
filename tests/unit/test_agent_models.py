@@ -48,6 +48,27 @@ class TestInstructions:
         with pytest.raises(ValidationError):
             Instructions(inline="")
 
+    def test_instructions_file_whitespace_only(self) -> None:
+        """Test that file cannot be whitespace-only string."""
+        with pytest.raises(ValidationError):
+            Instructions(file="   ")
+
+    def test_instructions_inline_whitespace_only(self) -> None:
+        """Test that inline cannot be whitespace-only string."""
+        with pytest.raises(ValidationError):
+            Instructions(inline="   ")
+
+    def test_instructions_file_with_whitespace(self) -> None:
+        """Test that file with whitespace is accepted."""
+        instructions = Instructions(file="  prompts/system.md  ")
+        # Pydantic normalizes, but doesn't strip input strings by default
+        assert "prompts/system.md" in instructions.file
+
+    def test_instructions_no_extra_fields(self) -> None:
+        """Test that Instructions rejects extra fields."""
+        with pytest.raises(ValidationError):
+            Instructions(inline="Test", extra_field="should_fail")
+
 
 class TestAgent:
     """Tests for Agent model."""
@@ -203,6 +224,146 @@ class TestAgent:
         )
         assert agent.instructions.file == "prompts/system.md"
 
+    def test_agent_author_optional(self) -> None:
+        """Test that author is optional."""
+        agent = Agent(
+            name="test",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="Test"),
+        )
+        assert agent.author is None
+
+    def test_agent_with_author(self) -> None:
+        """Test Agent with author field."""
+        agent = Agent(
+            name="test",
+            author="Alice Johnson",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="Test"),
+        )
+        assert agent.author == "Alice Johnson"
+
+    def test_agent_author_not_empty(self) -> None:
+        """Test that author cannot be empty string."""
+        with pytest.raises(ValidationError):
+            Agent(
+                name="test",
+                author="",
+                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                instructions=Instructions(inline="Test"),
+            )
+
+    def test_agent_author_whitespace_only(self) -> None:
+        """Test that author cannot be whitespace-only string."""
+        with pytest.raises(ValidationError):
+            Agent(
+                name="test",
+                author="   ",
+                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                instructions=Instructions(inline="Test"),
+            )
+
+    def test_agent_name_whitespace_only(self) -> None:
+        """Test that name cannot be whitespace-only string."""
+        with pytest.raises(ValidationError):
+            Agent(
+                name="   ",
+                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                instructions=Instructions(inline="Test"),
+            )
+
+    def test_agent_description_whitespace_only(self) -> None:
+        """Test that description cannot be whitespace-only string."""
+        with pytest.raises(ValidationError):
+            Agent(
+                name="test",
+                description="   ",
+                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                instructions=Instructions(inline="Test"),
+            )
+
+    def test_agent_description_not_empty(self) -> None:
+        """Test that description cannot be empty string."""
+        with pytest.raises(ValidationError):
+            Agent(
+                name="test",
+                description="",
+                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                instructions=Instructions(inline="Test"),
+            )
+
+    def test_agent_tools_max_limit(self) -> None:
+        """Test that agent cannot have more than 50 tools."""
+        tools = [
+            VectorstoreTool(
+                name=f"tool_{i}",
+                description=f"Tool {i}",
+                type="vectorstore",
+                source="data.txt",
+            )
+            for i in range(51)
+        ]
+        with pytest.raises(ValidationError) as exc_info:
+            Agent(
+                name="test",
+                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                instructions=Instructions(inline="Test"),
+                tools=tools,
+            )
+        assert "50" in str(exc_info.value).lower()
+
+    def test_agent_tools_at_max_limit(self) -> None:
+        """Test that agent can have exactly 50 tools."""
+        tools = [
+            VectorstoreTool(
+                name=f"tool_{i}",
+                description=f"Tool {i}",
+                type="vectorstore",
+                source="data.txt",
+            )
+            for i in range(50)
+        ]
+        agent = Agent(
+            name="test",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="Test"),
+            tools=tools,
+        )
+        assert len(agent.tools) == 50
+
+    def test_agent_test_cases_max_limit(self) -> None:
+        """Test that agent cannot have more than 100 test cases."""
+        test_cases = [TestCase(input=f"Test case {i}") for i in range(101)]
+        with pytest.raises(ValidationError) as exc_info:
+            Agent(
+                name="test",
+                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                instructions=Instructions(inline="Test"),
+                test_cases=test_cases,
+            )
+        assert "100" in str(exc_info.value).lower()
+
+    def test_agent_test_cases_at_max_limit(self) -> None:
+        """Test that agent can have exactly 100 test cases."""
+        test_cases = [TestCase(input=f"Test case {i}") for i in range(100)]
+        agent = Agent(
+            name="test",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="Test"),
+            test_cases=test_cases,
+        )
+        assert len(agent.test_cases) == 100
+
+    def test_agent_no_extra_fields(self) -> None:
+        """Test that Agent rejects extra fields."""
+        with pytest.raises(ValidationError):
+            Agent(
+                name="test",
+                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                instructions=Instructions(inline="Test"),
+                extra_field="should_fail",
+            )
+
     def test_agent_all_fields(self) -> None:
         """Test Agent with all optional fields."""
         model = LLMProvider(
@@ -223,6 +384,7 @@ class TestAgent:
         agent = Agent(
             name="comprehensive_agent",
             description="An agent with all features",
+            author="Alice Johnson",
             model=model,
             instructions=Instructions(inline="Instructions"),
             tools=[tool],
@@ -232,6 +394,7 @@ class TestAgent:
 
         assert agent.name == "comprehensive_agent"
         assert agent.description == "An agent with all features"
+        assert agent.author == "Alice Johnson"
         assert agent.model.provider == ProviderEnum.ANTHROPIC
         assert len(agent.tools) == 1
         assert agent.evaluations is not None
