@@ -1,6 +1,9 @@
 # Quickstart Guide
 
-Get up and running with HoloDeck in 5 minutes. This guide covers loading a configuration, handling errors, and understanding the basics.
+Get up and running with HoloDeck in 5 minutes. Choose your path below:
+
+- **Option A (Recommended)**: Use `holodeck init` CLI command for a guided setup
+- **Option B**: Manually create and load agent.yaml files with Python
 
 ## Before You Start
 
@@ -17,7 +20,71 @@ Set up your API key (example for OpenAI):
 export OPENAI_API_KEY="sk-your-key-here"
 ```
 
-## Step 1: Create Your First Agent (agent.yaml)
+---
+
+## Option A: Quick Start with CLI (Recommended)
+
+### Step 1: Initialize a New Agent Project
+
+Use the `holodeck init` command to create a new project with templates:
+
+```bash
+# Create a basic conversational agent
+holodeck init my-chatbot
+
+# Or choose a different template
+holodeck init research-agent --template research
+holodeck init support-bot --template customer-support
+
+# With metadata
+holodeck init my-agent --description "My AI agent" --author "Your Name"
+```
+
+This creates a complete project structure:
+
+```
+my-chatbot/
+├── agent.yaml              # Main configuration
+├── instructions/
+│   └── system-prompt.md   # Agent behavior
+├── tools/                 # Custom functions
+├── data/                  # Grounding data
+└── tests/                 # Test cases
+```
+
+### Step 2: Edit Your Agent Configuration
+
+```bash
+cd my-chatbot
+```
+
+Open `agent.yaml` and customize:
+- Agent name and description
+- Model provider (OpenAI, Azure, Anthropic)
+- Instructions/system prompt
+- Tools and data sources
+- Test cases
+
+### Step 3: Run Your Agent
+
+```bash
+# Interactive chat
+holodeck chat agent.yaml
+
+# Run tests
+holodeck test agent.yaml
+
+# Deploy locally
+holodeck deploy agent.yaml --port 8000
+```
+
+---
+
+## Option B: Manual Setup with Python
+
+If you prefer to create files manually, follow the steps below.
+
+### Step 1: Create Your First Agent (agent.yaml)
 
 Create a file called `my-agent.yaml`:
 
