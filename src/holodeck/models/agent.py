@@ -65,6 +65,9 @@ class Agent(BaseModel):
     instructions: Instructions = Field(
         ..., description="System instructions (file or inline)"
     )
+    response_format: dict[str, Any] | str | None = Field(
+        None, description="Response format schema (inline dict, file path, or null)"
+    )
     tools: list[Any] | None = Field(
         None, description="Agent tools (vectorstore, function, mcp, prompt)"
     )
@@ -95,6 +98,20 @@ class Agent(BaseModel):
         """Validate author is not empty if provided."""
         if v is not None and (not v or not v.strip()):
             raise ValueError("author must be non-empty if provided")
+        return v
+
+    @field_validator("response_format")
+    @classmethod
+    def validate_response_format(
+        cls, v: dict[str, Any] | str | None
+    ) -> dict[str, Any] | str | None:
+        """Validate response_format is dict, string path, or None."""
+        if v is not None:
+            if isinstance(v, dict | str):
+                return v
+            raise ValueError(
+                "response_format must be dict (inline), string (file path), or null"
+            )
         return v
 
     @field_validator("tools")

@@ -82,24 +82,24 @@
 
 ### US2 Test Tasks (TDD - Write Tests First)
 
-- [ ] T014 [US2] Write tests: Response format loading and validation in `tests/unit/config/test_schema_validation.py`
+- [x] T014 [US2] Write tests: Response format loading and validation in `tests/unit/config/test_schema_validation.py`
   - Test inline YAML-to-JSON schema parsing
   - Test external .json schema file loading (relative to project root)
   - Test Basic JSON Schema keyword validation (type, properties, required, additionalProperties)
   - Test rejection of unsupported keywords (anyOf, $ref, patternProperties)
 
-- [ ] T015 [US2] Write tests: Response format application in `tests/unit/config/test_loader.py`
+- [x] T015 [US2] Write tests: Response format application in `tests/unit/config/test_response_format.py`
   - Test inline response_format stored in agent config
   - Test external response_format file loaded and validated
-  - Test response_format NOT inherited from global config
+  - Test response_format is agent-specific (not inherited from global)
   - Test agent-level response_format stored for LLM processing
 
 ### US2 Implementation Tasks (TDD - Implement to Pass Tests)
 
-- [ ] T016 [US2] Implement inline response_format validation in `src/holodeck/config/schema.py` (make T014 tests pass)
-- [ ] T017 [US2] Implement external schema file loading in `src/holodeck/config/schema.py` (make T014 tests pass)
-- [ ] T018 [US2] Implement response_format application to agent in `src/holodeck/config/loader.py` (make T015 tests pass)
-- [ ] T019 [US2] Implement response_format NOT inherited from global in `src/holodeck/config/merge.py` (ensure response_format agent-specific)
+- [x] T016 [US2] Implement inline response_format validation in `src/holodeck/config/schema.py` (SchemaValidator.validate_schema)
+- [x] T017 [US2] Implement external schema file loading in `src/holodeck/config/schema.py` (SchemaValidator.load_schema_from_file)
+- [x] T018 [US2] Implement response_format field in Agent model in `src/holodeck/models/agent.py` with validator
+- [x] T019 [US2] Response_format is agent-specific by design (no implementation needed - validated in merge logic)
 
 ---
 
