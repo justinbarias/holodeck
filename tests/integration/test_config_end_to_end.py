@@ -519,3 +519,156 @@ class TestConfigPrecedenceScenarios:
         # Verify file can be resolved
         resolved = loader.resolve_file_path(agent.instructions.file, str(agent_dir))
         assert Path(resolved).exists()
+
+
+class TestResponseFormatIntegration:
+    """Integration tests for response_format in agent configuration (T023)."""
+
+    def test_agent_with_inline_response_format(self, temp_dir: Path) -> None:
+        """Test loading agent with inline response_format."""
+        from holodeck.config.schema import SchemaValidator
+
+        agent_dir = temp_dir / "agent1"
+        agent_dir.mkdir()
+
+        response_format = {
+            "type": "object",
+            "properties": {
+                "answer": {"type": "string"},
+                "confidence": {"type": "number"},
+            },
+            "required": ["answer"],
+        }
+
+        # Create agent YAML with inline response_format
+        agent_yaml_file = agent_dir / "agent.yaml"
+        agent_config = {
+            "name": "qa_agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "Answer questions"},
+            "response_format": response_format,
+        }
+        agent_yaml_file.write_text(yaml.dump(agent_config))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml_file))
+
+        # Verify response_format is stored
+        assert agent.response_format == response_format
+        assert agent.response_format["type"] == "object"
+        assert "answer" in agent.response_format["properties"]
+
+        # Verify response_format can be validated
+        validated = SchemaValidator.validate_schema(agent.response_format)
+        assert validated == response_format
+
+    def test_agent_with_response_format_from_file(self, temp_dir: Path) -> None:
+        """Test loading agent with response_format from external file."""
+        import json
+
+        from holodeck.config.schema import SchemaValidator
+
+        agent_dir = temp_dir / "agent2"
+        agent_dir.mkdir()
+
+        # Create schema file
+        schemas_dir = agent_dir / "schemas"
+        schemas_dir.mkdir()
+        schema_file = schemas_dir / "response.json"
+
+        schema_content = {
+            "type": "object",
+            "properties": {
+                "result": {"type": "string"},
+                "status": {"type": "string"},
+            },
+            "required": ["result"],
+        }
+        schema_file.write_text(json.dumps(schema_content))
+
+        # Create agent YAML with file reference
+        agent_yaml_file = agent_dir / "agent.yaml"
+        agent_config = {
+            "name": "file_agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "Process data"},
+            "response_format": "schemas/response.json",
+        }
+        agent_yaml_file.write_text(yaml.dump(agent_config))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml_file))
+
+        # Verify response_format is stored as file path
+        assert agent.response_format == "schemas/response.json"
+
+        # Verify schema can be loaded
+        loaded_schema = SchemaValidator.load_schema_from_file(
+            agent.response_format, base_dir=str(agent_dir)
+        )
+        assert loaded_schema == schema_content
+
+    def test_agent_response_format_not_inherited(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test that response_format is not inherited from global config."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+
+        # User-level config (response_format shouldn't be here, but test the merge)
+        user_config = {
+            "providers": {
+                "openai": {
+                    "provider": "openai",
+                    "name": "gpt-4o",
+                }
+            }
+        }
+        (holodeck_dir / "config.yml").write_text(yaml.dump(user_config))
+
+        # Agent without response_format
+        agent_dir = temp_dir / "agent3"
+        agent_dir.mkdir()
+        agent_yaml_file = agent_dir / "agent.yaml"
+        agent_config = {
+            "name": "basic_agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "Basic agent"},
+        }
+        agent_yaml_file.write_text(yaml.dump(agent_config))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml_file))
+
+        # Verify response_format is None (not inherited)
+        assert agent.response_format is None
+
+    def test_response_format_validation_at_load_time(self, temp_dir: Path) -> None:
+        """Test that invalid response_format is caught at config load time."""
+        import json
+
+        from holodeck.config.schema import SchemaValidator
+
+        agent_dir = temp_dir / "agent4"
+        agent_dir.mkdir()
+
+        # Create invalid schema file (unsupported keyword)
+        schemas_dir = agent_dir / "schemas"
+        schemas_dir.mkdir()
+        schema_file = schemas_dir / "bad.json"
+
+        bad_schema = {
+            "type": "object",
+            "anyOf": [{"type": "string"}],  # unsupported keyword
+        }
+        schema_file.write_text(json.dumps(bad_schema))
+
+        # Try to validate the schema
+        with pytest.raises(ValueError) as exc_info:
+            SchemaValidator.load_schema_from_file(
+                "schemas/bad.json", base_dir=str(agent_dir)
+            )
+
+        # Verify error message is clear
+        assert "anyOf" in str(exc_info.value)

@@ -111,7 +111,7 @@
 
 ### US4 Test Tasks (TDD - Write Tests First)
 
-- [ ] T020 [US4] Write tests: Error handling in `tests/unit/config/test_error_handling.py`
+- [x] T020 [US4] Write tests: Error handling in `tests/unit/config/test_error_handling.py`
   - Test YAML syntax errors with line numbers
   - Test invalid JSON in response_format with line numbers
   - Test missing schema files with path display
@@ -120,8 +120,8 @@
 
 ### US4 Implementation Tasks (TDD - Implement to Pass Tests)
 
-- [ ] T021 [US4] Implement schema syntax validation error handling in `src/holodeck/config/schema.py` (make T020 tests pass)
-- [ ] T022 [US4] Implement configuration error messages with file/line/details in `src/holodeck/config/loader.py`
+- [x] T021 [US4] Schema syntax validation already implemented in `src/holodeck/config/schema.py` (SchemaValidator validates and provides clear errors)
+- [x] T022 [US4] Configuration error messages already implemented in `src/holodeck/config/loader.py` (ConfigError with file/line context)
 
 ---
 
