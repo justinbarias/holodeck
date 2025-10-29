@@ -194,6 +194,128 @@ Guidelines:
 - **Max length** (inline): 5000 characters
 - **File path**: Relative to `agent.yaml` directory (see File References guide)
 
+## Response Format
+
+Defines the expected structure of the agent's responses (agent-level only).
+
+The `response_format` field constrains the LLM to generate structured output following a JSON Schema. This is useful for:
+
+- Ensuring consistent response structure
+- Integrating with downstream systems that expect specific formats
+- Validating response quality programmatically
+- Guiding the LLM toward well-formatted outputs
+
+### Inline Response Format
+
+Define the schema directly in `agent.yaml`:
+
+```yaml
+response_format:
+  type: object
+  properties:
+    answer:
+      type: string
+      description: The answer to the user's question
+    confidence:
+      type: number
+      description: Confidence score 0.0-1.0
+    sources:
+      type: array
+      items:
+        type: string
+      description: References used in the answer
+  required:
+    - answer
+    - confidence
+  additionalProperties: false
+```
+
+### File-Based Response Format
+
+Reference an external JSON Schema file (path relative to `agent.yaml`):
+
+```yaml
+response_format: schemas/response.json
+```
+
+File at `schemas/response.json`:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "answer": {
+      "type": "string",
+      "description": "The answer to the user's question"
+    },
+    "confidence": {
+      "type": "number",
+      "description": "Confidence score 0.0-1.0"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "References used in the answer"
+    }
+  },
+  "required": ["answer", "confidence"],
+  "additionalProperties": false
+}
+```
+
+### Supported JSON Schema Keywords
+
+Response format uses a **Basic JSON Schema** subset supporting:
+
+- `type` - Data type (string, number, integer, boolean, object, array, null)
+- `properties` - Object properties and their schemas
+- `required` - Array of required property names
+- `items` - Schema for array items
+- `enum` - List of allowed values
+- `description` - Documentation string
+- `minimum` - Minimum numeric value
+- `maximum` - Maximum numeric value
+- `additionalProperties` - Whether to allow extra properties (true|false)
+
+### Unsupported Keywords
+
+The following keywords are **not supported** and will cause validation errors:
+
+- `$ref` - Schema references
+- `anyOf` - Multiple schema options
+- `oneOf` - Exactly one schema match
+- `allOf` - All schemas must match
+- `patternProperties` - Regex-based properties
+- `minLength`, `maxLength` - String length constraints
+- `minItems`, `maxItems` - Array length constraints
+- And other JSON Schema draft keywords
+
+### Rules
+
+- **Optional**: Response format is not required
+- **Agent-level only**: Not inherited from global configuration
+- **Validated at load time**: Invalid schemas cause errors with clear messages
+- **File path**: Relative to `agent.yaml` directory
+
+### Validation
+
+Invalid response formats will produce clear error messages:
+
+```
+Error: Invalid JSON in response_format field
+File: agent.yaml
+Line: 42
+Details: Missing required property: 'answer'
+```
+
+```
+Error: Unknown JSON Schema keyword: '$ref'
+File: schemas/response.json
+Details: Keyword '$ref' is not supported. Use basic JSON Schema keywords only.
+```
+
 ## Tools
 
 Define capabilities the agent can use. See the [Tools Reference Guide](tools.md) for detailed documentation.
@@ -296,6 +418,22 @@ model:
 instructions:
   file: system_prompt.txt
 
+response_format:
+  type: object
+  properties:
+    answer:
+      type: string
+      description: The support response
+    confidence:
+      type: number
+      description: How confident we are in this answer
+    escalation_needed:
+      type: boolean
+      description: Whether the issue should be escalated
+  required:
+    - answer
+    - confidence
+
 tools:
   - name: search-kb
     description: Search knowledge base
@@ -353,6 +491,14 @@ test_cases:
 - Tool limit: Max 50 per agent
 - Test cases: Max 100 per agent
 
+### Response Format Validation
+
+- `response_format`: Optional
+- Must be valid JSON Schema (if inline) or valid JSON file (if external)
+- Only Basic JSON Schema keywords supported
+- Invalid schemas produce clear error messages with file location and details
+- Not inherited from global configuration (agent-level only)
+
 ### File References
 
 - Paths are relative to `agent.yaml` directory
@@ -387,6 +533,33 @@ instructions:
   inline: "You are a helpful assistant."
 ```
 
+### Agent with Structured Output (Response Format)
+
+```yaml
+name: structured-agent
+description: Returns structured responses
+
+model:
+  provider: openai
+  name: gpt-4o
+
+instructions:
+  inline: "Answer questions in the specified format."
+
+response_format:
+  type: object
+  properties:
+    answer:
+      type: string
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+  required:
+    - answer
+    - confidence
+```
+
 ### Agent with File References
 
 ```yaml
@@ -398,6 +571,8 @@ model:
 
 instructions:
   file: prompts/system.txt
+
+response_format: schemas/output.json
 
 tools:
   - name: search
@@ -419,6 +594,18 @@ model:
 
 instructions:
   file: system_prompt.txt
+
+response_format:
+  type: object
+  properties:
+    response:
+      type: string
+    sources:
+      type: array
+      items:
+        type: string
+  required:
+    - response
 
 tools:
   - name: knowledge-base
@@ -470,6 +657,21 @@ test_cases:
 ### Error: "Tool name must be unique"
 
 - Each tool must have a unique `name` field
+
+### Error: "Invalid JSON in response_format field"
+
+- Ensure response_format is valid JSON (if inline) or references a valid JSON file
+- Check for missing quotes, commas, or brackets in JSON
+
+### Error: "response_format file not found"
+
+- Check the file path is correct and relative to `agent.yaml` directory
+- File must exist and be readable
+
+### Error: "Unknown JSON Schema keyword: '$ref'"
+
+- Remove unsupported JSON Schema keywords ($ref, anyOf, oneOf, allOf, patternProperties, etc.)
+- Use only Basic JSON Schema keywords: type, properties, required, items, enum, description, minimum, maximum, additionalProperties
 
 ## Next Steps
 

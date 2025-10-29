@@ -399,3 +399,126 @@ class TestAgent:
         assert len(agent.tools) == 1
         assert agent.evaluations is not None
         assert len(agent.test_cases) == 1
+
+    def test_agent_response_format_optional(self) -> None:
+        """Test that response_format is optional."""
+        agent = Agent(
+            name="test",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="Test"),
+        )
+        assert agent.response_format is None
+
+    def test_agent_response_format_inline_dict(self) -> None:
+        """Test Agent with inline response_format dict."""
+        response_format = {
+            "type": "object",
+            "properties": {
+                "answer": {"type": "string"},
+                "confidence": {"type": "number"},
+            },
+            "required": ["answer"],
+        }
+        agent = Agent(
+            name="test",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="Test"),
+            response_format=response_format,
+        )
+        assert agent.response_format == response_format
+        assert agent.response_format["type"] == "object"
+
+    def test_agent_response_format_file_path(self) -> None:
+        """Test Agent with response_format as file path."""
+        agent = Agent(
+            name="test",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="Test"),
+            response_format="schemas/response.json",
+        )
+        assert agent.response_format == "schemas/response.json"
+
+    def test_agent_response_format_null(self) -> None:
+        """Test Agent with response_format explicitly set to null."""
+        agent = Agent(
+            name="test",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="Test"),
+            response_format=None,
+        )
+        assert agent.response_format is None
+
+    def test_agent_response_format_complex_nested_schema(self) -> None:
+        """Test Agent with complex nested response_format schema."""
+        response_format = {
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer"},
+                            "name": {"type": "string"},
+                            "tags": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["id", "name"],
+                    },
+                }
+            },
+            "required": ["results"],
+        }
+        agent = Agent(
+            name="test",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="Test"),
+            response_format=response_format,
+        )
+        assert agent.response_format == response_format
+
+    def test_agent_response_format_invalid_type_raises_error(self) -> None:
+        """Test that response_format with invalid type raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            Agent(
+                name="test",
+                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                instructions=Instructions(inline="Test"),
+                response_format=123,  # Invalid: number instead of dict/string/null
+            )
+        assert "response_format" in str(exc_info.value).lower()
+
+    def test_agent_response_format_with_all_fields(self) -> None:
+        """Test Agent with response_format and all other fields."""
+        model = LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o")
+        tool = VectorstoreTool(
+            name="search",
+            description="Search",
+            type="vectorstore",
+            source="data.txt",
+        )
+        response_format = {
+            "type": "object",
+            "properties": {"result": {"type": "string"}},
+        }
+        eval_config = EvaluationConfig(
+            metrics=[EvaluationMetric(metric="groundedness")]
+        )
+        test_case = TestCase(input="Test")
+
+        agent = Agent(
+            name="comprehensive_with_response_format",
+            description="Agent with response format",
+            author="Test Author",
+            model=model,
+            instructions=Instructions(inline="Test instructions"),
+            response_format=response_format,
+            tools=[tool],
+            evaluations=eval_config,
+            test_cases=[test_case],
+        )
+
+        assert agent.name == "comprehensive_with_response_format"
+        assert agent.response_format == response_format
+        assert len(agent.tools) == 1
+        assert agent.evaluations is not None
+        assert len(agent.test_cases) == 1
