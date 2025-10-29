@@ -129,6 +129,55 @@ export TEMPERATURE=0.5
 
 Result: Model uses `gpt-4o-mini`, port is `8080`, temperature is `0.5`
 
+## Inheritance Rules
+
+Not all agent settings are inherited from global config. Here's what you can and cannot configure globally:
+
+### Settings That CAN Be Inherited
+
+- LLM provider credentials (API keys, endpoints)
+- Default model names and settings (temperature, max_tokens)
+- Vectorstore configurations
+- Deployment settings
+
+### Settings That CANNOT Be Inherited (Agent-Level Only)
+
+- **response_format**: Define structured output schema in each agent.yaml, not in global config
+- **tools**: Tools must be defined per agent based on agent capabilities
+- **instructions**: System prompt must be specific to each agent
+- **evaluations**: Evaluation metrics are typically agent-specific
+- **test_cases**: Test cases validate individual agent behavior
+
+```yaml
+# .holodeck/config.yaml - Only shared settings here
+providers:
+  openai:
+    api_key: ${OPENAI_API_KEY}
+    organization: my-org
+    temperature: 0.7
+
+deployment:
+  default_port: 8000
+```
+
+```yaml
+# agent.yaml - Agent-specific settings here
+name: my-agent
+
+model:
+  provider: openai
+  # Inherits temperature: 0.7 from global, can override
+
+response_format:  # Cannot be inherited, must define here
+  type: object
+  properties:
+    answer:
+      type: string
+
+instructions:  # Must be defined here
+  inline: "You are a helpful assistant"
+```
+
 ## Providers Section
 
 Defines LLM provider credentials and defaults.
