@@ -71,7 +71,7 @@ class FileProcessor:
         Returns:
             MD5 hash of the input string
         """
-        return hashlib.md5(url_or_path.encode()).hexdigest()  # noqa: S324
+        return hashlib.md5(url_or_path.encode(), usedforsecurity=False).hexdigest()
 
     def _load_from_cache(self, cache_key: str) -> dict[str, Any] | None:
         """Load processed file from cache.
