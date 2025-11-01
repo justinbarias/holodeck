@@ -11,9 +11,10 @@ Implement the `holodeck test` CLI command to execute agent test cases with evalu
 
 ## Technical Context
 
-**Language/Version**: Python 3.14+
+**Language/Version**: Python 3.13+
 
 **Primary Dependencies**:
+
 - Click (CLI framework - already in use)
 - Pydantic (configuration models - already in use)
 - PyYAML (YAML parsing - already in use)
@@ -24,6 +25,7 @@ Implement the `holodeck test` CLI command to execute agent test cases with evalu
 - HTTP client: requests (already in use)
 
 **Storage**:
+
 - File cache: `.holodeck/cache/` directory for remote URL downloads
 - Test reports: JSON/Markdown files in user-specified output paths
 - No database required for this feature
@@ -35,12 +37,14 @@ Implement the `holodeck test` CLI command to execute agent test cases with evalu
 **Project Type**: Single Python project with CLI interface
 
 **Performance Goals**:
+
 - Execute 10 test cases in <30 seconds (excluding LLM API latency)
 - File processing timeout: 30s per file (configurable)
 - LLM API timeout: 60s per call (configurable)
 - File download timeout: 30s per URL (configurable)
 
 **Constraints**:
+
 - Sequential test execution (no parallelization in v1)
 - Respect LLM token context window limits for large files
 - Graceful degradation when evaluation metrics fail (retry up to 3 times with exponential backoff)
@@ -48,6 +52,7 @@ Implement the `holodeck test` CLI command to execute agent test cases with evalu
 - CI/CD-compatible output (no interactive elements in non-TTY environments)
 
 **Scale/Scope**:
+
 - Support up to 10 files per test case (enforced by existing TestCaseModel)
 - Support 5+ file types via markitdown (PDF, image, Excel, Word, PowerPoint, CSV, HTML, etc.)
 - Handle test suites with 100+ test cases
@@ -55,30 +60,37 @@ Implement the `holodeck test` CLI command to execute agent test cases with evalu
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Principle I: No-Code-First Agent Definition
+
 ✅ **PASS** - Test execution reads agent configuration from YAML files. No code required from users to define test cases or evaluation metrics. All test configuration is declarative in agent.yaml.
 
 ### Principle II: MCP for API Integrations
+
 ✅ **PASS** - This feature integrates with agents that may use MCP tools, but test execution itself doesn't introduce new API integrations. LLM provider integrations use Semantic Kernel (which supports MCP protocol).
 
 ### Principle III: Test-First with Multimodal Support
+
 ✅ **PASS** - This feature IS the multimodal test execution engine. Implements support for images, PDFs, Office documents (via markitdown), validates expected_tools usage, and supports ground_truth comparison.
 
 ### Principle IV: OpenTelemetry-Native Observability
+
 ⚠️ **DEFERRED** - OpenTelemetry instrumentation is listed in Out of Scope for initial implementation. This aligns with project phase (v0.1 focusing on core functionality). Observability will be added in future iterations per VISION.md roadmap (v0.3+).
 
 **Justification**: Core test execution capability takes priority for v0.1. Observability hooks can be added later without breaking test execution API.
 
 ### Principle V: Evaluation Flexibility with Model Overrides
+
 ✅ **PASS** - Implements three-level model configuration (global, per-evaluation, per-metric) as specified in EvaluationConfig and EvaluationMetric models. Uses Azure AI Evaluation SDK which follows Azure AI Evaluation patterns per constitution requirement.
 
 ### Architecture Constraints
+
 ✅ **PASS** - Implements Evaluation Framework engine component. Maintains separation from Agent Engine (receives agent responses via Semantic Kernel) and Deployment Engine (not involved in testing).
 
 ### Code Quality & Testing Discipline
-✅ **PASS** - Follows Python 3.14+, Google Python Style Guide, MyPy strict mode, pytest with markers, 80% coverage minimum, Bandit/Safety/detect-secrets security scanning.
+
+✅ **PASS** - Follows Python 3.13+, Google Python Style Guide, MyPy strict mode, pytest with markers, 80% coverage minimum, Bandit/Safety/detect-secrets security scanning.
 
 **Gate Status**: ✅ PASS (1 principle deferred with justification)
 
@@ -173,6 +185,7 @@ tests/
 ```
 
 **Structure Decision**: Single Python project structure. This feature extends the existing HoloDeck CLI and library components. The test execution engine is organized into three main modules:
+
 1. `file_processor.py` - Unified file processing via markitdown (handles all file types)
 2. `test_runner/` - Orchestrates test execution (via Semantic Kernel), progress display, and reporting
 3. `evaluators/` - Implements evaluation metrics (Azure AI Evaluation SDK + NLP libraries)
@@ -181,4 +194,4 @@ This structure is simplified compared to initial plans thanks to markitdown's un
 
 ## Complexity Tracking
 
-*No violations requiring justification. Principle IV (OpenTelemetry) is deferred, not violated - observability is out of scope for v0.1 per project roadmap.*
+_No violations requiring justification. Principle IV (OpenTelemetry) is deferred, not violated - observability is out of scope for v0.1 per project roadmap._

@@ -97,12 +97,12 @@ test_cases:
 
 # NEW: Execution configuration
 execution:
-  file_timeout: 60         # Allow 60s for large file processing
-  llm_timeout: 120         # Allow 120s for complex LLM calls
-  download_timeout: 45     # Allow 45s for remote file downloads
-  cache_enabled: true      # Enable caching (default)
-  cache_dir: .cache        # Custom cache directory
-  verbose: false           # Standard output (default)
+  file_timeout: 60 # Allow 60s for large file processing
+  llm_timeout: 120 # Allow 120s for complex LLM calls
+  download_timeout: 45 # Allow 45s for remote file downloads
+  cache_enabled: true # Enable caching (default)
+  cache_dir: .cache # Custom cache directory
+  verbose: false # Standard output (default)
 ```
 
 ---
@@ -116,6 +116,7 @@ holodeck test [OPTIONS] AGENT_CONFIG
 ### Arguments
 
 **AGENT_CONFIG** (required)
+
 - **Type**: File path
 - **Description**: Path to agent.yaml configuration file
 - **Validation**:
@@ -131,6 +132,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 #### Output Options
 
 **`--output`, `-o` <file_path>**
+
 - **Type**: File path
 - **Default**: None (results printed to stdout)
 - **Description**: Save test report to file (format auto-detected from extension)
@@ -139,6 +141,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 - **Example**: `--output report.json`, `-o results.md`
 
 **`--format`, `-f` <format>**
+
 - **Type**: Choice [`json`, `markdown`]
 - **Default**: Inferred from `--output` extension, or `json` if no output file
 - **Description**: Report format (overrides extension-based detection)
@@ -148,6 +151,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 #### Execution Options
 
 **`--verbose`, `-v`**
+
 - **Type**: Flag
 - **Default**: False
 - **Description**: Enable verbose output with detailed stack traces and debug info
@@ -156,6 +160,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 - **Example**: `--verbose`
 
 **`--quiet`, `-q`**
+
 - **Type**: Flag
 - **Default**: False
 - **Description**: Suppress progress indicators (for CI/CD environments)
@@ -167,6 +172,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 #### Timeout Options
 
 **`--file-timeout` <seconds>**
+
 - **Type**: Integer (1-300)
 - **Default**: 30
 - **Description**: Timeout for file processing operations (markitdown) in seconds
@@ -175,6 +181,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 - **Example**: `--file-timeout 60`
 
 **`--llm-timeout` <seconds>**
+
 - **Type**: Integer (1-600)
 - **Default**: 60
 - **Description**: Timeout for LLM API calls (agent execution and evaluation) in seconds
@@ -183,6 +190,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 - **Example**: `--llm-timeout 120`
 
 **`--download-timeout` <seconds>**
+
 - **Type**: Integer (1-300)
 - **Default**: 30
 - **Description**: Timeout for remote file downloads in seconds
@@ -193,6 +201,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 #### Filtering Options
 
 **`--test`, `-t` <test_name>**
+
 - **Type**: String (can be specified multiple times)
 - **Default**: None (run all tests)
 - **Description**: Run only tests matching the specified name(s)
@@ -200,6 +209,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 - **Example**: `--test "Business hours query" --test "Order status"`
 
 **`--filter` <pattern>**
+
 - **Type**: String (glob pattern)
 - **Default**: None (run all tests)
 - **Description**: Run only tests matching glob pattern
@@ -209,6 +219,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 #### Cache Options
 
 **`--no-cache`**
+
 - **Type**: Flag
 - **Default**: False (caching enabled)
 - **Description**: Disable file caching for remote URLs (always re-download)
@@ -217,6 +228,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 - **Example**: `--no-cache`
 
 **`--clear-cache`**
+
 - **Type**: Flag
 - **Default**: False
 - **Description**: Clear file cache before running tests
@@ -224,6 +236,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 - **Example**: `--clear-cache`
 
 **`--cache-dir` <directory>**
+
 - **Type**: Directory path
 - **Default**: `.holodeck/cache`
 - **Description**: Custom cache directory for remote files
@@ -238,6 +251,7 @@ All CLI options override corresponding `execution` settings in agent.yaml.
 ### Example 1: CLI Override
 
 **agent.yaml**:
+
 ```yaml
 execution:
   file_timeout: 30
@@ -245,11 +259,13 @@ execution:
 ```
 
 **Command**:
+
 ```bash
 holodeck test agent.yaml --llm-timeout 120
 ```
 
 **Resolved Configuration**:
+
 - `file_timeout`: 30 (from agent.yaml)
 - `llm_timeout`: 120 (CLI override)
 - `download_timeout`: 30 (built-in default)
@@ -259,6 +275,7 @@ holodeck test agent.yaml --llm-timeout 120
 ### Example 2: All from agent.yaml
 
 **agent.yaml**:
+
 ```yaml
 execution:
   file_timeout: 60
@@ -269,11 +286,13 @@ execution:
 ```
 
 **Command**:
+
 ```bash
 holodeck test agent.yaml
 ```
 
 **Resolved Configuration**:
+
 - All settings from agent.yaml
 - No CLI overrides
 
@@ -282,16 +301,19 @@ holodeck test agent.yaml
 ### Example 3: Built-in Defaults
 
 **agent.yaml**:
+
 ```yaml
 # No execution section
 ```
 
 **Command**:
+
 ```bash
 holodeck test agent.yaml
 ```
 
 **Resolved Configuration**:
+
 - `file_timeout`: 30 (built-in default)
 - `llm_timeout`: 60 (built-in default)
 - `download_timeout`: 30 (built-in default)
@@ -303,6 +325,7 @@ holodeck test agent.yaml
 ### Example 4: Global Config Fallback (Future)
 
 **~/.holodeck/config.yaml** (global settings):
+
 ```yaml
 execution:
   llm_timeout: 90
@@ -310,17 +333,20 @@ execution:
 ```
 
 **agent.yaml**:
+
 ```yaml
 execution:
   file_timeout: 45
 ```
 
 **Command**:
+
 ```bash
 holodeck test agent.yaml
 ```
 
 **Resolved Configuration**:
+
 - `file_timeout`: 45 (from agent.yaml)
 - `llm_timeout`: 90 (from global config)
 - `cache_dir`: ~/.holodeck/global-cache (from global config)
@@ -330,13 +356,13 @@ holodeck test agent.yaml
 
 ## Exit Codes
 
-| Code | Meaning | Description |
-|------|---------|-------------|
-| 0    | Success | All tests passed |
-| 1    | Test Failure | One or more tests failed (metric threshold not met or tool mismatch) |
-| 2    | Configuration Error | Invalid agent.yaml or configuration validation failed |
-| 3    | Execution Error | Error during test execution (agent failure, timeout, etc.) |
-| 4    | Evaluation Error | All evaluation metrics failed for one or more tests |
+| Code | Meaning             | Description                                                          |
+| ---- | ------------------- | -------------------------------------------------------------------- |
+| 0    | Success             | All tests passed                                                     |
+| 1    | Test Failure        | One or more tests failed (metric threshold not met or tool mismatch) |
+| 2    | Configuration Error | Invalid agent.yaml or configuration validation failed                |
+| 3    | Execution Error     | Error during test execution (agent failure, timeout, etc.)           |
+| 4    | Evaluation Error    | All evaluation metrics failed for one or more tests                  |
 
 ---
 
@@ -423,6 +449,7 @@ DEBUG: markitdown extraction took 1.5s
 ### Configuration Errors
 
 **Invalid ExecutionConfig**:
+
 ```
 ERROR: Configuration validation failed
   Cause: execution.file_timeout must be between 1 and 300 (got: 500)
@@ -431,6 +458,7 @@ ERROR: Configuration validation failed
 ```
 
 **Conflicting Settings**:
+
 ```
 ERROR: Configuration validation failed
   Cause: execution.verbose and execution.quiet cannot both be true
@@ -445,6 +473,7 @@ ERROR: Configuration validation failed
 ### Example 1: Use agent.yaml Settings
 
 agent.yaml includes execution configuration:
+
 ```yaml
 execution:
   file_timeout: 60
@@ -453,6 +482,7 @@ execution:
 ```
 
 Run tests with these settings:
+
 ```bash
 holodeck test agent.yaml
 ```
@@ -460,28 +490,34 @@ holodeck test agent.yaml
 ### Example 2: Override with CLI Flags
 
 Override specific settings from agent.yaml:
+
 ```bash
 holodeck test agent.yaml --llm-timeout 180 --quiet
 ```
+
 Result: Uses `file_timeout: 60` from agent.yaml, but overrides `llm_timeout` to 180 and enables quiet mode (overriding `verbose: true`)
 
 ### Example 3: No Execution Config in agent.yaml
 
 agent.yaml has no execution section - use built-in defaults:
+
 ```bash
 holodeck test agent.yaml
 ```
+
 Result: Uses all built-in defaults (file_timeout=30, llm_timeout=60, etc.)
 
 ### Example 4: Custom Cache Directory
 
 Configure custom cache in agent.yaml:
+
 ```yaml
 execution:
   cache_dir: /tmp/my-cache
 ```
 
 Or override via CLI:
+
 ```bash
 holodeck test agent.yaml --cache-dir /tmp/my-cache
 ```
@@ -552,13 +588,13 @@ def load_execution_config(agent: Agent, cli_args: dict) -> ExecutionConfig:
 
 The following environment variables can be used as defaults (lowest priority):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HOLODECK_FILE_TIMEOUT` | 30 | Default file processing timeout (seconds) |
-| `HOLODECK_LLM_TIMEOUT` | 60 | Default LLM API timeout (seconds) |
-| `HOLODECK_DOWNLOAD_TIMEOUT` | 30 | Default file download timeout (seconds) |
-| `HOLODECK_CACHE_DIR` | `.holodeck/cache` | Cache directory for remote files |
-| `HOLODECK_VERBOSE` | `false` | Enable verbose output by default |
+| Variable                    | Default           | Description                               |
+| --------------------------- | ----------------- | ----------------------------------------- |
+| `HOLODECK_FILE_TIMEOUT`     | 30                | Default file processing timeout (seconds) |
+| `HOLODECK_LLM_TIMEOUT`      | 60                | Default LLM API timeout (seconds)         |
+| `HOLODECK_DOWNLOAD_TIMEOUT` | 30                | Default file download timeout (seconds)   |
+| `HOLODECK_CACHE_DIR`        | `.holodeck/cache` | Cache directory for remote files          |
+| `HOLODECK_VERBOSE`          | `false`           | Enable verbose output by default          |
 
 **Priority**: CLI options > agent.yaml > environment variables > built-in defaults
 
@@ -569,16 +605,19 @@ The following environment variables can be used as defaults (lowest priority):
 The CLI automatically detects TTY environments and adjusts output:
 
 **TTY (Interactive Terminal)**:
+
 - Progress indicators with spinners
 - Colored output (✅ green, ❌ red)
 - Real-time status updates
 
 **Non-TTY (CI/CD Pipelines)**:
+
 - Plain text output (no spinners)
 - No ANSI color codes
 - Line-buffered output for log parsing
 
 Detection logic:
+
 ```python
 import sys
 
@@ -590,9 +629,11 @@ is_tty = sys.stdout.isatty()
 ## Compatibility
 
 ### Python Version
-- Minimum: Python 3.14+
+
+- Minimum: Python 3.13+
 
 ### Operating Systems
+
 - Linux (Ubuntu 20.04+, RHEL 8+)
 - macOS (11.0+)
 - Windows (10+, with WSL recommended)
@@ -601,18 +642,18 @@ is_tty = sys.stdout.isatty()
 
 ## Summary: Agent Config vs CLI Options
 
-| Setting | Agent Config Field | CLI Option | Default |
-|---------|-------------------|------------|---------|
-| File processing timeout | `execution.file_timeout` | `--file-timeout` | 30s |
-| LLM API timeout | `execution.llm_timeout` | `--llm-timeout` | 60s |
-| Download timeout | `execution.download_timeout` | `--download-timeout` | 30s |
-| Enable caching | `execution.cache_enabled` | `--no-cache` (inverts) | true |
-| Cache directory | `execution.cache_dir` | `--cache-dir` | .holodeck/cache |
-| Verbose output | `execution.verbose` | `--verbose` | false |
-| Quiet mode | `execution.quiet` | `--quiet` | false |
-| Output file | N/A | `--output` | stdout |
-| Report format | N/A | `--format` | json |
-| Test filter | N/A | `--test`, `--filter` | all tests |
-| Clear cache | N/A | `--clear-cache` | false |
+| Setting                 | Agent Config Field           | CLI Option             | Default         |
+| ----------------------- | ---------------------------- | ---------------------- | --------------- |
+| File processing timeout | `execution.file_timeout`     | `--file-timeout`       | 30s             |
+| LLM API timeout         | `execution.llm_timeout`      | `--llm-timeout`        | 60s             |
+| Download timeout        | `execution.download_timeout` | `--download-timeout`   | 30s             |
+| Enable caching          | `execution.cache_enabled`    | `--no-cache` (inverts) | true            |
+| Cache directory         | `execution.cache_dir`        | `--cache-dir`          | .holodeck/cache |
+| Verbose output          | `execution.verbose`          | `--verbose`            | false           |
+| Quiet mode              | `execution.quiet`            | `--quiet`              | false           |
+| Output file             | N/A                          | `--output`             | stdout          |
+| Report format           | N/A                          | `--format`             | json            |
+| Test filter             | N/A                          | `--test`, `--filter`   | all tests       |
+| Clear cache             | N/A                          | `--clear-cache`        | false           |
 
 **Key Principle**: Configuration is declarative in agent.yaml, CLI flags provide runtime overrides.

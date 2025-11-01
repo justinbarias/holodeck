@@ -29,6 +29,7 @@ holodeck test agent.yaml
 ```
 
 **Output**:
+
 ```
 🧪 Running HoloDeck Tests...
 
@@ -59,6 +60,7 @@ holodeck test agent.yaml --output report.md
 ```
 
 **report.json** (excerpt):
+
 ```json
 {
   "agent_name": "Customer Support Agent",
@@ -110,6 +112,7 @@ holodeck test agent.yaml --filter "order_*"
 ### Minimal Configuration
 
 **agent.yaml**:
+
 ```yaml
 name: Customer Support Agent
 model:
@@ -140,6 +143,7 @@ test_cases:
 ```
 
 **Run tests**:
+
 ```bash
 holodeck test agent.yaml
 ```
@@ -149,6 +153,7 @@ holodeck test agent.yaml
 ### Configuration with Execution Settings
 
 **agent.yaml** (with execution config):
+
 ```yaml
 name: Customer Support Agent
 model:
@@ -164,13 +169,13 @@ evaluations:
       threshold: 0.7
       model:
         provider: azure_openai
-        name: gpt-4o  # Use expensive model for critical metric
+        name: gpt-4o # Use expensive model for critical metric
 
     - metric: relevance
       threshold: 0.7
       model:
         provider: azure_openai
-        name: gpt-4o-mini  # Use cheaper model for general metric
+        name: gpt-4o-mini # Use cheaper model for general metric
 
 test_cases:
   - name: Business hours query
@@ -179,18 +184,20 @@ test_cases:
 
 # Execution configuration
 execution:
-  file_timeout: 60      # Allow 60s for large files
-  llm_timeout: 120      # Allow 120s for complex LLM calls
-  cache_enabled: true   # Cache remote files
-  verbose: false        # Standard output
+  file_timeout: 60 # Allow 60s for large files
+  llm_timeout: 120 # Allow 120s for complex LLM calls
+  cache_enabled: true # Cache remote files
+  verbose: false # Standard output
 ```
 
 **Run tests** (uses execution config from agent.yaml):
+
 ```bash
 holodeck test agent.yaml
 ```
 
 **Override settings** via CLI:
+
 ```bash
 holodeck test agent.yaml --llm-timeout 180 --verbose
 ```
@@ -202,6 +209,7 @@ holodeck test agent.yaml --llm-timeout 180 --verbose
 ### Test with PDF Files
 
 **agent.yaml**:
+
 ```yaml
 test_cases:
   - name: Analyze contract terms
@@ -209,7 +217,7 @@ test_cases:
     files:
       - path: tests/fixtures/contract.pdf
         type: pdf
-        pages: [1, 2, 3]  # Extract only first 3 pages
+        pages: [1, 2, 3] # Extract only first 3 pages
     ground_truth: "30-day cancellation with full refund"
     evaluations:
       - groundedness
@@ -217,6 +225,7 @@ test_cases:
 ```
 
 **Run test**:
+
 ```bash
 holodeck test agent.yaml
 ```
@@ -228,6 +237,7 @@ The PDF content is automatically extracted via markitdown and provided as contex
 ### Test with Images
 
 **agent.yaml**:
+
 ```yaml
 test_cases:
   - name: Identify product from photo
@@ -246,6 +256,7 @@ markitdown processes the image with OCR and LLM-based description.
 ### Test with Excel Data
 
 **agent.yaml**:
+
 ```yaml
 test_cases:
   - name: Analyze Q4 sales data
@@ -254,7 +265,7 @@ test_cases:
       - path: tests/fixtures/sales-data.xlsx
         type: excel
         sheet: "Q4 Sales"
-        range: "A1:E100"  # Extract specific range
+        range: "A1:E100" # Extract specific range
     ground_truth: "$2.5M in Q4 sales"
 ```
 
@@ -263,6 +274,7 @@ test_cases:
 ### Test with Remote Files (URLs)
 
 **agent.yaml**:
+
 ```yaml
 test_cases:
   - name: Analyze public report
@@ -270,7 +282,7 @@ test_cases:
     files:
       - url: "https://example.com/annual-report.pdf"
         type: pdf
-        cache: true  # Cache the file in .holodeck/cache/
+        cache: true # Cache the file in .holodeck/cache/
 ```
 
 Files are downloaded, cached, and reused in subsequent runs (unless `--no-cache` is used).
@@ -282,6 +294,7 @@ Files are downloaded, cached, and reused in subsequent runs (unless `--no-cache`
 ### GitHub Actions Example
 
 **.github/workflows/test-agent.yml**:
+
 ```yaml
 name: Test Agent
 
@@ -296,7 +309,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.14'
+          python-version: "3.13"
 
       - name: Install HoloDeck
         run: pip install holodeck-ai
@@ -319,9 +332,10 @@ jobs:
 ### GitLab CI Example
 
 **.gitlab-ci.yml**:
+
 ```yaml
 test-agent:
-  image: python:3.14
+  image: python:3.13
   script:
     - pip install holodeck-ai
     - holodeck test agent.yaml --quiet --output report.json
@@ -350,25 +364,25 @@ evaluations:
       threshold: 0.8
       model:
         provider: azure_openai
-        name: gpt-4o  # Critical: factual accuracy
+        name: gpt-4o # Critical: factual accuracy
 
     - metric: safety
       threshold: 0.9
       model:
         provider: azure_openai
-        name: gpt-4o  # Critical: harmful content detection
+        name: gpt-4o # Critical: harmful content detection
 
     - metric: relevance
       threshold: 0.7
       model:
         provider: azure_openai
-        name: gpt-4o-mini  # General: response relevance
+        name: gpt-4o-mini # General: response relevance
 
     - metric: coherence
       threshold: 0.7
       model:
         provider: azure_openai
-        name: gpt-4o-mini  # General: logical flow
+        name: gpt-4o-mini # General: logical flow
 ```
 
 **Cost Optimization**: This approach reduces evaluation costs by 70-80% while maintaining quality for critical metrics.
@@ -420,17 +434,19 @@ Run simple tests first for quick validation, then comprehensive tests with files
 Configure timeouts for different agent types:
 
 **Fast agent (simple Q&A)**:
+
 ```yaml
 execution:
-  llm_timeout: 30  # Quick responses expected
+  llm_timeout: 30 # Quick responses expected
   file_timeout: 15
 ```
 
 **Complex agent (document analysis)**:
+
 ```yaml
 execution:
-  llm_timeout: 180  # Allow time for analysis
-  file_timeout: 90   # Large documents take time
+  llm_timeout: 180 # Allow time for analysis
+  file_timeout: 90 # Large documents take time
 ```
 
 ---
@@ -440,6 +456,7 @@ execution:
 ### Issue 1: Test Timeout
 
 **Symptom**:
+
 ```
 ERROR: Test case "Analyze contract" failed
   Cause: LLM API timeout after 60s
@@ -447,12 +464,14 @@ ERROR: Test case "Analyze contract" failed
 
 **Solution**:
 Increase timeout in agent.yaml:
+
 ```yaml
 execution:
   llm_timeout: 120
 ```
 
 Or via CLI:
+
 ```bash
 holodeck test agent.yaml --llm-timeout 120
 ```
@@ -462,6 +481,7 @@ holodeck test agent.yaml --llm-timeout 120
 ### Issue 2: File Processing Failure
 
 **Symptom**:
+
 ```
 WARNING: Failed to process file
   File: tests/fixtures/large-document.pdf
@@ -470,17 +490,19 @@ WARNING: Failed to process file
 
 **Solution**:
 Increase file timeout:
+
 ```yaml
 execution:
   file_timeout: 60
 ```
 
 Or extract specific pages to reduce processing time:
+
 ```yaml
 files:
   - path: tests/fixtures/large-document.pdf
     type: pdf
-    pages: [1, 2, 3]  # Only first 3 pages
+    pages: [1, 2, 3] # Only first 3 pages
 ```
 
 ---
@@ -488,6 +510,7 @@ files:
 ### Issue 3: Metric Evaluation Fails
 
 **Symptom**:
+
 ```
 WARNING: Metric evaluation failed
   Metric: groundedness
@@ -496,6 +519,7 @@ WARNING: Metric evaluation failed
 ```
 
 **Solution**:
+
 - Wait for rate limit reset (automatic retry up to 3 times with exponential backoff)
 - Check Azure OpenAI quota/limits
 - Consider using `fail_on_error: false` for non-critical metrics
@@ -504,7 +528,7 @@ WARNING: Metric evaluation failed
 evaluations:
   metrics:
     - metric: relevance
-      fail_on_error: false  # Don't fail test if metric errors
+      fail_on_error: false # Don't fail test if metric errors
 ```
 
 ---
@@ -512,6 +536,7 @@ evaluations:
 ### Issue 4: Remote File Download Fails
 
 **Symptom**:
+
 ```
 ERROR: Failed to download remote file
   URL: https://example.com/report.pdf
@@ -520,15 +545,17 @@ ERROR: Failed to download remote file
 
 **Solution**:
 Increase download timeout:
+
 ```yaml
 execution:
   download_timeout: 60
 ```
 
 Or use a local copy of the file:
+
 ```yaml
 files:
-  - path: tests/fixtures/report.pdf  # Local file instead of URL
+  - path: tests/fixtures/report.pdf # Local file instead of URL
     type: pdf
 ```
 
@@ -537,12 +564,14 @@ files:
 ### Issue 5: Test Fails with Tool Mismatch
 
 **Symptom**:
+
 ```
 ❌ Test: Order status query [FAILED]
   Errors: Tool mismatch: Expected get_order_status but got []
 ```
 
 **Solution**:
+
 1. Verify agent has the `get_order_status` tool configured in agent.yaml
 2. Check tool implementation is working correctly
 3. Review agent instructions to ensure tool usage is clear
@@ -555,6 +584,7 @@ files:
 ### 1. Start Simple, Then Add Complexity
 
 **Phase 1**: Basic text tests
+
 ```yaml
 test_cases:
   - name: Simple Q&A
@@ -563,6 +593,7 @@ test_cases:
 ```
 
 **Phase 2**: Add evaluation metrics
+
 ```yaml
 test_cases:
   - name: Simple Q&A
@@ -574,6 +605,7 @@ test_cases:
 ```
 
 **Phase 3**: Add multimodal files
+
 ```yaml
 test_cases:
   - name: Document analysis
@@ -596,7 +628,7 @@ Always provide `ground_truth` for tests that validate factual accuracy:
 test_cases:
   - name: Business hours
     input: "What are your business hours?"
-    ground_truth: "Monday-Friday 9AM-5PM EST"  # GOOD: Enables groundedness check
+    ground_truth: "Monday-Friday 9AM-5PM EST" # GOOD: Enables groundedness check
 
   - name: General greeting
     input: "Hello!"
@@ -609,13 +641,13 @@ test_cases:
 
 ```yaml
 evaluations:
-  model:  # Global default (cheapest)
+  model: # Global default (cheapest)
     provider: azure_openai
     name: gpt-4o-mini
 
   metrics:
     - metric: groundedness
-      model:  # Override for critical metric
+      model: # Override for critical metric
         provider: azure_openai
         name: gpt-4o
 
@@ -649,7 +681,7 @@ Validate agent calls the right tools:
 test_cases:
   - name: Order lookup
     input: "Where is order #12345?"
-    expected_tools: ["get_order_status"]  # Validates tool call
+    expected_tools: ["get_order_status"] # Validates tool call
 ```
 
 ---

@@ -2,7 +2,7 @@
 name = "holodeck-ai"
 dynamic = ["version"]
 description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
-requires-python = ">=3.14,<4.0"
+requires-python = ">=3.13,<4.0"
 dependencies = [
     "requests (>=2.32.5,<3.0.0)",
     "pydantic>=2.0.0",

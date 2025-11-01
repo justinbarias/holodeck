@@ -9,7 +9,7 @@ Implement the `holodeck init` CLI command to bootstrap new AI agent projects wit
 
 ## Technical Context
 
-**Language/Version**: Python 3.14+ (per Constitution)
+**Language/Version**: Python 3.13+ (per Constitution)
 **Primary Dependencies**: Click (CLI framework), Pyyaml (YAML parsing/generation), Jinja2 (template rendering)
 **Storage**: File system only (project directory structure and files)
 **Testing**: pytest with @pytest.mark.unit, @pytest.mark.integration markers
@@ -21,15 +21,15 @@ Implement the `holodeck init` CLI command to bootstrap new AI agent projects wit
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
-| Principle | Status | Verification |
-|-----------|--------|--------------|
-| I. No-Code-First Agent Definition | ✅ PASS | Project templates define agents entirely through YAML (agent.yaml, instructions/, tools/ config). Users create agents without writing code—just editing YAML and example files. |
-| II. MCP for API Integrations | ✅ PASS | This feature is CLI-only; no API integrations. Template examples reference MCP pattern but don't implement APIs. N/A for this scope. |
-| III. Test-First with Multimodal Support | ✅ PASS | Generated test case examples include input, expected_tools, ground_truth structure. Multimodal support deferred to v0.2+; current templates provide text-based examples. |
-| IV. OpenTelemetry-Native Observability | ⚠️ DEFERRED | CLI initialization logging is basic (success/error messages). Structured logging with OpenTelemetry follows in Agent Engine (001-cli-core-engine Phase 2). Current scope: file creation feedback only. |
-| V. Evaluation Flexibility with Model Overrides | ✅ PASS | Templates include evaluation examples structure (deferred details). No evaluation execution in init command itself. |
+| Principle                                      | Status      | Verification                                                                                                                                                                                           |
+| ---------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| I. No-Code-First Agent Definition              | ✅ PASS     | Project templates define agents entirely through YAML (agent.yaml, instructions/, tools/ config). Users create agents without writing code—just editing YAML and example files.                        |
+| II. MCP for API Integrations                   | ✅ PASS     | This feature is CLI-only; no API integrations. Template examples reference MCP pattern but don't implement APIs. N/A for this scope.                                                                   |
+| III. Test-First with Multimodal Support        | ✅ PASS     | Generated test case examples include input, expected_tools, ground_truth structure. Multimodal support deferred to v0.2+; current templates provide text-based examples.                               |
+| IV. OpenTelemetry-Native Observability         | ⚠️ DEFERRED | CLI initialization logging is basic (success/error messages). Structured logging with OpenTelemetry follows in Agent Engine (001-cli-core-engine Phase 2). Current scope: file creation feedback only. |
+| V. Evaluation Flexibility with Model Overrides | ✅ PASS     | Templates include evaluation examples structure (deferred details). No evaluation execution in init command itself.                                                                                    |
 
 **Overall Gate Status**: ✅ PASS - Feature aligns with Constitution. Observability deferral is appropriate for CLI bootstrap feature (not part of core agent execution).
 
@@ -102,20 +102,22 @@ tests/
 
 ## Complexity Tracking
 
-*No Constitution violations to justify - all requirements aligned*
+_No Constitution violations to justify - all requirements aligned_
 
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| (none) | Feature fully compliant with Constitution | N/A |
+| Violation | Why Needed                                | Simpler Alternative Rejected Because |
+| --------- | ----------------------------------------- | ------------------------------------ |
+| (none)    | Feature fully compliant with Constitution | N/A                                  |
 
 ---
 
 ## Phase 0 & Phase 1 Artifacts
 
 **Phase 0 Outputs** (Research):
+
 - `research.md`: Technical decisions documented (Click, Jinja2, bundled templates, schema validation)
 
 **Phase 1 Outputs** (Design & Contracts):
+
 - `data-model.md`: Entity definitions (AgentConfig, TemplateManifest, ProjectInitInput, ProjectInitResult, TemplateRenderer)
 - `contracts/cli-init-command.md`: CLI command specification (arguments, options, exit codes, behavior)
 - `quickstart.md`: Developer guide and implementation patterns
@@ -128,6 +130,7 @@ tests/
 Ready for `/speckit.tasks` to generate implementation task breakdown.
 
 All critical design decisions made:
+
 - ✅ Click for CLI framework
 - ✅ Jinja2 for templates with strict AgentConfig validation
 - ✅ Bundled templates (no network)

@@ -11,8 +11,9 @@ Implement three-level configuration hierarchy (user-level → project-level → 
 
 ## Technical Context
 
-**Language/Version**: Python 3.14+ (per CLAUDE.md)
+**Language/Version**: Python 3.13+ (per CLAUDE.md)
 **Primary Dependencies**:
+
 - PyYAML (YAML parsing)
 - jsonschema (JSON Schema validation - Basic draft 2020-12)
 - pydantic (Configuration validation)
@@ -24,6 +25,7 @@ Implement three-level configuration hierarchy (user-level → project-level → 
 **Project Type**: Single library package (src/holodeck/)
 **Performance Goals**: Configuration load < 100ms per agent; validation < 50ms per schema
 **Constraints**:
+
 - Basic JSON Schema support only (type, properties, required, additionalProperties)
 - Configuration files must be valid YAML syntax
 - Schema validation at config load time, not runtime
@@ -33,17 +35,17 @@ Implement three-level configuration hierarchy (user-level → project-level → 
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Principle Compliance Assessment
 
-| Principle | Compliance | Notes |
-|-----------|-----------|-------|
-| **I. No-Code-First Agent Definition** | ✅ COMPLIANT | Configuration entirely via YAML (agent.yaml inherits from config.yml/config.yaml). No code required to define settings or response formats. |
-| **II. MCP for API Integrations** | ✅ N/A | This feature does not introduce new API integrations; it focuses on configuration. MCP requirements apply to future tool implementations. |
-| **III. Test-First with Multimodal Support** | ✅ COMPLIANT | Will implement comprehensive unit and integration tests. Response format validation supports structured validation of multimodal outputs. |
-| **IV. OpenTelemetry-Native Observability** | ✅ COMPLIANT | Configuration loading and validation will be instrumented with OpenTelemetry traces. Schema validation will emit observability signals. |
-| **V. Evaluation Flexibility with Model Overrides** | ✅ COMPLIANT | Global response_format supports per-agent overrides; no restrictions on evaluation-level model choices. |
+| Principle                                          | Compliance   | Notes                                                                                                                                       |
+| -------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **I. No-Code-First Agent Definition**              | ✅ COMPLIANT | Configuration entirely via YAML (agent.yaml inherits from config.yml/config.yaml). No code required to define settings or response formats. |
+| **II. MCP for API Integrations**                   | ✅ N/A       | This feature does not introduce new API integrations; it focuses on configuration. MCP requirements apply to future tool implementations.   |
+| **III. Test-First with Multimodal Support**        | ✅ COMPLIANT | Will implement comprehensive unit and integration tests. Response format validation supports structured validation of multimodal outputs.   |
+| **IV. OpenTelemetry-Native Observability**         | ✅ COMPLIANT | Configuration loading and validation will be instrumented with OpenTelemetry traces. Schema validation will emit observability signals.     |
+| **V. Evaluation Flexibility with Model Overrides** | ✅ COMPLIANT | Global response_format supports per-agent overrides; no restrictions on evaluation-level model choices.                                     |
 
 **Status**: ✅ **GATE PASSES** - Feature aligns with all five core principles. No exceptions or complexity tracking needed.
 
@@ -94,7 +96,7 @@ tests/
 
 ## Complexity Tracking
 
-*No violations - Constitution Check passes without exception. This section left empty.*
+_No violations - Constitution Check passes without exception. This section left empty._
 
 ---
 
@@ -112,12 +114,12 @@ All critical unknowns were resolved during spec clarification phase:
 
 ### Technical Dependencies & Best Practices
 
-| Component | Technology | Rationale |
-|-----------|-----------|-----------|
-| YAML Parsing | PyYAML | Standard, battle-tested Python YAML library with wide adoption |
-| JSON Schema Validation | jsonschema | Pure Python, supports draft 2020-12, no native C dependencies |
-| Configuration Models | Pydantic | Type-safe configuration with automatic validation; integrates with FastAPI |
-| File Path Handling | pathlib | Cross-platform path handling; Python 3.14+ standard |
+| Component                | Technology         | Rationale                                                                               |
+| ------------------------ | ------------------ | --------------------------------------------------------------------------------------- |
+| YAML Parsing             | PyYAML             | Standard, battle-tested Python YAML library with wide adoption                          |
+| JSON Schema Validation   | jsonschema         | Pure Python, supports draft 2020-12, no native C dependencies                           |
+| Configuration Models     | Pydantic           | Type-safe configuration with automatic validation; integrates with FastAPI              |
+| File Path Handling       | pathlib            | Cross-platform path handling; Python 3.13+ standard                                     |
 | Configuration Precedence | Custom merge logic | Simple precedence chain (user → project → agent); no complex conflict resolution needed |
 
 ### Research Output
@@ -133,6 +135,7 @@ This technical context forms the foundation for Phase 1 design. All clarificatio
 #### 1. Data Model (data-model.md)
 
 **Defines**:
+
 - GlobalConfig entity (reused for both user-level and project-level)
 - AgentConfiguration with response_format and inheritance
 - ResponseFormatSchema (Basic JSON Schema only)
@@ -141,6 +144,7 @@ This technical context forms the foundation for Phase 1 design. All clarificatio
 - Error handling states
 
 **Key Design Decisions**:
+
 - Reuse existing GlobalConfig model (no new model)
 - API keys part of LMProvider (not separate)
 - Response format and tools are agent-specific only
@@ -150,6 +154,7 @@ This technical context forms the foundation for Phase 1 design. All clarificatio
 #### 2. Configuration Contracts (contracts/config-schema.yaml)
 
 **Defines**:
+
 - GlobalConfig schema (user-level and project-level)
 - AgentConfig schema extensions (response_format, tools)
 - LMProvider component schema
@@ -163,6 +168,7 @@ This technical context forms the foundation for Phase 1 design. All clarificatio
 #### 3. Quick Start Guide (quickstart.md)
 
 **Covers**:
+
 - 5-minute getting started tutorial
 - Configuration file creation (user-level and project-level)
 - Adding response formats to agents
@@ -176,6 +182,7 @@ This technical context forms the foundation for Phase 1 design. All clarificatio
 **Modules to Implement**:
 
 1. **src/holodeck/config/loader.py**
+
    - Load GlobalConfig from user-level location
    - Load GlobalConfig from project-level location
    - Load agent configuration
@@ -183,12 +190,14 @@ This technical context forms the foundation for Phase 1 design. All clarificatio
    - Merge configurations with proper precedence
 
 2. **src/holodeck/config/schema.py**
+
    - Validate response_format JSON schema
    - Enforce Basic JSON Schema keywords only
    - Load external schema files
    - Provide detailed error messages
 
 3. **src/holodeck/config/merge.py**
+
    - Merge user-level and project-level GlobalConfig
    - Merge global settings with agent config
    - Handle inherit_global flag
@@ -208,6 +217,7 @@ This technical context forms the foundation for Phase 1 design. All clarificatio
 **Next Command**: `/speckit.tasks`
 
 This will generate the detailed task breakdown (tasks.md) with:
+
 - Development tasks (one per module)
 - Test tasks (comprehensive coverage)
 - Documentation tasks
