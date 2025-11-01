@@ -119,7 +119,7 @@ Phase 8: Polish & QA (T063-T074)
 
 ### Tasks
 
-- [ ] T001 Install new dependencies in pyproject.toml (semantic-kernel[azure]>=1.37.0, markitdown[all]>=0.1.0, azure-ai-evaluation>=1.0.0, evaluate>=0.4.0, sacrebleu>=2.3.0, aiofiles>=23.0.0)
+- [x] T001 Install new dependencies in pyproject.toml (semantic-kernel[azure]>=1.37.0, markitdown[all]>=0.1.0, azure-ai-evaluation>=1.0.0, evaluate>=0.4.0, ~sacrebleu>=2.3.0~, aiofiles>=23.0.0)
 - [ ] T002 Create test fixtures directory structure (tests/fixtures/agents/, tests/fixtures/files/, tests/fixtures/expected_reports/)
 - [ ] T003 Create lib/test_runner/ directory structure with **init**.py (stub files: executor.py, agent_bridge.py, progress.py, reporter.py)
 - [ ] T004 Create lib/evaluators/ directory structure with **init**.py (stub files: base.py, azure_ai.py, nlp_metrics.py)
