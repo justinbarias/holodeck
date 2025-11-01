@@ -15,6 +15,7 @@ This document consolidates technology decisions for implementing the `holodeck t
 **Decision**: Use Semantic Kernel Agents module for LLM interactions
 
 **Rationale**:
+
 - Native Azure integration and Microsoft support
 - Clean agent abstractions with built-in orchestration
 - Support for tool call tracking and capture
@@ -24,6 +25,7 @@ This document consolidates technology decisions for implementing the `holodeck t
 **Installation**: `semantic-kernel[azure]>=1.37.0`
 
 **Key Capabilities**:
+
 - Agent invocation with ChatHistory context
 - Tool call tracking and validation
 - Configurable timeouts (default: 60s for LLM calls)
@@ -31,6 +33,7 @@ This document consolidates technology decisions for implementing the `holodeck t
 - Multi-agent orchestration patterns
 
 **Integration Pattern**:
+
 ```python
 from semantic_kernel.agents import Agent
 from semantic_kernel import Kernel
@@ -49,6 +52,7 @@ tool_calls = response.tool_calls  # For validation against expected_tools
 ```
 
 **Alternatives Considered**:
+
 - LangChain: More complex API, less Azure-native
 - Direct OpenAI/Anthropic SDKs: Would require custom orchestration layer
 
@@ -59,6 +63,7 @@ tool_calls = response.tool_calls  # For validation against expected_tools
 **Decision**: Use Microsoft's markitdown for unified multimodal file processing
 
 **Rationale**:
+
 - Single library handles all file types (PDF, Office, images, etc.)
 - Converts to markdown (optimal for LLM consumption)
 - Official Microsoft tool with ongoing support
@@ -70,6 +75,7 @@ tool_calls = response.tool_calls  # For validation against expected_tools
 **Supported Formats**: DOCX, XLSX, PPTX, PDF, JPG, PNG, HTML, JSON, CSV, Audio (transcription)
 
 **Integration Pattern**:
+
 ```python
 from markitdown import MarkItDown
 
@@ -83,6 +89,7 @@ with open(large_file, 'rb') as f:
 ```
 
 **File-Specific Features**:
+
 - **Excel**: Extract specific sheets/ranges via preprocessing
 - **PowerPoint**: Extract specific slides via preprocessing
 - **PDF**: Page extraction via preprocessing (pages parameter from TestCaseModel)
@@ -90,6 +97,7 @@ with open(large_file, 'rb') as f:
 - **Large files**: Stream processing with configurable timeout (30s default)
 
 **Alternatives Considered**:
+
 - textract: Less maintained, complex dependencies
 - Apache Tika: JVM requirement, heavier footprint
 - Per-format libraries (PyPDF2, python-docx, etc.): Would require managing 5+ libraries
@@ -101,6 +109,7 @@ with open(large_file, 'rb') as f:
 **Decision**: Use Azure AI Evaluation SDK for AI-powered metrics
 
 **Rationale**:
+
 - Standardized metrics backed by research
 - Per-metric model configuration (Constitution Principle V)
 - Official Microsoft implementation
@@ -110,6 +119,7 @@ with open(large_file, 'rb') as f:
 **Installation**: `azure-ai-evaluation>=1.0.0`
 
 **Built-in Evaluators**:
+
 - `GroundednessEvaluator`: Verify factual accuracy against ground truth
 - `RelevanceEvaluator`: Measure response relevance to query
 - `CoherenceEvaluator`: Assess logical flow and consistency
@@ -118,6 +128,7 @@ with open(large_file, 'rb') as f:
 - `ToolCallAccuracyEvaluator`: Validate tool selection (for expected_tools)
 
 **Integration Pattern**:
+
 ```python
 from azure.ai.evaluation import (
     GroundednessEvaluator,
@@ -142,11 +153,13 @@ groundedness_score = groundedness_eval(
 ```
 
 **Cost Optimization Strategy**:
+
 - GPT-4o for critical metrics (groundedness, safety)
 - GPT-4o-mini for general metrics (relevance, coherence)
 - User-configurable per EvaluationMetric.model override
 
 **Alternatives Considered**:
+
 - Custom prompt-based evaluation: Less standardized, no research backing
 - LangChain evaluators: Not Azure-native, less maintained
 
@@ -157,6 +170,7 @@ groundedness_score = groundedness_eval(
 **Decision**: Use Hugging Face `evaluate` library for NLP metrics
 
 **Rationale**:
+
 - Unified API for all NLP metrics (BLEU, ROUGE, F1, METEOR)
 - Modern, actively maintained
 - Includes SacreBLEU (standard BLEU implementation)
@@ -166,6 +180,7 @@ groundedness_score = groundedness_eval(
 **Installation**: `evaluate>=0.4.0`, `sacrebleu>=2.3.0`
 
 **Supported Metrics**:
+
 - **BLEU/SacreBLEU**: Machine translation quality
 - **ROUGE**: Summarization quality (ROUGE-1, ROUGE-2, ROUGE-L)
 - **METEOR**: MT evaluation with synonyms and stemming
@@ -173,6 +188,7 @@ groundedness_score = groundedness_eval(
 - **BERTScore**: Contextual embedding similarity
 
 **Integration Pattern**:
+
 ```python
 import evaluate
 
@@ -194,6 +210,7 @@ rouge_scores = rouge.compute(
 ```
 
 **Alternatives Considered**:
+
 - NLTK: Older implementation, less maintained
 - Direct implementation: Would require research and validation
 
@@ -268,21 +285,25 @@ rouge_scores = rouge.compute(
 ### Retry Configuration
 
 **File Downloads** (remote URLs):
+
 - Timeout: 30s (configurable)
 - Retry: 3 attempts with exponential backoff (1s, 2s, 4s)
 - Fallback: Skip file, warn user, continue test
 
 **File Processing** (markitdown):
+
 - Timeout: 30s per file (configurable)
 - Error: Log warning, attempt to process remaining files
 - Large files (>100MB): Warn user but attempt processing
 
 **LLM API Calls** (Semantic Kernel):
+
 - Timeout: 60s (configurable)
 - Retry: 3 attempts with exponential backoff (2s, 4s, 8s)
 - Fallback: Mark test as failed with error details
 
 **Evaluation Metrics** (Azure AI Evaluation):
+
 - Timeout: 60s per metric (inherited from LLM timeout)
 - Retry: 3 attempts with exponential backoff
 - Fallback: Mark metric as "ERROR" but continue with other metrics
@@ -290,6 +311,7 @@ rouge_scores = rouge.compute(
 ### Error Message Format
 
 Structured errors with context (per Clarifications):
+
 ```
 ERROR: Test case "What are your business hours?" failed
   Cause: LLM API timeout after 60s
@@ -305,24 +327,29 @@ ERROR: Test case "What are your business hours?" failed
 ### Caching Strategy
 
 **Remote Files**:
+
 - Location: `.holodeck/cache/{hash(url)}`
 - TTL: No expiration (manual cleanup)
 - Cache key: URL + file size + last-modified header
 
 **markitdown Results**:
+
 - Location: In-memory only (no disk cache for conversions)
 - Rationale: File content may change, conversions are fast (<1s for most files)
 
 **Evaluation Metrics**:
+
 - No caching (each test run is independent)
 
 ### Batch Processing
 
 **Sequential Execution** (v1):
+
 - One test at a time to simplify error handling and progress display
 - Parallel execution deferred to future version
 
 **Batch Metric Evaluation**:
+
 - Azure AI Evaluation SDK supports batch evaluation
 - Defer to Phase 3 for optimization
 
@@ -333,27 +360,31 @@ ERROR: Test case "What are your business hours?" failed
 ### Tiered Model Approach
 
 **Critical Metrics** (GPT-4o):
+
 - Groundedness (factual accuracy)
 - Safety (harmful content)
 - Tool call accuracy (expected_tools validation)
 
 **General Metrics** (GPT-4o-mini):
+
 - Relevance
 - Coherence
 - Fluency
 - Similarity
 
 **No LLM Metrics** (free):
+
 - BLEU, ROUGE, METEOR, F1 (via `evaluate` library)
 
 **User Override**:
+
 ```yaml
 evaluations:
   metrics:
     - metric: groundedness
       model:
         provider: azure_openai
-        name: gpt-4o  # Override: use expensive model for critical metric
+        name: gpt-4o # Override: use expensive model for critical metric
     - metric: relevance
       # Uses global default (gpt-4o-mini) if not specified
 ```
@@ -389,6 +420,7 @@ aiofiles = "^23.0.0"  # For async file operations
 ### Risk: Azure AI Evaluation SDK Rate Limits
 
 **Mitigation**:
+
 - Implement exponential backoff (3 retries)
 - Add configurable retry delay
 - Graceful degradation (mark metric as ERROR, continue execution)
@@ -397,6 +429,7 @@ aiofiles = "^23.0.0"  # For async file operations
 ### Risk: markitdown File Processing Failures
 
 **Mitigation**:
+
 - Timeout per file (30s default, configurable)
 - Warn on large files (>100MB)
 - Continue test execution if file fails to process
@@ -405,6 +438,7 @@ aiofiles = "^23.0.0"  # For async file operations
 ### Risk: Semantic Kernel Version Compatibility
 
 **Mitigation**:
+
 - Pin to semantic-kernel>=1.37.0 (current stable)
 - Monitor release notes for breaking changes
 - Comprehensive integration tests for agent execution
@@ -413,6 +447,7 @@ aiofiles = "^23.0.0"  # For async file operations
 ### Risk: Token Context Window Limits
 
 **Mitigation**:
+
 - Warn users about large files before processing
 - Support page/sheet/range extraction to limit content
 - markitdown streaming for large files
@@ -423,24 +458,28 @@ aiofiles = "^23.0.0"  # For async file operations
 ## Implementation Phases
 
 ### Phase 1: Core Execution (Weeks 1-2)
+
 - Semantic Kernel agent execution
 - Basic markitdown file preprocessing
 - Response and tool call capture
 - Sequential test execution
 
 ### Phase 2: Evaluation Metrics (Weeks 3-4)
+
 - Azure AI Evaluation SDK integration (groundedness, relevance)
 - NLP metrics (BLEU, ROUGE, METEOR)
 - Per-metric model configuration
 - Tool call validation
 
 ### Phase 3: Advanced Features (Weeks 5-6)
+
 - File caching (.holodeck/cache/)
 - Page/sheet/range extraction
 - Retry and timeout configuration
 - Batch metric evaluation (optimization)
 
 ### Phase 4: Polish & Production (Weeks 7-8)
+
 - Comprehensive error handling
 - Progress indicators and CI/CD output
 - Report generation (JSON/Markdown)
@@ -455,4 +494,4 @@ aiofiles = "^23.0.0"  # For async file operations
 - [Azure AI Evaluation SDK](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/evaluations)
 - [Hugging Face evaluate](https://huggingface.co/docs/evaluate)
 
-**Detailed Research**: See `/docs/research/test-execution-integration-research.md` for comprehensive technical research (7,200+ words, code examples, integration patterns).
+**Detailed Research**: See `./research/test-execution-integration-research.md` for comprehensive technical research (7,200+ words, code examples, integration patterns).
