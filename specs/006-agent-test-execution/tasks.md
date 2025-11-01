@@ -120,15 +120,15 @@ Phase 8: Polish & QA (T063-T074)
 ### Tasks
 
 - [x] T001 Install new dependencies in pyproject.toml (semantic-kernel[azure]>=1.37.0, markitdown[all]>=0.1.0, azure-ai-evaluation>=1.0.0, evaluate>=0.4.0, ~sacrebleu>=2.3.0~, aiofiles>=23.0.0)
-- [ ] T002 Create test fixtures directory structure (tests/fixtures/agents/, tests/fixtures/files/, tests/fixtures/expected_reports/)
-- [ ] T003 Create lib/test_runner/ directory structure with **init**.py (stub files: executor.py, agent_bridge.py, progress.py, reporter.py)
-- [ ] T004 Create lib/evaluators/ directory structure with **init**.py (stub files: base.py, azure_ai.py, nlp_metrics.py)
-- [ ] T005 Create lib/file_processor.py stub module
-- [ ] T006 Create cli/commands/test.py stub CLI command
-- [ ] T007 Register test command in cli/main.py
-- [ ] T008 Create models/test_result.py stub file for future models
-- [ ] T009 Create stub for ExecutionConfig in models/config.py
-- [ ] T010 Run make format && make lint to verify structure
+- [x] T002 Create test fixtures directory structure (tests/fixtures/agents/, tests/fixtures/files/, tests/fixtures/expected_reports/)
+- [x] T003 Create lib/test_runner/ directory structure with **init**.py (stub files: executor.py, agent_bridge.py, progress.py, reporter.py)
+- [x] T004 Create lib/evaluators/ directory structure with **init**.py (stub files: base.py, azure_ai.py, nlp_metrics.py)
+- [x] T005 Create lib/file_processor.py stub module
+- [x] T006 Create cli/commands/test.py stub CLI command
+- [x] T007 Register test command in cli/main.py
+- [x] T008 Create models/test_result.py stub file for future models
+- [x] T009 Create stub for ExecutionConfig in models/config.py
+- [x] T010 Run make format && make lint to verify structure
 
 ---
 

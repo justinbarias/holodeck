@@ -87,3 +87,25 @@ class GlobalConfig(BaseModel):
     deployment: DeploymentConfig | None = Field(
         None, description="Deployment configuration"
     )
+
+
+class ExecutionConfig(BaseModel):
+    """Test execution configuration.
+
+    Specifies execution parameters for agent test runs, including timeouts,
+    caching, and logging options.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    file_timeout: int | None = Field(
+        None, description="File processing timeout in seconds"
+    )
+    llm_timeout: int | None = Field(None, description="LLM API call timeout in seconds")
+    download_timeout: int | None = Field(
+        None, description="File download timeout in seconds"
+    )
+    cache_enabled: bool | None = Field(None, description="Enable file caching")
+    cache_dir: str | None = Field(None, description="Cache directory path")
+    verbose: bool | None = Field(None, description="Verbose output mode")
+    quiet: bool | None = Field(None, description="Quiet output mode")
