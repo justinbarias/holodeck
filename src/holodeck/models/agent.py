@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from holodeck.models.config import ExecutionConfig
 from holodeck.models.evaluation import EvaluationConfig
 from holodeck.models.llm import LLMProvider
 from holodeck.models.test_case import TestCaseModel
@@ -75,6 +76,9 @@ class Agent(BaseModel):
         None, description="Evaluation configuration"
     )
     test_cases: list[TestCaseModel] | None = Field(None, description="Test scenarios")
+    execution: ExecutionConfig | None = Field(
+        None, description="Test execution configuration"
+    )
 
     @field_validator("name")
     @classmethod

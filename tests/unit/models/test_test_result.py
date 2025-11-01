@@ -10,6 +10,9 @@ from pydantic import ValidationError
 from holodeck.models.test_result import (
     MetricResult,
     ProcessedFileInput,
+    ReportSummary,
+    TestReport,
+    TestResult,
 )
 
 
@@ -201,5 +204,362 @@ class TestMetricResult:
             MetricResult(  # type: ignore
                 metric_name="test",
                 score=0.5,
+                invalid_field="value",
+            )
+
+
+class TestTestResult:
+    """Tests for TestResult model."""
+
+    def test_test_result_minimal(self) -> None:
+        """Test TestResult with minimal required fields."""
+        result = TestResult(
+            test_input="What are your business hours?",
+            passed=True,
+            execution_time_ms=3500,
+            timestamp="2025-11-01T14:30:00Z",
+        )
+
+        assert result.test_input == "What are your business hours?"
+        assert result.test_name is None
+        assert result.processed_files == []
+        assert result.agent_response is None
+        assert result.tool_calls == []
+        assert result.expected_tools is None
+        assert result.tools_matched is None
+        assert result.metric_results == []
+        assert result.ground_truth is None
+        assert result.passed is True
+        assert result.execution_time_ms == 3500
+        assert result.errors == []
+        assert result.timestamp == "2025-11-01T14:30:00Z"
+
+    def test_test_result_full(self) -> None:
+        """Test TestResult with all fields."""
+        metric = MetricResult(metric_name="groundedness", score=0.85)
+        result = TestResult(
+            test_name="Business hours query",
+            test_input="What are your business hours?",
+            agent_response="We're open Monday-Friday 9AM-5PM EST",
+            tool_calls=["get_hours"],
+            expected_tools=["get_hours"],
+            tools_matched=True,
+            metric_results=[metric],
+            ground_truth="Monday-Friday 9AM-5PM EST",
+            passed=True,
+            execution_time_ms=3500,
+            errors=[],
+            timestamp="2025-11-01T14:30:00Z",
+        )
+
+        assert result.test_name == "Business hours query"
+        assert result.test_input == "What are your business hours?"
+        assert result.agent_response == "We're open Monday-Friday 9AM-5PM EST"
+        assert result.tool_calls == ["get_hours"]
+        assert result.expected_tools == ["get_hours"]
+        assert result.tools_matched is True
+        assert len(result.metric_results) == 1
+        assert result.ground_truth == "Monday-Friday 9AM-5PM EST"
+        assert result.passed is True
+
+    def test_test_result_with_errors(self) -> None:
+        """Test TestResult with error list."""
+        result = TestResult(
+            test_input="What is 2+2?",
+            passed=False,
+            execution_time_ms=5000,
+            errors=["LLM API timeout after 60s", "Metric evaluation failed"],
+            timestamp="2025-11-01T14:30:00Z",
+        )
+
+        assert len(result.errors) == 2
+        assert "LLM API timeout after 60s" in result.errors
+        assert result.passed is False
+
+    def test_test_result_with_processed_files(self) -> None:
+        """Test TestResult with processed files."""
+        processed = ProcessedFileInput(
+            original="report.pdf",
+            markdown_content="# Report content",
+            processing_time_ms=1500,
+        )
+        result = TestResult(
+            test_input="Summarize the report",
+            processed_files=[processed],
+            passed=True,
+            execution_time_ms=2000,
+            timestamp="2025-11-01T14:30:00Z",
+        )
+
+        assert len(result.processed_files) == 1
+        assert result.processed_files[0].original == "report.pdf"
+
+    def test_test_result_tool_mismatch(self) -> None:
+        """Test TestResult when tools don't match expected."""
+        result = TestResult(
+            test_input="Get order status",
+            expected_tools=["get_order_status"],
+            tool_calls=["search_orders"],
+            tools_matched=False,
+            passed=False,
+            execution_time_ms=3000,
+            timestamp="2025-11-01T14:30:00Z",
+        )
+
+        assert result.tools_matched is False
+        assert result.expected_tools != result.tool_calls
+
+    def test_test_result_forbids_extra_fields(self) -> None:
+        """Test that TestResult forbids extra fields."""
+        with pytest.raises(ValidationError):
+            TestResult(  # type: ignore
+                test_input="test",
+                passed=True,
+                execution_time_ms=100,
+                timestamp="2025-11-01T14:30:00Z",
+                invalid_field="value",
+            )
+
+
+class TestReportSummary:
+    """Tests for ReportSummary model."""
+
+    def test_report_summary_basic(self) -> None:
+        """Test ReportSummary with basic fields."""
+        summary = ReportSummary(
+            total_tests=10,
+            passed=9,
+            failed=1,
+            pass_rate=90.0,
+            total_duration_ms=45000,
+        )
+
+        assert summary.total_tests == 10
+        assert summary.passed == 9
+        assert summary.failed == 1
+        assert summary.pass_rate == 90.0
+        assert summary.total_duration_ms == 45000
+        assert summary.metrics_evaluated == {}
+        assert summary.average_scores == {}
+
+    def test_report_summary_with_metrics(self) -> None:
+        """Test ReportSummary with metric statistics."""
+        summary = ReportSummary(
+            total_tests=10,
+            passed=8,
+            failed=2,
+            pass_rate=80.0,
+            total_duration_ms=50000,
+            metrics_evaluated={"groundedness": 10, "relevance": 10},
+            average_scores={"groundedness": 0.82, "relevance": 0.75},
+        )
+
+        assert summary.metrics_evaluated["groundedness"] == 10
+        assert summary.average_scores["groundedness"] == 0.82
+
+    def test_report_summary_all_passed(self) -> None:
+        """Test ReportSummary when all tests pass."""
+        summary = ReportSummary(
+            total_tests=5,
+            passed=5,
+            failed=0,
+            pass_rate=100.0,
+            total_duration_ms=20000,
+        )
+
+        assert summary.passed == summary.total_tests
+        assert summary.failed == 0
+        assert summary.pass_rate == 100.0
+
+    def test_report_summary_all_failed(self) -> None:
+        """Test ReportSummary when all tests fail."""
+        summary = ReportSummary(
+            total_tests=5,
+            passed=0,
+            failed=5,
+            pass_rate=0.0,
+            total_duration_ms=25000,
+        )
+
+        assert summary.passed == 0
+        assert summary.failed == summary.total_tests
+        assert summary.pass_rate == 0.0
+
+    def test_report_summary_pass_rate_precision(self) -> None:
+        """Test ReportSummary with precise pass rate."""
+        summary = ReportSummary(
+            total_tests=3,
+            passed=2,
+            failed=1,
+            pass_rate=66.66666,
+            total_duration_ms=10000,
+        )
+
+        assert abs(summary.pass_rate - 66.66666) < 0.0001
+
+    def test_report_summary_forbids_extra_fields(self) -> None:
+        """Test that ReportSummary forbids extra fields."""
+        with pytest.raises(ValidationError):
+            ReportSummary(  # type: ignore
+                total_tests=10,
+                passed=9,
+                failed=1,
+                pass_rate=90.0,
+                total_duration_ms=45000,
+                invalid_field="value",
+            )
+
+
+class TestTestReport:
+    """Tests for TestReport model."""
+
+    def test_test_report_minimal(self) -> None:
+        """Test TestReport with minimal required fields."""
+        test_result = TestResult(
+            test_input="test input",
+            passed=True,
+            execution_time_ms=1000,
+            timestamp="2025-11-01T14:30:00Z",
+        )
+        summary = ReportSummary(
+            total_tests=1,
+            passed=1,
+            failed=0,
+            pass_rate=100.0,
+            total_duration_ms=1000,
+        )
+        report = TestReport(
+            agent_name="Test Agent",
+            agent_config_path="./agent.yaml",
+            results=[test_result],
+            summary=summary,
+            timestamp="2025-11-01T14:35:00Z",
+            holodeck_version="0.1.0",
+        )
+
+        assert report.agent_name == "Test Agent"
+        assert report.agent_config_path == "./agent.yaml"
+        assert len(report.results) == 1
+        assert report.summary.total_tests == 1
+        assert report.timestamp == "2025-11-01T14:35:00Z"
+        assert report.holodeck_version == "0.1.0"
+        assert report.environment == {}
+
+    def test_test_report_multiple_results(self) -> None:
+        """Test TestReport with multiple test results."""
+        results = [
+            TestResult(
+                test_name=f"Test {i}",
+                test_input=f"input {i}",
+                passed=True,
+                execution_time_ms=1000 + i,
+                timestamp="2025-11-01T14:30:00Z",
+            )
+            for i in range(3)
+        ]
+        summary = ReportSummary(
+            total_tests=3,
+            passed=3,
+            failed=0,
+            pass_rate=100.0,
+            total_duration_ms=3000,
+        )
+        report = TestReport(
+            agent_name="Test Agent",
+            agent_config_path="./agent.yaml",
+            results=results,
+            summary=summary,
+            timestamp="2025-11-01T14:35:00Z",
+            holodeck_version="0.1.0",
+        )
+
+        assert len(report.results) == 3
+        assert report.summary.total_tests == 3
+
+    def test_test_report_with_environment(self) -> None:
+        """Test TestReport with environment metadata."""
+        test_result = TestResult(
+            test_input="test",
+            passed=True,
+            execution_time_ms=1000,
+            timestamp="2025-11-01T14:30:00Z",
+        )
+        summary = ReportSummary(
+            total_tests=1,
+            passed=1,
+            failed=0,
+            pass_rate=100.0,
+            total_duration_ms=1000,
+        )
+        environment = {
+            "python_version": "3.13.0",
+            "os": "Darwin",
+            "platform": "macOS",
+        }
+        report = TestReport(
+            agent_name="Test Agent",
+            agent_config_path="./agent.yaml",
+            results=[test_result],
+            summary=summary,
+            timestamp="2025-11-01T14:35:00Z",
+            holodeck_version="0.1.0",
+            environment=environment,
+        )
+
+        assert report.environment == environment
+        assert report.environment["python_version"] == "3.13.0"
+
+    def test_test_report_json_serialization(self) -> None:
+        """Test TestReport JSON serialization."""
+        test_result = TestResult(
+            test_name="Test 1",
+            test_input="input 1",
+            passed=True,
+            execution_time_ms=1000,
+            timestamp="2025-11-01T14:30:00Z",
+        )
+        summary = ReportSummary(
+            total_tests=1,
+            passed=1,
+            failed=0,
+            pass_rate=100.0,
+            total_duration_ms=1000,
+        )
+        report = TestReport(
+            agent_name="Test Agent",
+            agent_config_path="./agent.yaml",
+            results=[test_result],
+            summary=summary,
+            timestamp="2025-11-01T14:35:00Z",
+            holodeck_version="0.1.0",
+        )
+
+        json_str = report.model_dump_json()
+        assert "Test Agent" in json_str
+        assert "Test 1" in json_str
+
+    def test_test_report_forbids_extra_fields(self) -> None:
+        """Test that TestReport forbids extra fields."""
+        test_result = TestResult(
+            test_input="test",
+            passed=True,
+            execution_time_ms=1000,
+            timestamp="2025-11-01T14:30:00Z",
+        )
+        summary = ReportSummary(
+            total_tests=1,
+            passed=1,
+            failed=0,
+            pass_rate=100.0,
+            total_duration_ms=1000,
+        )
+        with pytest.raises(ValidationError):
+            TestReport(  # type: ignore
+                agent_name="Test Agent",
+                agent_config_path="./agent.yaml",
+                results=[test_result],
+                summary=summary,
+                timestamp="2025-11-01T14:35:00Z",
+                holodeck_version="0.1.0",
                 invalid_field="value",
             )

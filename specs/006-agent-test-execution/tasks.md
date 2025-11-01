@@ -150,14 +150,14 @@ Phase 8: Polish & QA (T063-T074)
 - [x] T014 [CODE] Implement ProcessedFileInput model in src/holodeck/models/test_result.py to pass T013 tests
 - [x] T015 [TEST] Write unit tests for MetricResult model in tests/unit/models/test_test_result.py (test fields: metric_name, score, threshold, passed, scale, error, retry_count, evaluation_time_ms, model_used)
 - [x] T016 [CODE] Implement MetricResult model in src/holodeck/models/test_result.py to pass T015 tests
-- [ ] T017 [TEST] Write unit tests for TestResult model in tests/unit/models/test_test_result.py (test fields: test_name, test_input, processed_files, agent_response, tool_calls, expected_tools, tools_matched, metric_results, ground_truth, passed, execution_time_ms, errors, timestamp)
-- [ ] T018 [CODE] Implement TestResult model in src/holodeck/models/test_result.py to pass T017 tests
-- [ ] T019 [TEST] Write unit tests for ReportSummary model in tests/unit/models/test_test_result.py (test fields: total_tests, passed, failed, pass_rate, total_duration_ms, metrics_evaluated, average_scores)
-- [ ] T020 [CODE] Implement ReportSummary model in src/holodeck/models/test_result.py to pass T019 tests
-- [ ] T021 [TEST] Write unit tests for TestReport model in tests/unit/models/test_test_result.py (test to_json() and to_file() methods, fields: agent_name, agent_config_path, results, summary, timestamp, holodeck_version, environment)
-- [ ] T022 [CODE] Implement TestReport model in src/holodeck/models/test_result.py to pass T021 tests
-- [ ] T023 [TEST] Write unit tests for Agent model update in tests/unit/models/test_agent.py (test execution: ExecutionConfig | None field)
-- [ ] T024 [CODE] Update Agent model in src/holodeck/models/agent.py to pass T023 tests
+- [x] T017 [TEST] Write unit tests for TestResult model in tests/unit/models/test_test_result.py (test fields: test_name, test_input, processed_files, agent_response, tool_calls, expected_tools, tools_matched, metric_results, ground_truth, passed, execution_time_ms, errors, timestamp)
+- [x] T018 [CODE] Implement TestResult model in src/holodeck/models/test_result.py to pass T017 tests
+- [x] T019 [TEST] Write unit tests for ReportSummary model in tests/unit/models/test_test_result.py (test fields: total_tests, passed, failed, pass_rate, total_duration_ms, metrics_evaluated, average_scores)
+- [x] T020 [CODE] Implement ReportSummary model in src/holodeck/models/test_result.py to pass T019 tests
+- [x] T021 [TEST] Write unit tests for TestReport model in tests/unit/models/test_test_result.py (test to_json() and to_file() methods, fields: agent_name, agent_config_path, results, summary, timestamp, holodeck_version, environment)
+- [x] T022 [CODE] Implement TestReport model in src/holodeck/models/test_result.py to pass T021 tests
+- [x] T023 [TEST] Write unit tests for Agent model update in tests/unit/models/test_agent.py (test execution: ExecutionConfig | None field)
+- [x] T024 [CODE] Update Agent model in src/holodeck/models/agent.py to pass T023 tests
 
 #### T025-T028: File Processor (Test-First)
 
