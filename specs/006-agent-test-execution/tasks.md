@@ -161,14 +161,14 @@ Phase 8: Polish & QA (T063-T074)
 
 #### T025-T028: File Processor (Test-First)
 
-- [ ] T025 [TEST] Write unit tests for file processor in tests/unit/lib/test_file_processor.py (test markitdown integration for PDF, images, Excel, Word, PowerPoint, CSV, HTML)
-- [ ] T026 [CODE] Implement file processor using markitdown in src/holodeck/lib/file_processor.py to pass T025 tests
-- [ ] T027 [TEST] Write unit tests for file caching in tests/unit/lib/test_file_processor.py (test .holodeck/cache/ directory creation, hash-based cache keys, cache hit/miss)
-- [ ] T028 [CODE] Implement file caching logic in src/holodeck/lib/file_processor.py to pass T027 tests
-- [ ] T029 [TEST] Write unit tests for remote URL download in tests/unit/lib/test_file_processor.py (test timeout, 3 retries with exponential backoff, error handling)
-- [ ] T030 [CODE] Implement remote URL download with timeout in src/holodeck/lib/file_processor.py to pass T029 tests
-- [ ] T031 [VERIFY] Run make test-unit to verify all Phase 2 tests pass
-- [ ] T032 [VERIFY] Run make format && make lint && make type-check
+- [x] T025 [TEST] Write unit tests for file processor in tests/unit/lib/test_file_processor.py (test markitdown integration for PDF, images, Excel, Word, PowerPoint, CSV, HTML)
+- [x] T026 [CODE] Implement file processor using markitdown in src/holodeck/lib/file_processor.py to pass T025 tests
+- [x] T027 [TEST] Write unit tests for file caching in tests/unit/lib/test_file_processor.py (test .holodeck/cache/ directory creation, hash-based cache keys, cache hit/miss)
+- [x] T028 [CODE] Implement file caching logic in src/holodeck/lib/file_processor.py to pass T027 tests
+- [x] T029 [TEST] Write unit tests for remote URL download in tests/unit/lib/test_file_processor.py (test timeout, 3 retries with exponential backoff, error handling)
+- [x] T030 [CODE] Implement remote URL download with timeout in src/holodeck/lib/file_processor.py to pass T029 tests
+- [x] T031 [VERIFY] Run make test-unit to verify all Phase 2 tests pass
+- [x] T032 [VERIFY] Run make format && make lint && make type-check
 
 ---
 
