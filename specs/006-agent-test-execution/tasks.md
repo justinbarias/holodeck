@@ -144,12 +144,12 @@ Phase 8: Polish & QA (T063-T074)
 
 #### T011-T016: Data Models (Test-First)
 
-- [ ] T011 [TEST] Write unit tests for ExecutionConfig model in tests/unit/models/test_config.py (test field validation: file_timeout 1-300s, llm_timeout 1-600s, download_timeout 1-300s, cache_enabled, cache_dir, verbose, quiet constraints)
-- [ ] T012 [CODE] Implement ExecutionConfig model in src/holodeck/models/config.py to pass T011 tests
-- [ ] T013 [TEST] Write unit tests for ProcessedFileInput model in tests/unit/models/test_test_result.py (test fields: original, markdown_content, metadata, cached_path, processing_time_ms, error)
-- [ ] T014 [CODE] Implement ProcessedFileInput model in src/holodeck/models/test_result.py to pass T013 tests
-- [ ] T015 [TEST] Write unit tests for MetricResult model in tests/unit/models/test_test_result.py (test fields: metric_name, score, threshold, passed, scale, error, retry_count, evaluation_time_ms, model_used)
-- [ ] T016 [CODE] Implement MetricResult model in src/holodeck/models/test_result.py to pass T015 tests
+- [x] T011 [TEST] Write unit tests for ExecutionConfig model in tests/unit/models/test_config.py (test field validation: file_timeout 1-300s, llm_timeout 1-600s, download_timeout 1-300s, cache_enabled, cache_dir, verbose, quiet constraints)
+- [x] T012 [CODE] Implement ExecutionConfig model in src/holodeck/models/config.py to pass T011 tests
+- [x] T013 [TEST] Write unit tests for ProcessedFileInput model in tests/unit/models/test_test_result.py (test fields: original, markdown_content, metadata, cached_path, processing_time_ms, error)
+- [x] T014 [CODE] Implement ProcessedFileInput model in src/holodeck/models/test_result.py to pass T013 tests
+- [x] T015 [TEST] Write unit tests for MetricResult model in tests/unit/models/test_test_result.py (test fields: metric_name, score, threshold, passed, scale, error, retry_count, evaluation_time_ms, model_used)
+- [x] T016 [CODE] Implement MetricResult model in src/holodeck/models/test_result.py to pass T015 tests
 - [ ] T017 [TEST] Write unit tests for TestResult model in tests/unit/models/test_test_result.py (test fields: test_name, test_input, processed_files, agent_response, tool_calls, expected_tools, tools_matched, metric_results, ground_truth, passed, execution_time_ms, errors, timestamp)
 - [ ] T018 [CODE] Implement TestResult model in src/holodeck/models/test_result.py to pass T017 tests
 - [ ] T019 [TEST] Write unit tests for ReportSummary model in tests/unit/models/test_test_result.py (test fields: total_tests, passed, failed, pass_rate, total_duration_ms, metrics_evaluated, average_scores)
