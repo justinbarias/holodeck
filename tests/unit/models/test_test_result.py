@@ -7,6 +7,7 @@ and TestReport models.
 import pytest
 from pydantic import ValidationError
 
+from holodeck.models.test_case import FileInput
 from holodeck.models.test_result import (
     MetricResult,
     ProcessedFileInput,
@@ -21,12 +22,13 @@ class TestProcessedFileInput:
 
     def test_processed_file_input_minimal(self) -> None:
         """Test ProcessedFileInput with minimal required fields."""
+        file_input = FileInput(path="test.pdf", type="pdf")
         input_obj = ProcessedFileInput(
-            original="test.pdf",
+            original=file_input,
             markdown_content="# Document content",
         )
 
-        assert input_obj.original == "test.pdf"
+        assert input_obj.original == file_input
         assert input_obj.markdown_content == "# Document content"
         assert input_obj.metadata is None
         assert input_obj.cached_path is None
@@ -35,9 +37,10 @@ class TestProcessedFileInput:
 
     def test_processed_file_input_full(self) -> None:
         """Test ProcessedFileInput with all fields."""
+        file_input = FileInput(path="report.pdf", type="pdf")
         metadata = {"pages": 10, "language": "en"}
         input_obj = ProcessedFileInput(
-            original="report.pdf",
+            original=file_input,
             markdown_content="# Report",
             metadata=metadata,
             cached_path="/cache/report_hash.md",
@@ -45,7 +48,7 @@ class TestProcessedFileInput:
             error=None,
         )
 
-        assert input_obj.original == "report.pdf"
+        assert input_obj.original == file_input
         assert input_obj.markdown_content == "# Report"
         assert input_obj.metadata == metadata
         assert input_obj.cached_path == "/cache/report_hash.md"
@@ -54,17 +57,19 @@ class TestProcessedFileInput:
 
     def test_processed_file_input_with_error(self) -> None:
         """Test ProcessedFileInput with error message."""
+        file_input = FileInput(path="image.png", type="image")
         input_obj = ProcessedFileInput(
-            original="image.png",
+            original=file_input,
             markdown_content="",
             error="File processing timeout after 30s",
         )
 
-        assert input_obj.original == "image.png"
+        assert input_obj.original == file_input
         assert input_obj.error == "File processing timeout after 30s"
 
     def test_processed_file_input_metadata_dict(self) -> None:
         """Test ProcessedFileInput accepts arbitrary metadata dict."""
+        file_input = FileInput(path="data.pdf", type="pdf")
         metadata = {
             "file_size": 5242880,
             "format": "PDF",
@@ -72,7 +77,7 @@ class TestProcessedFileInput:
             "extracted_tables": 2,
         }
         input_obj = ProcessedFileInput(
-            original="data.pdf",
+            original=file_input,
             markdown_content="Content",
             metadata=metadata,
         )
@@ -81,8 +86,9 @@ class TestProcessedFileInput:
 
     def test_processed_file_input_processing_time(self) -> None:
         """Test ProcessedFileInput processing_time_ms field."""
+        file_input = FileInput(path="test.xlsx", type="excel")
         input_obj = ProcessedFileInput(
-            original="test.xlsx",
+            original=file_input,
             markdown_content="Sheet data",
             processing_time_ms=2500,
         )
@@ -91,9 +97,10 @@ class TestProcessedFileInput:
 
     def test_processed_file_input_forbids_extra_fields(self) -> None:
         """Test that ProcessedFileInput forbids extra fields."""
+        file_input = FileInput(path="test.pdf", type="pdf")
         with pytest.raises(ValidationError):
             ProcessedFileInput(  # type: ignore
-                original="test.pdf",
+                original=file_input,
                 markdown_content="Content",
                 invalid_field="value",
             )
@@ -278,8 +285,9 @@ class TestTestResult:
 
     def test_test_result_with_processed_files(self) -> None:
         """Test TestResult with processed files."""
+        file_input = FileInput(path="report.pdf", type="pdf")
         processed = ProcessedFileInput(
-            original="report.pdf",
+            original=file_input,
             markdown_content="# Report content",
             processing_time_ms=1500,
         )
@@ -292,7 +300,7 @@ class TestTestResult:
         )
 
         assert len(result.processed_files) == 1
-        assert result.processed_files[0].original == "report.pdf"
+        assert result.processed_files[0].original == file_input
 
     def test_test_result_tool_mismatch(self) -> None:
         """Test TestResult when tools don't match expected."""

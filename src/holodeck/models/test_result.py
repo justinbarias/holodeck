@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from holodeck.models.test_case import FileInput
+
 
 class ProcessedFileInput(BaseModel):
     """Processed file input with extracted content.
@@ -18,7 +20,7 @@ class ProcessedFileInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    original: str = Field(..., description="Original filename or path")
+    original: FileInput = Field(..., description="Original file input configuration")
     markdown_content: str = Field(..., description="Markdown-converted file content")
     metadata: dict[str, Any] | None = Field(
         None, description="File metadata (pages, size, format, etc.)"
