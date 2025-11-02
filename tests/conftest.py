@@ -55,6 +55,52 @@ def fixture_dir() -> Path:
     return fixtures_path
 
 
+# NLP Metrics Evaluator Fixtures (lazy loading optimization)
+@pytest.fixture(scope="module")
+def bleu_evaluator():
+    """Shared BLEU evaluator instance for tests without specific thresholds.
+
+    Uses module scope to avoid repeatedly loading the SacreBLEU library,
+    which improves test performance.
+
+    Returns:
+        BLEUEvaluator instance with default settings
+    """
+    from holodeck.lib.evaluators.nlp_metrics import BLEUEvaluator
+
+    return BLEUEvaluator()
+
+
+@pytest.fixture(scope="module")
+def rouge_evaluator():
+    """Shared ROUGE evaluator instance for tests without specific thresholds.
+
+    Uses module scope to avoid repeatedly loading the evaluate library,
+    which improves test performance.
+
+    Returns:
+        ROUGEEvaluator instance with default settings
+    """
+    from holodeck.lib.evaluators.nlp_metrics import ROUGEEvaluator
+
+    return ROUGEEvaluator()
+
+
+@pytest.fixture(scope="module")
+def meteor_evaluator():
+    """Shared METEOR evaluator instance for tests without specific thresholds.
+
+    Uses module scope to avoid repeatedly loading the evaluate library,
+    which improves test performance.
+
+    Returns:
+        METEOREvaluator instance with default settings
+    """
+    from holodeck.lib.evaluators.nlp_metrics import METEOREvaluator
+
+    return METEOREvaluator()
+
+
 # Configure pytest
 def pytest_configure(config: Any) -> None:
     """Configure pytest with marker options."""
