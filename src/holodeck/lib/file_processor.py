@@ -288,19 +288,20 @@ class FileProcessor:
                 "type": file_input.type,
             }
 
+            elapsed_ms = int((time.time() - start_time) * 1000)
+            cached_path = None
+
             # Cache if enabled
             if file_input.cache is not False:
                 cache_key = self._get_cache_key(url)
-                elapsed_ms = int((time.time() - start_time) * 1000)
                 self._save_to_cache(cache_key, markdown_content, metadata, elapsed_ms)
-
-            elapsed_ms = int((time.time() - start_time) * 1000)
+                cached_path = str(self.cache_dir / f"{cache_key}.json")
 
             return ProcessedFileInput(
                 original=file_input,
                 markdown_content=markdown_content,
                 metadata=metadata,
-                cached_path=str(self.cache_dir / f"{cache_key}.json"),
+                cached_path=cached_path,
                 processing_time_ms=elapsed_ms,
                 error=None,
             )

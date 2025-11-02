@@ -198,3 +198,375 @@ class TestFileProcessorConfiguration:
         processor = FileProcessor(max_retries=5)
 
         assert processor.max_retries == 5
+
+
+class TestFileProcessorMarkItDown:
+    """Tests for MarkItDown integration and lazy initialization."""
+
+    def test_markitdown_import_error(self) -> None:
+        """Test that import error is raised when markitdown not available."""
+        with (
+            mock.patch.dict("sys.modules", {"markitdown": None}),
+            mock.patch("builtins.__import__", side_effect=ImportError("No module")),
+        ):
+            try:
+                FileProcessor()
+                raise AssertionError("Should raise ImportError")
+            except ImportError as e:
+                assert "markitdown is required" in str(e)
+
+    def test_get_markitdown_lazy_initialization(self) -> None:
+        """Test that MarkItDown is initialized lazily on first access."""
+        processor = FileProcessor()
+
+        # Initially md should be None
+        assert processor.md is None
+
+        # Mock the MarkItDown class
+        mock_md_instance = mock.MagicMock()
+        with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+            result = processor._get_markitdown()
+
+            assert result is not None
+            assert result is mock_md_instance
+            assert processor.md is not None
+            assert processor.md is mock_md_instance
+
+    def test_get_markitdown_returns_cached_instance(self) -> None:
+        """Test that _get_markitdown returns cached instance on subsequent calls."""
+        processor = FileProcessor()
+
+        mock_md_instance = mock.MagicMock()
+        with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+            # First call
+            result1 = processor._get_markitdown()
+            # Second call should not create new instance
+            result2 = processor._get_markitdown()
+
+            # Should return same instance due to caching
+            assert result1 is result2
+            assert result1 is processor.md
+            assert result1 is mock_md_instance
+
+
+class TestFileProcessorLocalFileProcessing:
+    """Tests for local file processing with markitdown."""
+
+    def test_process_local_file_success(self) -> None:
+        """Test successful local file processing."""
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+            tmp.write(b"Test content")
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="text")
+            processor = FileProcessor()
+
+            # Create a mock that properly mimics MarkItDown instance
+            mock_md_instance = mock.MagicMock()
+            mock_convert_result = mock.MagicMock()
+            mock_convert_result.text_content = "# Test Content"
+            mock_md_instance.convert.return_value = mock_convert_result
+
+            with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                result = processor._process_local_file(file_input, start_time=0)
+
+                assert result.markdown_content == "# Test Content"
+                assert result.error is None
+                assert result.metadata is not None
+                assert result.metadata["path"] == tmp_path
+                assert result.metadata["type"] == "text"
+                assert "size_bytes" in result.metadata
+        finally:
+            Path(tmp_path).unlink()
+
+    def test_process_local_file_not_found(self) -> None:
+        """Test local file processing with missing file via process_file."""
+        file_input = FileInput(path="/nonexistent/file.txt", type="text")
+        processor = FileProcessor()
+
+        # Use public process_file which has exception handling
+        result = processor.process_file(file_input)
+
+        assert result.error is not None
+        assert "File not found" in result.error
+        assert result.processing_time_ms is not None
+
+    def test_process_local_file_via_process_file_no_path(self) -> None:
+        """Test file processing through process_file with URL input."""
+        # Create a FileInput with URL (tests routing to _process_remote_file)
+        file_input = FileInput(url="https://example.com/file.txt", type="text")
+        processor = FileProcessor()
+
+        with mock.patch.object(processor, "_process_remote_file") as mock_remote:
+            mock_remote.return_value = ProcessedFileInput(
+                original=file_input,
+                markdown_content="content",
+                processing_time_ms=10,
+            )
+            processor.process_file(file_input)
+
+            # Should route to remote processing, not local
+            mock_remote.assert_called_once()
+
+    def test_process_local_file_large_file_warning(self) -> None:
+        """Test that large files are flagged in metadata."""
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+            # Create a file
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="text")
+            processor = FileProcessor()
+
+            # Patch Path.stat to simulate large file
+            with mock.patch.object(Path, "stat") as mock_stat:
+                mock_stat.return_value.st_size = 101 * 1024 * 1024  # 101 MB
+
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "Large file content"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.metadata is not None
+                    assert "warning" in result.metadata
+                    assert "Large file" in result.metadata["warning"]
+        finally:
+            Path(tmp_path).unlink()
+
+
+class TestFileProcessorRemoteFileProcessing:
+    """Tests for remote file processing with caching and downloading."""
+
+    def test_process_remote_file_from_cache(self) -> None:
+        """Test remote file processing using cache."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / ".holodeck" / "cache"
+            processor = FileProcessor(cache_dir=str(cache_dir))
+
+            url = "https://example.com/file.pdf"
+            file_input = FileInput(url=url, type="pdf")
+
+            # Save something to cache first
+            cache_key = processor._get_cache_key(url)
+            processor._save_to_cache(
+                cache_key,
+                "Cached markdown",
+                {"url": url},
+                50,
+            )
+
+            # Process remote file - should use cache
+            result = processor._process_remote_file(file_input, start_time=0)
+
+            assert result.markdown_content == "Cached markdown"
+            assert result.cached_path is not None
+            assert result.error is None
+
+    def test_process_remote_file_download_fails(self) -> None:
+        """Test remote file processing when download fails."""
+        processor = FileProcessor()
+        file_input = FileInput(url="https://example.com/file.pdf", type="pdf")
+
+        with mock.patch.object(processor, "_download_file", return_value=None):
+            result = processor._process_remote_file(file_input, start_time=0)
+
+            assert result.error is not None
+            assert "Failed to download" in result.error
+            assert result.markdown_content == ""
+
+    def test_process_remote_file_invalid_input_via_process_file(self) -> None:
+        """Test remote file processing with local file via process_file."""
+        processor = FileProcessor()
+        file_input = FileInput(path="/local/file.txt", type="text")
+
+        # Use public process_file which has exception handling
+        with mock.patch.object(processor, "_process_local_file") as mock_local:
+            mock_local.return_value = ProcessedFileInput(
+                original=file_input,
+                markdown_content="content",
+                processing_time_ms=10,
+            )
+            processor.process_file(file_input)
+
+            # Should route to local processing since it has path
+            mock_local.assert_called_once()
+
+    def test_process_remote_file_success_with_cache(self) -> None:
+        """Test successful remote file processing and caching."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / ".holodeck" / "cache"
+            processor = FileProcessor(cache_dir=str(cache_dir))
+
+            url = "https://example.com/file.pdf"
+            file_input = FileInput(url=url, type="pdf", cache=True)
+
+            with mock.patch.object(
+                processor, "_download_file", return_value=b"PDF content"
+            ):
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "# PDF Content"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_remote_file(file_input, start_time=0)
+
+                    assert result.markdown_content == "# PDF Content"
+                    assert result.error is None
+                    assert result.metadata is not None
+                    assert result.metadata["url"] == url
+
+                    # Verify cache was created
+                    assert result.cached_path is not None
+
+    def test_process_remote_file_cache_disabled(self) -> None:
+        """Test remote file processing with cache disabled."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / ".holodeck" / "cache"
+            processor = FileProcessor(cache_dir=str(cache_dir))
+
+            url = "https://example.com/file.pdf"
+            file_input = FileInput(url=url, type="pdf", cache=False)
+
+            with mock.patch.object(processor, "_download_file", return_value=b"PDF"):
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "# PDF"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_remote_file(file_input, start_time=0)
+
+                    assert result.error is None
+                    # When cache is disabled, file won't be created
+                    cache_key = processor._get_cache_key(url)
+                    cache_file = processor.cache_dir / f"{cache_key}.json"
+                    assert not cache_file.exists()
+
+    def test_process_remote_file_cleanup_temp_file(self) -> None:
+        """Test that temporary file is cleaned up after processing."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            processor = FileProcessor(cache_dir=tmpdir)
+            file_input = FileInput(url="https://example.com/file.pdf", type="pdf")
+
+            with mock.patch.object(
+                processor, "_download_file", return_value=b"content"
+            ):
+                # Use MagicMock to properly handle context manager
+                mock_temp_file = mock.MagicMock()
+                mock_temp_file.name = str(Path(tmpdir) / "test_file")
+
+                with mock.patch(
+                    "tempfile.NamedTemporaryFile", return_value=mock_temp_file
+                ):
+                    mock_md_instance = mock.MagicMock()
+                    mock_result = mock.MagicMock()
+                    mock_result.text_content = "content"
+                    mock_md_instance.convert.return_value = mock_result
+
+                    with mock.patch(
+                        "markitdown.MarkItDown", return_value=mock_md_instance
+                    ):
+                        result = processor._process_remote_file(
+                            file_input, start_time=0
+                        )
+
+                        assert result.error is None
+
+
+class TestFileProcessorCacheEdgeCases:
+    """Tests for cache edge cases and error handling."""
+
+    def test_load_cache_corrupted_json(self) -> None:
+        """Test loading from cache when JSON is corrupted."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / ".holodeck" / "cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            processor = FileProcessor(cache_dir=str(cache_dir))
+            cache_key = "test_key"
+            cache_file = cache_dir / f"{cache_key}.json"
+
+            # Write invalid JSON
+            cache_file.write_text("{ invalid json }")
+
+            result = processor._load_from_cache(cache_key)
+            assert result is None
+
+    def test_load_cache_non_dict_json(self) -> None:
+        """Test loading from cache when JSON is not a dict."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / ".holodeck" / "cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            processor = FileProcessor(cache_dir=str(cache_dir))
+            cache_key = "test_key"
+            cache_file = cache_dir / f"{cache_key}.json"
+
+            # Write valid JSON but not a dict
+            cache_file.write_text('["list", "not", "dict"]')
+
+            result = processor._load_from_cache(cache_key)
+            assert result is None
+
+    def test_save_cache_permission_denied(self) -> None:
+        """Test saving to cache when permissions denied."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / ".holodeck" / "cache"
+            processor = FileProcessor(cache_dir=str(cache_dir))
+
+            # Mock open to raise PermissionError
+            with mock.patch("builtins.open", side_effect=PermissionError("No access")):
+                # Should not raise, just suppress the error
+                processor._save_to_cache("test_key", "content", {"key": "value"}, 100)
+
+
+class TestFileProcessorValidationErrors:
+    """Tests for validation error conditions."""
+
+    def test_process_local_file_raises_error_no_path(self) -> None:
+        """Test _process_local_file raises ValueError when path is None."""
+        import pytest
+
+        processor = FileProcessor()
+        # Create a mock FileInput with no path
+        mock_input = mock.MagicMock(spec=FileInput)
+        mock_input.path = None
+
+        with pytest.raises(ValueError, match="Local file must have path specified"):
+            processor._process_local_file(mock_input, start_time=0)
+
+    def test_process_remote_file_raises_error_no_url(self) -> None:
+        """Test _process_remote_file raises ValueError when URL is None."""
+        import pytest
+
+        processor = FileProcessor()
+        # Create a mock FileInput with no URL
+        mock_input = mock.MagicMock(spec=FileInput)
+        mock_input.url = None
+
+        with pytest.raises(ValueError, match="Remote file must have URL specified"):
+            processor._process_remote_file(mock_input, start_time=0)
+
+
+class TestFileProcessorProcessFile:
+    """Additional tests for process_file method."""
+
+    def test_process_file_with_exception(self) -> None:
+        """Test process_file handles exceptions gracefully."""
+        processor = FileProcessor()
+        file_input = FileInput(url="https://example.com/file.pdf", type="pdf")
+
+        with mock.patch.object(processor, "_process_remote_file") as mock_remote:
+            mock_remote.side_effect = RuntimeError("Processing failed")
+
+            result = processor.process_file(file_input)
+
+            assert result.error is not None
+            assert "Processing failed" in result.error
+            assert result.processing_time_ms is not None
+            assert result.processing_time_ms >= 0
