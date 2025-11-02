@@ -191,12 +191,12 @@ Phase 8: Polish & QA (T063-T074)
 
 #### T033-T042: Evaluators (Test-First)
 
-- [ ] T033 [TEST] Write unit tests for base evaluator in tests/unit/lib/evaluators/test_base.py (test abstract evaluate() method, timeout handling, retry logic)
-- [ ] T034 [CODE] Implement base evaluator interface in src/holodeck/lib/evaluators/base.py to pass T033 tests
-- [ ] T035 [TEST] Write unit tests for Azure AI evaluators in tests/unit/lib/evaluators/test_azure_ai.py (test GroundednessEvaluator, RelevanceEvaluator, CoherenceEvaluator, FluencyEvaluator, SimilarityEvaluator with per-metric model config)
-- [ ] T036 [CODE] Implement Azure AI Evaluation SDK integration in src/holodeck/lib/evaluators/azure_ai.py to pass T035 tests
-- [ ] T037 [TEST] Write unit tests for retry logic in tests/unit/lib/evaluators/test_azure_ai.py (test 3 attempts with exponential backoff 2s/4s/8s, LLM API errors, timeouts)
-- [ ] T038 [CODE] Implement metric evaluation retry logic in src/holodeck/lib/evaluators/azure_ai.py to pass T037 tests
+- [x] T033 [TEST] Write unit tests for base evaluator in tests/unit/lib/evaluators/test_base.py (test abstract evaluate() method, timeout handling, retry logic)
+- [x] T034 [CODE] Implement base evaluator interface in src/holodeck/lib/evaluators/base.py to pass T033 tests
+- [x] T035 [TEST] Write unit tests for Azure AI evaluators in tests/unit/lib/evaluators/test_azure_ai.py (test GroundednessEvaluator, RelevanceEvaluator, CoherenceEvaluator, FluencyEvaluator, SimilarityEvaluator with per-metric model config)
+- [x] T036 [CODE] Implement Azure AI Evaluation SDK integration in src/holodeck/lib/evaluators/azure_ai.py to pass T035 tests
+- [x] T037 [TEST] Write unit tests for retry logic in tests/unit/lib/evaluators/test_azure_ai.py (test 3 attempts with exponential backoff 2s/4s/8s, LLM API errors, timeouts)
+- [x] T038 [CODE] Implement metric evaluation retry logic in src/holodeck/lib/evaluators/azure_ai.py to pass T037 tests
 - [ ] T039 [TEST] Write unit tests for NLP metrics in tests/unit/lib/evaluators/test_nlp_metrics.py (test BLEU, ROUGE, METEOR, F1 using evaluate.load() from Hugging Face)
 - [ ] T040 [CODE] Implement NLP metrics in src/holodeck/lib/evaluators/nlp_metrics.py to pass T039 tests
 - [ ] T041 [VERIFY] Run make test-unit to verify evaluator tests pass
