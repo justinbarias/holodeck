@@ -15,7 +15,7 @@ Thank you for your interest in contributing to HoloDeck! This guide will help yo
 
 ### Prerequisites
 
-- Python 3.14 or higher
+- Python 3.13 or higher
 - Git
 - Virtual environment manager (venv)
 
@@ -35,6 +35,7 @@ make init
 ```
 
 This command will:
+
 - Create a Python virtual environment (`.venv`)
 - Install all development dependencies
 - Set up pre-commit hooks
@@ -90,6 +91,7 @@ make test-coverage
 ```
 
 This generates:
+
 - Terminal summary
 - HTML report: `htmlcov/index.html`
 - XML report: `coverage.xml`
@@ -147,6 +149,7 @@ make lint-fix
 ```
 
 **Ruff includes**:
+
 - pycodestyle (E, W)
 - pyflakes (F)
 - isort (I) - import sorting
@@ -165,6 +168,7 @@ make type-check
 ```
 
 **Type checking rules**:
+
 - Full type coverage required (disallow untyped defs)
 - No `Any` types where avoidable
 - Strict optional checking enabled
@@ -179,6 +183,7 @@ make security
 ```
 
 This includes:
+
 - **Safety**: Known vulnerability detection
 - **Bandit**: Security issue scanning
 - **detect-secrets**: Hardcoded secret detection
@@ -271,7 +276,7 @@ Fixes #89
 ```
 
 ```
-docs: update installation instructions for Python 3.14
+docs: update installation instructions for Python 3.13
 ```
 
 ## Pull Request Workflow
@@ -285,6 +290,7 @@ git checkout -b feat/your-feature-name
 ```
 
 2. **Implement your changes**:
+
    - Write tests first (TDD approach)
    - Implement feature
    - Ensure all tests pass
@@ -296,6 +302,7 @@ make ci
 ```
 
 This runs:
+
 - Code formatting checks
 - Linting
 - Type checking
@@ -324,18 +331,22 @@ git push origin feat/your-feature-name
 
 ```markdown
 ## Description
+
 Brief description of changes
 
 ## Type of Change
+
 - [ ] New feature
 - [ ] Bug fix
 - [ ] Breaking change
 - [ ] Documentation update
 
 ## Testing
+
 Describe how you tested this change
 
 ## Checklist
+
 - [ ] Tests pass locally (`make test`)
 - [ ] Code formatted (`make format`)
 - [ ] Type checking passes (`make type-check`)
@@ -348,6 +359,7 @@ Describe how you tested this change
 Before a PR can be merged:
 
 ✅ All checks must pass:
+
 - Formatting check
 - Linting
 - Type checking
@@ -361,6 +373,7 @@ Before a PR can be merged:
 ### Code Review Process
 
 - Reviewers will check for:
+
   - Code quality and style consistency
   - Test coverage
   - Performance implications
@@ -401,6 +414,7 @@ Only use this in exceptional circumstances and ensure you run the checks manuall
 ## Project Architecture
 
 For understanding the codebase structure, see:
+
 - `docs/architecture/` - Architecture documentation
 - `docs/api/models.md` - Data model documentation
 - `docs/api/config-loader.md` - ConfigLoader API reference
@@ -412,6 +426,7 @@ For understanding the codebase structure, see:
 **Problem**: `command not found: pytest`
 
 **Solution**:
+
 ```bash
 source .venv/bin/activate
 ```
@@ -421,6 +436,7 @@ source .venv/bin/activate
 **Problem**: MyPy reports type errors
 
 **Solution**:
+
 1. Add type hints to function parameters and returns
 2. For unavoidable types: `# type: ignore` (use sparingly)
 3. Check `Any` usage - prefer specific types
@@ -430,6 +446,7 @@ source .venv/bin/activate
 **Problem**: Tests pass locally but fail in CI
 
 **Solution**:
+
 1. Run full test suite: `make test`
 2. Run with coverage: `make test-coverage`
 3. Check for system-specific issues (paths, line endings)
@@ -439,6 +456,7 @@ source .venv/bin/activate
 **Problem**: Security checks report issues
 
 **Solution**:
+
 1. Run locally: `make security`
 2. Fix hardcoded secrets or security vulnerabilities
 3. Update `.secrets.baseline` if necessary (carefully!)

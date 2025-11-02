@@ -155,6 +155,8 @@ security: ## Run security checks
 	safety check --json
 	@echo "Scanning for security issues with Ruff..."
 	ruff check $(SRC_DIR) --select S
+	@echo "Scanning for security issues with Bandit..."
+	bandit -r $(SRC_DIR)
 	@echo "Checking for hardcoded secrets..."
 	detect-secrets scan --baseline .secrets.baseline
 	@echo "$(GREEN)✓ Security checks complete$(NC)"

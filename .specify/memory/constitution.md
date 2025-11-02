@@ -3,7 +3,7 @@ Version Change: 1.0.0 → 1.0.1 (PATCH - Python target version clarification)
 
 Principles: No changes to core principles - all 5 principles fully aligned with VISION.md and CLAUDE.md
 Modified Sections:
-  - Code Quality & Testing Discipline: Python target confirmed as 3.14+ (explicitly stated in CLAUDE.md)
+  - Code Quality & Testing Discipline: Python target confirmed as 3.13+ (explicitly stated in CLAUDE.md)
 
 Added Sections: None
 Removed Sections: None
@@ -96,7 +96,7 @@ communication MUST use well-defined contracts (not tight coupling).
 
 ## Code Quality & Testing Discipline
 
-- **Language Target**: Python 3.14+
+- **Language Target**: Python 3.13+
 - **Style Guide**: Google Python Style Guide (enforced via Black, Ruff)
 - **Type Checking**: MyPy strict mode (all new code must pass)
 - **Testing Framework**: pytest with markers (`@pytest.mark.unit`,

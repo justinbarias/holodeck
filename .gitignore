@@ -33,3 +33,4 @@ metrics/*
 
 # mkdocs site
 /site
+.holodeck/cache

@@ -113,7 +113,7 @@ Key conventions enforced by tooling:
 - **Linting**: Ruff (pycodestyle, pyflakes, isort, flake8-bugbear, pyupgrade, pep8-naming, flake8-simplify, flake8-bandit)
 - **Type Checking**: MyPy with strict settings
 - **Security**: Bandit, Safety, detect-secrets
-- **Target**: Python 3.14+
+- **Target**: Python 3.13+
 
 Additional requirements from existing CLAUDE.md:
 

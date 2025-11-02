@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Core Features
 
 - **Agent Configuration Schema**: Complete YAML-based agent configuration with Pydantic validation
+
   - Agent metadata (name, description)
   - LLM provider configuration (OpenAI, Azure OpenAI, Anthropic)
   - Model parameters (temperature, max_tokens)
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Evaluation metrics with flexible model configuration
 
 - **Configuration Loading & Validation** (`ConfigLoader`):
+
   - Load and parse agent.yaml files
   - Validate against Pydantic schema with user-friendly error messages
   - File path resolution (relative to agent.yaml directory)
@@ -51,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Data Models
 
 - **LLMProvider Model**:
+
   - Multi-provider support (openai, azure_openai, anthropic)
   - Model selection and parameter configuration
   - Temperature range validation (0-2)
@@ -58,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Azure-specific endpoint configuration
 
 - **Tool Models** (Discriminated Union):
+
   - **VectorstoreTool**: Vector search with source, embedding model, chunk size/overlap
   - **FunctionTool**: Python function tools with parameters schema
   - **MCPTool**: Model Context Protocol server integration
@@ -65,17 +69,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Tool type validation and discrimination
 
 - **Evaluation Models**:
+
   - Metric configuration with name, threshold, enabled flag
   - Per-metric model override for flexible configuration
   - AI-powered and NLP metrics support
 
 - **TestCase Model**:
+
   - Test inputs with expected behaviors
   - Ground truth for validation
   - Expected tool usage tracking
   - Evaluation metrics per test
 
 - **Agent Model**:
+
   - Complete agent definition
   - All field validations and constraints
   - Tool and evaluation composition
@@ -88,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Error Handling
 
 - **Custom Exception Hierarchy**:
+
   - `HoloDeckError`: Base exception
   - `ConfigError`: Configuration-specific errors
   - `ValidationError`: Schema validation errors with field details
@@ -102,18 +110,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Infrastructure & Tooling
 
 - **Development Setup**:
+
   - Makefile with 30+ development commands
   - Poetry dependency management
   - Pre-commit hooks (black, ruff, mypy, detect-secrets)
-  - Python 3.14+ support
+  - Python 3.13+ support
 
 - **Testing**:
+
   - Unit test suite with 11 test files covering all models
   - Integration test suite for end-to-end workflows
   - 80%+ code coverage requirement
   - Test execution: `make test`, `make test-coverage`, `make test-parallel`
 
 - **Code Quality**:
+
   - Black code formatting (88 char line length)
   - Ruff linting (pycodestyle, pyflakes, isort, flake8-bugbear, pyupgrade, pep8-naming, flake8-simplify, bandit)
   - MyPy type checking with strict settings
@@ -153,6 +164,7 @@ agent = loader.load_agent_yaml("agent.yaml")  # Returns Agent instance
 #### Testing Coverage
 
 **Unit Tests** (11 files):
+
 - `test_errors.py` - Exception handling and messaging
 - `test_env_loader.py` - Environment variable substitution
 - `test_defaults.py` - Default configuration handling
@@ -166,6 +178,7 @@ agent = loader.load_agent_yaml("agent.yaml")  # Returns Agent instance
 - `test_config_loader.py` - ConfigLoader functionality
 
 **Integration Tests** (1 file):
+
 - `test_config_end_to_end.py` - Full workflow testing
 
 ### Known Limitations
@@ -208,6 +221,7 @@ None reported in 0.0.1.
 ### User Story 1: Define Agent Configuration ✅ **0.0.1**
 
 Implemented in 0.0.1:
+
 - YAML-based agent configuration
 - Schema validation
 - Configuration loading and merging
@@ -271,6 +285,7 @@ Implemented in 0.0.1:
 ## Contributing
 
 See [CONTRIBUTING.md](contributing.md) for guidelines on:
+
 - Development setup
 - Running tests
 - Code style requirements

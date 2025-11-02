@@ -1,8 +1,9 @@
 [project]
 name = "holodeck-ai"
 dynamic = ["version"]
+version = "0.0.1"
 description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
-requires-python = ">=3.14,<4.0"
+requires-python = ">=3.13,<4.0"
 dependencies = [
     "requests (>=2.32.5,<3.0.0)",
     "pydantic>=2.0.0",
@@ -16,7 +17,15 @@ dependencies = [
     "mkdocs-material (>=9.6.22,<10.0.0)",
     "twine (>=6.2.0,<7.0.0)",
     "jsonschema>=4.0.0,<5.0.0",
+    "semantic-kernel (>=1.37.1,<2.0.0)",
+    "markitdown (>=0.1.3,<0.2.0)",
+    "azure-ai-evaluation (>=1.13.0,<2.0.0)",
+    "evaluate (>=0.4.6,<0.5.0)",
+    "aiofiles (>=25.1.0,<26.0.0)",
 ]
+
+[project.scripts]
+holodeck = "holodeck.cli.main:main"
 
 [project.optional-dependencies]
 dev = [
@@ -37,9 +46,12 @@ dev = [
     "mkdocstrings[python]>=0.25.0",
 ]
 
+[tool.poetry]
+packages = [{include = "holodeck", from = "src"}]
+
 [build-system]
-requires = ["setuptools>=61", "setuptools_scm>=8", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.setuptools_scm]
 tag_regex = "^v?(?P<version>\\d+\\.\\d+\\.\\d+)$"

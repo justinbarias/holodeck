@@ -4,7 +4,7 @@ Get HoloDeck up and running in minutes.
 
 ## Prerequisites
 
-- **Python 3.14+** (check with `python --version`)
+- **Python 3.13+** (check with `python --version`)
 - **pip** (usually included with Python)
 - **Git** (for development setup)
 
@@ -80,7 +80,7 @@ You'll see `(.venv)` prefix in your terminal when activated.
 
 ```bash
 # Check Python and pytest
-python --version  # Should be 3.14+
+python --version  # Should be 3.13+
 pytest --version  # Should show pytest available
 
 # Run the test suite
@@ -94,7 +94,7 @@ After installation, verify everything works:
 ```bash
 # ✓ Check Python version
 python --version
-# Expected: Python 3.14.x
+# Expected: Python 3.13.x
 
 # ✓ Check HoloDeck is installed
 python -c "import holodeck; print(holodeck.__version__)"
@@ -218,7 +218,7 @@ make test-parallel      # Run tests in parallel
 
 ## Troubleshooting
 
-### "Python 3.14+ required"
+### "Python 3.13+ required"
 
 If you see this error, you need a newer Python version:
 
@@ -227,10 +227,10 @@ If you see this error, you need a newer Python version:
 python --version
 
 # On macOS with Homebrew
-brew install python@3.14
+brew install python@3.13
 
 # On Ubuntu/Debian
-sudo apt-get install python3.14 python3.14-venv
+sudo apt-get install python3.13 python3.13-venv
 
 # On Windows, download from python.org
 ```
