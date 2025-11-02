@@ -197,10 +197,10 @@ Phase 8: Polish & QA (T063-T074)
 - [x] T036 [CODE] Implement Azure AI Evaluation SDK integration in src/holodeck/lib/evaluators/azure_ai.py to pass T035 tests
 - [x] T037 [TEST] Write unit tests for retry logic in tests/unit/lib/evaluators/test_azure_ai.py (test 3 attempts with exponential backoff 2s/4s/8s, LLM API errors, timeouts)
 - [x] T038 [CODE] Implement metric evaluation retry logic in src/holodeck/lib/evaluators/azure_ai.py to pass T037 tests
-- [ ] T039 [TEST] Write unit tests for NLP metrics in tests/unit/lib/evaluators/test_nlp_metrics.py (test BLEU, ROUGE, METEOR, F1 using evaluate.load() from Hugging Face)
-- [ ] T040 [CODE] Implement NLP metrics in src/holodeck/lib/evaluators/nlp_metrics.py to pass T039 tests
-- [ ] T041 [VERIFY] Run make test-unit to verify evaluator tests pass
-- [ ] T042 [VERIFY] Run make format && make lint
+- [x] T039 [TEST] Write unit tests for NLP metrics in tests/unit/lib/evaluators/test_nlp_metrics.py (test BLEU, ROUGE, METEOR, F1 using evaluate.load() from Hugging Face)
+- [x] T040 [CODE] Implement NLP metrics in src/holodeck/lib/evaluators/nlp_metrics.py to pass T039 tests
+- [x] T041 [VERIFY] Run make test-unit to verify evaluator tests pass
+- [x] T042 [VERIFY] Run make format && make lint
 
 #### T043-T050: Agent Bridge (Test-First)
 
