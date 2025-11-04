@@ -237,6 +237,11 @@ class ConfigLoader:
         2. Environment variables (already substituted)
         3. ~/.holodeck/config.yaml global settings
 
+        Merges global LLM provider configs into agent model when:
+        - Global config providers exist
+        - A provider's name matches agent_config.model.name
+        - Keys don't already exist in agent_config.model
+
         Args:
             agent_config: Configuration from agent.yaml
             global_config: GlobalConfig instance from ~/.holodeck/config.yaml
@@ -244,15 +249,29 @@ class ConfigLoader:
         Returns:
             Merged configuration dictionary
         """
-        # For now, agent config is the primary source
-        # Global config is kept separate as it may contain provider configs
-        # and other infrastructure settings not directly used by Agent model
-        # The merging of global settings would happen at a higher level
-        # when actually using the agent (e.g., for LLM provider setup)
+        # Return early if missing required data
+        if not agent_config or "model" not in agent_config:
+            return agent_config if agent_config else {}
 
-        # Return agent config as-is (it's validated and complete)
-        # Global config would be used separately for system configuration
-        return agent_config if agent_config else {}
+        if not global_config or not global_config.providers:
+            return agent_config
+
+        # Get the model name from agent config
+        agent_model_provider = agent_config["model"].get("provider")
+        if not agent_model_provider:
+            return agent_config
+
+        # Find matching provider in global config and merge
+        for provider in global_config.providers.values():
+            if provider.provider == agent_model_provider:
+                # Convert provider to dict and merge non-conflicting keys
+                provider_dict = provider.model_dump(exclude_unset=True)
+                for key, value in provider_dict.items():
+                    if key not in agent_config["model"]:
+                        agent_config["model"][key] = value
+                break
+
+        return agent_config
 
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:

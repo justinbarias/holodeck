@@ -23,8 +23,8 @@ class Instructions(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    file: str | None = Field(None, description="Path to instruction file")
-    inline: str | None = Field(None, description="Inline instruction text")
+    file: str | None = Field(default=None, description="Path to instruction file")
+    inline: str | None = Field(default=None, description="Inline instruction text")
 
     @field_validator("file")
     @classmethod
@@ -59,25 +59,30 @@ class Agent(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(..., description="Agent identifier")
-    description: str | None = Field(None, description="Human-readable description")
-    author: str | None = Field(None, description="Author of the agent")
-    model: LLMProvider = Field(..., description="LLM provider configuration")
+    name: str = Field(default=..., description="Agent identifier")
+    description: str | None = Field(
+        default=None, description="Human-readable description"
+    )
+    author: str | None = Field(default=None, description="Author of the agent")
+    model: LLMProvider = Field(default=..., description="LLM provider configuration")
     instructions: Instructions = Field(
-        ..., description="System instructions (file or inline)"
+        default=..., description="System instructions (file or inline)"
     )
     response_format: dict[str, Any] | str | None = Field(
-        None, description="Response format schema (inline dict, file path, or null)"
+        default=None,
+        description="Response format schema (inline dict, file path, or null)",
     )
     tools: list[Any] | None = Field(
-        None, description="Agent tools (vectorstore, function, mcp, prompt)"
+        default=None, description="Agent tools (vectorstore, function, mcp, prompt)"
     )
     evaluations: EvaluationConfig | None = Field(
-        None, description="Evaluation configuration"
+        default=None, description="Evaluation configuration"
     )
-    test_cases: list[TestCaseModel] | None = Field(None, description="Test scenarios")
+    test_cases: list[TestCaseModel] | None = Field(
+        default=None, description="Test scenarios"
+    )
     execution: ExecutionConfig | None = Field(
-        None, description="Test execution configuration"
+        default=None, description="Test execution configuration"
     )
 
     @field_validator("name")
@@ -110,12 +115,6 @@ class Agent(BaseModel):
         cls, v: dict[str, Any] | str | None
     ) -> dict[str, Any] | str | None:
         """Validate response_format is dict, string path, or None."""
-        if v is not None:
-            if isinstance(v, dict | str):
-                return v
-            raise ValueError(
-                "response_format must be dict (inline), string (file path), or null"
-            )
         return v
 
     @field_validator("tools")

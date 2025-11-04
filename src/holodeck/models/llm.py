@@ -28,12 +28,15 @@ class LLMProvider(BaseModel):
 
     provider: ProviderEnum = Field(..., description="LLM provider")
     name: str = Field(..., description="Model name or identifier")
-    temperature: float | None = Field(None, description="Temperature (0.0-2.0)")
-    max_tokens: int | None = Field(None, description="Maximum tokens to generate")
-    top_p: float | None = Field(None, description="Nucleus sampling parameter")
+    temperature: float | None = Field(default=0.3, description="Temperature (0.0-2.0)")
+    max_tokens: int | None = Field(
+        default=1000, description="Maximum tokens to generate"
+    )
+    top_p: float | None = Field(default=None, description="Nucleus sampling parameter")
     endpoint: str | None = Field(
         None, description="API endpoint (required for Azure OpenAI and Ollama)"
     )
+    api_key: str | None = Field(None, description="API Key for LLM Provider")
 
     @field_validator("name")
     @classmethod

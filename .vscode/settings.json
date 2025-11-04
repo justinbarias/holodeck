@@ -17,6 +17,7 @@
     },
     "python.analysis.typeCheckingMode": "strict",
     "python.analysis.autoImportCompletions": true,
+    "python.analysis.extraPaths": ["./src"],
     "files.exclude": {
         "**/__pycache__": true,
         "**/*.pyc": true,

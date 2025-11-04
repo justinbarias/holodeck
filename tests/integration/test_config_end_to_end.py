@@ -246,6 +246,7 @@ class TestConfigEndToEndWorkflow:
         # Setup global config with provider configuration
         monkeypatch.setenv("HOME", str(temp_dir))
         monkeypatch.setenv("OPENAI_MODEL_NAME", "gpt-4o-global")
+        monkeypatch.setenv("OPENAI_API_KEY", "some-api-key")
 
         holodeck_dir = temp_dir / ".holodeck"
         holodeck_dir.mkdir()
@@ -258,6 +259,7 @@ class TestConfigEndToEndWorkflow:
                             "provider": "openai",
                             "name": "${OPENAI_MODEL_NAME}",
                             "temperature": 0.5,
+                            "api_key": "${OPENAI_API_KEY}",
                         }
                     }
                 }
@@ -289,6 +291,8 @@ class TestConfigEndToEndWorkflow:
         assert isinstance(agent, Agent)
         assert agent.name == "api_key_test_agent"
         assert agent.model.provider.value == "openai"
+        assert agent.model.name == "gpt-4o"
+        assert agent.model.api_key == "some-api-key"
 
         # Verify global config was loaded as GlobalConfig model
         global_config = loader.load_global_config()
@@ -298,6 +302,7 @@ class TestConfigEndToEndWorkflow:
         # After env substitution, name should be the actual value
         assert global_config.providers["openai"].name == "gpt-4o-global"
         assert global_config.providers["openai"].temperature == 0.5
+        assert global_config.providers["openai"].api_key == "some-api-key"
 
 
 class TestConfigErrorScenarios:
