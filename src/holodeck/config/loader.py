@@ -5,6 +5,7 @@ agent configuration from YAML files.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -15,9 +16,61 @@ from holodeck.config.env_loader import substitute_env_vars
 from holodeck.config.validator import flatten_pydantic_errors
 from holodeck.lib.errors import ConfigError, FileNotFoundError
 from holodeck.models.agent import Agent
-from holodeck.models.config import GlobalConfig
+from holodeck.models.config import ExecutionConfig, GlobalConfig
 
 logger = logging.getLogger(__name__)
+
+# Environment variable to field name mapping
+ENV_VAR_MAP = {
+    "file_timeout": "HOLODECK_FILE_TIMEOUT",
+    "llm_timeout": "HOLODECK_LLM_TIMEOUT",
+    "download_timeout": "HOLODECK_DOWNLOAD_TIMEOUT",
+    "cache_enabled": "HOLODECK_CACHE_ENABLED",
+    "cache_dir": "HOLODECK_CACHE_DIR",
+    "verbose": "HOLODECK_VERBOSE",
+    "quiet": "HOLODECK_QUIET",
+}
+
+
+def _parse_env_value(field_name: str, value: str) -> Any:
+    """Parse environment variable value to appropriate type.
+
+    Args:
+        field_name: Name of the field (used to determine type)
+        value: String value from environment variable
+
+    Returns:
+        Parsed value in correct type (int, bool, or str)
+
+    Raises:
+        ValueError: If value cannot be parsed
+    """
+    if field_name in ("file_timeout", "llm_timeout", "download_timeout"):
+        return int(value)
+    elif field_name in ("cache_enabled", "verbose", "quiet"):
+        return value.lower() in ("true", "1", "yes", "on")
+    else:
+        return value
+
+
+def _get_env_value(field_name: str, env_vars: dict[str, str]) -> Any | None:
+    """Get environment variable value for a field.
+
+    Args:
+        field_name: Name of field to get
+        env_vars: Dictionary of environment variables
+
+    Returns:
+        Parsed value or None if not found or invalid
+    """
+    env_var_name = ENV_VAR_MAP.get(field_name)
+    if not env_var_name or env_var_name not in env_vars:
+        return None
+
+    try:
+        return _parse_env_value(field_name, env_vars[env_var_name])
+    except (ValueError, KeyError):
+        return None
 
 
 class ConfigLoader:
@@ -347,3 +400,55 @@ class ConfigLoader:
                 return f.read()
 
         return None
+
+    def resolve_execution_config(
+        self,
+        cli_config: ExecutionConfig | None,
+        yaml_config: ExecutionConfig | None,
+        defaults: dict[str, Any],
+    ) -> ExecutionConfig:
+        """Resolve execution configuration with priority hierarchy.
+
+        Configuration priority (highest to lowest):
+        1. CLI flags (cli_config)
+        2. agent.yaml execution section (yaml_config)
+        3. Environment variables (HOLODECK_* vars)
+        4. Built-in defaults
+
+        Args:
+            cli_config: Execution config from CLI flags (optional)
+            yaml_config: Execution config from agent.yaml (optional)
+            defaults: Dictionary of default values
+
+        Returns:
+            Resolved ExecutionConfig with all fields populated
+        """
+        resolved: dict[str, Any] = {}
+        env_vars = dict(os.environ)
+
+        # List of all configuration fields
+        fields = [
+            "file_timeout",
+            "llm_timeout",
+            "download_timeout",
+            "cache_enabled",
+            "cache_dir",
+            "verbose",
+            "quiet",
+        ]
+
+        for field in fields:
+            # Priority 1: CLI flag
+            if cli_config and getattr(cli_config, field, None) is not None:
+                resolved[field] = getattr(cli_config, field)
+            # Priority 2: agent.yaml execution section
+            elif yaml_config and getattr(yaml_config, field, None) is not None:
+                resolved[field] = getattr(yaml_config, field)
+            # Priority 3: Environment variable
+            elif (env_value := _get_env_value(field, env_vars)) is not None:
+                resolved[field] = env_value
+            # Priority 4: Built-in default
+            else:
+                resolved[field] = defaults.get(field)
+
+        return ExecutionConfig(**resolved)

@@ -68,27 +68,6 @@ class DeploymentConfig(BaseModel):
         return v
 
 
-class GlobalConfig(BaseModel):
-    """Global configuration entity.
-
-    Configuration stored in ~/.holodeck/config.yaml for sharing defaults
-    across multiple agents, including LLM providers, vectorstores, and
-    deployment settings.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    providers: dict[str, LLMProvider] | None = Field(
-        None, description="Named LLM provider configurations"
-    )
-    vectorstores: dict[str, VectorstoreConfig] | None = Field(
-        None, description="Named vectorstore configurations"
-    )
-    deployment: DeploymentConfig | None = Field(
-        None, description="Deployment configuration"
-    )
-
-
 class ExecutionConfig(BaseModel):
     """Test execution configuration.
 
@@ -111,3 +90,27 @@ class ExecutionConfig(BaseModel):
     cache_dir: str | None = Field(default=None, description="Cache directory path")
     verbose: bool | None = Field(default=None, description="Verbose output mode")
     quiet: bool | None = Field(default=None, description="Quiet output mode")
+
+
+class GlobalConfig(BaseModel):
+    """Global configuration entity.
+
+    Configuration stored in ~/.holodeck/config.yaml for sharing defaults
+    across multiple agents, including LLM providers, vectorstores, execution,
+    and deployment settings.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    providers: dict[str, LLMProvider] | None = Field(
+        None, description="Named LLM provider configurations"
+    )
+    vectorstores: dict[str, VectorstoreConfig] | None = Field(
+        None, description="Named vectorstore configurations"
+    )
+    execution: ExecutionConfig | None = Field(
+        None, description="Execution configuration (timeouts, caching, logging)"
+    )
+    deployment: DeploymentConfig | None = Field(
+        None, description="Deployment configuration"
+    )

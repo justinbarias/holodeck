@@ -9,8 +9,9 @@ from typing import Any
 
 import yaml
 
+from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
-from holodeck.models.config import GlobalConfig
+from holodeck.models.config import ExecutionConfig, GlobalConfig
 
 
 class TestUserLevelConfigDiscovery:
@@ -194,3 +195,204 @@ class TestProjectLevelConfigDiscovery:
         # Non-existent directory should still return None gracefully
         result = loader.load_project_config("/nonexistent/path")
         assert result is None
+
+
+class TestExecutionConfigResolution:
+    """Tests for ExecutionConfig resolution with priority hierarchy."""
+
+    def test_cli_overrides_all(self) -> None:
+        """CLI flags take highest priority over YAML, env, and defaults."""
+        cli_config = ExecutionConfig(
+            file_timeout=100,
+            llm_timeout=200,
+            download_timeout=150,
+            cache_enabled=False,
+            cache_dir="/custom/cache",
+            verbose=True,
+            quiet=False,
+        )
+
+        yaml_config = ExecutionConfig(
+            file_timeout=50,
+            llm_timeout=80,
+            download_timeout=60,
+            cache_enabled=True,
+            cache_dir="/yaml/cache",
+            verbose=False,
+        )
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=cli_config,
+            yaml_config=yaml_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 100  # CLI
+        assert resolved.llm_timeout == 200  # CLI
+        assert resolved.download_timeout == 150  # CLI
+        assert resolved.cache_enabled is False  # CLI
+        assert resolved.cache_dir == "/custom/cache"  # CLI
+        assert resolved.verbose is True  # CLI
+
+    def test_yaml_overrides_env_and_defaults(self, monkeypatch: Any) -> None:
+        """YAML config takes priority over env vars and defaults."""
+        # Clear env vars to ensure they don't interfere
+        monkeypatch.delenv("HOLODECK_FILE_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_LLM_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_DOWNLOAD_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_CACHE_DIR", raising=False)
+
+        cli_config = None
+
+        yaml_config = ExecutionConfig(
+            file_timeout=50,
+            llm_timeout=80,
+            download_timeout=60,
+            cache_dir="/yaml/cache",
+        )
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=cli_config,
+            yaml_config=yaml_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 50  # YAML
+        assert resolved.llm_timeout == 80  # YAML
+        assert resolved.download_timeout == 60  # YAML
+        assert resolved.cache_dir == "/yaml/cache"  # YAML
+        # Others from defaults
+        assert resolved.cache_enabled is True  # defaults
+        assert resolved.verbose is False  # defaults
+
+    def test_env_overrides_defaults(self, monkeypatch: Any) -> None:
+        """Environment variables take priority over built-in defaults."""
+        monkeypatch.setenv("HOLODECK_FILE_TIMEOUT", "25")
+        monkeypatch.setenv("HOLODECK_LLM_TIMEOUT", "40")
+        monkeypatch.setenv("HOLODECK_DOWNLOAD_TIMEOUT", "30")
+        monkeypatch.setenv("HOLODECK_CACHE_ENABLED", "false")
+        monkeypatch.setenv("HOLODECK_CACHE_DIR", "/env/cache")
+        monkeypatch.setenv("HOLODECK_VERBOSE", "true")
+        monkeypatch.setenv("HOLODECK_QUIET", "false")
+
+        cli_config = None
+        yaml_config = None
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=cli_config,
+            yaml_config=yaml_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 25  # env
+        assert resolved.llm_timeout == 40  # env
+        assert resolved.download_timeout == 30  # env
+        assert resolved.cache_enabled is False  # env
+        assert resolved.cache_dir == "/env/cache"  # env
+        assert resolved.verbose is True  # env
+        assert resolved.quiet is False  # env
+
+    def test_all_defaults_used(self, monkeypatch: Any) -> None:
+        """All fields use built-in defaults when nothing specified."""
+        # Clear all env vars
+        monkeypatch.delenv("HOLODECK_FILE_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_LLM_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_DOWNLOAD_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_CACHE_ENABLED", raising=False)
+        monkeypatch.delenv("HOLODECK_CACHE_DIR", raising=False)
+        monkeypatch.delenv("HOLODECK_VERBOSE", raising=False)
+        monkeypatch.delenv("HOLODECK_QUIET", raising=False)
+
+        cli_config = None
+        yaml_config = None
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=cli_config,
+            yaml_config=yaml_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 30  # default
+        assert resolved.llm_timeout == 60  # default
+        assert resolved.download_timeout == 30  # default
+        assert resolved.cache_enabled is True  # default
+        assert resolved.cache_dir == ".holodeck/cache"  # default
+        assert resolved.verbose is False  # default
+        assert resolved.quiet is False  # default
+
+    def test_partial_cli_merges_with_yaml(self, monkeypatch: Any) -> None:
+        """CLI config merges with YAML for unspecified fields."""
+        monkeypatch.setenv("HOLODECK_VERBOSE", "true")
+
+        cli_config = ExecutionConfig(
+            file_timeout=100,
+            # Other fields unspecified (None)
+        )
+
+        yaml_config = ExecutionConfig(
+            llm_timeout=80,
+            download_timeout=60,
+            cache_dir="/yaml/cache",
+        )
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=cli_config,
+            yaml_config=yaml_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 100  # CLI
+        assert resolved.llm_timeout == 80  # YAML
+        assert resolved.download_timeout == 60  # YAML
+        assert resolved.cache_dir == "/yaml/cache"  # YAML
+        assert resolved.verbose is True  # env
+        assert resolved.cache_enabled is True  # default
+
+    def test_env_var_type_conversion(self, monkeypatch: Any) -> None:
+        """Environment variables are converted to correct types."""
+        monkeypatch.setenv("HOLODECK_FILE_TIMEOUT", "45")
+        monkeypatch.setenv("HOLODECK_CACHE_ENABLED", "false")
+        monkeypatch.setenv("HOLODECK_VERBOSE", "true")
+
+        cli_config = None
+        yaml_config = None
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=cli_config,
+            yaml_config=yaml_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 45
+        assert isinstance(resolved.file_timeout, int)
+        assert resolved.cache_enabled is False
+        assert isinstance(resolved.cache_enabled, bool)
+        assert resolved.verbose is True
+        assert isinstance(resolved.verbose, bool)
+
+    def test_invalid_env_var_uses_yaml_or_default(self, monkeypatch: Any) -> None:
+        """Invalid environment variables are skipped, falling back to YAML/defaults."""
+        monkeypatch.setenv("HOLODECK_FILE_TIMEOUT", "invalid_number")
+        monkeypatch.setenv("HOLODECK_LLM_TIMEOUT", "75")
+
+        cli_config = None
+
+        yaml_config = ExecutionConfig(
+            file_timeout=50,
+        )
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=cli_config,
+            yaml_config=yaml_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 50  # YAML (env invalid, skipped)
+        assert resolved.llm_timeout == 75  # env (valid)
