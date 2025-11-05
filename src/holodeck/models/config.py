@@ -99,13 +99,15 @@ class ExecutionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     file_timeout: int | None = Field(
-        None, description="File processing timeout in seconds"
+        default=None, description="File processing timeout in seconds"
     )
-    llm_timeout: int | None = Field(None, description="LLM API call timeout in seconds")
+    llm_timeout: int | None = Field(
+        default=None, description="LLM API call timeout in seconds"
+    )
     download_timeout: int | None = Field(
-        None, description="File download timeout in seconds"
+        default=None, description="File download timeout in seconds"
     )
-    cache_enabled: bool | None = Field(None, description="Enable file caching")
-    cache_dir: str | None = Field(None, description="Cache directory path")
-    verbose: bool | None = Field(None, description="Verbose output mode")
-    quiet: bool | None = Field(None, description="Quiet output mode")
+    cache_enabled: bool | None = Field(default=None, description="Enable file caching")
+    cache_dir: str | None = Field(default=None, description="Cache directory path")
+    verbose: bool | None = Field(default=None, description="Verbose output mode")
+    quiet: bool | None = Field(default=None, description="Quiet output mode")

@@ -131,3 +131,15 @@ def get_default_evaluation_config(metric_name: str | None = None) -> dict[str, A
             ]
         }
     return metric_defaults.get(metric_name, {})
+
+
+# Execution configuration defaults
+DEFAULT_EXECUTION_CONFIG: dict[str, int | bool | str] = {
+    "file_timeout": 30,  # seconds
+    "llm_timeout": 60,  # seconds
+    "download_timeout": 30,  # seconds
+    "cache_enabled": True,
+    "cache_dir": ".holodeck/cache",
+    "verbose": False,
+    "quiet": False,
+}

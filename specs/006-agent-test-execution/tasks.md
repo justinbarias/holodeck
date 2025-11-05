@@ -211,16 +211,16 @@ Phase 8: Polish & QA (T063-T074)
 
 #### T047-T056: Test Executor (Test-First)
 
-- [ ] T047 [TEST] Write unit tests for configuration resolution in tests/unit/lib/test_runner/test_executor.py (test CLI > agent.yaml > env > defaults priority, ExecutionConfig merge)
-- [ ] T048 [CODE] Implement configuration resolution in src/holodeck/lib/test_runner/executor.py to pass T047 tests
-- [ ] T049 [TEST] Write unit tests for tool call validation in tests/unit/lib/test_runner/test_executor.py (test expected_tools matching, TestResult.tool_calls vs TestCaseModel.expected_tools)
-- [ ] T050 [CODE] Implement tool call validation in src/holodeck/lib/test_runner/executor.py to pass T049 tests
-- [ ] T051 [TEST] Write unit tests for timeout handling in tests/unit/lib/test_runner/test_executor.py (test file: 30s, LLM: 60s, download: 30s defaults using asyncio.timeout or threading.Timer)
-- [ ] T052 [CODE] Implement timeout handling in src/holodeck/lib/test_runner/executor.py to pass T051 tests
-- [ ] T053 [TEST] Write unit tests for test executor main flow in tests/unit/lib/test_runner/test_executor.py (test load AgentConfig, execute tests sequentially, collect TestResult instances, generate TestReport)
-- [ ] T054 [CODE] Implement test executor in src/holodeck/lib/test_runner/executor.py to pass T053 tests
-- [ ] T055 [VERIFY] Run make test-unit to verify executor tests pass
-- [ ] T056 [VERIFY] Run make format && make lint
+- [x] T047 [TEST] Write unit tests for configuration resolution in tests/unit/lib/test_runner/test_executor.py (test CLI > agent.yaml > env > defaults priority, ExecutionConfig merge)
+- [x] T048 [CODE] Implement configuration resolution in src/holodeck/lib/test_runner/executor.py to pass T047 tests
+- [x] T049 [TEST] Write unit tests for tool call validation in tests/unit/lib/test_runner/test_executor.py (test expected_tools matching, TestResult.tool_calls vs TestCaseModel.expected_tools)
+- [x] T050 [CODE] Implement tool call validation in src/holodeck/lib/test_runner/executor.py to pass T049 tests
+- [x] T051 [TEST] Write unit tests for timeout handling in tests/unit/lib/test_runner/test_executor.py (test file: 30s, LLM: 60s, download: 30s defaults using asyncio.timeout or threading.Timer)
+- [x] T052 [CODE] Implement timeout handling in src/holodeck/lib/test_runner/executor.py to pass T051 tests
+- [x] T053 [TEST] Write unit tests for test executor main flow in tests/unit/lib/test_runner/test_executor.py (test load AgentConfig, execute tests sequentially, collect TestResult instances, generate TestReport)
+- [x] T054 [CODE] Implement test executor in src/holodeck/lib/test_runner/executor.py to pass T053 tests
+- [x] T055 [VERIFY] Run make test-unit to verify executor tests pass
+- [x] T056 [VERIFY] Run make format && make lint
 
 #### T057-T062: Progress Indicators (Test-First)
 
