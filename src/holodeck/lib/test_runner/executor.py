@@ -456,7 +456,9 @@ class TestExecutor:
                 elapsed_ms = int((time.time() - start_time) * 1000)
 
                 # Extract score and passed status
-                score = result.get("score", 0.0)
+                # NLP metrics return results with metric name as key
+                # (e.g., "bleu", "meteor"). Azure AI metrics use "score".
+                score = result.get(metric_name, result.get("score", 0.0))
                 threshold = metric_config.threshold
                 passed = score >= threshold if threshold else True
 
