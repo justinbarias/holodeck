@@ -213,11 +213,6 @@ class AgentFactory:
             Populated ChatHistory instance
         """
         history = ChatHistory()
-
-        # Add system instructions
-        instructions = self._load_instructions()
-        history.add_system_message(instructions)
-
         # Add user input
         history.add_user_message(user_input)
 

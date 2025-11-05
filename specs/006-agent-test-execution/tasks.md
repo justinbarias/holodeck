@@ -204,10 +204,10 @@ Phase 8: Polish & QA (T063-T074)
 
 #### T043-T050: Agent Bridge (Test-First)
 
-- [ ] T043 [TEST] Write unit tests for agent bridge in tests/unit/lib/test_runner/test_agent_bridge.py (test Semantic Kernel integration, Kernel creation, agent config loading, ChatHistory invocation, response capture, tool_calls capture)
-- [ ] T044 [CODE] Implement Semantic Kernel agent bridge in src/holodeck/lib/test_runner/agent_bridge.py to pass T043 tests
-- [ ] T045 [VERIFY] Run make test-unit to verify agent bridge tests pass
-- [ ] T046 [VERIFY] Run make format && make lint
+- [x] T043 [TEST] Write unit tests for agent bridge in tests/unit/lib/test_runner/test_agent_bridge.py (test Semantic Kernel integration, Kernel creation, agent config loading, ChatHistory invocation, response capture, tool_calls capture)
+- [x] T044 [CODE] Implement Semantic Kernel agent bridge in src/holodeck/lib/test_runner/agent_bridge.py to pass T043 tests
+- [x] T045 [VERIFY] Run make test-unit to verify agent bridge tests pass
+- [x] T046 [VERIFY] Run make format && make lint
 
 #### T047-T056: Test Executor (Test-First)
 
