@@ -54,7 +54,7 @@ jobs:
 
       - name: Deploy docs
         run: |
-          mkdocs build -d site/
+          poetry run mkdocs build -d site/
           cd site/
           git init
           git config user.name "github-actions[bot]"
