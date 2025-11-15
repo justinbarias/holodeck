@@ -2,6 +2,7 @@
 name = "holodeck-ai"
 dynamic = ["version"]
 description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
+authors = [{name = "Justin Barias", email = "justinbarias@live.com"}]
 requires-python = ">=3.13,<4.0"
 dependencies = [
     "requests (>=2.32.5,<3.0.0)",
@@ -50,10 +51,8 @@ dev = [
 ]
 
 [tool.poetry]
-name = "holodeck-ai"
-version = "0.0.0"
-description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
 packages = [{include = "holodeck", from = "src"}]
+version = "0.0.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
