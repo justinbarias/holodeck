@@ -3,61 +3,28 @@
 The test runner orchestrates the complete test execution pipeline for HoloDeck agents,
 from configuration resolution through evaluation and result reporting.
 
-## Overview
+## Test Case Configuration
 
-The test execution pipeline consists of four main components:
+Configuration models for defining test cases with multimodal file support.
 
-1. **Executor**: Main orchestrator coordinating the entire test flow
-2. **Agent Factory**: Creates agent instances from configuration
-3. **Progress Indicator**: Provides real-time feedback during test execution
-4. **Reporter**: Generates structured test reports
-
-## Test Executor
-
-Main orchestrator that coordinates test execution, file processing, agent invocation,
-evaluation, and report generation.
-
-::: holodeck.lib.test_runner.executor.TestExecutor
+::: holodeck.models.test_case.TestCaseModel
     options:
       docstring_style: google
       show_source: true
-      members:
-        - run_tests
-        - execute_test_case
-        - validate_configuration
 
-## Agent Factory
-
-Creates and instantiates agents from configuration, resolving LLM providers and tools.
-
-::: holodeck.lib.test_runner.agent_factory.AgentFactory
+::: holodeck.models.test_case.FileInput
     options:
       docstring_style: google
       show_source: true
-      members:
-        - create_agent
-        - create_from_config
 
-## Progress Indicator
+## Test Results
 
-Real-time progress tracking and feedback during batch test execution.
+Data models for test execution results and metrics.
 
-::: holodeck.lib.test_runner.progress.ProgressIndicator
-    options:
-      docstring_style: google
-
-## Test Reporter
-
-Formats and generates test reports in multiple output formats.
-
-::: holodeck.lib.test_runner.reporter.TestReporter
+::: holodeck.models.test_result.TestResult
     options:
       docstring_style: google
       show_source: true
-      members:
-        - generate_report
-        - format_results
-        - save_report
 
 ## Example Usage
 

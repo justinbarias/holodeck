@@ -35,17 +35,10 @@ Run tests for a HoloDeck agent with evaluation and reporting.
 
 Project initialization and scaffolding utilities.
 
-::: holodeck.cli.utils.project_init.initialize_project
+::: holodeck.cli.utils.project_init.ProjectInitializer
     options:
       docstring_style: google
-
-::: holodeck.cli.utils.project_init.create_project_structure
-    options:
-      docstring_style: google
-
-::: holodeck.cli.utils.project_init.copy_template
-    options:
-      docstring_style: google
+      show_source: true
 
 ## CLI Exceptions
 
@@ -55,11 +48,15 @@ CLI-specific exception handling.
     options:
       docstring_style: google
 
-::: holodeck.cli.exceptions.ProjectInitError
+::: holodeck.cli.exceptions.ValidationError
     options:
       docstring_style: google
 
-::: holodeck.cli.exceptions.TestExecutionError
+::: holodeck.cli.exceptions.InitError
+    options:
+      docstring_style: google
+
+::: holodeck.cli.exceptions.TemplateError
     options:
       docstring_style: google
 

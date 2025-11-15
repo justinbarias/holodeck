@@ -1,85 +1,22 @@
 # Evaluation Framework API
 
-HoloDeck provides a flexible evaluation framework supporting both traditional NLP metrics
-and AI-powered semantic evaluation. Evaluators are automatically applied to test outputs
-based on the agent's evaluation configuration.
-
-## Overview
-
-The evaluation framework consists of:
-
-1. **Base Evaluator**: Abstract base class with retry logic for all evaluators
-2. **NLP Metrics**: Traditional metrics (F1, BLEU, ROUGE, METEOR)
-3. **Azure AI Metrics**: Semantic evaluation via Azure AI models
-
-Evaluations can be configured at three levels:
+HoloDeck provides a flexible evaluation framework configuration. Evaluations can be configured at three levels:
 
 - **Global default**: Apply same model to all metrics
 - **Run-level override**: Change model for an evaluation run
 - **Per-metric override**: Use different models for specific metrics
 
-## Base Evaluator
+## Evaluation Configuration Models
 
-Abstract evaluator base class with built-in retry logic and error handling.
-
-::: holodeck.lib.evaluators.base.BaseEvaluator
-    options:
-      docstring_style: google
-      show_source: true
-      members:
-        - evaluate
-        - evaluate_with_retry
-
-## NLP Metrics
-
-Traditional natural language processing metrics computed without LLM calls.
-
-::: holodeck.lib.evaluators.nlp_metrics.compute_f1_score
-    options:
-      docstring_style: google
-
-::: holodeck.lib.evaluators.nlp_metrics.compute_bleu
-    options:
-      docstring_style: google
-
-::: holodeck.lib.evaluators.nlp_metrics.compute_rouge
-    options:
-      docstring_style: google
-
-::: holodeck.lib.evaluators.nlp_metrics.compute_meteor
-    options:
-      docstring_style: google
-
-### NLP Evaluator
-
-Wrapper for batch NLP metric computation.
-
-::: holodeck.lib.evaluators.nlp_metrics.NLPEvaluator
+::: holodeck.models.evaluation.EvaluationConfig
     options:
       docstring_style: google
       show_source: true
 
-## Azure AI Metrics
-
-Semantic evaluation using Azure AI Evaluation models following Azure AI patterns.
-
-### Available Metrics
-
-- **Groundedness**: How factually grounded and supported by context
-- **Relevance**: How well responses address the user query
-- **Coherence**: How logically coherent and well-structured
-- **Fluency**: How natural and fluent the language is
-- **Custom Metrics**: User-defined evaluation functions
-
-::: holodeck.lib.evaluators.azure_ai.AzureAIEvaluator
+::: holodeck.models.evaluation.EvaluationMetric
     options:
       docstring_style: google
       show_source: true
-      members:
-        - evaluate
-        - evaluate_groundedness
-        - evaluate_relevance
-        - evaluate_coherence
 
 ## Usage Examples
 

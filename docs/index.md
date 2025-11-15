@@ -61,7 +61,6 @@ print(f"Model: {agent.model.name}")
 - **[Evaluations](guides/evaluations.md)** - Testing and evaluation framework
 - **[Global Configuration](guides/global-config.md)** - System-wide settings and precedence rules
 - **[API Reference](api/models.md)** - Python API documentation
-- **[Architecture](architecture/overview.md)** - System design and components
 
 ## Examples
 
@@ -159,7 +158,7 @@ test_cases:
 
 - **GitHub Issues**: Report bugs or suggest features
 - **Discussions**: Ask questions and share ideas
-- **Contributing**: Read [CONTRIBUTING.md](CONTRIBUTING.md) to get involved
+- **Contributing**: Read [contributing guide](contributing.md) to get involved
 
 ## License
 

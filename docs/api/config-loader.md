@@ -90,12 +90,13 @@ Utilities for generating default configuration templates for common components.
 
 ## Configuration Merging
 
-::: holodeck.config.merge.merge_configs
+::: holodeck.config.merge.ConfigMerger
     options:
       docstring_style: google
+      show_source: true
 
 ## Related Documentation
 
 - [Data Models](models.md): Configuration model definitions
-- [CLI Commands](../user-guide/cli.md): Using configuration from CLI
+- [CLI Commands](cli.md): CLI API reference
 - [YAML Schema](../guides/agent-configuration.md): Agent configuration YAML format
