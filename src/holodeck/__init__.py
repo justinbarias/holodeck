@@ -18,7 +18,7 @@ from holodeck.lib.errors import ConfigError, HoloDeckError, ValidationError
 from holodeck.lib.logging_config import setup_logging
 
 try:
-    __version__ = version("holodeck")
+    __version__ = version("holodeck-ai")
 except PackageNotFoundError:
     # Package not installed, development mode
     __version__ = "0.0.0.dev0"

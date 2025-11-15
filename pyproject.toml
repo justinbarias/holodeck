@@ -1,7 +1,6 @@
 [project]
 name = "holodeck-ai"
 dynamic = ["version"]
-version = "0.0.1"
 description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
 requires-python = ">=3.13,<4.0"
 dependencies = [
@@ -51,17 +50,21 @@ dev = [
 ]
 
 [tool.poetry]
+name = "holodeck-ai"
+version = "0.0.0"
+description = "HoloDeck - Experimentation-driven agent experimentation and deployment"
 packages = [{include = "holodeck", from = "src"}]
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
 
-[tool.setuptools_scm]
-tag_regex = "^v?(?P<version>\\d+\\.\\d+\\.\\d+)$"
-
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.poetry-dynamic-versioning]
+enable = true
+vcs = "git"
+style = "semver"
+pattern = "^(?P<base>\\d+\\.\\d+\\.\\d+)(-?((?P<stage>[a-zA-Z]+)\\.?(?P<revision>\\d+)?))?"
+strict = true
 
 [tool.black]
 line-length = 88
