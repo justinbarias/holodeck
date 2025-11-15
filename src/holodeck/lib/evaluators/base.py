@@ -16,6 +16,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from holodeck.lib.logging_config import get_logger
+from holodeck.lib.logging_utils import log_retry
+
+logger = get_logger(__name__)
+
 
 class EvaluationError(Exception):
     """Exception raised when evaluation fails after all retry attempts."""
@@ -92,6 +97,11 @@ class BaseEvaluator(ABC):
         """
         self.timeout = timeout
         self.retry_config = retry_config or RetryConfig()
+
+        logger.debug(
+            f"Evaluator initialized: {self.name}, timeout={timeout}s, "
+            f"max_retries={self.retry_config.max_retries}"
+        )
 
     @property
     def name(self) -> str:
@@ -186,6 +196,10 @@ class BaseEvaluator(ABC):
 
         for attempt in range(self.retry_config.max_retries):
             try:
+                logger.debug(
+                    f"Evaluation attempt {attempt + 1}/{self.retry_config.max_retries} "
+                    f"for {self.name}"
+                )
                 return await self._evaluate_impl(**kwargs)
             except Exception as e:
                 last_error = e
@@ -193,6 +207,9 @@ class BaseEvaluator(ABC):
                 # Check if error is retryable
                 if not self._is_retryable_error(e):
                     # Non-retryable error - fail immediately
+                    logger.error(
+                        f"Non-retryable error in {self.name}: {type(e).__name__}: {e}"
+                    )
                     raise EvaluationError(
                         f"Evaluation failed with non-retryable error: {e}"
                     ) from e
@@ -203,9 +220,21 @@ class BaseEvaluator(ABC):
 
                 # Calculate and apply exponential backoff delay
                 delay = self._calculate_delay(attempt)
+                log_retry(
+                    logger,
+                    f"Evaluation {self.name}",
+                    attempt=attempt + 1,
+                    max_attempts=self.retry_config.max_retries,
+                    delay=delay,
+                    error=e,
+                )
                 await asyncio.sleep(delay)
 
         # All retries exhausted
+        logger.error(
+            f"Evaluation {self.name} failed after {self.retry_config.max_retries} "
+            f"attempts: {last_error}"
+        )
         raise EvaluationError(
             f"Evaluation failed after {self.retry_config.max_retries} "
             f"attempts: {last_error}"
@@ -239,16 +268,21 @@ class BaseEvaluator(ABC):
             >>> print(result["score"])
             0.95
         """
+        logger.debug(f"Starting evaluation: {self.name} (timeout={self.timeout}s)")
+
         if self.timeout is None:
             # No timeout - evaluate directly with retry
+            logger.debug(f"Evaluation {self.name}: no timeout")
             return await self._evaluate_with_retry(**kwargs)
 
         # Apply timeout using asyncio.wait_for
         try:
+            logger.debug(f"Evaluation {self.name}: applying timeout of {self.timeout}s")
             return await asyncio.wait_for(
                 self._evaluate_with_retry(**kwargs), timeout=self.timeout
             )
         except TimeoutError:
+            logger.error(f"Evaluation {self.name} exceeded timeout of {self.timeout}s")
             raise  # Re-raise timeout error as-is
 
 

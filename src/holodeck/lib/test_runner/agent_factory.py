@@ -12,7 +12,6 @@ Key features:
 """
 
 import asyncio
-import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -25,6 +24,8 @@ from semantic_kernel.connectors.ai.open_ai import (
 )
 from semantic_kernel.contents import ChatHistory
 
+from holodeck.lib.logging_config import get_logger
+from holodeck.lib.logging_utils import log_retry
 from holodeck.models.agent import Agent
 from holodeck.models.llm import ProviderEnum
 
@@ -37,7 +38,7 @@ try:
 except ImportError:
     AnthropicChatCompletion = None
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -94,10 +95,20 @@ class AgentFactory:
         self.retry_exponential_base = retry_exponential_base
         self._retry_count = 0
 
+        logger.debug(
+            f"Initializing AgentFactory: agent={agent_config.name}, "
+            f"provider={agent_config.model.provider}, timeout={timeout}s, "
+            f"max_retries={max_retries}"
+        )
+
         try:
             self.kernel = self._create_kernel()
             self.agent = self._create_agent()
+            logger.info(
+                f"AgentFactory initialized successfully for agent: {agent_config.name}"
+            )
         except Exception as e:
+            logger.error(f"Failed to initialize agent factory: {e}", exc_info=True)
             raise AgentFactoryError(f"Failed to initialize agent factory: {e}") from e
 
     def _create_kernel(self) -> Kernel:
@@ -110,11 +121,16 @@ class AgentFactory:
             AgentFactoryError: If kernel creation fails
         """
         try:
+            logger.debug("Creating Semantic Kernel")
             kernel = Kernel()
 
             model_config = self.agent_config.model
 
             # Add service based on provider type
+            logger.debug(
+                f"Configuring LLM service: provider={model_config.provider}, "
+                f"model={model_config.name}"
+            )
             service: Any
             if model_config.provider == ProviderEnum.AZURE_OPENAI:
                 service = AzureChatCompletion(
@@ -143,9 +159,11 @@ class AgentFactory:
                 )
 
             kernel.add_service(service)
+            logger.debug("Kernel created and service added successfully")
             return kernel
 
         except Exception as e:
+            logger.error(f"Kernel creation failed: {e}", exc_info=True)
             raise AgentFactoryError(f"Kernel creation failed: {e}") from e
 
     def _create_agent(self) -> SKAgent:
@@ -270,29 +288,48 @@ class AgentFactory:
 
         for attempt in range(self.max_retries):
             try:
+                logger.debug(
+                    f"Agent invocation attempt {attempt + 1}/{self.max_retries}"
+                )
                 result = await self._invoke_agent_impl(history)
+                logger.debug(
+                    f"Agent invocation succeeded on attempt {attempt + 1}, "
+                    f"tool_calls={len(result.tool_calls)}"
+                )
                 return result
 
             except (ConnectionError, TimeoutError) as e:
                 # Retryable error
                 last_error = e
                 if attempt < self.max_retries - 1:
-                    logger.warning(
-                        f"Retryable error on attempt {attempt + 1}, "
-                        f"retrying in {delay}s: {e}"
+                    log_retry(
+                        logger,
+                        "Agent invocation",
+                        attempt=attempt + 1,
+                        max_attempts=self.max_retries,
+                        delay=delay,
+                        error=e,
                     )
                     await asyncio.sleep(delay)
                     delay = min(delay * self.retry_exponential_base, 60.0)  # Cap at 60s
                 else:
-                    logger.error(f"All {self.max_retries} retries exhausted")
+                    logger.error(
+                        f"All {self.max_retries} retries exhausted for agent invocation"
+                    )
 
             except Exception as e:
                 # Non-retryable error
+                logger.error(
+                    f"Non-retryable error during agent invocation: {e}", exc_info=True
+                )
                 raise AgentFactoryError(
                     f"Non-retryable error during agent invocation: {e}"
                 ) from e
 
         # All retries exhausted
+        logger.error(
+            f"Agent invocation failed after {self.max_retries} attempts: {last_error}"
+        )
         raise AgentFactoryError(
             f"Agent invocation failed after {self.max_retries} attempts: {last_error}"
         ) from last_error

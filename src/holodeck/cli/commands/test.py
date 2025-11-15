@@ -6,15 +6,19 @@ with evaluation metrics and report generation.
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 
 import click
 
 from holodeck.lib.errors import ConfigError, EvaluationError, ExecutionError
+from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.lib.test_runner.progress import ProgressIndicator
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.test_result import TestReport, TestResult
+
+logger = get_logger(__name__)
 
 
 @click.command()
@@ -64,6 +68,16 @@ def test(
 
     AGENT_CONFIG is the path to the agent.yaml configuration file.
     """
+    # Reconfigure logging based on CLI flags
+    setup_logging(verbose=verbose, quiet=quiet)
+
+    logger.info(
+        f"Test command invoked: config={agent_config}, "
+        f"verbose={verbose}, quiet={quiet}, timeout={timeout}"
+    )
+
+    start_time = time.time()
+
     try:
         # Create execution config from CLI options
         cli_config = None
@@ -81,11 +95,14 @@ def test(
         # Load agent config to get test count for progress indicator
         from holodeck.config.loader import ConfigLoader
 
+        logger.debug(f"Loading agent configuration from {agent_config}")
         loader = ConfigLoader()
         agent = loader.load_agent_yaml(agent_config)
+        logger.info(f"Agent configuration loaded successfully: {agent.name}")
 
         # Get total test count
         total_tests = len(agent.test_cases) if agent.test_cases else 0
+        logger.info(f"Found {total_tests} test cases to execute")
 
         # Initialize progress indicator
         progress = ProgressIndicator(
@@ -101,6 +118,7 @@ def test(
                 click.echo(progress_line)
 
         # Initialize executor with progress callback
+        logger.debug("Initializing test executor")
         executor = TestExecutor(
             agent_config_path=agent_config,
             execution_config=cli_config,
@@ -108,7 +126,13 @@ def test(
         )
 
         # Run tests asynchronously
+        logger.info("Starting test execution")
         report = asyncio.run(executor.execute_tests())
+        elapsed_time = time.time() - start_time
+        logger.info(
+            f"Test execution completed in {elapsed_time:.2f}s - "
+            f"{report.summary.passed} passed, {report.summary.failed} failed"
+        )
 
         # Display summary (always shown, even in quiet mode)
         summary_text = progress.get_summary()
@@ -116,24 +140,32 @@ def test(
 
         # Save report if output specified
         if output:
+            logger.debug(f"Saving report to {output} (format={format})")
             _save_report(report, output, format)
+            logger.info(f"Report saved successfully to {output}")
 
         # Exit with appropriate code
         if report.summary.failed > 0:
+            logger.info("Exiting with failure status (failed tests)")
             sys.exit(1)
         else:
+            logger.info("Exiting with success status (all tests passed)")
             sys.exit(0)
 
     except ConfigError as e:
+        logger.error(f"Configuration error: {e}", exc_info=True)
         click.echo(f"Configuration Error: {e}", err=True)
         sys.exit(2)
     except ExecutionError as e:
+        logger.error(f"Execution error: {e}", exc_info=True)
         click.echo(f"Execution Error: {e}", err=True)
         sys.exit(3)
     except EvaluationError as e:
+        logger.error(f"Evaluation error: {e}", exc_info=True)
         click.echo(f"Evaluation Error: {e}", err=True)
         sys.exit(4)
     except Exception as e:
+        logger.error(f"Unexpected error: {e}", exc_info=True)
         click.echo(f"Error: {str(e)}", err=True)
         sys.exit(3)
 
@@ -156,8 +188,10 @@ def _save_report(report: TestReport, output: str, format: str | None) -> None:
             format = "markdown"
         else:
             format = "json"  # Default to JSON
+        logger.debug(f"Auto-detected report format: {format}")
 
     # Generate report content
+    logger.debug(f"Generating {format} report")
     if format == "json":
         # Use pydantic's model_dump_json method
         content = report.model_dump_json(indent=2)
@@ -166,8 +200,12 @@ def _save_report(report: TestReport, output: str, format: str | None) -> None:
         content = _generate_markdown_report(report)
 
     # Write to file
-    output_path.write_text(content)
-    click.echo(f"Report saved to {output}")
+    try:
+        output_path.write_text(content)
+        click.echo(f"Report saved to {output}")
+    except OSError as e:
+        logger.error(f"Failed to write report to {output}: {e}")
+        raise
 
 
 def _generate_markdown_report(report: TestReport) -> str:

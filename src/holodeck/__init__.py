@@ -15,6 +15,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from holodeck.config.loader import ConfigLoader
 from holodeck.lib.errors import ConfigError, HoloDeckError, ValidationError
+from holodeck.lib.logging_config import setup_logging
 
 try:
     __version__ = version("holodeck")
@@ -22,10 +23,15 @@ except PackageNotFoundError:
     # Package not installed, development mode
     __version__ = "0.0.0.dev0"
 
+# Initialize logging on package import
+# This ensures consistent logging configuration across all modules
+setup_logging()
+
 __all__ = [
     "__version__",
     "ConfigLoader",
     "ConfigError",
     "HoloDeckError",
     "ValidationError",
+    "setup_logging",
 ]

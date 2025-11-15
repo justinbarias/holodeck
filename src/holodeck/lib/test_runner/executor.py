@@ -20,6 +20,7 @@ Test execution follows a sequential flow:
 5. Generate TestReport with summary statistics
 """
 
+import logging
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -42,6 +43,8 @@ from holodeck.lib.evaluators.nlp_metrics import (
     ROUGEEvaluator,
 )
 from holodeck.lib.file_processor import FileProcessor
+from holodeck.lib.logging_config import get_logger
+from holodeck.lib.logging_utils import log_exception
 from holodeck.lib.test_runner.agent_factory import AgentFactory
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
@@ -54,6 +57,8 @@ from holodeck.models.test_result import (
     TestReport,
     TestResult,
 )
+
+logger = get_logger(__name__)
 
 
 def validate_tool_calls(
@@ -81,8 +86,14 @@ def validate_tool_calls(
 
     actual_set = set(actual)
     expected_set = set(expected)
+    matched = actual_set == expected_set
 
-    return actual_set == expected_set
+    logger.debug(
+        f"Tool validation: expected={expected_set}, actual={actual_set}, "
+        f"matched={matched}"
+    )
+
+    return matched
 
 
 class TestExecutor:
@@ -138,6 +149,8 @@ class TestExecutor:
         self.config_loader = config_loader or ConfigLoader()
         self.progress_callback = progress_callback
 
+        logger.debug(f"Initializing TestExecutor for config: {agent_config_path}")
+
         # Load agent config
         self.agent_config = self._load_agent_config()
 
@@ -145,9 +158,19 @@ class TestExecutor:
         self.config = self._resolve_execution_config()
 
         # Use injected dependencies or create defaults
+        logger.debug("Initializing FileProcessor component")
         self.file_processor = file_processor or self._create_file_processor()
+
+        logger.debug("Initializing AgentFactory component")
         self.agent_factory = agent_factory or self._create_agent_factory()
+
+        logger.debug("Initializing Evaluators component")
         self.evaluators = evaluators or self._create_evaluators()
+
+        logger.info(
+            f"TestExecutor initialized: {len(self.evaluators)} evaluators, "
+            f"timeout={self.config.llm_timeout}s"
+        )
 
     def _load_agent_config(self) -> Agent:
         """Load and validate agent configuration.
@@ -257,15 +280,25 @@ class TestExecutor:
 
         # Execute each test case sequentially
         test_cases = self.agent_config.test_cases or []
-        for test_case in test_cases:
+        logger.info(f"Starting test execution: {len(test_cases)} test cases")
+
+        for idx, test_case in enumerate(test_cases, 1):
+            logger.debug(f"Executing test {idx}/{len(test_cases)}: {test_case.name}")
             result = await self._execute_single_test(test_case)
             test_results.append(result)
+
+            status = "PASS" if result.passed else "FAIL"
+            logger.info(
+                f"Test {idx}/{len(test_cases)} {status}: {test_case.name} "
+                f"({result.execution_time_ms}ms)"
+            )
 
             # Invoke progress callback if provided
             if self.progress_callback:
                 self.progress_callback(result)
 
         # Generate report with summary
+        logger.debug("Generating test report")
         return self._generate_report(test_results)
 
     async def _execute_single_test(
@@ -284,47 +317,93 @@ class TestExecutor:
         errors: list[str] = []
         processed_files: list[ProcessedFileInput] = []
 
+        logger.debug(f"Starting test execution: {test_case.name}")
+
         # Step 1: Process files (if any)
         if test_case.files:
+            logger.debug(f"Processing {len(test_case.files)} files for test")
             for file_input in test_case.files:
                 try:
                     processed = self.file_processor.process_file(file_input)
                     processed_files.append(processed)
 
                     if processed.error:
+                        logger.warning(
+                            f"File processing error: {processed.error} "
+                            f"[file={file_input.path or file_input.url}]"
+                        )
                         errors.append(f"File error: {processed.error}")
                 except Exception as e:
+                    log_exception(
+                        logger,
+                        "File processing failed",
+                        e,
+                        context={"file": file_input.path or file_input.url},
+                    )
                     errors.append(f"File processing error: {str(e)}")
 
         # Step 2: Prepare agent input
+        logger.debug(f"Preparing agent input for test: {test_case.name}")
         agent_input = self._prepare_agent_input(test_case, processed_files)
 
         # Step 3: Invoke agent
         agent_response = None
         tool_calls: list[str] = []
 
+        logger.debug(f"Invoking agent for test: {test_case.name}")
         try:
+            invoke_start = time.time()
             result = await self.agent_factory.invoke(agent_input)
+            invoke_elapsed = time.time() - invoke_start
+
             agent_response = self._extract_response_text(result.chat_history)
             tool_calls = self._extract_tool_names(result.tool_calls)
+
+            logger.debug(
+                f"Agent invocation completed in {invoke_elapsed:.2f}s, "
+                f"tools_called={len(tool_calls)}"
+            )
         except TimeoutError:
+            logger.error(
+                f"Agent invocation timeout after {self.config.llm_timeout}s "
+                f"[test={test_case.name}]"
+            )
             errors.append(f"Agent invocation timeout after {self.config.llm_timeout}s")
         except Exception as e:
+            log_exception(
+                logger, "Agent invocation failed", e, context={"test": test_case.name}
+            )
             errors.append(f"Agent invocation error: {str(e)}")
 
         # Step 4: Validate tool calls
+        if test_case.expected_tools:
+            logger.debug(
+                f"Validating tool calls: expected={test_case.expected_tools}, "
+                f"actual={tool_calls}"
+            )
         tools_matched = validate_tool_calls(tool_calls, test_case.expected_tools)
 
         # Step 5: Run evaluations
+        logger.debug(f"Running evaluations for test: {test_case.name}")
         metric_results = await self._run_evaluations(
             test_case, agent_response, processed_files
+        )
+        logger.debug(
+            f"Completed {len(metric_results)} evaluations for test: {test_case.name}"
         )
 
         # Step 6: Determine pass/fail
         passed = self._determine_test_passed(metric_results, tools_matched, errors)
+        metrics_passed = sum(1 for m in metric_results if m.passed)
+        logger.debug(
+            f"Test result determined: passed={passed}, "
+            f"metrics_passed={metrics_passed}/{len(metric_results)}, "
+            f"tools_matched={tools_matched}, errors={len(errors)}"
+        )
 
         # Step 7: Build TestResult
         elapsed_ms = int((time.time() - start_time) * 1000)
+        logger.debug(f"Test execution completed: {test_case.name} ({elapsed_ms}ms)")
 
         return TestResult(
             test_name=test_case.name,
@@ -438,9 +517,11 @@ class TestExecutor:
 
             if metric_name not in self.evaluators:
                 # Metric not configured, skip
+                logger.debug(f"Skipping unconfigured metric: {metric_name}")
                 continue
 
             try:
+                logger.debug(f"Running metric evaluation: {metric_name}")
                 evaluator = self.evaluators[metric_name]
                 start_time = time.time()
 
@@ -472,6 +553,12 @@ class TestExecutor:
                 threshold = metric_config.threshold
                 passed = score >= threshold if threshold else True
 
+                logger.debug(
+                    f"Metric evaluation completed: {metric_name}, "
+                    f"score={score:.3f}, threshold={threshold}, "
+                    f"passed={passed}, duration={elapsed_ms}ms"
+                )
+
                 metric_results.append(
                     MetricResult(
                         metric_name=metric_name,
@@ -490,6 +577,12 @@ class TestExecutor:
 
             except Exception as e:
                 # Record error but continue with other metrics
+                log_exception(
+                    logger,
+                    f"Metric evaluation failed: {metric_name}",
+                    e,
+                    level=logging.WARNING,
+                )
                 metric_results.append(
                     MetricResult(
                         metric_name=metric_name,
