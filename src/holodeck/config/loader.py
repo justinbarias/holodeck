@@ -128,9 +128,16 @@ class ConfigLoader:
         This method:
         1. Parses the YAML file
         2. Applies environment variable substitution
-        3. Merges with global configuration if available
-        4. Validates against Agent schema
-        5. Returns an Agent instance
+        3. Loads project config (if available) with fallback to global config
+        4. Merges configurations with proper precedence
+        5. Validates against Agent schema
+        6. Returns an Agent instance
+
+        Configuration precedence (highest to lowest):
+        1. agent.yaml explicit settings
+        2. Environment variables
+        3. Project-level config.yaml/config.yml
+        4. Global ~/.holodeck/config.yaml/config.yml
 
         Args:
             file_path: Path to agent.yaml file
@@ -151,9 +158,14 @@ class ConfigLoader:
         substituted_yaml = substitute_env_vars(yaml_str)
         agent_config = yaml.safe_load(substituted_yaml)
 
-        # Load and merge global config
-        global_config = self.load_global_config()
-        merged_config = self.merge_configs(agent_config, global_config)
+        # Load project config, fallback to global config
+        agent_dir = str(Path(file_path).parent)
+        config = self.load_project_config(agent_dir)
+        if config is None:
+            config = self.load_global_config()
+
+        # Merge configurations with proper precedence
+        merged_config = self.merge_configs(agent_config, config)
 
         # Validate against Agent schema
         try:
@@ -290,10 +302,11 @@ class ConfigLoader:
         2. Environment variables (already substituted)
         3. ~/.holodeck/config.yaml global settings
 
-        Merges global LLM provider configs into agent model when:
-        - Global config providers exist
-        - A provider's name matches agent_config.model.name
-        - Keys don't already exist in agent_config.model
+        Merges global LLM provider configs into:
+        - agent model: when a provider's name matches agent_config.model.provider
+        - evaluation model: when a provider's name matches evaluations.model.provider
+
+        Keys don't get overwritten if they already exist in the agent config.
 
         Args:
             agent_config: Configuration from agent.yaml
@@ -309,12 +322,12 @@ class ConfigLoader:
         if not global_config or not global_config.providers:
             return agent_config
 
-        # Get the model name from agent config
+        # Get the provider types from agent config
         agent_model_provider = agent_config["model"].get("provider")
         if not agent_model_provider:
             return agent_config
 
-        # Find matching provider in global config and merge
+        # Find matching provider in global config and merge to agent model
         for provider in global_config.providers.values():
             if provider.provider == agent_model_provider:
                 # Convert provider to dict and merge non-conflicting keys
@@ -323,6 +336,25 @@ class ConfigLoader:
                     if key not in agent_config["model"]:
                         agent_config["model"][key] = value
                 break
+
+        # Also merge global provider config to evaluation model if it exists
+        if (
+            "evaluations" in agent_config
+            and isinstance(agent_config["evaluations"], dict)
+            and "model" in agent_config["evaluations"]
+            and isinstance(agent_config["evaluations"]["model"], dict)
+        ):
+            eval_model: dict[str, Any] = agent_config["evaluations"]["model"]
+            eval_model_provider = eval_model.get("provider")
+            if eval_model_provider:
+                for provider in global_config.providers.values():
+                    if provider.provider == eval_model_provider:
+                        # Convert provider to dict and merge non-conflicting keys
+                        provider_dict = provider.model_dump(exclude_unset=True)
+                        for key, value in provider_dict.items():
+                            if key not in eval_model:
+                                eval_model[key] = value
+                        break
 
         return agent_config
 

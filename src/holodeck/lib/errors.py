@@ -95,3 +95,28 @@ class FileNotFoundError(HoloDeckError):
         self.path = path
         self.message = message
         super().__init__(f"File not found: {path}\n{message}")
+
+
+class ExecutionError(HoloDeckError):
+    """Exception raised when test execution fails.
+
+    Covers timeout, agent invocation errors, and other runtime failures
+    during test execution.
+
+    Attributes:
+        message: Human-readable error message
+    """
+
+    pass
+
+
+class EvaluationError(HoloDeckError):
+    """Exception raised when metric evaluation fails.
+
+    Covers failures in evaluator initialization or metric calculation.
+
+    Attributes:
+        message: Human-readable error message
+    """
+
+    pass

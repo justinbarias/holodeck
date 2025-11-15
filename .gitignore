@@ -34,3 +34,6 @@ metrics/*
 # mkdocs site
 /site
 .holodeck/cache
+
+# samples folder
+/sample

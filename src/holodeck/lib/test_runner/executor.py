@@ -21,6 +21,7 @@ Test execution follows a sequential flow:
 """
 
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -103,6 +104,7 @@ class TestExecutor:
         agent_factory: AgentFactory instance
         evaluators: Dictionary of evaluator instances by metric name
         config_loader: ConfigLoader instance
+        progress_callback: Optional callback function for progress reporting
     """
 
     def __init__(
@@ -113,6 +115,7 @@ class TestExecutor:
         agent_factory: AgentFactory | None = None,
         evaluators: dict[str, BaseEvaluator] | None = None,
         config_loader: ConfigLoader | None = None,
+        progress_callback: Callable[[TestResult], None] | None = None,
     ) -> None:
         """Initialize test executor with optional dependency injection.
 
@@ -127,10 +130,13 @@ class TestExecutor:
             agent_factory: Optional AgentFactory instance (auto-created if None)
             evaluators: Optional dict of evaluator instances (auto-created if None)
             config_loader: Optional ConfigLoader instance (auto-created if None)
+            progress_callback: Optional callback function called after each test.
+                              Called with TestResult instance. Use for progress display.
         """
         self.agent_config_path = agent_config_path
         self.cli_config = execution_config
         self.config_loader = config_loader or ConfigLoader()
+        self.progress_callback = progress_callback
 
         # Load agent config
         self.agent_config = self._load_agent_config()
@@ -254,6 +260,10 @@ class TestExecutor:
         for test_case in test_cases:
             result = await self._execute_single_test(test_case)
             test_results.append(result)
+
+            # Invoke progress callback if provided
+            if self.progress_callback:
+                self.progress_callback(result)
 
         # Generate report with summary
         return self._generate_report(test_results)

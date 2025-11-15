@@ -21,7 +21,7 @@ from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.test_case import FileInput, TestCaseModel
-from holodeck.models.test_result import ProcessedFileInput
+from holodeck.models.test_result import ProcessedFileInput, TestResult
 
 
 class TestToolCallValidation:
@@ -1637,3 +1637,335 @@ class TestReportGeneration:
 
         # Verify fallback version is used
         assert report.holodeck_version == "0.1.0"
+
+
+@pytest.mark.unit
+class TestProgressCallbackIntegration:
+    """Tests for T061: Progress callback integration with TestExecutor.
+
+    Tests verify that:
+    - Callback is invoked after each test execution
+    - Callback receives TestResult instances
+    - Callback with None handling works correctly
+    - Multiple test execution flow calls callback appropriately
+    """
+
+    @pytest.mark.asyncio
+    async def test_callback_invoked_after_each_test(self):
+        """Callback is invoked after each test completes."""
+        from holodeck.models.agent import Agent, Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        test_case = TestCaseModel(name="Test 1", input="test input")
+
+        agent_config = Agent(
+            name="Test Agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[test_case],
+            evaluations=None,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "Response"
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = []
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        # Track callback invocations
+        callback_invocations = []
+
+        def progress_callback(result):
+            callback_invocations.append(result)
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            progress_callback=progress_callback,
+        )
+
+        await executor.execute_tests()
+
+        # Callback should be invoked once for the single test
+        assert len(callback_invocations) == 1
+        # Callback should receive TestResult instance
+        assert isinstance(callback_invocations[0], TestResult)
+
+    @pytest.mark.asyncio
+    async def test_callback_with_none_handling(self):
+        """Executor handles None callback gracefully."""
+        from holodeck.models.agent import Agent, Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        test_case = TestCaseModel(name="Test 1", input="test input")
+
+        agent_config = Agent(
+            name="Test Agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[test_case],
+            evaluations=None,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "Response"
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = []
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        # Create executor without callback (None)
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            progress_callback=None,
+        )
+
+        # Should execute without error
+        report = await executor.execute_tests()
+
+        # Report should be generated successfully
+        assert report is not None
+        assert len(report.results) == 1
+
+    @pytest.mark.asyncio
+    async def test_callback_receives_test_results(self):
+        """Callback receives correct TestResult data."""
+        from holodeck.models.agent import Agent, Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        test_case = TestCaseModel(name="My Test Case", input="test input")
+
+        agent_config = Agent(
+            name="Test Agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[test_case],
+            evaluations=None,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "Test Response"
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = []
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        callback_results = []
+
+        def progress_callback(result):
+            callback_results.append(result)
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            progress_callback=progress_callback,
+        )
+
+        await executor.execute_tests()
+
+        # Verify callback received TestResult with correct data
+        assert len(callback_results) == 1
+        result = callback_results[0]
+        assert result.test_name == "My Test Case"
+        assert result.agent_response == "Test Response"
+        assert isinstance(result.passed, bool)
+
+    @pytest.mark.asyncio
+    async def test_multiple_test_execution_flow(self):
+        """Callback is invoked correctly for multiple test executions."""
+        from holodeck.models.agent import Agent, Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        # Create multiple test cases
+        test_cases = [
+            TestCaseModel(name="Test 1", input="input 1"),
+            TestCaseModel(name="Test 2", input="input 2"),
+            TestCaseModel(name="Test 3", input="input 3"),
+        ]
+
+        agent_config = Agent(
+            name="Test Agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=test_cases,
+            evaluations=None,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "Response"
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = []
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        # Track callback invocations with test names
+        callback_results = []
+
+        def progress_callback(result):
+            callback_results.append(result.test_name)
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            progress_callback=progress_callback,
+        )
+
+        await executor.execute_tests()
+
+        # Callback should be invoked once per test
+        assert len(callback_results) == 3
+        assert callback_results == ["Test 1", "Test 2", "Test 3"]
+
+    @pytest.mark.asyncio
+    async def test_callback_called_in_order(self):
+        """Callbacks are invoked in the order tests execute."""
+        from holodeck.models.agent import Agent, Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        test_cases = [
+            TestCaseModel(name="First", input="1"),
+            TestCaseModel(name="Second", input="2"),
+        ]
+
+        agent_config = Agent(
+            name="Test Agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=test_cases,
+            evaluations=None,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "Response"
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = []
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        call_order = []
+
+        def progress_callback(result):
+            call_order.append(result.test_name)
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            progress_callback=progress_callback,
+        )
+
+        await executor.execute_tests()
+
+        # Verify callbacks were called in execution order
+        assert call_order == ["First", "Second"]
