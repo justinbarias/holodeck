@@ -281,17 +281,17 @@ for test_case in test_cases:
 - [x] T068 [CODE] Implement CLI command in src/holodeck/cli/commands/test.py to pass T067 tests
 - [x] T069 [TEST] Write unit tests for exit code logic in tests/unit/cli/commands/test_test.py (test 0=success, 1=test failure, 2=config error, 3=execution error, 4=evaluation error)
 - [x] T070 [CODE] Implement exit code logic in src/holodeck/cli/commands/test.py to pass T069 tests
-- [ ] T071 [VERIFY] Run make test-unit to verify CLI tests pass
-- [ ] T072 [VERIFY] Run make format && make lint
-- [ ] T073 [TEST] Write unit tests for report generation integration in tests/unit/cli/commands/test_test.py (test --output flag, JSON/Markdown format)
-- [ ] T074 [CODE] Implement report file generation in CLI command
+- [x] T071 [VERIFY] Run make test-unit to verify CLI tests pass
+- [x] T072 [VERIFY] Run make format && make lint
+- [x] T073 [TEST] Write unit tests for report generation integration in tests/unit/cli/commands/test_test.py (test --output flag, JSON/Markdown format)
+- [x] T074 [CODE] Implement report file generation in CLI command
 
 #### T075-T078: Integration Testing
 
-- [ ] T075 [TEST] Create sample test agent.yaml in tests/fixtures/agents/test_agent.yaml with 3 simple text test cases
-- [ ] T076 [TEST] Write integration test for basic text execution in tests/integration/test_basic_execution.py (verify end-to-end test run with mocked LLM responses)
-- [ ] T077 [VERIFY] Run make test-integration to verify integration tests pass
-- [ ] T078 [VERIFY] Run make test to verify all tests pass
+- [x] T075 [TEST] Create sample test agent.yaml in tests/fixtures/agents/test_agent.yaml with 3 simple text test cases
+- [x] T076 [TEST] Write integration test for basic text execution in tests/integration/test_basic_execution.py (verify end-to-end test run with mocked LLM responses)
+- [x] T077 [VERIFY] Run make test-integration to verify integration tests pass
+- [x] T078 [VERIFY] Run make test to verify all tests pass
 
 ---
 

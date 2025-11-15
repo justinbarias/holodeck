@@ -1,289 +1,298 @@
 # Installation Guide
 
-Get HoloDeck up and running in minutes.
+Get HoloDeck up and running in minutes to start building and testing AI agents.
 
 ## Prerequisites
 
 - **Python 3.13+** (check with `python --version`)
 - **pip** (usually included with Python)
-- **Git** (for development setup)
 
-## Standard Installation
+## Quick Start
 
-### 1. Install from PyPI
+### 1. Install HoloDeck CLI
 
 ```bash
 pip install holodeck-ai
 ```
 
-This installs the latest stable version and all required dependencies:
-
-- `pydantic` - Configuration validation
-- `pyyaml` - YAML parsing
-- `python-dotenv` - Environment variable support
-- `semantic-kernel` - Agent framework base
+This installs the `holodeck` command-line tool and all required dependencies.
 
 ### 2. Verify Installation
 
-Check that HoloDeck is installed correctly:
-
 ```bash
-python -m holodeck --version
-# Output: holodeck 0.1.0
+holodeck --version
+# Output: holodeck 0.2.0
 ```
 
-Try importing the main module:
-
-```python
-from holodeck.config.loader import ConfigLoader
-print("✓ HoloDeck installed successfully!")
-```
-
-## Development Setup
-
-For development or contributing to HoloDeck:
-
-### 1. Clone the Repository
+Check that the CLI is accessible:
 
 ```bash
-git clone https://github.com/anthropics/holodeck.git
-cd holodeck
+holodeck --help
 ```
 
-### 2. Initialize Development Environment
+### 3. Set Up API Credentials
+
+HoloDeck supports OpenAI, Azure OpenAI, and Anthropic. Create a `.env` file in your project:
 
 ```bash
-# Create virtual environment and install all dev dependencies
-make init
+# .env (never commit this file!)
+AZURE_OPENAI_API_KEY=your-key-here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 ```
 
-This command:
-
-- Creates a Python virtual environment in `.venv/`
-- Installs dependencies (`poetry install`)
-- Installs pre-commit hooks
-- Configures development tools (black, ruff, mypy)
-
-### 3. Activate Virtual Environment
+Or set environment variables:
 
 ```bash
-# On macOS / Linux
-source .venv/bin/activate
-
-# On Windows
-.venv\Scripts\activate
+export AZURE_OPENAI_API_KEY="your-key-here"
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
 ```
 
-You'll see `(.venv)` prefix in your terminal when activated.
+## Bootstrap Your First Agent
 
-### 4. Verify Development Setup
+After installation, create your first agent project:
+
+### 1. Create a Project Directory
 
 ```bash
-# Check Python and pytest
-python --version  # Should be 3.13+
-pytest --version  # Should show pytest available
-
-# Run the test suite
-make test
+mkdir my-first-agent
+cd my-first-agent
 ```
 
-## Setup Verification Checklist
+### 2. Create Global Configuration
 
-After installation, verify everything works:
+Create `config.yaml` for your project's LLM provider settings:
 
 ```bash
-# ✓ Check Python version
-python --version
-# Expected: Python 3.13.x
+cat > config.yaml << 'EOF'
+# HoloDeck Configuration
+# Models and API credentials for your agents
 
-# ✓ Check HoloDeck is installed
-python -c "import holodeck; print(holodeck.__version__)"
-# Expected: 0.1.0
+providers:
+  azure_openai:
+    provider: azure_openai
+    name: gpt-4o
+    temperature: 0.3
+    max_tokens: 2048
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+    api_key: ${AZURE_OPENAI_API_KEY}
 
-# ✓ Check ConfigLoader works
-python << 'EOF'
-from holodeck.config.loader import ConfigLoader
-loader = ConfigLoader()
-print("✓ ConfigLoader imported successfully")
+execution:
+  llm_timeout: 60
+  file_timeout: 30
+  cache_enabled: true
+  verbose: false
 EOF
+```
 
-# ✓ Create a test agent.yaml file
-cat > test-agent.yaml << 'EOF'
-name: "Test Agent"
-description: "Verification test agent"
+### 3. Create Your First Agent
+
+Create `agent.yaml` with a simple agent:
+
+```bash
+cat > agent.yaml << 'EOF'
+name: my-first-agent
+description: A helpful assistant to get you started
+
 model:
-  provider: "openai"
-  name: "gpt-4o-mini"
-instructions:
-  inline: "You are a helpful assistant."
-EOF
+  provider: azure_openai
+  # Model and API key come from config.yaml
 
-# ✓ Load and validate the agent (requires OPENAI_API_KEY env var)
-python << 'EOF'
-from holodeck.config.loader import ConfigLoader
-loader = ConfigLoader()
-agent = loader.load_agent_yaml("test-agent.yaml")
-print(f"✓ Agent loaded: {agent.name}")
+instructions:
+  inline: |
+    You are a helpful AI assistant.
+    Be concise, accurate, and friendly.
+
+test_cases:
+  - name: "Simple greeting"
+    input: "Hello! What can you do?"
+    ground_truth: "I can help you with information, answer questions, and provide guidance."
+    evaluations:
+      - f1_score
+
+evaluations:
+  model:
+    provider: azure_openai
+
+  metrics:
+    - metric: f1_score
+      threshold: 0.7
 EOF
 ```
 
-## Environment Variables
+### 4. Create `.env` File with Credentials
 
-HoloDeck uses environment variables for API credentials. Set these in your shell or `.env` file:
+```bash
+cat > .env << 'EOF'
+# Add to .gitignore - never commit secrets!
+AZURE_OPENAI_API_KEY=your-api-key-here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+EOF
+```
+
+**⚠️ Important**: Add `.env` to `.gitignore`:
+
+```bash
+echo ".env" >> .gitignore
+echo ".env.local" >> .gitignore
+```
+
+## Running Your Agent
+
+After bootstrapping your project, test your agent:
+
+### 1. Run Agent Tests
+
+```bash
+# Test the agent and run evaluations
+holodeck test agent.yaml
+```
+
+This command will:
+- Load your agent configuration
+- Execute test cases against the agent
+- Run evaluation metrics
+- Display results with pass/fail status
+
+### 2. Interactive Chat Mode
+
+```bash
+# Chat interactively with your agent
+holodeck chat agent.yaml
+```
+
+This starts an interactive session where you can:
+- Send messages to your agent
+- See responses in real-time
+- Test agent behavior manually
+
+### 3. Initialize from Templates
+
+For more structured projects, use templates:
+
+```bash
+# Create a new project with a template
+holodeck init
+
+# This prompts you to:
+# 1. Enter project name
+# 2. Select a template (conversational, customer-support, research)
+# 3. Configure project metadata
+# 4. Choose LLM providers
+```
+
+## Verification Checklist
+
+Verify your setup is working:
+
+```bash
+# ✓ Check HoloDeck CLI is installed
+holodeck --version
+# Expected: holodeck version 0.2.0
+
+# ✓ Check help to see available commands
+holodeck --help
+# Should show: test, chat, init, deploy commands
+
+# ✓ Test your agent (from project directory with config.yaml and agent.yaml)
+holodeck test agent.yaml
+# Should load agent and run test cases
+
+# ✓ Try interactive chat
+holodeck chat agent.yaml --input "Hello!"
+# Should get a response from your agent
+```
+
+## Supported LLM Providers
+
+HoloDeck supports multiple LLM providers. Choose one and set up credentials:
+
+### Azure OpenAI (Recommended)
+
+```bash
+# .env or environment variables
+AZURE_OPENAI_API_KEY=your-key-here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+```
 
 ### OpenAI
 
 ```bash
-export OPENAI_API_KEY="sk-..."
-```
-
-### Azure OpenAI
-
-```bash
-export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-export AZURE_OPENAI_API_KEY="your-key"
-export OPENAI_API_VERSION="2024-02-15-preview"
+OPENAI_API_KEY=sk-...
+OPENAI_ORG_ID=optional-org-id
 ```
 
 ### Anthropic
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-## Managing Environment Variables with .env Files
-
-Create a `.env` file in your project directory:
-
-```bash
-# .env
-OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Then load it in your Python script:
-
-```python
-from dotenv import load_dotenv
-load_dotenv()
-
-from holodeck.config.loader import ConfigLoader
-# Now all env vars from .env are available
-```
-
-⚠️ **Never commit `.env` files to version control!** Add to `.gitignore`:
-
-```bash
-# .gitignore
-.env
-.env.local
-.env.*.local
-```
-
-## Development Dependencies (Optional)
-
-For development, install additional tools:
-
-```bash
-# Activate your virtual environment first
-source .venv/bin/activate  # macOS/Linux
-
-# Install development dependencies
-make install-dev
-```
-
-This adds:
-
-- `pytest-cov` - Code coverage measurement
-- `pytest-xdist` - Parallel test execution
-- `black` - Code formatter
-- `ruff` - Linter
-- `mypy` - Type checker
-- `bandit` - Security analyzer
-
-## Common Development Commands
-
-Once installed, use these commands during development:
-
-```bash
-make format             # Format code with black + ruff
-make format-check       # Check formatting (without modifying)
-make lint               # Run linting checks
-make type-check         # Type checking with mypy
-make security           # Security checks (bandit, safety)
-make test               # Run test suite
-make test-coverage      # Run tests with coverage report
-make test-parallel      # Run tests in parallel
 ```
 
 ## Troubleshooting
 
 ### "Python 3.13+ required"
 
-If you see this error, you need a newer Python version:
+Check your Python version and upgrade if needed:
 
 ```bash
-# Check your Python version
 python --version
 
-# On macOS with Homebrew
+# macOS (Homebrew)
 brew install python@3.13
 
-# On Ubuntu/Debian
-sudo apt-get install python3.13 python3.13-venv
+# Ubuntu/Debian
+sudo apt-get install python3.13
 
-# On Windows, download from python.org
+# Windows: Download from python.org
 ```
 
-### "ModuleNotFoundError: No module named 'holodeck'"
+### "holodeck: command not found"
 
-Make sure HoloDeck is installed:
+The CLI isn't in your PATH. Try:
 
 ```bash
-# Verify installation
-pip show holodeck
+# Reinstall HoloDeck
+pip install --upgrade holodeck-ai
 
-# Reinstall if needed
-pip install --upgrade holodeck
+# Try using Python module directly
+python -m holodeck --version
 ```
 
-### "OPENAI_API_KEY not found"
+### "Error: config.yaml not found"
 
-Ensure your API key is set:
+Create a `config.yaml` file in your project directory. See [Bootstrap Your First Agent](#bootstrap-your-first-agent) section above.
+
+### "Error: API key not found" or "Invalid credentials"
+
+Verify your environment variables are set:
 
 ```bash
-# Check if env var is set
-echo $OPENAI_API_KEY  # macOS/Linux
-echo %OPENAI_API_KEY%  # Windows
+# Check if variables are set
+echo $AZURE_OPENAI_API_KEY  # macOS/Linux
+echo %AZURE_OPENAI_API_KEY%  # Windows
 
-# Set it if missing (use your actual key)
-export OPENAI_API_KEY="sk-..."
+# Or check .env file exists
+cat .env
 ```
 
-### Virtual Environment Issues (Development)
+If using `.env` file, ensure it's in the same directory as `agent.yaml`.
 
-If your virtual environment is broken:
+### "Error: Failed to load agent.yaml"
 
+Common issues:
+- YAML syntax error (check indentation)
+- File path incorrect
+- Required fields missing (`name`, `model.provider`, `instructions`)
+
+Verify your YAML:
 ```bash
-# Remove and recreate
-rm -rf .venv
-
-# Reinitialize
-make init
-
-# Activate
-source .venv/bin/activate
+# Check YAML syntax
+python -c "import yaml; yaml.safe_load(open('agent.yaml'))"
 ```
 
 ## Next Steps
 
 - ✅ Installation complete!
-- 📖 [Follow the Quickstart Guide →](quickstart.md)
-- 📚 [Read Agent Configuration Guide →](../guides/agent-configuration.md)
-- 💡 [Explore Examples →](../examples/README.md)
-
-## Getting Help
-
-- **Installation Issues**: Check [Troubleshooting](#troubleshooting) section
-- **GitHub Issues**: Report bugs at [github.com/anthropics/holodeck/issues](https://github.com/anthropics/holodeck/issues)
-- **Documentation**: Visit [docs.holodeck.ai](https://docs.holodeck.ai)
+- 📖 [Read the Quickstart Guide →](quickstart.md)
+- 📚 [View Agent Configuration Guide →](../guides/agent-configuration.md)
+- 📁 [Explore Example Agents →](../examples/README.md)
+- 🛠️ [Learn Global Configuration →](../guides/global-config.md)

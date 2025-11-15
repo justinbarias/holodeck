@@ -15,19 +15,24 @@ Global configuration lives at `~/.holodeck/config.yaml` and provides default set
 ## Basic Structure
 
 ```yaml
-# ~/.holodeck/config.yaml
+# config.yaml (project root or ~/.holodeck/config.yaml)
 
 providers:
-  openai:
-    api_key: ${OPENAI_API_KEY}
-    organization: my-org
+  azure_openai:
+    provider: azure_openai
+    name: gpt-4o
+    temperature: 0.3
+    max_tokens: 2048
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+    api_key: ${AZURE_OPENAI_API_KEY}
 
-vectorstores:
-  default:
-    embedding_model: text-embedding-3-small
-
-deployment:
-  default_port: 8000
+execution:
+  file_timeout: 30
+  llm_timeout: 60
+  download_timeout: 30
+  cache_enabled: true
+  cache_dir: .holodeck_cache
+  verbose: false
 ```
 
 ## Configuration Precedence
@@ -38,23 +43,28 @@ When multiple configuration sources define the same setting, HoloDeck applies th
 1. agent.yaml (Highest Priority)
    ├─ Explicit values in agent configuration
    │
-2. Environment Variables (Medium Priority)
+2. Environment Variables (High Priority)
    ├─ ${VAR_NAME} patterns in agent.yaml or global config
    │
-3. ~/.holodeck/config.yaml (Lowest Priority)
-   └─ Global defaults
+3. Project-level config.yaml (Medium Priority)
+   ├─ Same directory as agent.yaml
+   │
+4. ~/.holodeck/config.yaml (Lowest Priority)
+   └─ User home directory global defaults
 ```
 
 ### Precedence Diagram
 
 ```
-┌─────────────────────────┐
-│   agent.yaml explicit   │  Takes precedence
-├─────────────────────────┤
-│  Environment variables  │  Used if agent.yaml absent
-├─────────────────────────┤
-│ ~/.holodeck/config.yaml │  Fallback default
-└─────────────────────────┘
+┌──────────────────────────────┐
+│   agent.yaml explicit        │  Takes precedence
+├──────────────────────────────┤
+│   Environment variables      │  Used if agent.yaml absent
+├──────────────────────────────┤
+│  Project-level config.yaml   │  Used if env var absent
+├──────────────────────────────┤
+│ ~/.holodeck/config.yaml      │  Fallback default
+└──────────────────────────────┘
 ```
 
 ### Examples
@@ -180,98 +190,71 @@ instructions:  # Must be defined here
 
 ## Providers Section
 
-Defines LLM provider credentials and defaults.
+Defines LLM provider configurations with credentials and defaults.
 
 ```yaml
 providers:
-  openai:
-    api_key: ${OPENAI_API_KEY}
-    organization: my-org
-    model: gpt-4o
-    temperature: 0.7
-
   azure_openai:
-    api_key: ${AZURE_OPENAI_KEY}
-    api_version: 2024-02-01
-    deployment_id: my-deployment
-    endpoint: https://my-resource.openai.azure.com/
+    provider: azure_openai              # Required: provider type
+    name: gpt-4o                        # Required: model name
+    temperature: 0.3                    # Optional: temperature (0.0-2.0)
+    max_tokens: 2048                    # Optional: max tokens
+    endpoint: ${AZURE_OPENAI_ENDPOINT}  # Required: Azure endpoint
+    api_key: ${AZURE_OPENAI_API_KEY}    # Required: API key
+
+  openai:
+    provider: openai
+    name: gpt-4o-mini
+    temperature: 0.7
+    api_key: ${OPENAI_API_KEY}
+    organization: my-org                # Optional
 
   anthropic:
+    provider: anthropic
+    name: claude-3-sonnet
+    temperature: 0.5
     api_key: ${ANTHROPIC_API_KEY}
 ```
 
-### OpenAI Provider
+### Provider Configuration Fields
+
+Each provider must have:
+
+- **provider** (Required): Provider type - `openai`, `azure_openai`, or `anthropic`
+- **name** (Required): Model identifier (e.g., `gpt-4o`, `claude-3-sonnet`)
+- **api_key** (Required): API authentication key (use `${ENV_VAR}` for environment variables)
+
+Optional fields:
+
+- **temperature** (Optional): Float 0.0-2.0, defaults to provider's default
+- **max_tokens** (Optional): Maximum response length
+- **endpoint** (Required for Azure): Azure OpenAI endpoint URL
+- **organization** (Optional for OpenAI): Organization ID
+
+## Execution Section
+
+Configures execution settings for agent test runs and file processing.
 
 ```yaml
-providers:
-  openai:
-    api_key: ${OPENAI_API_KEY}              # Required
-    organization: my-org                    # Optional
-    model: gpt-4o                           # Optional: default model
-    temperature: 0.7                        # Optional: default temperature
+execution:
+  file_timeout: 30            # Timeout for file processing (seconds)
+  llm_timeout: 60             # Timeout for LLM API calls (seconds)
+  download_timeout: 30        # Timeout for downloading files (seconds)
+  cache_enabled: true         # Enable caching of file downloads
+  cache_dir: .holodeck_cache  # Directory for cache storage
+  verbose: false              # Enable verbose logging
+  quiet: false                # Enable quiet mode
 ```
 
-### Azure OpenAI Provider
+### Execution Fields
 
-```yaml
-providers:
-  azure_openai:
-    api_key: ${AZURE_OPENAI_KEY}            # Required
-    endpoint: https://my-resource.openai.azure.com/  # Required
-    api_version: 2024-02-01                 # Required
-    deployment_id: my-deployment            # Required
-```
-
-### Anthropic Provider
-
-```yaml
-providers:
-  anthropic:
-    api_key: ${ANTHROPIC_API_KEY}           # Required
-    model: claude-3-opus                    # Optional: default model
-```
-
-## Vectorstores Section
-
-Defines reusable vectorstore configurations.
-
-```yaml
-vectorstores:
-  default:
-    embedding_model: text-embedding-3-small
-    chunk_size: 512
-    chunk_overlap: 50
-
-  large_docs:
-    embedding_model: text-embedding-3-large
-    chunk_size: 2048
-    chunk_overlap: 256
-
-  structured_data:
-    embedding_model: text-embedding-3-small
-    meta_fields: [title, source, date]
-```
-
-These can be referenced in agent config (future enhancement).
-
-## Deployment Section
-
-Defines deployment defaults.
-
-```yaml
-deployment:
-  default_port: 8000
-  host: 0.0.0.0
-  workers: 4
-  timeout: 30
-```
-
-### Fields
-
-- **default_port**: Port for local API server
-- **host**: Bind address (0.0.0.0 for all interfaces)
-- **workers**: Number of worker processes
-- **timeout**: Request timeout in seconds
+- **file_timeout** (Optional): Seconds to wait for file operations (default: 30)
+- **llm_timeout** (Optional): Seconds to wait for LLM API calls (default: 60)
+- **download_timeout** (Optional): Seconds to wait for file downloads (default: 30)
+- **cache_enabled** (Optional): Enable caching of downloaded files (default: true)
+- **cache_dir** (Optional): Directory for storing cached files (default: `.holodeck_cache`)
+- **verbose** (Optional): Enable verbose logging output (default: false)
+- **quiet** (Optional): Enable quiet mode, suppressing non-critical output (default: false)
 
 ## Environment Variables
 
@@ -342,151 +325,198 @@ holodeck --config /path/to/custom.yaml ...
 ## Complete Example
 
 ```yaml
-# ~/.holodeck/config.yaml
+# config.yaml (project root or ~/.holodeck/config.yaml)
 
-# LLM Provider Credentials
+# LLM Provider Configurations
 providers:
+  azure_openai:
+    provider: azure_openai
+    name: gpt-4o
+    temperature: 0.3
+    max_tokens: 2048
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+    api_key: ${AZURE_OPENAI_API_KEY}
+
   openai:
+    provider: openai
+    name: gpt-4o-mini
+    temperature: 0.7
+    max_tokens: 1024
     api_key: ${OPENAI_API_KEY}
     organization: acme-corp
-    model: gpt-4o
-    temperature: 0.7
-
-  azure_openai:
-    api_key: ${AZURE_OPENAI_KEY}
-    endpoint: https://acme-openai.openai.azure.com/
-    api_version: 2024-02-01
-    deployment_id: gpt-4-deployment
 
   anthropic:
+    provider: anthropic
+    name: claude-3-sonnet
+    temperature: 0.5
     api_key: ${ANTHROPIC_API_KEY}
-    model: claude-3-sonnet
 
-# Vectorstore Configurations
-vectorstores:
-  default:
-    embedding_model: text-embedding-3-small
-    chunk_size: 512
-    chunk_overlap: 50
-
-  large:
-    embedding_model: text-embedding-3-large
-    chunk_size: 2048
-    chunk_overlap: 256
-
-  pdf_docs:
-    embedding_model: text-embedding-3-small
-    meta_fields: [source, page, date]
-
-# Deployment Defaults
-deployment:
-  default_port: 8000
-  host: 0.0.0.0
-  workers: 4
-  timeout: 30
+# Execution Configuration
+execution:
+  file_timeout: 30
+  llm_timeout: 60
+  download_timeout: 30
+  cache_enabled: true
+  cache_dir: .holodeck_cache
+  verbose: false
 ```
 
 ## Usage Patterns
 
 ### Pattern 1: Secure API Keys
 
-Keep secrets in global config, reference in agent:
+Keep secrets in global config with environment variable substitution:
 
-Global config:
+Global config (project root):
 ```yaml
-# ~/.holodeck/config.yaml
+# config.yaml
 providers:
-  openai:
-    api_key: ${OPENAI_API_KEY}
+  azure_openai:
+    provider: azure_openai
+    name: gpt-4o
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+    api_key: ${AZURE_OPENAI_API_KEY}
 ```
 
 Agent config:
 ```yaml
-# my-agent/agent.yaml
+# agent.yaml
 model:
-  provider: openai
-  name: gpt-4o
-  # API key comes from global config
+  provider: azure_openai
+  # Credentials come from global config
 ```
 
 Environment:
 ```bash
-export OPENAI_API_KEY="sk-..."
+export AZURE_OPENAI_ENDPOINT="https://..."
+export AZURE_OPENAI_API_KEY="..."
 ```
 
-### Pattern 2: Organization Defaults
+### Pattern 2: Execution Defaults
 
-Set defaults for your team:
+Set timeouts and caching for all agents:
 
 Global config:
 ```yaml
-# ~/.holodeck/config.yaml
+# config.yaml
 providers:
-  openai:
-    organization: acme-corp
-    temperature: 0.7
-    max_tokens: 2000
+  azure_openai:
+    provider: azure_openai
+    name: gpt-4o
+    api_key: ${AZURE_OPENAI_API_KEY}
+
+execution:
+  file_timeout: 30
+  llm_timeout: 60
+  cache_enabled: true
+  verbose: false
 ```
 
-Agent config:
+All agents inherit these execution settings automatically.
+
+### Pattern 3: Multiple Providers
+
+Configure multiple providers for different use cases:
+
+Global config:
 ```yaml
-# my-agent/agent.yaml
+# config.yaml
+providers:
+  azure_openai:
+    provider: azure_openai
+    name: gpt-4o
+    api_key: ${AZURE_OPENAI_API_KEY}
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+
+  openai:
+    provider: openai
+    name: gpt-4o-mini
+    api_key: ${OPENAI_API_KEY}
+
+execution:
+  llm_timeout: 60
+```
+
+Agent config (use either provider):
+```yaml
+# agent.yaml
 model:
-  provider: openai
-  name: gpt-4o
-  # Uses temperature 0.7 from global config
-```
-
-### Pattern 3: Multi-Environment
-
-Use environment variables for environment-specific settings:
-
-Global config:
-```yaml
-# ~/.holodeck/config.yaml
-providers:
-  openai:
-    api_key: ${OPENAI_API_KEY_${ENV}}
-```
-
-Set environment:
-```bash
-export ENV=prod
-export OPENAI_API_KEY_prod="sk-prod-..."
-export OPENAI_API_KEY_dev="sk-dev-..."
+  provider: azure_openai  # or openai
+  # Model name and settings come from global config
 ```
 
 ## Creating Global Config
 
-### Step 1: Create Directory
+Global config can be created at two locations with different precedence:
+
+1. **Project-level**: `config.yaml` in same directory as `agent.yaml` (higher priority)
+2. **User-level**: `~/.holodeck/config.yaml` in home directory (lower priority)
+
+### Option 1: Project-Level Config (Recommended for Teams)
+
+Create `config.yaml` alongside your agents:
 
 ```bash
-mkdir -p ~/.holodeck
+my-project/
+├── config.yaml          # Project-specific configuration
+├── agent1/
+│   └── agent.yaml
+└── agent2/
+    └── agent.yaml
 ```
 
-### Step 2: Create config.yaml
-
-Create `~/.holodeck/config.yaml`:
+Content of `config.yaml`:
 
 ```yaml
 providers:
-  openai:
-    api_key: ${OPENAI_API_KEY}
+  azure_openai:
+    provider: azure_openai
+    name: gpt-4o
+    api_key: ${AZURE_OPENAI_API_KEY}
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+
+execution:
+  llm_timeout: 60
+```
+
+### Option 2: User-Level Config (Global Defaults)
+
+Create `~/.holodeck/config.yaml` in your home directory:
+
+```bash
+mkdir -p ~/.holodeck
+
+cat > ~/.holodeck/config.yaml << 'EOF'
+providers:
+  azure_openai:
+    provider: azure_openai
+    name: gpt-4o
+    api_key: ${AZURE_OPENAI_API_KEY}
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+EOF
 ```
 
 ### Step 3: Set Environment Variables
 
 ```bash
-export OPENAI_API_KEY="sk-..."
+export AZURE_OPENAI_API_KEY="..."
+export AZURE_OPENAI_ENDPOINT="https://..."
 ```
 
-### Step 4: Verify
+Or in `.env` file at project root:
 
-Test by running an agent:
+```
+AZURE_OPENAI_API_KEY=...
+AZURE_OPENAI_ENDPOINT=...
+```
+
+### Step 4: Run an Agent
 
 ```bash
-holodeck test my-agent/agent.yaml
+holodeck test agent.yaml
 ```
+
+The agent will automatically load config from project root or `~/.holodeck/`.
 
 ## Troubleshooting
 
@@ -526,34 +556,52 @@ holodeck test my-agent/agent.yaml
 ## Example: Secure Setup
 
 ```bash
-# 1. Create global config with placeholders
-mkdir -p ~/.holodeck
-
-cat > ~/.holodeck/config.yaml << 'EOF'
+# 1. Create project-level config
+cat > config.yaml << 'EOF'
 providers:
-  openai:
-    api_key: ${OPENAI_API_KEY}
-    organization: my-org
+  azure_openai:
+    provider: azure_openai
+    name: gpt-4o
+    api_key: ${AZURE_OPENAI_API_KEY}
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+
+execution:
+  llm_timeout: 60
+  file_timeout: 30
 EOF
 
-# 2. Set environment variables in shell profile
-# Add to ~/.bashrc or ~/.zshrc
-export OPENAI_API_KEY="sk-..."
-
-# 3. Create agent config
-cat > my-agent/agent.yaml << 'EOF'
+# 2. Create agent config
+cat > agent.yaml << 'EOF'
 name: my-agent
 
 model:
-  provider: openai
-  name: gpt-4o
+  provider: azure_openai
 
 instructions:
-  inline: "You are helpful."
+  inline: "You are a helpful assistant."
+
+test_cases:
+  - input: "Hello!"
+    ground_truth: "Hi there! How can I help?"
+    evaluations:
+      - f1_score
+
+evaluations:
+  model:
+    provider: azure_openai
+  metrics:
+    - metric: f1_score
+      threshold: 0.7
 EOF
 
-# 4. Run agent (global config automatically loaded)
-holodeck test my-agent/agent.yaml
+# 3. Create .env file with secrets (DO NOT commit)
+cat > .env << 'EOF'
+AZURE_OPENAI_API_KEY=your-key-here
+AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/
+EOF
+
+# 4. Run agent (config and env automatically loaded)
+holodeck test agent.yaml
 ```
 
 ## Next Steps
