@@ -44,7 +44,7 @@ jobs:
         run: poetry self add "poetry-dynamic-versioning[plugin]"
 
       - name: Install dependencies
-        run: poetry install
+        run: poetry install --with dev
 
       - name: Build package
         run: poetry build
