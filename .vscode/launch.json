@@ -20,6 +20,24 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "HoloDeck: Test Agent",
+            "type": "python",
+            "request": "launch",
+            "module": "holodeck.cli.main",
+            "args": [
+                "test",
+                "sample/hitchhikers_agent.yaml",
+                "--verbose"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "envFile": "${workspaceFolder}/sample/.env"
         }
     ]
 }
