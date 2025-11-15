@@ -51,8 +51,9 @@ dev = [
 ]
 
 [tool.poetry]
-packages = [{include = "holodeck", from = "src"}]
+name = "holodeck-ai"
 version = "0.0.0"
+packages = [{include = "holodeck", from = "src"}]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
