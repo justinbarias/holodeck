@@ -61,7 +61,6 @@ print(f"Model: {agent.model.name}")
 - **[Evaluations](guides/evaluations.md)** - Testing and evaluation framework
 - **[Global Configuration](guides/global-config.md)** - System-wide settings and precedence rules
 - **[API Reference](api/models.md)** - Python API documentation
-- **[Architecture](architecture/overview.md)** - System design and components
 
 ## Examples
 
@@ -77,25 +76,38 @@ Browse **[complete examples](examples/README.md)**:
 ### Define Agents in YAML
 
 ```yaml
-name: Research Assistant
-description: Answers research questions with citations
+name: expert-agent
+description: A specialized expert agent with evaluation metrics
 model:
-  provider: openai
+  provider: azure_openai
   name: gpt-4o
-tools:
-  - type: vectorstore
-    source: "research-papers.json"
-    vector_field: "embeddings"
-    chunk_size: 500
-  - type: mcp
-    server: "web-search"
-    description: Search the web for current information
+  temperature: 0.3
+  max_tokens: 1024
+
+instructions:
+  inline: |
+    You are an expert in your domain.
+    Provide accurate, helpful, and well-reasoned responses.
+
+test_cases:
+  - name: "Test Case 1"
+    input: "Your question here"
+    ground_truth: "Expected answer"
+    evaluations:
+      - f1_score
+      - bleu
+
 evaluations:
+  model:
+    provider: azure_openai
+    name: gpt-4o
+    temperature: 0.0
+
   metrics:
-    - name: groundedness
-      threshold: 0.8
-    - name: relevance
-      threshold: 0.75
+    - metric: f1_score
+      threshold: 0.70
+    - metric: bleu
+      threshold: 0.60
 ```
 
 ### Support Multiple Tool Types
@@ -129,22 +141,24 @@ test_cases:
 
 ## Project Status
 
-**Version**: 0.1.0 (Pre-release)
+**Version**: 0.2.0 (Development)
 
 - ✅ Core configuration schema (Pydantic models)
 - ✅ YAML parsing and validation
 - ✅ Environment variable support
 - ✅ File reference resolution
-- ⏳ CLI interface (planned for v0.2)
-- ⏳ Agent execution engine (planned for v0.2)
-- ⏳ Evaluation framework (planned for v0.2)
+- ✅ CLI interface (holodeck command with init, test, chat, deploy)
+- ✅ Agent execution engine (LLM provider integration, tool execution, memory)
+- ✅ Evaluation framework (AI-powered and NLP metrics with threshold validation)
 - ⏳ Deployment tools (planned for v0.3)
+- ⏳ Multi-agent orchestration (planned for v0.3)
+- ⏳ OpenTelemetry instrumentation (planned for v0.3)
 
 ## Community & Support
 
 - **GitHub Issues**: Report bugs or suggest features
 - **Discussions**: Ask questions and share ideas
-- **Contributing**: Read [CONTRIBUTING.md](CONTRIBUTING.md) to get involved
+- **Contributing**: Read [contributing guide](contributing.md) to get involved
 
 ## License
 

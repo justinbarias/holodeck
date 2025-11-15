@@ -1,9 +1,6 @@
 # Quickstart Guide
 
-Get up and running with HoloDeck in 5 minutes. Choose your path below:
-
-- **Option A (Recommended)**: Use `holodeck init` CLI command for a guided setup
-- **Option B**: Manually create and load agent.yaml files with Python
+Get your first AI agent running in 5 minutes using the HoloDeck CLI.
 
 ## Before You Start
 
@@ -11,18 +8,27 @@ Ensure you've completed the [Installation Guide](installation.md):
 
 ```bash
 pip install holodeck-ai
-python -m holodeck --version  # Should output: holodeck 0.1.0
+holodeck --version  # Should output: holodeck 0.2.0
 ```
 
-Set up your API key (example for OpenAI):
+Set up your API credentials (example for Azure OpenAI):
 
 ```bash
-export OPENAI_API_KEY="sk-your-key-here"
+export AZURE_OPENAI_API_KEY="your-key-here"
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+```
+
+Or create a `.env` file:
+
+```bash
+# .env
+AZURE_OPENAI_API_KEY=your-key-here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 ```
 
 ---
 
-## Option A: Quick Start with CLI (Recommended)
+## Quick Start with CLI
 
 ### Step 1: Initialize a New Agent Project
 
@@ -78,421 +84,194 @@ holodeck test agent.yaml
 holodeck deploy agent.yaml --port 8000
 ```
 
----
+## Manual Setup (Alternative)
 
-## Option B: Manual Setup with Python
+If you prefer to create files manually instead of using `holodeck init`:
 
-If you prefer to create files manually, follow the steps below.
+### Step 1: Create Your Agent Configuration
 
-### Step 1: Create Your First Agent (agent.yaml)
-
-Create a file called `my-agent.yaml`:
+Create `agent.yaml`:
 
 ```yaml
-name: "Quick Start Agent"
-description: "A simple agent to get started with HoloDeck"
-author: "Your Name"
+name: "my-assistant"
+description: "A helpful AI assistant"
+
 model:
-  provider: "openai"
-  name: "gpt-4o-mini"
-  temperature: 0.7
-  max_tokens: 500
+  provider: azure_openai
+  # Provider settings come from config.yaml
+
 instructions:
   inline: |
     You are a helpful AI assistant.
     Answer questions accurately and concisely.
-```
-
-This minimal agent has:
-
-- **name**: Human-readable agent name
-- **model**: LLM provider and configuration
-- **instructions**: How the agent should behave (inline text or file reference)
-
-## Step 2: Load and Use the Agent
-
-Create a Python script `load_agent.py`:
-
-```python
-from holodeck.config.loader import ConfigLoader
-
-# Create a loader
-loader = ConfigLoader()
-
-# Load the agent configuration
-agent = loader.load_agent_yaml("my-agent.yaml")
-
-# Access agent properties
-print(f"Agent Name: {agent.name}")
-print(f"Description: {agent.description}")
-if agent.author:
-    print(f"Author: {agent.author}")
-print(f"Model: {agent.model.name}")
-print(f"Provider: {agent.model.provider}")
-```
-
-Run it:
-
-```bash
-python load_agent.py
-```
-
-Expected output:
-
-```
-Agent Name: Quick Start Agent
-Description: A simple agent to get started with HoloDeck
-Model: gpt-4o-mini
-Provider: openai
-```
-
-## Step 3: Handle Errors Gracefully
-
-Real-world scenarios require error handling. Update `load_agent.py`:
-
-```python
-from holodeck.config.loader import ConfigLoader
-from holodeck.lib.errors import ConfigError
-
-loader = ConfigLoader()
-
-try:
-    agent = loader.load_agent_yaml("my-agent.yaml")
-    print(f"✓ Successfully loaded agent: {agent.name}")
-
-except FileNotFoundError as e:
-    print(f"❌ File not found: {e}")
-    print("Tip: Make sure my-agent.yaml exists in the current directory")
-
-except ConfigError as e:
-    print(f"❌ Configuration error: {e}")
-    print("Tip: Check your YAML syntax and required fields")
-```
-
-Try it by running:
-
-```bash
-# Load successfully
-python load_agent.py
-
-# Simulate missing file
-python load_agent.py  # (rename/delete my-agent.yaml first)
-```
-
-## Step 4: Common Error Scenarios
-
-### Missing Required Fields
-
-Create `invalid-agent.yaml`:
-
-```yaml
-name: "Incomplete Agent"
-# Missing: model and instructions!
-```
-
-Load it and see what happens:
-
-```python
-from holodeck.config.loader import ConfigLoader
-from holodeck.lib.errors import ConfigError
-
-try:
-    agent = ConfigLoader().load_agent_yaml("invalid-agent.yaml")
-except ConfigError as e:
-    print(f"Configuration Error:\n{e}")
-```
-
-Output:
-
-```
-Configuration Error:
-Field 'model' is required but missing
-Field 'instructions' is required but missing
-```
-
-### Invalid YAML Syntax
-
-Create `bad-syntax.yaml`:
-
-```yaml
-name: Invalid YAML
-model:
-  provider: openai
-  - this line is invalid
-instructions: |
-  Broken indentation
- bad spacing
-```
-
-HoloDeck will catch parsing errors:
-
-```python
-try:
-    agent = ConfigLoader().load_agent_yaml("bad-syntax.yaml")
-except ConfigError as e:
-    print(f"Error: {e}")
-```
-
-### Invalid Model Configuration
-
-```yaml
-name: "Bad Model Config"
-model:
-  provider: "invalid_provider" # ❌ Not a valid provider
-  name: "gpt-4o"
-instructions:
-  inline: "Help"
-```
-
-Error output:
-
-```
-Configuration Error:
-Field 'provider' must be one of: openai, azure_openai, anthropic
-```
-
-## Step 5: Add Tools and Test Cases
-
-Expand your agent with tools and test cases:
-
-```yaml
-name: "Research Assistant"
-description: "An agent that searches and analyzes information"
-author: "Alice Johnson"
-
-model:
-  provider: "openai"
-  name: "gpt-4o"
-  temperature: 0.5
-  max_tokens: 2000
-
-instructions:
-  file: "instructions.md" # Load from file
-
-tools:
-  - type: "vectorstore"
-    source: "knowledge-base.json"
-    vector_field: "embeddings"
-    chunk_size: 500
-
-  - type: "mcp"
-    server: "web-search"
-    description: "Search the web for current information"
 
 test_cases:
-  - input: "What are the latest developments in AI?"
-    expected_tools: ["web-search"]
-    ground_truth: "AI is rapidly evolving..."
+  - name: "greeting"
+    input: "Hello! What can you do?"
+    ground_truth: "I can help you with information and answer questions."
+    evaluations:
+      - f1_score
 
 evaluations:
+  model:
+    provider: azure_openai
+
   metrics:
-    - name: "groundedness"
-      threshold: 0.8
-    - name: "relevance"
-      threshold: 0.75
+    - metric: f1_score
+      threshold: 0.7
 ```
 
-## Step 6: Using Instructions from Files
+### Step 2: Create Project Configuration
 
-For longer instructions, use a separate file:
-
-**instructions.md**:
-
-```markdown
-You are a research assistant focused on providing accurate, cited information.
-
-## Guidelines
-
-1. Always cite your sources
-2. Use web search for current information
-3. Provide comprehensive summaries
-4. Flag uncertain information
-
-## Constraints
-
-- Keep responses under 2000 tokens
-- Prefer primary sources over secondary
-```
-
-**agent.yaml**:
+Create `config.yaml` in the same directory:
 
 ```yaml
-name: Research Assistant
-instructions:
-  file: "instructions.md" # Relative to agent.yaml location
+providers:
+  azure_openai:
+    provider: azure_openai
+    name: gpt-4o
+    temperature: 0.3
+    max_tokens: 2048
+    endpoint: ${AZURE_OPENAI_ENDPOINT}
+    api_key: ${AZURE_OPENAI_API_KEY}
+
+execution:
+  llm_timeout: 60
+  file_timeout: 30
 ```
 
-Load it:
+### Step 3: Create `.env` File
 
-```python
-loader = ConfigLoader()
-agent = loader.load_agent_yaml("agent.yaml")
-print(agent.instructions)  # Will contain full instructions from file
-```
-
-## Step 7: Environment Variables
-
-Use environment variables for sensitive data:
-
-**agent.yaml**:
-
-```yaml
-name: "Configured Agent"
-model:
-  provider: "openai"
-  name: "gpt-4o"
-instructions:
-  inline: "Help users with their questions"
-```
-
-Your `.env` file:
+Create `.env` with your credentials:
 
 ```bash
-OPENAI_API_KEY=sk-...
-OPENAI_ORG_ID=org-...
+AZURE_OPENAI_API_KEY=your-key-here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 ```
 
-Load and use:
-
-```python
-from dotenv import load_dotenv
-load_dotenv()  # Loads .env file
-
-from holodeck.config.loader import ConfigLoader
-agent = ConfigLoader().load_agent_yaml("agent.yaml")
-# API keys are now available from environment
-```
-
-## Complete Example
-
-Here's a complete working example with best practices:
-
-**agent.yaml**:
-
-```yaml
-name: "Smart Assistant"
-description: "An intelligent assistant with search capabilities"
-author: "DevOps Team"
-
-model:
-  provider: "openai"
-  name: "gpt-4o-mini"
-  temperature: 0.7
-  max_tokens: 1500
-
-instructions:
-  inline: |
-    You are a helpful and knowledgeable AI assistant.
-    Provide accurate, concise answers to user questions.
-
-tools:
-  - type: "mcp"
-    server: "filesystem"
-    description: "Access local files and documents"
-
-test_cases:
-  - input: "What can you do?"
-    ground_truth: "Describe my capabilities including file access and question answering"
-```
-
-**main.py**:
-
-```python
-#!/usr/bin/env python3
-"""Example: Load and validate an HoloDeck agent."""
-
-from holodeck.config.loader import ConfigLoader
-from holodeck.lib.errors import ConfigError
-
-def main():
-    try:
-        # Load agent configuration
-        loader = ConfigLoader()
-        agent = loader.load_agent_yaml("agent.yaml")
-
-        # Display agent information
-        print(f"✓ Agent loaded successfully")
-        print(f"  Name: {agent.name}")
-        print(f"  Description: {agent.description}")
-        print(f"  Model: {agent.model.name} ({agent.model.provider})")
-        print(f"  Tools: {len(agent.tools or [])} configured")
-        print(f"  Test Cases: {len(agent.test_cases or [])} defined")
-
-        return agent
-
-    except FileNotFoundError as e:
-        print(f"❌ Configuration file not found: {e}")
-        print(f"   Please create agent.yaml in the current directory")
-        return None
-
-    except ConfigError as e:
-        print(f"❌ Configuration error: {e}")
-        print(f"   Please review your agent.yaml file")
-        return None
-
-if __name__ == "__main__":
-    agent = main()
-    if agent:
-        print("\n✓ Ready to use agent!")
-```
-
-Run it:
+### Step 4: Test Your Agent
 
 ```bash
-python main.py
+# Run agent tests
+holodeck test agent.yaml
+
+# Chat interactively
+holodeck chat agent.yaml
 ```
 
-## Common Patterns
+## Common Commands
 
-### Pattern 1: Load and Validate Only
+```bash
+# Show all available commands
+holodeck --help
 
-```python
-from holodeck.config.loader import ConfigLoader
-from holodeck.lib.errors import ConfigError
+# Test your agent and run evaluations
+holodeck test agent.yaml
 
-try:
-    agent = ConfigLoader().load_agent_yaml("agent.yaml")
-    print(f"✓ Valid agent: {agent.name}")
-except ConfigError as e:
-    print(f"✗ Invalid configuration: {e}")
+# Interactive chat with your agent
+holodeck chat agent.yaml
+
+# Chat with specific input
+holodeck chat agent.yaml --input "Your question here"
+
+# Deploy as API
+holodeck deploy agent.yaml --port 8000
+
+# Create new project from template
+holodeck init my-project
 ```
 
-### Pattern 2: Graceful Degradation
+## Tips & Tricks
 
-```python
-from holodeck.config.loader import ConfigLoader
-from holodeck.lib.errors import ConfigError
+### Use Environment Variables for Secrets
 
-loader = ConfigLoader()
-agent = None
+Never hardcode API keys in config files. Always use environment variables:
 
-try:
-    agent = loader.load_agent_yaml("agent.yaml")
-except ConfigError as e:
-    print(f"Warning: Could not load agent.yaml: {e}")
-    # Fall back to default or create new agent
+```yaml
+# config.yaml
+providers:
+  azure_openai:
+    provider: azure_openai
+    api_key: ${AZURE_OPENAI_API_KEY}      # From environment
+    endpoint: ${AZURE_OPENAI_ENDPOINT}    # From environment
 ```
 
-### Pattern 3: Batch Processing
+### Test Locally Before Deploying
 
-```python
-from pathlib import Path
-from holodeck.config.loader import ConfigLoader
-from holodeck.lib.errors import ConfigError
+```bash
+# Run tests first
+holodeck test agent.yaml
 
-agents = []
-errors = []
+# Then try interactive chat
+holodeck chat agent.yaml
 
-loader = ConfigLoader()
-for yaml_file in Path(".").glob("agents/*.yaml"):
-    try:
-        agent = loader.load_agent_yaml(str(yaml_file))
-        agents.append(agent)
-    except ConfigError as e:
-        errors.append((yaml_file, e))
-
-print(f"Loaded {len(agents)} agents, {len(errors)} errors")
+# Finally deploy if tests pass
+holodeck deploy agent.yaml --port 8000
 ```
+
+### Organize Multiple Agents
+
+If you have multiple agents, create separate directories:
+
+```
+my-project/
+├── config.yaml          # Shared configuration
+├── agent1/
+│   └── agent.yaml
+├── agent2/
+│   └── agent.yaml
+└── .env                 # Shared credentials
+```
+
+Test each agent:
+
+```bash
+holodeck test agent1/agent.yaml
+holodeck test agent2/agent.yaml
+```
+
+## Troubleshooting
+
+### "holodeck: command not found"
+
+Make sure HoloDeck is installed:
+
+```bash
+pip install --upgrade holodeck-ai
+holodeck --version
+```
+
+### "Error: config.yaml not found"
+
+Create a `config.yaml` file in your project directory. See [Manual Setup](#manual-setup-alternative) above.
+
+### "Error: API key not found" or "Invalid credentials"
+
+Verify your environment variables:
+
+```bash
+# Check if set
+echo $AZURE_OPENAI_API_KEY
+
+# Or verify .env file
+cat .env
+```
+
+Make sure `.env` is in the same directory as `agent.yaml`.
+
+### "Error: Failed to load agent.yaml"
+
+Check your YAML syntax:
+
+```bash
+# Validate YAML
+python -c "import yaml; yaml.safe_load(open('agent.yaml'))"
+```
+
+Common issues:
+- Incorrect indentation (must use spaces, not tabs)
+- Missing required fields: `name`, `model.provider`, `instructions`
+- Invalid YAML syntax
 
 ## Next Steps
 
@@ -500,41 +279,7 @@ print(f"Loaded {len(agents)} agents, {len(errors)} errors")
 - 🔧 [Explore Tool Types →](../guides/tools.md)
 - 📊 [Learn About Evaluations →](../guides/evaluations.md)
 - 💡 [Browse Examples →](../examples/README.md)
-- ✍️ [API Reference →](../api/models.md)
-
-## Troubleshooting
-
-### "ConfigError: Field 'X' is required"
-
-Your YAML is missing a required field. Check:
-
-- `name` - Agent name
-- `model` - LLM provider configuration
-- `instructions` - Agent behavior instructions
-
-### "FileNotFoundError: agent.yaml not found"
-
-The loader couldn't find `agent.yaml`. Ensure:
-
-- File exists: `ls -la agent.yaml`
-- Correct path: Use absolute path if needed `loader.load_agent_yaml("/full/path/agent.yaml")`
-- Working directory: `pwd` shows correct location
-
-### "ConfigError: Field 'provider' must be one of..."
-
-Your model provider is invalid. Use one of:
-
-- `openai` (default)
-- `azure_openai` (requires AZURE_OPENAI_ENDPOINT)
-- `anthropic` (default: claude-3-sonnet)
-
-### "Module not found: holodeck"
-
-HoloDeck isn't installed. Run:
-
-```bash
-pip install holodeck-ai
-```
+- 🛠️ [Global Configuration Guide →](../guides/global-config.md)
 
 ## Getting Help
 

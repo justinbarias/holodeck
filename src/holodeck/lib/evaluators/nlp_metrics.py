@@ -21,6 +21,9 @@ References:
 from typing import Any
 
 from holodeck.lib.evaluators.base import BaseEvaluator, EvaluationError
+from holodeck.lib.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Lazy imports to avoid loading libraries if not needed
 _evaluate = None
@@ -32,10 +35,13 @@ def _get_evaluate() -> Any:
     global _evaluate
     if _evaluate is None:
         try:
+            logger.debug("Loading evaluate library")
             import evaluate as ev
 
             _evaluate = ev
+            logger.debug("evaluate library loaded successfully")
         except ImportError as e:
+            logger.error("Failed to import evaluate library", exc_info=True)
             raise NLPMetricsError(
                 "evaluate library is not installed. "
                 "Install with: pip install evaluate"
@@ -48,10 +54,13 @@ def _get_sacrebleu() -> Any:
     global _sacrebleu
     if _sacrebleu is None:
         try:
+            logger.debug("Loading sacrebleu library")
             import sacrebleu as sb
 
             _sacrebleu = sb
+            logger.debug("sacrebleu library loaded successfully")
         except ImportError as e:
+            logger.error("Failed to import sacrebleu library", exc_info=True)
             raise NLPMetricsError(
                 "sacrebleu library is not installed. "
                 "Install with: pip install sacrebleu"
@@ -133,11 +142,17 @@ class BLEUEvaluator(BaseEvaluator):
             raise ValueError("ground_truth is required for BLEU evaluation")
 
         try:
+            logger.debug("Computing BLEU score")
             sacrebleu = _get_sacrebleu()
 
             # Convert to string if needed
             response = str(response) if response else ""
             ground_truth = str(ground_truth) if ground_truth else ""
+
+            logger.debug(
+                f"BLEU: response length={len(response)}, "
+                f"ground_truth length={len(ground_truth)}"
+            )
 
             # SacreBLEU expects a hypothesis string and list of reference strings
             # Use exponential smoothing to avoid zero scores for short sentences
@@ -153,9 +168,15 @@ class BLEUEvaluator(BaseEvaluator):
                 bool(score >= self.threshold) if self.threshold is not None else True
             )
 
+            logger.debug(
+                f"BLEU computation completed: score={score:.3f}, "
+                f"threshold={self.threshold}, passed={passed}"
+            )
+
             return {"bleu": score, "passed": passed}
 
         except Exception as e:
+            logger.error(f"BLEU computation failed: {e}", exc_info=True)
             raise NLPMetricsError(f"BLEU computation failed: {e}") from e
 
 

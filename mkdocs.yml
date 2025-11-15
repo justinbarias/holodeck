@@ -41,16 +41,13 @@ nav:
     - File References: guides/file-references.md
   - Examples:
     - Overview: examples/README.md
-    - Basic Agent: examples/basic_agent.yaml
-    - With Tools: examples/with_tools.yaml
-    - With Evaluations: examples/with_evaluations.yaml
-    - With Global Config: examples/with_global_config.yaml
   - API Reference:
     - Models: api/models.md
     - ConfigLoader: api/config-loader.md
-  - Architecture:
-    - Overview: architecture/overview.md
-    - Configuration Loading: architecture/configuration-loading.md
+    - CLI: api/cli.md
+    - Test Runner: api/test-runner.md
+    - Evaluators: api/evaluators.md
+    - Utilities: api/utilities.md
   - Developer:
     - Contributing: contributing.md
     - Changelog: CHANGELOG.md

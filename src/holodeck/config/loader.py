@@ -5,6 +5,7 @@ agent configuration from YAML files.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -15,9 +16,61 @@ from holodeck.config.env_loader import substitute_env_vars
 from holodeck.config.validator import flatten_pydantic_errors
 from holodeck.lib.errors import ConfigError, FileNotFoundError
 from holodeck.models.agent import Agent
-from holodeck.models.config import GlobalConfig
+from holodeck.models.config import ExecutionConfig, GlobalConfig
 
 logger = logging.getLogger(__name__)
+
+# Environment variable to field name mapping
+ENV_VAR_MAP = {
+    "file_timeout": "HOLODECK_FILE_TIMEOUT",
+    "llm_timeout": "HOLODECK_LLM_TIMEOUT",
+    "download_timeout": "HOLODECK_DOWNLOAD_TIMEOUT",
+    "cache_enabled": "HOLODECK_CACHE_ENABLED",
+    "cache_dir": "HOLODECK_CACHE_DIR",
+    "verbose": "HOLODECK_VERBOSE",
+    "quiet": "HOLODECK_QUIET",
+}
+
+
+def _parse_env_value(field_name: str, value: str) -> Any:
+    """Parse environment variable value to appropriate type.
+
+    Args:
+        field_name: Name of the field (used to determine type)
+        value: String value from environment variable
+
+    Returns:
+        Parsed value in correct type (int, bool, or str)
+
+    Raises:
+        ValueError: If value cannot be parsed
+    """
+    if field_name in ("file_timeout", "llm_timeout", "download_timeout"):
+        return int(value)
+    elif field_name in ("cache_enabled", "verbose", "quiet"):
+        return value.lower() in ("true", "1", "yes", "on")
+    else:
+        return value
+
+
+def _get_env_value(field_name: str, env_vars: dict[str, str]) -> Any | None:
+    """Get environment variable value for a field.
+
+    Args:
+        field_name: Name of field to get
+        env_vars: Dictionary of environment variables
+
+    Returns:
+        Parsed value or None if not found or invalid
+    """
+    env_var_name = ENV_VAR_MAP.get(field_name)
+    if not env_var_name or env_var_name not in env_vars:
+        return None
+
+    try:
+        return _parse_env_value(field_name, env_vars[env_var_name])
+    except (ValueError, KeyError):
+        return None
 
 
 class ConfigLoader:
@@ -75,9 +128,16 @@ class ConfigLoader:
         This method:
         1. Parses the YAML file
         2. Applies environment variable substitution
-        3. Merges with global configuration if available
-        4. Validates against Agent schema
-        5. Returns an Agent instance
+        3. Loads project config (if available) with fallback to global config
+        4. Merges configurations with proper precedence
+        5. Validates against Agent schema
+        6. Returns an Agent instance
+
+        Configuration precedence (highest to lowest):
+        1. agent.yaml explicit settings
+        2. Environment variables
+        3. Project-level config.yaml/config.yml
+        4. Global ~/.holodeck/config.yaml/config.yml
 
         Args:
             file_path: Path to agent.yaml file
@@ -98,9 +158,14 @@ class ConfigLoader:
         substituted_yaml = substitute_env_vars(yaml_str)
         agent_config = yaml.safe_load(substituted_yaml)
 
-        # Load and merge global config
-        global_config = self.load_global_config()
-        merged_config = self.merge_configs(agent_config, global_config)
+        # Load project config, fallback to global config
+        agent_dir = str(Path(file_path).parent)
+        config = self.load_project_config(agent_dir)
+        if config is None:
+            config = self.load_global_config()
+
+        # Merge configurations with proper precedence
+        merged_config = self.merge_configs(agent_config, config)
 
         # Validate against Agent schema
         try:
@@ -237,6 +302,12 @@ class ConfigLoader:
         2. Environment variables (already substituted)
         3. ~/.holodeck/config.yaml global settings
 
+        Merges global LLM provider configs into:
+        - agent model: when a provider's name matches agent_config.model.provider
+        - evaluation model: when a provider's name matches evaluations.model.provider
+
+        Keys don't get overwritten if they already exist in the agent config.
+
         Args:
             agent_config: Configuration from agent.yaml
             global_config: GlobalConfig instance from ~/.holodeck/config.yaml
@@ -244,15 +315,48 @@ class ConfigLoader:
         Returns:
             Merged configuration dictionary
         """
-        # For now, agent config is the primary source
-        # Global config is kept separate as it may contain provider configs
-        # and other infrastructure settings not directly used by Agent model
-        # The merging of global settings would happen at a higher level
-        # when actually using the agent (e.g., for LLM provider setup)
+        # Return early if missing required data
+        if not agent_config or "model" not in agent_config:
+            return agent_config if agent_config else {}
 
-        # Return agent config as-is (it's validated and complete)
-        # Global config would be used separately for system configuration
-        return agent_config if agent_config else {}
+        if not global_config or not global_config.providers:
+            return agent_config
+
+        # Get the provider types from agent config
+        agent_model_provider = agent_config["model"].get("provider")
+        if not agent_model_provider:
+            return agent_config
+
+        # Find matching provider in global config and merge to agent model
+        for provider in global_config.providers.values():
+            if provider.provider == agent_model_provider:
+                # Convert provider to dict and merge non-conflicting keys
+                provider_dict = provider.model_dump(exclude_unset=True)
+                for key, value in provider_dict.items():
+                    if key not in agent_config["model"]:
+                        agent_config["model"][key] = value
+                break
+
+        # Also merge global provider config to evaluation model if it exists
+        if (
+            "evaluations" in agent_config
+            and isinstance(agent_config["evaluations"], dict)
+            and "model" in agent_config["evaluations"]
+            and isinstance(agent_config["evaluations"]["model"], dict)
+        ):
+            eval_model: dict[str, Any] = agent_config["evaluations"]["model"]
+            eval_model_provider = eval_model.get("provider")
+            if eval_model_provider:
+                for provider in global_config.providers.values():
+                    if provider.provider == eval_model_provider:
+                        # Convert provider to dict and merge non-conflicting keys
+                        provider_dict = provider.model_dump(exclude_unset=True)
+                        for key, value in provider_dict.items():
+                            if key not in eval_model:
+                                eval_model[key] = value
+                        break
+
+        return agent_config
 
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
@@ -328,3 +432,55 @@ class ConfigLoader:
                 return f.read()
 
         return None
+
+    def resolve_execution_config(
+        self,
+        cli_config: ExecutionConfig | None,
+        yaml_config: ExecutionConfig | None,
+        defaults: dict[str, Any],
+    ) -> ExecutionConfig:
+        """Resolve execution configuration with priority hierarchy.
+
+        Configuration priority (highest to lowest):
+        1. CLI flags (cli_config)
+        2. agent.yaml execution section (yaml_config)
+        3. Environment variables (HOLODECK_* vars)
+        4. Built-in defaults
+
+        Args:
+            cli_config: Execution config from CLI flags (optional)
+            yaml_config: Execution config from agent.yaml (optional)
+            defaults: Dictionary of default values
+
+        Returns:
+            Resolved ExecutionConfig with all fields populated
+        """
+        resolved: dict[str, Any] = {}
+        env_vars = dict(os.environ)
+
+        # List of all configuration fields
+        fields = [
+            "file_timeout",
+            "llm_timeout",
+            "download_timeout",
+            "cache_enabled",
+            "cache_dir",
+            "verbose",
+            "quiet",
+        ]
+
+        for field in fields:
+            # Priority 1: CLI flag
+            if cli_config and getattr(cli_config, field, None) is not None:
+                resolved[field] = getattr(cli_config, field)
+            # Priority 2: agent.yaml execution section
+            elif yaml_config and getattr(yaml_config, field, None) is not None:
+                resolved[field] = getattr(yaml_config, field)
+            # Priority 3: Environment variable
+            elif (env_value := _get_env_value(field, env_vars)) is not None:
+                resolved[field] = env_value
+            # Priority 4: Built-in default
+            else:
+                resolved[field] = defaults.get(field)
+
+        return ExecutionConfig(**resolved)

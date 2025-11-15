@@ -410,7 +410,7 @@ name: support-agent
 description: Handles customer support queries with knowledge base search
 
 model:
-  provider: openai
+  provider: azure_openai
   name: gpt-4o
   temperature: 0.7
   max_tokens: 2000
@@ -455,19 +455,32 @@ tools:
         description: low|medium|high
 
 evaluations:
+  model:
+    provider: azure_openai
+    name: gpt-4o
+    temperature: 0.0
+
   metrics:
-    - metric: groundedness
+    - metric: f1_score
       threshold: 0.8
+    - metric: bleu
+      threshold: 0.75
 
 test_cases:
   - name: "Password reset"
     input: "How do I reset my password?"
     expected_tools: [search-kb]
     ground_truth: "Step-by-step password reset instructions"
+    evaluations:
+      - f1_score
+      - bleu
 
   - name: "Open ticket"
     input: "I need help with my account"
     expected_tools: [search-kb, create-ticket]
+    ground_truth: "Ticket created and knowledge base searched"
+    evaluations:
+      - f1_score
 ```
 
 ## Validation Rules
@@ -587,7 +600,7 @@ name: enterprise-agent
 description: Production-ready support agent
 
 model:
-  provider: openai
+  provider: azure_openai
   name: gpt-4o
   temperature: 0.6
   max_tokens: 4096
@@ -604,6 +617,10 @@ response_format:
       type: array
       items:
         type: string
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
   required:
     - response
 
@@ -621,18 +638,24 @@ tools:
 
 evaluations:
   model:
-    provider: openai
+    provider: azure_openai
     name: gpt-4o
+    temperature: 0.0
+
   metrics:
-    - metric: groundedness
+    - metric: f1_score
       threshold: 0.85
-    - metric: safety
-      threshold: 0.9
+    - metric: bleu
+      threshold: 0.8
 
 test_cases:
   - name: "Basic query"
     input: "Hello, can you help?"
     expected_tools: [knowledge-base]
+    ground_truth: "Yes, I'm here to help with your support request"
+    evaluations:
+      - f1_score
+      - bleu
 ```
 
 ## Troubleshooting

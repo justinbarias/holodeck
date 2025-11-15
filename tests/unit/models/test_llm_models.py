@@ -110,7 +110,7 @@ class TestLLMProvider:
             provider=ProviderEnum.OPENAI,
             name="gpt-4o",
         )
-        assert provider.temperature is None
+        assert provider.temperature == 0.3  # the default temperature
 
     def test_llm_provider_max_tokens_positive(self) -> None:
         """Test that max_tokens must be positive."""
@@ -147,7 +147,7 @@ class TestLLMProvider:
             provider=ProviderEnum.OPENAI,
             name="gpt-4o",
         )
-        assert provider.max_tokens is None
+        assert provider.max_tokens == 1000  # default max_tokens
 
     def test_llm_provider_endpoint_required_for_azure(self) -> None:
         """Test that endpoint is required for Azure OpenAI."""

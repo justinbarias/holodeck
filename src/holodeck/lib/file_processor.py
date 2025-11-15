@@ -19,8 +19,12 @@ from typing import Any
 
 import requests
 
+from holodeck.lib.logging_config import get_logger
+from holodeck.lib.logging_utils import log_exception, log_retry
 from holodeck.models.test_case import FileInput
 from holodeck.models.test_result import ProcessedFileInput
+
+logger = get_logger(__name__)
 
 
 class FileProcessor:
@@ -46,9 +50,15 @@ class FileProcessor:
         self.max_retries = max_retries
         self.md: Any = None  # Initialize lazily
 
+        logger.debug(
+            f"FileProcessor initialized: cache_dir={self.cache_dir}, "
+            f"timeout={download_timeout_ms}ms, max_retries={max_retries}"
+        )
+
         try:
             from markitdown import MarkItDown  # noqa: F401
         except ImportError as e:
+            logger.error("markitdown package not found", exc_info=True)
             raise ImportError(
                 "markitdown is required for file processing. "
                 "Install with: pip install 'markitdown[all]'"
@@ -88,10 +98,13 @@ class FileProcessor:
                 with open(cache_file) as f:
                     data = json.load(f)
                     if isinstance(data, dict):
+                        logger.debug(f"Cache hit: {cache_key}")
                         return data
                     return None
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to load cache for {cache_key}: {e}")
                 return None
+        logger.debug(f"Cache miss: {cache_key}")
         return None
 
     def _save_to_cache(
@@ -115,8 +128,12 @@ class FileProcessor:
             "metadata": metadata,
             "processing_time_ms": processing_time_ms,
         }
-        with contextlib.suppress(Exception), open(cache_file, "w") as f:
-            json.dump(data, f)
+        try:
+            with open(cache_file, "w") as f:
+                json.dump(data, f)
+            logger.debug(f"File cached: {cache_key} ({len(markdown_content)} bytes)")
+        except Exception as e:
+            logger.warning(f"Failed to save cache for {cache_key}: {e}")
 
     def _download_file(self, url: str) -> bytes | None:
         """Download file from URL with retry logic.
@@ -131,17 +148,35 @@ class FileProcessor:
         """
         timeout_sec = self.download_timeout_ms / 1000.0
 
+        logger.debug(f"Downloading file from URL: {url}")
+
         for attempt in range(self.max_retries):
             try:
                 response = requests.get(url, timeout=timeout_sec)
                 response.raise_for_status()
+                size_bytes = len(response.content)
+                logger.debug(
+                    f"File downloaded successfully: {url} ({size_bytes} bytes)"
+                )
                 return response.content
-            except Exception:
+            except Exception as e:
                 if attempt == self.max_retries - 1:
+                    logger.error(
+                        f"Failed to download file after {self.max_retries} "
+                        f"attempts: {url}"
+                    )
                     return None
 
                 # Exponential backoff: 1s, 2s, 4s
                 backoff_sec = 2**attempt
+                log_retry(
+                    logger,
+                    f"Download {url}",
+                    attempt=attempt + 1,
+                    max_attempts=self.max_retries,
+                    delay=backoff_sec,
+                    error=e,
+                )
                 time.sleep(backoff_sec)
 
         return None
@@ -156,6 +191,12 @@ class FileProcessor:
             ProcessedFileInput with markdown content and metadata
         """
         start_time = time.time()
+        file_location = file_input.url or file_input.path or "unknown"
+
+        logger.debug(
+            f"Processing file: {file_location} (type={file_input.type}, "
+            f"cache={'enabled' if file_input.cache else 'disabled'})"
+        )
 
         try:
             # Determine if file is local or remote
@@ -166,6 +207,7 @@ class FileProcessor:
 
         except Exception as e:
             elapsed_ms = int((time.time() - start_time) * 1000)
+            log_exception(logger, f"File processing failed: {file_location}", e)
             return ProcessedFileInput(
                 original=file_input,
                 markdown_content="",
@@ -207,14 +249,21 @@ class FileProcessor:
         # Warn if file is large
         size_mb = file_size / (1024 * 1024)
         if size_mb > 100:
+            logger.warning(f"Large file detected: {file_input.path} ({size_mb:.2f}MB)")
             metadata["warning"] = f"Large file detected ({size_mb:.2f}MB)"
 
         # Convert file
+        logger.debug(f"Converting local file to markdown: {file_input.path}")
         md = self._get_markitdown()
         result = md.convert(str(path))
         markdown_content = result.text_content
 
         elapsed_ms = int((time.time() - start_time) * 1000)
+
+        logger.debug(
+            f"Local file processed: {file_input.path} "
+            f"({len(markdown_content)} bytes in {elapsed_ms}ms)"
+        )
 
         return ProcessedFileInput(
             original=file_input,
@@ -249,6 +298,7 @@ class FileProcessor:
 
             if cached_data:
                 elapsed_ms = int((time.time() - start_time) * 1000)
+                logger.debug(f"Using cached remote file: {url}")
                 return ProcessedFileInput(
                     original=file_input,
                     markdown_content=cached_data["markdown_content"],
@@ -262,6 +312,7 @@ class FileProcessor:
         file_content = self._download_file(url)
         if file_content is None:
             elapsed_ms = int((time.time() - start_time) * 1000)
+            logger.error(f"Failed to download remote file: {url}")
             return ProcessedFileInput(
                 original=file_input,
                 markdown_content="",
@@ -277,6 +328,7 @@ class FileProcessor:
             tmp_path = tmp.name
 
         try:
+            logger.debug(f"Converting remote file to markdown: {url}")
             md = self._get_markitdown()
             result = md.convert(tmp_path)
             markdown_content = result.text_content
@@ -296,6 +348,12 @@ class FileProcessor:
                 cache_key = self._get_cache_key(url)
                 self._save_to_cache(cache_key, markdown_content, metadata, elapsed_ms)
                 cached_path = str(self.cache_dir / f"{cache_key}.json")
+
+            logger.debug(
+                f"Remote file processed: {url} "
+                f"({len(markdown_content)} bytes in {elapsed_ms}ms, "
+                f"cached={cached_path is not None})"
+            )
 
             return ProcessedFileInput(
                 original=file_input,

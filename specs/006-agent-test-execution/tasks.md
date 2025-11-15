@@ -53,16 +53,21 @@ make test-unit  # Ensure still passing
 
 ## Task Summary
 
-- **Total Tasks**: 148 (TDD approach doubles task count with TEST + CODE tasks)
-- **Setup Tasks**: 10
-- **Foundational Tasks**: 22 (11 TEST + 11 CODE)
-- **User Story Tasks**: 95
-  - US1 (P1): 38 tasks (19 TEST + 19 CODE/VERIFY)
-  - US2 (P2): 16 tasks (8 TEST + 8 CODE/VERIFY)
-  - US3 (P3): 9 tasks (4 TEST + 5 CODE/VERIFY)
-  - US4 (P2): 16 tasks (8 TEST + 8 CODE/VERIFY)
-  - US5 (P3): 16 tasks (8 TEST + 8 CODE/VERIFY)
-- **Polish Tasks**: 21 (6 TEST + 15 CODE/VERIFY/DOC)
+- **Total Tasks**: 164 (TDD approach with TEST + CODE + VERIFY tasks)
+- **Setup Tasks**: 10 (T001-T010)
+- **Foundational Tasks**: 20 (T011-T030)
+- **User Story 1 (P1 - Execute Basic Text-Only Tests)**: 49 tasks
+  - T057-T060: Progress Indicators (4 tasks) ✅ **COMPLETED**
+  - T061-T066: Executor Integration with Callback Pattern (6 NEW tasks)
+  - T067-T074: CLI Command (8 tasks)
+  - T075-T078: Integration Testing (4 tasks)
+  - T043-T056, T031-T042: Evaluators, Agent Bridge, Test Executor (24 tasks) ✅ **COMPLETED**
+  - T104-T122: Enhanced Progress Display & Callback Integration (19 tasks)
+- **User Story 2 (P2 - Multimodal Files)**: 14 tasks (T079-T094)
+- **User Story 3 (P3 - Per-Test Metrics)**: 9 tasks (T095-T103)
+- **User Story 4 (P2 - Progress Display)**: 22 tasks (T104-T122, overlaps with US1)
+- **User Story 5 (P3 - Report Files)**: 16 tasks (T123-T139)
+- **Polish & QA Tasks**: 16 tasks (T140-T164)
 
 ## Implementation Strategy
 
@@ -204,46 +209,89 @@ Phase 8: Polish & QA (T063-T074)
 
 #### T043-T050: Agent Bridge (Test-First)
 
-- [ ] T043 [TEST] Write unit tests for agent bridge in tests/unit/lib/test_runner/test_agent_bridge.py (test Semantic Kernel integration, Kernel creation, agent config loading, ChatHistory invocation, response capture, tool_calls capture)
-- [ ] T044 [CODE] Implement Semantic Kernel agent bridge in src/holodeck/lib/test_runner/agent_bridge.py to pass T043 tests
-- [ ] T045 [VERIFY] Run make test-unit to verify agent bridge tests pass
-- [ ] T046 [VERIFY] Run make format && make lint
+- [x] T043 [TEST] Write unit tests for agent bridge in tests/unit/lib/test_runner/test_agent_bridge.py (test Semantic Kernel integration, Kernel creation, agent config loading, ChatHistory invocation, response capture, tool_calls capture)
+- [x] T044 [CODE] Implement Semantic Kernel agent bridge in src/holodeck/lib/test_runner/agent_bridge.py to pass T043 tests
+- [x] T045 [VERIFY] Run make test-unit to verify agent bridge tests pass
+- [x] T046 [VERIFY] Run make format && make lint
 
 #### T047-T056: Test Executor (Test-First)
 
-- [ ] T047 [TEST] Write unit tests for configuration resolution in tests/unit/lib/test_runner/test_executor.py (test CLI > agent.yaml > env > defaults priority, ExecutionConfig merge)
-- [ ] T048 [CODE] Implement configuration resolution in src/holodeck/lib/test_runner/executor.py to pass T047 tests
-- [ ] T049 [TEST] Write unit tests for tool call validation in tests/unit/lib/test_runner/test_executor.py (test expected_tools matching, TestResult.tool_calls vs TestCaseModel.expected_tools)
-- [ ] T050 [CODE] Implement tool call validation in src/holodeck/lib/test_runner/executor.py to pass T049 tests
-- [ ] T051 [TEST] Write unit tests for timeout handling in tests/unit/lib/test_runner/test_executor.py (test file: 30s, LLM: 60s, download: 30s defaults using asyncio.timeout or threading.Timer)
-- [ ] T052 [CODE] Implement timeout handling in src/holodeck/lib/test_runner/executor.py to pass T051 tests
-- [ ] T053 [TEST] Write unit tests for test executor main flow in tests/unit/lib/test_runner/test_executor.py (test load AgentConfig, execute tests sequentially, collect TestResult instances, generate TestReport)
-- [ ] T054 [CODE] Implement test executor in src/holodeck/lib/test_runner/executor.py to pass T053 tests
-- [ ] T055 [VERIFY] Run make test-unit to verify executor tests pass
-- [ ] T056 [VERIFY] Run make format && make lint
+- [x] T047 [TEST] Write unit tests for configuration resolution in tests/unit/lib/test_runner/test_executor.py (test CLI > agent.yaml > env > defaults priority, ExecutionConfig merge)
+- [x] T048 [CODE] Implement configuration resolution in src/holodeck/lib/test_runner/executor.py to pass T047 tests
+- [x] T049 [TEST] Write unit tests for tool call validation in tests/unit/lib/test_runner/test_executor.py (test expected_tools matching, TestResult.tool_calls vs TestCaseModel.expected_tools)
+- [x] T050 [CODE] Implement tool call validation in src/holodeck/lib/test_runner/executor.py to pass T049 tests
+- [x] T051 [TEST] Write unit tests for timeout handling in tests/unit/lib/test_runner/test_executor.py (test file: 30s, LLM: 60s, download: 30s defaults using asyncio.timeout or threading.Timer)
+- [x] T052 [CODE] Implement timeout handling in src/holodeck/lib/test_runner/executor.py to pass T051 tests
+- [x] T053 [TEST] Write unit tests for test executor main flow in tests/unit/lib/test_runner/test_executor.py (test load AgentConfig, execute tests sequentially, collect TestResult instances, generate TestReport)
+- [x] T054 [CODE] Implement test executor in src/holodeck/lib/test_runner/executor.py to pass T053 tests
+- [x] T055 [VERIFY] Run make test-unit to verify executor tests pass
+- [x] T056 [VERIFY] Run make format && make lint
 
-#### T057-T062: Progress Indicators (Test-First)
+#### T057-T060: Progress Indicators (Test-First)
 
-- [ ] T057 [TEST] Write unit tests for progress indicators in tests/unit/lib/test_runner/test_progress.py (test TTY detection with sys.stdout.isatty(), "Test X/Y" display, checkmarks/X marks, CI/CD plain text mode)
-- [ ] T058 [CODE] Implement progress indicators in src/holodeck/lib/test_runner/progress.py to pass T057 tests
-- [ ] T059 [VERIFY] Run make test-unit to verify progress tests pass
-- [ ] T060 [VERIFY] Run make format && make lint
+- [x] T057 [TEST] Write unit tests for progress indicators in tests/unit/lib/test_runner/test_progress.py (test TTY detection with sys.stdout.isatty(), "Test X/Y" display, checkmarks/X marks, CI/CD plain text mode)
+- [x] T058 [CODE] Implement progress indicators in src/holodeck/lib/test_runner/progress.py to pass T057 tests
+- [x] T059 [VERIFY] Run make test-unit to verify progress tests pass
+- [x] T060 [VERIFY] Run make format && make lint
 
-#### T061-T068: CLI Command (Test-First)
+#### T061-T066: Executor Integration with Callback Pattern (Test-First)
 
-- [ ] T061 [TEST] Write unit tests for CLI command in tests/unit/cli/commands/test_test.py (test argument parsing for AGENT_CONFIG, option handling for --output, --format, --verbose, --quiet, --timeout flags)
-- [ ] T062 [CODE] Implement CLI command in src/holodeck/cli/commands/test.py to pass T061 tests
-- [ ] T063 [TEST] Write unit tests for exit code logic in tests/unit/cli/commands/test_test.py (test 0=success, 1=test failure, 2=config error, 3=execution error, 4=evaluation error)
-- [ ] T064 [CODE] Implement exit code logic in src/holodeck/cli/commands/test.py to pass T063 tests
-- [ ] T065 [VERIFY] Run make test-unit to verify CLI tests pass
-- [ ] T066 [VERIFY] Run make format && make lint
+**Design Pattern**: Callback-based progress reporting
 
-#### T067-T070: Integration Testing
+The progress indicator integrates with TestExecutor via a callback pattern for clean separation of concerns:
 
-- [ ] T067 [TEST] Create sample test agent.yaml in tests/fixtures/agents/test_agent.yaml with 3 simple text test cases
-- [ ] T068 [TEST] Write integration test for basic text execution in tests/integration/test_basic_execution.py (verify end-to-end test run with mocked LLM responses)
-- [ ] T069 [VERIFY] Run make test-integration to verify integration tests pass
-- [ ] T070 [VERIFY] Run make test to verify all tests pass
+```python
+# CLI passes callback to executor
+def progress_callback(result: TestResult) -> None:
+    indicator.update(result)
+    print(indicator.get_progress_line())
+
+executor = TestExecutor(
+    agent_config_path=config_path,
+    progress_callback=progress_callback
+)
+
+# Executor calls callback after each test
+for test_case in test_cases:
+    result = await self._execute_single_test(test_case)
+    test_results.append(result)
+    if self.progress_callback:
+        self.progress_callback(result)  # Notify CLI of completion
+```
+
+**Benefits**:
+
+- ✅ Executor stays focused on orchestration (no display logic)
+- ✅ CLI controls display (quiet, verbose, progress suppression)
+- ✅ Testable without side effects (mock the callback)
+- ✅ Flexible for future use cases (webhooks, logging, etc.)
+
+**Tasks**:
+
+- [x] T061 [TEST] Write unit tests for progress callback integration in tests/unit/lib/test_runner/test_executor.py (test callback invocation after each test, callback with None handling, multiple test execution flow)
+- [x] T062 [CODE] Add callback support to TestExecutor in src/holodeck/lib/test_runner/executor.py (add progress_callback parameter to **init**, call callback after each test in execute_tests, handle None gracefully)
+- [x] T063 [TEST] Write unit tests for CLI progress display in tests/unit/cli/commands/test_test.py (test ProgressIndicator initialization, callback function execution, progress line printing, final summary display)
+- [x] T064 [CODE] Integrate ProgressIndicator in CLI command src/holodeck/cli/commands/test.py (create indicator, pass callback to executor, display summary after tests complete, respect --quiet/--verbose flags)
+- [x] T065 [VERIFY] Run make test-unit to verify executor and CLI integration tests pass
+- [x] T066 [VERIFY] Run make format && make lint && make type-check
+
+#### T067-T074: CLI Command (Test-First)
+
+- [x] T067 [TEST] Write unit tests for CLI command in tests/unit/cli/commands/test_test.py (test argument parsing for AGENT_CONFIG, option handling for --output, --format, --verbose, --quiet, --timeout flags)
+- [x] T068 [CODE] Implement CLI command in src/holodeck/cli/commands/test.py to pass T067 tests
+- [x] T069 [TEST] Write unit tests for exit code logic in tests/unit/cli/commands/test_test.py (test 0=success, 1=test failure, 2=config error, 3=execution error, 4=evaluation error)
+- [x] T070 [CODE] Implement exit code logic in src/holodeck/cli/commands/test.py to pass T069 tests
+- [x] T071 [VERIFY] Run make test-unit to verify CLI tests pass
+- [x] T072 [VERIFY] Run make format && make lint
+- [x] T073 [TEST] Write unit tests for report generation integration in tests/unit/cli/commands/test_test.py (test --output flag, JSON/Markdown format)
+- [x] T074 [CODE] Implement report file generation in CLI command
+
+#### T075-T078: Integration Testing
+
+- [x] T075 [TEST] Create sample test agent.yaml in tests/fixtures/agents/test_agent.yaml with 3 simple text test cases
+- [x] T076 [TEST] Write integration test for basic text execution in tests/integration/test_basic_execution.py (verify end-to-end test run with mocked LLM responses)
+- [x] T077 [VERIFY] Run make test-integration to verify integration tests pass
+- [x] T078 [VERIFY] Run make test to verify all tests pass
 
 ---
 
@@ -264,30 +312,30 @@ Phase 8: Polish & QA (T063-T074)
 
 ### Tasks
 
-#### T071-T080: File Processing Extensions (Test-First)
+#### T079-T088: File Processing Extensions (Test-First)
 
-- [ ] T071 [TEST] Write unit tests for page/sheet/range extraction in tests/unit/lib/test_file_processor.py (test FileInput.pages for PDF, FileInput.sheet for Excel, FileInput.range for PowerPoint, preprocessing before markitdown)
-- [ ] T072 [CODE] Implement page/sheet/range extraction in src/holodeck/lib/file_processor.py to pass T071 tests
-- [ ] T073 [TEST] Write unit tests for file size warnings in tests/unit/lib/test_file_processor.py (test >100MB file warning message, verify processing continues)
-- [ ] T074 [CODE] Implement file size warning logic in src/holodeck/lib/file_processor.py to pass T073 tests
-- [ ] T075 [TEST] Write unit tests for file processing error handling in tests/unit/lib/test_file_processor.py (test timeout, malformed files, ProcessedFileInput.error population, test continuation)
-- [ ] T076 [CODE] Implement file processing error handling in src/holodeck/lib/file_processor.py to pass T075 tests
-- [ ] T077 [VERIFY] Run make test-unit to verify file processor tests pass
-- [ ] T078 [VERIFY] Run make format && make lint
+- [ ] T079 [TEST] Write unit tests for page/sheet/range extraction in tests/unit/lib/test_file_processor.py (test FileInput.pages for PDF, FileInput.sheet for Excel, FileInput.range for PowerPoint, preprocessing before markitdown)
+- [ ] T080 [CODE] Implement page/sheet/range extraction in src/holodeck/lib/file_processor.py to pass T079 tests
+- [ ] T081 [TEST] Write unit tests for file size warnings in tests/unit/lib/test_file_processor.py (test >100MB file warning message, verify processing continues)
+- [ ] T082 [CODE] Implement file size warning logic in src/holodeck/lib/file_processor.py to pass T081 tests
+- [ ] T083 [TEST] Write unit tests for file processing error handling in tests/unit/lib/test_file_processor.py (test timeout, malformed files, ProcessedFileInput.error population, test continuation)
+- [ ] T084 [CODE] Implement file processing error handling in src/holodeck/lib/file_processor.py to pass T083 tests
+- [ ] T085 [VERIFY] Run make test-unit to verify file processor tests pass
+- [ ] T086 [VERIFY] Run make format && make lint
 
-#### T079-T084: Executor Integration (Test-First)
+#### T087-T092: Executor Integration (Test-First)
 
-- [ ] T079 [TEST] Write unit tests for file processor integration in tests/unit/lib/test_runner/test_executor.py (test process files before agent invocation, verify ProcessedFileInput.markdown_content in agent context)
-- [ ] T080 [CODE] Integrate file processor with test executor in src/holodeck/lib/test_runner/executor.py to pass T079 tests
-- [ ] T081 [VERIFY] Run make test-unit to verify executor integration tests pass
-- [ ] T082 [VERIFY] Run make format && make lint
+- [ ] T087 [TEST] Write unit tests for file processor integration in tests/unit/lib/test_runner/test_executor.py (test process files before agent invocation, verify ProcessedFileInput.markdown_content in agent context)
+- [ ] T088 [CODE] Integrate file processor with test executor in src/holodeck/lib/test_runner/executor.py to pass T087 tests
+- [ ] T089 [VERIFY] Run make test-unit to verify executor integration tests pass
+- [ ] T090 [VERIFY] Run make format && make lint
 
-#### T083-T086: Integration Testing
+#### T091-T094: Integration Testing
 
-- [ ] T083 [TEST] Create sample multimodal test files in tests/fixtures/files/ (sample.pdf, sample.jpg, sample.xlsx, sample.docx, sample.pptx with known content)
-- [ ] T084 [TEST] Write integration test for multimodal execution in tests/integration/test_multimodal_execution.py (verify file processing and agent receives markdown content)
-- [ ] T085 [VERIFY] Run make test-integration to verify multimodal tests pass
-- [ ] T086 [VERIFY] Run make test to verify all tests pass
+- [ ] T091 [TEST] Create sample multimodal test files in tests/fixtures/files/ (sample.pdf, sample.jpg, sample.xlsx, sample.docx, sample.pptx with known content)
+- [ ] T092 [TEST] Write integration test for multimodal execution in tests/integration/test_multimodal_execution.py (verify file processing and agent receives markdown content)
+- [ ] T093 [VERIFY] Run make test-integration to verify multimodal tests pass
+- [ ] T094 [VERIFY] Run make test to verify all tests pass
 
 ---
 
@@ -307,24 +355,24 @@ Phase 8: Polish & QA (T063-T074)
 
 ### Tasks
 
-#### T087-T092: Per-Test Metrics (Test-First)
+#### T095-T100: Per-Test Metrics (Test-First)
 
-- [ ] T087 [TEST] Write unit tests for per-test metric resolution in tests/unit/lib/test_runner/test_executor.py (test TestCaseModel.evaluations override, test fallback to AgentConfig.evaluations.metrics)
-- [ ] T088 [CODE] Implement per-test metric resolution logic in src/holodeck/lib/test_runner/executor.py to pass T087 tests
-- [ ] T089 [TEST] Write unit tests for metric validation in tests/unit/lib/test_runner/test_executor.py (test undefined metric raises ConfigError, test valid metrics pass)
-- [ ] T090 [CODE] Implement metric validation in src/holodeck/lib/test_runner/executor.py to pass T089 tests
-- [ ] T091 [VERIFY] Run make test-unit to verify metric resolution tests pass
-- [ ] T092 [VERIFY] Run make format && make lint
+- [ ] T095 [TEST] Write unit tests for per-test metric resolution in tests/unit/lib/test_runner/test_executor.py (test TestCaseModel.evaluations override, test fallback to AgentConfig.evaluations.metrics)
+- [ ] T096 [CODE] Implement per-test metric resolution logic in src/holodeck/lib/test_runner/executor.py to pass T095 tests
+- [ ] T097 [TEST] Write unit tests for metric validation in tests/unit/lib/test_runner/test_executor.py (test undefined metric raises ConfigError, test valid metrics pass)
+- [ ] T098 [CODE] Implement metric validation in src/holodeck/lib/test_runner/executor.py to pass T097 tests
+- [ ] T099 [VERIFY] Run make test-unit to verify metric resolution tests pass
+- [ ] T100 [VERIFY] Run make format && make lint
 
-#### T093-T096: Integration Testing
+#### T101-T104: Integration Testing
 
-- [ ] T093 [TEST] Write integration test for per-test metrics in tests/integration/test_evaluation_metrics.py (verify metric override behavior, test global defaults)
-- [ ] T094 [VERIFY] Run make test-integration to verify metric tests pass
-- [ ] T095 [VERIFY] Run make test to verify all tests pass
+- [ ] T101 [TEST] Write integration test for per-test metrics in tests/integration/test_evaluation_metrics.py (verify metric override behavior, test global defaults)
+- [ ] T102 [VERIFY] Run make test-integration to verify metric tests pass
+- [ ] T103 [VERIFY] Run make test to verify all tests pass
 
 ---
 
-## Phase 6: User Story 4 - Display Test Results with Progress Indicators (P2)
+## Phase 6: User Story 4 - Display Test Results with Enhanced Progress Indicators (P2)
 
 **Story Goal**: Show real-time progress with visual indicators during test execution
 
@@ -341,24 +389,29 @@ Phase 8: Polish & QA (T063-T074)
 
 ### Tasks
 
-#### T096-T114: Enhanced Progress Display (Test-First)
+#### T104-T122: Enhanced Progress Display and Spinner (Test-First)
 
-- [ ] T096 [TEST] Write unit tests for TTY detection in tests/unit/lib/test_runner/test_progress.py (test sys.stdout.isatty() detection, test TTY vs non-TTY behavior)
-- [ ] T097 [CODE] Implement TTY detection in src/holodeck/lib/test_runner/progress.py to pass T096 tests
-- [ ] T098 [TEST] Write unit tests for progress indicator display in tests/unit/lib/test_runner/test_progress.py (test "Test X/Y" format, test update on each test start)
-- [ ] T099 [CODE] Implement progress indicator display in src/holodeck/lib/test_runner/progress.py to pass T098 tests
-- [ ] T100 [TEST] Write unit tests for pass/fail symbols in tests/unit/lib/test_runner/test_progress.py (test ✅/❌ symbols, test ANSI color codes for TTY, test plain text for non-TTY)
-- [ ] T101 [CODE] Implement pass/fail symbols with color support in src/holodeck/lib/test_runner/progress.py to pass T100 tests
-- [ ] T102 [TEST] Write unit tests for spinner in tests/unit/lib/test_runner/test_progress.py (test spinner for long-running tests >5s, test spinner char rotation during execution)
-- [ ] T103 [CODE] Implement spinner for long-running tests in src/holodeck/lib/test_runner/progress.py to pass T102 tests
-- [ ] T104 [TEST] Write unit tests for summary display in tests/unit/lib/test_runner/test_progress.py (test total/passed/failed/pass rate display after all tests complete)
-- [ ] T105 [CODE] Implement summary display in src/holodeck/lib/test_runner/progress.py to pass T104 tests
-- [ ] T106 [TEST] Write unit tests for quiet mode in tests/unit/lib/test_runner/test_progress.py (test --quiet flag suppresses progress, test only final summary shown)
-- [ ] T107 [CODE] Implement quiet mode output in src/holodeck/lib/test_runner/progress.py to pass T106 tests
-- [ ] T108 [TEST] Write unit tests for verbose mode in tests/unit/lib/test_runner/test_progress.py (test --verbose flag shows debug info, stack traces, timing)
-- [ ] T109 [CODE] Implement verbose mode output in src/holodeck/lib/test_runner/progress.py to pass T108 tests
-- [ ] T110 [VERIFY] Run make test-unit to verify progress tests pass
-- [ ] T111 [VERIFY] Run make format && make lint
+**Note**: Core progress indicator (T057-T058) is already implemented. These tasks add optional spinner animation and color enhancements built on top of the callback integration.
+
+- [ ] T104 [TEST] Write unit tests for optional spinner in tests/unit/lib/test_runner/test_progress.py (test spinner for long-running tests >5s, test spinner char rotation during execution, test disable in non-TTY)
+- [ ] T105 [CODE] Implement optional spinner for long-running tests in src/holodeck/lib/test_runner/progress.py to pass T104 tests
+- [ ] T106 [TEST] Write unit tests for ANSI color codes in tests/unit/lib/test_runner/test_progress.py (test color output in TTY, test no colors in non-TTY)
+- [ ] T107 [CODE] Add optional ANSI color support to symbols in src/holodeck/lib/test_runner/progress.py to pass T106 tests
+- [ ] T108 [TEST] Write unit tests for elapsed time display in tests/unit/lib/test_runner/test_progress.py (test elapsed time for long tests, test hide for quick tests)
+- [ ] T109 [CODE] Add elapsed time display to progress.py to pass T108 tests
+- [ ] T110 [TEST] Write unit tests for progress callback integration in CLI in tests/unit/cli/commands/test_test.py (test callback receives results, test progress display updates)
+- [ ] T111 [CODE] Integrate progress callback in CLI display logic in src/holodeck/cli/commands/test.py to pass T110 tests
+- [ ] T112 [TEST] Write unit tests for quiet mode suppression in tests/unit/lib/test_runner/test_progress.py (test --quiet flag suppresses progress lines, test summary still shown)
+- [ ] T113 [CODE] Implement quiet mode in CLI to pass T112 tests
+- [ ] T114 [TEST] Write unit tests for verbose mode in tests/unit/lib/test_runner/test_progress.py (test --verbose flag shows debug info, timing details)
+- [ ] T115 [CODE] Implement verbose mode in CLI to pass T114 tests
+- [ ] T116 [VERIFY] Run make test-unit to verify progress enhancements pass
+- [ ] T117 [VERIFY] Run make format && make lint && make type-check
+- [ ] T118 [TEST] Write integration test for progress display in tests/integration/test_basic_execution.py (verify progress output during live test execution)
+- [ ] T119 [VERIFY] Run make test-integration to verify progress integration tests pass
+- [ ] T120 [VERIFY] Run make test to verify all tests pass
+- [ ] T121 [VERIFY] Verify progress indicator demo script works
+- [ ] T122 [VERIFY] Update documentation with progress indicator usage examples
 
 ---
 
@@ -378,30 +431,28 @@ Phase 8: Polish & QA (T063-T074)
 
 ### Tasks
 
-#### T112-T122: Report Generation (Test-First)
+#### T123-T133: Report Generation (Test-First)
 
-- [ ] T112 [TEST] Create expected report fixtures in tests/fixtures/expected_reports/ (sample_json_report.json, sample_markdown_report.md with known test data)
-- [ ] T113 [TEST] Write unit tests for JSON report generation in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_json() method, verify structure matches schema)
-- [ ] T114 [CODE] Implement JSON report generation in src/holodeck/lib/test_runner/reporter.py to pass T113 tests
-- [ ] T115 [TEST] Write unit tests for Markdown report generation in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_markdown() with formatted tables, summary, test details)
-- [ ] T116 [CODE] Implement Markdown report generation in src/holodeck/lib/test_runner/reporter.py to pass T115 tests
-- [ ] T117 [TEST] Write unit tests for report file writing in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_file() method)
-- [ ] T118 [CODE] Implement report file writing logic in src/holodeck/lib/test_runner/reporter.py to pass T117 tests
-- [ ] T119 [VERIFY] Run make test-unit to verify reporter tests pass
-- [ ] T120 [VERIFY] Run make format && make lint
+- [ ] T123 [TEST] Create expected report fixtures in tests/fixtures/expected_reports/ (sample_json_report.json, sample_markdown_report.md with known test data)
+- [ ] T124 [TEST] Write unit tests for JSON report generation in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_json() method, verify structure matches schema)
+- [ ] T125 [CODE] Implement JSON report generation in src/holodeck/lib/test_runner/reporter.py to pass T124 tests
+- [ ] T126 [TEST] Write unit tests for Markdown report generation in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_markdown() with formatted tables, summary, test details)
+- [ ] T127 [CODE] Implement Markdown report generation in src/holodeck/lib/test_runner/reporter.py to pass T126 tests
+- [ ] T128 [TEST] Write unit tests for report file writing in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_file() method)
+- [ ] T129 [CODE] Implement report file writing logic in src/holodeck/lib/test_runner/reporter.py to pass T128 tests
+- [ ] T130 [VERIFY] Run make test-unit to verify reporter tests pass
+- [ ] T131 [VERIFY] Run make format && make lint
+- [ ] T132 [TEST] Write integration test for report generation in tests/integration/test_report_generation.py (verify JSON and Markdown output match expected format)
+- [ ] T133 [VERIFY] Run make test-integration to verify report generation tests pass
 
-#### T121-T126: CLI Format Detection (Test-First)
+#### T134-T139: CLI Format Detection & Report Output (Test-First)
 
-- [ ] T121 [TEST] Write unit tests for format auto-detection in tests/unit/cli/commands/test_test.py (test .json vs .md extension detection, test --format flag override)
-- [ ] T122 [CODE] Implement format auto-detection in src/holodeck/cli/commands/test.py to pass T121 tests
-- [ ] T123 [VERIFY] Run make test-unit to verify format detection tests pass
-- [ ] T124 [VERIFY] Run make format && make lint
-
-#### T125-T128: Integration Testing
-
-- [ ] T125 [TEST] Write integration test for report generation in tests/integration/test_report_generation.py (verify JSON and Markdown output match expected format)
-- [ ] T126 [VERIFY] Run make test-integration to verify report generation tests pass
-- [ ] T127 [VERIFY] Run make test to verify all tests pass
+- [ ] T134 [TEST] Write unit tests for format auto-detection in tests/unit/cli/commands/test_test.py (test .json vs .md extension detection, test --format flag override)
+- [ ] T135 [CODE] Implement format auto-detection in src/holodeck/cli/commands/test.py to pass T134 tests
+- [ ] T136 [TEST] Write unit tests for report file output in CLI in tests/unit/cli/commands/test_test.py (test --output flag, verify file creation)
+- [ ] T137 [CODE] Implement report file output in CLI to pass T136 tests
+- [ ] T138 [VERIFY] Run make test-unit to verify format detection and output tests pass
+- [ ] T139 [VERIFY] Run make test to verify all tests pass
 
 ---
 
@@ -413,35 +464,39 @@ Phase 8: Polish & QA (T063-T074)
 
 ### Tasks
 
-#### T128-T136: Error Handling (Test-First)
+#### T140-T148: Error Handling (Test-First)
 
-- [ ] T128 [TEST] Write unit tests for structured error messages in tests/unit/lib/test_runner/test_executor.py (test error format: "ERROR: {summary}\n Cause: {cause}\n Suggestion: {action}")
-- [ ] T129 [CODE] Implement structured error messages in src/holodeck/lib/test_runner/executor.py to pass T128 tests
-- [ ] T130 [TEST] Write unit tests for large file warnings in tests/unit/lib/test_file_processor.py (test warning when file >100MB before processing)
-- [ ] T131 [CODE] Implement warning messages for large files in src/holodeck/lib/file_processor.py to pass T130 tests
-- [ ] T132 [VERIFY] Run make test-unit to verify error handling tests pass
-- [ ] T133 [VERIFY] Run make format && make lint
+- [ ] T140 [TEST] Write unit tests for structured error messages in tests/unit/lib/test_runner/test_executor.py (test error format: "ERROR: {summary}\n Cause: {cause}\n Suggestion: {action}")
+- [ ] T141 [CODE] Implement structured error messages in src/holodeck/lib/test_runner/executor.py to pass T140 tests
+- [ ] T142 [TEST] Write unit tests for large file warnings in tests/unit/lib/test_file_processor.py (test warning when file >100MB before processing)
+- [ ] T143 [CODE] Implement warning messages for large files in src/holodeck/lib/file_processor.py to pass T142 tests
+- [ ] T144 [TEST] Write unit tests for timeout error handling in tests/unit/lib/test_runner/test_executor.py (test graceful timeout handling, test error messages)
+- [ ] T145 [CODE] Improve timeout error handling in executor to pass T144 tests
+- [ ] T146 [VERIFY] Run make test-unit to verify error handling tests pass
+- [ ] T147 [VERIFY] Run make format && make lint
+- [ ] T148 [VERIFY] Run make security to verify no security issues
 
-#### T134-T138: Configuration Defaults (Test-First)
+#### T149-T152: Configuration Defaults (Test-First)
 
-- [ ] T134 [TEST] Write unit tests for configuration defaults in tests/unit/config/test_defaults.py (test file_timeout=30, llm_timeout=60, download_timeout=30, cache_dir=".holodeck/cache", cache_enabled=True)
-- [ ] T135 [CODE] Add configuration defaults to src/holodeck/config/defaults.py to pass T134 tests
-- [ ] T136 [VERIFY] Run make test-unit to verify defaults tests pass
-- [ ] T137 [VERIFY] Run make format && make lint
+- [ ] T149 [TEST] Write unit tests for configuration defaults in tests/unit/config/test_defaults.py (test file_timeout=30, llm_timeout=60, download_timeout=30, cache_dir=".holodeck/cache", cache_enabled=True)
+- [ ] T150 [CODE] Add configuration defaults to src/holodeck/config/defaults.py to pass T149 tests
+- [ ] T151 [VERIFY] Run make test-unit to verify defaults tests pass
+- [ ] T152 [VERIFY] Run make format && make lint
 
-#### T138-T148: Documentation & Quality Assurance
+#### T153-T164: Documentation & Quality Assurance
 
-- [ ] T138 Create comprehensive docstrings for all new modules (file_processor.py, executor.py, agent_bridge.py, progress.py, reporter.py, azure_ai.py, nlp_metrics.py)
-- [ ] T139 Update docsite (/docs) with new dependencies and modules (document test execution framework, new lib/ structure, ExecutionConfig model)
-- [ ] T140 Run make format to format all new code
-- [ ] T141 Run make lint to check code quality
-- [ ] T142 Run make type-check to verify type hints
-- [ ] T143 Run make security to scan for vulnerabilities
-- [ ] T144 Run make test-coverage to verify 80% coverage minimum
-- [ ] T145 Review coverage report and add missing tests if needed
-- [ ] T146 Update pyproject.toml with version bump (0.1.0)
-- [ ] T147 Create usage examples in quickstart.md documentation (already exists, verify completeness)
-- [ ] T148 Run full CI pipeline: make ci
+- [ ] T153 Create comprehensive docstrings for all new modules (file_processor.py, executor.py, agent_bridge.py, progress.py, reporter.py, azure_ai.py, nlp_metrics.py)
+- [ ] T154 Update docsite (/docs) with new dependencies and modules (document test execution framework, new lib/ structure, ExecutionConfig model, progress callback pattern)
+- [ ] T155 Update README.md with `holodeck test` command usage and examples
+- [ ] T156 Create PROGRESS_INDICATORS.md documentation with callback pattern explanation
+- [ ] T157 Run make format to format all new code
+- [ ] T158 Run make lint to check code quality
+- [ ] T159 Run make type-check to verify type hints
+- [ ] T160 Run make security to scan for vulnerabilities
+- [ ] T161 Run make test-coverage to verify 80%+ coverage minimum
+- [ ] T162 Review coverage report and add missing tests if needed
+- [ ] T163 Update pyproject.toml with version bump (0.2.0)
+- [ ] T164 Run full CI pipeline: make ci
 
 ---
 
@@ -607,27 +662,30 @@ CLI Flags  >  agent.yaml execution  >  Environment Variables  >  Built-in Defaul
 
 ## File Paths Reference
 
-**New Files**:
+**New Files (Core)** - Phase 1 & 2:
 
 - `src/holodeck/models/test_result.py` (T002)
 - `src/holodeck/models/config.py` (T003, T011)
-- `src/holodeck/lib/file_processor.py` (T005, T018-T020, T037-T040)
-- `src/holodeck/lib/test_runner/executor.py` (T006, T025, T027-T030, T039, T044-T045, T063)
-- `src/holodeck/lib/test_runner/agent_bridge.py` (T006, T021)
-- `src/holodeck/lib/test_runner/progress.py` (T006, T026, T048-T054)
-- `src/holodeck/lib/test_runner/reporter.py` (T006, T056-T058)
-- `src/holodeck/lib/evaluators/base.py` (T007, T024)
-- `src/holodeck/lib/evaluators/azure_ai.py` (T007, T022, T029)
-- `src/holodeck/lib/evaluators/nlp_metrics.py` (T007, T023)
-- `src/holodeck/cli/commands/test.py` (T008, T031-T032, T059)
+- `src/holodeck/lib/file_processor.py` (T005, T025-T030)
+- `src/holodeck/lib/test_runner/executor.py` (T006, T047-T056, T062)
+- `src/holodeck/lib/test_runner/agent_bridge.py` (T006, T043-T045)
+- `src/holodeck/lib/evaluators/base.py` (T007, T033-T034)
+- `src/holodeck/lib/evaluators/azure_ai.py` (T007, T035-T038)
+- `src/holodeck/lib/evaluators/nlp_metrics.py` (T007, T039-T040)
+
+**New Files (Progress & CLI)** - Phase 3A & 3B:
+
+- `src/holodeck/lib/test_runner/progress.py` (T057-T058, T104-T122)
+- `src/holodeck/lib/test_runner/reporter.py` (T123-T139)
+- `src/holodeck/cli/commands/test.py` (T061-T066 callback integration, T067-T074 CLI, T110-T111 callback display)
 
 **Modified Files**:
 
-- `pyproject.toml` (T001, T073)
-- `src/holodeck/models/agent.py` (T004, T017)
-- `src/holodeck/cli/main.py` (T009)
-- `src/holodeck/config/defaults.py` (T065)
-- `CLAUDE.md` (T067)
+- `pyproject.toml` (T001, dependencies)
+- `src/holodeck/models/agent.py` (T023-T024 execution field)
+- `src/holodeck/cli/main.py` (T007 register test command)
+- `src/holodeck/config/defaults.py` (T149-T150)
+- `CLAUDE.md` (documentation updates)
 
 **Test Files**:
 
@@ -645,6 +703,8 @@ CLI Flags  >  agent.yaml execution  >  Environment Variables  >  Built-in Defaul
 - **Exit Codes**: 0=success, 1=test failure, 2=config error, 3=execution error, 4=evaluation error
 - **TTY Detection**: Use `sys.stdout.isatty()` for progress indicator behavior
 - **Configuration Merge**: CLI > agent.yaml > env vars > defaults
+- **Callback Pattern** (T061-T066, T110-T111): Progress display is decoupled from executor via callback function. CLI creates ProgressIndicator, passes callback to TestExecutor, receives TestResult updates after each test. Keeps executor focused on orchestration, allows CLI to handle display modes (quiet/verbose).
+- **Progress Indicator** (T057-T058): TTY-aware progress display with real-time updates, pass/fail symbols (✓/✗ for TTY, PASS/FAIL for CI/CD), summary statistics, and execution timing. Built-in support for quiet and verbose modes.
 
 ---
 
