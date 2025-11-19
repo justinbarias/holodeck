@@ -445,14 +445,34 @@ model:
   # Model name and settings come from global config
 ```
 
-## Creating Global Config
+## Creating Configuration
+
+You can create configuration files using the `holodeck config init` command or manually.
+
+### Using the CLI (Recommended)
+
+The CLI provides a convenient way to initialize configuration files with default settings.
+
+**Initialize Global Configuration:**
+```bash
+holodeck config init -g
+# Creates ~/.holodeck/config.yaml
+```
+
+**Initialize Project Configuration:**
+```bash
+holodeck config init -p
+# Creates config.yaml in the current directory
+```
+
+### Manual Creation
 
 Global config can be created at two locations with different precedence:
 
 1. **Project-level**: `config.yaml` in same directory as `agent.yaml` (higher priority)
 2. **User-level**: `~/.holodeck/config.yaml` in home directory (lower priority)
 
-### Option 1: Project-Level Config (Recommended for Teams)
+#### Project-Level Config (Recommended for Teams)
 
 Create `config.yaml` alongside your agents:
 
@@ -479,7 +499,7 @@ execution:
   llm_timeout: 60
 ```
 
-### Option 2: User-Level Config (Global Defaults)
+#### User-Level Config (Global Defaults)
 
 Create `~/.holodeck/config.yaml` in your home directory:
 
@@ -496,7 +516,7 @@ providers:
 EOF
 ```
 
-### Step 3: Set Environment Variables
+### Setting Environment Variables
 
 ```bash
 export AZURE_OPENAI_API_KEY="..."
@@ -510,7 +530,7 @@ AZURE_OPENAI_API_KEY=...
 AZURE_OPENAI_ENDPOINT=...
 ```
 
-### Step 4: Run an Agent
+### Running an Agent
 
 ```bash
 holodeck test agent.yaml
