@@ -23,12 +23,14 @@ def main(ctx: click.Context) -> None:
 
 
 # Import and register commands
+from holodeck.cli.commands.config import config  # noqa: E402, F401
 from holodeck.cli.commands.init import init  # noqa: E402, F401
 from holodeck.cli.commands.test import test  # noqa: E402, F401
 
 # Register commands
 main.add_command(init)
 main.add_command(test)
+main.add_command(config)
 
 
 if __name__ == "__main__":

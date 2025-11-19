@@ -5,6 +5,7 @@ including:
 
 - `init`: Initialize a new HoloDeck project with templates
 - `test`: Run tests for agents and evaluations
+- `config init`: Initialize global or project configuration files
 - (Future) `chat`: Interactive chat interface with agents
 - (Future) `deploy`: Deploy agents to production
 
