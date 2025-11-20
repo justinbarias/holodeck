@@ -38,25 +38,23 @@ class TestInstructions:
         with pytest.raises(ValidationError):
             Instructions()
 
-    def test_instructions_file_not_empty(self) -> None:
-        """Test that file cannot be empty string."""
+    @pytest.mark.parametrize(
+        "field,invalid_value",
+        [
+            ("file", ""),
+            ("file", "   "),
+            ("inline", ""),
+            ("inline", "   "),
+        ],
+        ids=["file_empty", "file_whitespace", "inline_empty", "inline_whitespace"],
+    )
+    def test_instructions_string_fields_not_empty_or_whitespace(
+        self, field: str, invalid_value: str
+    ) -> None:
+        """Test that string fields cannot be empty or whitespace-only."""
+        kwargs = {field: invalid_value}
         with pytest.raises(ValidationError):
-            Instructions(file="")
-
-    def test_instructions_inline_not_empty(self) -> None:
-        """Test that inline cannot be empty string."""
-        with pytest.raises(ValidationError):
-            Instructions(inline="")
-
-    def test_instructions_file_whitespace_only(self) -> None:
-        """Test that file cannot be whitespace-only string."""
-        with pytest.raises(ValidationError):
-            Instructions(file="   ")
-
-    def test_instructions_inline_whitespace_only(self) -> None:
-        """Test that inline cannot be whitespace-only string."""
-        with pytest.raises(ValidationError):
-            Instructions(inline="   ")
+            Instructions(**kwargs)
 
     def test_instructions_file_with_whitespace(self) -> None:
         """Test that file with whitespace is accepted."""
@@ -88,41 +86,38 @@ class TestAgent:
         assert agent.model.provider == ProviderEnum.OPENAI
         assert agent.instructions.inline == "You are helpful."
 
-    def test_agent_name_required(self) -> None:
-        """Test that name is required."""
+    @pytest.mark.parametrize(
+        "missing_field,kwargs",
+        [
+            (
+                "name",
+                {
+                    "model": LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                    "instructions": Instructions(inline="Test"),
+                },
+            ),
+            (
+                "model",
+                {
+                    "name": "test",
+                    "instructions": Instructions(inline="Test"),
+                },
+            ),
+            (
+                "instructions",
+                {
+                    "name": "test",
+                    "model": LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+                },
+            ),
+        ],
+        ids=["name_required", "model_required", "instructions_required"],
+    )
+    def test_agent_required_fields(self, missing_field: str, kwargs: dict) -> None:
+        """Test that required fields raise ValidationError when missing."""
         with pytest.raises(ValidationError) as exc_info:
-            Agent(
-                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
-                instructions=Instructions(inline="Test"),
-            )
-        assert "name" in str(exc_info.value).lower()
-
-    def test_agent_name_not_empty(self) -> None:
-        """Test that name cannot be empty string."""
-        with pytest.raises(ValidationError):
-            Agent(
-                name="",
-                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
-                instructions=Instructions(inline="Test"),
-            )
-
-    def test_agent_model_required(self) -> None:
-        """Test that model is required."""
-        with pytest.raises(ValidationError) as exc_info:
-            Agent(
-                name="test",
-                instructions=Instructions(inline="Test"),
-            )
-        assert "model" in str(exc_info.value).lower()
-
-    def test_agent_instructions_required(self) -> None:
-        """Test that instructions are required."""
-        with pytest.raises(ValidationError) as exc_info:
-            Agent(
-                name="test",
-                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
-            )
-        assert "instructions" in str(exc_info.value).lower()
+            Agent(**kwargs)
+        assert missing_field in str(exc_info.value).lower()
 
     def test_agent_description_optional(self) -> None:
         """Test that description is optional."""
@@ -243,54 +238,37 @@ class TestAgent:
         )
         assert agent.author == "Alice Johnson"
 
-    def test_agent_author_not_empty(self) -> None:
-        """Test that author cannot be empty string."""
+    @pytest.mark.parametrize(
+        "field,invalid_value",
+        [
+            ("name", ""),
+            ("name", "   "),
+            ("description", ""),
+            ("description", "   "),
+            ("author", ""),
+            ("author", "   "),
+        ],
+        ids=[
+            "name_empty",
+            "name_whitespace",
+            "description_empty",
+            "description_whitespace",
+            "author_empty",
+            "author_whitespace",
+        ],
+    )
+    def test_agent_string_fields_not_empty_or_whitespace(
+        self, field: str, invalid_value: str
+    ) -> None:
+        """Test that string fields cannot be empty or whitespace-only."""
+        kwargs = {
+            "name": "test",
+            "model": LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            "instructions": Instructions(inline="Test"),
+        }
+        kwargs[field] = invalid_value
         with pytest.raises(ValidationError):
-            Agent(
-                name="test",
-                author="",
-                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
-                instructions=Instructions(inline="Test"),
-            )
-
-    def test_agent_author_whitespace_only(self) -> None:
-        """Test that author cannot be whitespace-only string."""
-        with pytest.raises(ValidationError):
-            Agent(
-                name="test",
-                author="   ",
-                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
-                instructions=Instructions(inline="Test"),
-            )
-
-    def test_agent_name_whitespace_only(self) -> None:
-        """Test that name cannot be whitespace-only string."""
-        with pytest.raises(ValidationError):
-            Agent(
-                name="   ",
-                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
-                instructions=Instructions(inline="Test"),
-            )
-
-    def test_agent_description_whitespace_only(self) -> None:
-        """Test that description cannot be whitespace-only string."""
-        with pytest.raises(ValidationError):
-            Agent(
-                name="test",
-                description="   ",
-                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
-                instructions=Instructions(inline="Test"),
-            )
-
-    def test_agent_description_not_empty(self) -> None:
-        """Test that description cannot be empty string."""
-        with pytest.raises(ValidationError):
-            Agent(
-                name="test",
-                description="",
-                model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
-                instructions=Instructions(inline="Test"),
-            )
+            Agent(**kwargs)
 
     def test_agent_tools_max_limit(self) -> None:
         """Test that agent cannot have more than 50 tools."""

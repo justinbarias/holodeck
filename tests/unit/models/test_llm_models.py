@@ -57,52 +57,36 @@ class TestLLMProvider:
                 name="",
             )
 
-    def test_llm_provider_temperature_range_valid_low(self) -> None:
-        """Test that temperature can be 0.0."""
-        provider = LLMProvider(
-            provider=ProviderEnum.OPENAI,
-            name="gpt-4o",
-            temperature=0.0,
-        )
-        assert provider.temperature == 0.0
-
-    def test_llm_provider_temperature_range_valid_high(self) -> None:
-        """Test that temperature can be 2.0."""
-        provider = LLMProvider(
-            provider=ProviderEnum.OPENAI,
-            name="gpt-4o",
-            temperature=2.0,
-        )
-        assert provider.temperature == 2.0
-
-    def test_llm_provider_temperature_range_valid_mid(self) -> None:
-        """Test that temperature in the middle range works."""
-        provider = LLMProvider(
-            provider=ProviderEnum.OPENAI,
-            name="gpt-4o",
-            temperature=0.7,
-        )
-        assert provider.temperature == 0.7
-
-    def test_llm_provider_temperature_below_zero_invalid(self) -> None:
-        """Test that temperature below 0 is invalid."""
-        with pytest.raises(ValidationError) as exc_info:
-            LLMProvider(
+    @pytest.mark.parametrize(
+        "temperature,should_pass",
+        [
+            (0.0, True),
+            (0.7, True),
+            (2.0, True),
+            (-0.1, False),
+            (2.1, False),
+        ],
+        ids=["valid_low", "valid_mid", "valid_high", "below_min", "above_max"],
+    )
+    def test_llm_provider_temperature_range_validation(
+        self, temperature: float, should_pass: bool
+    ) -> None:
+        """Test temperature validation for all boundary conditions."""
+        if should_pass:
+            provider = LLMProvider(
                 provider=ProviderEnum.OPENAI,
                 name="gpt-4o",
-                temperature=-0.1,
+                temperature=temperature,
             )
-        assert "temperature" in str(exc_info.value).lower()
-
-    def test_llm_provider_temperature_above_two_invalid(self) -> None:
-        """Test that temperature above 2 is invalid."""
-        with pytest.raises(ValidationError) as exc_info:
-            LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4o",
-                temperature=2.1,
-            )
-        assert "temperature" in str(exc_info.value).lower()
+            assert provider.temperature == temperature
+        else:
+            with pytest.raises(ValidationError) as exc_info:
+                LLMProvider(
+                    provider=ProviderEnum.OPENAI,
+                    name="gpt-4o",
+                    temperature=temperature,
+                )
+            assert "temperature" in str(exc_info.value).lower()
 
     def test_llm_provider_temperature_optional(self) -> None:
         """Test that temperature is optional."""
@@ -112,34 +96,35 @@ class TestLLMProvider:
         )
         assert provider.temperature == 0.3  # the default temperature
 
-    def test_llm_provider_max_tokens_positive(self) -> None:
-        """Test that max_tokens must be positive."""
-        provider = LLMProvider(
-            provider=ProviderEnum.OPENAI,
-            name="gpt-4o",
-            max_tokens=2000,
-        )
-        assert provider.max_tokens == 2000
-
-    def test_llm_provider_max_tokens_zero_invalid(self) -> None:
-        """Test that max_tokens cannot be zero."""
-        with pytest.raises(ValidationError) as exc_info:
-            LLMProvider(
+    @pytest.mark.parametrize(
+        "max_tokens,should_pass",
+        [
+            (2000, True),
+            (1, True),
+            (0, False),
+            (-100, False),
+        ],
+        ids=["valid_positive", "valid_one", "zero_invalid", "negative_invalid"],
+    )
+    def test_llm_provider_max_tokens_validation(
+        self, max_tokens: int, should_pass: bool
+    ) -> None:
+        """Test max_tokens validation for all boundary conditions."""
+        if should_pass:
+            provider = LLMProvider(
                 provider=ProviderEnum.OPENAI,
                 name="gpt-4o",
-                max_tokens=0,
+                max_tokens=max_tokens,
             )
-        assert "max_tokens" in str(exc_info.value).lower()
-
-    def test_llm_provider_max_tokens_negative_invalid(self) -> None:
-        """Test that max_tokens cannot be negative."""
-        with pytest.raises(ValidationError) as exc_info:
-            LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4o",
-                max_tokens=-100,
-            )
-        assert "max_tokens" in str(exc_info.value).lower()
+            assert provider.max_tokens == max_tokens
+        else:
+            with pytest.raises(ValidationError) as exc_info:
+                LLMProvider(
+                    provider=ProviderEnum.OPENAI,
+                    name="gpt-4o",
+                    max_tokens=max_tokens,
+                )
+            assert "max_tokens" in str(exc_info.value).lower()
 
     def test_llm_provider_max_tokens_optional(self) -> None:
         """Test that max_tokens is optional."""
