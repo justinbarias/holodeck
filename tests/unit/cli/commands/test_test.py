@@ -12,7 +12,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
 
 from holodeck.cli.commands.test import test
@@ -104,41 +103,185 @@ class TestCLIArgumentParsing:
         assert result.exit_code != 0
         assert "Missing argument" in result.output or "AGENT_CONFIG" in result.output
 
-    def test_agent_config_argument_accepted(
-        self, cli_runner, temp_agent_config, mock_test_command_deps
-    ):
+    def test_agent_config_argument_accepted(self):
         """AGENT_CONFIG positional argument is accepted."""
-        result = cli_runner.invoke(test, [str(temp_agent_config)])
-        assert "AGENT_CONFIG" not in result.output or result.exit_code == 0
+        runner = CliRunner()
 
-    def test_output_option_accepted(
-        self, cli_runner, temp_agent_config, mock_test_command_deps
-    ):
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                # Mock ConfigLoader
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
+                mock_loader_class.return_value = mock_loader
+
+                mock_instance = MagicMock()
+                mock_instance.execute_tests = AsyncMock(
+                    return_value=_create_mock_report(tmp_path)
+                )
+                mock_executor.return_value = mock_instance
+
+                result = runner.invoke(test, [tmp_path])
+
+                assert "AGENT_CONFIG" not in result.output or result.exit_code == 0
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_output_option_accepted(self):
         """--output option is accepted for report file path."""
-        result = cli_runner.invoke(
-            test, [str(temp_agent_config), "--output", "report.json"]
-        )
-        # Should not complain about invalid option
-        assert "no such option" not in result.output.lower()
+        runner = CliRunner()
 
-    @pytest.mark.parametrize(
-        "option_args",
-        [
-            (["--format", "json"], "format option"),
-            (["--verbose"], "verbose flag"),
-            (["--quiet"], "quiet flag"),
-            (["--timeout", "120"], "timeout option"),
-        ],
-        ids=["format", "verbose", "quiet", "timeout"],
-    )
-    def test_cli_options_accepted(
-        self, cli_runner, temp_agent_config, mock_test_command_deps, option_args
-    ):
-        """Test that various CLI options are accepted without error."""
-        args, description = option_args
-        result = cli_runner.invoke(test, [str(temp_agent_config)] + args)
-        # Should not complain about invalid option
-        assert "no such option" not in result.output.lower()
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
+                mock_loader_class.return_value = mock_loader
+
+                mock_instance = MagicMock()
+                mock_instance.execute_tests = AsyncMock(
+                    return_value=_create_mock_report(tmp_path)
+                )
+                mock_executor.return_value = mock_instance
+
+                result = runner.invoke(test, [tmp_path, "--output", "report.json"])
+
+                # Should not complain about invalid option
+                assert "no such option" not in result.output.lower()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_format_option_accepted(self):
+        """--format option is accepted for report format (json/markdown)."""
+        runner = CliRunner()
+
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
+                mock_loader_class.return_value = mock_loader
+
+                mock_instance = MagicMock()
+                mock_instance.execute_tests = AsyncMock(
+                    return_value=_create_mock_report(tmp_path)
+                )
+                mock_executor.return_value = mock_instance
+
+                result = runner.invoke(test, [tmp_path, "--format", "json"])
+
+                # Should not complain about invalid option
+                assert "no such option" not in result.output.lower()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_verbose_flag_accepted(self):
+        """--verbose flag is accepted for verbose output."""
+        runner = CliRunner()
+
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
+                mock_loader_class.return_value = mock_loader
+
+                mock_instance = MagicMock()
+                mock_instance.execute_tests = AsyncMock(
+                    return_value=_create_mock_report(tmp_path)
+                )
+                mock_executor.return_value = mock_instance
+
+                result = runner.invoke(test, [tmp_path, "--verbose"])
+
+                # Should not complain about invalid option
+                assert "no such option" not in result.output.lower()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_quiet_flag_accepted(self):
+        """--quiet flag is accepted to suppress progress output."""
+        runner = CliRunner()
+
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
+                mock_loader_class.return_value = mock_loader
+
+                mock_instance = MagicMock()
+                mock_instance.execute_tests = AsyncMock(
+                    return_value=_create_mock_report(tmp_path)
+                )
+                mock_executor.return_value = mock_instance
+
+                result = runner.invoke(test, [tmp_path, "--quiet"])
+
+                # Should not complain about invalid option
+                assert "no such option" not in result.output.lower()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_timeout_option_accepted(self):
+        """--timeout option is accepted for execution timeout configuration."""
+        runner = CliRunner()
+
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
+                mock_loader_class.return_value = mock_loader
+
+                mock_instance = MagicMock()
+                mock_instance.execute_tests = AsyncMock(
+                    return_value=_create_mock_report(tmp_path)
+                )
+                mock_executor.return_value = mock_instance
+
+                result = runner.invoke(test, [tmp_path, "--timeout", "120"])
+
+                # Should not complain about invalid option
+                assert "no such option" not in result.output.lower()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
 
     def test_multiple_options_combined(self):
         """Multiple options can be combined in single command."""

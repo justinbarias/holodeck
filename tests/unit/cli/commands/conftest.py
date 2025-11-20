@@ -10,7 +10,7 @@ from click.testing import CliRunner
 
 from holodeck.models.agent import Agent
 from holodeck.models.test_case import TestCaseModel
-from holodeck.models.test_result import ReportSummary, TestReport
+from holodeck.models.test_result import ReportSummary, TestReport, TestResult
 
 
 @pytest.fixture
@@ -26,7 +26,21 @@ def temp_agent_config():
     Yields:
         Path to temporary YAML file that is automatically cleaned up.
     """
-    with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False, mode="w") as tmp:
+        # Write a valid minimal agent config with one test case
+        tmp.write(
+            """name: test_agent
+description: Test agent
+model:
+  provider: openai
+  name: gpt-4
+instructions:
+  inline: Test instructions
+test_cases:
+  - name: test_1
+    input: test input
+"""
+        )
         tmp_path = Path(tmp.name)
 
     yield tmp_path
@@ -36,24 +50,78 @@ def temp_agent_config():
 
 
 @pytest.fixture
-def mock_test_report():
+def mock_test_result():
+    """Create a mock test result factory.
+
+    Returns:
+        Callable that creates TestResult instances with configurable pass/fail state.
+    """
+
+    def _create_result(passed: bool = True, **kwargs: Any) -> TestResult:
+        defaults = {
+            "test_name": "test_1",
+            "test_input": "input",
+            "processed_files": [],
+            "agent_response": "response",
+            "tool_calls": [],
+            "expected_tools": None,
+            "tools_matched": None,
+            "metric_results": [],
+            "ground_truth": None,
+            "passed": passed,
+            "execution_time_ms": 100,
+            "errors": [] if passed else ["Test failed"],
+            "timestamp": "2024-01-01T00:00:00Z",
+        }
+        defaults.update(kwargs)
+        return TestResult(**defaults)
+
+    return _create_result
+
+
+@pytest.fixture
+def mock_test_report(mock_test_result):
     """Create a mock test report factory.
 
     Returns:
         Callable that creates TestReport instances for testing.
     """
 
-    def _create_report(agent_config_path: str = "test.yaml") -> TestReport:
+    def _create_report(
+        agent_config_path: str = "test.yaml",
+        passed: int = 0,
+        failed: int = 0,
+        results: list[TestResult] | None = None,
+    ) -> TestReport:
+        if results is None:
+            results = []
+            for i in range(passed):
+                results.append(mock_test_result(passed=True, test_name=f"test_{i}"))
+            for i in range(failed):
+                results.append(
+                    mock_test_result(passed=False, test_name=f"test_fail_{i}")
+                )
+
+        # Calculate totals from results if provided, otherwise use passed/failed
+        if results is not None and (passed == 0 and failed == 0):
+            total = len(results)
+            passed = sum(1 for r in results if r.passed)
+            failed = total - passed
+        else:
+            total = passed + failed
+
+        pass_rate = (passed / total * 100.0) if total > 0 else 0.0
+
         return TestReport(
             agent_name="test_agent",
             agent_config_path=agent_config_path,
-            results=[],
+            results=results,
             summary=ReportSummary(
-                total_tests=0,
-                passed=0,
-                failed=0,
-                pass_rate=0.0,
-                total_duration_ms=0,
+                total_tests=total,
+                passed=passed,
+                failed=failed,
+                pass_rate=pass_rate,
+                total_duration_ms=100 * total,
                 metrics_evaluated={},
                 average_scores={},
             ),
@@ -110,7 +178,10 @@ def mock_config_loader(mock_agent_factory):
 
 @pytest.fixture
 def mock_test_executor(mock_test_report):
-    """Mock the TestExecutor class.
+    """Mock the TestExecutor class with default behavior.
+
+    The mock can be customized in tests by accessing the instance's
+    execute_tests method.
 
     Yields:
         Tuple of (mock_executor_class, mock_executor_instance) for assertions.
