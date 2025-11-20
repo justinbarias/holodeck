@@ -90,17 +90,16 @@ class TestInlineSchemaValidation:
         result = SchemaValidator.validate_schema(schema)
         assert result == schema
 
-    def test_simple_string_schema(self) -> None:
-        """Test validation of simple string type schema."""
-        schema = {"type": "string"}
-
-        result = SchemaValidator.validate_schema(schema)
-        assert result == schema
-
-    def test_simple_number_schema(self) -> None:
-        """Test validation of simple number type schema."""
-        schema = {"type": "number"}
-
+    @pytest.mark.parametrize(
+        "schema",
+        [
+            {"type": "string"},
+            {"type": "number"},
+        ],
+        ids=["simple_string", "simple_number"],
+    )
+    def test_simple_type_schemas(self, schema: dict[str, Any]) -> None:
+        """Test validation of simple type schemas."""
         result = SchemaValidator.validate_schema(schema)
         assert result == schema
 
@@ -161,119 +160,118 @@ class TestInlineSchemaValidation:
 class TestUnsupportedKeywordRejection:
     """Tests for rejection of unsupported JSON Schema keywords."""
 
-    def test_ref_keyword_rejected(self) -> None:
-        """Test that $ref keyword is rejected."""
-        schema = {
-            "type": "object",
-            "properties": {"user": {"$ref": "#/definitions/user"}},
-        }
+    @pytest.mark.parametrize(
+        "keyword,schema",
+        [
+            (
+                "$ref",
+                {
+                    "type": "object",
+                    "properties": {"user": {"$ref": "#/definitions/user"}},
+                },
+            ),
+            (
+                "anyOf",
+                {
+                    "anyOf": [
+                        {"type": "string"},
+                        {"type": "number"},
+                    ]
+                },
+            ),
+            (
+                "oneOf",
+                {
+                    "oneOf": [
+                        {"type": "string"},
+                        {"type": "number"},
+                    ]
+                },
+            ),
+            (
+                "allOf",
+                {
+                    "allOf": [
+                        {"type": "object"},
+                        {"properties": {"name": {"type": "string"}}},
+                    ]
+                },
+            ),
+            (
+                "patternProperties",
+                {
+                    "type": "object",
+                    "patternProperties": {"^[a-z]+$": {"type": "string"}},
+                },
+            ),
+            (
+                "pattern",
+                {
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                            "type": "string",
+                            "pattern": "^[a-z]+@[a-z]+$",
+                        }
+                    },
+                },
+            ),
+            (
+                "minLength",
+                {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "minLength": 1,
+                        }
+                    },
+                },
+            ),
+            (
+                "maxLength",
+                {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "maxLength": 100,
+                        }
+                    },
+                },
+            ),
+            (
+                "custom_keyword",
+                {
+                    "type": "object",
+                    "custom_keyword": "value",
+                },
+            ),
+        ],
+        ids=[
+            "$ref",
+            "anyOf",
+            "oneOf",
+            "allOf",
+            "patternProperties",
+            "pattern",
+            "minLength",
+            "maxLength",
+            "custom_keyword",
+        ],
+    )
+    def test_unsupported_keywords_rejected(
+        self, keyword: str, schema: dict[str, Any]
+    ) -> None:
+        """Test that unsupported JSON Schema keywords are rejected."""
+        # Escape $ in regex pattern for $ref keyword
+        pattern = (
+            f"Unknown JSON Schema keyword: \\{keyword}"
+            if keyword == "$ref"
+            else f"Unknown JSON Schema keyword: {keyword}"
+        )
 
-        with pytest.raises(ValueError, match="Unknown JSON Schema keyword: \\$ref"):
-            SchemaValidator.validate_schema(schema)
-
-    def test_anyof_keyword_rejected(self) -> None:
-        """Test that anyOf keyword is rejected."""
-        schema = {
-            "anyOf": [
-                {"type": "string"},
-                {"type": "number"},
-            ]
-        }
-
-        with pytest.raises(ValueError, match="Unknown JSON Schema keyword: anyOf"):
-            SchemaValidator.validate_schema(schema)
-
-    def test_oneof_keyword_rejected(self) -> None:
-        """Test that oneOf keyword is rejected."""
-        schema = {
-            "oneOf": [
-                {"type": "string"},
-                {"type": "number"},
-            ]
-        }
-
-        with pytest.raises(ValueError, match="Unknown JSON Schema keyword: oneOf"):
-            SchemaValidator.validate_schema(schema)
-
-    def test_allof_keyword_rejected(self) -> None:
-        """Test that allOf keyword is rejected."""
-        schema = {
-            "allOf": [
-                {"type": "object"},
-                {"properties": {"name": {"type": "string"}}},
-            ]
-        }
-
-        with pytest.raises(ValueError, match="Unknown JSON Schema keyword: allOf"):
-            SchemaValidator.validate_schema(schema)
-
-    def test_pattern_properties_keyword_rejected(self) -> None:
-        """Test that patternProperties keyword is rejected."""
-        schema = {
-            "type": "object",
-            "patternProperties": {"^[a-z]+$": {"type": "string"}},
-        }
-
-        with pytest.raises(
-            ValueError, match="Unknown JSON Schema keyword: patternProperties"
-        ):
-            SchemaValidator.validate_schema(schema)
-
-    def test_pattern_keyword_rejected(self) -> None:
-        """Test that pattern keyword is rejected."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "email": {
-                    "type": "string",
-                    "pattern": "^[a-z]+@[a-z]+$",
-                }
-            },
-        }
-
-        with pytest.raises(ValueError, match="Unknown JSON Schema keyword: pattern"):
-            SchemaValidator.validate_schema(schema)
-
-    def test_min_length_keyword_rejected(self) -> None:
-        """Test that minLength keyword is rejected."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "minLength": 1,
-                }
-            },
-        }
-
-        with pytest.raises(ValueError, match="Unknown JSON Schema keyword: minLength"):
-            SchemaValidator.validate_schema(schema)
-
-    def test_max_length_keyword_rejected(self) -> None:
-        """Test that maxLength keyword is rejected."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "maxLength": 100,
-                }
-            },
-        }
-
-        with pytest.raises(ValueError, match="Unknown JSON Schema keyword: maxLength"):
-            SchemaValidator.validate_schema(schema)
-
-    def test_unknown_custom_keyword_rejected(self) -> None:
-        """Test that unknown custom keywords are rejected."""
-        schema = {
-            "type": "object",
-            "custom_keyword": "value",
-        }
-
-        with pytest.raises(
-            ValueError, match="Unknown JSON Schema keyword: custom_keyword"
-        ):
+        with pytest.raises(ValueError, match=pattern):
             SchemaValidator.validate_schema(schema)
 
     def test_multiple_unsupported_keywords_shows_first(self) -> None:
@@ -291,78 +289,90 @@ class TestUnsupportedKeywordRejection:
 class TestBasicKeywordSupport:
     """Tests for supported Basic JSON Schema keywords."""
 
-    def test_type_keyword_supported(self) -> None:
-        """Test that 'type' keyword is supported."""
-        for type_val in [
-            "string",
-            "number",
-            "integer",
-            "boolean",
-            "array",
-            "object",
-            "null",
-        ]:
-            schema = {"type": type_val}
-            result = SchemaValidator.validate_schema(schema)
-            assert result["type"] == type_val
-
-    def test_properties_keyword_supported(self) -> None:
-        """Test that 'properties' keyword is supported."""
-        schema = {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "age": {"type": "integer"},
-            },
-        }
+    @pytest.mark.parametrize(
+        "type_val",
+        ["string", "number", "integer", "boolean", "array", "object", "null"],
+        ids=["string", "number", "integer", "boolean", "array", "object", "null"],
+    )
+    def test_type_keyword_supported(self, type_val: str) -> None:
+        """Test that 'type' keyword is supported for all basic types."""
+        schema = {"type": type_val}
         result = SchemaValidator.validate_schema(schema)
-        assert "properties" in result
+        assert result["type"] == type_val
 
-    def test_required_keyword_supported(self) -> None:
-        """Test that 'required' keyword is supported."""
-        schema = {
-            "type": "object",
-            "properties": {"name": {"type": "string"}},
-            "required": ["name"],
-        }
+    @pytest.mark.parametrize(
+        "keyword,schema,expected_value",
+        [
+            (
+                "properties",
+                {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "age": {"type": "integer"},
+                    },
+                },
+                None,  # Just check presence
+            ),
+            (
+                "required",
+                {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "required": ["name"],
+                },
+                ["name"],
+            ),
+            (
+                "additionalProperties",
+                {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "additionalProperties": False,
+                },
+                False,
+            ),
+            (
+                "items",
+                {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                None,  # Just check presence
+            ),
+            (
+                "enum",
+                {
+                    "enum": ["active", "inactive", "pending"],
+                },
+                ["active", "inactive", "pending"],
+            ),
+            (
+                "default",
+                {
+                    "type": "string",
+                    "default": "unknown",
+                },
+                "unknown",
+            ),
+        ],
+        ids=[
+            "properties",
+            "required",
+            "additionalProperties",
+            "items",
+            "enum",
+            "default",
+        ],
+    )
+    def test_keyword_supported(
+        self, keyword: str, schema: dict[str, Any], expected_value: Any
+    ) -> None:
+        """Test that basic JSON Schema keywords are supported."""
         result = SchemaValidator.validate_schema(schema)
-        assert result["required"] == ["name"]
-
-    def test_additional_properties_keyword_supported(self) -> None:
-        """Test that 'additionalProperties' keyword is supported."""
-        schema = {
-            "type": "object",
-            "properties": {"name": {"type": "string"}},
-            "additionalProperties": False,
-        }
-        result = SchemaValidator.validate_schema(schema)
-        assert result["additionalProperties"] is False
-
-    def test_items_keyword_supported(self) -> None:
-        """Test that 'items' keyword is supported."""
-        schema = {
-            "type": "array",
-            "items": {"type": "string"},
-        }
-        result = SchemaValidator.validate_schema(schema)
-        assert "items" in result
-
-    def test_enum_keyword_supported(self) -> None:
-        """Test that 'enum' keyword is supported."""
-        schema = {
-            "enum": ["active", "inactive", "pending"],
-        }
-        result = SchemaValidator.validate_schema(schema)
-        assert result["enum"] == ["active", "inactive", "pending"]
-
-    def test_default_keyword_supported(self) -> None:
-        """Test that 'default' keyword is supported."""
-        schema = {
-            "type": "string",
-            "default": "unknown",
-        }
-        result = SchemaValidator.validate_schema(schema)
-        assert result["default"] == "unknown"
+        assert keyword in result
+        if expected_value is not None:
+            assert result[keyword] == expected_value
 
     def test_minimum_maximum_keywords_supported(self) -> None:
         """Test that 'minimum' and 'maximum' keywords are supported."""
