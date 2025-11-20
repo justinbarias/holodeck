@@ -13,7 +13,7 @@ Key features:
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from semantic_kernel import Kernel
 from semantic_kernel.agents import Agent as SKAgent
@@ -28,9 +28,6 @@ from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
 from holodeck.models.agent import Agent
 from holodeck.models.llm import ProviderEnum
-
-if TYPE_CHECKING:
-    from semantic_kernel.connectors.ai.anthropic import AnthropicChatCompletion
 
 # Try to import Anthropic support (optional dependency)
 try:
