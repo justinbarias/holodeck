@@ -275,8 +275,21 @@ def test_project_init_input_author_too_long() -> None:
 
 
 @pytest.mark.unit
-def test_template_manifest_invalid_version_no_dots() -> None:
-    """Test that TemplateManifest rejects version without dots."""
+@pytest.mark.parametrize(
+    "invalid_version,reason",
+    [
+        ("1", "no_dots"),
+        ("1.0.0.0", "too_many_dots"),
+        ("1.a.0", "non_integer"),
+        ("1.0.b", "non_integer"),
+        ("a.b.c", "non_integer"),
+    ],
+    ids=["no_dots", "too_many_dots", "non_int_minor", "non_int_patch", "all_non_int"],
+)
+def test_template_manifest_invalid_version_formats(
+    invalid_version: str, reason: str
+) -> None:
+    """Test that TemplateManifest rejects various invalid semantic version formats."""
     from holodeck.models.template_manifest import TemplateManifest
 
     data: dict[str, Any] = {
@@ -284,44 +297,11 @@ def test_template_manifest_invalid_version_no_dots() -> None:
         "display_name": "Conversational Agent",
         "description": "AI assistant for conversations",
         "category": "conversational-ai",
-        "version": "1",  # Missing .0.0
+        "version": invalid_version,
     }
     with pytest.raises(ValidationError) as exc_info:
         TemplateManifest(**data)
-    assert "semver" in str(exc_info.value).lower()
 
-
-@pytest.mark.unit
-def test_template_manifest_invalid_version_too_many_dots() -> None:
-    """Test that TemplateManifest rejects version with too many parts."""
-    from holodeck.models.template_manifest import TemplateManifest
-
-    data: dict[str, Any] = {
-        "name": "conversational",
-        "display_name": "Conversational Agent",
-        "description": "AI assistant for conversations",
-        "category": "conversational-ai",
-        "version": "1.0.0.0",  # Too many parts
-    }
-    with pytest.raises(ValidationError) as exc_info:
-        TemplateManifest(**data)
-    assert "semver" in str(exc_info.value).lower()
-
-
-@pytest.mark.unit
-def test_template_manifest_invalid_version_non_integer() -> None:
-    """Test that TemplateManifest rejects version with non-integer parts."""
-    from holodeck.models.template_manifest import TemplateManifest
-
-    invalid_versions = ["1.a.0", "1.0.b", "a.b.c"]
-
-    for invalid_version in invalid_versions:
-        data: dict[str, Any] = {
-            "name": "conversational",
-            "display_name": "Conversational Agent",
-            "description": "AI assistant for conversations",
-            "category": "conversational-ai",
-            "version": invalid_version,
-        }
-        with pytest.raises(ValidationError):
-            TemplateManifest(**data)
+    # Verify error message mentions semver validation
+    if reason in ["no_dots", "too_many_dots"]:
+        assert "semver" in str(exc_info.value).lower()
