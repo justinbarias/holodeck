@@ -13,9 +13,11 @@ import contextlib
 import hashlib
 import json
 import tempfile
+import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import requests
 
@@ -26,6 +28,8 @@ from holodeck.models.test_result import ProcessedFileInput
 
 logger = get_logger(__name__)
 
+T = TypeVar("T")
+
 
 class FileProcessor:
     """Process files with markitdown for multimodal test inputs."""
@@ -35,6 +39,7 @@ class FileProcessor:
         cache_dir: str | None = None,
         download_timeout_ms: int = 30000,
         max_retries: int = 3,
+        processing_timeout_ms: int = 30000,
     ) -> None:
         """Initialize file processor.
 
@@ -42,17 +47,21 @@ class FileProcessor:
             cache_dir: Directory for caching remote files. Defaults to .holodeck/cache/
             download_timeout_ms: Timeout for file downloads in milliseconds
             max_retries: Maximum number of retry attempts for downloads
+            processing_timeout_ms: Timeout for file processing in milliseconds.
+                Defaults to 30000ms.
         """
         self.cache_dir = Path(cache_dir or ".holodeck/cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         self.download_timeout_ms = download_timeout_ms
         self.max_retries = max_retries
+        self.processing_timeout_ms = processing_timeout_ms
         self.md: Any = None  # Initialize lazily
 
         logger.debug(
             f"FileProcessor initialized: cache_dir={self.cache_dir}, "
-            f"timeout={download_timeout_ms}ms, max_retries={max_retries}"
+            f"download_timeout={download_timeout_ms}ms, "
+            f"processing_timeout={processing_timeout_ms}ms, max_retries={max_retries}"
         )
 
         try:
@@ -71,6 +80,56 @@ class FileProcessor:
 
             self.md = MarkItDown()
         return self.md
+
+    def _with_timeout(
+        self, func: Callable[..., T], timeout_ms: int, *args: Any, **kwargs: Any
+    ) -> T:
+        """Execute function with timeout support using threading.
+
+        Provides cross-platform timeout support using threading.Timer.
+        The timeout works by setting a timer that can interrupt the operation
+        (though this is done via exception raising in the calling thread).
+
+        Args:
+            func: Function to execute
+            timeout_ms: Timeout in milliseconds
+            *args: Positional arguments for func
+            **kwargs: Keyword arguments for func
+
+        Returns:
+            Result of function execution
+
+        Raises:
+            TimeoutError: If function execution exceeds timeout
+        """
+        timeout_sec = timeout_ms / 1000.0
+        result_holder: list[T] = []
+        exception_holder: list[BaseException] = []
+
+        def target() -> None:
+            try:
+                result: T = func(*args, **kwargs)
+                result_holder.append(result)
+            except BaseException as e:
+                exception_holder.append(e)
+
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
+        thread.join(timeout=timeout_sec)
+
+        # Check if thread is still alive (timeout occurred)
+        if thread.is_alive():
+            raise TimeoutError(f"Processing exceeded {timeout_ms}ms timeout limit")
+
+        # Check if an exception occurred in the thread
+        if exception_holder:
+            raise exception_holder[0]
+
+        # Return result if available
+        if result_holder:
+            return result_holder[0]
+
+        raise RuntimeError("No result from processing operation")
 
     def _get_cache_key(self, url_or_path: str) -> str:
         """Generate cache key using MD5 hash of URL or path.
@@ -208,14 +267,34 @@ class FileProcessor:
         except Exception as e:
             elapsed_ms = int((time.time() - start_time) * 1000)
             log_exception(logger, f"File processing failed: {file_location}", e)
+            # Create detailed error message with context
+            error_msg = self._format_error_message(e, file_location)
             return ProcessedFileInput(
                 original=file_input,
                 markdown_content="",
                 metadata={},
                 processing_time_ms=elapsed_ms,
                 cached_path=None,
-                error=str(e),
+                error=error_msg,
             )
+
+    def _format_error_message(self, error: Exception, file_location: str) -> str:
+        """Format error message with context and file location.
+
+        Args:
+            error: The exception that occurred
+            file_location: Location of file being processed (path or URL)
+
+        Returns:
+            Formatted error message with context
+        """
+        error_type = type(error).__name__
+        error_str = str(error)
+
+        # Build error message with file context
+        if file_location and file_location != "unknown":
+            return f"{error_type}: {error_str} (while processing: {file_location})"
+        return f"{error_type}: {error_str}"
 
     def _preprocess_pdf_pages(self, file_path: Path, pages: list[int]) -> Path:
         """Extract specific pages from PDF into temporary file.
@@ -524,11 +603,17 @@ class FileProcessor:
             logger.warning(f"Large file detected: {file_input.path} ({size_mb:.2f}MB)")
             metadata["warning"] = f"Large file detected ({size_mb:.2f}MB)"
 
-        # Convert file (use preprocessed path if available)
+        # Convert file (use preprocessed path if available) with timeout
         logger.debug(f"Converting local file to markdown: {file_input.path}")
         md = self._get_markitdown()
-        result = md.convert(str(processed_path))
-        markdown_content = result.text_content
+        try:
+            result = self._with_timeout(
+                md.convert, self.processing_timeout_ms, str(processed_path)
+            )
+            markdown_content = result.text_content
+        except TimeoutError:
+            logger.error(f"File processing timeout: {file_input.path}")
+            raise
 
         # Clean up temporary preprocessed file if created
         if processed_path != path:
@@ -611,8 +696,14 @@ class FileProcessor:
 
             logger.debug(f"Converting remote file to markdown: {url}")
             md = self._get_markitdown()
-            result = md.convert(str(processed_path))
-            markdown_content = result.text_content
+            try:
+                result = self._with_timeout(
+                    md.convert, self.processing_timeout_ms, str(processed_path)
+                )
+                markdown_content = result.text_content
+            except TimeoutError:
+                logger.error(f"Remote file processing timeout: {url}")
+                raise
 
             # Clean up temporary preprocessed file if created
             if processed_path != path_obj:

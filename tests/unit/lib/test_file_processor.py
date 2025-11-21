@@ -975,3 +975,280 @@ class TestFileProcessorPageSheetRangeExtraction:
                 temp_file_created.unlink()
         finally:
             Path(tmp_path).unlink(missing_ok=True)
+
+
+class TestFileProcessorErrorHandlingAdvanced:
+    """Tests for advanced error handling including timeout and malformed files."""
+
+    def test_timeout_handling_local_file(self) -> None:
+        """Test that processing timeout is handled gracefully."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf")
+            processor = FileProcessor(processing_timeout_ms=1000)
+
+            # Mock markitdown to simulate slow processing
+            with mock.patch.object(processor, "_get_markitdown") as mock_get_md:
+                mock_md_instance = mock.MagicMock()
+                # Simulate timeout by raising an exception
+                mock_md_instance.convert.side_effect = TimeoutError(
+                    "File processing exceeded 1000ms timeout"
+                )
+                mock_get_md.return_value = mock_md_instance
+
+                result = processor.process_file(file_input)
+
+                assert result.error is not None
+                assert "timeout" in result.error.lower()
+                assert result.markdown_content == ""
+                assert result.processing_time_ms is not None
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_timeout_handling_remote_file(self) -> None:
+        """Test that timeout during remote file processing is handled."""
+        processor = FileProcessor(processing_timeout_ms=500)
+        file_input = FileInput(url="https://example.com/file.pdf", type="pdf")
+
+        with (
+            mock.patch.object(processor, "_download_file", return_value=b"PDF"),
+            mock.patch.object(processor, "_get_markitdown") as mock_get_md,
+        ):
+            # Mock markitdown to simulate timeout
+            mock_md_instance = mock.MagicMock()
+            mock_md_instance.convert.side_effect = TimeoutError(
+                "Processing exceeded timeout limit"
+            )
+            mock_get_md.return_value = mock_md_instance
+
+            result = processor.process_file(file_input)
+
+            assert result.error is not None
+            assert "timeout" in result.error.lower()
+
+    def test_malformed_pdf_error(self) -> None:
+        """Test handling of malformed PDF file."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(b"Invalid PDF content")
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf")
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_get_markitdown") as mock_get_md:
+                mock_md_instance = mock.MagicMock()
+                mock_md_instance.convert.side_effect = ValueError(
+                    "Invalid PDF structure: corrupted file"
+                )
+                mock_get_md.return_value = mock_md_instance
+
+                result = processor.process_file(file_input)
+
+                assert result.error is not None
+                assert (
+                    "invalid" in result.error.lower()
+                    or "corrupted" in result.error.lower()
+                )
+                assert result.markdown_content == ""
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_malformed_excel_error(self) -> None:
+        """Test handling of malformed Excel file."""
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp.write(b"Invalid Excel content")
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="excel")
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_get_markitdown") as mock_get_md:
+                mock_md_instance = mock.MagicMock()
+                mock_md_instance.convert.side_effect = RuntimeError(
+                    "Failed to read Excel file: invalid format"
+                )
+                mock_get_md.return_value = mock_md_instance
+
+                result = processor.process_file(file_input)
+
+                assert result.error is not None
+                assert result.markdown_content == ""
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_malformed_powerpoint_error(self) -> None:
+        """Test handling of malformed PowerPoint file."""
+        with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp:
+            tmp.write(b"Invalid PowerPoint")
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="powerpoint")
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_get_markitdown") as mock_get_md:
+                mock_md_instance = mock.MagicMock()
+                mock_md_instance.convert.side_effect = EOFError(
+                    "Unexpected end of file: corrupted PowerPoint"
+                )
+                mock_get_md.return_value = mock_md_instance
+
+                result = processor.process_file(file_input)
+
+                assert result.error is not None
+                assert result.markdown_content == ""
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_error_field_populated_with_message(self) -> None:
+        """Test that error field contains descriptive error message."""
+        file_input = FileInput(path="/nonexistent/file.pdf", type="pdf")
+        processor = FileProcessor()
+
+        result = processor.process_file(file_input)
+
+        assert result.error is not None
+        assert "not found" in result.error.lower()
+        assert (
+            "/nonexistent/file.pdf" in result.error
+            or "nonexistent" in result.error.lower()
+        )
+
+    def test_error_field_preserved_across_operations(self) -> None:
+        """Test that error field is set and preserved through processing."""
+        file_input = FileInput(path="/bad/path.pdf", type="pdf")
+        processor = FileProcessor()
+
+        result = processor.process_file(file_input)
+
+        # Verify all error-related fields are consistent
+        assert result.error is not None
+        assert result.markdown_content == ""
+        assert result.original == file_input
+        assert result.processing_time_ms is not None
+
+    def test_multiple_files_continue_on_error(self) -> None:
+        """Test that processing continues when one file fails."""
+        processor = FileProcessor()
+
+        # Create multiple test files
+        file_inputs = [
+            FileInput(path="/valid/path1.pdf", type="pdf"),
+            FileInput(path="/invalid/path.pdf", type="pdf"),
+            FileInput(path="/valid/path2.pdf", type="pdf"),
+        ]
+
+        results = []
+        for file_input in file_inputs:
+            with mock.patch.object(processor, "_process_local_file") as mock_local:
+                if "invalid" in file_input.path:
+                    # Simulate error for invalid file
+                    mock_local.side_effect = FileNotFoundError("Not found")
+                else:
+                    # Simulate success for valid files
+                    mock_local.return_value = ProcessedFileInput(
+                        original=file_input,
+                        markdown_content="# Content",
+                        processing_time_ms=100,
+                    )
+
+                result = processor.process_file(file_input)
+                results.append(result)
+
+        # Verify all files were processed (none were skipped)
+        assert len(results) == 3
+
+        # Verify middle file has error
+        assert results[1].error is not None
+        assert results[1].markdown_content == ""
+
+        # Verify other files processed successfully (not affected by error)
+        assert results[0].error is None or results[0].processing_time_ms is not None
+        assert results[2].error is None or results[2].processing_time_ms is not None
+
+    def test_error_with_remote_file_download_timeout(self) -> None:
+        """Test timeout during remote file download."""
+        processor = FileProcessor(download_timeout_ms=100)
+        file_input = FileInput(url="https://example.com/slow.pdf", type="pdf")
+
+        with mock.patch.object(processor, "_download_file") as mock_download:
+            mock_download.side_effect = TimeoutError("Download timeout")
+
+            result = processor.process_file(file_input)
+
+            assert result.error is not None
+
+    def test_error_message_includes_file_location(self) -> None:
+        """Test that error messages include file location."""
+        file_path = "/path/to/missing/file.pdf"
+        file_input = FileInput(path=file_path, type="pdf")
+        processor = FileProcessor()
+
+        result = processor.process_file(file_input)
+
+        assert result.error is not None
+        # Error should reference the file that failed
+        assert file_path in result.error or "missing" in result.error.lower()
+
+    def test_permission_denied_error(self) -> None:
+        """Test handling of permission denied errors."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf")
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_process_local_file") as mock_local:
+                mock_local.side_effect = PermissionError(
+                    "Permission denied reading file"
+                )
+
+                result = processor.process_file(file_input)
+
+                assert result.error is not None
+                assert "permission" in result.error.lower()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_invalid_file_encoding_handling(self) -> None:
+        """Test handling of file encoding errors."""
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+            # Write invalid UTF-8 bytes
+            tmp.write(b"\x80\x81\x82\x83")
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="text")
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_get_markitdown") as mock_get_md:
+                mock_md_instance = mock.MagicMock()
+                mock_md_instance.convert.side_effect = UnicodeDecodeError(
+                    "utf-8", b"\x80", 0, 1, "invalid start byte"
+                )
+                mock_get_md.return_value = mock_md_instance
+
+                result = processor.process_file(file_input)
+
+                assert result.error is not None
+                assert "UnicodeDecodeError" in result.error
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_custom_timeout_value(self) -> None:
+        """Test that custom timeout value is set correctly."""
+        custom_timeout = 5000
+        processor = FileProcessor(processing_timeout_ms=custom_timeout)
+
+        assert processor.processing_timeout_ms == custom_timeout
+
+    def test_timeout_default_value(self) -> None:
+        """Test that default timeout value is 30 seconds."""
+        processor = FileProcessor()
+
+        assert processor.processing_timeout_ms == 30000

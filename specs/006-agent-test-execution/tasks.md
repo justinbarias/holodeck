@@ -316,12 +316,12 @@ for test_case in test_cases:
 
 - [x] T079 [TEST] Write unit tests for page/sheet/range extraction in tests/unit/lib/test_file_processor.py (test FileInput.pages for PDF, FileInput.sheet for Excel, FileInput.range for PowerPoint, preprocessing before markitdown)
 - [x] T080 [CODE] Implement page/sheet/range extraction in src/holodeck/lib/file_processor.py to pass T079 tests
-- [ ] T081 [TEST] Write unit tests for file size warnings in tests/unit/lib/test_file_processor.py (test >100MB file warning message, verify processing continues)
-- [ ] T082 [CODE] Implement file size warning logic in src/holodeck/lib/file_processor.py to pass T081 tests
-- [ ] T083 [TEST] Write unit tests for file processing error handling in tests/unit/lib/test_file_processor.py (test timeout, malformed files, ProcessedFileInput.error population, test continuation)
-- [ ] T084 [CODE] Implement file processing error handling in src/holodeck/lib/file_processor.py to pass T083 tests
-- [ ] T085 [VERIFY] Run make test-unit to verify file processor tests pass
-- [ ] T086 [VERIFY] Run make format && make lint
+- [x] T081 [TEST] Write unit tests for file size warnings in tests/unit/lib/test_file_processor.py (test >100MB file warning message, verify processing continues)
+- [x] T082 [CODE] Implement file size warning logic in src/holodeck/lib/file_processor.py to pass T081 tests
+- [x] T083 [TEST] Write unit tests for file processing error handling in tests/unit/lib/test_file_processor.py (test timeout, malformed files, ProcessedFileInput.error population, test continuation)
+- [x] T084 [CODE] Implement file processing error handling in src/holodeck/lib/file_processor.py to pass T083 tests
+- [x] T085 [VERIFY] Run make test-unit to verify file processor tests pass
+- [x] T086 [VERIFY] Run make format && make lint
 
 #### T087-T092: Executor Integration (Test-First)
 
