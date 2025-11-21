@@ -2,12 +2,15 @@
 
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from click.testing import CliRunner
 
 
 @pytest.fixture
@@ -151,3 +154,142 @@ def pytest_pycollect_makeitem(collector: Any, name: str, obj: Any) -> Any:
         return None
     # Return None to use default collection behavior
     return None
+
+
+# Integration Test Fixtures (CLI and Project Initialization)
+
+
+@pytest.fixture(scope="class")
+def cli_runner() -> CliRunner:
+    """Shared CLI runner for integration tests.
+
+    Uses class scope to avoid creating new runner instances for each test.
+
+    Returns:
+        CliRunner instance for testing Click commands
+    """
+    return CliRunner()
+
+
+@pytest.fixture
+def init_project(
+    temp_dir: Path,
+) -> Callable[..., tuple[Path, subprocess.CompletedProcess[str]]]:
+    """Create a project using holodeck init command via subprocess.
+
+    This fixture provides a factory function that creates projects with
+    specified parameters. It uses subprocess to ensure end-to-end CLI testing.
+
+    Args:
+        temp_dir: Temporary directory fixture
+
+    Returns:
+        Function that creates projects and returns (project_dir, result)
+
+    Example:
+        ```python
+        def test_something(init_project):
+            project_dir, result = init_project("my-agent", template="research")
+            assert result.returncode == 0
+            assert project_dir.exists()
+        ```
+    """
+
+    def _init_project(
+        project_name: str = "test-project",
+        template: str | None = None,
+        **kwargs: str | bool,
+    ) -> tuple[Path, subprocess.CompletedProcess[str]]:
+        """Create a project using holodeck init.
+
+        Args:
+            project_name: Name of the project to create
+            template: Optional template name
+                (conversational, research, customer-support)
+            **kwargs: Additional CLI flags
+                (e.g., description="...", author="...", force=True)
+
+        Returns:
+            Tuple of (project_directory, subprocess_result)
+        """
+        args = [sys.executable, "-m", "holodeck.cli.main", "init", project_name]
+
+        if template:
+            args.extend(["--template", template])
+
+        for key, value in kwargs.items():
+            flag = f"--{key.replace('_', '-')}"
+            # Handle boolean flags (e.g., --force)
+            if isinstance(value, bool):
+                if value:  # Only add flag if True
+                    args.append(flag)
+            else:
+                args.extend([flag, value])
+
+        result = subprocess.run(
+            args,
+            cwd=temp_dir,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        project_dir = temp_dir / project_name
+        return project_dir, result
+
+    return _init_project
+
+
+@pytest.fixture(
+    scope="module",
+    params=["conversational", "research", "customer-support"],
+)
+def template_project_module(
+    request: pytest.FixtureRequest,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[Path, str, subprocess.CompletedProcess[str]]:
+    """Create template projects once per module (expensive operation).
+
+    This fixture creates each template project once and shares it across
+    all tests in the module. This significantly reduces subprocess overhead
+    for tests that only need to read the generated project structure.
+
+    Uses module scope to minimize expensive subprocess calls.
+
+    Args:
+        request: Pytest request fixture with template parameter
+        tmp_path_factory: Factory for creating temporary directories
+
+    Returns:
+        Tuple of (project_dir, template_name, subprocess_result)
+
+    Note:
+        Tests using this fixture should NOT modify the project directory,
+        as it's shared across tests. For tests that need to modify files,
+        use the init_project fixture instead.
+    """
+    template = request.param
+    temp_dir = tmp_path_factory.mktemp(f"template_{template}")
+    project_name = f"test-{template}"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "holodeck.cli.main",
+            "init",
+            project_name,
+            "--template",
+            template,
+        ],
+        cwd=temp_dir,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    if result.returncode != 0:
+        pytest.fail(f"Failed to create {template} project: {result.stderr}")
+
+    project_dir = temp_dir / project_name
+    return project_dir, template, result

@@ -6,56 +6,25 @@ can be created, raised, and caught properly.
 
 import pytest
 
-
-@pytest.mark.unit
-def test_validation_error_exists() -> None:
-    """Test that ValidationError can be imported from cli.exceptions."""
-    from holodeck.cli.exceptions import ValidationError
-
-    assert ValidationError is not None
+from holodeck.cli.exceptions import InitError, TemplateError, ValidationError
 
 
 @pytest.mark.unit
-def test_init_error_exists() -> None:
-    """Test that InitError can be imported from cli.exceptions."""
-    from holodeck.cli.exceptions import InitError
+@pytest.mark.parametrize(
+    "exception_class",
+    [ValidationError, InitError, TemplateError],
+    ids=["ValidationError", "InitError", "TemplateError"],
+)
+def test_exception_exists_and_raisable(
+    exception_class: type[Exception],
+) -> None:
+    """Test that exception can be imported, exists, and can be raised/caught."""
+    # Test existence
+    assert exception_class is not None
 
-    assert InitError is not None
-
-
-@pytest.mark.unit
-def test_template_error_exists() -> None:
-    """Test that TemplateError can be imported from cli.exceptions."""
-    from holodeck.cli.exceptions import TemplateError
-
-    assert TemplateError is not None
-
-
-@pytest.mark.unit
-def test_validation_error_can_be_raised_and_caught() -> None:
-    """Test that ValidationError can be raised and caught."""
-    from holodeck.cli.exceptions import ValidationError
-
-    with pytest.raises(ValidationError):
-        raise ValidationError("Test validation error")
-
-
-@pytest.mark.unit
-def test_init_error_can_be_raised_and_caught() -> None:
-    """Test that InitError can be raised and caught."""
-    from holodeck.cli.exceptions import InitError
-
-    with pytest.raises(InitError):
-        raise InitError("Test init error")
-
-
-@pytest.mark.unit
-def test_template_error_can_be_raised_and_caught() -> None:
-    """Test that TemplateError can be raised and caught."""
-    from holodeck.cli.exceptions import TemplateError
-
-    with pytest.raises(TemplateError):
-        raise TemplateError("Test template error")
+    # Test can be raised and caught
+    with pytest.raises(exception_class):
+        raise exception_class(f"Test {exception_class.__name__}")
 
 
 @pytest.mark.unit

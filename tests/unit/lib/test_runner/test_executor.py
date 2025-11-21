@@ -685,177 +685,93 @@ class TestEvaluationMetrics:
     """Tests for different evaluation metrics and error handling."""
 
     @pytest.mark.asyncio
-    async def test_groundedness_evaluator(self):
-        """Test groundedness metric evaluation."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
-        from holodeck.models.llm import LLMProvider, ProviderEnum
-
-        test_case = TestCaseModel(
-            name="test_groundedness",
-            input="Query",
-            expected_tools=None,
-            ground_truth="Expected answer",
-            files=None,
-            evaluations=None,
-        )
-
-        eval_config = EvaluationConfig(
-            model=None,
-            metrics=[
-                EvaluationMetric(
-                    metric="groundedness",
-                    threshold=0.7,
-                    enabled=True,
-                ),
-            ],
-        )
-
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
+    @pytest.mark.parametrize(
+        "metric_name,test_name,test_input,ground_truth,response,score_key,score_value",
+        [
+            (
+                "groundedness",
+                "test_groundedness",
+                "Query",
+                "Expected answer",
+                "Agent response",
+                "score",
+                0.8,
             ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[test_case],
-            evaluations=eval_config,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
-            llm_timeout=60
-        )
-
-        mock_file_processor = Mock(spec=FileProcessor)
-
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Agent response"
-        mock_chat_history.messages = [mock_message]
-
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.chat_history = mock_chat_history
-
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.invoke = AsyncMock(return_value=mock_result)
-
-        # Mock evaluator
-        mock_evaluator = AsyncMock()
-        mock_evaluator.evaluate = AsyncMock(return_value={"score": 0.8})
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-            file_processor=mock_file_processor,
-            agent_factory=mock_factory,
-            evaluators={"groundedness": mock_evaluator},
-        )
-
-        report = await executor.execute_tests()
-
-        # Verify metric was evaluated
-        assert len(report.results[0].metric_results) == 1
-        assert report.results[0].metric_results[0].metric_name == "groundedness"
-        assert report.results[0].metric_results[0].score == 0.8
-
-    @pytest.mark.asyncio
-    async def test_relevance_evaluator(self):
-        """Test relevance metric evaluation."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
-        from holodeck.models.llm import LLMProvider, ProviderEnum
-
-        test_case = TestCaseModel(
-            name="test_relevance",
-            input="What is AI?",
-            expected_tools=None,
-            ground_truth=None,
-            files=None,
-            evaluations=None,
-        )
-
-        eval_config = EvaluationConfig(
-            model=None,
-            metrics=[
-                EvaluationMetric(
-                    metric="relevance",
-                    threshold=0.6,
-                    enabled=True,
-                ),
-            ],
-        )
-
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
+            (
+                "relevance",
+                "test_relevance",
+                "What is AI?",
+                None,
+                "AI is artificial intelligence",
+                "score",
+                0.9,
             ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[test_case],
-            evaluations=eval_config,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
-            llm_timeout=60
-        )
-
-        mock_file_processor = Mock(spec=FileProcessor)
-
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "AI is artificial intelligence"
-        mock_chat_history.messages = [mock_message]
-
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.chat_history = mock_chat_history
-
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.invoke = AsyncMock(return_value=mock_result)
-
-        mock_evaluator = AsyncMock()
-        mock_evaluator.evaluate = AsyncMock(return_value={"score": 0.9})
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-            file_processor=mock_file_processor,
-            agent_factory=mock_factory,
-            evaluators={"relevance": mock_evaluator},
-        )
-
-        report = await executor.execute_tests()
-
-        assert len(report.results[0].metric_results) == 1
-        assert report.results[0].metric_results[0].metric_name == "relevance"
-        assert report.results[0].metric_results[0].score == 0.9
-
-    @pytest.mark.asyncio
-    async def test_bleu_evaluator(self):
-        """Test BLEU NLP metric evaluation."""
+            (
+                "bleu",
+                "test_bleu",
+                "Translate hello",
+                "hola",
+                "hola",
+                "bleu",
+                1.0,
+            ),
+            (
+                "coherence",
+                "test_coherence",
+                "Query",
+                None,
+                "Coherent response",
+                "score",
+                0.85,
+            ),
+            (
+                "fluency",
+                "test_fluency",
+                "Query",
+                None,
+                "Fluent response",
+                "score",
+                0.9,
+            ),
+            (
+                "rouge",
+                "test_rouge",
+                "Summarize",
+                "Expected summary",
+                "Summary",
+                "rouge",
+                0.75,
+            ),
+        ],
+        ids=[
+            "groundedness",
+            "relevance",
+            "bleu",
+            "coherence",
+            "fluency",
+            "rouge",
+        ],
+    )
+    async def test_evaluator_metrics(
+        self,
+        metric_name: str,
+        test_name: str,
+        test_input: str,
+        ground_truth: str | None,
+        response: str,
+        score_key: str,
+        score_value: float,
+    ):
+        """Test evaluation metrics with different types."""
         from holodeck.models.agent import Instructions
         from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
         from holodeck.models.llm import LLMProvider, ProviderEnum
 
         test_case = TestCaseModel(
-            name="test_bleu",
-            input="Translate hello",
+            name=test_name,
+            input=test_input,
             expected_tools=None,
-            ground_truth="hola",
+            ground_truth=ground_truth,
             files=None,
             evaluations=None,
         )
@@ -864,7 +780,7 @@ class TestEvaluationMetrics:
             model=None,
             metrics=[
                 EvaluationMetric(
-                    metric="bleu",
+                    metric=metric_name,
                     threshold=0.5,
                     enabled=True,
                 ),
@@ -896,7 +812,7 @@ class TestEvaluationMetrics:
         mock_chat_history = Mock()
         mock_message = Mock()
         mock_message.role = "assistant"
-        mock_message.content = "hola"
+        mock_message.content = response
         mock_chat_history.messages = [mock_message]
 
         mock_result = Mock()
@@ -907,20 +823,21 @@ class TestEvaluationMetrics:
         mock_factory.invoke = AsyncMock(return_value=mock_result)
 
         mock_evaluator = AsyncMock()
-        mock_evaluator.evaluate = AsyncMock(return_value={"bleu": 1.0})
+        mock_evaluator.evaluate = AsyncMock(return_value={score_key: score_value})
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
             agent_factory=mock_factory,
-            evaluators={"bleu": mock_evaluator},
+            evaluators={metric_name: mock_evaluator},
         )
 
         report = await executor.execute_tests()
 
+        # Verify metric was evaluated
         assert len(report.results[0].metric_results) == 1
-        assert report.results[0].metric_results[0].metric_name == "bleu"
+        assert report.results[0].metric_results[0].metric_name == metric_name
 
     @pytest.mark.asyncio
     async def test_evaluation_failure_recorded(self):
@@ -1075,244 +992,6 @@ class TestToolCallValidationInExecution:
         # Verify tool calls were validated
         assert report.results[0].tool_calls == ["search", "calculator"]
         assert report.results[0].tools_matched is True
-
-
-class TestMoreEvaluators:
-    """Tests for additional evaluator types."""
-
-    @pytest.mark.asyncio
-    async def test_coherence_evaluator(self):
-        """Test coherence metric evaluation."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
-        from holodeck.models.llm import LLMProvider, ProviderEnum
-
-        test_case = TestCaseModel(
-            name="test_coherence",
-            input="Query",
-            expected_tools=None,
-            ground_truth=None,
-            files=None,
-            evaluations=None,
-        )
-
-        eval_config = EvaluationConfig(
-            model=None,
-            metrics=[
-                EvaluationMetric(
-                    metric="coherence",
-                    threshold=0.7,
-                    enabled=True,
-                ),
-            ],
-        )
-
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[test_case],
-            evaluations=eval_config,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
-            llm_timeout=60
-        )
-
-        mock_file_processor = Mock(spec=FileProcessor)
-
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Coherent response"
-        mock_chat_history.messages = [mock_message]
-
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.chat_history = mock_chat_history
-
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.invoke = AsyncMock(return_value=mock_result)
-
-        mock_evaluator = AsyncMock()
-        mock_evaluator.evaluate = AsyncMock(return_value={"score": 0.85})
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-            file_processor=mock_file_processor,
-            agent_factory=mock_factory,
-            evaluators={"coherence": mock_evaluator},
-        )
-
-        report = await executor.execute_tests()
-
-        assert len(report.results[0].metric_results) == 1
-        assert report.results[0].metric_results[0].metric_name == "coherence"
-
-    @pytest.mark.asyncio
-    async def test_fluency_evaluator(self):
-        """Test fluency metric evaluation."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
-        from holodeck.models.llm import LLMProvider, ProviderEnum
-
-        test_case = TestCaseModel(
-            name="test_fluency",
-            input="Query",
-            expected_tools=None,
-            ground_truth=None,
-            files=None,
-            evaluations=None,
-        )
-
-        eval_config = EvaluationConfig(
-            model=None,
-            metrics=[
-                EvaluationMetric(
-                    metric="fluency",
-                    threshold=0.75,
-                    enabled=True,
-                ),
-            ],
-        )
-
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[test_case],
-            evaluations=eval_config,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
-            llm_timeout=60
-        )
-
-        mock_file_processor = Mock(spec=FileProcessor)
-
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Fluent response"
-        mock_chat_history.messages = [mock_message]
-
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.chat_history = mock_chat_history
-
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.invoke = AsyncMock(return_value=mock_result)
-
-        mock_evaluator = AsyncMock()
-        mock_evaluator.evaluate = AsyncMock(return_value={"score": 0.9})
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-            file_processor=mock_file_processor,
-            agent_factory=mock_factory,
-            evaluators={"fluency": mock_evaluator},
-        )
-
-        report = await executor.execute_tests()
-
-        assert len(report.results[0].metric_results) == 1
-        assert report.results[0].metric_results[0].metric_name == "fluency"
-
-    @pytest.mark.asyncio
-    async def test_rouge_evaluator(self):
-        """Test ROUGE NLP metric evaluation."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
-        from holodeck.models.llm import LLMProvider, ProviderEnum
-
-        test_case = TestCaseModel(
-            name="test_rouge",
-            input="Summarize",
-            expected_tools=None,
-            ground_truth="Expected summary",
-            files=None,
-            evaluations=None,
-        )
-
-        eval_config = EvaluationConfig(
-            model=None,
-            metrics=[
-                EvaluationMetric(
-                    metric="rouge",
-                    threshold=0.5,
-                    enabled=True,
-                ),
-            ],
-        )
-
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[test_case],
-            evaluations=eval_config,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
-            llm_timeout=60
-        )
-
-        mock_file_processor = Mock(spec=FileProcessor)
-
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Summary"
-        mock_chat_history.messages = [mock_message]
-
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.chat_history = mock_chat_history
-
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.invoke = AsyncMock(return_value=mock_result)
-
-        mock_evaluator = AsyncMock()
-        mock_evaluator.evaluate = AsyncMock(return_value={"rouge": 0.75})
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-            file_processor=mock_file_processor,
-            agent_factory=mock_factory,
-            evaluators={"rouge": mock_evaluator},
-        )
-
-        report = await executor.execute_tests()
-
-        assert len(report.results[0].metric_results) == 1
-        assert report.results[0].metric_results[0].metric_name == "rouge"
 
 
 class TestContextInEvaluation:

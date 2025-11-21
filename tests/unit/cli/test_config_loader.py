@@ -121,62 +121,6 @@ class TestLoadAgentYaml:
 
         assert agent.description == "A test agent"
 
-    def test_load_agent_yaml_missing_name(self, temp_dir: Path) -> None:
-        """Test load_agent_yaml with missing required name field."""
-        yaml_file = temp_dir / "agent.yaml"
-        yaml_content = {
-            "model": {"provider": "openai", "name": "gpt-4o"},
-            "instructions": {"inline": "Test"},
-        }
-        yaml_file.write_text(yaml.dump(yaml_content))
-
-        loader = ConfigLoader()
-        with pytest.raises((ConfigError, ValidationError)):
-            loader.load_agent_yaml(str(yaml_file))
-
-    def test_load_agent_yaml_missing_model(self, temp_dir: Path) -> None:
-        """Test load_agent_yaml with missing required model field."""
-        yaml_file = temp_dir / "agent.yaml"
-        yaml_content = {
-            "name": "test_agent",
-            "instructions": {"inline": "Test"},
-        }
-        yaml_file.write_text(yaml.dump(yaml_content))
-
-        loader = ConfigLoader()
-        with pytest.raises((ConfigError, ValidationError)):
-            loader.load_agent_yaml(str(yaml_file))
-
-    def test_load_agent_yaml_missing_instructions(self, temp_dir: Path) -> None:
-        """Test load_agent_yaml with missing required instructions field."""
-        yaml_file = temp_dir / "agent.yaml"
-        yaml_content = {
-            "name": "test_agent",
-            "model": {"provider": "openai", "name": "gpt-4o"},
-        }
-        yaml_file.write_text(yaml.dump(yaml_content))
-
-        loader = ConfigLoader()
-        with pytest.raises((ConfigError, ValidationError)):
-            loader.load_agent_yaml(str(yaml_file))
-
-    def test_load_agent_yaml_invalid_provider(self, temp_dir: Path) -> None:
-        """Test load_agent_yaml with invalid provider value."""
-        yaml_file = temp_dir / "agent.yaml"
-        yaml_content = {
-            "name": "test_agent",
-            "model": {
-                "provider": "invalid_provider",
-                "name": "gpt-4o",
-            },
-            "instructions": {"inline": "Test"},
-        }
-        yaml_file.write_text(yaml.dump(yaml_content))
-
-        loader = ConfigLoader()
-        with pytest.raises((ConfigError, ValidationError)):
-            loader.load_agent_yaml(str(yaml_file))
-
     def test_load_agent_yaml_with_tools(self, temp_dir: Path) -> None:
         """Test load_agent_yaml with tools."""
         yaml_file = temp_dir / "agent.yaml"

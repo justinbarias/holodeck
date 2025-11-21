@@ -81,25 +81,37 @@ class TestVectorstoreTool:
         assert tool.type == "vectorstore"
         assert tool.source == "data/documents"
 
-    def test_vectorstore_source_required(self) -> None:
-        """Test that source field is required."""
+    @pytest.mark.parametrize(
+        "missing_field,kwargs",
+        [
+            ("source", {"name": "test", "description": "Test", "type": "vectorstore"}),
+        ],
+        ids=["source_required"],
+    )
+    def test_vectorstore_required_fields(
+        self, missing_field: str, kwargs: dict
+    ) -> None:
+        """Test that required fields raise ValidationError when missing."""
         with pytest.raises(ValidationError) as exc_info:
-            VectorstoreTool(
-                name="test",
-                description="Test",
-                type="vectorstore",
-            )
-        assert "source" in str(exc_info.value).lower()
+            VectorstoreTool(**kwargs)
+        assert missing_field in str(exc_info.value).lower()
 
-    def test_vectorstore_source_not_empty(self) -> None:
-        """Test that source cannot be empty string."""
+    @pytest.mark.parametrize(
+        "empty_field",
+        ["source"],
+        ids=["source_not_empty"],
+    )
+    def test_vectorstore_string_fields_not_empty(self, empty_field: str) -> None:
+        """Test that string fields cannot be empty."""
+        kwargs = {
+            "name": "test",
+            "description": "Test",
+            "type": "vectorstore",
+            "source": "data.txt",
+        }
+        kwargs[empty_field] = ""
         with pytest.raises(ValidationError):
-            VectorstoreTool(
-                name="test",
-                description="Test",
-                type="vectorstore",
-                source="",
-            )
+            VectorstoreTool(**kwargs)
 
     def test_vectorstore_chunk_size_optional(self) -> None:
         """Test that chunk_size is optional with default."""
@@ -183,49 +195,55 @@ class TestFunctionTool:
         assert tool.file == "tools/search.py"
         assert tool.function == "search_documents"
 
-    def test_function_tool_file_required(self) -> None:
-        """Test that file field is required."""
+    @pytest.mark.parametrize(
+        "missing_field,kwargs",
+        [
+            (
+                "file",
+                {
+                    "name": "test",
+                    "description": "Test",
+                    "type": "function",
+                    "function": "my_func",
+                },
+            ),
+            (
+                "function",
+                {
+                    "name": "test",
+                    "description": "Test",
+                    "type": "function",
+                    "file": "tools.py",
+                },
+            ),
+        ],
+        ids=["file_required", "function_required"],
+    )
+    def test_function_tool_required_fields(
+        self, missing_field: str, kwargs: dict
+    ) -> None:
+        """Test that required fields raise ValidationError when missing."""
         with pytest.raises(ValidationError) as exc_info:
-            FunctionTool(
-                name="test",
-                description="Test",
-                type="function",
-                function="my_func",
-            )
-        assert "file" in str(exc_info.value).lower()
+            FunctionTool(**kwargs)
+        assert missing_field in str(exc_info.value).lower()
 
-    def test_function_tool_function_required(self) -> None:
-        """Test that function field is required."""
-        with pytest.raises(ValidationError) as exc_info:
-            FunctionTool(
-                name="test",
-                description="Test",
-                type="function",
-                file="tools.py",
-            )
-        assert "function" in str(exc_info.value).lower()
-
-    def test_function_tool_file_not_empty(self) -> None:
-        """Test that file cannot be empty string."""
+    @pytest.mark.parametrize(
+        "empty_field",
+        ["file", "function"],
+        ids=["file_not_empty", "function_not_empty"],
+    )
+    def test_function_tool_string_fields_not_empty(self, empty_field: str) -> None:
+        """Test that string fields cannot be empty."""
+        kwargs = {
+            "name": "test",
+            "description": "Test",
+            "type": "function",
+            "file": "tools.py",
+            "function": "my_func",
+        }
+        kwargs[empty_field] = ""
         with pytest.raises(ValidationError):
-            FunctionTool(
-                name="test",
-                description="Test",
-                type="function",
-                file="",
-                function="my_func",
-            )
-
-    def test_function_tool_function_not_empty(self) -> None:
-        """Test that function name cannot be empty string."""
-        with pytest.raises(ValidationError):
-            FunctionTool(
-                name="test",
-                description="Test",
-                type="function",
-                file="tools.py",
-                function="",
-            )
+            FunctionTool(**kwargs)
 
     def test_function_tool_parameters_optional(self) -> None:
         """Test that parameters schema is optional."""
@@ -269,25 +287,35 @@ class TestMCPTool:
         assert tool.server == "@modelcontextprotocol/server-filesystem"
         assert tool.type == "mcp"
 
-    def test_mcp_server_required(self) -> None:
-        """Test that server field is required."""
+    @pytest.mark.parametrize(
+        "missing_field,kwargs",
+        [
+            ("server", {"name": "test", "description": "Test", "type": "mcp"}),
+        ],
+        ids=["server_required"],
+    )
+    def test_mcp_required_fields(self, missing_field: str, kwargs: dict) -> None:
+        """Test that required fields raise ValidationError when missing."""
         with pytest.raises(ValidationError) as exc_info:
-            MCPTool(
-                name="test",
-                description="Test",
-                type="mcp",
-            )
-        assert "server" in str(exc_info.value).lower()
+            MCPTool(**kwargs)
+        assert missing_field in str(exc_info.value).lower()
 
-    def test_mcp_server_not_empty(self) -> None:
-        """Test that server cannot be empty string."""
+    @pytest.mark.parametrize(
+        "empty_field",
+        ["server"],
+        ids=["server_not_empty"],
+    )
+    def test_mcp_string_fields_not_empty(self, empty_field: str) -> None:
+        """Test that string fields cannot be empty."""
+        kwargs = {
+            "name": "test",
+            "description": "Test",
+            "type": "mcp",
+            "server": "my_server",
+        }
+        kwargs[empty_field] = ""
         with pytest.raises(ValidationError):
-            MCPTool(
-                name="test",
-                description="Test",
-                type="mcp",
-                server="",
-            )
+            MCPTool(**kwargs)
 
     def test_mcp_config_optional(self) -> None:
         """Test that config dict is optional."""
@@ -352,7 +380,7 @@ class TestPromptTool:
                 parameters={"x": {"type": "string"}},
             )
 
-    def test_prompt_tool_template_required_if_no_file(self) -> None:
+    def test_prompt_tool_template_or_file_required(self) -> None:
         """Test that either template or file is required."""
         with pytest.raises(ValidationError):
             PromptTool(
@@ -362,38 +390,22 @@ class TestPromptTool:
                 parameters={"x": {"type": "string"}},
             )
 
-    def test_prompt_tool_file_required_if_no_template(self) -> None:
-        """Test that file is validated if template is not provided."""
-        # This will fail because neither template nor file is provided
+    @pytest.mark.parametrize(
+        "empty_field",
+        ["template", "file"],
+        ids=["template_not_empty", "file_not_empty"],
+    )
+    def test_prompt_tool_string_fields_not_empty(self, empty_field: str) -> None:
+        """Test that string fields cannot be empty."""
+        kwargs = {
+            "name": "test",
+            "description": "Test",
+            "type": "prompt",
+            "parameters": {"x": {"type": "string"}},
+        }
+        kwargs[empty_field] = ""
         with pytest.raises(ValidationError):
-            PromptTool(
-                name="test",
-                description="Test",
-                type="prompt",
-                parameters={"x": {"type": "string"}},
-            )
-
-    def test_prompt_tool_template_not_empty(self) -> None:
-        """Test that template cannot be empty string."""
-        with pytest.raises(ValidationError):
-            PromptTool(
-                name="test",
-                description="Test",
-                type="prompt",
-                template="",
-                parameters={"x": {"type": "string"}},
-            )
-
-    def test_prompt_tool_file_not_empty(self) -> None:
-        """Test that file cannot be empty string."""
-        with pytest.raises(ValidationError):
-            PromptTool(
-                name="test",
-                description="Test",
-                type="prompt",
-                file="",
-                parameters={"x": {"type": "string"}},
-            )
+            PromptTool(**kwargs)
 
     def test_prompt_tool_parameters_required(self) -> None:
         """Test that parameters field is required."""

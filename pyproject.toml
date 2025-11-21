@@ -73,6 +73,7 @@ detect-secrets = ">=1.4.0"
 poetry = ">=1.7.0"
 types-PyYAML = ">=6.0.12"
 mkdocstrings = {extras = ["python"], version = ">=0.25.0"}
+pytest-xdist = "^3.8.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]

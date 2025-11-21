@@ -8,13 +8,15 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # 2 CPU cores (can upgrade to ubuntu-latest-4-cores or ubuntu-latest-8-cores)
     permissions:
       contents: read
       id-token: write
     strategy:
       matrix:
         python-version: ["3.13"]
+    env:
+      PYTEST_XDIST_WORKERS: 2  # Match runner CPU count for optimal performance
 
     steps:
       - uses: actions/checkout@v4
@@ -26,23 +28,20 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Cache pip packages
-        uses: actions/cache@v4
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
         with:
-          path: ~/.cache/pip
-          key: pip-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
-          restore-keys: |
-            pip-${{ runner.os }}-${{ matrix.python-version }}-
-            pip-${{ runner.os }}-
+          version: 2.0.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
 
-      - name: Cache installed Python packages
+      - name: Cache Poetry dependencies
         uses: actions/cache@v4
-        id: cache-packages
         with:
-          path: ${{ env.pythonLocation }}
-          key: python-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml') }}
+          path: .venv
+          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
           restore-keys: |
-            python-${{ runner.os }}-${{ matrix.python-version }}-
+            venv-${{ runner.os }}-${{ matrix.python-version }}-
 
       - name: Cache pre-commit environments
         uses: actions/cache@v4
@@ -53,17 +52,17 @@ jobs:
             pre-commit-
 
       - name: Install dependencies
-        if: steps.cache-packages.outputs.cache-hit != 'true'
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: poetry install --with dev
 
       - name: Run pre-commit
-        run: pre-commit run --all-files
+        run: poetry run pre-commit run --all-files
 
-      - name: Run tests
+      - name: Run tests in parallel
         run: |
-          pytest --cov --cov-report=xml
+          # Run tests in parallel with explicit worker count for GitHub Actions
+          # GitHub runners have 2 cores, using env.PYTEST_XDIST_WORKERS
+          # Note: Coverage data is combined automatically by pytest-cov
+          poetry run pytest --cov --cov-report=xml -n ${{ env.PYTEST_XDIST_WORKERS }}
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
@@ -73,5 +72,5 @@ jobs:
 
       - name: Security scan
         run: |
-          bandit -r src/
-          safety check
+          poetry run bandit -r src/
+          poetry run safety check
