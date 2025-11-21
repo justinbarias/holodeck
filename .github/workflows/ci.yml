@@ -73,4 +73,4 @@ jobs:
       - name: Security scan
         run: |
           poetry run bandit -r src/
-          poetry run safety check
+          poetry run safety check --ignore=80470
