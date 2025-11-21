@@ -6,10 +6,11 @@ Tests for the holodeck init command with:
 - Invalid template error handling
 - All templates producing valid agent.yaml
 - Template-specific instructions
+
+Refactored to use template_project_module fixture and parameterization
+to eliminate redundant subprocess calls.
 """
 
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -17,148 +18,58 @@ import yaml
 
 
 @pytest.mark.integration
-class TestInitResearchTemplate:
-    """Test research template selection functionality (T040)."""
+class TestInitTemplateSelection:
+    """Test template selection functionality (T040, T041).
 
-    def test_research_template_creates_project(self, temp_dir: Path) -> None:
-        """Verify `holodeck init <name> --template research` creates research project.
+    Consolidates research and customer-support template tests to use
+    parameterized template_project_module fixture instead of creating
+    projects multiple times.
+    """
 
-        Test case T040: Research template creation
+    def test_template_creates_project(
+        self, template_project_module: tuple[Path, str, object]
+    ) -> None:
+        """Verify all templates create valid project structure.
+
+        Test case T040, T041: Template creation for all templates
+        - Research template
+        - Customer-support template
+        - Conversational template (default)
+
+        Tests all templates via parameterization with single subprocess
+        call per template.
         """
-        project_name = "test-research"
-
-        # Run holodeck init with research template
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "holodeck.cli.main",
-                "init",
-                project_name,
-                "--template",
-                "research",
-            ],
-            cwd=temp_dir,
-            capture_output=True,
-            text=True,
-        )
-
-        # Verify command succeeded
-        assert result.returncode == 0, f"Command failed: {result.stderr}"
+        project_dir, template, result = template_project_module
 
         # Verify project directory was created
-        project_dir = temp_dir / project_name
-        assert project_dir.exists(), f"Project directory not created: {project_dir}"
-        assert project_dir.is_dir(), f"Project path is not a directory: {project_dir}"
+        assert project_dir.exists(), f"{template}: Project directory not created"
+        assert project_dir.is_dir(), f"{template}: Project path is not a directory"
 
-    def test_research_template_creates_agent_yaml(self, temp_dir: Path) -> None:
-        """Verify research template creates valid agent.yaml.
+    def test_template_creates_valid_agent_yaml(
+        self, template_project_module: tuple[Path, str, object]
+    ) -> None:
+        """Verify all templates create valid agent.yaml.
 
-        Test case T040: Verify agent.yaml is created and has research content
+        Test case T040, T041: Verify agent.yaml is valid for all templates
         """
-        project_name = "test-research"
-
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "holodeck.cli.main",
-                "init",
-                project_name,
-                "--template",
-                "research",
-            ],
-            cwd=temp_dir,
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 0
+        project_dir, template, result = template_project_module
 
         # Verify agent.yaml exists
-        agent_yaml = temp_dir / project_name / "agent.yaml"
-        assert agent_yaml.exists(), f"agent.yaml not created: {agent_yaml}"
+        agent_yaml = project_dir / "agent.yaml"
+        assert agent_yaml.exists(), f"{template}: agent.yaml not created"
 
         # Verify agent.yaml is valid YAML
         config = yaml.safe_load(agent_yaml.read_text())
-        assert config is not None, "agent.yaml is not valid YAML"
-        assert "name" in config, "agent.yaml missing 'name' field"
-
-
-@pytest.mark.integration
-class TestInitCustomerSupportTemplate:
-    """Test customer-support template selection functionality (T041)."""
-
-    def test_customer_support_template_creates_project(self, temp_dir: Path) -> None:
-        """Verify `holodeck init <name> --template customer-support` creates project.
-
-        Test case T041: Customer-support template creation
-        """
-        project_name = "test-support"
-
-        # Run holodeck init with customer-support template
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "holodeck.cli.main",
-                "init",
-                project_name,
-                "--template",
-                "customer-support",
-            ],
-            cwd=temp_dir,
-            capture_output=True,
-            text=True,
-        )
-
-        # Verify command succeeded
-        assert result.returncode == 0, f"Command failed: {result.stderr}"
-
-        # Verify project directory was created
-        project_dir = temp_dir / project_name
-        assert project_dir.exists(), f"Project directory not created: {project_dir}"
-        assert project_dir.is_dir(), f"Project path is not a directory: {project_dir}"
-
-    def test_customer_support_template_creates_agent_yaml(self, temp_dir: Path) -> None:
-        """Verify customer-support template creates valid agent.yaml.
-
-        Test case T041: Verify agent.yaml is created with support content
-        """
-        project_name = "test-support"
-
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "holodeck.cli.main",
-                "init",
-                project_name,
-                "--template",
-                "customer-support",
-            ],
-            cwd=temp_dir,
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 0
-
-        # Verify agent.yaml exists
-        agent_yaml = temp_dir / project_name / "agent.yaml"
-        assert agent_yaml.exists(), f"agent.yaml not created: {agent_yaml}"
-
-        # Verify agent.yaml is valid YAML
-        config = yaml.safe_load(agent_yaml.read_text())
-        assert config is not None, "agent.yaml is not valid YAML"
-        assert "name" in config, "agent.yaml missing 'name' field"
+        assert config is not None, f"{template}: agent.yaml is not valid YAML"
+        assert "name" in config, f"{template}: agent.yaml missing 'name' field"
+        assert "model" in config, f"{template}: agent.yaml missing 'model' field"
 
 
 @pytest.mark.integration
 class TestInvalidTemplateHandling:
     """Test invalid template error handling (T042)."""
 
-    def test_invalid_template_shows_error(self, temp_dir: Path) -> None:
+    def test_invalid_template_shows_error(self, init_project) -> None:
         """Verify invalid template selection shows helpful error message.
 
         Test case T042: Invalid template error handling
@@ -166,19 +77,8 @@ class TestInvalidTemplateHandling:
         project_name = "test-invalid"
 
         # Run holodeck init with invalid template
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "holodeck.cli.main",
-                "init",
-                project_name,
-                "--template",
-                "invalid-template-xyz",
-            ],
-            cwd=temp_dir,
-            capture_output=True,
-            text=True,
+        project_dir, result = init_project(
+            project_name, template="invalid-template-xyz"
         )
 
         # Command should fail
@@ -190,165 +90,147 @@ class TestInvalidTemplateHandling:
             "template" in error_output or "available" in error_output
         ), f"Error message should mention templates: {result.stderr}"
 
-    def test_invalid_template_no_project_created(self, temp_dir: Path) -> None:
+    def test_invalid_template_no_project_created(self, init_project, temp_dir) -> None:
         """Verify no project is created when template is invalid.
 
         Test case T042: No partial projects on template error
         """
         project_name = "test-invalid-2"
 
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "holodeck.cli.main",
-                "init",
-                project_name,
-                "--template",
-                "invalid-template",
-            ],
-            cwd=temp_dir,
-            capture_output=True,
-            text=True,
+        project_dir, result = init_project(
+            project_name, template="nonexistent-template"
         )
 
+        # Command should fail
+        assert result.returncode != 0, "Command should fail for invalid template"
+
         # Project directory should not exist
-        project_dir = temp_dir / project_name
-        assert (
-            not project_dir.exists()
-        ), "Project directory should not be created on template error"
+        assert not project_dir.exists(), (
+            f"Project directory should not be created for invalid "
+            f"template: {project_dir}"
+        )
 
 
 @pytest.mark.integration
-class TestAllTemplatesValidAgentYaml:
+class TestAllTemplatesProduceValidYAML:
     """Test all templates produce valid agent.yaml (T043)."""
 
-    @pytest.mark.parametrize(
-        "template", ["conversational", "research", "customer-support"]
-    )
     def test_template_produces_valid_agent_yaml(
-        self, temp_dir: Path, template: str
+        self, template_project_module: tuple[Path, str, object]
     ) -> None:
-        """Verify each template produces valid agent.yaml per AgentConfig schema.
+        """Verify all templates produce parseable agent.yaml with required fields.
 
-        Test case T043: All templates valid YAML
+        Test case T043: All templates generate valid agent.yaml
+        - Conversational template
+        - Research template
+        - Customer-support template
+
+        Tests all templates via parameterization.
         """
-        project_name = f"test-{template}"
+        project_dir, template, result = template_project_module
 
-        # Run holodeck init with template
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "holodeck.cli.main",
-                "init",
-                project_name,
-                "--template",
-                template,
-            ],
-            cwd=temp_dir,
-            capture_output=True,
-            text=True,
-        )
+        agent_yaml = project_dir / "agent.yaml"
+        assert agent_yaml.exists(), f"{template}: agent.yaml not created"
 
-        # Command should succeed
-        assert result.returncode == 0, f"Command failed for {template}: {result.stderr}"
-
-        # Verify agent.yaml exists and is valid YAML
-        agent_yaml = temp_dir / project_name / "agent.yaml"
-        assert agent_yaml.exists(), f"agent.yaml not created for {template}"
-
-        # Parse YAML and verify structure
+        # Parse and validate YAML structure
         config = yaml.safe_load(agent_yaml.read_text())
-        assert config is not None, f"agent.yaml invalid YAML for {template}"
+        assert config is not None, f"{template}: agent.yaml is not valid YAML"
 
         # Verify required fields
         required_fields = ["name", "model", "instructions", "tools"]
         for field in required_fields:
             assert (
                 field in config
-            ), f"agent.yaml missing required field '{field}' for {template}"
+            ), f"{template}: agent.yaml missing required field '{field}'"
+
+        # Verify model configuration
+        assert isinstance(
+            config["model"], dict
+        ), f"{template}: model field is not a dictionary"
+        assert (
+            "provider" in config["model"]
+        ), f"{template}: model missing 'provider' field"
 
 
 @pytest.mark.integration
 class TestTemplateSpecificInstructions:
-    """Test template-specific instructions content (T044)."""
+    """Test template-specific instructions (T044)."""
 
-    def test_research_template_has_vector_search_example(self, temp_dir: Path) -> None:
-        """Verify research template includes vector search tool examples.
-
-        Test case T044: Research template specific content
-        """
-        project_name = "test-research-specific"
-
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "holodeck.cli.main",
-                "init",
-                project_name,
-                "--template",
-                "research",
-            ],
-            cwd=temp_dir,
-            capture_output=True,
-            text=True,
-        )
-
-        assert result.returncode == 0
-
-        # Check agent.yaml for vector search references
-        agent_yaml = temp_dir / project_name / "agent.yaml"
-        content = agent_yaml.read_text()
-
-        # Should have some vector search reference (could be in comments or examples)
-        config = yaml.safe_load(content)
-        assert config is not None, "agent.yaml should be valid YAML"
-
-        # Verify research-related instructions are present
-        instructions_file = (
-            temp_dir / project_name / "instructions" / "system-prompt.md"
-        )
-        assert (
-            instructions_file.exists()
-        ), "system-prompt.md should exist for research template"
-
-    def test_customer_support_template_has_function_examples(
-        self, temp_dir: Path
+    def test_template_has_specific_instructions(
+        self, template_project_module: tuple[Path, str, object]
     ) -> None:
-        """Verify customer-support template includes function tool examples.
+        """Verify each template includes template-specific instructions.
 
-        Test case T044: Customer-support template specific content
+        Test case T044: Template-specific instructions
+        - Research: mentions analysis, papers, citations
+        - Customer-support: mentions tickets, customers, issues
+        - Conversational: mentions chat, dialogue, conversation
+
+        Tests all templates via parameterization.
         """
-        project_name = "test-support-specific"
+        project_dir, template, result = template_project_module
 
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "holodeck.cli.main",
-                "init",
-                project_name,
-                "--template",
-                "customer-support",
+        # Read system prompt
+        system_prompt = project_dir / "instructions" / "system-prompt.md"
+        assert system_prompt.exists(), f"{template}: system-prompt.md not found"
+
+        content = system_prompt.read_text().lower()
+
+        # Define template-specific keywords
+        template_keywords = {
+            "conversational": ["conversation", "chat", "dialogue", "friendly"],
+            "research": ["research", "analysis", "paper", "academic", "citation"],
+            "customer-support": [
+                "support",
+                "customer",
+                "help",
+                "ticket",
+                "issue",
+                "resolve",
             ],
-            cwd=temp_dir,
-            capture_output=True,
-            text=True,
+        }
+
+        expected_keywords = template_keywords.get(template, [])
+        matching_keywords = [kw for kw in expected_keywords if kw in content]
+
+        assert len(matching_keywords) > 0, (
+            f"{template}: Instructions don't contain template-specific keywords. "
+            f"Expected one of {expected_keywords}, found none"
         )
 
-        assert result.returncode == 0
+    def test_template_has_different_instructions(
+        self, template_project_module: tuple[Path, str, object]
+    ) -> None:
+        """Verify templates have meaningfully different instructions.
 
-        # Verify support-related instructions are present
-        instructions_file = (
-            temp_dir / project_name / "instructions" / "system-prompt.md"
-        )
+        Test case T044: Template instructions are not generic
+        """
+        project_dir, template, result = template_project_module
+
+        # Read system prompt
+        system_prompt = project_dir / "instructions" / "system-prompt.md"
+        content = system_prompt.read_text()
+
+        # Instructions should not be empty
         assert (
-            instructions_file.exists()
-        ), "system-prompt.md should exist for support template"
+            len(content.strip()) > 100
+        ), f"{template}: Instructions are too short (likely generic)"
 
-        # Agent.yaml should be valid
-        agent_yaml = temp_dir / project_name / "agent.yaml"
-        config = yaml.safe_load(agent_yaml.read_text())
-        assert config is not None, "agent.yaml should be valid YAML"
+        # Should contain template name or related terms
+        content_lower = content.lower()
+
+        # Each template should mention its domain
+        if template == "conversational":
+            domain_terms = ["conversation", "chat", "dialogue"]
+        elif template == "research":
+            domain_terms = ["research", "paper", "academic"]
+        elif template == "customer-support":
+            domain_terms = ["support", "customer", "ticket", "issue"]
+        else:
+            domain_terms = []
+
+        has_domain_term = any(term in content_lower for term in domain_terms)
+        assert has_domain_term, (
+            f"{template}: Instructions don't mention domain-specific terms. "
+            f"Expected one of {domain_terms}"
+        )
