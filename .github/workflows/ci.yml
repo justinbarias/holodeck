@@ -61,9 +61,10 @@ jobs:
       - name: Run pre-commit
         run: pre-commit run --all-files
 
-      - name: Run tests
+      - name: Run tests in parallel
         run: |
-          pytest --cov --cov-report=xml
+          # Run tests in parallel with auto-detected CPU cores for faster CI
+          pytest --cov --cov-report=xml -n auto
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
