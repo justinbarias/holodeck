@@ -541,19 +541,21 @@ class FileProcessor:
         # Route to appropriate preprocessor
         if has_pages and file_type == "pdf":
             # has_pages check ensures file_input.pages is not None
-            assert file_input.pages is not None  # noqa: S101
-            return self._preprocess_pdf_pages(file_path, file_input.pages)
+            pages = file_input.pages
+            if pages is not None:
+                return self._preprocess_pdf_pages(file_path, pages)
         elif has_pages and file_type == "powerpoint":
             # has_pages check ensures file_input.pages is not None
-            assert file_input.pages is not None  # noqa: S101
-            return self._preprocess_powerpoint_slides(file_path, file_input.pages)
+            pages = file_input.pages
+            if pages is not None:
+                return self._preprocess_powerpoint_slides(file_path, pages)
         elif (has_sheet or has_range) and file_type == "excel":
             return self._preprocess_excel_sheet_range(
                 file_path, file_input.sheet, file_input.range
             )
-        else:
-            # No applicable preprocessing
-            return file_path
+
+        # No applicable preprocessing or check above failed
+        return file_path
 
     def _process_local_file(
         self, file_input: FileInput, start_time: float
