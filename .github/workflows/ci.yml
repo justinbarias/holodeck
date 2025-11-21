@@ -8,13 +8,15 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest  # 2 CPU cores (can upgrade to ubuntu-latest-4-cores or ubuntu-latest-8-cores)
     permissions:
       contents: read
       id-token: write
     strategy:
       matrix:
         python-version: ["3.13"]
+    env:
+      PYTEST_XDIST_WORKERS: 2  # Match runner CPU count for optimal performance
 
     steps:
       - uses: actions/checkout@v4
@@ -57,8 +59,10 @@ jobs:
 
       - name: Run tests in parallel
         run: |
-          # Run tests in parallel with auto-detected CPU cores for faster CI
-          poetry run pytest --cov --cov-report=xml -n auto
+          # Run tests in parallel with explicit worker count for GitHub Actions
+          # GitHub runners have 2 cores, using env.PYTEST_XDIST_WORKERS
+          # Note: Coverage data is combined automatically by pytest-cov
+          poetry run pytest --cov --cov-report=xml -n ${{ env.PYTEST_XDIST_WORKERS }}
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
