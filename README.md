@@ -105,6 +105,9 @@ holodeck test agent.yaml
 
 # Interactive testing
 holodeck chat agent.yaml
+
+# Test sample hitchhikers agent with environment variables
+source .venv/bin/activate && (cd sample && set -a && source .env && set +a && holodeck test hitchhikers_agent.yaml)
 ```
 
 **Output:**

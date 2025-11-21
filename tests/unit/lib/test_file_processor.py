@@ -570,3 +570,408 @@ class TestFileProcessorProcessFile:
             assert "Processing failed" in result.error
             assert result.processing_time_ms is not None
             assert result.processing_time_ms >= 0
+
+
+class TestFileProcessorPageSheetRangeExtraction:
+    """Tests for page/sheet/range extraction preprocessing."""
+
+    # PDF page extraction tests
+    def test_pdf_pages_extraction_single_page(self) -> None:
+        """Test extracting a single page from PDF."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf", pages=[1])
+            processor = FileProcessor()
+
+            # Mock the preprocessing to return a temp file path
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                mock_preprocess.return_value = Path(tmp_path)
+
+                # Mock markitdown conversion
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "# Page 1 Content"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+                    mock_preprocess.assert_called_once_with(file_input, Path(tmp_path))
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_pdf_pages_extraction_multiple_pages(self) -> None:
+        """Test extracting multiple specific pages from PDF."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf", pages=[1, 3, 5])
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                mock_preprocess.return_value = Path(tmp_path)
+
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "# Pages 1, 3, 5"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+                    mock_preprocess.assert_called_once()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_pdf_pages_extraction_sequential_range(self) -> None:
+        """Test extracting sequential page range from PDF."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf", pages=[2, 3, 4])
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                mock_preprocess.return_value = Path(tmp_path)
+
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "# Pages 2-4"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_pdf_pages_extraction_invalid_page(self) -> None:
+        """Test handling invalid page numbers in PDF."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf", pages=[999])
+            processor = FileProcessor()
+
+            # Mock _preprocess_file to raise an error for invalid pages
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                mock_preprocess.side_effect = ValueError("Page 999 out of range")
+
+                # Use process_file which handles exceptions
+                result = processor.process_file(file_input)
+
+                assert result.error is not None
+                assert "out of range" in result.error.lower()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_pdf_no_pages_full_document(self) -> None:
+        """Test processing full PDF when pages is None."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf", pages=None)
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                # When pages is None, should return original path (no preprocessing)
+                mock_preprocess.return_value = Path(tmp_path)
+
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "# Full PDF"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+                    # Should still call preprocess_file to check for preprocessing needs
+                    mock_preprocess.assert_called_once()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_pdf_empty_pages_list(self) -> None:
+        """Test handling empty pages list."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf", pages=[])
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                # Empty list should be treated as no preprocessing
+                mock_preprocess.return_value = Path(tmp_path)
+
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "# Full PDF"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    # Excel sheet/range extraction tests
+    def test_excel_sheet_extraction(self) -> None:
+        """Test extracting specific sheet from Excel."""
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="excel", sheet="Sheet2")
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                # Mock returns a CSV temp file
+                mock_csv_path = Path(tmp_path).with_suffix(".csv")
+                mock_preprocess.return_value = mock_csv_path
+
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "| Col1 | Col2 |\n| --- | --- |"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+                    mock_preprocess.assert_called_once()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_excel_sheet_extraction_invalid_sheet(self) -> None:
+        """Test handling non-existent sheet name."""
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="excel", sheet="NonExistent")
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                mock_preprocess.side_effect = ValueError(
+                    "Sheet 'NonExistent' not found"
+                )
+
+                result = processor.process_file(file_input)
+
+                assert result.error is not None
+                assert "not found" in result.error.lower()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_excel_range_extraction(self) -> None:
+        """Test extracting cell range from Excel."""
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="excel", range="A1:E10")
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                mock_csv_path = Path(tmp_path).with_suffix(".csv")
+                mock_preprocess.return_value = mock_csv_path
+
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "| A | B | C |"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_excel_sheet_and_range_extraction(self) -> None:
+        """Test extracting range from specific sheet."""
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(
+                path=tmp_path, type="excel", sheet="Data", range="B2:D20"
+            )
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                mock_csv_path = Path(tmp_path).with_suffix(".csv")
+                mock_preprocess.return_value = mock_csv_path
+
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "| Header |"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+                    mock_preprocess.assert_called_once()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_excel_no_sheet_first_sheet_default(self) -> None:
+        """Test using first sheet when sheet is None."""
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="excel", sheet=None)
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                # When no sheet specified, should process normally
+                mock_preprocess.return_value = Path(tmp_path)
+
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "| Data |"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    # PowerPoint slide extraction tests
+    def test_powerpoint_pages_extraction(self) -> None:
+        """Test extracting specific slides from PowerPoint using pages field."""
+        with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="powerpoint", pages=[1, 3])
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                mock_pptx_path = Path(tmp_path)
+                mock_preprocess.return_value = mock_pptx_path
+
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "# Slide 1\n\n# Slide 3"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+                    mock_preprocess.assert_called_once()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_powerpoint_pages_extraction_invalid(self) -> None:
+        """Test handling invalid slide numbers in PowerPoint."""
+        with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="powerpoint", pages=[999])
+            processor = FileProcessor()
+
+            with mock.patch.object(processor, "_preprocess_file") as mock_preprocess:
+                mock_preprocess.side_effect = ValueError("Slide 999 out of range")
+
+                result = processor.process_file(file_input)
+
+                assert result.error is not None
+                assert "out of range" in result.error.lower()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    # Integration tests for preprocessing flow
+    def test_preprocessing_before_markitdown(self) -> None:
+        """Test that preprocessing happens before markitdown conversion."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf", pages=[1])
+            processor = FileProcessor()
+
+            call_order = []
+
+            def mock_preprocess(*args: object, **kwargs: object) -> Path:
+                call_order.append("preprocess")
+                return Path(tmp_path)
+
+            def mock_convert(*args: object, **kwargs: object) -> mock.MagicMock:
+                call_order.append("convert")
+                result = mock.MagicMock()
+                result.text_content = "content"
+                return result
+
+            with (
+                mock.patch.object(
+                    processor, "_preprocess_file", side_effect=mock_preprocess
+                ),
+                mock.patch("markitdown.MarkItDown") as mock_md_class,
+            ):
+                mock_md_instance = mock.MagicMock()
+                mock_md_instance.convert.side_effect = mock_convert
+                mock_md_class.return_value = mock_md_instance
+
+                processor._process_local_file(file_input, start_time=0)
+
+                # Verify preprocessing happened before conversion
+                assert call_order == ["preprocess", "convert"]
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_preprocessing_creates_temp_file(self) -> None:
+        """Test that preprocessing creates temporary file and cleans up."""
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            file_input = FileInput(path=tmp_path, type="pdf", pages=[1])
+            processor = FileProcessor()
+
+            temp_file_created = None
+
+            def mock_preprocess(*args: object, **kwargs: object) -> Path:
+                nonlocal temp_file_created
+                # Simulate creating a temp file
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as t:
+                    temp_file_created = Path(t.name)
+                return temp_file_created
+
+            with mock.patch.object(
+                processor, "_preprocess_file", side_effect=mock_preprocess
+            ):
+                mock_md_instance = mock.MagicMock()
+                mock_result = mock.MagicMock()
+                mock_result.text_content = "content"
+                mock_md_instance.convert.return_value = mock_result
+
+                with mock.patch("markitdown.MarkItDown", return_value=mock_md_instance):
+                    result = processor._process_local_file(file_input, start_time=0)
+
+                    assert result.error is None
+                    # Verify temp file was created during preprocessing
+                    assert temp_file_created is not None
+
+            # Clean up the temp file
+            if temp_file_created and temp_file_created.exists():
+                temp_file_created.unlink()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)

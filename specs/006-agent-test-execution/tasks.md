@@ -314,8 +314,8 @@ for test_case in test_cases:
 
 #### T079-T088: File Processing Extensions (Test-First)
 
-- [ ] T079 [TEST] Write unit tests for page/sheet/range extraction in tests/unit/lib/test_file_processor.py (test FileInput.pages for PDF, FileInput.sheet for Excel, FileInput.range for PowerPoint, preprocessing before markitdown)
-- [ ] T080 [CODE] Implement page/sheet/range extraction in src/holodeck/lib/file_processor.py to pass T079 tests
+- [x] T079 [TEST] Write unit tests for page/sheet/range extraction in tests/unit/lib/test_file_processor.py (test FileInput.pages for PDF, FileInput.sheet for Excel, FileInput.range for PowerPoint, preprocessing before markitdown)
+- [x] T080 [CODE] Implement page/sheet/range extraction in src/holodeck/lib/file_processor.py to pass T079 tests
 - [ ] T081 [TEST] Write unit tests for file size warnings in tests/unit/lib/test_file_processor.py (test >100MB file warning message, verify processing continues)
 - [ ] T082 [CODE] Implement file size warning logic in src/holodeck/lib/file_processor.py to pass T081 tests
 - [ ] T083 [TEST] Write unit tests for file processing error handling in tests/unit/lib/test_file_processor.py (test timeout, malformed files, ProcessedFileInput.error population, test continuation)
