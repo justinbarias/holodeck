@@ -17,7 +17,8 @@ NC := $(shell tput sgr0 2>/dev/null)
 
 # Phony targets
 .PHONY: help install install-dev install-prod test test-unit test-integration \
-        test-coverage lint format type-check security clean clean-all \
+        test-coverage test-parallel test-integration-parallel test-unit-parallel \
+        lint format type-check security clean clean-all \
         pre-commit ci ci-github build docs run docker-build docker-run \
         check-python check-venv init
 
@@ -114,8 +115,17 @@ test-failed: ## Re-run only failed tests
 test-watch: ## Run tests in watch mode (requires pytest-watch)
 	$(PYTHON) -m pytest_watch -- -v
 
-test-parallel: ## Run tests in parallel (requires pytest-xdist)
+test-parallel: ## Run all tests in parallel (requires pytest-xdist)
+	@echo "$(GREEN)Running all tests in parallel...$(NC)"
 	$(PYTHON) -m pytest -n auto -v
+
+test-integration-parallel: ## Run integration tests in parallel
+	@echo "$(GREEN)Running integration tests in parallel...$(NC)"
+	$(PYTHON) -m pytest tests/integration -n auto -v
+
+test-unit-parallel: ## Run unit tests in parallel
+	@echo "$(GREEN)Running unit tests in parallel...$(NC)"
+	$(PYTHON) -m pytest tests/unit -n auto -v
 
 #############################
 # Code Quality Targets      #
