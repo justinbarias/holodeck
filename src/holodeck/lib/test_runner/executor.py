@@ -601,22 +601,27 @@ class TestExecutor:
 
     def _get_metrics_for_test(
         self,
-        _test_case: TestCaseModel,
+        test_case: TestCaseModel,
     ) -> list[EvaluationMetric]:
         """Resolve metrics for a test case (per-test override or global).
 
         Args:
-            _test_case: Test case configuration (reserved for per-test overrides)
+            test_case: Test case configuration with optional per-test metrics
 
         Returns:
             List of metrics to evaluate
 
-        Note:
-            Per-test metric overrides are planned for US3.
-            Currently uses global metrics.
+        Logic:
+            - If test_case.evaluations is provided and non-empty, use those
+              metrics directly (per-test override)
+            - Otherwise, use all global metrics from agent_config.evaluations
+            - If no evaluations are configured, return empty list
         """
-        # TODO: Implement per-test metric override (US3)
-        # For now, use global metrics
+        # If test case has per-test metrics specified, use those directly
+        if test_case.evaluations:
+            return test_case.evaluations
+
+        # Fall back to global metrics
         if self.agent_config.evaluations:
             return self.agent_config.evaluations.metrics
         return []

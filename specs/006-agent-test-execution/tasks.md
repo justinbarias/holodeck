@@ -332,10 +332,10 @@ for test_case in test_cases:
 
 #### T091-T094: Integration Testing
 
-- [ ] T091 [TEST] Create sample multimodal test files in tests/fixtures/files/ (sample.pdf, sample.jpg, sample.xlsx, sample.docx, sample.pptx with known content)
-- [ ] T092 [TEST] Write integration test for multimodal execution in tests/integration/test_multimodal_execution.py (verify file processing and agent receives markdown content)
-- [ ] T093 [VERIFY] Run make test-integration to verify multimodal tests pass
-- [ ] T094 [VERIFY] Run make test to verify all tests pass
+- [x] T091 [TEST] Create sample multimodal test files in tests/fixtures/files/ (sample.pdf, sample.jpg, sample.xlsx, sample.docx, sample.pptx with known content)
+- [x] T092 [TEST] Write integration test for multimodal execution in tests/integration/test_multimodal_execution.py (verify file processing and agent receives markdown content)
+- [x] T093 [VERIFY] Run make test-integration to verify multimodal tests pass
+- [x] T094 [VERIFY] Run make test to verify all tests pass
 
 ---
 
@@ -357,18 +357,18 @@ for test_case in test_cases:
 
 #### T095-T100: Per-Test Metrics (Test-First)
 
-- [ ] T095 [TEST] Write unit tests for per-test metric resolution in tests/unit/lib/test_runner/test_executor.py (test TestCaseModel.evaluations override, test fallback to AgentConfig.evaluations.metrics)
-- [ ] T096 [CODE] Implement per-test metric resolution logic in src/holodeck/lib/test_runner/executor.py to pass T095 tests
-- [ ] T097 [TEST] Write unit tests for metric validation in tests/unit/lib/test_runner/test_executor.py (test undefined metric raises ConfigError, test valid metrics pass)
-- [ ] T098 [CODE] Implement metric validation in src/holodeck/lib/test_runner/executor.py to pass T097 tests
-- [ ] T099 [VERIFY] Run make test-unit to verify metric resolution tests pass
-- [ ] T100 [VERIFY] Run make format && make lint
+- [x] T095 [TEST] Write unit tests for per-test metric resolution in tests/unit/lib/test_runner/test_executor.py (test TestCaseModel.evaluations override, test fallback to AgentConfig.evaluations.metrics)
+- [x] T096 [CODE] Implement per-test metric resolution logic in src/holodeck/lib/test_runner/executor.py to pass T095 tests
+- [x] T097 [TEST] Write unit tests for metric validation in tests/unit/lib/test_runner/test_executor.py (test undefined metric raises ConfigError, test valid metrics pass)
+- [x] T098 [CODE] Implement metric validation in src/holodeck/lib/test_runner/executor.py to pass T097 tests
+- [x] T099 [VERIFY] Run make test-unit to verify metric resolution tests pass
+- [x] T100 [VERIFY] Run make format && make lint
 
 #### T101-T104: Integration Testing
 
-- [ ] T101 [TEST] Write integration test for per-test metrics in tests/integration/test_evaluation_metrics.py (verify metric override behavior, test global defaults)
-- [ ] T102 [VERIFY] Run make test-integration to verify metric tests pass
-- [ ] T103 [VERIFY] Run make test to verify all tests pass
+- [x] T101 [TEST] Write integration test for per-test metrics in tests/integration/test_evaluation_metrics.py (verify metric override behavior, test global defaults)
+- [x] T102 [VERIFY] Run make test-integration to verify metric tests pass
+- [x] T103 [VERIFY] Run make test to verify all tests pass
 
 ---
 

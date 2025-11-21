@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from holodeck.models.evaluation import EvaluationMetric
+
 
 class FileInput(BaseModel):
     """File input for multimodal test cases.
@@ -81,8 +83,8 @@ class TestCaseModel(BaseModel):
     )
     ground_truth: str | None = Field(None, description="Expected output for comparison")
     files: list[FileInput] | None = Field(None, description="Multimodal file inputs")
-    evaluations: list[str] | None = Field(
-        None, description="Specific metrics to run for this test"
+    evaluations: list[EvaluationMetric] | None = Field(
+        None, description="Per-test metric overrides (subset of global metrics)"
     )
 
     @field_validator("input")
