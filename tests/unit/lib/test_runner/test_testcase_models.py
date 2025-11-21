@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from holodeck.models.evaluation import EvaluationMetric
 from holodeck.models.test_case import FileInput, TestCase
 
 
@@ -137,30 +138,35 @@ class TestTestCase:
             TestCase(input="")
 
     @pytest.mark.parametrize(
-        "field,value,expected",
+        "field,value,expected_check",
         [
-            ("name", "Test 1", "Test 1"),
+            ("name", "Test 1", lambda v: v == "Test 1"),
             (
                 "expected_tools",
                 ["search_tool", "rank_tool"],
-                ["search_tool", "rank_tool"],
+                lambda v: v == ["search_tool", "rank_tool"],
             ),
-            ("ground_truth", "4", "4"),
+            ("ground_truth", "4", lambda v: v == "4"),
             (
                 "evaluations",
-                ["groundedness", "relevance"],
-                ["groundedness", "relevance"],
+                [
+                    EvaluationMetric(metric="groundedness", threshold=0.7),
+                    EvaluationMetric(metric="relevance", threshold=0.8),
+                ],
+                lambda v: len(v) == 2
+                and v[0].metric == "groundedness"
+                and v[1].metric == "relevance",
             ),
         ],
         ids=["name", "expected_tools", "ground_truth", "evaluations"],
     )
     def test_test_case_optional_fields_with_value(
-        self, field: str, value, expected
+        self, field: str, value, expected_check
     ) -> None:
         """Test TestCase optional fields can be set."""
         kwargs = {"input": "Test input", field: value}
         test_case = TestCase(**kwargs)
-        assert getattr(test_case, field) == expected
+        assert expected_check(getattr(test_case, field))
 
     @pytest.mark.parametrize(
         "field",
@@ -197,14 +203,19 @@ class TestTestCase:
             expected_tools=["extractor"],
             ground_truth="Expected output",
             files=[file_input],
-            evaluations=["groundedness", "relevance"],
+            evaluations=[
+                EvaluationMetric(metric="groundedness", threshold=0.7),
+                EvaluationMetric(metric="relevance", threshold=0.8),
+            ],
         )
         assert test_case.name == "Test case 1"
         assert test_case.input == "Process document"
         assert test_case.expected_tools == ["extractor"]
         assert test_case.ground_truth == "Expected output"
         assert len(test_case.files) == 1
-        assert test_case.evaluations == ["groundedness", "relevance"]
+        assert len(test_case.evaluations) == 2
+        assert test_case.evaluations[0].metric == "groundedness"
+        assert test_case.evaluations[1].metric == "relevance"
 
     def test_test_case_max_input_length(self) -> None:
         """Test that long inputs are accepted (up to reasonable limit)."""

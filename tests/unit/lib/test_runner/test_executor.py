@@ -1318,6 +1318,434 @@ class TestReportGeneration:
         assert report.holodeck_version == "0.1.0"
 
 
+class TestPerTestMetricResolution:
+    """Tests for T095: Per-test metric resolution logic.
+
+    Tests verify that:
+    - Per-test metrics override global metrics when specified
+    - Test cases without per-test metrics use global defaults
+    - Different test cases can have different metric configurations
+    """
+
+    @pytest.mark.asyncio
+    async def test_per_test_metrics_override_global(self):
+        """Per-test metrics override global metrics when specified."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        # Create per-test metric
+        groundedness_metric = EvaluationMetric(
+            metric="groundedness",
+            threshold=0.8,
+            enabled=True,
+        )
+
+        # Test case with specific per-test metrics
+        test_case = TestCaseModel(
+            name="test_per_test_override",
+            input="Test query",
+            expected_tools=None,
+            ground_truth="Expected answer",
+            files=None,
+            evaluations=[groundedness_metric],  # Only groundedness, not bleu
+        )
+
+        # Global config has both METEOR and BLEU
+        eval_config = EvaluationConfig(
+            model=None,
+            metrics=[
+                EvaluationMetric(
+                    metric="meteor",
+                    threshold=0.7,
+                    enabled=True,
+                ),
+                EvaluationMetric(
+                    metric="bleu",
+                    threshold=0.6,
+                    enabled=True,
+                ),
+                EvaluationMetric(
+                    metric="groundedness",
+                    threshold=0.8,
+                    enabled=True,
+                ),
+            ],
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[test_case],
+            evaluations=eval_config,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "Response based on context"
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = []
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        mock_evaluators = {}
+        for metric in eval_config.metrics:
+            mock_evaluator = AsyncMock()
+            mock_evaluator.evaluate = AsyncMock(return_value={"score": 0.85})
+            mock_evaluators[metric.metric] = mock_evaluator
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            evaluators=mock_evaluators,
+        )
+
+        report = await executor.execute_tests()
+
+        # Verify only groundedness was evaluated
+        assert len(report.results[0].metric_results) == 1
+        assert report.results[0].metric_results[0].metric_name == "groundedness"
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_global_metrics(self):
+        """Test case without per-test metrics falls back to global metrics."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        # Test case without per-test metrics
+        test_case = TestCaseModel(
+            name="test_no_override",
+            input="Test query",
+            expected_tools=None,
+            ground_truth="Expected answer",
+            files=None,
+            evaluations=None,  # No per-test metrics
+        )
+
+        # Global config has METEOR and BLEU
+        eval_config = EvaluationConfig(
+            model=None,
+            metrics=[
+                EvaluationMetric(
+                    metric="meteor",
+                    threshold=0.7,
+                    enabled=True,
+                ),
+                EvaluationMetric(
+                    metric="bleu",
+                    threshold=0.6,
+                    enabled=True,
+                ),
+            ],
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[test_case],
+            evaluations=eval_config,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "Response"
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = []
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        mock_evaluators = {
+            "meteor": AsyncMock(evaluate=AsyncMock(return_value={"meteor": 0.85})),
+            "bleu": AsyncMock(evaluate=AsyncMock(return_value={"bleu": 0.75})),
+        }
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            evaluators=mock_evaluators,
+        )
+
+        report = await executor.execute_tests()
+
+        # Verify both global metrics were used
+        assert len(report.results[0].metric_results) == 2
+        metric_names = {m.metric_name for m in report.results[0].metric_results}
+        assert metric_names == {"meteor", "bleu"}
+
+    @pytest.mark.asyncio
+    async def test_multiple_tests_different_metrics(self):
+        """Different test cases can have different per-test metrics."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        # Test case 1 with specific metrics
+        test_case_1 = TestCaseModel(
+            name="test_1",
+            input="Query 1",
+            expected_tools=None,
+            ground_truth="Answer 1",
+            files=None,
+            evaluations=[
+                EvaluationMetric(
+                    metric="meteor",
+                    threshold=0.7,
+                    enabled=True,
+                ),
+            ],
+        )
+
+        # Test case 2 with different metrics
+        test_case_2 = TestCaseModel(
+            name="test_2",
+            input="Query 2",
+            expected_tools=None,
+            ground_truth="Answer 2",
+            files=None,
+            evaluations=[
+                EvaluationMetric(
+                    metric="bleu",
+                    threshold=0.6,
+                    enabled=True,
+                ),
+                EvaluationMetric(
+                    metric="rouge",
+                    threshold=0.65,
+                    enabled=True,
+                ),
+            ],
+        )
+
+        # Test case 3 without per-test metrics
+        test_case_3 = TestCaseModel(
+            name="test_3",
+            input="Query 3",
+            expected_tools=None,
+            ground_truth="Answer 3",
+            files=None,
+            evaluations=None,
+        )
+
+        eval_config = EvaluationConfig(
+            model=None,
+            metrics=[
+                EvaluationMetric(
+                    metric="meteor",
+                    threshold=0.7,
+                    enabled=True,
+                ),
+                EvaluationMetric(
+                    metric="bleu",
+                    threshold=0.6,
+                    enabled=True,
+                ),
+                EvaluationMetric(
+                    metric="rouge",
+                    threshold=0.65,
+                    enabled=True,
+                ),
+            ],
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[test_case_1, test_case_2, test_case_3],
+            evaluations=eval_config,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "Response"
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = []
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        mock_evaluators = {
+            "meteor": AsyncMock(evaluate=AsyncMock(return_value={"meteor": 0.85})),
+            "bleu": AsyncMock(evaluate=AsyncMock(return_value={"bleu": 0.75})),
+            "rouge": AsyncMock(evaluate=AsyncMock(return_value={"rouge": 0.80})),
+        }
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            evaluators=mock_evaluators,
+        )
+
+        report = await executor.execute_tests()
+
+        # Verify test 1 has only meteor
+        assert len(report.results[0].metric_results) == 1
+        assert report.results[0].metric_results[0].metric_name == "meteor"
+
+        # Verify test 2 has bleu and rouge
+        assert len(report.results[1].metric_results) == 2
+        metric_names_2 = {m.metric_name for m in report.results[1].metric_results}
+        assert metric_names_2 == {"bleu", "rouge"}
+
+        # Verify test 3 has all global metrics
+        assert len(report.results[2].metric_results) == 3
+        metric_names_3 = {m.metric_name for m in report.results[2].metric_results}
+        assert metric_names_3 == {"meteor", "bleu", "rouge"}
+
+    @pytest.mark.asyncio
+    async def test_empty_per_test_metrics_uses_global(self):
+        """Empty per-test metrics list falls back to global metrics."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        # Test case with empty per-test metrics list
+        test_case = TestCaseModel(
+            name="test_empty_list",
+            input="Query",
+            expected_tools=None,
+            ground_truth="Answer",
+            files=None,
+            evaluations=[],  # Empty list - should use global metrics
+        )
+
+        eval_config = EvaluationConfig(
+            model=None,
+            metrics=[
+                EvaluationMetric(
+                    metric="meteor",
+                    threshold=0.7,
+                    enabled=True,
+                ),
+                EvaluationMetric(
+                    metric="bleu",
+                    threshold=0.6,
+                    enabled=True,
+                ),
+            ],
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[test_case],
+            evaluations=eval_config,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "Response"
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = []
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        mock_evaluators = {
+            "meteor": AsyncMock(evaluate=AsyncMock(return_value={"meteor": 0.85})),
+            "bleu": AsyncMock(evaluate=AsyncMock(return_value={"bleu": 0.75})),
+        }
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            evaluators=mock_evaluators,
+        )
+
+        report = await executor.execute_tests()
+
+        # Empty list should fall back to global metrics
+        assert len(report.results[0].metric_results) == 2
+        metric_names = {m.metric_name for m in report.results[0].metric_results}
+        assert metric_names == {"meteor", "bleu"}
+
+
 @pytest.mark.unit
 class TestProgressCallbackIntegration:
     """Tests for T061: Progress callback integration with TestExecutor.
