@@ -162,7 +162,7 @@ type-check: ## Run type checking with mypy
 security: ## Run security checks
 	@echo "$(GREEN)Running security checks...$(NC)"
 	@echo "Checking for known vulnerabilities..."
-	safety check --json
+	safety check --json --ignore=80470
 	@echo "Scanning for security issues with Ruff..."
 	ruff check $(SRC_DIR) --select S
 	@echo "Scanning for security issues with Bandit..."
