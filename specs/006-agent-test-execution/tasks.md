@@ -399,8 +399,8 @@ for test_case in test_cases:
 - [x] T107 [CODE] Add optional ANSI color support to symbols in src/holodeck/lib/test_runner/progress.py to pass T106 tests
 - [x] T108 [TEST] Write unit tests for elapsed time display in tests/unit/lib/test_runner/test_progress.py (test elapsed time for long tests, test hide for quick tests)
 - [x] T109 [CODE] Add elapsed time display to progress.py to pass T108 tests
-- [ ] T110 [TEST] Write unit tests for progress callback integration in CLI in tests/unit/cli/commands/test_test.py (test callback receives results, test progress display updates)
-- [ ] T111 [CODE] Integrate progress callback in CLI display logic in src/holodeck/cli/commands/test.py to pass T110 tests
+- [x] T110 [TEST] Write unit tests for progress callback integration in CLI in tests/unit/cli/commands/test_test.py (test callback receives results, test progress display updates)
+- [x] T111 [CODE] Integrate progress callback in CLI display logic in src/holodeck/cli/commands/test.py to pass T110 tests
 - [ ] T112 [TEST] Write unit tests for quiet mode suppression in tests/unit/lib/test_runner/test_progress.py (test --quiet flag suppresses progress lines, test summary still shown)
 - [ ] T113 [CODE] Implement quiet mode in CLI to pass T112 tests
 - [ ] T114 [TEST] Write unit tests for verbose mode in tests/unit/lib/test_runner/test_progress.py (test --verbose flag shows debug info, timing details)
