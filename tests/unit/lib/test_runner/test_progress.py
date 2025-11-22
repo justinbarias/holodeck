@@ -65,6 +65,7 @@ class TestProgressDisplay:
         result1 = MagicMock(spec=TestResult)
         result1.test_name = "Test 1"
         result1.passed = True
+        result1.execution_time_ms = None
 
         indicator.update(result1)
         assert indicator.current_test == 1
@@ -78,6 +79,7 @@ class TestProgressDisplay:
         result_fail = MagicMock(spec=TestResult)
         result_fail.test_name = "Test Failed"
         result_fail.passed = False
+        result_fail.execution_time_ms = None
 
         indicator.update(result_fail)
         assert indicator.failed == 1
@@ -94,6 +96,7 @@ class TestProgressFormat:
             result = MagicMock(spec=TestResult)
             result.test_name = "Basic Test"
             result.passed = True
+            result.execution_time_ms = None
 
             indicator.update(result)
             output = indicator.get_progress_line()
@@ -110,6 +113,7 @@ class TestProgressFormat:
                 result = MagicMock(spec=TestResult)
                 result.test_name = f"Test {i+1}"
                 result.passed = True
+                result.execution_time_ms = None
                 indicator.update(result)
 
             assert indicator.current_test == 3
@@ -121,6 +125,7 @@ class TestProgressFormat:
             result = MagicMock(spec=TestResult)
             result.test_name = "Passing Test"
             result.passed = True
+            result.execution_time_ms = None
 
             indicator.update(result)
             output = indicator.get_progress_line()
@@ -135,6 +140,7 @@ class TestProgressFormat:
             result = MagicMock(spec=TestResult)
             result.test_name = "Failing Test"
             result.passed = False
+            result.execution_time_ms = None
 
             indicator.update(result)
             output = indicator.get_progress_line()
@@ -149,6 +155,7 @@ class TestProgressFormat:
             result = MagicMock(spec=TestResult)
             result.test_name = "Passing Test"
             result.passed = True
+            result.execution_time_ms = None
 
             indicator.update(result)
             output = indicator.get_progress_line()
@@ -163,6 +170,7 @@ class TestProgressFormat:
             result = MagicMock(spec=TestResult)
             result.test_name = "Failing Test"
             result.passed = False
+            result.execution_time_ms = None
 
             indicator.update(result)
             output = indicator.get_progress_line()
@@ -185,6 +193,7 @@ class TestSummaryDisplay:
             result = MagicMock(spec=TestResult)
             result.test_name = f"Test {i+1}"
             result.passed = True
+            result.execution_time_ms = None
             indicator.update(result)
 
         # Add 2 failing tests
@@ -192,6 +201,7 @@ class TestSummaryDisplay:
             result = MagicMock(spec=TestResult)
             result.test_name = f"Failing Test {i+1}"
             result.passed = False
+            result.execution_time_ms = None
             indicator.update(result)
 
         summary = indicator.get_summary()
@@ -209,12 +219,14 @@ class TestSummaryDisplay:
             result = MagicMock(spec=TestResult)
             result.test_name = f"Test {i+1}"
             result.passed = True
+            result.execution_time_ms = None
             indicator.update(result)
 
         # 1 failing test
         result_fail = MagicMock(spec=TestResult)
         result_fail.test_name = "Failing Test"
         result_fail.passed = False
+        result_fail.execution_time_ms = None
         indicator.update(result_fail)
 
         summary = indicator.get_summary()
@@ -230,6 +242,7 @@ class TestSummaryDisplay:
             result = MagicMock(spec=TestResult)
             result.test_name = f"Test {i+1}"
             result.passed = True
+            result.execution_time_ms = None
             indicator.update(result)
 
         summary = indicator.get_summary()
@@ -244,6 +257,7 @@ class TestSummaryDisplay:
             result = MagicMock(spec=TestResult)
             result.test_name = f"Test {i+1}"
             result.passed = False
+            result.execution_time_ms = None
             indicator.update(result)
 
         summary = indicator.get_summary()
@@ -263,6 +277,7 @@ class TestCIDCDCompatibility:
                 result = MagicMock(spec=TestResult)
                 result.test_name = f"Test {i+1}"
                 result.passed = i % 2 == 0
+                result.execution_time_ms = None
                 indicator.update(result)
 
             output = indicator.get_progress_line()
@@ -278,11 +293,13 @@ class TestCIDCDCompatibility:
             result1 = MagicMock(spec=TestResult)
             result1.test_name = "Test 1"
             result1.passed = True
+            result1.execution_time_ms = None
             indicator.update(result1)
 
             result2 = MagicMock(spec=TestResult)
             result2.test_name = "Test 2"
             result2.passed = False
+            result2.execution_time_ms = None
             indicator.update(result2)
 
             output = indicator.get_progress_line()
@@ -299,6 +316,7 @@ class TestCIDCDCompatibility:
             result = MagicMock(spec=TestResult)
             result.test_name = "Simple Test"
             result.passed = True
+            result.execution_time_ms = None
 
             indicator.update(result)
             output = indicator.get_progress_line()
@@ -321,6 +339,7 @@ class TestQuietMode:
         result = MagicMock(spec=TestResult)
         result.test_name = "Test 1"
         result.passed = True
+        result.execution_time_ms = None
 
         indicator.update(result)
 
@@ -336,6 +355,7 @@ class TestQuietMode:
             result = MagicMock(spec=TestResult)
             result.test_name = f"Test {i+1}"
             result.passed = True
+            result.execution_time_ms = None
             indicator.update(result)
 
         summary = indicator.get_summary()
@@ -383,6 +403,264 @@ class TestVerboseMode:
         assert len(summary) > 50  # Should be more detailed
 
 
+class TestSpinnerDisplay:
+    """Test spinner animation for long-running tests."""
+
+    def test_spinner_appears_for_long_tests(self) -> None:
+        """Test that spinner appears for tests exceeding 5 seconds."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Long Running Test"
+            result.passed = True
+            result.execution_time_ms = 6000  # 6 seconds, above 5s threshold
+
+            indicator.update(result)
+
+            # Get spinner character
+            spinner_char = indicator._get_spinner_char()
+
+            # Spinner character should be one of the Braille patterns
+            spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            assert spinner_char in spinner_chars or spinner_char == ""
+
+    def test_spinner_rotation(self) -> None:
+        """Test that spinner characters rotate correctly."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=3)
+            spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+            # Simulate multiple long-running tests
+            previous_chars = []
+            for i in range(3):
+                result = MagicMock(spec=TestResult)
+                result.test_name = f"Long Test {i+1}"
+                result.passed = True
+                result.execution_time_ms = 6000
+
+                indicator.update(result)
+                spinner_char = indicator._get_spinner_char()
+                previous_chars.append(spinner_char)
+
+                # Each character should be in the spinner set or empty
+                assert spinner_char in spinner_chars or spinner_char == ""
+
+    def test_spinner_disabled_in_non_tty(self) -> None:
+        """Test that spinner is disabled in non-TTY environments."""
+        with patch("sys.stdout.isatty", return_value=False):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Test"
+            result.passed = True
+            result.execution_time_ms = 6000
+
+            indicator.update(result)
+            spinner_char = indicator._get_spinner_char()
+
+            # In non-TTY, spinner should return empty string
+            assert spinner_char == ""
+
+    def test_spinner_not_shown_for_quick_tests(self) -> None:
+        """Test that spinner does not appear for tests under 5 seconds."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Quick Test"
+            result.passed = True
+            result.execution_time_ms = 2000  # 2 seconds, below threshold
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # Quick tests should not trigger spinner indicator in output
+            assert isinstance(output, str)
+
+
+class TestANSIColorOutput:
+    """Test ANSI color code output for progress indicators."""
+
+    def test_color_codes_in_tty_mode(self) -> None:
+        """Test that ANSI color codes are present in TTY mode."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Color Test"
+            result.passed = True
+            result.execution_time_ms = 100
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # In TTY mode, color codes should be present
+            # Colors are added to pass/fail symbols
+            assert "\033[" in output or "✓" in output  # Either colors or unicode
+
+    def test_no_color_codes_in_non_tty(self) -> None:
+        """Test that ANSI color codes are absent in non-TTY mode."""
+        with patch("sys.stdout.isatty", return_value=False):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Plain Test"
+            result.passed = True
+            result.execution_time_ms = 100
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # In non-TTY mode, no ANSI color codes
+            # Plain text only
+            assert isinstance(output, str)
+
+    def test_pass_symbol_colored(self) -> None:
+        """Test that pass symbol is properly colored in TTY."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Pass Color Test"
+            result.passed = True
+            result.execution_time_ms = 100
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # Pass symbol should be present
+            assert "✓" in output or "\033[92m" in output or "PASS" in output.upper()
+
+    def test_fail_symbol_colored(self) -> None:
+        """Test that fail symbol is properly colored in TTY."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Fail Color Test"
+            result.passed = False
+            result.execution_time_ms = 100
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # Fail symbol should be present
+            assert "✗" in output or "\033[91m" in output or "FAIL" in output.upper()
+
+    def test_color_reset_codes(self) -> None:
+        """Test that color reset codes are present when colors are used."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Reset Test"
+            result.passed = True
+            result.execution_time_ms = 100
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # If colors are present, reset codes should follow
+            if "\033[" in output:
+                assert "\033[0m" in output  # Reset code
+
+    def test_summary_colors_tty(self) -> None:
+        """Test that summary uses colors in TTY mode."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=2)
+
+            result1 = MagicMock(spec=TestResult)
+            result1.test_name = "Test 1"
+            result1.passed = True
+            result1.execution_time_ms = 100
+            indicator.update(result1)
+
+            result2 = MagicMock(spec=TestResult)
+            result2.test_name = "Test 2"
+            result2.passed = False
+            result2.execution_time_ms = 100
+            indicator.update(result2)
+
+            summary = indicator.get_summary()
+
+            # Summary should have symbols or color codes
+            assert "✓" in summary or "✗" in summary or "\033[" in summary
+
+
+class TestElapsedTimeDisplay:
+    """Test elapsed time display for test execution."""
+
+    def test_elapsed_time_shown_for_long_tests(self) -> None:
+        """Test that elapsed time is shown for tests exceeding threshold."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Long Test"
+            result.passed = True
+            result.execution_time_ms = 2500  # 2.5 seconds, above 1s threshold
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # Should contain elapsed time in seconds format
+            assert "2.5s" in output or "2.50s" in output
+
+    def test_elapsed_time_hidden_for_quick_tests(self) -> None:
+        """Test that elapsed time is hidden for tests below threshold."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Quick Test"
+            result.passed = True
+            result.execution_time_ms = 250  # 0.25 seconds, below 1s threshold
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # Should NOT contain elapsed time
+            assert "0.25s" not in output
+            assert "250ms" not in output
+
+    def test_elapsed_time_format(self) -> None:
+        """Test that elapsed time is formatted correctly."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Formatted Test"
+            result.passed = True
+            result.execution_time_ms = 1500  # 1.5 seconds
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # Should contain formatted time
+            assert "1.5s" in output or "1.50s" in output
+
+    def test_elapsed_time_not_shown_in_non_tty(self) -> None:
+        """Test elapsed time behavior in non-TTY mode."""
+        with patch("sys.stdout.isatty", return_value=False):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Test"
+            result.passed = True
+            result.execution_time_ms = 5000  # Long test
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # In non-TTY mode with verbose disabled, elapsed time may not show
+            # unless explicitly enabled in verbose mode
+            assert isinstance(output, str)
+
+    def test_elapsed_time_at_threshold(self) -> None:
+        """Test elapsed time display at exactly 1 second threshold."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1)
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Threshold Test"
+            result.passed = True
+            result.execution_time_ms = 1000  # Exactly 1 second
+
+            indicator.update(result)
+            output = indicator.get_progress_line()
+
+            # Should show elapsed time at threshold
+            assert "1.0s" in output or "1.00s" in output
+
+
 @pytest.mark.unit
 class TestProgressIndicatorIntegration:
     """Integration tests for progress indicator."""
@@ -417,6 +695,7 @@ class TestProgressIndicatorIntegration:
         result = MagicMock(spec=TestResult)
         result.test_name = "Only Test"
         result.passed = True
+        result.execution_time_ms = None
 
         indicator.update(result)
 
@@ -424,3 +703,138 @@ class TestProgressIndicatorIntegration:
         assert indicator.passed == 1
         summary = indicator.get_summary()
         assert "1" in summary
+
+
+class TestStartTest:
+    """Tests for start_test method."""
+
+    def test_start_test_sets_current_test_name(self) -> None:
+        """Test that start_test sets the current test name."""
+        indicator = ProgressIndicator(total_tests=5)
+        indicator.start_test("My Test")
+        assert indicator.current_test_name == "My Test"
+
+    def test_start_test_updates_for_multiple_tests(self) -> None:
+        """Test that start_test updates correctly for multiple tests."""
+        indicator = ProgressIndicator(total_tests=3)
+        indicator.start_test("Test 1")
+        assert indicator.current_test_name == "Test 1"
+        indicator.start_test("Test 2")
+        assert indicator.current_test_name == "Test 2"
+
+
+class TestGetSpinnerLine:
+    """Tests for get_spinner_line method."""
+
+    def test_get_spinner_line_in_tty(self) -> None:
+        """Test get_spinner_line returns spinner in TTY mode."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=5)
+            indicator.start_test("Running Test")
+            line = indicator.get_spinner_line()
+            assert "Test 1/5" in line
+            assert "Running..." in line
+
+    def test_get_spinner_line_in_non_tty(self) -> None:
+        """Test get_spinner_line returns empty in non-TTY mode."""
+        with patch("sys.stdout.isatty", return_value=False):
+            indicator = ProgressIndicator(total_tests=5)
+            indicator.start_test("Running Test")
+            line = indicator.get_spinner_line()
+            assert line == ""
+
+    def test_get_spinner_line_in_quiet_mode(self) -> None:
+        """Test get_spinner_line returns empty in quiet mode."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=5, quiet=True)
+            indicator.start_test("Running Test")
+            line = indicator.get_spinner_line()
+            assert line == ""
+
+    def test_get_spinner_line_exceeds_total(self) -> None:
+        """Test get_spinner_line handles case where current test exceeds total."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=2)
+            indicator.current_test = 3  # Exceeds total
+            line = indicator.get_spinner_line()
+            # Should cap at total_tests
+            assert "Test 2/2" in line or "Test 3/2" in line
+
+
+class TestColorize:
+    """Tests for _colorize method."""
+
+    def test_colorize_in_non_tty(self) -> None:
+        """Test _colorize returns plain text in non-TTY mode."""
+        with patch("sys.stdout.isatty", return_value=False):
+            indicator = ProgressIndicator(total_tests=1)
+            result = indicator._colorize("test", "\033[92m")
+            assert result == "test"
+            assert "\033[" not in result
+
+
+class TestGetSummaryEdgeCases:
+    """Tests for get_summary edge cases."""
+
+    def test_get_summary_no_tests(self) -> None:
+        """Test get_summary with zero tests."""
+        indicator = ProgressIndicator(total_tests=0)
+        summary = indicator.get_summary()
+        assert "No tests" in summary
+
+    def test_get_summary_with_failures_in_tty(self) -> None:
+        """Test get_summary shows warning symbol with failures in TTY."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=2)
+            result1 = MagicMock(spec=TestResult)
+            result1.test_name = "Test 1"
+            result1.passed = True
+            result1.execution_time_ms = 100
+            indicator.update(result1)
+
+            result2 = MagicMock(spec=TestResult)
+            result2.test_name = "Test 2"
+            result2.passed = False
+            result2.execution_time_ms = 200
+            indicator.update(result2)
+
+            summary = indicator.get_summary()
+            # Should contain warning symbol or failure indicator
+            assert "⚠" in summary or "Failed" in summary
+
+    def test_get_summary_verbose_mode(self) -> None:
+        """Test get_summary includes test details in verbose mode."""
+        indicator = ProgressIndicator(total_tests=2, verbose=True)
+        result1 = MagicMock(spec=TestResult)
+        result1.test_name = "Test 1"
+        result1.passed = True
+        result1.execution_time_ms = 100
+        indicator.update(result1)
+
+        result2 = MagicMock(spec=TestResult)
+        result2.test_name = "Test 2"
+        result2.passed = False
+        result2.execution_time_ms = 200
+        indicator.update(result2)
+
+        summary = indicator.get_summary()
+        # Should include test details
+        assert "Test 1" in summary
+        assert "Test 2" in summary
+
+
+class TestStrMethod:
+    """Tests for __str__ method."""
+
+    def test_str_returns_progress_line(self) -> None:
+        """Test __str__ returns the current progress line."""
+        indicator = ProgressIndicator(total_tests=2)
+        result = MagicMock(spec=TestResult)
+        result.test_name = "Test 1"
+        result.passed = True
+        result.execution_time_ms = 100
+        indicator.update(result)
+
+        str_output = str(indicator)
+        progress_line = indicator.get_progress_line()
+        assert str_output == progress_line

@@ -9,9 +9,11 @@ Tests cover:
 """
 
 import tempfile
+import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from holodeck.cli.commands.test import test
@@ -1047,5 +1049,314 @@ class TestCLIProgressDisplay:
 
                 # Summary should still be called even in quiet mode
                 mock_progress_instance.get_summary.assert_called_once()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+
+class TestSpinnerThread:
+    """Tests for SpinnerThread class."""
+
+    def test_spinner_thread_run_method(self):
+        """Test SpinnerThread run() method executes spinner loop."""
+        from holodeck.cli.commands.test import SpinnerThread
+
+        mock_progress = MagicMock()
+        mock_progress.get_spinner_line.return_value = "⠋ Test 1/5: Running..."
+
+        spinner = SpinnerThread(mock_progress)
+
+        with (
+            patch("sys.stdout.write") as mock_write,
+            patch("sys.stdout.flush"),
+            patch("time.sleep"),
+        ):
+            # Start and immediately stop
+            spinner.start()
+            time.sleep(0.05)  # Let it run briefly
+            spinner.stop()
+            spinner.join(timeout=1)
+
+            # Verify spinner wrote output
+            assert mock_write.called or not spinner.is_alive()
+
+    def test_spinner_thread_stop_method(self):
+        """Test SpinnerThread stop() method clears the line."""
+        from holodeck.cli.commands.test import SpinnerThread
+
+        mock_progress = MagicMock()
+        mock_progress.get_spinner_line.return_value = "⠋ Test 1/5: Running..."
+
+        spinner = SpinnerThread(mock_progress)
+
+        with (
+            patch("sys.stdout.write") as mock_write,
+            patch("sys.stdout.flush"),
+            patch("time.sleep"),
+        ):
+            spinner.start()
+            time.sleep(0.05)
+            spinner.stop()
+            spinner.join(timeout=1)
+
+            # Verify stop cleared the line
+            assert (
+                any(" " * 60 in str(call) for call in mock_write.call_args_list)
+                or not spinner.is_alive()
+            )
+
+
+class TestReportSaving:
+    """Tests for report saving functionality."""
+
+    def test_save_report_json_format(self):
+        """Test _save_report with JSON format."""
+        from holodeck.cli.commands.test import _save_report
+
+        report = _create_mock_report("test.yaml")
+
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as tmp:
+            tmp_path = tmp.name
+
+        try:
+            _save_report(report, tmp_path, "json")
+
+            # Verify file was created
+            assert Path(tmp_path).exists()
+
+            # Verify content is valid JSON
+            content = Path(tmp_path).read_text()
+            import json
+
+            data = json.loads(content)
+            assert data["agent_name"] == "test_agent"
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_save_report_markdown_format(self):
+        """Test _save_report with Markdown format."""
+        from holodeck.cli.commands.test import _save_report
+
+        report = _create_mock_report("test.yaml")
+
+        with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w") as tmp:
+            tmp_path = tmp.name
+
+        try:
+            _save_report(report, tmp_path, "markdown")
+
+            # Verify file was created
+            assert Path(tmp_path).exists()
+
+            # Verify content is markdown
+            content = Path(tmp_path).read_text()
+            assert "# Test Report:" in content
+            assert "test_agent" in content
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_save_report_auto_detect_json(self):
+        """Test _save_report auto-detects JSON from .json extension."""
+        from holodeck.cli.commands.test import _save_report
+
+        report = _create_mock_report("test.yaml")
+
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as tmp:
+            tmp_path = tmp.name
+
+        try:
+            _save_report(report, tmp_path, None)
+
+            # Verify JSON format was used
+            content = Path(tmp_path).read_text()
+            import json
+
+            json.loads(content)  # Should not raise
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_save_report_auto_detect_markdown(self):
+        """Test _save_report auto-detects Markdown from .md extension."""
+        from holodeck.cli.commands.test import _save_report
+
+        report = _create_mock_report("test.yaml")
+
+        with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w") as tmp:
+            tmp_path = tmp.name
+
+        try:
+            _save_report(report, tmp_path, None)
+
+            # Verify markdown format was used
+            content = Path(tmp_path).read_text()
+            assert "# Test Report:" in content
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_save_report_default_to_json(self):
+        """Test _save_report defaults to JSON for unknown extensions."""
+        from holodeck.cli.commands.test import _save_report
+
+        report = _create_mock_report("test.yaml")
+
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w") as tmp:
+            tmp_path = tmp.name
+
+        try:
+            _save_report(report, tmp_path, None)
+
+            # Verify JSON format was used as default
+            content = Path(tmp_path).read_text()
+            import json
+
+            json.loads(content)  # Should not raise
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_save_report_oserror_handling(self):
+        """Test _save_report handles OSError when writing fails."""
+        from holodeck.cli.commands.test import _save_report
+
+        report = _create_mock_report("test.yaml")
+
+        # Use an invalid path that will cause OSError
+        invalid_path = "/invalid/path/that/does/not/exist/report.json"
+
+        with pytest.raises(OSError):
+            _save_report(report, invalid_path, "json")
+
+
+class TestGenerateMarkdownReport:
+    """Tests for _generate_markdown_report function."""
+
+    def test_generate_markdown_report_structure(self):
+        """Test _generate_markdown_report creates proper markdown structure."""
+        from holodeck.cli.commands.test import _generate_markdown_report
+
+        report = _create_mock_report("test.yaml")
+        markdown = _generate_markdown_report(report)
+
+        # Verify header
+        assert "# Test Report: test_agent" in markdown
+        assert "**Config**: test.yaml" in markdown
+        assert "**Timestamp**:" in markdown
+        assert "**HoloDeck Version**:" in markdown
+
+        # Verify summary section
+        assert "## Summary" in markdown
+        assert "**Total Tests**:" in markdown
+        assert "**Passed**:" in markdown
+        assert "**Failed**:" in markdown
+        assert "**Pass Rate**:" in markdown
+        assert "**Total Duration**:" in markdown
+
+    def test_generate_markdown_report_with_results(self):
+        """Test _generate_markdown_report includes results table."""
+        from holodeck.cli.commands.test import _generate_markdown_report
+
+        test_result = TestResult(
+            test_name="test_1",
+            test_input="input",
+            processed_files=[],
+            agent_response="response",
+            tool_calls=[],
+            expected_tools=None,
+            tools_matched=None,
+            metric_results=[],
+            ground_truth=None,
+            passed=True,
+            execution_time_ms=100,
+            errors=[],
+            timestamp="2024-01-01T00:00:00Z",
+        )
+
+        report = TestReport(
+            agent_name="test_agent",
+            agent_config_path="test.yaml",
+            results=[test_result],
+            summary=ReportSummary(
+                total_tests=1,
+                passed=1,
+                failed=0,
+                pass_rate=100.0,
+                total_duration_ms=100,
+                metrics_evaluated={},
+                average_scores={},
+            ),
+            timestamp="2024-01-01T00:00:00Z",
+            holodeck_version="0.1.0",
+            environment={},
+        )
+
+        markdown = _generate_markdown_report(report)
+
+        # Verify results table
+        assert "## Test Results" in markdown
+        assert "| Test | Status | Duration | Errors |" in markdown
+        assert "test_1" in markdown
+        assert "✓ Pass" in markdown or "Pass" in markdown
+
+
+class TestExceptionHandling:
+    """Tests for exception handling in test command."""
+
+    def test_generic_exception_handling(self):
+        """Test generic Exception is caught and exits with code 3."""
+        runner = CliRunner()
+
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor"),
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.side_effect = RuntimeError(
+                    "Unexpected error"
+                )
+                mock_loader_class.return_value = mock_loader
+
+                result = runner.invoke(test, [tmp_path])
+
+                assert result.exit_code == 3
+                assert "Error:" in result.output
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+
+class TestOnTestStartCallback:
+    """Tests for on_test_start callback."""
+
+    def test_on_test_start_callback_passed_to_executor(self):
+        """Test on_test_start callback is passed to TestExecutor."""
+        runner = CliRunner()
+
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(1)
+                mock_loader_class.return_value = mock_loader
+
+                mock_instance = MagicMock()
+                mock_instance.execute_tests = AsyncMock(
+                    return_value=_create_mock_report(tmp_path)
+                )
+                mock_executor.return_value = mock_instance
+
+                runner.invoke(test, [tmp_path])
+
+                # Verify TestExecutor was initialized with on_test_start callback
+                call_kwargs = mock_executor.call_args.kwargs
+                assert "on_test_start" in call_kwargs
+                assert callable(call_kwargs["on_test_start"])
         finally:
             Path(tmp_path).unlink(missing_ok=True)

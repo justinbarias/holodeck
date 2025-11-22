@@ -27,6 +27,14 @@ class ProgressIndicator:
         verbose: Show detailed output including timing
     """
 
+    # ANSI color codes
+    _COLOR_GREEN = "\033[92m"
+    _COLOR_RED = "\033[91m"
+    _COLOR_RESET = "\033[0m"
+
+    # Spinner characters for long-running tests
+    _SPINNER_CHARS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
     def __init__(
         self,
         total_tests: int,
@@ -48,6 +56,7 @@ class ProgressIndicator:
         self.verbose = verbose
         self.test_results: list[TestResult] = []
         self.start_time = datetime.now()
+        self._spinner_index = 0
 
     @property
     def is_tty(self) -> bool:
@@ -72,25 +81,103 @@ class ProgressIndicator:
         else:
             self.failed += 1
 
+    def _colorize(self, text: str, color: str) -> str:
+        """Apply ANSI color codes to text if in TTY mode.
+
+        Args:
+            text: Text to colorize
+            color: ANSI color code
+
+        Returns:
+            Colorized text if in TTY, plain text otherwise
+        """
+        if not self.is_tty:
+            return text
+        return f"{color}{text}{self._COLOR_RESET}"
+
+    def _get_spinner_char(self) -> str:
+        """Get current spinner character and advance rotation.
+
+        Returns:
+            Current spinner character
+        """
+        if not self.is_tty:
+            return ""
+        char = self._SPINNER_CHARS[self._spinner_index % len(self._SPINNER_CHARS)]
+        self._spinner_index += 1
+        return char
+
+    def start_test(self, test_name: str) -> None:
+        """Mark a test as started.
+
+        Args:
+            test_name: Name of the test starting
+        """
+        self.current_test_name = test_name
+
+    def get_spinner_line(self) -> str:
+        """Get current spinner line for running test.
+
+        Returns:
+            Formatted spinner string (e.g. "⠋ Test 1/5: Running...")
+        """
+        if not self.is_tty or self.quiet:
+            return ""
+
+        spinner = self._get_spinner_char()
+        next_test = self.current_test + 1
+
+        # Ensure we don't exceed total tests in display
+        if next_test > self.total_tests:
+            next_test = self.total_tests
+
+        return f"{spinner} Test {next_test}/{self.total_tests}: Running..."
+
+    def _is_long_running(self, execution_time_ms: int | None) -> bool:
+        """Check if test execution time exceeds long-running threshold.
+
+        Args:
+            execution_time_ms: Execution time in milliseconds
+
+        Returns:
+            True if execution time >= 5 seconds
+        """
+        if execution_time_ms is None:
+            return False
+        return execution_time_ms >= 5000
+
     def _get_pass_symbol(self) -> str:
         """Get appropriate pass symbol based on environment.
 
         Returns:
-            checkmark for TTY, PASS for plain text
+            Colored checkmark for TTY, PASS for plain text
         """
         if self.is_tty:
-            return "\u2713"  # ✓ checkmark
+            return self._colorize("\u2713", self._COLOR_GREEN)  # ✓ checkmark
         return "PASS"
 
     def _get_fail_symbol(self) -> str:
         """Get appropriate fail symbol based on environment.
 
         Returns:
-            X mark for TTY, FAIL for plain text
+            Colored X mark for TTY, FAIL for plain text
         """
         if self.is_tty:
-            return "\u2717"  # ✗ X mark
+            return self._colorize("\u2717", self._COLOR_RED)  # ✗ X mark
         return "FAIL"
+
+    def _should_show_elapsed_time(self, execution_time_ms: int | None) -> bool:
+        """Check if elapsed time should be displayed.
+
+        Args:
+            execution_time_ms: Execution time in milliseconds
+
+        Returns:
+            True if elapsed time should be shown (>1 second), False otherwise
+        """
+        if execution_time_ms is None:
+            return False
+        return execution_time_ms >= 1000
 
     def _format_test_status(self, result: "TestResult") -> str:
         """Format a single test result status line.
@@ -104,11 +191,18 @@ class ProgressIndicator:
         symbol = self._get_pass_symbol() if result.passed else self._get_fail_symbol()
         status = symbol
 
-        if self.verbose and result.execution_time_ms:
-            status += f" ({result.execution_time_ms}ms)"
-
         if result.test_name:
             status += f" {result.test_name}"
+
+        # Show elapsed time for long tests (>1s) or when in verbose mode
+        if result.execution_time_ms:
+            if self._should_show_elapsed_time(result.execution_time_ms):
+                # Convert ms to seconds with 2 decimal places
+                elapsed_seconds = result.execution_time_ms / 1000.0
+                status += f" ({elapsed_seconds:.2f}s)"
+            elif self.verbose:
+                # In verbose mode, always show timing
+                status += f" ({result.execution_time_ms}ms)"
 
         return status
 
@@ -157,8 +251,11 @@ class ProgressIndicator:
         summary_lines.append("=" * 60)
 
         if self.is_tty:
-            # TTY: Use symbols
-            pass_symbol = "\u2713" if self.failed == 0 else "\u26a0"  # ✓ or ⚠
+            # TTY: Use colored symbols
+            if self.failed == 0:
+                pass_symbol = self._colorize("\u2713", self._COLOR_GREEN)  # ✓
+            else:
+                pass_symbol = self._colorize("\u26a0", self._COLOR_RED)  # ⚠
             summary_lines.append(
                 f"{pass_symbol} Test Results: {self.passed}/{self.total_tests} passed "
                 f"({pass_rate:.1f}%)"
@@ -183,7 +280,10 @@ class ProgressIndicator:
             summary_lines.append("")
             summary_lines.append("Test Details:")
             for i, result in enumerate(self.test_results, 1):
-                check = "\u2713" if result.passed else "\u2717"  # ✓ or ✗
+                if result.passed:
+                    check = self._colorize("\u2713", self._COLOR_GREEN)  # ✓
+                else:
+                    check = self._colorize("\u2717", self._COLOR_RED)  # ✗
                 name = result.test_name or f"Test {i}"
                 timing = (
                     f" ({result.execution_time_ms}ms)"

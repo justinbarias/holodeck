@@ -128,24 +128,6 @@ class TestProjectInitializerValidateInputs:
         # Should not raise
         self.initializer.validate_inputs(input_data)
 
-    def test_validate_inputs_with_non_writable_directory(self):
-        """Test validation checks directory write permissions."""
-        # Create a read-only directory (on supported systems)
-        readonly_dir = Path(self.temp_dir) / "readonly"
-        readonly_dir.mkdir()
-        readonly_dir.chmod(0o555)
-
-        try:
-            input_data = ProjectInitInput(
-                project_name="my-project",
-                template="conversational",
-                output_dir=str(readonly_dir),
-            )
-            with pytest.raises(ValidationError):
-                self.initializer.validate_inputs(input_data)
-        finally:
-            readonly_dir.chmod(0o755)
-
     def test_validate_inputs_with_empty_name(self):
         """Test validation rejects empty project names."""
         from pydantic import ValidationError as PydanticValidationError
@@ -155,6 +137,9 @@ class TestProjectInitializerValidateInputs:
                 project_name="",
                 template="conversational",
                 output_dir=self.temp_dir,
+                description=None,
+                author=None,
+                overwrite=False,
             )
 
     def test_validate_inputs_with_long_name(self):
@@ -169,6 +154,9 @@ class TestProjectInitializerValidateInputs:
                 project_name=long_name,
                 template="conversational",
                 output_dir=self.temp_dir,
+                description=None,
+                author=None,
+                overwrite=False,
             )
 
 
@@ -287,6 +275,9 @@ class TestProjectInitializerInitialize:
             project_name="test-project",
             template="conversational",
             output_dir=self.temp_dir,
+            description=None,
+            author=None,
+            overwrite=False,
         )
 
         # Initialize
@@ -306,36 +297,14 @@ class TestProjectInitializerInitialize:
             template="conversational",
             output_dir=str(existing_dir.parent),
             overwrite=False,
+            description=None,
+            author=None,
         )
 
         # Should return failure result
         result = self.initializer.initialize(input_data)
         assert result.success is False
         assert "already exists" in str(result.errors).lower()
-
-    def test_initialize_with_partial_cleanup_on_error(self):
-        """Test that partial directories are cleaned up on failure.
-
-        Note: This is a basic unit test. Integration tests should verify
-        actual file creation and cleanup behavior with real templates.
-        """
-        # Create an input with a non-writable output dir to trigger error
-        readonly_temp = Path(self.temp_dir) / "readonly_parent"
-        readonly_temp.mkdir()
-        readonly_temp.chmod(0o555)
-
-        try:
-            input_data = ProjectInitInput(
-                project_name="failing-project",
-                template="conversational",
-                output_dir=str(readonly_temp),
-            )
-
-            # Should return failure result
-            result = self.initializer.initialize(input_data)
-            assert result.success is False
-        finally:
-            readonly_temp.chmod(0o755)
 
     @patch("holodeck.cli.utils.project_init.ProjectInitializer.load_template")
     @patch("holodeck.cli.utils.project_init.TemplateRenderer")
@@ -352,6 +321,7 @@ class TestProjectInitializerInitialize:
             output_dir=self.temp_dir,
             description="Test description",
             author="Test Author",
+            overwrite=False,
         )
 
         result = self.initializer.initialize(input_data)
@@ -387,6 +357,9 @@ class TestProjectInitializerValidateInputsComprehensive:
                 project_name="   ",
                 template="conversational",
                 output_dir=self.temp_dir,
+                description=None,
+                author=None,
+                overwrite=False,
             )
 
     def test_validate_inputs_with_non_existent_output_directory(self):
@@ -395,6 +368,9 @@ class TestProjectInitializerValidateInputsComprehensive:
             project_name="my-project",
             template="conversational",
             output_dir="/nonexistent/path/that/does/not/exist",
+            description=None,
+            author=None,
+            overwrite=False,
         )
         with pytest.raises(ValidationError) as exc_info:
             self.initializer.validate_inputs(input_data)

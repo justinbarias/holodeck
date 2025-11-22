@@ -393,25 +393,25 @@ for test_case in test_cases:
 
 **Note**: Core progress indicator (T057-T058) is already implemented. These tasks add optional spinner animation and color enhancements built on top of the callback integration.
 
-- [ ] T104 [TEST] Write unit tests for optional spinner in tests/unit/lib/test_runner/test_progress.py (test spinner for long-running tests >5s, test spinner char rotation during execution, test disable in non-TTY)
-- [ ] T105 [CODE] Implement optional spinner for long-running tests in src/holodeck/lib/test_runner/progress.py to pass T104 tests
-- [ ] T106 [TEST] Write unit tests for ANSI color codes in tests/unit/lib/test_runner/test_progress.py (test color output in TTY, test no colors in non-TTY)
-- [ ] T107 [CODE] Add optional ANSI color support to symbols in src/holodeck/lib/test_runner/progress.py to pass T106 tests
-- [ ] T108 [TEST] Write unit tests for elapsed time display in tests/unit/lib/test_runner/test_progress.py (test elapsed time for long tests, test hide for quick tests)
-- [ ] T109 [CODE] Add elapsed time display to progress.py to pass T108 tests
-- [ ] T110 [TEST] Write unit tests for progress callback integration in CLI in tests/unit/cli/commands/test_test.py (test callback receives results, test progress display updates)
-- [ ] T111 [CODE] Integrate progress callback in CLI display logic in src/holodeck/cli/commands/test.py to pass T110 tests
-- [ ] T112 [TEST] Write unit tests for quiet mode suppression in tests/unit/lib/test_runner/test_progress.py (test --quiet flag suppresses progress lines, test summary still shown)
-- [ ] T113 [CODE] Implement quiet mode in CLI to pass T112 tests
-- [ ] T114 [TEST] Write unit tests for verbose mode in tests/unit/lib/test_runner/test_progress.py (test --verbose flag shows debug info, timing details)
-- [ ] T115 [CODE] Implement verbose mode in CLI to pass T114 tests
-- [ ] T116 [VERIFY] Run make test-unit to verify progress enhancements pass
-- [ ] T117 [VERIFY] Run make format && make lint && make type-check
-- [ ] T118 [TEST] Write integration test for progress display in tests/integration/test_basic_execution.py (verify progress output during live test execution)
-- [ ] T119 [VERIFY] Run make test-integration to verify progress integration tests pass
-- [ ] T120 [VERIFY] Run make test to verify all tests pass
-- [ ] T121 [VERIFY] Verify progress indicator demo script works
-- [ ] T122 [VERIFY] Update documentation with progress indicator usage examples
+- [x] T104 [TEST] Write unit tests for optional spinner in tests/unit/lib/test_runner/test_progress.py (test spinner for long-running tests >5s, test spinner char rotation during execution, test disable in non-TTY)
+- [x] T105 [CODE] Implement optional spinner for long-running tests in src/holodeck/lib/test_runner/progress.py to pass T104 tests
+- [x] T106 [TEST] Write unit tests for ANSI color codes in tests/unit/lib/test_runner/test_progress.py (test color output in TTY, test no colors in non-TTY)
+- [x] T107 [CODE] Add optional ANSI color support to symbols in src/holodeck/lib/test_runner/progress.py to pass T106 tests
+- [x] T108 [TEST] Write unit tests for elapsed time display in tests/unit/lib/test_runner/test_progress.py (test elapsed time for long tests, test hide for quick tests)
+- [x] T109 [CODE] Add elapsed time display to progress.py to pass T108 tests
+- [x] T110 [TEST] Write unit tests for progress callback integration in CLI in tests/unit/cli/commands/test_test.py (test callback receives results, test progress display updates)
+- [x] T111 [CODE] Integrate progress callback in CLI display logic in src/holodeck/cli/commands/test.py to pass T110 tests
+- [x] T112 [TEST] Write unit tests for quiet mode suppression in tests/unit/lib/test_runner/test_progress.py (test --quiet flag suppresses progress lines, test summary still shown)
+- [x] T113 [CODE] Implement quiet mode in CLI to pass T112 tests
+- [x] T114 [TEST] Write unit tests for verbose mode in tests/unit/lib/test_runner/test_progress.py (test --verbose flag shows debug info, timing details)
+- [x] T115 [CODE] Implement verbose mode in CLI to pass T114 tests
+- [x] T116 [VERIFY] Run make test-unit to verify progress enhancements pass
+- [x] T117 [VERIFY] Run make format && make lint && make type-check
+- [x] T118 [TEST] Write integration test for progress display in tests/integration/test_basic_execution.py (verify progress output during live test execution)
+- [x] T119 [VERIFY] Run make test-integration to verify progress integration tests pass
+- [x] T120 [VERIFY] Run make test to verify all tests pass
+- [x] T121 [VERIFY] Verify progress indicator demo script works
+- [x] T122 [VERIFY] Update documentation with progress indicator usage examples
 
 ---
 
