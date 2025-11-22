@@ -1,0 +1,20 @@
+# Agent fixture with an intentionally incomplete tool definition
+name: chat-missing-tool-agent
+description: Missing tool fields to trigger validation errors
+
+model:
+  provider: openai
+  name: gpt-4o-mini
+
+instructions:
+  inline: |
+    You are a test agent. This configuration is intentionally incomplete.
+
+tools:
+  - name: incomplete_tool
+    type: function
+    description: This tool is missing required fields like file and function
+
+test_cases:
+  - input: "Trigger missing tool"
+    expected_tools: [incomplete_tool]

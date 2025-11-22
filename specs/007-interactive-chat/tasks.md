@@ -44,11 +44,11 @@ _Ensure specs, contracts, and dependencies are aligned before coding._
 
 ### Tasks
 
-- [ ] T201 Read/align spec, plan, research, and contracts to extract acceptance
+- [x] T201 Read/align spec, plan, research, and contracts to extract acceptance
       criteria for CLI, runtime, validation, and observability
-- [ ] T202 Verify `pyproject.toml` has required deps (semantic-kernel,
+- [x] T202 Verify `pyproject.toml` has required deps (semantic-kernel,
       opentelemetry) and note gaps for implementation tasks
-- [ ] T203 Add/reuse agent YAML fixtures for chat scenarios (happy path,
+- [x] T203 Add/reuse agent YAML fixtures for chat scenarios (happy path,
       missing tool, invalid config) under `tests/fixtures/agents/`
 
 ---
@@ -64,15 +64,15 @@ _Create runtime module layout and error types used across tasks._
 
 ### Phase 1 Independent Test Criteria
 
-- Importing `holodeck.agent` modules succeeds
+- Importing `holodeck.chat` modules succeeds
 - Error classes surfaced through CLI exceptions mapping
 
 ### Tasks
 
-- [ ] T204 [P] Scaffold `src/holodeck/agent/{executor.py,session.py,message.py,streaming.py,__init__.py}`
+- [x] T204 [P] Scaffold `src/holodeck/chat/{executor.py,session.py,message.py,streaming.py,__init__.py}`
       with placeholders referenced by tests
-- [ ] T205 [P] Extend `holodeck.lib.errors` and `holodeck.cli.exceptions` with
-      agent/chat error classes and exit code mapping per contract
+- [x] T205 [P] Extend `holodeck.lib.errors` and `holodeck.cli.exceptions` with
+      chat error classes and exit code mapping per contract
 
 ---
 
@@ -92,19 +92,19 @@ _Define chat models and validation pipeline with Pydantic + custom sanitizers._
 
 ### Phase 2 - Tests First
 
-- [ ] T206 [P] Write model tests for ChatSession/Message/ChatConfig in
+- [x] T206 [P] Write model tests for ChatSession/Message/ChatConfig in
       `tests/unit/models/test_chat.py`
-- [ ] T207 [P] Write model tests for ToolExecution/TokenUsage in
+- [x] T207 [P] Write model tests for ToolExecution/TokenUsage in
       `tests/unit/models/test_tool_execution.py`
-- [ ] T208 [P] Write validation pipeline tests (empty, size limit, control
+- [x] T208 [P] Write validation pipeline tests (empty, size limit, control
       chars, UTF-8, sanitization) in `tests/unit/lib/test_validation.py`
 
 ### Phase 2 - Implementation
 
-- [ ] T209 [P] Implement `src/holodeck/models/chat.py` per data-model.md
-- [ ] T210 [P] Implement `src/holodeck/models/tool_execution.py` and
+- [x] T209 [P] Implement `src/holodeck/models/chat.py` per data-model.md
+- [x] T210 [P] Implement `src/holodeck/models/tool_execution.py` and
       `src/holodeck/models/token_usage.py` per data-model.md
-- [ ] T211 Implement validation pipeline and sanitizers in
+- [x] T211 Implement validation pipeline and sanitizers in
       `src/holodeck/lib/validation.py`; export helpers in `lib/__init__.py`
 
 ---
@@ -138,12 +138,12 @@ _Build executor, session manager, streaming, and message validation plumbing._
 
 ### Phase 3 - Implementation
 
-- [ ] T217 Implement `AgentExecutor` in `src/holodeck/agent/executor.py`
-- [ ] T218 Implement `ChatSessionManager` in `src/holodeck/agent/session.py`
-- [ ] T219 Implement validation orchestrator in `src/holodeck/agent/message.py`
+- [ ] T217 Implement `AgentExecutor` in `src/holodeck/chat/executor.py`
+- [ ] T218 Implement `ChatSessionManager` in `src/holodeck/chat/session.py`
+- [ ] T219 Implement validation orchestrator in `src/holodeck/chat/message.py`
       using `lib.validation` pipeline
-- [ ] T220 Implement `ToolExecutionStream` in `src/holodeck/agent/streaming.py`
-- [ ] T221 Export runtime APIs in `src/holodeck/agent/__init__.py`
+- [ ] T220 Implement `ToolExecutionStream` in `src/holodeck/chat/streaming.py`
+- [ ] T221 Export runtime APIs in `src/holodeck/chat/__init__.py`
 
 ---
 

@@ -110,6 +110,34 @@ class ExecutionError(HoloDeckError):
     pass
 
 
+class AgentInitializationError(HoloDeckError):
+    """Exception raised when an agent fails to initialize."""
+
+    def __init__(self, agent_name: str, message: str) -> None:
+        """Create an initialization error with context."""
+        self.agent_name = agent_name
+        self.message = message
+        super().__init__(f"Agent '{agent_name}' failed to initialize: {message}")
+
+
+class ChatValidationError(HoloDeckError):
+    """Exception raised when chat input validation fails."""
+
+    def __init__(self, message: str) -> None:
+        """Create a validation error for chat messages."""
+        self.message = message
+        super().__init__(message)
+
+
+class ChatSessionError(HoloDeckError):
+    """Exception raised for chat session lifecycle failures."""
+
+    def __init__(self, message: str) -> None:
+        """Create a chat session error."""
+        self.message = message
+        super().__init__(message)
+
+
 class EvaluationError(HoloDeckError):
     """Exception raised when metric evaluation fails.
 

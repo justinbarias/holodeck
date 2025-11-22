@@ -1,0 +1,24 @@
+# Happy-path chat agent used for interactive chat tests
+name: chat-happy-agent
+description: Chat agent with simple tool for streaming tests
+
+model:
+  provider: openai
+  name: gpt-4o-mini
+  temperature: 0.3
+  max_tokens: 512
+
+instructions:
+  inline: |
+    You are a concise assistant. Keep responses short and actionable.
+
+tools:
+  - name: echo
+    type: function
+    description: Echo input back to the caller (used for tool streaming tests)
+    file: tools/echo.py
+    function: echo
+
+test_cases:
+  - input: "Say hello"
+    expected_tools: [echo]
