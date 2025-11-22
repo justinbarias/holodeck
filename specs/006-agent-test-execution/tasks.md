@@ -433,26 +433,26 @@ for test_case in test_cases:
 
 #### T123-T133: Report Generation (Test-First)
 
-- [ ] T123 [TEST] Create expected report fixtures in tests/fixtures/expected_reports/ (sample_json_report.json, sample_markdown_report.md with known test data)
-- [ ] T124 [TEST] Write unit tests for JSON report generation in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_json() method, verify structure matches schema)
-- [ ] T125 [CODE] Implement JSON report generation in src/holodeck/lib/test_runner/reporter.py to pass T124 tests
-- [ ] T126 [TEST] Write unit tests for Markdown report generation in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_markdown() with formatted tables, summary, test details)
-- [ ] T127 [CODE] Implement Markdown report generation in src/holodeck/lib/test_runner/reporter.py to pass T126 tests
-- [ ] T128 [TEST] Write unit tests for report file writing in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_file() method)
-- [ ] T129 [CODE] Implement report file writing logic in src/holodeck/lib/test_runner/reporter.py to pass T128 tests
-- [ ] T130 [VERIFY] Run make test-unit to verify reporter tests pass
-- [ ] T131 [VERIFY] Run make format && make lint
-- [ ] T132 [TEST] Write integration test for report generation in tests/integration/test_report_generation.py (verify JSON and Markdown output match expected format)
-- [ ] T133 [VERIFY] Run make test-integration to verify report generation tests pass
+- [x] T123 [TEST] Create expected report fixtures in tests/fixtures/expected_reports/ (sample_json_report.json, sample_markdown_report.md with known test data)
+- [x] T124 [TEST] Write unit tests for JSON report generation in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_json() method, verify structure matches schema)
+- [x] T125 [CODE] Implement JSON report generation in src/holodeck/lib/test_runner/reporter.py to pass T124 tests
+- [x] T126 [TEST] Write unit tests for Markdown report generation in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_markdown() with formatted tables, summary, test details)
+- [x] T127 [CODE] Implement Markdown report generation in src/holodeck/lib/test_runner/reporter.py to pass T126 tests
+- [x] T128 [TEST] Write unit tests for report file writing in tests/unit/lib/test_runner/test_reporter.py (test TestReport.to_file() method)
+- [x] T129 [CODE] Implement report file writing logic in src/holodeck/lib/test_runner/reporter.py to pass T128 tests
+- [x] T130 [VERIFY] Run make test-unit to verify reporter tests pass
+- [x] T131 [VERIFY] Run make format && make lint
+- [x] T132 [TEST] Write integration test for report generation in tests/integration/test_report_generation.py (verify JSON and Markdown output match expected format)
+- [x] T133 [VERIFY] Run make test-integration to verify report generation tests pass
 
 #### T134-T139: CLI Format Detection & Report Output (Test-First)
 
-- [ ] T134 [TEST] Write unit tests for format auto-detection in tests/unit/cli/commands/test_test.py (test .json vs .md extension detection, test --format flag override)
-- [ ] T135 [CODE] Implement format auto-detection in src/holodeck/cli/commands/test.py to pass T134 tests
-- [ ] T136 [TEST] Write unit tests for report file output in CLI in tests/unit/cli/commands/test_test.py (test --output flag, verify file creation)
-- [ ] T137 [CODE] Implement report file output in CLI to pass T136 tests
-- [ ] T138 [VERIFY] Run make test-unit to verify format detection and output tests pass
-- [ ] T139 [VERIFY] Run make test to verify all tests pass
+- [x] T134 [TEST] Write unit tests for format auto-detection in tests/unit/cli/commands/test_test.py (test .json vs .md extension detection, test --format flag override)
+- [x] T135 [CODE] Implement format auto-detection in src/holodeck/cli/commands/test.py to pass T134 tests
+- [x] T136 [TEST] Write unit tests for report file output in CLI in tests/unit/cli/commands/test_test.py (test --output flag, verify file creation)
+- [x] T137 [CODE] Implement report file output in CLI to pass T136 tests
+- [x] T138 [VERIFY] Run make test-unit to verify format detection and output tests pass
+- [x] T139 [VERIFY] Run make test to verify all tests pass
 
 ---
 

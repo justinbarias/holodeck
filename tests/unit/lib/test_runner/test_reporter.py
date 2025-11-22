@@ -1,7 +1,7 @@
-"""Unit tests for markdown report generation.
+"""Unit tests for report generation.
 
-Tests the TestReport.to_markdown() method and related formatting functions,
-ensuring comprehensive display of all TestResult fields including:
+Tests both markdown and JSON report generation, ensuring comprehensive display
+of all TestResult fields including:
 - Test details (name, input, timestamp)
 - Processed files with metadata
 - Agent responses
@@ -9,7 +9,10 @@ ensuring comprehensive display of all TestResult fields including:
 - Evaluation metrics with scores and thresholds
 - Ground truth comparisons
 - Error handling
+- JSON structure and serialization
 """
+
+import json
 
 import pytest
 
@@ -651,3 +654,352 @@ class TestEdgeCases:
         markdown = generate_markdown_report(report)
         # Should handle special characters without errors
         assert "test-agent" in markdown
+
+
+class TestJSONReportGeneration:
+    """Test JSON report generation and serialization."""
+
+    def test_json_report_basic_structure(self, sample_test_report: TestReport) -> None:
+        """Test that JSON report has correct basic structure."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        # Verify top-level keys exist
+        assert "agent_name" in data
+        assert "agent_config_path" in data
+        assert "results" in data
+        assert "summary" in data
+        assert "timestamp" in data
+        assert "holodeck_version" in data
+        assert "environment" in data
+
+    def test_json_report_agent_metadata(self, sample_test_report: TestReport) -> None:
+        """Test that JSON report includes agent metadata."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        assert data["agent_name"] == "customer-support-agent"
+        assert data["agent_config_path"] == "agents/customer-support.yaml"
+        assert data["holodeck_version"] == "0.1.0"
+
+    def test_json_report_environment_info(self, sample_test_report: TestReport) -> None:
+        """Test that JSON report includes environment information."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        assert "environment" in data
+        assert "python_version" in data["environment"]
+        assert "os" in data["environment"]
+        assert data["environment"]["python_version"] == "3.13.0"
+        assert data["environment"]["os"] == "Darwin"
+
+    def test_json_report_results_array(self, sample_test_report: TestReport) -> None:
+        """Test that JSON report includes test results array."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        assert isinstance(data["results"], list)
+        assert len(data["results"]) == 2
+
+    def test_json_report_test_result_fields(
+        self, sample_test_report: TestReport
+    ) -> None:
+        """Test that each test result has all required fields."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        result = data["results"][0]
+        assert "test_name" in result
+        assert "test_input" in result
+        assert "agent_response" in result
+        assert "tool_calls" in result
+        assert "expected_tools" in result
+        assert "tools_matched" in result
+        assert "metric_results" in result
+        assert "ground_truth" in result
+        assert "passed" in result
+        assert "execution_time_ms" in result
+        assert "timestamp" in result
+        assert "errors" in result
+        assert "processed_files" in result
+
+    def test_json_report_metric_results(self, sample_test_report: TestReport) -> None:
+        """Test that metric results are properly serialized in JSON."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        result = data["results"][0]
+        metrics = result["metric_results"]
+
+        assert len(metrics) > 0
+        metric = metrics[0]
+        assert "metric_name" in metric
+        assert "score" in metric
+        assert "threshold" in metric
+        assert "passed" in metric
+        assert "scale" in metric
+        assert "error" in metric
+        assert "retry_count" in metric
+        assert "evaluation_time_ms" in metric
+        assert "model_used" in metric
+
+    def test_json_report_summary_section(self, sample_test_report: TestReport) -> None:
+        """Test that JSON report includes complete summary section."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        summary = data["summary"]
+        assert "total_tests" in summary
+        assert "passed" in summary
+        assert "failed" in summary
+        assert "pass_rate" in summary
+        assert "total_duration_ms" in summary
+        assert "metrics_evaluated" in summary
+        assert "average_scores" in summary
+
+    def test_json_report_summary_values(self, sample_test_report: TestReport) -> None:
+        """Test that summary values are correct in JSON."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        summary = data["summary"]
+        assert summary["total_tests"] == 2
+        assert summary["passed"] == 1
+        assert summary["failed"] == 1
+        assert summary["pass_rate"] == 50.0
+        assert summary["total_duration_ms"] == 7700
+
+    def test_json_report_processed_files(self, sample_test_report: TestReport) -> None:
+        """Test that processed files are included in JSON."""
+        result = TestResult(
+            test_name="test_with_file",
+            test_input="Process this document",
+            processed_files=[
+                ProcessedFileInput(
+                    original=FileInput(path="docs/test.pdf", type="pdf"),
+                    markdown_content="Test content",
+                    metadata={"pages": 5, "size_bytes": 100000},
+                    cached_path=".cache/processed/test.md",
+                    processing_time_ms=1000,
+                    error=None,
+                )
+            ],
+            agent_response="Document processed",
+            passed=True,
+            execution_time_ms=2000,
+            timestamp="2025-11-22T10:30:00Z",
+        )
+        report = TestReport(
+            agent_name="test-agent",
+            agent_config_path="test.yaml",
+            results=[result],
+            summary=ReportSummary(
+                total_tests=1,
+                passed=1,
+                failed=0,
+                pass_rate=100.0,
+                total_duration_ms=2000,
+            ),
+            timestamp="2025-11-22T10:30:00Z",
+            holodeck_version="0.1.0",
+        )
+        json_str = report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        files = data["results"][0]["processed_files"]
+        assert len(files) == 1
+        assert files[0]["original"]["path"] == "docs/test.pdf"
+        assert files[0]["original"]["type"] == "pdf"
+        assert files[0]["markdown_content"] == "Test content"
+        assert files[0]["cached_path"] == ".cache/processed/test.md"
+        assert files[0]["processing_time_ms"] == 1000
+
+    def test_json_report_null_values(self) -> None:
+        """Test that null values are properly handled in JSON."""
+        result = TestResult(
+            test_name="test_minimal",
+            test_input="Test",
+            agent_response=None,
+            expected_tools=None,
+            tools_matched=None,
+            ground_truth=None,
+            passed=True,
+            execution_time_ms=100,
+            timestamp="2025-11-22T10:30:00Z",
+        )
+        report = TestReport(
+            agent_name="test-agent",
+            agent_config_path="test.yaml",
+            results=[result],
+            summary=ReportSummary(
+                total_tests=1,
+                passed=1,
+                failed=0,
+                pass_rate=100.0,
+                total_duration_ms=100,
+            ),
+            timestamp="2025-11-22T10:30:00Z",
+            holodeck_version="0.1.0",
+        )
+        json_str = report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        result_data = data["results"][0]
+        assert result_data["agent_response"] is None
+        assert result_data["expected_tools"] is None
+        assert result_data["tools_matched"] is None
+        assert result_data["ground_truth"] is None
+
+    def test_json_report_empty_errors_list(
+        self, sample_test_report: TestReport
+    ) -> None:
+        """Test that empty error lists are preserved in JSON."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        passed_result = data["results"][0]
+        assert "errors" in passed_result
+        assert isinstance(passed_result["errors"], list)
+        assert len(passed_result["errors"]) == 0
+
+    def test_json_report_errors_in_failed_test(
+        self, sample_test_report: TestReport
+    ) -> None:
+        """Test that errors are properly serialized in failed tests."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        failed_result = data["results"][1]
+        assert "errors" in failed_result
+        assert isinstance(failed_result["errors"], list)
+        assert len(failed_result["errors"]) == 2
+        assert any("Agent failed" in err for err in failed_result["errors"])
+
+    def test_json_report_special_characters(self) -> None:
+        """Test that special characters are properly escaped in JSON."""
+        result = TestResult(
+            test_name="test_special",
+            test_input='What costs "$99.99"?',
+            agent_response='Prices: €89.99, ¥10,000 | Special: 50% off! "Amazing!"',
+            passed=True,
+            execution_time_ms=100,
+            timestamp="2025-11-22T10:30:00Z",
+        )
+        report = TestReport(
+            agent_name="test-agent",
+            agent_config_path="test.yaml",
+            results=[result],
+            summary=ReportSummary(
+                total_tests=1,
+                passed=1,
+                failed=0,
+                pass_rate=100.0,
+                total_duration_ms=100,
+            ),
+            timestamp="2025-11-22T10:30:00Z",
+            holodeck_version="0.1.0",
+        )
+        json_str = report.model_dump_json(indent=2)
+
+        # Should be valid JSON despite special characters
+        data = json.loads(json_str)
+        assert "$99.99" in data["results"][0]["test_input"]
+        assert "50% off" in data["results"][0]["agent_response"]
+
+    def test_json_report_numeric_precision(self) -> None:
+        """Test that numeric values maintain precision in JSON."""
+        metric = MetricResult(
+            metric_name="precision_test",
+            score=0.9234567890,
+            threshold=0.75,
+            passed=True,
+            scale="0-1",
+            evaluation_time_ms=1234,
+        )
+        result = TestResult(
+            test_name="test_precision",
+            test_input="Test",
+            metric_results=[metric],
+            passed=True,
+            execution_time_ms=5000,
+            timestamp="2025-11-22T10:30:00Z",
+        )
+        report = TestReport(
+            agent_name="test-agent",
+            agent_config_path="test.yaml",
+            results=[result],
+            summary=ReportSummary(
+                total_tests=1,
+                passed=1,
+                failed=0,
+                pass_rate=100.0,
+                total_duration_ms=5000,
+            ),
+            timestamp="2025-11-22T10:30:00Z",
+            holodeck_version="0.1.0",
+        )
+        json_str = report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        metric_data = data["results"][0]["metric_results"][0]
+        assert metric_data["score"] == pytest.approx(0.9234567890, rel=1e-9)
+        assert metric_data["threshold"] == 0.75
+        assert metric_data["evaluation_time_ms"] == 1234
+
+    def test_json_report_valid_json_format(
+        self, sample_test_report: TestReport
+    ) -> None:
+        """Test that generated JSON is valid and properly formatted."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+
+        # Should parse without errors
+        data = json.loads(json_str)
+        assert isinstance(data, dict)
+
+        # Should re-serialize consistently
+        json_str_2 = json.dumps(data, indent=2)
+        data_2 = json.loads(json_str_2)
+        assert data == data_2
+
+    def test_json_report_round_trip_serialization(
+        self, sample_test_report: TestReport
+    ) -> None:
+        """Test that JSON can be parsed back into TestReport without data loss."""
+        json_str = sample_test_report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        # Reconstruct TestReport from JSON data
+        restored_report = TestReport(**data)
+
+        # Verify key data is preserved
+        assert restored_report.agent_name == sample_test_report.agent_name
+        assert restored_report.agent_config_path == sample_test_report.agent_config_path
+        assert len(restored_report.results) == len(sample_test_report.results)
+        assert (
+            restored_report.summary.total_tests
+            == sample_test_report.summary.total_tests
+        )
+        assert restored_report.holodeck_version == sample_test_report.holodeck_version
+
+    def test_json_report_empty_report(self) -> None:
+        """Test JSON generation for minimal/empty report."""
+        report = TestReport(
+            agent_name="minimal-agent",
+            agent_config_path="minimal.yaml",
+            results=[],
+            summary=ReportSummary(
+                total_tests=0,
+                passed=0,
+                failed=0,
+                pass_rate=0.0,
+                total_duration_ms=0,
+            ),
+            timestamp="2025-11-22T10:30:00Z",
+            holodeck_version="0.1.0",
+        )
+        json_str = report.model_dump_json(indent=2)
+        data = json.loads(json_str)
+
+        assert data["agent_name"] == "minimal-agent"
+        assert len(data["results"]) == 0
+        assert data["summary"]["total_tests"] == 0
