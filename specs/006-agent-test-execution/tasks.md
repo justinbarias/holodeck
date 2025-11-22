@@ -393,12 +393,12 @@ for test_case in test_cases:
 
 **Note**: Core progress indicator (T057-T058) is already implemented. These tasks add optional spinner animation and color enhancements built on top of the callback integration.
 
-- [ ] T104 [TEST] Write unit tests for optional spinner in tests/unit/lib/test_runner/test_progress.py (test spinner for long-running tests >5s, test spinner char rotation during execution, test disable in non-TTY)
-- [ ] T105 [CODE] Implement optional spinner for long-running tests in src/holodeck/lib/test_runner/progress.py to pass T104 tests
-- [ ] T106 [TEST] Write unit tests for ANSI color codes in tests/unit/lib/test_runner/test_progress.py (test color output in TTY, test no colors in non-TTY)
-- [ ] T107 [CODE] Add optional ANSI color support to symbols in src/holodeck/lib/test_runner/progress.py to pass T106 tests
-- [ ] T108 [TEST] Write unit tests for elapsed time display in tests/unit/lib/test_runner/test_progress.py (test elapsed time for long tests, test hide for quick tests)
-- [ ] T109 [CODE] Add elapsed time display to progress.py to pass T108 tests
+- [x] T104 [TEST] Write unit tests for optional spinner in tests/unit/lib/test_runner/test_progress.py (test spinner for long-running tests >5s, test spinner char rotation during execution, test disable in non-TTY)
+- [x] T105 [CODE] Implement optional spinner for long-running tests in src/holodeck/lib/test_runner/progress.py to pass T104 tests
+- [x] T106 [TEST] Write unit tests for ANSI color codes in tests/unit/lib/test_runner/test_progress.py (test color output in TTY, test no colors in non-TTY)
+- [x] T107 [CODE] Add optional ANSI color support to symbols in src/holodeck/lib/test_runner/progress.py to pass T106 tests
+- [x] T108 [TEST] Write unit tests for elapsed time display in tests/unit/lib/test_runner/test_progress.py (test elapsed time for long tests, test hide for quick tests)
+- [x] T109 [CODE] Add elapsed time display to progress.py to pass T108 tests
 - [ ] T110 [TEST] Write unit tests for progress callback integration in CLI in tests/unit/cli/commands/test_test.py (test callback receives results, test progress display updates)
 - [ ] T111 [CODE] Integrate progress callback in CLI display logic in src/holodeck/cli/commands/test.py to pass T110 tests
 - [ ] T112 [TEST] Write unit tests for quiet mode suppression in tests/unit/lib/test_runner/test_progress.py (test --quiet flag suppresses progress lines, test summary still shown)
