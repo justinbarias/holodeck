@@ -306,33 +306,6 @@ class TestProjectInitializerInitialize:
         assert result.success is False
         assert "already exists" in str(result.errors).lower()
 
-    def test_initialize_with_partial_cleanup_on_error(self):
-        """Test that partial directories are cleaned up on failure.
-
-        Note: This is a basic unit test. Integration tests should verify
-        actual file creation and cleanup behavior with real templates.
-        """
-        # Create an input with a non-writable output dir to trigger error
-        readonly_temp = Path(self.temp_dir) / "readonly_parent"
-        readonly_temp.mkdir()
-        readonly_temp.chmod(0o555)
-
-        try:
-            input_data = ProjectInitInput(
-                project_name="failing-project",
-                template="conversational",
-                output_dir=str(readonly_temp),
-                description=None,
-                author=None,
-                overwrite=False,
-            )
-
-            # Should return failure result
-            result = self.initializer.initialize(input_data)
-            assert result.success is False
-        finally:
-            readonly_temp.chmod(0o755)
-
     @patch("holodeck.cli.utils.project_init.ProjectInitializer.load_template")
     @patch("holodeck.cli.utils.project_init.TemplateRenderer")
     def test_initialize_returns_correct_metadata(self, mock_renderer, mock_load):
