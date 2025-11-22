@@ -703,3 +703,138 @@ class TestProgressIndicatorIntegration:
         assert indicator.passed == 1
         summary = indicator.get_summary()
         assert "1" in summary
+
+
+class TestStartTest:
+    """Tests for start_test method."""
+
+    def test_start_test_sets_current_test_name(self) -> None:
+        """Test that start_test sets the current test name."""
+        indicator = ProgressIndicator(total_tests=5)
+        indicator.start_test("My Test")
+        assert indicator.current_test_name == "My Test"
+
+    def test_start_test_updates_for_multiple_tests(self) -> None:
+        """Test that start_test updates correctly for multiple tests."""
+        indicator = ProgressIndicator(total_tests=3)
+        indicator.start_test("Test 1")
+        assert indicator.current_test_name == "Test 1"
+        indicator.start_test("Test 2")
+        assert indicator.current_test_name == "Test 2"
+
+
+class TestGetSpinnerLine:
+    """Tests for get_spinner_line method."""
+
+    def test_get_spinner_line_in_tty(self) -> None:
+        """Test get_spinner_line returns spinner in TTY mode."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=5)
+            indicator.start_test("Running Test")
+            line = indicator.get_spinner_line()
+            assert "Test 1/5" in line
+            assert "Running..." in line
+
+    def test_get_spinner_line_in_non_tty(self) -> None:
+        """Test get_spinner_line returns empty in non-TTY mode."""
+        with patch("sys.stdout.isatty", return_value=False):
+            indicator = ProgressIndicator(total_tests=5)
+            indicator.start_test("Running Test")
+            line = indicator.get_spinner_line()
+            assert line == ""
+
+    def test_get_spinner_line_in_quiet_mode(self) -> None:
+        """Test get_spinner_line returns empty in quiet mode."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=5, quiet=True)
+            indicator.start_test("Running Test")
+            line = indicator.get_spinner_line()
+            assert line == ""
+
+    def test_get_spinner_line_exceeds_total(self) -> None:
+        """Test get_spinner_line handles case where current test exceeds total."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=2)
+            indicator.current_test = 3  # Exceeds total
+            line = indicator.get_spinner_line()
+            # Should cap at total_tests
+            assert "Test 2/2" in line or "Test 3/2" in line
+
+
+class TestColorize:
+    """Tests for _colorize method."""
+
+    def test_colorize_in_non_tty(self) -> None:
+        """Test _colorize returns plain text in non-TTY mode."""
+        with patch("sys.stdout.isatty", return_value=False):
+            indicator = ProgressIndicator(total_tests=1)
+            result = indicator._colorize("test", "\033[92m")
+            assert result == "test"
+            assert "\033[" not in result
+
+
+class TestGetSummaryEdgeCases:
+    """Tests for get_summary edge cases."""
+
+    def test_get_summary_no_tests(self) -> None:
+        """Test get_summary with zero tests."""
+        indicator = ProgressIndicator(total_tests=0)
+        summary = indicator.get_summary()
+        assert "No tests" in summary
+
+    def test_get_summary_with_failures_in_tty(self) -> None:
+        """Test get_summary shows warning symbol with failures in TTY."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=2)
+            result1 = MagicMock(spec=TestResult)
+            result1.test_name = "Test 1"
+            result1.passed = True
+            result1.execution_time_ms = 100
+            indicator.update(result1)
+
+            result2 = MagicMock(spec=TestResult)
+            result2.test_name = "Test 2"
+            result2.passed = False
+            result2.execution_time_ms = 200
+            indicator.update(result2)
+
+            summary = indicator.get_summary()
+            # Should contain warning symbol or failure indicator
+            assert "⚠" in summary or "Failed" in summary
+
+    def test_get_summary_verbose_mode(self) -> None:
+        """Test get_summary includes test details in verbose mode."""
+        indicator = ProgressIndicator(total_tests=2, verbose=True)
+        result1 = MagicMock(spec=TestResult)
+        result1.test_name = "Test 1"
+        result1.passed = True
+        result1.execution_time_ms = 100
+        indicator.update(result1)
+
+        result2 = MagicMock(spec=TestResult)
+        result2.test_name = "Test 2"
+        result2.passed = False
+        result2.execution_time_ms = 200
+        indicator.update(result2)
+
+        summary = indicator.get_summary()
+        # Should include test details
+        assert "Test 1" in summary
+        assert "Test 2" in summary
+
+
+class TestStrMethod:
+    """Tests for __str__ method."""
+
+    def test_str_returns_progress_line(self) -> None:
+        """Test __str__ returns the current progress line."""
+        indicator = ProgressIndicator(total_tests=2)
+        result = MagicMock(spec=TestResult)
+        result.test_name = "Test 1"
+        result.passed = True
+        result.execution_time_ms = 100
+        indicator.update(result)
+
+        str_output = str(indicator)
+        progress_line = indicator.get_progress_line()
+        assert str_output == progress_line

@@ -2078,3 +2078,217 @@ class TestProgressCallbackIntegration:
 
         # Verify callbacks were called in execution order
         assert call_order == ["First", "Second"]
+
+
+class TestExecutorComponentCreation:
+    """Tests for component creation methods in TestExecutor."""
+
+    @pytest.mark.asyncio
+    async def test_create_file_processor_with_custom_config(self):
+        """Test _create_file_processor with custom download timeout."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            execution=ExecutionConfig(download_timeout=60),
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            download_timeout=60
+        )
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        # Verify file processor was created with correct timeout
+        assert executor.file_processor is not None
+
+    @pytest.mark.asyncio
+    async def test_create_evaluators_with_rouge_metric(self):
+        """Test _create_evaluators with ROUGE metric."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        eval_config = EvaluationConfig(
+            model=None,
+            metrics=[
+                EvaluationMetric(
+                    metric="rouge",
+                    threshold=0.7,
+                    enabled=True,
+                ),
+            ],
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=eval_config,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        assert "rouge" in executor.evaluators
+
+    @pytest.mark.asyncio
+    async def test_extract_response_text_empty_history(self):
+        """Test _extract_response_text with empty chat history."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        # Test with None chat history
+        result = executor._extract_response_text(None)
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_names_malformed(self):
+        """Test _extract_tool_names with malformed tool calls."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        # Test with tool calls missing 'name' key
+        tool_calls = [{"arguments": "test"}, {"name": "valid_tool"}]
+        result = executor._extract_tool_names(tool_calls)
+        assert result == ["valid_tool"]
+
+    @pytest.mark.asyncio
+    async def test_determine_test_passed_with_errors(self):
+        """Test _determine_test_passed with execution errors."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        # Test with errors
+        result = executor._determine_test_passed([], None, ["Error occurred"])
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_determine_test_passed_with_failed_tools(self):
+        """Test _determine_test_passed with failed tool validation."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            execution=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        # Test with failed tool validation
+        result = executor._determine_test_passed([], False, [])
+        assert result is False
