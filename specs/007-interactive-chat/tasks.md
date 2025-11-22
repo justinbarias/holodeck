@@ -115,7 +115,7 @@ _Build executor, session manager, streaming, and message validation plumbing._
 
 ### Phase 3 Goals
 
-- AgentExecutor wraps Semantic Kernel with tool execution streaming
+- AgentExecutor reuses AgentFactory (Semantic Kernel ChatCompletionAgent) with tool execution streaming
 - ChatSessionManager tracks history, warnings, lifecycle
 - Message validation pipeline enforced before execution
 
@@ -127,7 +127,7 @@ _Build executor, session manager, streaming, and message validation plumbing._
 
 ### Phase 3 - Tests First
 
-- [ ] T213 Write executor unit tests with mocked Semantic Kernel in
+- [ ] T213 Write executor unit tests with mocked AgentFactory/Semantic Kernel in
       `tests/unit/agent/test_executor.py`
 - [ ] T214 Write session manager tests (start/process/warn/terminate) in
       `tests/unit/agent/test_session.py`
@@ -139,6 +139,7 @@ _Build executor, session manager, streaming, and message validation plumbing._
 ### Phase 3 - Implementation
 
 - [ ] T217 Implement `AgentExecutor` in `src/holodeck/chat/executor.py`
+      reusing `holodeck.lib.test_runner.agent_factory.AgentFactory`
 - [ ] T218 Implement `ChatSessionManager` in `src/holodeck/chat/session.py`
 - [ ] T219 Implement validation orchestrator in `src/holodeck/chat/message.py`
       using `lib.validation` pipeline
