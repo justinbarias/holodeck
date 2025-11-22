@@ -1,0 +1,233 @@
+{
+  "agent_name": "customer-support-agent",
+  "agent_config_path": "agents/customer-support.yaml",
+  "results": [
+    {
+      "test_name": "test_query_resolution_pdf",
+      "test_input": "User asks about warranty coverage for product XYZ",
+      "processed_files": [
+        {
+          "original": {
+            "path": "docs/warranty.pdf",
+            "type": "pdf",
+            "page_range": null
+          },
+          "markdown_content": "# Warranty Policy\n\n## Coverage\nAll products include 12-month manufacturer warranty...",
+          "metadata": {
+            "pages": 5,
+            "size_bytes": 245000,
+            "format": "pdf"
+          },
+          "cached_path": "/tmp/cache/warranty_abc123.md",
+          "processing_time_ms": 2150,
+          "error": null
+        }
+      ],
+      "agent_response": "Based on the warranty policy document, product XYZ includes a 12-month manufacturer warranty covering defects in materials and workmanship. The warranty does not cover damage from misuse or normal wear.",
+      "tool_calls": ["search_knowledge_base", "retrieve_policy"],
+      "expected_tools": ["search_knowledge_base", "retrieve_policy"],
+      "tools_matched": true,
+      "metric_results": [
+        {
+          "metric_name": "groundedness",
+          "score": 0.92,
+          "threshold": 0.8,
+          "passed": true,
+          "scale": "0-1",
+          "error": null,
+          "retry_count": 0,
+          "evaluation_time_ms": 1250,
+          "model_used": "gpt-4o-mini"
+        },
+        {
+          "metric_name": "relevance",
+          "score": 0.88,
+          "threshold": 0.75,
+          "passed": true,
+          "scale": "0-1",
+          "error": null,
+          "retry_count": 0,
+          "evaluation_time_ms": 980,
+          "model_used": "gpt-4o-mini"
+        },
+        {
+          "metric_name": "coherence",
+          "score": 0.95,
+          "threshold": 0.7,
+          "passed": true,
+          "scale": "0-1",
+          "error": null,
+          "retry_count": 1,
+          "evaluation_time_ms": 850,
+          "model_used": "gpt-4o-mini"
+        }
+      ],
+      "ground_truth": "The product comes with a 12-month manufacturer warranty covering manufacturing defects.",
+      "passed": true,
+      "execution_time_ms": 4500,
+      "errors": [],
+      "timestamp": "2025-11-22T10:30:45Z"
+    },
+    {
+      "test_name": "test_refund_policy_no_match",
+      "test_input": "Can I get a refund if I'm not satisfied?",
+      "processed_files": [],
+      "agent_response": "I apologize, but I don't have information about our refund policy in my current knowledge base.",
+      "tool_calls": ["search_knowledge_base"],
+      "expected_tools": ["search_knowledge_base", "escalate_to_human"],
+      "tools_matched": false,
+      "metric_results": [
+        {
+          "metric_name": "groundedness",
+          "score": 0.45,
+          "threshold": 0.8,
+          "passed": false,
+          "scale": "0-1",
+          "error": null,
+          "retry_count": 0,
+          "evaluation_time_ms": 1100,
+          "model_used": "gpt-4o-mini"
+        },
+        {
+          "metric_name": "relevance",
+          "score": 0.62,
+          "threshold": 0.75,
+          "passed": false,
+          "scale": "0-1",
+          "error": null,
+          "retry_count": 0,
+          "evaluation_time_ms": 920,
+          "model_used": "gpt-4o-mini"
+        },
+        {
+          "metric_name": "completeness",
+          "score": 0.35,
+          "threshold": 0.7,
+          "passed": false,
+          "scale": "0-1",
+          "error": "Incomplete response did not address all aspects of the question",
+          "retry_count": 2,
+          "evaluation_time_ms": 2150,
+          "model_used": "gpt-4o-mini"
+        }
+      ],
+      "ground_truth": "Our refund policy allows full refunds within 30 days of purchase for any reason.",
+      "passed": false,
+      "execution_time_ms": 3200,
+      "errors": [
+        "Agent failed to retrieve required policy document",
+        "Tool mismatch: expected escalate_to_human but not called"
+      ],
+      "timestamp": "2025-11-22T10:31:12Z"
+    },
+    {
+      "test_name": "test_multi_document_analysis",
+      "test_input": "Compare shipping costs and delivery times across different services",
+      "processed_files": [
+        {
+          "original": {
+            "path": "docs/shipping_rates.xlsx",
+            "type": "excel",
+            "sheet": "standard_shipping"
+          },
+          "markdown_content": "| Service | Cost | Delivery Time |\n|---------|------|---------------|\n| Standard | $5.99 | 5-7 business days |\n| Express | $12.99 | 2-3 business days |",
+          "metadata": {
+            "pages": null,
+            "size_bytes": 18500,
+            "format": "xlsx",
+            "sheet": "standard_shipping"
+          },
+          "cached_path": "/tmp/cache/shipping_rates_xyz789.md",
+          "processing_time_ms": 1200,
+          "error": null
+        },
+        {
+          "original": {
+            "path": "docs/carrier_info.pdf",
+            "type": "pdf",
+            "page_range": "1-3"
+          },
+          "markdown_content": "# Carrier Information\n\n## FedEx\nDelivers to 220+ countries with tracking...",
+          "metadata": {
+            "pages": 15,
+            "size_bytes": 512000,
+            "format": "pdf"
+          },
+          "cached_path": "/tmp/cache/carrier_info_def456.md",
+          "processing_time_ms": 3500,
+          "error": null
+        }
+      ],
+      "agent_response": "Based on the shipping documentation, we offer Standard shipping at $5.99 (5-7 business days) and Express shipping at $12.99 (2-3 business days). Our carrier partners include FedEx, UPS, and DHL, serving over 220 countries globally.",
+      "tool_calls": ["search_knowledge_base", "retrieve_document", "retrieve_document"],
+      "expected_tools": ["search_knowledge_base", "retrieve_document"],
+      "tools_matched": true,
+      "metric_results": [
+        {
+          "metric_name": "groundedness",
+          "score": 0.96,
+          "threshold": 0.8,
+          "passed": true,
+          "scale": "0-1",
+          "error": null,
+          "retry_count": 0,
+          "evaluation_time_ms": 1300,
+          "model_used": "gpt-4o"
+        },
+        {
+          "metric_name": "relevance",
+          "score": 0.91,
+          "threshold": 0.75,
+          "passed": true,
+          "scale": "0-1",
+          "error": null,
+          "retry_count": 0,
+          "evaluation_time_ms": 1050,
+          "model_used": "gpt-4o"
+        },
+        {
+          "metric_name": "completeness",
+          "score": 0.89,
+          "threshold": 0.7,
+          "passed": true,
+          "scale": "0-1",
+          "error": null,
+          "retry_count": 0,
+          "evaluation_time_ms": 950,
+          "model_used": "gpt-4o"
+        }
+      ],
+      "ground_truth": "Shipping options include Standard ($5.99, 5-7 days) and Express ($12.99, 2-3 days) through multiple carriers.",
+      "passed": true,
+      "execution_time_ms": 6800,
+      "errors": [],
+      "timestamp": "2025-11-22T10:32:30Z"
+    }
+  ],
+  "summary": {
+    "total_tests": 3,
+    "passed": 2,
+    "failed": 1,
+    "pass_rate": 66.67,
+    "total_duration_ms": 14500,
+    "metrics_evaluated": {
+      "groundedness": 3,
+      "relevance": 3,
+      "coherence": 1,
+      "completeness": 2
+    },
+    "average_scores": {
+      "groundedness": 0.7766666666666667,
+      "relevance": 0.8033333333333333,
+      "coherence": 0.95,
+      "completeness": 0.62
+    }
+  },
+  "timestamp": "2025-11-22T10:33:00Z",
+  "holodeck_version": "0.1.0",
+  "environment": {
+    "python_version": "3.13.0",
+    "os": "Darwin",
+    "platform": "darwin"
+  }
+}

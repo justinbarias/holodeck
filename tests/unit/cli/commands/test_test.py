@@ -1229,29 +1229,29 @@ class TestGenerateMarkdownReport:
     """Tests for _generate_markdown_report function."""
 
     def test_generate_markdown_report_structure(self):
-        """Test _generate_markdown_report creates proper markdown structure."""
-        from holodeck.cli.commands.test import _generate_markdown_report
+        """Test generate_markdown_report creates proper markdown structure."""
+        from holodeck.lib.test_runner.reporter import generate_markdown_report
 
         report = _create_mock_report("test.yaml")
-        markdown = _generate_markdown_report(report)
+        markdown = generate_markdown_report(report)
 
         # Verify header
         assert "# Test Report: test_agent" in markdown
-        assert "**Config**: test.yaml" in markdown
-        assert "**Timestamp**:" in markdown
-        assert "**HoloDeck Version**:" in markdown
+        assert "test.yaml" in markdown
+        assert "Generated:" in markdown
+        assert "0.1.0" in markdown
 
         # Verify summary section
         assert "## Summary" in markdown
-        assert "**Total Tests**:" in markdown
-        assert "**Passed**:" in markdown
-        assert "**Failed**:" in markdown
-        assert "**Pass Rate**:" in markdown
-        assert "**Total Duration**:" in markdown
+        assert "Total Tests" in markdown
+        assert "Passed" in markdown
+        assert "Failed" in markdown
+        assert "Pass Rate" in markdown
+        assert "Duration" in markdown
 
     def test_generate_markdown_report_with_results(self):
-        """Test _generate_markdown_report includes results table."""
-        from holodeck.cli.commands.test import _generate_markdown_report
+        """Test generate_markdown_report includes results section."""
+        from holodeck.lib.test_runner.reporter import generate_markdown_report
 
         test_result = TestResult(
             test_name="test_1",
@@ -1287,13 +1287,13 @@ class TestGenerateMarkdownReport:
             environment={},
         )
 
-        markdown = _generate_markdown_report(report)
+        markdown = generate_markdown_report(report)
 
-        # Verify results table
+        # Verify results section
         assert "## Test Results" in markdown
-        assert "| Test | Status | Duration | Errors |" in markdown
         assert "test_1" in markdown
-        assert "✓ Pass" in markdown or "Pass" in markdown
+        assert "response" in markdown
+        assert "✅" in markdown or "PASSED" in markdown or "PASS" in markdown
 
 
 class TestExceptionHandling:
