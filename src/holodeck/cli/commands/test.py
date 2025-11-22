@@ -16,6 +16,7 @@ from holodeck.lib.errors import ConfigError, EvaluationError, ExecutionError
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.lib.test_runner.progress import ProgressIndicator
+from holodeck.lib.test_runner.reporter import generate_markdown_report
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.test_result import TestReport, TestResult
@@ -269,8 +270,8 @@ def _save_report(report: TestReport, output: str, format: str | None) -> None:
         # Use pydantic's model_dump_json method
         content = report.model_dump_json(indent=2)
     else:  # markdown
-        # Generate markdown format manually
-        content = _generate_markdown_report(report)
+        # Generate markdown format using reporter module
+        content = generate_markdown_report(report)
 
     # Write to file
     try:
@@ -279,46 +280,3 @@ def _save_report(report: TestReport, output: str, format: str | None) -> None:
     except OSError as e:
         logger.error(f"Failed to write report to {output}: {e}")
         raise
-
-
-def _generate_markdown_report(report: TestReport) -> str:
-    """Generate markdown formatted report from TestReport.
-
-    Args:
-        report: TestReport instance
-
-    Returns:
-        Markdown formatted report string
-    """
-    lines: list[str] = []
-
-    # Header
-    lines.append(f"# Test Report: {report.agent_name}")
-    lines.append(f"**Config**: {report.agent_config_path}")
-    lines.append(f"**Timestamp**: {report.timestamp}")
-    lines.append(f"**HoloDeck Version**: {report.holodeck_version}")
-    lines.append("")
-
-    # Summary
-    summary = report.summary
-    lines.append("## Summary")
-    lines.append(f"- **Total Tests**: {summary.total_tests}")
-    lines.append(f"- **Passed**: {summary.passed}")
-    lines.append(f"- **Failed**: {summary.failed}")
-    lines.append(f"- **Pass Rate**: {summary.pass_rate:.1f}%")
-    lines.append(f"- **Total Duration**: {summary.total_duration_ms / 1000:.2f}s")
-    lines.append("")
-
-    # Results table
-    if report.results:
-        lines.append("## Test Results")
-        lines.append("| Test | Status | Duration | Errors |")
-        lines.append("|------|--------|----------|--------|")
-
-        for result in report.results:
-            status = "✓ Pass" if result.passed else "✗ Fail"
-            duration = f"{result.execution_time_ms}ms"
-            errors = len(result.errors)
-            lines.append(f"| {result.test_name} | {status} | {duration} | {errors} |")
-
-    return "\n".join(lines)
