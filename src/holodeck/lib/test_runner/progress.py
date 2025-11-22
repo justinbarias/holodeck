@@ -107,6 +107,32 @@ class ProgressIndicator:
         self._spinner_index += 1
         return char
 
+    def start_test(self, test_name: str) -> None:
+        """Mark a test as started.
+
+        Args:
+            test_name: Name of the test starting
+        """
+        self.current_test_name = test_name
+
+    def get_spinner_line(self) -> str:
+        """Get current spinner line for running test.
+
+        Returns:
+            Formatted spinner string (e.g. "⠋ Test 1/5: Running...")
+        """
+        if not self.is_tty or self.quiet:
+            return ""
+
+        spinner = self._get_spinner_char()
+        next_test = self.current_test + 1
+
+        # Ensure we don't exceed total tests in display
+        if next_test > self.total_tests:
+            next_test = self.total_tests
+
+        return f"{spinner} Test {next_test}/{self.total_tests}: Running..."
+
     def _is_long_running(self, execution_time_ms: int | None) -> bool:
         """Check if test execution time exceeds long-running threshold.
 

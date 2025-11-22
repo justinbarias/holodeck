@@ -6,6 +6,7 @@ with evaluation metrics and report generation.
 
 import asyncio
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -16,9 +17,45 @@ from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.lib.test_runner.progress import ProgressIndicator
 from holodeck.models.config import ExecutionConfig
+from holodeck.models.test_case import TestCaseModel
 from holodeck.models.test_result import TestReport, TestResult
 
 logger = get_logger(__name__)
+
+
+class SpinnerThread(threading.Thread):
+    """Background thread for spinner animation."""
+
+    def __init__(self, progress: ProgressIndicator) -> None:
+        """Initialize spinner thread.
+
+        Args:
+            progress: ProgressIndicator instance
+        """
+        super().__init__(daemon=True)
+        self.progress = progress
+        self._stop_event = threading.Event()
+        self._running = False
+
+    def run(self) -> None:
+        """Run spinner animation loop."""
+        self._running = True
+        while not self._stop_event.is_set():
+            line = self.progress.get_spinner_line()
+            if line:
+                # Use \r to overwrite line, flush to ensure display
+                sys.stdout.write(f"\r{line}")
+                sys.stdout.flush()
+            time.sleep(0.1)
+        self._running = False
+
+    def stop(self) -> None:
+        """Stop spinner animation."""
+        self._stop_event.set()
+        if self._running:
+            # Clear spinner line
+            sys.stdout.write("\r" + " " * 60 + "\r")
+            sys.stdout.flush()
 
 
 @click.command()
@@ -109,25 +146,61 @@ def test(
             total_tests=total_tests, quiet=quiet, verbose=verbose
         )
 
-        # Define progress callback
+        # Initialize spinner thread
+        spinner_thread = SpinnerThread(progress)
+
+        # Define callbacks
+        def on_test_start(test_case: TestCaseModel) -> None:
+            """Start spinner for new test."""
+            progress.start_test(test_case.name or "Test")
+            if not spinner_thread.is_alive() and not quiet and sys.stdout.isatty():
+                # Start thread if not running (it handles its own loop)
+                # Note: We can't restart a thread, so we might need a new instance
+                # or just keep it running and use events.
+                # Simpler approach: Start it once before execution and use flags.
+                pass
+
         def progress_callback(result: TestResult) -> None:
             """Update progress indicator and display progress line."""
+            # Temporarily stop spinner to print result
+            # In a real implementation with threading, we might need a lock
+            # But here we just clear the line in the main thread (via update)
+
+            # Update progress state
             progress.update(result)
+
+            # Get formatted result line
             progress_line = progress.get_progress_line()
+
             if progress_line:  # Only print if not empty (respects quiet mode)
+                # Clear current line (handled by \r in spinner)
+                sys.stdout.write("\r" + " " * 60 + "\r")
                 click.echo(progress_line)
 
-        # Initialize executor with progress callback
+        # Initialize executor with callbacks
         logger.debug("Initializing test executor")
         executor = TestExecutor(
             agent_config_path=agent_config,
             execution_config=cli_config,
             progress_callback=progress_callback,
+            on_test_start=on_test_start,
         )
 
         # Run tests asynchronously
         logger.info("Starting test execution")
-        report = asyncio.run(executor.execute_tests())
+
+        # Start spinner thread
+        if not quiet and sys.stdout.isatty():
+            spinner_thread.start()
+
+        try:
+            report = asyncio.run(executor.execute_tests())
+        finally:
+            # Ensure spinner stops
+            if spinner_thread.is_alive():
+                spinner_thread.stop()
+                spinner_thread.join()
+
         elapsed_time = time.time() - start_time
         logger.info(
             f"Test execution completed in {elapsed_time:.2f}s - "

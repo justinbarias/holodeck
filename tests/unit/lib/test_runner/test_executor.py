@@ -137,13 +137,15 @@ class TestExecutorMainFlow:
         mock_config.execution = None
         mock_loader.load_agent_yaml.return_value = mock_config
 
-        # Inject dependencies
-        executor = TestExecutor(
-            agent_config_path=agent_config_path,
-            config_loader=mock_loader,
-            file_processor=mock_file_processor,
-            agent_factory=mock_agent_factory,
-        )
+        # Mock ModelConfig import in executor
+        with patch.dict("sys.modules", {"holodeck.lib.evaluators.azure_ai": Mock()}):
+            # Inject dependencies
+            executor = TestExecutor(
+                agent_config_path=agent_config_path,
+                config_loader=mock_loader,
+                file_processor=mock_file_processor,
+                agent_factory=mock_agent_factory,
+            )
 
         assert executor.agent_config_path == agent_config_path
         assert executor.agent_config is not None

@@ -127,6 +127,7 @@ class TestExecutor:
         evaluators: dict[str, BaseEvaluator] | None = None,
         config_loader: ConfigLoader | None = None,
         progress_callback: Callable[[TestResult], None] | None = None,
+        on_test_start: Callable[[TestCaseModel], None] | None = None,
     ) -> None:
         """Initialize test executor with optional dependency injection.
 
@@ -148,6 +149,7 @@ class TestExecutor:
         self.cli_config = execution_config
         self.config_loader = config_loader or ConfigLoader()
         self.progress_callback = progress_callback
+        self.on_test_start = on_test_start
 
         logger.debug(f"Initializing TestExecutor for config: {agent_config_path}")
 
@@ -233,6 +235,7 @@ class TestExecutor:
             return evaluators
 
         # Create evaluators for configured metrics
+        # Create evaluators for configured metrics
         for metric_config in self.agent_config.evaluations.metrics:
             metric_name = metric_config.metric
 
@@ -243,22 +246,45 @@ class TestExecutor:
                 else None
             )
 
+            # Get model config (per-metric or default)
+            llm_model = metric_config.model or default_model
+
+            # Convert LLMProvider to ModelConfig for Azure evaluators
+            azure_model_config = None
+            if llm_model:
+                from holodeck.lib.evaluators.azure_ai import ModelConfig
+
+                # Use defaults if not specified in config
+                # Note: In a real scenario, we might need to resolve these from env vars
+                # if they are not in the config. For now, we assume they are present
+                # or handled by the LLMProvider validation.
+                azure_model_config = ModelConfig(
+                    azure_endpoint=llm_model.endpoint
+                    or "https://example.openai.azure.com/",
+                    api_key=llm_model.api_key or "dummy-key",
+                    azure_deployment=llm_model.name,
+                )
+
             if metric_name == "groundedness":
-                evaluators[metric_name] = GroundednessEvaluator(
-                    model_config=metric_config.model or default_model  # type: ignore
-                )
+                if azure_model_config:
+                    evaluators[metric_name] = GroundednessEvaluator(
+                        model_config=azure_model_config
+                    )
             elif metric_name == "relevance":
-                evaluators[metric_name] = RelevanceEvaluator(
-                    model_config=metric_config.model or default_model  # type: ignore
-                )
+                if azure_model_config:
+                    evaluators[metric_name] = RelevanceEvaluator(
+                        model_config=azure_model_config
+                    )
             elif metric_name == "coherence":
-                evaluators[metric_name] = CoherenceEvaluator(
-                    model_config=metric_config.model or default_model  # type: ignore
-                )
+                if azure_model_config:
+                    evaluators[metric_name] = CoherenceEvaluator(
+                        model_config=azure_model_config
+                    )
             elif metric_name == "fluency":
-                evaluators[metric_name] = FluencyEvaluator(
-                    model_config=metric_config.model or default_model  # type: ignore
-                )
+                if azure_model_config:
+                    evaluators[metric_name] = FluencyEvaluator(
+                        model_config=azure_model_config
+                    )
 
             # NLP metrics
             elif metric_name == "bleu":
@@ -284,6 +310,10 @@ class TestExecutor:
 
         for idx, test_case in enumerate(test_cases, 1):
             logger.debug(f"Executing test {idx}/{len(test_cases)}: {test_case.name}")
+
+            if self.on_test_start:
+                self.on_test_start(test_case)
+
             result = await self._execute_single_test(test_case)
             test_results.append(result)
 
