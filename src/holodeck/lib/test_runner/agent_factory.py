@@ -34,7 +34,7 @@ from holodeck.models.token_usage import TokenUsage
 try:
     from semantic_kernel.connectors.ai.anthropic import AnthropicChatCompletion
 except ImportError:
-    AnthropicChatCompletion = None
+    AnthropicChatCompletion = None  # type: ignore[misc,assignment]
 
 logger = get_logger(__name__)
 
@@ -104,6 +104,7 @@ class AgentFactory:
         try:
             self.kernel = self._create_kernel()
             self.agent = self._create_agent()
+            self.chat_history = self._create_chat_history()
             logger.info(
                 f"AgentFactory initialized successfully for agent: {agent_config.name}"
             )
@@ -221,18 +222,19 @@ class AgentFactory:
         except Exception as e:
             raise AgentFactoryError(f"Failed to load instructions: {e}") from e
 
-    def _create_chat_history(self, user_input: str) -> ChatHistory:
-        """Create ChatHistory with system instructions and user message.
+    def _create_chat_history(self, user_input: str | None = None) -> ChatHistory:
+        """Create ChatHistory with system instructions and optional user message.
 
         Args:
-            user_input: User's input message
+            user_input: User's input message (optional)
 
         Returns:
             Populated ChatHistory instance
         """
         history = ChatHistory()
-        # Add user input
-        history.add_user_message(user_input)
+        # Add user input if provided
+        if user_input:
+            history.add_user_message(user_input)
 
         return history
 
@@ -249,16 +251,16 @@ class AgentFactory:
             AgentFactoryError: If invocation fails after retries
         """
         try:
-            # Create chat history
-            history = self._create_chat_history(user_input)
+            # Add user input to chat history
+            self.chat_history.add_user_message(user_input)
 
             # Invoke with timeout and retry logic
             if self.timeout:
                 result = await asyncio.wait_for(
-                    self._invoke_with_retry(history), timeout=self.timeout
+                    self._invoke_with_retry(), timeout=self.timeout
                 )
             else:
-                result = await self._invoke_with_retry(history)
+                result = await self._invoke_with_retry()
 
             return result
 
@@ -271,11 +273,8 @@ class AgentFactory:
         except Exception as e:
             raise AgentFactoryError(f"Agent invocation failed: {e}") from e
 
-    async def _invoke_with_retry(self, history: ChatHistory) -> AgentExecutionResult:
+    async def _invoke_with_retry(self) -> AgentExecutionResult:
         """Invoke agent with retry logic for transient failures.
-
-        Args:
-            history: ChatHistory to pass to agent
 
         Returns:
             AgentExecutionResult with tool_calls and complete chat_history
@@ -291,7 +290,7 @@ class AgentFactory:
                 logger.debug(
                     f"Agent invocation attempt {attempt + 1}/{self.max_retries}"
                 )
-                result = await self._invoke_agent_impl(history)
+                result = await self._invoke_agent_impl()
                 logger.debug(
                     f"Agent invocation succeeded on attempt {attempt + 1}, "
                     f"tool_calls={len(result.tool_calls)}"
@@ -334,11 +333,8 @@ class AgentFactory:
             f"Agent invocation failed after {self.max_retries} attempts: {last_error}"
         ) from last_error
 
-    async def _invoke_agent_impl(self, history: ChatHistory) -> AgentExecutionResult:
+    async def _invoke_agent_impl(self) -> AgentExecutionResult:
         """Internal implementation of agent invocation.
-
-        Args:
-            history: ChatHistory to pass to agent
 
         Returns:
             AgentExecutionResult with tool_calls and complete chat_history
@@ -348,7 +344,7 @@ class AgentFactory:
         token_usage: TokenUsage | None = None
         try:
             # Invoke agent with chat history
-            thread = ChatHistoryAgentThread(history)
+            thread = ChatHistoryAgentThread(self.chat_history)
             async for (
                 response
             ) in self.agent.invoke(  # pyright: ignore[reportUnknownMemberType]
@@ -366,11 +362,11 @@ class AgentFactory:
 
             # Add agent's response to chat history
             if response_text:
-                history.add_assistant_message(response_text)
+                self.chat_history.add_assistant_message(response_text)
 
             return AgentExecutionResult(
                 tool_calls=tool_calls,
-                chat_history=history,
+                chat_history=self.chat_history,
                 token_usage=token_usage,
             )
 
@@ -458,7 +454,8 @@ class AgentFactory:
                 return TokenUsage(
                     prompt_tokens=int(getattr(usage_obj, "prompt_tokens", 0)),
                     completion_tokens=int(getattr(usage_obj, "completion_tokens", 0)),
-                    total_tokens=int(getattr(usage_obj, "total_tokens", 0)),
+                    total_tokens=int(getattr(usage_obj, "prompt_tokens", 0))
+                    + int(getattr(usage_obj, "completion_tokens", 0)),
                 )
         except Exception as e:
             logger.warning(f"Failed to extract token usage: {e}")

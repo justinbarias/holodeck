@@ -46,7 +46,8 @@
             "module": "holodeck.cli.main",
             "args": [
                 "chat",
-                "sample/hitchhikers_agent.yaml"
+                "sample/hitchhikers_agent.yaml",
+                "--verbose"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
