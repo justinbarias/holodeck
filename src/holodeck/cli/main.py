@@ -15,6 +15,11 @@ __version__ = "0.1.0"
 def main(ctx: click.Context) -> None:
     """HoloDeck - Experimentation platform for AI agents.
 
+    Commands:
+        init   Initialize a new agent project
+        test   Run agent test cases
+        chat   Interactive chat session with an agent
+
     Initialize and manage AI agent projects with YAML configuration.
     """
     # Show help if no command is provided
@@ -23,6 +28,7 @@ def main(ctx: click.Context) -> None:
 
 
 # Import and register commands
+from holodeck.cli.commands.chat import chat  # noqa: E402, F401
 from holodeck.cli.commands.config import config  # noqa: E402, F401
 from holodeck.cli.commands.init import init  # noqa: E402, F401
 from holodeck.cli.commands.test import test  # noqa: E402, F401
@@ -30,6 +36,7 @@ from holodeck.cli.commands.test import test  # noqa: E402, F401
 # Register commands
 main.add_command(init)
 main.add_command(test)
+main.add_command(chat)
 main.add_command(config)
 
 
