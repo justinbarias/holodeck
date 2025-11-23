@@ -127,24 +127,24 @@ _Build executor, session manager, streaming, and message validation plumbing._
 
 ### Phase 3 - Tests First
 
-- [ ] T213 Write executor unit tests with mocked AgentFactory/Semantic Kernel in
+- [x] T213 Write executor unit tests with mocked AgentFactory/Semantic Kernel in
       `tests/unit/agent/test_executor.py`
-- [ ] T214 Write session manager tests (start/process/warn/terminate) in
+- [x] T214 Write session manager tests (start/process/warn/terminate) in
       `tests/unit/agent/test_session.py`
-- [ ] T215 Write message validator tests (pipeline integration, error messages)
+- [x] T215 Write message validator tests (pipeline integration, error messages)
       in `tests/unit/agent/test_message.py`
-- [ ] T216 Write streaming tests (ToolEvent lifecycle, verbose vs standard) in
+- [x] T216 Write streaming tests (ToolEvent lifecycle, verbose vs standard) in
       `tests/unit/agent/test_streaming.py`
 
 ### Phase 3 - Implementation
 
-- [ ] T217 Implement `AgentExecutor` in `src/holodeck/chat/executor.py`
+- [x] T217 Implement `AgentExecutor` in `src/holodeck/chat/executor.py`
       reusing `holodeck.lib.test_runner.agent_factory.AgentFactory`
-- [ ] T218 Implement `ChatSessionManager` in `src/holodeck/chat/session.py`
-- [ ] T219 Implement validation orchestrator in `src/holodeck/chat/message.py`
+- [x] T218 Implement `ChatSessionManager` in `src/holodeck/chat/session.py`
+- [x] T219 Implement validation orchestrator in `src/holodeck/chat/message.py`
       using `lib.validation` pipeline
-- [ ] T220 Implement `ToolExecutionStream` in `src/holodeck/chat/streaming.py`
-- [ ] T221 Export runtime APIs in `src/holodeck/chat/__init__.py`
+- [x] T220 Implement `ToolExecutionStream` in `src/holodeck/chat/streaming.py`
+- [x] T221 Export runtime APIs in `src/holodeck/chat/__init__.py`
 
 ---
 
@@ -165,19 +165,19 @@ _Expose chat runtime via Click command with correct UX and exit codes._
 
 ### Phase 4 - Tests First
 
-- [ ] T222 Write CLI tests for happy path, exit commands, option parsing in
+- [x] T222 Write CLI tests for happy path, exit commands, option parsing in
       `tests/unit/cli/commands/test_chat.py`
-- [ ] T223 Write CLI error-handling tests (invalid path, bad config, runtime
+- [x] T223 Write CLI error-handling tests (invalid path, bad config, runtime
       failure, interrupt) in `tests/unit/cli/commands/test_chat_errors.py`
 
 ### Phase 4 - Implementation
 
-- [ ] T224 Implement `src/holodeck/cli/commands/chat.py` (Click command +
+- [x] T224 Implement `src/holodeck/cli/commands/chat.py` (Click command +
       REPL loop + streaming display)
-- [ ] T225 Register chat command in `src/holodeck/cli/main.py`
-- [ ] T226 Map agent errors to exit codes/messages in
+- [x] T225 Register chat command in `src/holodeck/cli/main.py`
+- [x] T226 Map agent errors to exit codes/messages in
       `src/holodeck/cli/exceptions.py`
-- [ ] T227 Update CLI help/docs strings to reference chat usage and flags
+- [x] T227 Update CLI help/docs strings to reference chat usage and flags
 
 ---
 
