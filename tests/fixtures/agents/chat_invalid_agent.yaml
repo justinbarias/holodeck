@@ -1,0 +1,12 @@
+# Invalid chat agent configuration to test loader and validation failures
+name: chat-invalid-agent
+
+# Missing required model.name and tools configuration is empty
+model:
+  provider: openai
+
+instructions:
+  inline: |
+    This agent should fail validation because the model name is missing.
+
+tools: []

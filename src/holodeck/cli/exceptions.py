@@ -61,3 +61,48 @@ class TemplateError(CLIError):
     """
 
     pass
+
+
+class ChatConfigError(CLIError):
+    """Raised when chat command cannot load agent configuration."""
+
+    exit_code: int = 1
+
+    def __init__(self, message: str) -> None:
+        """Initialize the error with a human-readable message."""
+        self.message = message
+        super().__init__(message)
+
+
+class ChatAgentInitError(CLIError):
+    """Raised when agent initialization fails for chat sessions."""
+
+    exit_code: int = 2
+
+    def __init__(self, message: str) -> None:
+        """Initialize the error with a human-readable message."""
+        self.message = message
+        super().__init__(message)
+
+
+class ChatRuntimeError(CLIError):
+    """Raised for runtime chat failures that should exit the CLI."""
+
+    exit_code: int = 1
+
+    def __init__(self, message: str, exit_code: int | None = None) -> None:
+        """Initialize the error with optional exit code override."""
+        self.exit_code = exit_code if exit_code is not None else self.exit_code
+        self.message = message
+        super().__init__(message)
+
+
+class ChatValidationError(CLIError):
+    """Raised for recoverable user input validation errors during chat."""
+
+    exit_code: int = 0
+
+    def __init__(self, message: str) -> None:
+        """Initialize the error with a human-readable message."""
+        self.message = message
+        super().__init__(message)

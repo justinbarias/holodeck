@@ -149,6 +149,7 @@ test_cases:
 - ✅ File reference resolution
 - ✅ CLI interface (holodeck command with init, test, chat, deploy)
 - ✅ Agent execution engine (LLM provider integration, tool execution, memory)
+- ✅ Interactive chat with spinner, token tracking, and adaptive status display
 - ✅ Evaluation framework (AI-powered and NLP metrics with threshold validation)
 - ⏳ Deployment tools (planned for v0.3)
 - ⏳ Multi-agent orchestration (planned for v0.3)

@@ -73,11 +73,46 @@ Open `agent.yaml` and customize:
 
 ### Step 3: Run Your Agent
 
+#### Interactive Chat
+
+Start an interactive chat session with your agent:
+
 ```bash
-# Interactive chat
+# Basic chat
 holodeck chat agent.yaml
 
-# Run tests
+# Verbose mode with detailed status panel
+holodeck chat agent.yaml --verbose
+
+# Quiet mode (no logging, but spinner still shows)
+holodeck chat agent.yaml --quiet
+```
+
+**Chat Features:**
+- **Animated Spinner**: Shows braille animation during agent execution (even in quiet mode)
+- **Token Tracking**: Displays cumulative token usage across the conversation
+- **Adaptive Status Display**:
+  - **Default mode**: Inline status `[messages | execution time]`
+  - **Verbose mode**: Rich status panel with token breakdown
+  - **Quiet mode**: No status display (spinner only)
+
+Example verbose output:
+```
+╭─── Chat Status ─────────────────────────╮
+│ Session Time: 00:05:23                  │
+│ Messages: 3 / 50 (6%)                   │
+│ Total Tokens: 1,234                     │
+│   ├─ Prompt: 890                        │
+│   └─ Completion: 344                    │
+│ Last Response: 1.2s                     │
+╰─────────────────────────────────────────╯
+Agent: Your response here
+```
+
+#### Run Tests
+
+```bash
+# Run all tests
 holodeck test agent.yaml
 
 # Deploy locally
@@ -171,8 +206,14 @@ holodeck test agent.yaml
 # Interactive chat with your agent
 holodeck chat agent.yaml
 
-# Chat with specific input
-holodeck chat agent.yaml --input "Your question here"
+# Chat with verbose output (detailed status panel)
+holodeck chat agent.yaml --verbose
+
+# Chat with quiet mode (no logging, spinner only)
+holodeck chat agent.yaml --quiet
+
+# Chat with custom max messages limit
+holodeck chat agent.yaml --max-messages 100
 
 # Deploy as API
 holodeck deploy agent.yaml --port 8000
@@ -182,6 +223,48 @@ holodeck init my-project
 ```
 
 ## Tips & Tricks
+
+### Interactive Chat Features
+
+The `holodeck chat` command provides real-time feedback during conversation:
+
+**Default Mode (Recommended for Most Users)**
+```bash
+holodeck chat agent.yaml
+```
+Shows inline status after each response:
+```
+Agent: Your response here [3/50 | 1.2s]
+```
+
+**Verbose Mode (For Detailed Monitoring)**
+```bash
+holodeck chat agent.yaml --verbose
+```
+Displays a rich status panel with token breakdown:
+```
+╭─── Chat Status ─────────────────────────╮
+│ Session Time: 00:05:23                  │
+│ Messages: 3 / 50 (6%)                   │
+│ Total Tokens: 1,234                     │
+│   ├─ Prompt: 890                        │
+│   └─ Completion: 344                    │
+│ Last Response: 1.2s                     │
+╰─────────────────────────────────────────╯
+```
+
+**Quiet Mode (For Clean Output)**
+```bash
+holodeck chat agent.yaml --quiet
+```
+Shows only responses and spinner during execution, no status display.
+
+**Monitor Token Usage**
+All chat modes track cumulative token usage across the conversation. This helps you:
+- Monitor API costs in real-time
+- Understand token consumption patterns
+- Plan for context window limits
+- Optimize prompt sizes
 
 ### Use Environment Variables for Secrets
 

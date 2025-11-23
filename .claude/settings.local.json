@@ -8,7 +8,8 @@
       "Bash(make type-check)",
       "Bash(make security)",
       "Bash(cat:*)",
-      "Bash(python -m pytest:*)"
+      "Bash(python -m pytest:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

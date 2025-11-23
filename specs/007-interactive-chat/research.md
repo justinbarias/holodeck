@@ -12,66 +12,40 @@ This document consolidates research findings for implementing the interactive ch
 
 ## 1. Agent Execution Runtime
 
-### Decision: Semantic Kernel Chat Completion API
+### Decision: Reuse `AgentFactory` with Semantic Kernel `ChatCompletionAgent`
 
-Use Semantic Kernel's built-in chat completion services with conversation history management.
+Use the existing `holodeck.lib.test_runner.agent_factory.AgentFactory` as the runtime bridge, swapping the chat implementation to Semantic Kernel's `ChatCompletionAgent` (with `ChatHistoryAgentThread`) instead of raw `ChatCompletion` calls. This keeps chat aligned with the test runner and centralizes provider wiring, retries, and history management.
 
 ### Rationale
 
-- **Native chat support**: Semantic Kernel provides `ChatHistory` class for multi-turn conversations
-- **Tool integration**: Plugins/functions integrate seamlessly with chat completions
-- **Provider abstraction**: Supports OpenAI, Anthropic, Azure OpenAI through unified interface
-- **Streaming support**: Built-in streaming for real-time responses
-- **Already integrated**: Project dependency (semantic-kernel>=1.37.1)
+- **Single bridge**: Reuses the same factory used by the test executor, reducing duplicate Semantic Kernel setup and keeping provider parity.
+- **ChatCompletionAgent**: Higher-level agent abstraction with built-in threading/history support, better fit for interactive chat than direct `ChatCompletionService` calls.
+- **Streaming/tool extraction**: AgentFactory already extracts tool calls and manages retries/timeouts; extending it for chat keeps behavior consistent.
+- **Provider abstraction**: AgentFactory already supports OpenAI, Azure OpenAI, and Anthropic via Semantic Kernel services.
 
 ### Implementation Notes
 
-**Core Components**:
-- `Kernel`: Main orchestration object for agent execution
-- `ChatHistory`: Maintains conversation context across turns
-- `ChatCompletionService`: LLM provider interface (Anthropic, OpenAI, etc.)
-- `KernelFunction`: Tool/plugin execution wrapper
-- `FunctionChoiceBehavior`: Controls automatic tool execution
+**Core Components** (reused):
+- `AgentFactory`: Creates kernel + `ChatCompletionAgent`, loads instructions, manages retries/timeouts, extracts tool calls.
+- `ChatHistoryAgentThread`: Maintains conversation context for the agent.
+- `ChatHistory`: Conversation history container passed into the agent thread.
 
-**Key Pattern**:
+**Key Pattern (aligned to AgentFactory)**:
 ```python
-from semantic_kernel import Kernel
+from holodeck.lib.test_runner.agent_factory import AgentFactory
 from semantic_kernel.contents import ChatHistory
-from semantic_kernel.connectors.ai.anthropic import AnthropicChatCompletion
 
-# Initialize kernel with agent config
-kernel = Kernel()
-chat_service = AnthropicChatCompletion(
-    model_id=agent_config.model.name,
-    api_key=os.getenv("ANTHROPIC_API_KEY")
-)
-kernel.add_service(chat_service)
+# Initialize factory with AgentConfig (already used by test executor)
+factory = AgentFactory(agent_config)
 
-# Add tools/plugins
-for tool in agent_config.tools:
-    kernel.add_plugin(load_tool(tool))
-
-# Maintain conversation history
+# Maintain history via ChatHistoryAgentThread within AgentFactory
 history = ChatHistory()
-history.add_system_message(agent_config.instructions)
+history.add_user_message(user_input)
 
-# Interactive loop
-while True:
-    user_input = get_user_input()
-    history.add_user_message(user_input)
+# Invoke using the agent_factory (internally uses ChatCompletionAgent)
+result = await factory.invoke(user_input)
 
-    # Execute with streaming
-    response = await kernel.invoke_stream(
-        chat_service,
-        chat_history=history,
-        settings=chat_settings
-    )
-
-    # Stream response and tool calls
-    async for chunk in response:
-        display_chunk(chunk)
-
-    history.add_assistant_message(response.content)
+# result.chat_history contains updated history; result.tool_calls holds tool metadata
 ```
 
 ### Alternatives Considered

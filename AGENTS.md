@@ -406,6 +406,8 @@ make security           # Safety + Bandit + detect-secrets
 
 Always source .venv before running python commands.
 
+When finished, run pre-commit on all changed files.
+
 # Python Coding Conventions
 
 ## Python Instructions
