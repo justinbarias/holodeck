@@ -258,9 +258,9 @@ _Document usage, quickstart, and contracts._
 
 ### Tasks
 
-- [ ] T234 Add `specs/007-interactive-chat/quickstart.md` outlining CLI usage,
+- [x] T234 Add `specs/007-interactive-chat/quickstart.md` outlining CLI usage,
       verbose mode, observability flag, and sample transcript
-- [ ] T235 Update `docs/` or README snippet for new chat command (link to spec
+- [x] T235 Update `docs/` or README snippet for new chat command (link to spec
       and quickstart)
 
 ---
