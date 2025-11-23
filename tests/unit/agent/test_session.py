@@ -184,6 +184,13 @@ class TestChatSessionLifecycle:
         config = self._make_config()
 
         mock_executor = AsyncMock(spec=AgentExecutor)
+        mock_response = AgentResponse(
+            content="Hello there!",
+            tool_executions=[],
+            tokens_used=None,
+            execution_time=0.5,
+        )
+        mock_executor.execute_turn.return_value = mock_response
         mock_executor_class.return_value = mock_executor
 
         mock_validator = MagicMock(spec=MessageValidator)

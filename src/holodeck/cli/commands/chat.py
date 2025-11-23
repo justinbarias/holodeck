@@ -6,11 +6,14 @@ including message validation, tool execution streaming, and optional observabili
 
 import asyncio
 import sys
+import threading
+import time
 from pathlib import Path
 
 import click
 
 from holodeck.chat import ChatSessionManager
+from holodeck.chat.progress import ChatProgressIndicator
 from holodeck.config.loader import ConfigLoader
 from holodeck.lib.errors import AgentInitializationError, ConfigError, ExecutionError
 from holodeck.lib.logging_config import get_logger, setup_logging
@@ -18,6 +21,40 @@ from holodeck.models.agent import Agent
 from holodeck.models.chat import ChatConfig
 
 logger = get_logger(__name__)
+
+
+class ChatSpinnerThread(threading.Thread):
+    """Background thread for displaying animated spinner during agent execution."""
+
+    def __init__(self, progress: ChatProgressIndicator) -> None:
+        """Initialize spinner thread.
+
+        Args:
+            progress: ChatProgressIndicator instance for spinner animation.
+        """
+        super().__init__(daemon=True)
+        self.progress = progress
+        self._stop_event = threading.Event()
+        self._running = False
+
+    def run(self) -> None:
+        """Run spinner animation loop."""
+        self._running = True
+        while not self._stop_event.is_set():
+            line = self.progress.get_spinner_line()
+            if line:
+                sys.stdout.write(f"\r{line}")
+                sys.stdout.flush()
+            time.sleep(0.1)  # 10 FPS update rate
+        self._running = False
+
+    def stop(self) -> None:
+        """Stop spinner animation and clear spinner line."""
+        self._stop_event.set()
+        if self._running:
+            # Clear spinner line
+            sys.stdout.write("\r" + " " * 80 + "\r")
+            sys.stdout.flush()
 
 
 @click.command()
@@ -100,6 +137,7 @@ def chat(
                 agent=agent,
                 agent_config_path=Path(agent_config),
                 verbose=verbose,
+                quiet=quiet,
                 enable_observability=observability,
                 max_messages=max_messages,
             )
@@ -138,6 +176,7 @@ async def _run_chat_session(
     agent: Agent,
     agent_config_path: Path,
     verbose: bool,
+    quiet: bool,
     enable_observability: bool,
     max_messages: int,
 ) -> None:
@@ -146,6 +185,7 @@ async def _run_chat_session(
     Args:
         agent: Loaded Agent configuration
         verbose: Enable detailed tool execution display
+        quiet: Suppress logging output
         enable_observability: Enable OpenTelemetry tracing
         max_messages: Maximum messages before warning
 
@@ -182,6 +222,13 @@ async def _run_chat_session(
         click.echo("Type 'exit' or 'quit' to end session.")
         click.echo()
 
+        # Initialize progress indicator
+        progress = ChatProgressIndicator(
+            max_messages=max_messages,
+            quiet=quiet,
+            verbose=verbose,
+        )
+
         # REPL loop
         while True:
             try:
@@ -197,17 +244,35 @@ async def _run_chat_session(
                 if not user_input:
                     continue
 
-                # Display user message
-                click.echo(f"You: {user_input}\n")
+                # Start spinner (always show, regardless of quiet mode)
+                spinner = None
+                if sys.stdout.isatty():
+                    spinner = ChatSpinnerThread(progress)
+                    spinner.start()
 
-                # Process message (includes validation and execution)
                 try:
                     logger.debug(f"Processing user message: {user_input[:50]}...")
                     response = await session_manager.process_message(user_input)
 
+                    # Stop spinner
+                    if spinner:
+                        spinner.stop()
+                        spinner.join()
+
                     # Display agent response
                     if response:
-                        click.echo(f"Agent: {response.content}\n")
+                        # Update progress
+                        progress.update(response)
+
+                        # Display response with status
+                        if verbose:
+                            click.echo(progress.get_status_panel())
+                            click.echo(f"Agent: {response.content}\n")
+                        else:
+                            # Inline status
+                            status = progress.get_status_inline()
+                            click.echo(f"Agent: {response.content} {status}\n")
+
                         logger.debug(
                             f"Agent responded with {len(response.tool_executions)} "
                             f"tool executions"
@@ -222,6 +287,11 @@ async def _run_chat_session(
                         click.echo()
 
                 except Exception as e:
+                    # Stop spinner on error
+                    if spinner:
+                        spinner.stop()
+                        spinner.join()
+
                     # Display error but continue session (don't crash)
                     logger.warning(f"Error processing message: {e}")
                     click.secho(f"Error: {str(e)}", fg="red")

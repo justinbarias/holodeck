@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -44,6 +45,8 @@ class AgentExecutor:
         enable_observability: bool = False,
         timeout: float | None = 60.0,
         max_retries: int = 3,
+        on_execution_start: Callable[[str], None] | None = None,
+        on_execution_complete: Callable[[AgentResponse], None] | None = None,
     ) -> None:
         """Initialize executor with agent configuration.
 
@@ -52,12 +55,16 @@ class AgentExecutor:
             enable_observability: Enable OpenTelemetry tracing (TODO: Phase 5).
             timeout: Timeout for agent invocation in seconds.
             max_retries: Maximum retry attempts for transient failures.
+            on_execution_start: Optional callback before agent execution.
+            on_execution_complete: Optional callback after agent execution.
 
         Raises:
             RuntimeError: If agent factory initialization fails.
         """
         self.agent_config = agent_config
         self._observability_enabled = enable_observability
+        self.on_execution_start = on_execution_start
+        self.on_execution_complete = on_execution_complete
 
         try:
             self._factory = AgentFactory(
@@ -90,6 +97,10 @@ class AgentExecutor:
         try:
             logger.debug(f"Executing turn for agent: {self.agent_config.name}")
 
+            # Call pre-execution callback
+            if self.on_execution_start:
+                self.on_execution_start(message)
+
             # Invoke agent
             result = await self._factory.invoke(message)
             elapsed = time.time() - start_time
@@ -100,20 +111,26 @@ class AgentExecutor:
             # Convert tool calls to ToolExecution models
             tool_executions = self._convert_tool_calls(result.tool_calls)
 
-            # Extract token usage (currently returns None as AgentFactory doesn't track)
-            tokens_used = None
+            # Extract token usage from factory result
+            tokens_used = result.token_usage
 
             logger.debug(
                 f"Turn executed successfully: content={len(content)} chars, "
                 f"tools={len(tool_executions)}, time={elapsed:.2f}s"
             )
 
-            return AgentResponse(
+            response = AgentResponse(
                 content=content,
                 tool_executions=tool_executions,
                 tokens_used=tokens_used,
                 execution_time=elapsed,
             )
+
+            # Call post-execution callback
+            if self.on_execution_complete:
+                self.on_execution_complete(response)
+
+            return response
 
         except Exception as e:
             logger.error(f"Agent execution failed: {e}", exc_info=True)

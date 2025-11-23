@@ -28,6 +28,7 @@ from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
 from holodeck.models.agent import Agent
 from holodeck.models.llm import ProviderEnum
+from holodeck.models.token_usage import TokenUsage
 
 # Try to import Anthropic support (optional dependency)
 try:
@@ -46,10 +47,12 @@ class AgentExecutionResult:
         tool_calls: List of tool calls made by the agent during execution
         chat_history: Complete conversation history including user inputs
             and agent responses
+        token_usage: Token usage metadata if provided by LLM provider
     """
 
     tool_calls: list[dict[str, Any]]
     chat_history: ChatHistory
+    token_usage: TokenUsage | None = None
 
 
 class AgentFactoryError(Exception):
@@ -342,6 +345,7 @@ class AgentFactory:
         """
         response_text = ""
         tool_calls: list[dict[str, Any]] = []
+        token_usage: TokenUsage | None = None
         try:
             # Invoke agent with chat history
             thread = ChatHistoryAgentThread(history)
@@ -355,6 +359,9 @@ class AgentFactory:
 
                 # Extract tool calls
                 tool_calls = self._extract_tool_calls(response)
+
+                # Extract token usage
+                token_usage = self._extract_token_usage(response)
                 break  # Only process first response
 
             # Add agent's response to chat history
@@ -364,6 +371,7 @@ class AgentFactory:
             return AgentExecutionResult(
                 tool_calls=tool_calls,
                 chat_history=history,
+                token_usage=token_usage,
             )
 
         except Exception as e:
@@ -425,3 +433,33 @@ class AgentFactory:
             logger.warning(f"Failed to extract tool calls: {e}")
 
         return tool_calls
+
+    def _extract_token_usage(self, response: Any) -> TokenUsage | None:
+        """Extract token usage from agent response metadata.
+
+        Accesses token usage from the response message's metadata dictionary,
+        which is populated by OpenAI/Azure providers. Returns None if usage
+        data is not available.
+
+        Args:
+            response: Response object (ChatMessageContent) from agent invocation.
+
+        Returns:
+            TokenUsage object if available, None otherwise.
+        """
+        try:
+            # Check for metadata attribute (present on ChatMessageContent)
+            if (
+                hasattr(response, "metadata")
+                and isinstance(response.metadata, dict)
+                and "usage" in response.metadata
+            ):
+                usage_obj: Any = response.metadata["usage"]
+                return TokenUsage(
+                    prompt_tokens=int(getattr(usage_obj, "prompt_tokens", 0)),
+                    completion_tokens=int(getattr(usage_obj, "completion_tokens", 0)),
+                    total_tokens=int(getattr(usage_obj, "total_tokens", 0)),
+                )
+        except Exception as e:
+            logger.warning(f"Failed to extract token usage: {e}")
+        return None

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Any
+
 from semantic_kernel.contents import ChatHistory
 
 from holodeck.chat.executor import AgentExecutor, AgentResponse
@@ -9,6 +12,7 @@ from holodeck.chat.message import MessageValidator
 from holodeck.lib.logging_config import get_logger
 from holodeck.models.agent import Agent
 from holodeck.models.chat import ChatConfig, ChatSession, SessionState
+from holodeck.models.token_usage import TokenUsage
 
 logger = get_logger(__name__)
 
@@ -32,6 +36,15 @@ class ChatSessionManager:
         self.session: ChatSession | None = None
         self._executor: AgentExecutor | None = None
         self._validator = MessageValidator(max_length=10_000)
+
+        # Token tracking
+        self.total_tokens = TokenUsage(
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+        )
+        self.session_start_time = datetime.now()
+
         logger.debug(f"ChatSessionManager initialized for agent: {agent_config.name}")
 
     async def start(self) -> None:
@@ -95,6 +108,17 @@ class ChatSessionManager:
             # Increment message count
             self.session.message_count += 1
 
+            # Accumulate token usage
+            if response.tokens_used:
+                self.total_tokens = TokenUsage(
+                    prompt_tokens=self.total_tokens.prompt_tokens
+                    + response.tokens_used.prompt_tokens,
+                    completion_tokens=self.total_tokens.completion_tokens
+                    + response.tokens_used.completion_tokens,
+                    total_tokens=self.total_tokens.total_tokens
+                    + response.tokens_used.total_tokens,
+                )
+
             logger.debug(
                 f"Message processed: count={self.session.message_count}, "
                 f"tools={len(response.tool_executions)}"
@@ -113,6 +137,19 @@ class ChatSessionManager:
             ChatSession instance, or None if not started.
         """
         return self.session
+
+    def get_session_stats(self) -> dict[str, Any]:
+        """Get current session statistics.
+
+        Returns:
+            Dict with message_count, total_tokens, and session_duration.
+        """
+        session_duration = (datetime.now() - self.session_start_time).total_seconds()
+        return {
+            "message_count": self.session.message_count if self.session else 0,
+            "total_tokens": self.total_tokens,
+            "session_duration": session_duration,
+        }
 
     def should_warn_context_limit(self) -> bool:
         """Check if conversation is approaching context limit.
