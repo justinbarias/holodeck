@@ -32,15 +32,14 @@ class ToolEvent(BaseModel):
 
     def __str__(self) -> str:
         """Return human-readable event description."""
-        match self.event_type:
-            case ToolEventType.STARTED:
-                return f"🚀 {self.tool_name} started"
-            case ToolEventType.PROGRESS:
-                progress = self.data.get("progress", "")
-                return f"⏳ {self.tool_name}: {progress}"
-            case ToolEventType.COMPLETED:
-                execution_time = self.data.get("execution_time", 0)
-                return f"✅ {self.tool_name} completed in {execution_time:.2f}s"
-            case ToolEventType.FAILED:
-                error = self.data.get("error", "Unknown error")
-                return f"❌ {self.tool_name} failed: {error}"
+        if self.event_type == ToolEventType.STARTED:
+            return f"🚀 {self.tool_name} started"
+        elif self.event_type == ToolEventType.PROGRESS:
+            progress = self.data.get("progress", "")
+            return f"⏳ {self.tool_name}: {progress}"
+        elif self.event_type == ToolEventType.COMPLETED:
+            execution_time = self.data.get("execution_time", 0)
+            return f"✅ {self.tool_name} completed in {execution_time:.2f}s"
+        # event_type == ToolEventType.FAILED
+        error = self.data.get("error", "Unknown error")
+        return f"❌ {self.tool_name} failed: {error}"
