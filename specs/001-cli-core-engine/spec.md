@@ -140,6 +140,7 @@ The vectorstore tool supports unstructured text data in multiple formats and cre
 2. **Given** a vectorstore tool with `source: data/docs/` pointing to a directory, **When** the agent executes, **Then** all supported text files in the directory are loaded and embedded (supports: .txt, .md, .pdf, .csv, .json)
 3. **Given** a vectorstore tool with unstructured data and embedding_model specified (e.g., `text-embedding-3-small`), **When** the agent executes, **Then** embeddings are generated using the specified model
 4. **Given** a vectorstore tool searching unstructured data, **When** the agent calls it with a query, **Then** results are ranked by relevance score and returned in order with source file reference
+5. **Given** a vectorstore tool with a configured vector database (e.g., Redis, Postgres), **When** the agent executes, **Then** the data source is ingested using the file_processor and stored in the vector database for search
 
 ---
 
