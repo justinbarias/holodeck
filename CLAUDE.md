@@ -385,7 +385,7 @@ When implementing features, refer to VISION.md for detailed specifications and e
 
 ## Workflow
 
-This project uses spec-kit.
+This project uses spec-kit. For definining features.
 
 All work should use the following workflow:
 
@@ -393,7 +393,18 @@ All work should use the following workflow:
 - Clarify the spec /speckit.clarify
 - Create a plan /speckit.plan
 - Create the tasks /speckit.tasks
-- Implement each task using /speckit.implement
+- Plan a todo list for the task/s you are asked to do using the Claude planning agent
+  When planning, always look at all the files in the folder containing the tasks.md file.
+  This includes the following files in the /spec/<spec_name>/ folder:
+  - spec.md
+  - tasks.md
+  - plan.md
+  - data-model.md
+  - research.md
+  - quickstart.md
+  - /contracts/\*.md (if any)
+- Use the information from these files to create a detailed todo list for the task/s
+- Implement the todo list for the task/s
 
 Every time you finish a task, always run the code quality make commands:
 

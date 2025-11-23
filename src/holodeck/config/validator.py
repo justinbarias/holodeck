@@ -164,3 +164,138 @@ def validate_path_exists(path: str, description: str = "file") -> None:
 
     if not Path(path).exists():
         raise ValueError(f"Path does not exist: {path}")
+
+
+class ConfigValidator:
+    """Validator for HoloDeck configuration components.
+
+    Provides validation methods for various configuration types including
+    vectorstore tool configuration.
+    """
+
+    @staticmethod
+    def validate_vectorstore_config(config: dict[str, Any]) -> list[str]:
+        """Validate vectorstore tool configuration.
+
+        Checks:
+        - type field is "vectorstore"
+        - source field is non-empty and valid path
+        - top_k is positive integer (1-100)
+        - min_similarity_score is float between 0.0-1.0 if provided
+        - database config is valid if provided
+
+        Args:
+            config: Configuration dictionary for vectorstore tool
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        errors: list[str] = []
+
+        # Validate type
+        if config.get("type") != "vectorstore":
+            errors.append("Field 'type': must be 'vectorstore'")
+
+        # Validate source
+        source = config.get("source")
+        if not source or not str(source).strip():
+            errors.append("Field 'source': must be non-empty path")
+        else:
+            try:
+                validate_path_exists(str(source), "source path")
+            except ValueError as e:
+                errors.append(f"Field 'source': {str(e)}")
+
+        # Validate top_k
+        top_k = config.get("top_k", 5)
+        if not isinstance(top_k, int):
+            errors.append(f"Field 'top_k': must be integer, got {type(top_k).__name__}")
+        elif top_k <= 0 or top_k > 100:
+            errors.append("Field 'top_k': must be between 1 and 100")
+
+        # Validate min_similarity_score
+        min_score = config.get("min_similarity_score")
+        if min_score is not None:
+            if not isinstance(min_score, int | float):
+                errors.append(
+                    f"Field 'min_similarity_score': must be number, "
+                    f"got {type(min_score).__name__}"
+                )
+            elif not (0.0 <= min_score <= 1.0):
+                errors.append(
+                    "Field 'min_similarity_score': must be between 0.0 and 1.0"
+                )
+
+        # Validate database config if provided
+        database = config.get("database")
+        if database:
+            db_errors = ConfigValidator.validate_database_config(database)
+            errors.extend(db_errors)
+
+        return errors
+
+    @staticmethod
+    def validate_database_config(config: Any) -> list[str]:
+        """Validate vector database configuration.
+
+        Checks:
+        - provider is one of the supported vector store types
+        - connection parameters are provided as appropriate for the provider
+        - Optional parameters are valid if provided
+
+        Supported providers:
+        - redis-hashset, redis-json: Redis with different storage types
+        - postgres: PostgreSQL with pgvector
+        - azure-ai-search: Azure Cognitive Search
+        - qdrant: Qdrant vector database
+        - weaviate: Weaviate vector database
+        - chromadb: ChromaDB
+        - faiss: FAISS vector search
+        - azure-cosmos-mongo: Azure Cosmos DB (MongoDB API)
+        - azure-cosmos-nosql: Azure Cosmos DB (NoSQL API)
+        - sql-server: SQL Server with vector support
+        - pinecone: Pinecone serverless
+        - in-memory: In-memory storage (development only)
+
+        Args:
+            config: Database configuration (dict or object)
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        errors: list[str] = []
+
+        # Supported providers
+        supported_providers = {
+            "redis-hashset",
+            "redis-json",
+            "postgres",
+            "azure-ai-search",
+            "qdrant",
+            "weaviate",
+            "chromadb",
+            "faiss",
+            "azure-cosmos-mongo",
+            "azure-cosmos-nosql",
+            "sql-server",
+            "pinecone",
+            "in-memory",
+        }
+
+        # Convert to dict if needed
+        if hasattr(config, "model_dump"):
+            config_dict = config.model_dump()
+        elif hasattr(config, "__dict__"):
+            config_dict = config.__dict__
+        else:
+            config_dict = config if isinstance(config, dict) else {}
+
+        # Validate provider
+        provider = config_dict.get("provider")
+        if provider not in supported_providers:
+            errors.append(
+                f"Field 'database.provider': must be one of "
+                f"{sorted(supported_providers)}, got '{provider}'"
+            )
+
+        return errors

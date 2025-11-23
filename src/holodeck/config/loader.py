@@ -484,3 +484,47 @@ class ConfigLoader:
                 resolved[field] = defaults.get(field)
 
         return ExecutionConfig(**resolved)
+
+    def resolve_vectorstore_database_config(
+        self, agent_yaml_path: str
+    ) -> dict[str, Any] | None:
+        """Resolve vector database configuration with proper precedence.
+
+        Configuration precedence (highest to lowest):
+        1. Tool-specific database config in agent.yaml
+        2. Project-level vectorstore config (.holodeck/config.yaml or config.yaml)
+        3. User-level vectorstore config (~/.holodeck/config.yaml)
+        4. In-memory fallback (if no config found)
+
+        This allows tools to inherit database configuration from project or
+        user-level settings while allowing per-tool overrides.
+
+        Args:
+            agent_yaml_path: Path to agent.yaml for resolving project config
+
+        Returns:
+            Dictionary with database configuration (provider, connection_string, etc.)
+            or None if using in-memory fallback
+
+        Raises:
+            ConfigError: If configuration is invalid
+        """
+        # Load project and user configs
+        agent_dir = str(Path(agent_yaml_path).parent)
+        project_config = self.load_project_config(agent_dir)
+        user_config = self.load_global_config()
+
+        # Try project-level config first, then user-level
+        database_config = None
+        if project_config and hasattr(project_config, "vectorstore"):
+            database_config = project_config.vectorstore
+        elif user_config and hasattr(user_config, "vectorstore"):
+            database_config = user_config.vectorstore
+
+        # Return as dictionary for use in tool configuration
+        if database_config:
+            config_dict: dict[str, Any] = database_config.model_dump(exclude_unset=True)
+            return config_dict
+
+        # No database config found - tool will use in-memory fallback
+        return None

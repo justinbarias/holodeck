@@ -10,7 +10,7 @@ Tool types:
 - PromptTool: AI-powered semantic functions
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -25,6 +25,66 @@ class Tool(BaseModel):
     type: str = Field(
         ..., description="Tool type: vectorstore, function, mcp, or prompt"
     )
+
+
+class DatabaseConfig(BaseModel):
+    """Vector database connection configuration.
+
+    Supports all Semantic Kernel vector store providers including Redis, PostgreSQL,
+    Azure AI Search, Qdrant, Weaviate, ChromaDB, FAISS, Pinecone, and more.
+
+    Provider-specific parameters are passed via the config dict:
+    - redis-hashset/redis-json: connection_string
+    - postgres: connection_string
+    - azure-ai-search: connection_string, api_key
+    - qdrant: url, api_key (optional)
+    - weaviate: url, api_key (optional)
+    - chromadb: path or host
+    - faiss: path
+    - pinecone: api_key, index_name
+    - And more...
+    """
+
+    model_config = ConfigDict(extra="allow")  # Allow provider-specific parameters
+
+    provider: Literal[
+        "redis-hashset",
+        "redis-json",
+        "postgres",
+        "azure-ai-search",
+        "qdrant",
+        "weaviate",
+        "chromadb",
+        "faiss",
+        "azure-cosmos-mongo",
+        "azure-cosmos-nosql",
+        "sql-server",
+        "pinecone",
+        "in-memory",
+    ] = Field(
+        ...,
+        description=(
+            "Vector database provider: redis-hashset, redis-json, postgres, "
+            "azure-ai-search, qdrant, weaviate, chromadb, faiss, "
+            "azure-cosmos-mongo, azure-cosmos-nosql, sql-server, pinecone, in-memory"
+        ),
+    )
+    connection_string: str | None = Field(
+        None,
+        description=(
+            "Database connection string (format depends on provider). "
+            "Examples: redis://localhost:6379, postgresql://user:pass@host/db, "
+            "https://search-service.search.windows.net"
+        ),
+    )
+
+    @field_validator("connection_string")
+    @classmethod
+    def validate_connection_string(cls, v: str | None) -> str | None:
+        """Validate connection string is not empty if provided."""
+        if v is not None and not v.strip():
+            raise ValueError("connection_string must be non-empty if provided")
+        return v
 
 
 class VectorstoreTool(BaseModel):
@@ -42,7 +102,18 @@ class VectorstoreTool(BaseModel):
     meta_fields: list[str] | None = Field(None, description="Metadata fields")
     chunk_size: int | None = Field(None, description="Text chunk size for splitting")
     chunk_overlap: int | None = Field(None, description="Chunk overlap size")
-    embedding_model: str | None = Field(None, description="Embedding model name")
+    embedding_model: str | None = Field(
+        None, description="Custom embedding model (defaults to provider default)"
+    )
+    database: DatabaseConfig | None = Field(
+        None, description="Vector database configuration (defaults to in-memory)"
+    )
+    top_k: int = Field(
+        default=5, description="Number of top results to return from search"
+    )
+    min_similarity_score: float | None = Field(
+        None, description="Minimum similarity score threshold for results (0.0-1.0)"
+    )
     record_path: str | None = Field(None, description="Path to array in JSON")
     record_prefix: str | None = Field(None, description="Record field prefix")
     meta_prefix: str | None = Field(None, description="Metadata field prefix")
@@ -69,6 +140,24 @@ class VectorstoreTool(BaseModel):
         """Validate chunk_overlap is non-negative if provided."""
         if v is not None and v < 0:
             raise ValueError("chunk_overlap must be non-negative")
+        return v
+
+    @field_validator("top_k")
+    @classmethod
+    def validate_top_k(cls, v: int) -> int:
+        """Validate top_k is a positive integer."""
+        if v <= 0:
+            raise ValueError("top_k must be a positive integer")
+        if v > 100:
+            raise ValueError("top_k should not exceed 100")
+        return v
+
+    @field_validator("min_similarity_score")
+    @classmethod
+    def validate_min_similarity_score(cls, v: float | None) -> float | None:
+        """Validate min_similarity_score is between 0.0 and 1.0 if provided."""
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError("min_similarity_score must be between 0.0 and 1.0")
         return v
 
 

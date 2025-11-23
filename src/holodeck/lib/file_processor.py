@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -29,6 +30,29 @@ from holodeck.models.test_result import ProcessedFileInput
 logger = get_logger(__name__)
 
 T = TypeVar("T")
+
+
+@dataclass
+class SourceFile:
+    """Source file to be ingested into vector store.
+
+    Represents a file during the ingestion process with metadata and content.
+
+    Attributes:
+        path: Absolute file path
+        content: File content converted to markdown (populated by FileProcessor)
+        mtime: File modification time (Unix timestamp)
+        size_bytes: File size in bytes
+        file_type: File extension (.txt, .md, .pdf, .csv, .json, etc.)
+        chunks: Text chunks after splitting (populated by TextChunker)
+    """
+
+    path: Path
+    content: str = ""
+    mtime: float = 0.0
+    size_bytes: int = 0
+    file_type: str = ""
+    chunks: list[str] = field(default_factory=list)
 
 
 class FileProcessor:
