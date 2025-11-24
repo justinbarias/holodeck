@@ -12,7 +12,9 @@ Key features:
 """
 
 import asyncio
+import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from semantic_kernel import Kernel
@@ -22,8 +24,13 @@ from semantic_kernel.connectors.ai.open_ai import (
     AzureChatCompletion,
     OpenAIChatCompletion,
 )
+from semantic_kernel.connectors.ai.prompt_execution_settings import (
+    PromptExecutionSettings,
+)
 from semantic_kernel.contents import ChatHistory
+from semantic_kernel.functions import KernelArguments
 
+from holodeck.config.schema import SchemaValidator
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
 from holodeck.models.agent import Agent
@@ -94,6 +101,8 @@ class AgentFactory:
         self.retry_delay = retry_delay
         self.retry_exponential_base = retry_exponential_base
         self._retry_count = 0
+        self.kernel_arguments: KernelArguments | None = None
+        self._llm_service: Any | None = None
 
         logger.debug(
             f"Initializing AgentFactory: agent={agent_config.name}, "
@@ -159,7 +168,14 @@ class AgentFactory:
                     f"Unsupported LLM provider: {model_config.provider}"
                 )
 
+            self._llm_service = service
             kernel.add_service(service)
+            services = getattr(kernel, "services", None)
+            if not isinstance(services, dict):
+                kernel.services = {}
+                services = kernel.services
+            service_id = getattr(service, "service_id", "default")
+            services[service_id] = service
             logger.debug("Kernel created and service added successfully")
             return kernel
 
@@ -181,12 +197,18 @@ class AgentFactory:
             instructions = self._load_instructions()
 
             # Create agent with instructions
+            kernel_arguments = self._build_kernel_arguments()
+
             agent = ChatCompletionAgent(
                 name=self.agent_config.name,
                 description=self.agent_config.description,
                 kernel=self.kernel,
                 instructions=instructions,
+                arguments=kernel_arguments,
             )
+
+            # Capture kernel arguments for invocation reuse
+            self.kernel_arguments = kernel_arguments
 
             return agent
 
@@ -345,10 +367,14 @@ class AgentFactory:
         try:
             # Invoke agent with chat history
             thread = ChatHistoryAgentThread(self.chat_history)
+            if self.kernel_arguments is None:
+                self.kernel_arguments = self._build_kernel_arguments()
+            arguments = self.kernel_arguments
             async for (
                 response
             ) in self.agent.invoke(  # pyright: ignore[reportUnknownMemberType]
-                thread=thread
+                thread=thread,
+                arguments=arguments,
             ):
                 # Extract response content
                 response_text = self._extract_response_content(response)
@@ -372,6 +398,114 @@ class AgentFactory:
 
         except Exception as e:
             raise AgentFactoryError(f"Agent execution failed: {e}") from e
+
+    def _build_kernel_arguments(self) -> KernelArguments:
+        """Create kernel arguments with execution settings from configuration."""
+
+        settings = self._create_prompt_execution_settings()
+        return KernelArguments(settings=settings)
+
+    def _create_prompt_execution_settings(self) -> PromptExecutionSettings:
+        """Build provider-specific prompt execution settings."""
+
+        if not hasattr(self, "kernel"):
+            raise AgentFactoryError("Kernel must be initialized before settings.")
+
+        service: Any | None = None
+        if getattr(self.kernel, "services", None):
+            try:
+                service = next(iter(self.kernel.services.values()))
+            except StopIteration:
+                service = None
+
+        if service is None:
+            service = self._llm_service
+
+        if service is None:
+            raise AgentFactoryError("No LLM services configured on the kernel.")
+        settings_cls = service.get_prompt_execution_settings_class()
+        settings: PromptExecutionSettings = settings_cls()
+
+        self._apply_model_settings(settings)
+        self._apply_response_format(settings)
+
+        return settings
+
+    def _apply_model_settings(self, settings: PromptExecutionSettings) -> None:
+        """Apply LLM model parameters to prompt execution settings."""
+
+        model_config = self.agent_config.model
+
+        if hasattr(settings, "temperature") and model_config.temperature is not None:
+            settings.temperature = model_config.temperature
+
+        if hasattr(settings, "top_p") and model_config.top_p is not None:
+            settings.top_p = model_config.top_p
+
+        if hasattr(settings, "max_tokens") and model_config.max_tokens is not None:
+            settings.max_tokens = model_config.max_tokens
+
+        if (
+            hasattr(settings, "max_completion_tokens")
+            and model_config.max_tokens is not None
+        ):
+            settings.max_completion_tokens = model_config.max_tokens
+
+        if hasattr(settings, "ai_model_id"):
+            settings.ai_model_id = model_config.name
+
+    def _apply_response_format(self, settings: PromptExecutionSettings) -> None:
+        """Attach response format schema to execution settings if provided."""
+
+        try:
+            response_format = self._load_response_format()
+        except Exception as e:
+            raise AgentFactoryError(f"Failed to load response_format: {e}") from e
+
+        if response_format is not None and hasattr(settings, "response_format"):
+            settings.response_format = self._wrap_response_format(response_format)
+
+    def _wrap_response_format(self, schema: dict[str, Any]) -> dict[str, Any]:
+        """Wrap JSON schema using the OpenAI response_format structure."""
+
+        if "json_schema" in schema:
+            return schema
+
+        if schema.get("type") == "json_schema" and "schema" in schema:
+            return {
+                "type": "json_schema",
+                "json_schema": schema,
+            }
+
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": self._sanitize_response_format_name(),
+                "schema": schema,
+                "strict": True,
+            },
+        }
+
+    def _sanitize_response_format_name(self) -> str:
+        """Generate a valid response format name from the agent configuration."""
+
+        base_name = self.agent_config.name or "response_format"
+        safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", base_name)
+        return safe_name or "response_format"
+
+    def _load_response_format(self) -> dict[str, Any] | None:
+        """Load response format schema from inline config or file path."""
+
+        response_format = self.agent_config.response_format
+
+        if response_format is None:
+            return None
+
+        if isinstance(response_format, dict):
+            return SchemaValidator.validate_schema(response_format, "response_format")
+
+        path = Path(response_format)
+        return SchemaValidator.load_schema_from_file(path.as_posix())
 
     def _extract_response_content(self, response: Any) -> str:
         """Extract text content from agent response.
