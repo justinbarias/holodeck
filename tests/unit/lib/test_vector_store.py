@@ -48,9 +48,6 @@ mock_vector = sys.modules["semantic_kernel.data.vector"]
 mock_vector.VectorStoreField = MagicMock()  # type: ignore[assignment]
 mock_vector.vectorstoremodel = lambda **kwargs: lambda cls: cls  # type: ignore[assignment]
 
-mock_contents = sys.modules["semantic_kernel.contents"]
-mock_contents.ChatHistory = MagicMock()  # type: ignore[assignment]
-
 # Now import from holodeck.lib.vector_store
 import pytest  # noqa: E402
 

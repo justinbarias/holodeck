@@ -9,7 +9,8 @@
       "Bash(make security)",
       "Bash(cat:*)",
       "Bash(python -m pytest:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(source .venv/bin/activate)"
     ],
     "deny": [],
     "ask": []
