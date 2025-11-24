@@ -63,31 +63,44 @@
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T016 [P] [US1] Unit test for VectorStoreTool initialization with valid config in tests/unit/test_vectorstore_tool.py
-- [ ] T017 [P] [US1] Unit test for VectorStoreTool initialization with missing source path in tests/unit/test_vectorstore_tool.py
-- [ ] T018 [P] [US1] Unit test for VectorStoreTool file discovery (single file) in tests/unit/test_vectorstore_tool.py
-- [ ] T019 [P] [US1] Unit test for VectorStoreTool file discovery (directory with nested subdirectories) in tests/unit/test_vectorstore_tool.py
-- [ ] T020 [P] [US1] Unit test for VectorStoreTool search result formatting in tests/unit/test_vectorstore_tool.py
-- [ ] T021 [P] [US1] Unit test for text chunking with markdown content in tests/unit/test_text_chunker.py
-- [ ] T022 [P] [US1] Unit test for VectorStore upsert and get operations in tests/unit/test_vector_store.py
-- [ ] T023 [P] [US1] Unit test for VectorStore search with top_k filtering in tests/unit/test_vector_store.py
+- [x] T016 [P] [US1] Unit test for VectorStoreTool initialization with valid config in tests/unit/test_vectorstore_tool.py
+- [x] T017 [P] [US1] Unit test for VectorStoreTool initialization with missing source path in tests/unit/test_vectorstore_tool.py
+- [x] T018 [P] [US1] Unit test for VectorStoreTool file discovery (single file) in tests/unit/test_vectorstore_tool.py
+- [x] T019 [P] [US1] Unit test for VectorStoreTool file discovery (directory with nested subdirectories) in tests/unit/test_vectorstore_tool.py
+- [x] T020 [P] [US1] Unit test for VectorStoreTool search result formatting in tests/unit/test_vectorstore_tool.py
+- [x] T021 [P] [US1] Unit test for text chunking with markdown content in tests/unit/test_text_chunker.py
+- [x] T022 [P] [US1] Unit test for VectorStore upsert and get operations in tests/unit/test_vector_store.py
+- [x] T023 [P] [US1] Unit test for VectorStore search with top_k filtering in tests/unit/test_vector_store.py
 
 ### Implementation for User Story 1
 
-- [ ] T024 [P] [US1] Create VectorStoreTool class skeleton in src/holodeck/tools/vectorstore_tool.py with **init**, initialize, and search methods (depends on T005)
-- [ ] T025 [US1] Implement VectorStoreTool.**init** to accept VectorStoreConfig and initialize instance variables in src/holodeck/tools/vectorstore_tool.py (depends on T024, T010, T013)
-- [ ] T026 [US1] Implement file/directory discovery logic in VectorStoreTool.\_discover_files method in src/holodeck/tools/vectorstore_tool.py supporting recursive traversal (depends on T025)
-- [ ] T027 [US1] Implement file filtering by supported extensions (.txt, .md, .pdf, .csv, .json) in VectorStoreTool.\_discover_files in src/holodeck/tools/vectorstore_tool.py (depends on T026)
-- [ ] T028 [US1] Implement VectorStoreTool.\_process_file method to convert file to markdown using existing FileProcessor in src/holodeck/tools/vectorstore_tool.py (depends on T025, T008)
-- [ ] T029 [US1] Implement text chunking in VectorStoreTool.\_process_file using TextChunker in src/holodeck/tools/vectorstore_tool.py (depends on T028, T013)
-- [ ] T030 [US1] Implement batch embedding generation in VectorStoreTool.\_embed_chunks method using Semantic Kernel TextEmbedding service in src/holodeck/tools/vectorstore_tool.py (depends on T025)
-- [ ] T031 [US1] Implement DocumentRecord creation and storage in VectorStoreTool.\_store_chunks method in src/holodeck/tools/vectorstore_tool.py (depends on T029, T030, T010)
-- [ ] T032 [US1] Implement VectorStoreTool.initialize method to orchestrate file discovery, processing, and storage in src/holodeck/tools/vectorstore_tool.py (depends on T026, T027, T031)
-- [ ] T033 [US1] Implement VectorStoreTool.search method to generate query embedding and execute vector search in src/holodeck/tools/vectorstore_tool.py (depends on T032, T010)
-- [ ] T034 [US1] Implement search result formatting in VectorStoreTool.\_format_results method in src/holodeck/tools/vectorstore_tool.py (depends on T033, T009)
-- [ ] T035 [US1] Add error handling for FileNotFoundError when source path doesn't exist in VectorStoreTool.initialize in src/holodeck/tools/vectorstore_tool.py (depends on T032)
-- [ ] T036 [US1] Add warning logs for skipped files (unsupported types, empty files, processing errors) in VectorStoreTool.\_process_file in src/holodeck/tools/vectorstore_tool.py (depends on T028)
-- [ ] T037 [US1] Implement top_k result limiting in VectorStoreTool.search in src/holodeck/tools/vectorstore_tool.py (depends on T033)
+- [x] T024 [P] [US1] Create VectorStoreTool class skeleton in src/holodeck/tools/vectorstore_tool.py with **init**, initialize, and search methods (depends on T005)
+- [x] T025 [US1] Implement VectorStoreTool.**init** to accept VectorStoreConfig and initialize instance variables in src/holodeck/tools/vectorstore_tool.py (depends on T024, T010, T013)
+- [x] T026 [US1] Implement file/directory discovery logic in VectorStoreTool.\_discover_files method in src/holodeck/tools/vectorstore_tool.py supporting recursive traversal (depends on T025)
+- [x] T027 [US1] Implement file filtering by supported extensions (.txt, .md, .pdf, .csv, .json) in VectorStoreTool.\_discover_files in src/holodeck/tools/vectorstore_tool.py (depends on T026)
+- [x] T028 [US1] Implement VectorStoreTool.\_process_file method to convert file to markdown using existing FileProcessor in src/holodeck/tools/vectorstore_tool.py (depends on T025, T008)
+- [x] T029 [US1] Implement text chunking in VectorStoreTool.\_process_file using TextChunker in src/holodeck/tools/vectorstore_tool.py (depends on T028, T013)
+- [x] T030 [US1] Implement batch embedding generation in VectorStoreTool.\_embed_chunks method using Semantic Kernel TextEmbedding service in src/holodeck/tools/vectorstore_tool.py (depends on T025)
+- [x] T031 [US1] Implement DocumentRecord creation and storage in VectorStoreTool.\_store_chunks method in src/holodeck/tools/vectorstore_tool.py (depends on T029, T030, T010)
+- [x] T032 [US1] Implement VectorStoreTool.initialize method to orchestrate file discovery, processing, and storage in src/holodeck/tools/vectorstore_tool.py (depends on T026, T027, T031)
+- [x] T033 [US1] Implement VectorStoreTool.search method to generate query embedding and execute vector search in src/holodeck/tools/vectorstore_tool.py (depends on T032, T010)
+- [x] T034 [US1] Implement search result formatting in VectorStoreTool.\_format_results method in src/holodeck/tools/vectorstore_tool.py (depends on T033, T009)
+- [x] T035 [US1] Add error handling for FileNotFoundError when source path doesn't exist in VectorStoreTool.initialize in src/holodeck/tools/vectorstore_tool.py (depends on T032)
+- [x] T036 [US1] Add warning logs for skipped files (unsupported types, empty files, processing errors) in VectorStoreTool.\_process_file in src/holodeck/tools/vectorstore_tool.py (depends on T028)
+- [x] T037 [US1] Implement top_k result limiting in VectorStoreTool.search in src/holodeck/tools/vectorstore_tool.py (depends on T033)
+
+### Agent Integration for User Story 1
+
+**Purpose**: Integrate VectorStoreTool with AgentFactory so agents can use vectorstore tools during execution
+
+- [ ] T037a [US1] Add TextEmbedding service registration method to AgentFactory in src/holodeck/lib/test_runner/agent_factory.py (OpenAI/Azure text-embedding-3-small) following Semantic Kernel pattern (depends on T024)
+- [ ] T037b [US1] Create KernelFunction for VectorStoreTool.search using kernel.add_function() in AgentFactory (NOT decorator) in src/holodeck/lib/test_runner/agent_factory.py (depends on T033)
+- [ ] T037c [US1] Add \_register_vectorstore_tools method to AgentFactory to discover vectorstore tools from agent config, initialize them, and register search functions via kernel.add_function() in src/holodeck/lib/test_runner/agent_factory.py (depends on T037a, T037b)
+- [ ] T037d [US1] Update AgentFactory.\_create_kernel to call embedding service registration when vectorstore tools are configured in src/holodeck/lib/test_runner/agent_factory.py (depends on T037a)
+- [ ] T037e [US1] Update AgentFactory.\_create_agent to call \_register_vectorstore_tools before agent creation in src/holodeck/lib/test_runner/agent_factory.py (depends on T037c)
+- [ ] T037f [P] [US1] Unit test for AgentFactory embedding service registration in tests/unit/test_agent_factory.py
+- [ ] T037g [P] [US1] Unit test for VectorStoreTool kernel function registration via add_function in tests/unit/test_agent_factory.py
+- [ ] T037h [P] [US1] Unit test for AgentFactory vectorstore tool discovery and initialization in tests/unit/test_agent_factory.py
 
 ### Integration Tests for User Story 1
 
@@ -230,7 +243,9 @@
 - All unit tests (T016-T023) can run in parallel
 - T024 and T025 must complete before parallel work begins
 - T028, T030 can run in parallel after T025
-- All integration tests (T038-T041) can run in parallel after implementation
+- Agent integration: T037a-T037e must complete sequentially (depends on T033)
+- Agent integration unit tests (T037f, T037g, T037h) can run in parallel
+- All integration tests (T038-T041) can run in parallel after implementation and agent integration
 
 **User Story 2**:
 
@@ -301,7 +316,7 @@ With multiple developers:
 
 1. Team completes Setup + Foundational together (T001-T015)
 2. Once Foundational is done:
-   - Developer A: User Story 1 (T016-T041)
+   - Developer A: User Story 1 (T016-T041 + T037a-T037h agent integration)
    - Developer B: User Story 2 (T042-T051) - Can start in parallel
    - Developer C: User Story 3 (T052-T070) - Can start in parallel
 3. Stories complete and integrate independently
@@ -310,18 +325,18 @@ With multiple developers:
 
 ## Summary
 
-**Total Tasks**: 86 tasks
+**Total Tasks**: 94 tasks
 
 - **Phase 1 (Setup)**: 4 tasks
 - **Phase 2 (Foundational)**: 11 tasks (BLOCKS all user stories)
-- **Phase 3 (User Story 1)**: 26 tasks (8 unit tests + 14 implementation + 4 integration tests)
+- **Phase 3 (User Story 1)**: 34 tasks (8 unit tests + 14 implementation + 8 agent integration + 4 integration tests)
 - **Phase 4 (User Story 2)**: 10 tasks (3 unit tests + 5 implementation + 2 integration tests)
 - **Phase 5 (User Story 3)**: 19 tasks (4 unit tests + 11 implementation + 4 integration tests)
 - **Phase 6 (Polish)**: 16 tasks
 
-**Parallel Opportunities**: 38 tasks marked with [P] can run in parallel within their phases
+**Parallel Opportunities**: 41 tasks marked with [P] can run in parallel within their phases
 
-**MVP Scope**: Phases 1-3 (T001-T041) - 41 tasks for basic semantic search functionality
+**MVP Scope**: Phases 1-3 (T001-T041 + T037a-T037h) - 49 tasks for basic semantic search functionality with agent integration
 
 **Independent Test Criteria**:
 

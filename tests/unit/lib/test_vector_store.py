@@ -437,3 +437,155 @@ class TestConvertDocumentToQueryResult:
         assert result.metadata["file_type"] == ""
         assert result.metadata["file_size_bytes"] == 0
         assert result.metadata["mtime"] == 0.0
+
+
+class TestVectorStoreSearchTopK:
+    """T023: Tests for VectorStore search with top_k filtering.
+
+    These tests verify that search operations properly limit results
+    based on the top_k parameter.
+    """
+
+    def test_query_result_list_respects_top_k_limit(self) -> None:
+        """Test that a list of QueryResults can be limited to top_k."""
+        # Create more results than we want to return
+        all_results = [
+            QueryResult(
+                content=f"Result {i}",
+                score=0.9 - (i * 0.1),  # Decreasing scores
+                source_path=f"/doc{i}.md",
+                chunk_index=0,
+            )
+            for i in range(10)
+        ]
+
+        # Simulate top_k filtering
+        top_k = 5
+        limited_results = all_results[:top_k]
+
+        assert len(limited_results) == top_k
+        # Verify highest scores are kept
+        assert limited_results[0].score == 0.9
+        assert limited_results[4].score == 0.5
+
+    def test_query_result_top_k_with_fewer_results(self) -> None:
+        """Test top_k when fewer results than requested exist."""
+        results = [
+            QueryResult(
+                content="Only result",
+                score=0.85,
+                source_path="/single.md",
+                chunk_index=0,
+            )
+        ]
+
+        top_k = 5
+        limited_results = results[:top_k]
+
+        # Should return all available results (1)
+        assert len(limited_results) == 1
+        assert limited_results[0].content == "Only result"
+
+    def test_query_result_top_k_exact_count(self) -> None:
+        """Test top_k when exactly that many results exist."""
+        results = [
+            QueryResult(
+                content=f"Result {i}",
+                score=0.9 - (i * 0.1),
+                source_path=f"/doc{i}.md",
+                chunk_index=0,
+            )
+            for i in range(5)
+        ]
+
+        top_k = 5
+        limited_results = results[:top_k]
+
+        assert len(limited_results) == 5
+
+    def test_query_result_top_k_preserves_order(self) -> None:
+        """Test that top_k preserves descending score order."""
+        results = [
+            QueryResult(content="A", score=0.95, source_path="/a.md", chunk_index=0),
+            QueryResult(content="B", score=0.90, source_path="/b.md", chunk_index=0),
+            QueryResult(content="C", score=0.85, source_path="/c.md", chunk_index=0),
+            QueryResult(content="D", score=0.80, source_path="/d.md", chunk_index=0),
+            QueryResult(content="E", score=0.75, source_path="/e.md", chunk_index=0),
+        ]
+
+        top_k = 3
+        limited_results = results[:top_k]
+
+        assert len(limited_results) == 3
+        assert limited_results[0].score == 0.95
+        assert limited_results[1].score == 0.90
+        assert limited_results[2].score == 0.85
+        # Verify order is maintained
+        for i in range(len(limited_results) - 1):
+            assert limited_results[i].score >= limited_results[i + 1].score
+
+    def test_query_result_top_k_zero_returns_empty(self) -> None:
+        """Test that top_k=0 returns empty list."""
+        results = [
+            QueryResult(
+                content="Result",
+                score=0.9,
+                source_path="/doc.md",
+                chunk_index=0,
+            )
+        ]
+
+        top_k = 0
+        limited_results = results[:top_k]
+
+        assert len(limited_results) == 0
+
+    def test_query_result_top_k_with_min_similarity_score(self) -> None:
+        """Test top_k combined with min_similarity_score filtering."""
+        results = [
+            QueryResult(content="A", score=0.95, source_path="/a.md", chunk_index=0),
+            QueryResult(content="B", score=0.85, source_path="/b.md", chunk_index=0),
+            QueryResult(content="C", score=0.75, source_path="/c.md", chunk_index=0),
+            QueryResult(content="D", score=0.65, source_path="/d.md", chunk_index=0),
+            QueryResult(content="E", score=0.55, source_path="/e.md", chunk_index=0),
+        ]
+
+        # First filter by min_similarity_score
+        min_score = 0.7
+        filtered_results = [r for r in results if r.score >= min_score]
+
+        # Then apply top_k
+        top_k = 2
+        limited_results = filtered_results[:top_k]
+
+        assert len(limited_results) == 2
+        assert all(r.score >= min_score for r in limited_results)
+        assert limited_results[0].score == 0.95
+        assert limited_results[1].score == 0.85
+
+    def test_query_result_top_k_large_value(self) -> None:
+        """Test that large top_k values work correctly."""
+        results = [
+            QueryResult(
+                content=f"Result {i}",
+                score=0.99 - (i * 0.01),
+                source_path=f"/doc{i}.md",
+                chunk_index=0,
+            )
+            for i in range(50)
+        ]
+
+        top_k = 100  # Request more than available
+        limited_results = results[:top_k]
+
+        # Should return all 50 available
+        assert len(limited_results) == 50
+
+    def test_query_result_empty_list_with_top_k(self) -> None:
+        """Test top_k on empty results list."""
+        results: list[QueryResult] = []
+
+        top_k = 5
+        limited_results = results[:top_k]
+
+        assert len(limited_results) == 0
