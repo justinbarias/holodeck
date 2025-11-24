@@ -12,6 +12,7 @@ Key features:
 """
 
 import asyncio
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,9 +30,9 @@ from semantic_kernel.connectors.ai.prompt_execution_settings import (
 from semantic_kernel.contents import ChatHistory
 from semantic_kernel.functions import KernelArguments
 
+from holodeck.config.schema import SchemaValidator
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
-from holodeck.config.schema import SchemaValidator
 from holodeck.models.agent import Agent
 from holodeck.models.llm import ProviderEnum
 from holodeck.models.token_usage import TokenUsage
@@ -442,7 +443,35 @@ class AgentFactory:
             raise AgentFactoryError(f"Failed to load response_format: {e}") from e
 
         if response_format is not None and hasattr(settings, "response_format"):
-            settings.response_format = response_format
+            settings.response_format = self._wrap_response_format(response_format)
+
+    def _wrap_response_format(self, schema: dict[str, Any]) -> dict[str, Any]:
+        """Wrap JSON schema using the OpenAI response_format structure."""
+
+        if "json_schema" in schema:
+            return schema
+
+        if schema.get("type") == "json_schema" and "schema" in schema:
+            return {
+                "type": "json_schema",
+                "json_schema": schema,
+            }
+
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": self._sanitize_response_format_name(),
+                "schema": schema,
+                "strict": True,
+            },
+        }
+
+    def _sanitize_response_format_name(self) -> str:
+        """Generate a valid response format name from the agent configuration."""
+
+        base_name = self.agent_config.name or "response_format"
+        safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", base_name)
+        return safe_name or "response_format"
 
     def _load_response_format(self) -> dict[str, Any] | None:
         """Load response format schema from inline config or file path."""
@@ -453,9 +482,7 @@ class AgentFactory:
             return None
 
         if isinstance(response_format, dict):
-            return SchemaValidator.validate_schema(
-                response_format, "response_format"
-            )
+            return SchemaValidator.validate_schema(response_format, "response_format")
 
         path = Path(response_format)
         return SchemaValidator.load_schema_from_file(path.as_posix())
