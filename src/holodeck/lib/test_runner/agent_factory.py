@@ -102,6 +102,7 @@ class AgentFactory:
         self.retry_exponential_base = retry_exponential_base
         self._retry_count = 0
         self.kernel_arguments: KernelArguments | None = None
+        self._llm_service: Any | None = None
 
         logger.debug(
             f"Initializing AgentFactory: agent={agent_config.name}, "
@@ -167,7 +168,14 @@ class AgentFactory:
                     f"Unsupported LLM provider: {model_config.provider}"
                 )
 
+            self._llm_service = service
             kernel.add_service(service)
+            services = getattr(kernel, "services", None)
+            if not isinstance(services, dict):
+                kernel.services = {}
+                services = kernel.services
+            service_id = getattr(service, "service_id", "default")
+            services[service_id] = service
             logger.debug("Kernel created and service added successfully")
             return kernel
 
@@ -189,16 +197,18 @@ class AgentFactory:
             instructions = self._load_instructions()
 
             # Create agent with instructions
+            kernel_arguments = self._build_kernel_arguments()
+
             agent = ChatCompletionAgent(
                 name=self.agent_config.name,
                 description=self.agent_config.description,
                 kernel=self.kernel,
                 instructions=instructions,
-                arguments=self._build_kernel_arguments(),
+                arguments=kernel_arguments,
             )
 
             # Capture kernel arguments for invocation reuse
-            self.kernel_arguments = agent.arguments
+            self.kernel_arguments = kernel_arguments
 
             return agent
 
@@ -357,11 +367,14 @@ class AgentFactory:
         try:
             # Invoke agent with chat history
             thread = ChatHistoryAgentThread(self.chat_history)
+            if self.kernel_arguments is None:
+                self.kernel_arguments = self._build_kernel_arguments()
+            arguments = self.kernel_arguments
             async for (
                 response
             ) in self.agent.invoke(  # pyright: ignore[reportUnknownMemberType]
                 thread=thread,
-                arguments=self.kernel_arguments,
+                arguments=arguments,
             ):
                 # Extract response content
                 response_text = self._extract_response_content(response)
@@ -398,11 +411,18 @@ class AgentFactory:
         if not hasattr(self, "kernel"):
             raise AgentFactoryError("Kernel must be initialized before settings.")
 
-        if not self.kernel.services:
-            raise AgentFactoryError("No LLM services configured on the kernel.")
+        service: Any | None = None
+        if getattr(self.kernel, "services", None):
+            try:
+                service = next(iter(self.kernel.services.values()))
+            except StopIteration:
+                service = None
 
-        # Use the first configured service (single-service kernel)
-        service = next(iter(self.kernel.services.values()))
+        if service is None:
+            service = self._llm_service
+
+        if service is None:
+            raise AgentFactoryError("No LLM services configured on the kernel.")
         settings_cls = service.get_prompt_execution_settings_class()
         settings: PromptExecutionSettings = settings_cls()
 
