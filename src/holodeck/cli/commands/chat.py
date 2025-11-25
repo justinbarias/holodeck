@@ -85,12 +85,19 @@ class ChatSpinnerThread(threading.Thread):
     default=50,
     help="Maximum conversation messages before warning",
 )
+@click.option(
+    "--force-ingest",
+    "-f",
+    is_flag=True,
+    help="Force re-ingestion of all vector store source files",
+)
 def chat(
     agent_config: str,
     verbose: bool,
     quiet: bool,
     observability: bool,
     max_messages: int,
+    force_ingest: bool,
 ) -> None:
     """Start an interactive chat session with an agent.
 
@@ -120,15 +127,21 @@ def chat(
     logger.info(
         f"Chat command invoked: config={agent_config}, "
         f"verbose={verbose}, quiet={quiet}, observability={observability}, "
-        f"max_messages={max_messages}"
+        f"max_messages={max_messages}, force_ingest={force_ingest}"
     )
 
     try:
         # Load agent configuration
+        from holodeck.config.context import agent_base_dir
+
         logger.debug(f"Loading agent configuration from {agent_config}")
         loader = ConfigLoader()
         agent = loader.load_agent_yaml(agent_config)
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
+
+        # Set the base directory context for resolving relative paths in tools
+        agent_base_dir.set(str(Path(agent_config).parent.resolve()))
+        logger.debug(f"Set agent_base_dir context: {agent_base_dir.get()}")
 
         # Run async chat session
         logger.debug("Starting chat session runtime")
@@ -140,6 +153,7 @@ def chat(
                 quiet=quiet,
                 enable_observability=observability,
                 max_messages=max_messages,
+                force_ingest=force_ingest,
             )
         )
 
@@ -179,6 +193,7 @@ async def _run_chat_session(
     quiet: bool,
     enable_observability: bool,
     max_messages: int,
+    force_ingest: bool = False,
 ) -> None:
     """Run the interactive chat session.
 
@@ -188,6 +203,7 @@ async def _run_chat_session(
         quiet: Suppress logging output
         enable_observability: Enable OpenTelemetry tracing
         max_messages: Maximum messages before warning
+        force_ingest: Force re-ingestion of vector store source files
 
     Raises:
         KeyboardInterrupt: When user interrupts (Ctrl+C)
@@ -199,6 +215,7 @@ async def _run_chat_session(
             verbose=verbose,
             enable_observability=enable_observability,
             max_messages=max_messages,
+            force_ingest=force_ingest,
         )
         session_manager = ChatSessionManager(
             agent_config=agent,

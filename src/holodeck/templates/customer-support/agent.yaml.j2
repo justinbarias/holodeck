@@ -23,12 +23,17 @@ tools:
   - type: function
     name: lookup_customer
     description: "Look up customer account information"
+    file: tools/customer.py
+    function: lookup_customer
   - type: function
     name: create_ticket
     description: "Create a support ticket for customer issues"
-  - type: function
+    file: tools/support.py
+    function: create_ticket
+  - type: vectorstore
     name: search_kb
     description: "Search knowledge base for solutions"
+    source: data/knowledge_base
 
 # Test Cases (sample test cases for learning)
 test_cases:

@@ -16,7 +16,8 @@ from holodeck.config.env_loader import substitute_env_vars
 from holodeck.config.validator import flatten_pydantic_errors
 from holodeck.lib.errors import ConfigError, FileNotFoundError
 from holodeck.models.agent import Agent
-from holodeck.models.config import ExecutionConfig, GlobalConfig
+from holodeck.models.config import ExecutionConfig, GlobalConfig, VectorstoreConfig
+from holodeck.models.tool import DatabaseConfig
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,66 @@ def _get_env_value(field_name: str, env_vars: dict[str, str]) -> Any | None:
         return _parse_env_value(field_name, env_vars[env_var_name])
     except (ValueError, KeyError):
         return None
+
+
+# Provider name mapping from GlobalConfig.vectorstores to DatabaseConfig.provider
+_PROVIDER_MAPPING: dict[str, str] = {
+    "redis": "redis-hashset",
+    "redis-hashset": "redis-hashset",
+    "redis-json": "redis-json",
+    "postgres": "postgres",
+    "postgresql": "postgres",
+    "qdrant": "qdrant",
+    "weaviate": "weaviate",
+    "chromadb": "chromadb",
+    "faiss": "faiss",
+    "pinecone": "pinecone",
+    "azure-ai-search": "azure-ai-search",
+    "azure-cosmos-mongo": "azure-cosmos-mongo",
+    "azure-cosmos-nosql": "azure-cosmos-nosql",
+    "sql-server": "sql-server",
+    "in-memory": "in-memory",
+}
+
+
+def _convert_vectorstore_to_database_config(
+    vectorstore_config: VectorstoreConfig,
+) -> DatabaseConfig:
+    """Convert VectorstoreConfig to DatabaseConfig.
+
+    VectorstoreConfig (global) has:
+    - provider: str (e.g., "redis", "postgres")
+    - connection_string: str
+    - options: dict[str, Any] | None
+
+    DatabaseConfig (tool) has:
+    - provider: Literal[...] with specific provider names
+    - connection_string: str | None
+    - Extra fields allowed via ConfigDict(extra="allow")
+
+    Args:
+        vectorstore_config: Global vectorstore configuration
+
+    Returns:
+        DatabaseConfig suitable for VectorstoreTool
+    """
+    # Map global provider names to DatabaseConfig provider literals
+    mapped_provider = _PROVIDER_MAPPING.get(
+        vectorstore_config.provider.lower(),
+        vectorstore_config.provider,
+    )
+
+    # Build DatabaseConfig with options merged as extra fields
+    config_dict: dict[str, Any] = {
+        "provider": mapped_provider,
+        "connection_string": vectorstore_config.connection_string,
+    }
+
+    # Merge options as extra fields (DatabaseConfig allows extra)
+    if vectorstore_config.options:
+        config_dict.update(vectorstore_config.options)
+
+    return DatabaseConfig(**config_dict)
 
 
 class ConfigLoader:
@@ -302,9 +363,9 @@ class ConfigLoader:
         2. Environment variables (already substituted)
         3. ~/.holodeck/config.yaml global settings
 
-        Merges global LLM provider configs into:
-        - agent model: when a provider's name matches agent_config.model.provider
-        - evaluation model: when a provider's name matches evaluations.model.provider
+        Merges:
+        - Global LLM provider configs into agent model and evaluation model
+        - Global vectorstore configs into tool database fields (by name reference)
 
         Keys don't get overwritten if they already exist in the agent config.
 
@@ -316,47 +377,105 @@ class ConfigLoader:
             Merged configuration dictionary
         """
         # Return early if missing required data
-        if not agent_config or "model" not in agent_config:
-            return agent_config if agent_config else {}
+        if not agent_config:
+            return {}
 
-        if not global_config or not global_config.providers:
+        if not global_config:
             return agent_config
 
-        # Get the provider types from agent config
-        agent_model_provider = agent_config["model"].get("provider")
-        if not agent_model_provider:
-            return agent_config
-
-        # Find matching provider in global config and merge to agent model
-        for provider in global_config.providers.values():
-            if provider.provider == agent_model_provider:
-                # Convert provider to dict and merge non-conflicting keys
-                provider_dict = provider.model_dump(exclude_unset=True)
-                for key, value in provider_dict.items():
-                    if key not in agent_config["model"]:
-                        agent_config["model"][key] = value
-                break
-
-        # Also merge global provider config to evaluation model if it exists
-        if (
-            "evaluations" in agent_config
-            and isinstance(agent_config["evaluations"], dict)
-            and "model" in agent_config["evaluations"]
-            and isinstance(agent_config["evaluations"]["model"], dict)
-        ):
-            eval_model: dict[str, Any] = agent_config["evaluations"]["model"]
-            eval_model_provider = eval_model.get("provider")
-            if eval_model_provider:
+        # Merge LLM provider configs
+        if "model" in agent_config and global_config.providers:
+            agent_model_provider = agent_config["model"].get("provider")
+            if agent_model_provider:
+                # Find matching provider in global config and merge to agent model
                 for provider in global_config.providers.values():
-                    if provider.provider == eval_model_provider:
+                    if provider.provider == agent_model_provider:
                         # Convert provider to dict and merge non-conflicting keys
                         provider_dict = provider.model_dump(exclude_unset=True)
                         for key, value in provider_dict.items():
-                            if key not in eval_model:
-                                eval_model[key] = value
+                            if key not in agent_config["model"]:
+                                agent_config["model"][key] = value
                         break
 
+            # Also merge global provider config to evaluation model if it exists
+            if (
+                "evaluations" in agent_config
+                and isinstance(agent_config["evaluations"], dict)
+                and "model" in agent_config["evaluations"]
+                and isinstance(agent_config["evaluations"]["model"], dict)
+            ):
+                eval_model: dict[str, Any] = agent_config["evaluations"]["model"]
+                eval_model_provider = eval_model.get("provider")
+                if eval_model_provider:
+                    for provider in global_config.providers.values():
+                        if provider.provider == eval_model_provider:
+                            provider_dict = provider.model_dump(exclude_unset=True)
+                            for key, value in provider_dict.items():
+                                if key not in eval_model:
+                                    eval_model[key] = value
+                            break
+
+        # Resolve vectorstore references in tools
+        if (
+            global_config.vectorstores
+            and "tools" in agent_config
+            and isinstance(agent_config["tools"], list)
+        ):
+            self._resolve_vectorstore_references(
+                agent_config["tools"], global_config.vectorstores
+            )
+
         return agent_config
+
+    def _resolve_vectorstore_references(
+        self,
+        tools: list[Any],
+        vectorstores: dict[str, VectorstoreConfig],
+    ) -> None:
+        """Resolve string database references in vectorstore tools.
+
+        For each vectorstore tool with a string database field, look up the
+        named vectorstore in global config and convert to DatabaseConfig.
+
+        Args:
+            tools: List of tool configurations (modified in-place)
+            vectorstores: Named vectorstore configurations from global config
+        """
+        for tool in tools:
+            # Skip non-dict tools (shouldn't happen, but be defensive)
+            if not isinstance(tool, dict):
+                continue
+
+            if tool.get("type") != "vectorstore":
+                continue
+
+            database = tool.get("database")
+
+            # Skip if database is None or already a dict (DatabaseConfig)
+            if database is None or isinstance(database, dict):
+                continue
+
+            # database is a string reference
+            if isinstance(database, str):
+                if database not in vectorstores:
+                    logger.warning(
+                        f"Vectorstore tool references unknown database '{database}'. "
+                        f"Available: {list(vectorstores.keys())}. "
+                        f"Falling back to in-memory storage."
+                    )
+                    tool["database"] = None
+                    continue
+
+                # Convert VectorstoreConfig to DatabaseConfig dict
+                vectorstore_config = vectorstores[database]
+                database_config = _convert_vectorstore_to_database_config(
+                    vectorstore_config
+                )
+                tool["database"] = database_config.model_dump()
+                logger.debug(
+                    f"Resolved vectorstore reference '{database}' "
+                    f"to provider '{database_config.provider}'"
+                )
 
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
@@ -484,3 +603,56 @@ class ConfigLoader:
                 resolved[field] = defaults.get(field)
 
         return ExecutionConfig(**resolved)
+
+    def resolve_vectorstore_database_config(
+        self, agent_yaml_path: str, vectorstore_name: str | None = None
+    ) -> dict[str, Any] | None:
+        """Resolve vector database configuration with proper precedence.
+
+        Configuration precedence (highest to lowest):
+        1. Tool-specific database config in agent.yaml
+        2. Project-level vectorstore config (.holodeck/config.yaml or config.yaml)
+        3. User-level vectorstore config (~/.holodeck/config.yaml)
+        4. In-memory fallback (if no config found)
+
+        This allows tools to inherit database configuration from project or
+        user-level settings while allowing per-tool overrides.
+
+        Args:
+            agent_yaml_path: Path to agent.yaml for resolving project config
+            vectorstore_name: Optional name of specific vectorstore to resolve.
+                If None, returns the first available vectorstore.
+
+        Returns:
+            Dictionary with database configuration (provider, connection_string, etc.)
+            or None if using in-memory fallback
+
+        Raises:
+            ConfigError: If configuration is invalid
+        """
+        # Load project and user configs
+        agent_dir = str(Path(agent_yaml_path).parent)
+        project_config = self.load_project_config(agent_dir)
+        user_config = self.load_global_config()
+
+        # Get vectorstores from project config first, then user config
+        vectorstores: dict[str, VectorstoreConfig] | None = None
+        if project_config and project_config.vectorstores:
+            vectorstores = project_config.vectorstores
+        elif user_config and user_config.vectorstores:
+            vectorstores = user_config.vectorstores
+
+        if not vectorstores:
+            return None
+
+        # If specific name requested, look it up
+        if vectorstore_name:
+            if vectorstore_name in vectorstores:
+                vectorstore = vectorstores[vectorstore_name]
+                return _convert_vectorstore_to_database_config(vectorstore).model_dump()
+            return None
+
+        # Return first vectorstore as default (backward compatibility)
+        first_key = next(iter(vectorstores.keys()))
+        vectorstore = vectorstores[first_key]
+        return _convert_vectorstore_to_database_config(vectorstore).model_dump()

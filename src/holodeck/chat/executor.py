@@ -47,6 +47,7 @@ class AgentExecutor:
         max_retries: int = 3,
         on_execution_start: Callable[[str], None] | None = None,
         on_execution_complete: Callable[[AgentResponse], None] | None = None,
+        force_ingest: bool = False,
     ) -> None:
         """Initialize executor with agent configuration.
 
@@ -57,6 +58,7 @@ class AgentExecutor:
             max_retries: Maximum retry attempts for transient failures.
             on_execution_start: Optional callback before agent execution.
             on_execution_complete: Optional callback after agent execution.
+            force_ingest: Force re-ingestion of vector store source files.
 
         Raises:
             RuntimeError: If agent factory initialization fails.
@@ -71,6 +73,7 @@ class AgentExecutor:
                 agent_config=agent_config,
                 timeout=timeout,
                 max_retries=max_retries,
+                force_ingest=force_ingest,
             )
             logger.info(f"AgentExecutor initialized for agent: {agent_config.name}")
         except Exception as e:

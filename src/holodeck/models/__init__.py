@@ -25,6 +25,7 @@ from holodeck.models.tool import (
     MCPTool,
     PromptTool,
     Tool,
+    ToolUnion,
     VectorstoreTool,
 )
 from holodeck.models.tool_execution import ToolExecution, ToolStatus
@@ -57,6 +58,7 @@ __all__: list[str] = [
     "FileInput",
     # Tool models
     "Tool",
+    "ToolUnion",
     "VectorstoreTool",
     "FunctionTool",
     "MCPTool",

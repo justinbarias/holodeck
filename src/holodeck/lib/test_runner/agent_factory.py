@@ -22,13 +22,18 @@ from semantic_kernel.agents import Agent as SKAgent
 from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
 from semantic_kernel.connectors.ai.open_ai import (
     AzureChatCompletion,
+    AzureTextEmbedding,
     OpenAIChatCompletion,
+    OpenAITextEmbedding,
 )
 from semantic_kernel.connectors.ai.prompt_execution_settings import (
     PromptExecutionSettings,
 )
 from semantic_kernel.contents import ChatHistory
-from semantic_kernel.functions import KernelArguments
+from semantic_kernel.functions import KernelArguments, KernelFunction
+from semantic_kernel.functions.kernel_function_from_method import (
+    KernelFunctionFromMethod,
+)
 
 from holodeck.config.schema import SchemaValidator
 from holodeck.lib.logging_config import get_logger
@@ -36,6 +41,7 @@ from holodeck.lib.logging_utils import log_retry
 from holodeck.models.agent import Agent
 from holodeck.models.llm import ProviderEnum
 from holodeck.models.token_usage import TokenUsage
+from holodeck.models.tool import VectorstoreTool
 
 # Try to import Anthropic support (optional dependency)
 try:
@@ -82,6 +88,7 @@ class AgentFactory:
         max_retries: int = 3,
         retry_delay: float = 2.0,
         retry_exponential_base: float = 2.0,
+        force_ingest: bool = False,
     ) -> None:
         """Initialize agent factory with Semantic Kernel.
 
@@ -91,6 +98,7 @@ class AgentFactory:
             max_retries: Maximum number of retry attempts for transient failures
             retry_delay: Base delay in seconds for exponential backoff
             retry_exponential_base: Exponential base for backoff calculation
+            force_ingest: Force re-ingestion of vector store source files
 
         Raises:
             AgentFactoryError: If kernel initialization fails
@@ -103,6 +111,12 @@ class AgentFactory:
         self._retry_count = 0
         self.kernel_arguments: KernelArguments | None = None
         self._llm_service: Any | None = None
+        self._force_ingest = force_ingest
+
+        # Vectorstore tool support
+        self._tools_initialized = False
+        self._vectorstore_tools: list[Any] = []
+        self._embedding_service: Any = None
 
         logger.debug(
             f"Initializing AgentFactory: agent={agent_config.name}, "
@@ -112,6 +126,11 @@ class AgentFactory:
 
         try:
             self.kernel = self._create_kernel()
+
+            # Register embedding service if vectorstore tools are configured
+            if self._has_vectorstore_tools():
+                self._register_embedding_service()
+
             self.agent = self._create_agent()
             self.chat_history = self._create_chat_history()
             logger.info(
@@ -182,6 +201,175 @@ class AgentFactory:
         except Exception as e:
             logger.error(f"Kernel creation failed: {e}", exc_info=True)
             raise AgentFactoryError(f"Kernel creation failed: {e}") from e
+
+    def _has_vectorstore_tools(self) -> bool:
+        """Check if agent config contains any vectorstore tools.
+
+        Returns:
+            True if at least one vectorstore tool is configured.
+        """
+        if not self.agent_config.tools:
+            return False
+
+        for tool in self.agent_config.tools:
+            if isinstance(tool, VectorstoreTool):
+                return True
+        return False
+
+    def _get_embedding_model(self) -> str:
+        """Get embedding model from first vectorstore tool or use default.
+
+        Returns:
+            Embedding model name to use for TextEmbedding service.
+        """
+        default_model = "text-embedding-3-small"
+        if not self.agent_config.tools:
+            return default_model
+
+        for tool in self.agent_config.tools:
+            if isinstance(tool, VectorstoreTool):
+                return tool.embedding_model or default_model
+        return default_model
+
+    def _register_embedding_service(self) -> None:
+        """Register TextEmbedding service on kernel for vectorstore tools.
+
+        Supports OpenAI and Azure OpenAI embedding providers. Uses the same
+        credentials as the chat model configured in agent_config.model.
+
+        Raises:
+            AgentFactoryError: If provider doesn't support embeddings.
+        """
+        model_config = self.agent_config.model
+        embedding_model = self._get_embedding_model()
+
+        logger.debug(
+            f"Registering embedding service: model={embedding_model}, "
+            f"provider={model_config.provider}"
+        )
+
+        if model_config.provider == ProviderEnum.OPENAI:
+            self._embedding_service = OpenAITextEmbedding(
+                ai_model_id=embedding_model,
+                api_key=model_config.api_key,
+            )
+        elif model_config.provider == ProviderEnum.AZURE_OPENAI:
+            self._embedding_service = AzureTextEmbedding(
+                deployment_name=embedding_model,
+                endpoint=model_config.endpoint,
+                api_key=model_config.api_key,
+            )
+        else:
+            raise AgentFactoryError(
+                f"Embedding service not supported for provider: "
+                f"{model_config.provider}. "
+                "Vectorstore tools require OpenAI or Azure OpenAI provider."
+            )
+
+        self.kernel.add_service(self._embedding_service)
+        logger.debug(f"Embedding service registered: {embedding_model}")
+
+    def _create_search_kernel_function(
+        self,
+        tool: Any,
+        tool_name: str,
+        tool_description: str,
+    ) -> KernelFunction:
+        """Create a KernelFunction from VectorStoreTool.search method.
+
+        Creates a wrapper function that calls tool.search() and registers it
+        as a KernelFunction using the @kernel_function decorator.
+
+        Args:
+            tool: Initialized VectorStoreTool instance.
+            tool_name: Name for the kernel function (from tool config).
+            tool_description: Description for the function (from tool config).
+
+        Returns:
+            KernelFunction that can be registered on the kernel.
+        """
+        from semantic_kernel.functions.kernel_function_decorator import (
+            kernel_function as kernel_function_decorator,
+        )
+
+        @kernel_function_decorator(name=tool_name, description=tool_description)
+        async def search_wrapper(query: str) -> str:
+            """Search the knowledge base for relevant content."""
+            result = await tool.search(query)
+            return str(result)
+
+        return KernelFunctionFromMethod(
+            method=search_wrapper,
+            plugin_name="vectorstore",
+        )
+
+    async def _register_vectorstore_tools(self) -> None:
+        """Discover, initialize, and register vectorstore tools from agent config.
+
+        Iterates through agent_config.tools, finds vectorstore tools, creates
+        VectorStoreTool instances, initializes them, and registers their search
+        methods as KernelFunctions.
+
+        Raises:
+            AgentFactoryError: If tool initialization fails.
+        """
+        if not self.agent_config.tools:
+            return
+
+        # Check if there are any vectorstore tools before importing
+        if not self._has_vectorstore_tools():
+            return
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        for tool_config in self.agent_config.tools:
+            # Only process vectorstore tools
+            if not isinstance(tool_config, VectorstoreTool):
+                continue
+
+            config = tool_config
+
+            try:
+                # Create tool and inject embedding service
+                # VectorStoreTool reads base_dir from agent_base_dir context var
+                tool = VectorStoreTool(config)
+                tool.set_embedding_service(self._embedding_service)
+
+                # Initialize (async - ingests files, generates embeddings)
+                await tool.initialize(force_ingest=self._force_ingest)
+
+                # Create and register KernelFunction
+                kernel_function = self._create_search_kernel_function(
+                    tool=tool,
+                    tool_name=config.name,
+                    tool_description=config.description,
+                )
+
+                self.kernel.add_function(
+                    plugin_name="vectorstore", function=kernel_function
+                )
+                self._vectorstore_tools.append(tool)
+
+                logger.info(f"Registered vectorstore tool: {config.name}")
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to initialize vectorstore tool {config.name}: {e}"
+                )
+                raise AgentFactoryError(
+                    f"Failed to initialize vectorstore tool {config.name}: {e}"
+                ) from e
+
+    async def _ensure_tools_initialized(self) -> None:
+        """Ensure vectorstore tools are initialized (called before first invoke).
+
+        This implements lazy initialization - tools are initialized on the first
+        call to invoke() rather than during __init__.
+        """
+        if self._tools_initialized:
+            return
+        await self._register_vectorstore_tools()
+        self._tools_initialized = True
 
     def _create_agent(self) -> SKAgent:
         """Create Semantic Kernel Agent with configuration.
@@ -273,6 +461,9 @@ class AgentFactory:
             AgentFactoryError: If invocation fails after retries
         """
         try:
+            # Ensure vectorstore tools are initialized (lazy initialization)
+            await self._ensure_tools_initialized()
+
             # Add user input to chat history
             self.chat_history.add_user_message(user_input)
 
@@ -379,12 +570,12 @@ class AgentFactory:
                 # Extract response content
                 response_text = self._extract_response_content(response)
 
-                # Extract tool calls
-                tool_calls = self._extract_tool_calls(response)
-
                 # Extract token usage
                 token_usage = self._extract_token_usage(response)
                 break  # Only process first response
+
+            # Extract tool calls from thread's chat history (includes internal calls)
+            tool_calls = await self._extract_tool_calls_from_thread(thread)
 
             # Add agent's response to chat history
             if response_text:
@@ -442,14 +633,13 @@ class AgentFactory:
         if hasattr(settings, "top_p") and model_config.top_p is not None:
             settings.top_p = model_config.top_p
 
-        if hasattr(settings, "max_tokens") and model_config.max_tokens is not None:
-            settings.max_tokens = model_config.max_tokens
-
-        if (
-            hasattr(settings, "max_completion_tokens")
-            and model_config.max_tokens is not None
-        ):
-            settings.max_completion_tokens = model_config.max_tokens
+        if model_config.max_tokens is not None:
+            # Prefer max_completion_tokens (newer OpenAI API) over max_tokens (legacy)
+            # Some newer models reject max_tokens parameter entirely
+            if hasattr(settings, "max_completion_tokens"):
+                settings.max_completion_tokens = model_config.max_tokens
+            elif hasattr(settings, "max_tokens"):
+                settings.max_tokens = model_config.max_tokens
 
         if hasattr(settings, "ai_model_id"):
             settings.ai_model_id = model_config.name
@@ -525,42 +715,74 @@ class AgentFactory:
             logger.warning(f"Failed to extract response content: {e}")
             return ""
 
-    def _extract_tool_calls(self, response: Any) -> list[dict[str, Any]]:
-        """Extract tool calls from agent response.
+    async def _extract_tool_calls_from_thread(
+        self, thread: ChatHistoryAgentThread
+    ) -> list[dict[str, Any]]:
+        """Extract tool calls from ChatHistoryAgentThread after agent invocation.
+
+        Scans the thread's message history for FunctionCallContent items to track
+        which tools were invoked during agent execution.
 
         Args:
-            response: Response object from agent invocation
+            thread: ChatHistoryAgentThread containing the conversation history
+                after agent invocation.
 
         Returns:
-            List of tool call dictionaries with 'name' and 'arguments' keys
+            List of tool call dictionaries with 'name' and 'arguments' keys.
         """
+        from semantic_kernel.contents import FunctionCallContent
+
         tool_calls: list[dict[str, Any]] = []
+        seen_call_ids: set[str] = set()  # Avoid duplicates
 
         try:
-            # Try to extract from direct tool_calls attribute
-            if hasattr(response, "tool_calls") and response.tool_calls:
-                for tool_call in response.tool_calls:
-                    tool_calls.append(
-                        {
-                            "name": getattr(tool_call, "name", None),
-                            "arguments": getattr(tool_call, "arguments", {}),
-                        }
-                    )
+            # Iterate through thread messages (async generator)
+            async for message in thread.get_messages():
+                if hasattr(message, "items") and message.items:
+                    for item in message.items:
+                        if isinstance(item, FunctionCallContent):
+                            call_id = getattr(item, "id", None) or getattr(
+                                item, "call_id", ""
+                            )
+                            if call_id and call_id in seen_call_ids:
+                                continue
+                            if call_id:
+                                seen_call_ids.add(call_id)
 
-            # Try to extract from messages
-            if hasattr(response, "messages") and response.messages:
-                for message in response.messages:
-                    if hasattr(message, "tool_calls") and message.tool_calls:
-                        for tool_call in message.tool_calls:
+                            # Build full function name from plugin_name + function_name
+                            plugin_name = getattr(item, "plugin_name", "") or ""
+                            function_name = getattr(
+                                item, "function_name", ""
+                            ) or getattr(item, "name", "")
+                            full_name = (
+                                f"{plugin_name}-{function_name}"
+                                if plugin_name
+                                else function_name
+                            )
+
+                            # Parse arguments (can be str, Mapping, or None)
+                            raw_args = getattr(item, "arguments", None)
+                            if isinstance(raw_args, str):
+                                import json
+
+                                try:
+                                    arguments = json.loads(raw_args)
+                                except json.JSONDecodeError:
+                                    arguments = {"raw": raw_args}
+                            elif isinstance(raw_args, dict):
+                                arguments = raw_args
+                            else:
+                                arguments = dict(raw_args) if raw_args else {}
+
                             tool_calls.append(
                                 {
-                                    "name": getattr(tool_call, "name", None),
-                                    "arguments": getattr(tool_call, "arguments", {}),
+                                    "name": full_name,
+                                    "arguments": arguments,
                                 }
                             )
 
         except Exception as e:
-            logger.warning(f"Failed to extract tool calls: {e}")
+            logger.warning(f"Failed to extract tool calls from thread: {e}")
 
         return tool_calls
 

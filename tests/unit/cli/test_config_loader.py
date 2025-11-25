@@ -128,7 +128,14 @@ class TestLoadAgentYaml:
             "name": "test_agent",
             "model": {"provider": "openai", "name": "gpt-4o"},
             "instructions": {"inline": "Test"},
-            "tools": [{"name": "search", "type": "vectorstore", "source": "data.txt"}],
+            "tools": [
+                {
+                    "name": "search",
+                    "description": "Search through documents",
+                    "type": "vectorstore",
+                    "source": "data.txt",
+                }
+            ],
         }
         yaml_file.write_text(yaml.dump(yaml_content))
 
@@ -907,6 +914,7 @@ class TestLoadAgentYamlIntegration:
             "tools": [
                 {
                     "name": "search",
+                    "description": "Search through documents",
                     "type": "vectorstore",
                     "source": "data.txt",
                 }
@@ -943,13 +951,16 @@ class TestLoadAgentYamlIntegration:
             "tools": [
                 {
                     "name": "search_tool",
+                    "description": "Search through documents",
                     "type": "vectorstore",
                     "source": "documents.txt",
                 },
                 {
                     "name": "calc_tool",
+                    "description": "Math calculation tool",
                     "type": "function",
-                    "source": "math.py",
+                    "file": "math.py",
+                    "function": "calculate",
                 },
             ],
             "test_cases": [
@@ -970,9 +981,9 @@ class TestLoadAgentYamlIntegration:
 
         assert agent.name == "complex_agent"
         assert len(agent.tools) == 2
-        # Tools are stored as dicts or objects, check structure flexibly
-        assert agent.tools[0]["name"] == "search_tool"
-        assert agent.tools[1]["name"] == "calc_tool"
+        # Tools are now typed objects (VectorstoreTool, FunctionTool, etc.)
+        assert agent.tools[0].name == "search_tool"
+        assert agent.tools[1].name == "calc_tool"
         assert len(agent.test_cases) == 2
 
     def test_load_agent_yaml_with_minimal_config(self, temp_dir: Path) -> None:

@@ -216,6 +216,9 @@ class TestConfigEndToEndWorkflow:
                     "type": "prompt",
                     "template": "Summarize: {text}",
                     "description": "Summarize text",
+                    "parameters": {
+                        "text": {"type": "string", "description": "Text to summarize"}
+                    },
                 },
             ],
         }

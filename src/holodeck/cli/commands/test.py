@@ -91,6 +91,12 @@ class SpinnerThread(threading.Thread):
     default=None,
     help="LLM execution timeout in seconds",
 )
+@click.option(
+    "--force-ingest",
+    "-f",
+    is_flag=True,
+    help="Force re-ingestion of all vector store source files",
+)
 def test(
     agent_config: str,
     output: str | None,
@@ -98,6 +104,7 @@ def test(
     verbose: bool,
     quiet: bool,
     timeout: int | None,
+    force_ingest: bool,
 ) -> None:
     """Execute agent test cases with evaluation metrics.
 
@@ -111,7 +118,8 @@ def test(
 
     logger.info(
         f"Test command invoked: config={agent_config}, "
-        f"verbose={verbose}, quiet={quiet}, timeout={timeout}"
+        f"verbose={verbose}, quiet={quiet}, timeout={timeout}, "
+        f"force_ingest={force_ingest}"
     )
 
     start_time = time.time()
@@ -131,12 +139,17 @@ def test(
             )
 
         # Load agent config to get test count for progress indicator
+        from holodeck.config.context import agent_base_dir
         from holodeck.config.loader import ConfigLoader
 
         logger.debug(f"Loading agent configuration from {agent_config}")
         loader = ConfigLoader()
         agent = loader.load_agent_yaml(agent_config)
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
+
+        # Set the base directory context for resolving relative paths in tools
+        agent_base_dir.set(str(Path(agent_config).parent.resolve()))
+        logger.debug(f"Set agent_base_dir context: {agent_base_dir.get()}")
 
         # Get total test count
         total_tests = len(agent.test_cases) if agent.test_cases else 0
@@ -185,6 +198,7 @@ def test(
             execution_config=cli_config,
             progress_callback=progress_callback,
             on_test_start=on_test_start,
+            force_ingest=force_ingest,
         )
 
         # Run tests asynchronously

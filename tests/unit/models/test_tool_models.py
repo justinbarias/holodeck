@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from holodeck.models.tool import (
+    DatabaseConfig,
     FunctionTool,
     MCPTool,
     PromptTool,
@@ -449,3 +450,225 @@ class TestPromptTool:
             parameters={"x": {"type": "string"}},
         )
         assert tool.description == "Prompt tool description"
+
+
+class TestDatabaseConfig:
+    """Tests for DatabaseConfig model."""
+
+    def test_database_config_valid_redis_hashset(self) -> None:
+        """Test creating a valid DatabaseConfig for Redis Hashset."""
+        config = DatabaseConfig(
+            provider="redis-hashset",
+            connection_string="redis://localhost:6379",
+        )
+        assert config.provider == "redis-hashset"
+        assert config.connection_string == "redis://localhost:6379"
+
+    def test_database_config_valid_postgres(self) -> None:
+        """Test creating a valid DatabaseConfig for PostgreSQL."""
+        config = DatabaseConfig(
+            provider="postgres",
+            connection_string="postgresql://user:pass@localhost/db",
+        )
+        assert config.provider == "postgres"
+
+    def test_database_config_valid_qdrant(self) -> None:
+        """Test creating a valid DatabaseConfig for Qdrant."""
+        config = DatabaseConfig(
+            provider="qdrant",
+            url="http://localhost:6333",
+        )
+        assert config.provider == "qdrant"
+
+    def test_database_config_valid_in_memory(self) -> None:
+        """Test creating a valid DatabaseConfig for in-memory store."""
+        config = DatabaseConfig(
+            provider="in-memory",
+        )
+        assert config.provider == "in-memory"
+        assert config.connection_string is None
+
+    def test_database_config_valid_azure_ai_search(self) -> None:
+        """Test creating a valid DatabaseConfig for Azure AI Search."""
+        config = DatabaseConfig(
+            provider="azure-ai-search",
+            connection_string="https://search-service.search.windows.net",
+            api_key="test-key",
+        )
+        assert config.provider == "azure-ai-search"
+
+    def test_database_config_optional_connection_string(self) -> None:
+        """Test that connection_string is optional."""
+        config = DatabaseConfig(
+            provider="in-memory",
+        )
+        assert config.connection_string is None
+
+    def test_database_config_empty_connection_string(self) -> None:
+        """Test that connection_string must be non-empty if provided."""
+        with pytest.raises(ValidationError):
+            DatabaseConfig(
+                provider="redis-hashset",
+                connection_string="",
+            )
+
+    def test_database_config_invalid_provider(self) -> None:
+        """Test that provider must be from supported list."""
+        with pytest.raises(ValidationError) as exc_info:
+            DatabaseConfig(
+                provider="invalid-provider",  # type: ignore
+                connection_string="connection://string",
+            )
+        assert "provider" in str(exc_info.value).lower()
+
+    def test_database_config_extra_fields_allowed(self) -> None:
+        """Test that provider-specific extra fields are allowed."""
+        config = DatabaseConfig(
+            provider="qdrant",
+            url="http://localhost:6333",
+            api_key="test-key",
+            prefer_grpc=True,
+        )
+        assert config.provider == "qdrant"
+        # Extra fields should be stored
+        assert config.url == "http://localhost:6333"  # type: ignore
+
+
+class TestVectorstoreToolExtended:
+    """Tests for extended VectorstoreTool features.
+
+    Tests cover database, top_k, and min_similarity_score fields.
+    """
+
+    def test_vectorstore_with_database_config(self) -> None:
+        """Test VectorstoreTool with database configuration."""
+        db_config = DatabaseConfig(
+            provider="redis-hashset",
+            connection_string="redis://localhost:6379",
+        )
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.txt",
+            database=db_config,
+        )
+        assert tool.database is not None
+        assert tool.database.provider == "redis-hashset"
+
+    def test_vectorstore_without_database_config(self) -> None:
+        """Test VectorstoreTool works without database (in-memory default)."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.txt",
+        )
+        assert tool.database is None
+
+    def test_vectorstore_top_k_default(self) -> None:
+        """Test VectorstoreTool has default top_k of 5."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.txt",
+        )
+        assert tool.top_k == 5
+
+    def test_vectorstore_top_k_custom(self) -> None:
+        """Test VectorstoreTool with custom top_k."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.txt",
+            top_k=10,
+        )
+        assert tool.top_k == 10
+
+    def test_vectorstore_top_k_positive_validation(self) -> None:
+        """Test that top_k must be positive."""
+        with pytest.raises(ValidationError):
+            VectorstoreTool(
+                name="test",
+                description="Test",
+                type="vectorstore",
+                source="data.txt",
+                top_k=0,
+            )
+
+    def test_vectorstore_top_k_maximum_validation(self) -> None:
+        """Test that top_k should not exceed 100."""
+        with pytest.raises(ValidationError):
+            VectorstoreTool(
+                name="test",
+                description="Test",
+                type="vectorstore",
+                source="data.txt",
+                top_k=101,
+            )
+
+    def test_vectorstore_min_similarity_score_optional(self) -> None:
+        """Test that min_similarity_score is optional."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.txt",
+        )
+        assert tool.min_similarity_score is None
+
+    def test_vectorstore_min_similarity_score_custom(self) -> None:
+        """Test VectorstoreTool with custom min_similarity_score."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.txt",
+            min_similarity_score=0.75,
+        )
+        assert tool.min_similarity_score == 0.75
+
+    def test_vectorstore_min_similarity_score_range_validation(self) -> None:
+        """Test that min_similarity_score must be between 0.0 and 1.0."""
+        with pytest.raises(ValidationError):
+            VectorstoreTool(
+                name="test",
+                description="Test",
+                type="vectorstore",
+                source="data.txt",
+                min_similarity_score=1.5,
+            )
+
+        with pytest.raises(ValidationError):
+            VectorstoreTool(
+                name="test",
+                description="Test",
+                type="vectorstore",
+                source="data.txt",
+                min_similarity_score=-0.1,
+            )
+
+    def test_vectorstore_all_extended_fields(self) -> None:
+        """Test VectorstoreTool with all extended fields."""
+        db_config = DatabaseConfig(
+            provider="redis-json",
+            connection_string="redis://localhost:6379",
+        )
+        tool = VectorstoreTool(
+            name="knowledge_base",
+            description="Production knowledge base search",
+            type="vectorstore",
+            source="data/docs/",
+            database=db_config,
+            embedding_model="text-embedding-3-large",
+            top_k=20,
+            min_similarity_score=0.7,
+        )
+        assert tool.name == "knowledge_base"
+        assert tool.database is not None
+        assert tool.database.provider == "redis-json"
+        assert tool.embedding_model == "text-embedding-3-large"
+        assert tool.top_k == 20
+        assert tool.min_similarity_score == 0.7

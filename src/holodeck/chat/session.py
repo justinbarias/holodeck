@@ -63,6 +63,7 @@ class ChatSessionManager:
             self._executor = AgentExecutor(
                 self.agent_config,
                 enable_observability=self.config.enable_observability,
+                force_ingest=self.config.force_ingest,
             )
 
             # Create chat session with empty history
