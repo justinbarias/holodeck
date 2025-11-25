@@ -1027,8 +1027,10 @@ class TestResolveSourcePath:
         finally:
             agent_base_dir.reset(token)
 
-    def test_resolve_relative_path_fallback_to_cwd(self, tmp_path: Path) -> None:
+    def test_resolve_relative_path_fallback_to_cwd(self) -> None:
         """Test that relative path falls back to CWD when no base_dir."""
+        from holodeck.config.context import agent_base_dir
+
         config = VectorstoreTool(
             name="test_vectorstore",
             description="Test tool",
@@ -1037,12 +1039,17 @@ class TestResolveSourcePath:
 
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
-        tool = VectorStoreTool(config)  # No base_dir, no context var
-        resolved = tool._resolve_source_path()
+        # Explicitly ensure context variable is None to test CWD fallback
+        token = agent_base_dir.set(None)
+        try:
+            tool = VectorStoreTool(config)  # No base_dir, no context var
+            resolved = tool._resolve_source_path()
 
-        # Should resolve relative to CWD
-        expected = Path("relative/path.md").resolve()
-        assert resolved == expected
+            # Should resolve relative to CWD
+            expected = Path("relative/path.md").resolve()
+            assert resolved == expected
+        finally:
+            agent_base_dir.reset(token)
 
 
 class TestProcessFile:
