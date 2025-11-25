@@ -87,6 +87,7 @@ class AgentFactory:
         max_retries: int = 3,
         retry_delay: float = 2.0,
         retry_exponential_base: float = 2.0,
+        force_ingest: bool = False,
     ) -> None:
         """Initialize agent factory with Semantic Kernel.
 
@@ -96,6 +97,7 @@ class AgentFactory:
             max_retries: Maximum number of retry attempts for transient failures
             retry_delay: Base delay in seconds for exponential backoff
             retry_exponential_base: Exponential base for backoff calculation
+            force_ingest: Force re-ingestion of vector store source files
 
         Raises:
             AgentFactoryError: If kernel initialization fails
@@ -108,6 +110,7 @@ class AgentFactory:
         self._retry_count = 0
         self.kernel_arguments: KernelArguments | None = None
         self._llm_service: Any | None = None
+        self._force_ingest = force_ingest
 
         # Vectorstore tool support
         self._tools_initialized = False
@@ -341,7 +344,7 @@ class AgentFactory:
                 tool.set_embedding_service(self._embedding_service)
 
                 # Initialize (async - ingests files, generates embeddings)
-                await tool.initialize()
+                await tool.initialize(force_ingest=self._force_ingest)
 
                 # Create and register KernelFunction
                 kernel_function = self._create_search_kernel_function(

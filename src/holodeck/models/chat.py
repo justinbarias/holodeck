@@ -93,6 +93,7 @@ class ChatConfig(BaseModel):
     verbose: bool = Field(default=False)
     enable_observability: bool = Field(default=False)
     max_messages: int = Field(default=50, gt=0)
+    force_ingest: bool = Field(default=False)
 
     @field_validator("agent_config_path")
     @classmethod

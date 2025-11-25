@@ -1906,3 +1906,469 @@ class TestDiscoverFilesUnsupportedExtension:
         discovered = tool._discover_files()
 
         assert len(discovered) == 0
+
+
+class TestFileModificationTimestampTracking:
+    """T052: Tests for file modification timestamp tracking."""
+
+    @pytest.mark.asyncio
+    async def test_process_file_captures_mtime(self, tmp_path: Path) -> None:
+        """Test that _process_file captures file mtime correctly."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test content\n\nThis is test content.")
+
+        # Get expected mtime
+        expected_mtime = source_file.stat().st_mtime
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.models.test_case import FileInput
+        from holodeck.models.test_result import ProcessedFileInput
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock file processor
+        mock_processor = MagicMock()
+        mock_processor.process_file.return_value = ProcessedFileInput(
+            original=FileInput(path=str(source_file), type="text"),
+            markdown_content="# Test content\n\nThis is test content.",
+            metadata={},
+            error=None,
+        )
+        tool._file_processor = mock_processor
+
+        result = await tool._process_file(source_file)
+
+        assert result is not None
+        assert result.mtime == expected_mtime
+
+    @pytest.mark.asyncio
+    async def test_stored_document_includes_mtime(self, tmp_path: Path) -> None:
+        """Test that DocumentRecord mtime is populated from SourceFile."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test content")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.lib.file_processor import SourceFile
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Setup mock collection
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.ensure_collection_exists = AsyncMock()
+        mock_collection.upsert = AsyncMock()
+        tool._collection = mock_collection
+
+        # Create source file with specific mtime
+        expected_mtime = 1234567890.5
+        sf = SourceFile(
+            path=source_file,
+            content="Test content",
+            mtime=expected_mtime,
+            size_bytes=100,
+            file_type=".md",
+            chunks=["chunk1"],
+        )
+        embeddings = [[0.1] * 1536]
+
+        await tool._store_chunks(sf, embeddings)
+
+        # Verify DocumentRecord was created with correct mtime
+        mock_collection.upsert.assert_called_once()
+        call_args = mock_collection.upsert.call_args[0][0]
+        assert len(call_args) == 1
+        assert call_args[0].mtime == expected_mtime
+
+
+class TestMtimeComparisonLogic:
+    """T053: Tests for mtime comparison (needs re-ingestion vs up-to-date)."""
+
+    @pytest.mark.asyncio
+    async def test_needs_reingest_true_when_file_modified(self, tmp_path: Path) -> None:
+        """Test _needs_reingest returns True when file mtime > stored mtime."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock collection with older mtime
+        mock_record = MagicMock()
+        mock_record.mtime = source_file.stat().st_mtime - 100  # Older than current
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.get = AsyncMock(return_value=mock_record)
+        tool._collection = mock_collection
+
+        result = await tool._needs_reingest(source_file)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_needs_reingest_false_when_file_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        """Test _needs_reingest returns False when file mtime == stored mtime."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        current_mtime = source_file.stat().st_mtime
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock collection with same mtime
+        mock_record = MagicMock()
+        mock_record.mtime = current_mtime  # Same as current
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.get = AsyncMock(return_value=mock_record)
+        tool._collection = mock_collection
+
+        result = await tool._needs_reingest(source_file)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_needs_reingest_true_when_no_stored_record(
+        self, tmp_path: Path
+    ) -> None:
+        """Test _needs_reingest returns True when file has no stored records."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock collection returning None (no record found)
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.get = AsyncMock(return_value=None)
+        tool._collection = mock_collection
+
+        result = await tool._needs_reingest(source_file)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_needs_reingest_true_when_collection_none(
+        self, tmp_path: Path
+    ) -> None:
+        """Test _needs_reingest returns True when collection is not initialized."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        # _collection is None by default
+
+        result = await tool._needs_reingest(source_file)
+
+        assert result is True
+
+
+class TestForceIngestFlag:
+    """T054: Tests for --force-ingest flag bypassing mtime checks."""
+
+    @pytest.mark.asyncio
+    async def test_force_ingest_processes_unchanged_files(self, tmp_path: Path) -> None:
+        """Test force_ingest=True processes files regardless of mtime."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test content")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.models.test_case import FileInput
+        from holodeck.models.test_result import ProcessedFileInput
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock _needs_reingest to return False (file unchanged)
+        tool._needs_reingest = AsyncMock(return_value=False)
+        tool._delete_file_records = AsyncMock(return_value=0)
+
+        # Mock file processor
+        mock_processor = MagicMock()
+        mock_processor.process_file.return_value = ProcessedFileInput(
+            original=FileInput(path=str(source_file), type="text"),
+            markdown_content="# Test content",
+            metadata={},
+            error=None,
+        )
+        tool._file_processor = mock_processor
+
+        # Mock collection
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.ensure_collection_exists = AsyncMock()
+        mock_collection.upsert = AsyncMock()
+
+        with patch(
+            "holodeck.tools.vectorstore_tool.get_collection_class"
+        ) as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+
+            await tool.initialize(force_ingest=True)
+
+        # Should have processed the file despite _needs_reingest returning False
+        assert tool.is_initialized is True
+        assert tool.document_count > 0
+        # _needs_reingest should NOT have been called when force_ingest=True
+        # (or if called, its result should be ignored)
+
+    @pytest.mark.asyncio
+    async def test_default_skips_unchanged_files(self, tmp_path: Path) -> None:
+        """Test force_ingest=False (default) skips unchanged files."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test content")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Track if _process_file was called
+        process_file_called = False
+        original_process_file = tool._process_file
+
+        async def tracking_process_file(file_path):
+            nonlocal process_file_called
+            process_file_called = True
+            return await original_process_file(file_path)
+
+        tool._process_file = tracking_process_file
+
+        # Mock _needs_reingest to return False (file unchanged)
+        tool._needs_reingest = AsyncMock(return_value=False)
+
+        # Mock collection
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.ensure_collection_exists = AsyncMock()
+        mock_collection.upsert = AsyncMock()
+
+        with patch(
+            "holodeck.tools.vectorstore_tool.get_collection_class"
+        ) as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+
+            await tool.initialize(force_ingest=False)
+
+        # Should NOT have processed the file
+        assert process_file_called is False
+        assert tool.is_initialized is True
+        assert tool.document_count == 0
+
+    @pytest.mark.asyncio
+    async def test_force_ingest_deletes_old_records_before_reingest(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that old records are deleted before re-ingestion with force_ingest."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test content")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.models.test_case import FileInput
+        from holodeck.models.test_result import ProcessedFileInput
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Track _delete_file_records calls
+        delete_called = False
+
+        async def mock_delete_file_records(file_path):
+            nonlocal delete_called
+            delete_called = True
+            return 2  # Simulate deleting 2 records
+
+        tool._delete_file_records = mock_delete_file_records
+
+        # Mock file processor
+        mock_processor = MagicMock()
+        mock_processor.process_file.return_value = ProcessedFileInput(
+            original=FileInput(path=str(source_file), type="text"),
+            markdown_content="# Test content",
+            metadata={},
+            error=None,
+        )
+        tool._file_processor = mock_processor
+
+        # Mock collection
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.ensure_collection_exists = AsyncMock()
+        mock_collection.upsert = AsyncMock()
+
+        with patch(
+            "holodeck.tools.vectorstore_tool.get_collection_class"
+        ) as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+
+            await tool.initialize(force_ingest=True)
+
+        # Should have called _delete_file_records
+        assert delete_called is True
+
+
+class TestDeleteFileRecords:
+    """T060: Tests for _delete_file_records method."""
+
+    @pytest.mark.asyncio
+    async def test_delete_file_records_deletes_all_chunks(self, tmp_path: Path) -> None:
+        """Test that _delete_file_records deletes all chunks for a file."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Create mock records for chunks 0, 1, 2
+        mock_records = {
+            f"{source_file}_chunk_0": MagicMock(),
+            f"{source_file}_chunk_1": MagicMock(),
+            f"{source_file}_chunk_2": MagicMock(),
+        }
+
+        async def mock_get(record_id):
+            return mock_records.get(record_id)
+
+        deleted_ids = []
+
+        async def mock_delete(record_id):
+            deleted_ids.append(record_id)
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.get = mock_get
+        mock_collection.delete = mock_delete
+        tool._collection = mock_collection
+
+        count = await tool._delete_file_records(source_file)
+
+        assert count == 3
+        assert len(deleted_ids) == 3
+
+    @pytest.mark.asyncio
+    async def test_delete_file_records_returns_zero_when_no_collection(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that _delete_file_records returns 0 when collection is None."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        # _collection is None
+
+        count = await tool._delete_file_records(source_file)
+
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_file_records_handles_no_existing_records(
+        self, tmp_path: Path
+    ) -> None:
+        """Test _delete_file_records when file has no records in store."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock collection returning None for all gets
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.get = AsyncMock(return_value=None)
+        tool._collection = mock_collection
+
+        count = await tool._delete_file_records(source_file)
+
+        assert count == 0

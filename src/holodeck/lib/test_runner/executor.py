@@ -128,6 +128,7 @@ class TestExecutor:
         config_loader: ConfigLoader | None = None,
         progress_callback: Callable[[TestResult], None] | None = None,
         on_test_start: Callable[[TestCaseModel], None] | None = None,
+        force_ingest: bool = False,
     ) -> None:
         """Initialize test executor with optional dependency injection.
 
@@ -144,12 +145,14 @@ class TestExecutor:
             config_loader: Optional ConfigLoader instance (auto-created if None)
             progress_callback: Optional callback function called after each test.
                               Called with TestResult instance. Use for progress display.
+            force_ingest: Force re-ingestion of vector store source files.
         """
         self.agent_config_path = agent_config_path
         self.cli_config = execution_config
         self.config_loader = config_loader or ConfigLoader()
         self.progress_callback = progress_callback
         self.on_test_start = on_test_start
+        self._force_ingest = force_ingest
 
         logger.debug(f"Initializing TestExecutor for config: {agent_config_path}")
 
@@ -221,6 +224,7 @@ class TestExecutor:
         return AgentFactory(
             agent_config=self.agent_config,
             timeout=self.config.llm_timeout or 60.0,
+            force_ingest=self._force_ingest,
         )
 
     def _create_evaluators(self) -> dict[str, BaseEvaluator]:

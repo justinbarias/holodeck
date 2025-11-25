@@ -135,6 +135,7 @@ class VectorStoreTool:
 
         Uses config.database to determine the vector store provider.
         Defaults to in-memory if no database is configured.
+        Falls back to in-memory storage if database connection fails.
 
         Creates a persistent collection instance that is reused for both
         storing and searching documents.
@@ -154,12 +155,29 @@ class VectorStoreTool:
             self._provider = "in-memory"
             connection_kwargs = {}
 
-        # Create persistent collection instance
-        collection_class = get_collection_class(self._provider)
-        self._collection = collection_class(
-            record_type=DocumentRecord,
-            **connection_kwargs,
-        )
+        # Create persistent collection instance with fallback
+        try:
+            collection_class = get_collection_class(self._provider)
+            self._collection = collection_class(
+                record_type=DocumentRecord,
+                **connection_kwargs,
+            )
+            logger.info(f"Vector store connected: provider={self._provider}")
+        except (ImportError, ConnectionError, Exception) as e:
+            # Fall back to in-memory storage for non-in-memory providers
+            if self._provider != "in-memory":
+                logger.warning(
+                    f"Failed to connect to {self._provider}: {e}. "
+                    "Falling back to in-memory storage."
+                )
+                self._provider = "in-memory"
+                collection_class = get_collection_class("in-memory")
+                self._collection = collection_class(record_type=DocumentRecord)
+                logger.info("Using in-memory vector storage (fallback)")
+            else:
+                # Don't catch errors for in-memory provider
+                raise
+
         logger.debug(f"Collection created for provider: {self._provider}")
 
     def _get_file_processor(self) -> FileProcessor:
@@ -411,7 +429,78 @@ class VectorStoreTool:
         logger.debug(f"Stored {len(records)} chunks from {source_file.path}")
         return len(records)
 
-    async def initialize(self, force_ingest: bool = False) -> None:  # noqa: ARG002
+    async def _needs_reingest(self, file_path: Path) -> bool:
+        """Check if file needs re-ingestion based on modification time.
+
+        Compares file's current mtime against stored DocumentRecord mtime.
+        Returns True if file should be re-ingested.
+
+        Args:
+            file_path: Path to file to check.
+
+        Returns:
+            True if file needs re-ingestion (modified or not in store).
+            False if file is up-to-date.
+        """
+        if self._collection is None:
+            return True  # No collection, must ingest
+
+        current_mtime = file_path.stat().st_mtime
+        source_path_str = str(file_path)
+
+        # Query for existing record by ID pattern
+        async with self._collection as collection:
+            try:
+                # Get first chunk to check mtime (all chunks share same mtime)
+                record_id = f"{source_path_str}_chunk_0"
+                record = await collection.get(record_id)
+
+                if record is None:
+                    return True  # Not in store, must ingest
+
+                stored_mtime: float = float(record.mtime)
+                return bool(current_mtime > stored_mtime)
+
+            except Exception as e:
+                logger.debug(f"Could not retrieve record for {file_path}: {e}")
+                return True  # Error = must ingest
+
+    async def _delete_file_records(self, file_path: Path) -> int:
+        """Delete all records for a source file from vector store.
+
+        Args:
+            file_path: Path to source file whose records should be deleted.
+
+        Returns:
+            Number of records deleted.
+        """
+        if self._collection is None:
+            return 0
+
+        source_path_str = str(file_path)
+        deleted_count = 0
+
+        async with self._collection as collection:
+            chunk_index = 0
+            while True:
+                record_id = f"{source_path_str}_chunk_{chunk_index}"
+                try:
+                    record = await collection.get(record_id)
+                    if record is None:
+                        break
+                    await collection.delete(record_id)
+                    deleted_count += 1
+                    chunk_index += 1
+                except Exception as e:
+                    logger.debug(f"Error deleting record {record_id}: {e}")
+                    break
+
+        if deleted_count > 0:
+            logger.debug(f"Deleted {deleted_count} records for {file_path}")
+
+        return deleted_count
+
+    async def initialize(self, force_ingest: bool = False) -> None:
         """Initialize tool and ingest source files.
 
         Discovers files from the configured source, processes them into chunks,
@@ -458,9 +547,22 @@ class VectorStoreTool:
 
         logger.info(f"Discovered {len(files)} files for ingestion")
 
-        # Process each file
+        # Process each file with mtime checking
         total_chunks = 0
+        skipped_files = 0
+
         for file_path in files:
+            # Check if file needs re-ingestion (unless force_ingest)
+            if not force_ingest:
+                needs_reingest = await self._needs_reingest(file_path)
+                if not needs_reingest:
+                    logger.debug(f"Skipping unchanged file: {file_path}")
+                    skipped_files += 1
+                    continue
+            else:
+                # Force ingest: delete existing records first
+                await self._delete_file_records(file_path)
+
             source_file = await self._process_file(file_path)
             if source_file is None:
                 continue
@@ -477,8 +579,8 @@ class VectorStoreTool:
         self.last_ingest_time = datetime.now()
 
         logger.info(
-            f"VectorStoreTool initialized: {len(files)} files, "
-            f"{total_chunks} chunks indexed"
+            f"VectorStoreTool initialized: {len(files)} files "
+            f"({skipped_files} skipped, up-to-date), {total_chunks} chunks indexed"
         )
 
     async def search(self, query: str) -> str:

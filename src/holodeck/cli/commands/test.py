@@ -91,6 +91,12 @@ class SpinnerThread(threading.Thread):
     default=None,
     help="LLM execution timeout in seconds",
 )
+@click.option(
+    "--force-ingest",
+    "-f",
+    is_flag=True,
+    help="Force re-ingestion of all vector store source files",
+)
 def test(
     agent_config: str,
     output: str | None,
@@ -98,6 +104,7 @@ def test(
     verbose: bool,
     quiet: bool,
     timeout: int | None,
+    force_ingest: bool,
 ) -> None:
     """Execute agent test cases with evaluation metrics.
 
@@ -111,7 +118,8 @@ def test(
 
     logger.info(
         f"Test command invoked: config={agent_config}, "
-        f"verbose={verbose}, quiet={quiet}, timeout={timeout}"
+        f"verbose={verbose}, quiet={quiet}, timeout={timeout}, "
+        f"force_ingest={force_ingest}"
     )
 
     start_time = time.time()
@@ -190,6 +198,7 @@ def test(
             execution_config=cli_config,
             progress_callback=progress_callback,
             on_test_start=on_test_start,
+            force_ingest=force_ingest,
         )
 
         # Run tests asynchronously

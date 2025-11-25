@@ -121,17 +121,17 @@
 
 ### Unit Tests for User Story 2
 
-- [ ] T042 [P] [US2] Unit test for embedding model parameter parsing from config in tests/unit/test_vectorstore_tool.py
-- [ ] T043 [P] [US2] Unit test for default embedding model selection based on LLM provider in tests/unit/test_vectorstore_tool.py
-- [ ] T044 [P] [US2] Unit test for custom embedding model initialization in tests/unit/test_vectorstore_tool.py
+- [x] T042 [P] [US2] Unit test for embedding model parameter parsing from config in tests/unit/test_vectorstore_tool.py
+- [x] T043 [P] [US2] Unit test for default embedding model selection based on LLM provider in tests/unit/test_vectorstore_tool.py
+- [x] T044 [P] [US2] Unit test for custom embedding model initialization in tests/unit/test_vectorstore_tool.py
 
 ### Implementation for User Story 2
 
-- [ ] T045 [P] [US2] Implement embedding model resolution logic in VectorStoreTool.**init** (custom model vs provider default) in src/holodeck/tools/vectorstore_tool.py (depends on T025)
-- [ ] T046 [US2] Implement TextEmbedding service initialization with configurable model in VectorStoreTool.**init** in src/holodeck/tools/vectorstore_tool.py (depends on T045)
-- [ ] T047 [US2] Add provider-specific default embedding model mapping (OpenAI → text-embedding-3-small, Azure → text-embedding-ada-002) in src/holodeck/tools/vectorstore_tool.py (depends on T046)
-- [ ] T048 [US2] Add validation for embedding model availability based on configured LLM provider in src/holodeck/config/validator.py (depends on T015)
-- [ ] T049 [US2] Update embedding dimension detection to match configured model in DocumentRecord creation in src/holodeck/tools/vectorstore_tool.py (depends on T031, T046)
+- [x] T045 [P] [US2] Implement embedding model resolution logic in VectorStoreTool.**init** (custom model vs provider default) in src/holodeck/tools/vectorstore_tool.py (depends on T025)
+- [x] T046 [US2] Implement TextEmbedding service initialization with configurable model in VectorStoreTool.**init** in src/holodeck/tools/vectorstore_tool.py (depends on T045)
+- [x] T047 [US2] Add provider-specific default embedding model mapping (OpenAI → text-embedding-3-small, Azure → text-embedding-ada-002) in src/holodeck/tools/vectorstore_tool.py (depends on T046)
+- [x] T048 [US2] Add validation for embedding model availability based on configured LLM provider in src/holodeck/config/validator.py (depends on T015)
+- [x] T049 [US2] Update embedding dimension detection to match configured model in DocumentRecord creation in src/holodeck/tools/vectorstore_tool.py (depends on T031, T046)
 
 ### Integration Tests for User Story 2
 
@@ -150,24 +150,24 @@
 
 ### Unit Tests for User Story 3
 
-- [ ] T052 [P] [US3] Unit test for file modification timestamp tracking in tests/unit/test_vectorstore_tool.py
-- [ ] T053 [P] [US3] Unit test for mtime comparison logic (needs re-ingestion vs up-to-date) in tests/unit/test_vectorstore_tool.py
-- [ ] T054 [P] [US3] Unit test for --force-ingest flag bypassing mtime checks in tests/unit/test_vectorstore_tool.py
-- [ ] T055 [P] [US3] Unit test for Redis connection fallback to in-memory on connection failure in tests/unit/test_vector_store.py
+- [x] T052 [P] [US3] Unit test for file modification timestamp tracking in tests/unit/test_vectorstore_tool.py
+- [x] T053 [P] [US3] Unit test for mtime comparison logic (needs re-ingestion vs up-to-date) in tests/unit/test_vectorstore_tool.py
+- [x] T054 [P] [US3] Unit test for --force-ingest flag bypassing mtime checks in tests/unit/test_vectorstore_tool.py
+- [x] T055 [P] [US3] Unit test for Redis connection fallback to in-memory on connection failure in tests/unit/test_vector_store.py
 
 ### Implementation for User Story 3
 
-- [ ] T056 [P] [US3] Implement file modification time tracking in VectorStoreTool.\_process_file (store mtime in DocumentRecord) in src/holodeck/tools/vectorstore_tool.py (depends on T028, T007)
-- [ ] T057 [US3] Implement VectorStoreTool.\_needs_reingest method to compare file mtime with stored DocumentRecord mtime in src/holodeck/tools/vectorstore_tool.py (depends on T056)
-- [ ] T058 [US3] Integrate mtime checking into VectorStoreTool.\_ingest_source to skip unchanged files in src/holodeck/tools/vectorstore_tool.py (depends on T057, T032)
-- [ ] T059 [US3] Implement force_ingest parameter support in VectorStoreTool.initialize to bypass mtime checks in src/holodeck/tools/vectorstore_tool.py (depends on T058)
-- [ ] T060 [US3] Implement VectorStore.delete_by_source method to remove old records when file is modified in src/holodeck/lib/vector_store.py (depends on T010, T058)
-- [ ] T061 [US3] Add Redis connection error handling with fallback to in-memory storage in VectorStore.**init** in src/holodeck/lib/vector_store.py (depends on T011, T012)
-- [ ] T062 [US3] Add --force-ingest flag to holodeck chat command in src/holodeck/cli/commands/chat.py
-- [ ] T063 [US3] Add --force-ingest flag to holodeck test command in src/holodeck/cli/commands/test.py
-- [ ] T064 [US3] Pass --force-ingest flag to VectorStoreTool.initialize in agent execution flow in src/holodeck/cli/commands/chat.py (depends on T062, T059)
-- [ ] T065 [US3] Pass --force-ingest flag to VectorStoreTool.initialize in test execution flow in src/holodeck/cli/commands/test.py (depends on T063, T059)
-- [ ] T066 [US3] Add logging for Redis connection success/failure and in-memory fallback in VectorStore.**init** in src/holodeck/lib/vector_store.py (depends on T061)
+- [x] T056 [P] [US3] Implement file modification time tracking in VectorStoreTool.\_process_file (store mtime in DocumentRecord) in src/holodeck/tools/vectorstore_tool.py (depends on T028, T007)
+- [x] T057 [US3] Implement VectorStoreTool.\_needs_reingest method to compare file mtime with stored DocumentRecord mtime in src/holodeck/tools/vectorstore_tool.py (depends on T056)
+- [x] T058 [US3] Integrate mtime checking into VectorStoreTool.\_ingest_source to skip unchanged files in src/holodeck/tools/vectorstore_tool.py (depends on T057, T032)
+- [x] T059 [US3] Implement force_ingest parameter support in VectorStoreTool.initialize to bypass mtime checks in src/holodeck/tools/vectorstore_tool.py (depends on T058)
+- [x] T060 [US3] Implement VectorStore.delete_by_source method to remove old records when file is modified in src/holodeck/lib/vector_store.py (depends on T010, T058)
+- [x] T061 [US3] Add Redis connection error handling with fallback to in-memory storage in VectorStore.**init** in src/holodeck/lib/vector_store.py (depends on T011, T012)
+- [x] T062 [US3] Add --force-ingest flag to holodeck chat command in src/holodeck/cli/commands/chat.py
+- [x] T063 [US3] Add --force-ingest flag to holodeck test command in src/holodeck/cli/commands/test.py
+- [x] T064 [US3] Pass --force-ingest flag to VectorStoreTool.initialize in agent execution flow in src/holodeck/cli/commands/chat.py (depends on T062, T059)
+- [x] T065 [US3] Pass --force-ingest flag to VectorStoreTool.initialize in test execution flow in src/holodeck/cli/commands/test.py (depends on T063, T059)
+- [x] T066 [US3] Add logging for Redis connection success/failure and in-memory fallback in VectorStore.**init** in src/holodeck/lib/vector_store.py (depends on T061)
 
 ### Integration Tests for User Story 3
 
