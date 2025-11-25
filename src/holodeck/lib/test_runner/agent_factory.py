@@ -633,17 +633,13 @@ class AgentFactory:
         if hasattr(settings, "top_p") and model_config.top_p is not None:
             settings.top_p = model_config.top_p
 
-        if (
-            hasattr(settings, "max_completion_tokens")
-            and model_config.max_tokens is not None
-        ):
-            settings.max_completion_tokens = model_config.max_tokens
-
-        # if (
-        #     hasattr(settings, "max_completion_tokens")
-        #     and model_config.max_tokens is not None
-        # ):
-        #     settings.max_completion_tokens = model_config.max_tokens
+        if model_config.max_tokens is not None:
+            # Prefer max_completion_tokens (newer OpenAI API) over max_tokens (legacy)
+            # Some newer models reject max_tokens parameter entirely
+            if hasattr(settings, "max_completion_tokens"):
+                settings.max_completion_tokens = model_config.max_tokens
+            elif hasattr(settings, "max_tokens"):
+                settings.max_tokens = model_config.max_tokens
 
         if hasattr(settings, "ai_model_id"):
             settings.ai_model_id = model_config.name

@@ -142,10 +142,10 @@ class VectorStoreTool:
         """
         # Handle database configuration (can be DatabaseConfig, string ref, or None)
         database = self.config.database
-        if isinstance(database, str):  # type: ignore[unreachable]
+        if isinstance(database, str):
             # Unresolved string reference - this shouldn't happen if merge_configs
             # was called, but fall back to in-memory with a warning
-            logger.warning(  # type: ignore[unreachable]
+            logger.warning(
                 f"Vectorstore tool '{self.config.name}' has unresolved database "
                 f"reference '{database}'. Falling back to in-memory storage."
             )

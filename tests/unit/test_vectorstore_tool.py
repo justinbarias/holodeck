@@ -1321,6 +1321,7 @@ class TestStoreChunks:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=False)
         mock_collection.ensure_collection_exists = AsyncMock()
         mock_collection.upsert = AsyncMock()
         tool._collection = mock_collection
@@ -1415,8 +1416,10 @@ class TestInitializeFullFlow:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=False)
         mock_collection.ensure_collection_exists = AsyncMock()
         mock_collection.upsert = AsyncMock()
+        mock_collection.get = AsyncMock(return_value=None)
 
         with patch(
             "holodeck.tools.vectorstore_tool.get_collection_class"
@@ -1461,8 +1464,10 @@ class TestInitializeFullFlow:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=False)
         mock_collection.ensure_collection_exists = AsyncMock()
         mock_collection.upsert = AsyncMock()
+        mock_collection.get = AsyncMock(return_value=None)
 
         with patch(
             "holodeck.tools.vectorstore_tool.get_collection_class"
@@ -1495,6 +1500,7 @@ class TestInitializeFullFlow:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=False)
         mock_collection.ensure_collection_exists = AsyncMock()
         mock_collection.upsert = AsyncMock()
 
@@ -1557,8 +1563,10 @@ class TestInitializeFullFlow:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=False)
         mock_collection.ensure_collection_exists = AsyncMock()
         mock_collection.upsert = AsyncMock()
+        mock_collection.get = AsyncMock(return_value=None)
 
         with patch(
             "holodeck.tools.vectorstore_tool.get_collection_class"
@@ -1945,7 +1953,8 @@ class TestFileModificationTimestampTracking:
         result = await tool._process_file(source_file)
 
         assert result is not None
-        assert result.mtime == expected_mtime
+        # Implementation rounds mtime to 6 decimal places (microseconds) for precision
+        assert result.mtime == round(expected_mtime, 6)
 
     @pytest.mark.asyncio
     async def test_stored_document_includes_mtime(self, tmp_path: Path) -> None:
@@ -1968,6 +1977,7 @@ class TestFileModificationTimestampTracking:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=False)
         mock_collection.ensure_collection_exists = AsyncMock()
         mock_collection.upsert = AsyncMock()
         tool._collection = mock_collection
@@ -2034,7 +2044,8 @@ class TestMtimeComparisonLogic:
         source_file = tmp_path / "test.md"
         source_file.write_text("# Test")
 
-        current_mtime = source_file.stat().st_mtime
+        # Round to 6 decimal places to match implementation precision
+        current_mtime = round(source_file.stat().st_mtime, 6)
 
         config = VectorstoreTool(
             name="test_vectorstore",
@@ -2046,9 +2057,9 @@ class TestMtimeComparisonLogic:
 
         tool = VectorStoreTool(config)
 
-        # Mock collection with same mtime
+        # Mock collection with same mtime (rounded to match implementation)
         mock_record = MagicMock()
-        mock_record.mtime = current_mtime  # Same as current
+        mock_record.mtime = current_mtime  # Same as current (rounded)
 
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
@@ -2152,6 +2163,7 @@ class TestForceIngestFlag:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=False)
         mock_collection.ensure_collection_exists = AsyncMock()
         mock_collection.upsert = AsyncMock()
 
@@ -2202,6 +2214,7 @@ class TestForceIngestFlag:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=False)
         mock_collection.ensure_collection_exists = AsyncMock()
         mock_collection.upsert = AsyncMock()
 
@@ -2261,6 +2274,7 @@ class TestForceIngestFlag:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=False)
         mock_collection.ensure_collection_exists = AsyncMock()
         mock_collection.upsert = AsyncMock()
 

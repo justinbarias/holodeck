@@ -273,8 +273,10 @@ class TestAgentFactoryKernelArguments:
         assert settings is not None
         assert settings.temperature == 0.55
         assert settings.top_p == 0.8
-        assert settings.max_tokens == 150
+        # Only max_completion_tokens is set (preferred over legacy max_tokens)
         assert settings.max_completion_tokens == 150
+        # max_tokens should NOT be set when max_completion_tokens is available
+        assert settings.max_tokens is None
         assert settings.ai_model_id == "gpt-4o"
         assert settings.response_format == {
             "type": "json_schema",
