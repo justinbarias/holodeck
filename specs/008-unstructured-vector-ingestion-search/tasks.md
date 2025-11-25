@@ -93,14 +93,14 @@
 
 **Purpose**: Integrate VectorStoreTool with AgentFactory so agents can use vectorstore tools during execution
 
-- [ ] T037a [US1] Add TextEmbedding service registration method to AgentFactory in src/holodeck/lib/test_runner/agent_factory.py (OpenAI/Azure text-embedding-3-small) following Semantic Kernel pattern (depends on T024)
-- [ ] T037b [US1] Create KernelFunction for VectorStoreTool.search using kernel.add_function() in AgentFactory (NOT decorator) in src/holodeck/lib/test_runner/agent_factory.py (depends on T033)
-- [ ] T037c [US1] Add \_register_vectorstore_tools method to AgentFactory to discover vectorstore tools from agent config, initialize them, and register search functions via kernel.add_function() in src/holodeck/lib/test_runner/agent_factory.py (depends on T037a, T037b)
-- [ ] T037d [US1] Update AgentFactory.\_create_kernel to call embedding service registration when vectorstore tools are configured in src/holodeck/lib/test_runner/agent_factory.py (depends on T037a)
-- [ ] T037e [US1] Update AgentFactory.\_create_agent to call \_register_vectorstore_tools before agent creation in src/holodeck/lib/test_runner/agent_factory.py (depends on T037c)
-- [ ] T037f [P] [US1] Unit test for AgentFactory embedding service registration in tests/unit/test_agent_factory.py
-- [ ] T037g [P] [US1] Unit test for VectorStoreTool kernel function registration via add_function in tests/unit/test_agent_factory.py
-- [ ] T037h [P] [US1] Unit test for AgentFactory vectorstore tool discovery and initialization in tests/unit/test_agent_factory.py
+- [x] T037a [US1] Add TextEmbedding service registration method to AgentFactory in src/holodeck/lib/test_runner/agent_factory.py (OpenAI/Azure text-embedding-3-small) following Semantic Kernel pattern (depends on T024)
+- [x] T037b [US1] Create KernelFunction for VectorStoreTool.search using kernel.add_function() in AgentFactory (NOT decorator) in src/holodeck/lib/test_runner/agent_factory.py (depends on T033)
+- [x] T037c [US1] Add \_register_vectorstore_tools method to AgentFactory to discover vectorstore tools from agent config, initialize them, and register search functions via kernel.add_function() in src/holodeck/lib/test_runner/agent_factory.py (depends on T037a, T037b)
+- [x] T037d [US1] Update AgentFactory.\_create_kernel to call embedding service registration when vectorstore tools are configured in src/holodeck/lib/test_runner/agent_factory.py (depends on T037a)
+- [x] T037e [US1] Update AgentFactory.\_create_agent to call \_register_vectorstore_tools before agent creation in src/holodeck/lib/test_runner/agent_factory.py (depends on T037c)
+- [x] T037f [P] [US1] Unit test for AgentFactory embedding service registration in tests/unit/test_agent_factory.py
+- [x] T037g [P] [US1] Unit test for VectorStoreTool kernel function registration via add_function in tests/unit/test_agent_factory.py
+- [x] T037h [P] [US1] Unit test for AgentFactory vectorstore tool discovery and initialization in tests/unit/test_agent_factory.py
 
 ### Integration Tests for User Story 1
 
