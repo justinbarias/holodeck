@@ -140,18 +140,29 @@ class VectorStoreTool:
         Creates a persistent collection instance that is reused for both
         storing and searching documents.
         """
-        if self.config.database:
-            self._provider = self.config.database.provider
+        # Handle database configuration (can be DatabaseConfig, string ref, or None)
+        database = self.config.database
+        if isinstance(database, str):  # type: ignore[unreachable]
+            # Unresolved string reference - this shouldn't happen if merge_configs
+            # was called, but fall back to in-memory with a warning
+            logger.warning(  # type: ignore[unreachable]
+                f"Vectorstore tool '{self.config.name}' has unresolved database "
+                f"reference '{database}'. Falling back to in-memory storage."
+            )
+            self._provider = "in-memory"
             connection_kwargs: dict[str, Any] = {}
-            if self.config.database.connection_string:
-                connection_kwargs["connection_string"] = (
-                    self.config.database.connection_string
-                )
+        elif database is not None:
+            # DatabaseConfig object - use its settings
+            self._provider = database.provider
+            connection_kwargs = {}
+            if database.connection_string:
+                connection_kwargs["connection_string"] = database.connection_string
             # Add extra fields from DatabaseConfig (extra="allow")
-            if hasattr(self.config.database, "model_extra"):
-                extra_fields = self.config.database.model_extra or {}
+            if hasattr(database, "model_extra"):
+                extra_fields = database.model_extra or {}
                 connection_kwargs.update(extra_fields)
         else:
+            # None - use in-memory
             self._provider = "in-memory"
             connection_kwargs = {}
 
@@ -275,7 +286,9 @@ class VectorStoreTool:
             stat = file_path.stat()
             source_file = SourceFile(
                 path=file_path,
-                mtime=stat.st_mtime,
+                # Round mtime to 6 decimal places (microsecond precision) to avoid
+                # float precision loss when stored/retrieved from vector databases
+                mtime=round(stat.st_mtime, 6),
                 size_bytes=stat.st_size,
                 file_type=file_path.suffix.lower(),
             )
@@ -423,7 +436,8 @@ class VectorStoreTool:
 
         # Batch upsert using persistent collection
         async with self._collection as collection:
-            await collection.ensure_collection_exists()
+            if not await collection.collection_exists():
+                await collection.ensure_collection_exists()
             await collection.upsert(records)
 
         logger.debug(f"Stored {len(records)} chunks from {source_file.path}")
@@ -445,7 +459,8 @@ class VectorStoreTool:
         if self._collection is None:
             return True  # No collection, must ingest
 
-        current_mtime = file_path.stat().st_mtime
+        # Round to 6 decimal places to match stored precision
+        current_mtime = round(file_path.stat().st_mtime, 6)
         source_path_str = str(file_path)
 
         # Query for existing record by ID pattern
@@ -459,7 +474,8 @@ class VectorStoreTool:
                     return True  # Not in store, must ingest
 
                 stored_mtime: float = float(record.mtime)
-                return bool(current_mtime > stored_mtime)
+                should_reingest = current_mtime > stored_mtime
+                return should_reingest
 
             except Exception as e:
                 logger.debug(f"Could not retrieve record for {file_path}: {e}")
