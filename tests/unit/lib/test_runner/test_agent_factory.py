@@ -13,6 +13,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from semantic_kernel.functions import KernelArguments
 
 from holodeck.lib.test_runner.agent_factory import (
     AgentExecutionResult,
@@ -201,6 +202,139 @@ class TestAgentFactoryInitialization:
                 AgentFactory(agent_config)
 
             assert "Failed to initialize agent factory" in str(exc_info.value)
+
+
+class TestAgentFactoryKernelArguments:
+    """Tests for KernelArguments construction and reuse."""
+
+    @staticmethod
+    def _build_factory_with_service(agent_config: Agent) -> AgentFactory:
+        """Create a factory instance seeded with a fake kernel service."""
+
+        class FakeSettings:
+            def __init__(self) -> None:
+                self.temperature = None
+                self.top_p = None
+                self.max_tokens = None
+                self.max_completion_tokens = None
+                self.ai_model_id = None
+                self.response_format = None
+                self.service_id = "fake-service"
+
+        class FakeService:
+            service_id = "fake-service"
+
+            @staticmethod
+            def get_prompt_execution_settings_class() -> type[FakeSettings]:
+                return FakeSettings
+
+        factory = AgentFactory.__new__(AgentFactory)
+        factory.agent_config = agent_config
+        factory.kernel_arguments = None
+        factory.kernel = mock.Mock()
+        fake_service = FakeService()
+        factory.kernel.services = {"fake": fake_service}
+        factory._llm_service = fake_service
+
+        return factory
+
+    def test_kernel_arguments_apply_model_settings(self) -> None:
+        """KernelArguments should include configured execution settings."""
+
+        response_schema = {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"],
+        }
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+                temperature=0.55,
+                top_p=0.8,
+                max_tokens=150,
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            response_format=response_schema,
+        )
+
+        factory = self._build_factory_with_service(agent_config)
+
+        kernel_arguments = factory._build_kernel_arguments()
+
+        assert isinstance(kernel_arguments, KernelArguments)
+        settings_map = kernel_arguments.execution_settings
+        assert settings_map is not None
+        settings = settings_map.get("fake-service")
+        assert settings is not None
+        assert settings.temperature == 0.55
+        assert settings.top_p == 0.8
+        assert settings.max_tokens == 150
+        assert settings.max_completion_tokens == 150
+        assert settings.ai_model_id == "gpt-4o"
+        assert settings.response_format == {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "test-agent",
+                "schema": response_schema,
+                "strict": True,
+            },
+        }
+
+    @pytest.mark.asyncio
+    async def test_invoke_agent_impl_reuses_kernel_arguments(self) -> None:
+        """Invocation should use the configured KernelArguments instance."""
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        factory = self._build_factory_with_service(agent_config)
+        factory.chat_history = mock.MagicMock()
+        factory.chat_history.add_assistant_message = mock.MagicMock()
+        factory.chat_history.add_user_message = mock.MagicMock()
+        factory.chat_history.messages = []
+
+        class FakeSettings:
+            def __init__(self) -> None:
+                self.service_id = "fake-service"
+
+        kernel_arguments = KernelArguments(settings=FakeSettings())
+        factory.kernel_arguments = kernel_arguments
+        mock_response = mock.Mock()
+        mock_response.content = "response"
+        mock_response.tool_calls = None
+        mock_response.metadata = {}
+
+        async def fake_invoke(*, thread: Any, arguments: Any) -> Any:
+            assert thread is mock_thread
+            assert arguments is kernel_arguments
+            yield mock_response
+
+        mock_agent = mock.MagicMock()
+        mock_agent.invoke = fake_invoke
+        factory.agent = mock_agent
+
+        mock_thread = mock.Mock()
+        with mock.patch(
+            "holodeck.lib.test_runner.agent_factory.ChatHistoryAgentThread",
+            return_value=mock_thread,
+        ):
+            result = await factory._invoke_agent_impl()
+
+        assert result.chat_history is factory.chat_history
+        assert factory.kernel_arguments is kernel_arguments
 
 
 class TestAgentFactoryInvocation:
