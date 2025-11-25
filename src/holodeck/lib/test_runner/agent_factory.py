@@ -550,12 +550,12 @@ class AgentFactory:
                 # Extract response content
                 response_text = self._extract_response_content(response)
 
-                # Extract tool calls
-                tool_calls = self._extract_tool_calls(response)
-
                 # Extract token usage
                 token_usage = self._extract_token_usage(response)
                 break  # Only process first response
+
+            # Extract tool calls from thread's chat history (includes internal calls)
+            tool_calls = await self._extract_tool_calls_from_thread(thread)
 
             # Add agent's response to chat history
             if response_text:
@@ -588,42 +588,74 @@ class AgentFactory:
             logger.warning(f"Failed to extract response content: {e}")
             return ""
 
-    def _extract_tool_calls(self, response: Any) -> list[dict[str, Any]]:
-        """Extract tool calls from agent response.
+    async def _extract_tool_calls_from_thread(
+        self, thread: ChatHistoryAgentThread
+    ) -> list[dict[str, Any]]:
+        """Extract tool calls from ChatHistoryAgentThread after agent invocation.
+
+        Scans the thread's message history for FunctionCallContent items to track
+        which tools were invoked during agent execution.
 
         Args:
-            response: Response object from agent invocation
+            thread: ChatHistoryAgentThread containing the conversation history
+                after agent invocation.
 
         Returns:
-            List of tool call dictionaries with 'name' and 'arguments' keys
+            List of tool call dictionaries with 'name' and 'arguments' keys.
         """
+        from semantic_kernel.contents import FunctionCallContent
+
         tool_calls: list[dict[str, Any]] = []
+        seen_call_ids: set[str] = set()  # Avoid duplicates
 
         try:
-            # Try to extract from direct tool_calls attribute
-            if hasattr(response, "tool_calls") and response.tool_calls:
-                for tool_call in response.tool_calls:
-                    tool_calls.append(
-                        {
-                            "name": getattr(tool_call, "name", None),
-                            "arguments": getattr(tool_call, "arguments", {}),
-                        }
-                    )
+            # Iterate through thread messages (async generator)
+            async for message in thread.get_messages():
+                if hasattr(message, "items") and message.items:
+                    for item in message.items:
+                        if isinstance(item, FunctionCallContent):
+                            call_id = getattr(item, "id", None) or getattr(
+                                item, "call_id", ""
+                            )
+                            if call_id and call_id in seen_call_ids:
+                                continue
+                            if call_id:
+                                seen_call_ids.add(call_id)
 
-            # Try to extract from messages
-            if hasattr(response, "messages") and response.messages:
-                for message in response.messages:
-                    if hasattr(message, "tool_calls") and message.tool_calls:
-                        for tool_call in message.tool_calls:
+                            # Build full function name from plugin_name + function_name
+                            plugin_name = getattr(item, "plugin_name", "") or ""
+                            function_name = getattr(
+                                item, "function_name", ""
+                            ) or getattr(item, "name", "")
+                            full_name = (
+                                f"{plugin_name}-{function_name}"
+                                if plugin_name
+                                else function_name
+                            )
+
+                            # Parse arguments (can be str, Mapping, or None)
+                            raw_args = getattr(item, "arguments", None)
+                            if isinstance(raw_args, str):
+                                import json
+
+                                try:
+                                    arguments = json.loads(raw_args)
+                                except json.JSONDecodeError:
+                                    arguments = {"raw": raw_args}
+                            elif isinstance(raw_args, dict):
+                                arguments = raw_args
+                            else:
+                                arguments = dict(raw_args) if raw_args else {}
+
                             tool_calls.append(
                                 {
-                                    "name": getattr(tool_call, "name", None),
-                                    "arguments": getattr(tool_call, "arguments", {}),
+                                    "name": full_name,
+                                    "arguments": arguments,
                                 }
                             )
 
         except Exception as e:
-            logger.warning(f"Failed to extract tool calls: {e}")
+            logger.warning(f"Failed to extract tool calls from thread: {e}")
 
         return tool_calls
 
