@@ -154,6 +154,16 @@ docker run -d \
   redis/redis-stack:latest
 ```
 
+**Persistence flags explained:**
+
+| Flag | Description | Use Case |
+|------|-------------|----------|
+| `--save 60 1` | Save to disk if at least 1 key changed in 60 seconds | Basic durability |
+| `--appendonly yes` | Enable append-only file (AOF) for write logging | Maximum durability |
+| `--save ""` | Disable RDB snapshots (use with AOF) | AOF-only persistence |
+
+> **Production Tip**: For production deployments, use both `--save` and `--appendonly yes` for maximum data durability. The AOF file logs every write operation, while RDB provides point-in-time snapshots.
+
 ---
 
 ## Configuring Vector Stores in HoloDeck
@@ -243,8 +253,8 @@ tools:
 | Format | Example |
 |--------|---------|
 | Basic | `redis://localhost:6379` |
-| With password | `redis://:password@localhost:6379` |
-| With username | `redis://user:password@localhost:6379` |
+| With password | `redis://:${REDIS_PASSWORD}@localhost:6379` |
+| With username | `redis://${REDIS_USER}:${REDIS_PASSWORD}@localhost:6379` |
 | With database | `redis://localhost:6379/0` |
 | TLS/SSL | `rediss://localhost:6379` |
 
@@ -254,21 +264,23 @@ tools:
 redis[s]://[[username:]password@]host[:port][/database]
 ```
 
-**Examples:**
+**Examples (using environment variables for security):**
 
 ```yaml
 # Local development
 connection_string: redis://localhost:6379
 
-# With authentication
-connection_string: redis://:mysecretpassword@localhost:6379
+# With authentication (use environment variables!)
+connection_string: redis://:${REDIS_PASSWORD}@localhost:6379
 
 # Remote server with TLS
-connection_string: rediss://user:password@redis.example.com:6380
+connection_string: rediss://${REDIS_USER}:${REDIS_PASSWORD}@${REDIS_HOST}:6380
 
 # Specific database (0-15)
 connection_string: redis://localhost:6379/1
 ```
+
+> **Security**: Always use environment variables (`${VAR_NAME}`) for passwords and sensitive connection details. Never commit plaintext passwords to version control.
 
 ---
 
@@ -475,6 +487,8 @@ docker rm -f redis-stack
 
 ## Next Steps
 
-- See [Tools Reference](tools.md) for vectorstore tool options
+- See [Tools Reference](tools.md) for vectorstore tool options (chunk size, embedding models, etc.)
 - See [Agent Configuration](agent-configuration.md) for complete agent setup
-- See [Evaluations Guide](evaluations.md) for testing your agent
+- See [LLM Providers Guide](llm-providers.md) for configuring the LLM that powers your agent
+- See [Evaluations Guide](evaluations.md) for testing your agent's search quality
+- See [Global Configuration](global-config.md) for sharing vectorstore configs across agents

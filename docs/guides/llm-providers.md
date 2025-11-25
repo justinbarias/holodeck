@@ -16,6 +16,7 @@ HoloDeck supports multiple LLM providers, allowing you to choose the best model 
 | `openai` | OpenAI API (GPT-4o, GPT-4o-mini, etc.) | Yes |
 | `azure_openai` | Azure OpenAI Service | Yes + Endpoint |
 | `anthropic` | Anthropic Claude models | Yes |
+| `ollama` | Local models via Ollama | No (Endpoint required) |
 
 ---
 
@@ -266,15 +267,42 @@ Find your endpoint in:
 1. Azure Portal > Your OpenAI Resource > Keys and Endpoint
 2. Azure OpenAI Studio > Deployments > Your Deployment
 
-### Model Names in Azure
+### Understanding Azure Deployment Names
 
-In Azure OpenAI, the `name` field refers to your **deployment name**, not the base model:
+> **Important**: In Azure OpenAI, the `name` field refers to your **deployment name**, not the base model name. This is different from OpenAI's API.
+
+When you deploy a model in Azure OpenAI Studio, you create a deployment with a custom name:
+
+1. **Base Model**: The underlying model (e.g., `gpt-4o`, `gpt-4o-mini`)
+2. **Deployment Name**: Your custom identifier (e.g., `my-gpt4o`, `prod-gpt4`)
+
+The `name` field in HoloDeck must match your **deployment name**:
 
 ```yaml
+# If your Azure deployment is named "my-gpt4o-production"
+# backed by the gpt-4o base model:
+
 model:
   provider: azure_openai
-  name: my-gpt4o-deployment  # Your deployment name in Azure
+  name: my-gpt4o-production  # Must match deployment name exactly
+  endpoint: https://my-resource.openai.azure.com/
 ```
+
+**Common Mistake:**
+
+```yaml
+# WRONG - Using base model name
+model:
+  provider: azure_openai
+  name: gpt-4o  # This won't work unless your deployment is literally named "gpt-4o"
+
+# CORRECT - Using your deployment name
+model:
+  provider: azure_openai
+  name: my-gpt4o-deployment  # Your actual deployment name
+```
+
+> **Tip for OpenAI Users**: If you're transitioning from OpenAI to Azure, remember that Azure adds this extra layer of indirection. Your deployment name can be anything, but it must be specified exactly in the configuration.
 
 ### Available Models
 
@@ -419,6 +447,175 @@ instructions:
 
 ---
 
+## Ollama
+
+Ollama enables running open-source LLMs locally on your machine. This is ideal for privacy-sensitive applications, offline deployments, and avoiding API costs.
+
+### Benefits of Ollama
+
+- **Privacy**: Data never leaves your machine
+- **No API Costs**: Run unlimited queries without usage fees
+- **Offline Support**: Works without internet connection
+- **Open-Source Models**: Access to Llama, Mistral, CodeLlama, and more
+
+### Prerequisites
+
+1. Install Ollama from [ollama.com](https://ollama.com)
+
+   **macOS/Linux:**
+   ```bash
+   curl -fsSL https://ollama.com/install.sh | sh
+   ```
+
+   **Windows:**
+   Download from [ollama.com/download](https://ollama.com/download)
+
+2. Pull a model:
+   ```bash
+   ollama pull llama3.2
+   ```
+
+3. Verify Ollama is running:
+   ```bash
+   ollama list
+   ```
+
+### Configuration
+
+Ollama requires an `endpoint` pointing to your local Ollama server:
+
+**Global Configuration (Recommended):**
+
+```yaml
+# config.yaml
+providers:
+  ollama:
+    provider: ollama
+    name: llama3.2
+    endpoint: http://localhost:11434
+    temperature: 0.7
+    max_tokens: 2000
+```
+
+**Agent Configuration:**
+
+```yaml
+# agent.yaml
+name: local-agent
+
+model:
+  provider: ollama
+  name: llama3.2
+  endpoint: http://localhost:11434
+  temperature: 0.5
+
+instructions:
+  inline: "You are a helpful local assistant."
+```
+
+### Environment Variables
+
+```bash
+# .env (optional - for custom endpoint)
+OLLAMA_ENDPOINT=http://localhost:11434
+```
+
+### Available Models
+
+Pull models with `ollama pull <model-name>`:
+
+| Model | Command | Description | Size |
+|-------|---------|-------------|------|
+| Llama 3.2 | `ollama pull llama3.2` | Meta's latest, general purpose | 2GB |
+| Llama 3.2 (3B) | `ollama pull llama3.2:3b` | Larger Llama variant | 5GB |
+| Mistral | `ollama pull mistral` | Fast and capable | 4GB |
+| CodeLlama | `ollama pull codellama` | Optimized for code | 4GB |
+| Phi-3 | `ollama pull phi3` | Microsoft's compact model | 2GB |
+| Gemma 2 | `ollama pull gemma2` | Google's open model | 5GB |
+
+> **Tip**: Run `ollama list` to see your installed models.
+
+### Running Ollama as a Service
+
+For production use, run Ollama as a background service:
+
+**Start Ollama server:**
+```bash
+ollama serve
+```
+
+**Or with Docker:**
+```bash
+docker run -d \
+  --name ollama \
+  -p 11434:11434 \
+  -v ollama-data:/root/.ollama \
+  ollama/ollama
+```
+
+### Complete Example
+
+```yaml
+# config.yaml
+providers:
+  ollama:
+    provider: ollama
+    name: llama3.2
+    endpoint: ${OLLAMA_ENDPOINT}
+    temperature: 0.7
+
+  ollama-code:
+    provider: ollama
+    name: codellama
+    endpoint: ${OLLAMA_ENDPOINT}
+    temperature: 0.2
+```
+
+```yaml
+# agent.yaml
+name: local-assistant
+description: Privacy-focused local assistant
+
+model:
+  provider: ollama
+  name: llama3.2
+  temperature: 0.5
+  max_tokens: 4000
+
+instructions:
+  inline: |
+    You are a helpful assistant running locally.
+    All data stays on this machine for privacy.
+```
+
+### Troubleshooting Ollama
+
+**Error:** `endpoint is required for ollama provider`
+
+**Solution:** Always include the endpoint:
+```yaml
+model:
+  provider: ollama
+  name: llama3.2
+  endpoint: http://localhost:11434
+```
+
+**Error:** `Connection refused`
+
+**Solutions:**
+1. Verify Ollama is running: `ollama list`
+2. Start the server: `ollama serve`
+3. Check the endpoint URL matches your setup
+
+**Error:** `Model not found`
+
+**Solution:** Pull the model first:
+```bash
+ollama pull llama3.2
+```
+
+---
+
 ## Multi-Provider Setup
 
 Configure multiple providers to use different models for different purposes:
@@ -452,6 +649,12 @@ providers:
     provider: anthropic
     name: claude-sonnet-4-20250514
     api_key: ${ANTHROPIC_API_KEY}
+
+  # Local provider (no API costs, privacy-focused)
+  ollama:
+    provider: ollama
+    name: llama3.2
+    endpoint: ${OLLAMA_ENDPOINT}
 ```
 
 Use different providers in your agent:
@@ -501,6 +704,7 @@ OPENAI_API_KEY=sk-...
 AZURE_OPENAI_ENDPOINT=https://...
 AZURE_OPENAI_API_KEY=...
 ANTHROPIC_API_KEY=sk-ant-...
+OLLAMA_ENDPOINT=http://localhost:11434
 ```
 
 ### Create Example Files
@@ -513,6 +717,7 @@ OPENAI_API_KEY=your-openai-api-key-here
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_API_KEY=your-azure-api-key-here
 ANTHROPIC_API_KEY=your-anthropic-api-key-here
+OLLAMA_ENDPOINT=http://localhost:11434
 ```
 
 ---
@@ -585,12 +790,14 @@ model:
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI | Resource endpoint URL |
 | `AZURE_OPENAI_API_KEY` | Azure OpenAI | API authentication key |
 | `ANTHROPIC_API_KEY` | Anthropic | API authentication key |
+| `OLLAMA_ENDPOINT` | Ollama | Server endpoint (default: `http://localhost:11434`) |
 
 ---
 
 ## Next Steps
 
 - See [Agent Configuration](agent-configuration.md) for complete agent setup
-- See [Global Configuration](global-config.md) for shared settings
-- See [Evaluations Guide](evaluations.md) for testing agent quality
+- See [Global Configuration](global-config.md) for shared provider settings and credentials
+- See [Evaluations Guide](evaluations.md) for configuring evaluation models (consider using faster models like `gpt-4o-mini` for cost-effective evaluations)
 - See [Tools Guide](tools.md) for extending agent capabilities
+- See [Vector Stores Guide](vector-stores.md) for semantic search configuration
