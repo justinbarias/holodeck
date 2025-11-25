@@ -262,25 +262,30 @@ class TestAgentFactoryInvocation:
         ):
             factory = AgentFactory(agent_config)
 
-            # Mock response with tool calls
-            mock_tool_call = mock.Mock()
-            mock_tool_call.name = "search"
-            mock_tool_call.arguments = {"query": "Python testing"}
-
             mock_response = mock.Mock()
             mock_response.content = "Searching..."
-            mock_response.tool_calls = [mock_tool_call]
 
             async def mock_invoke(*_args: Any, **_kwargs: Any) -> Any:
                 yield mock_response
 
             factory.agent.invoke = mock_invoke  # type: ignore
 
-            result = await factory.invoke("Search for Python testing")
+            # Mock tool call extraction from thread (where actual extraction happens)
+            expected_tool_calls = [
+                {"name": "search", "arguments": {"query": "Python testing"}}
+            ]
 
-            assert len(result.tool_calls) == 1
-            assert result.tool_calls[0]["name"] == "search"
-            assert result.tool_calls[0]["arguments"] == {"query": "Python testing"}
+            async def mock_extract(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+                return expected_tool_calls
+
+            with mock.patch.object(
+                factory, "_extract_tool_calls_from_thread", side_effect=mock_extract
+            ):
+                result = await factory.invoke("Search for Python testing")
+
+                assert len(result.tool_calls) == 1
+                assert result.tool_calls[0]["name"] == "search"
+                assert result.tool_calls[0]["arguments"] == {"query": "Python testing"}
 
     @pytest.mark.asyncio
     async def test_invoke_with_multiple_tool_calls(self) -> None:
@@ -302,36 +307,33 @@ class TestAgentFactoryInvocation:
         ):
             factory = AgentFactory(agent_config)
 
-            # Mock response with multiple tool calls
-            mock_tool_1 = mock.Mock()
-            mock_tool_1.name = "search"
-            mock_tool_1.arguments = {"q": "test"}
-
-            mock_tool_2 = mock.Mock()
-            mock_tool_2.name = "analyze"
-            mock_tool_2.arguments = {"data": [1, 2, 3]}
-
-            mock_tool_3 = mock.Mock()
-            mock_tool_3.name = "format"
-            mock_tool_3.arguments = {"type": "json"}
-
-            mock_tools = [mock_tool_1, mock_tool_2, mock_tool_3]
-
             mock_response = mock.Mock()
             mock_response.content = "Processing..."
-            mock_response.tool_calls = mock_tools
 
             async def mock_invoke(*_args: Any, **_kwargs: Any) -> Any:
                 yield mock_response
 
             factory.agent.invoke = mock_invoke  # type: ignore
 
-            result = await factory.invoke("Process this data")
+            # Mock tool call extraction from thread (where actual extraction happens)
+            expected_tool_calls = [
+                {"name": "search", "arguments": {"q": "test"}},
+                {"name": "analyze", "arguments": {"data": [1, 2, 3]}},
+                {"name": "format", "arguments": {"type": "json"}},
+            ]
 
-            assert len(result.tool_calls) == 3
-            assert result.tool_calls[0]["name"] == "search"
-            assert result.tool_calls[1]["name"] == "analyze"
-            assert result.tool_calls[2]["name"] == "format"
+            async def mock_extract(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+                return expected_tool_calls
+
+            with mock.patch.object(
+                factory, "_extract_tool_calls_from_thread", side_effect=mock_extract
+            ):
+                result = await factory.invoke("Process this data")
+
+                assert len(result.tool_calls) == 3
+                assert result.tool_calls[0]["name"] == "search"
+                assert result.tool_calls[1]["name"] == "analyze"
+                assert result.tool_calls[2]["name"] == "format"
 
     @pytest.mark.asyncio
     async def test_invoke_with_empty_response(self) -> None:
@@ -674,27 +676,35 @@ class TestAgentFactoryIntegration:
             assert factory.agent_config.tools is not None
             assert len(factory.agent_config.tools) == 1
 
-            # Mock response with tool call
-            mock_tool = mock.Mock()
-            mock_tool.name = "search"
-            mock_tool.arguments = {"query": "integration testing"}
-
+            # Mock response
             mock_response = mock.Mock()
             mock_response.content = "Searching for information..."
-            mock_response.tool_calls = [mock_tool]
 
             async def mock_invoke(*_args: Any, **_kwargs: Any) -> Any:
                 yield mock_response
 
             factory.agent.invoke = mock_invoke  # type: ignore
 
-            result = await factory.invoke("How can you help me?")
+            # Mock tool call extraction from thread (where actual extraction happens)
+            expected_tool_calls = [
+                {"name": "search", "arguments": {"query": "integration testing"}}
+            ]
 
-            assert isinstance(result, AgentExecutionResult)
-            assert len(result.tool_calls) == 1
-            assert result.tool_calls[0]["name"] == "search"
-            assert result.tool_calls[0]["arguments"] == {"query": "integration testing"}
-            assert result.chat_history is not None
+            async def mock_extract(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+                return expected_tool_calls
+
+            with mock.patch.object(
+                factory, "_extract_tool_calls_from_thread", side_effect=mock_extract
+            ):
+                result = await factory.invoke("How can you help me?")
+
+                assert isinstance(result, AgentExecutionResult)
+                assert len(result.tool_calls) == 1
+                assert result.tool_calls[0]["name"] == "search"
+                assert result.tool_calls[0]["arguments"] == {
+                    "query": "integration testing"
+                }
+                assert result.chat_history is not None
 
     @pytest.mark.asyncio
     async def test_workflow_with_retry_and_recovery(self) -> None:
