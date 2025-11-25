@@ -396,3 +396,882 @@ class TestExecutionConfigResolution:
 
         assert resolved.file_timeout == 50  # YAML (env invalid, skipped)
         assert resolved.llm_timeout == 75  # env (valid)
+
+
+class TestParseYaml:
+    """Tests for parse_yaml method."""
+
+    def test_parse_yaml_returns_dict(self, temp_dir: Path) -> None:
+        """Test parse_yaml returns dictionary from valid YAML file."""
+        yaml_file = temp_dir / "test.yaml"
+        yaml_file.write_text("name: test\nvalue: 123")
+
+        loader = ConfigLoader()
+        result = loader.parse_yaml(str(yaml_file))
+
+        assert result == {"name": "test", "value": 123}
+
+    def test_parse_yaml_empty_file_returns_empty_dict(self, temp_dir: Path) -> None:
+        """Test parse_yaml returns empty dict for empty file."""
+        yaml_file = temp_dir / "empty.yaml"
+        yaml_file.write_text("")
+
+        loader = ConfigLoader()
+        result = loader.parse_yaml(str(yaml_file))
+
+        assert result == {}
+
+    def test_parse_yaml_file_not_found(self, temp_dir: Path) -> None:
+        """Test parse_yaml raises FileNotFoundError for missing file."""
+        import pytest
+
+        from holodeck.lib.errors import FileNotFoundError
+
+        loader = ConfigLoader()
+        with pytest.raises(FileNotFoundError) as exc_info:
+            loader.parse_yaml(str(temp_dir / "nonexistent.yaml"))
+
+        assert "not found" in str(exc_info.value).lower()
+
+    def test_parse_yaml_invalid_yaml(self, temp_dir: Path) -> None:
+        """Test parse_yaml raises ConfigError for invalid YAML."""
+        import pytest
+
+        from holodeck.lib.errors import ConfigError
+
+        yaml_file = temp_dir / "invalid.yaml"
+        yaml_file.write_text("invalid: yaml: content: [")
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.parse_yaml(str(yaml_file))
+
+        assert "yaml_parse" in str(exc_info.value)
+
+
+class TestLoadAgentYaml:
+    """Tests for load_agent_yaml method."""
+
+    def test_load_agent_yaml_basic(self, temp_dir: Path) -> None:
+        """Test loading a valid agent.yaml file."""
+        agent_yaml = temp_dir / "agent.yaml"
+        agent_content = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "You are a helpful assistant."},
+        }
+        agent_yaml.write_text(yaml.dump(agent_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+
+        assert agent.name == "test-agent"
+        assert agent.model.provider.value == "openai"
+        assert agent.instructions.inline == "You are a helpful assistant."
+
+    def test_load_agent_yaml_with_env_substitution(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test that environment variables are substituted in agent.yaml."""
+        monkeypatch.setenv("TEST_API_KEY", "sk-test-12345")
+
+        agent_yaml = temp_dir / "agent.yaml"
+        agent_content = {
+            "name": "test-agent",
+            "model": {
+                "provider": "openai",
+                "name": "gpt-4o",
+                "api_key": "${TEST_API_KEY}",
+            },
+            "instructions": {"inline": "Test instructions."},
+        }
+        agent_yaml.write_text(yaml.dump(agent_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+
+        assert agent.model.api_key == "sk-test-12345"
+
+    def test_load_agent_yaml_with_global_config_merge(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test that global config is merged into agent config."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+
+        # Create global config with API key (name is required)
+        global_config = {
+            "providers": {
+                "openai": {
+                    "provider": "openai",
+                    "name": "gpt-4o",
+                    "api_key": "global-api-key",
+                }
+            }
+        }
+        (holodeck_dir / "config.yml").write_text(yaml.dump(global_config))
+
+        # Create agent yaml without API key
+        agent_yaml = temp_dir / "agent.yaml"
+        agent_content = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "Test instructions."},
+        }
+        agent_yaml.write_text(yaml.dump(agent_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+
+        # API key should be merged from global config
+        assert agent.model.api_key == "global-api-key"
+
+    def test_load_agent_yaml_validation_error(self, temp_dir: Path) -> None:
+        """Test that invalid agent config raises ConfigError."""
+        import pytest
+
+        from holodeck.lib.errors import ConfigError
+
+        agent_yaml = temp_dir / "agent.yaml"
+        # Missing required 'model' field
+        agent_content = {
+            "name": "test-agent",
+            "instructions": {"inline": "Test"},
+        }
+        agent_yaml.write_text(yaml.dump(agent_content))
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.load_agent_yaml(str(agent_yaml))
+
+        assert "agent_validation" in str(exc_info.value)
+
+
+class TestLoadConfigFileEdgeCases:
+    """Tests for _load_config_file edge cases."""
+
+    def test_config_file_empty_content_returns_none(self, temp_dir: Path) -> None:
+        """Test that empty config file returns None."""
+        config_file = temp_dir / "config.yml"
+        config_file.write_text("")
+
+        loader = ConfigLoader()
+        result = loader.load_project_config(str(temp_dir))
+
+        assert result is None
+
+    def test_config_file_only_whitespace_returns_none(self, temp_dir: Path) -> None:
+        """Test that config file with only whitespace returns None."""
+        config_file = temp_dir / "config.yml"
+        config_file.write_text("   \n\n  \n")
+
+        loader = ConfigLoader()
+        result = loader.load_project_config(str(temp_dir))
+
+        assert result is None
+
+    def test_config_file_yaml_parse_error(self, temp_dir: Path) -> None:
+        """Test that YAML parse error raises ConfigError."""
+        import pytest
+
+        from holodeck.lib.errors import ConfigError
+
+        config_file = temp_dir / "config.yml"
+        config_file.write_text("invalid: yaml: [broken")
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.load_project_config(str(temp_dir))
+
+        assert "project_config_parse" in str(exc_info.value)
+
+    def test_config_file_validation_error(self, temp_dir: Path) -> None:
+        """Test that invalid config content raises ConfigError."""
+        import pytest
+
+        from holodeck.lib.errors import ConfigError
+
+        config_file = temp_dir / "config.yml"
+        # Invalid provider structure
+        config_file.write_text(
+            yaml.dump(
+                {
+                    "providers": {
+                        "openai": {
+                            "provider": "invalid_provider_type",
+                            "name": "test",
+                        }
+                    }
+                }
+            )
+        )
+
+        loader = ConfigLoader()
+        with pytest.raises(ConfigError) as exc_info:
+            loader.load_project_config(str(temp_dir))
+
+        assert "validation" in str(exc_info.value)
+
+
+class TestMergeConfigsWithProviders:
+    """Tests for merge_configs with LLM provider configurations."""
+
+    def test_merge_configs_empty_agent_config(self) -> None:
+        """Test merge_configs with empty agent config returns empty dict."""
+        loader = ConfigLoader()
+        result = loader.merge_configs({}, None)
+
+        assert result == {}
+
+    def test_merge_configs_no_global_config(self) -> None:
+        """Test merge_configs without global config returns agent config as-is."""
+        agent_config = {"name": "test", "model": {"provider": "openai"}}
+
+        loader = ConfigLoader()
+        result = loader.merge_configs(agent_config, None)
+
+        assert result == agent_config
+
+    def test_merge_configs_provider_api_key(self, temp_dir: Path) -> None:
+        """Test that provider API key is merged from global config."""
+        from holodeck.models.config import GlobalConfig
+
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+        }
+
+        global_config = GlobalConfig(
+            providers={
+                "my_openai": {
+                    "provider": "openai",
+                    "api_key": "sk-global-key",
+                    "name": "gpt-4o-mini",
+                }
+            }
+        )
+
+        loader = ConfigLoader()
+        result = loader.merge_configs(agent_config, global_config)
+
+        # API key should be merged (agent doesn't have it)
+        assert result["model"]["api_key"] == "sk-global-key"
+        # Name should NOT be overwritten (agent has it)
+        assert result["model"]["name"] == "gpt-4o"
+
+    def test_merge_configs_evaluation_model_provider(self) -> None:
+        """Test that evaluation model provider config is merged."""
+        from holodeck.models.config import GlobalConfig
+
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "evaluations": {
+                "model": {"provider": "openai", "name": "gpt-4o-mini"},
+            },
+        }
+
+        global_config = GlobalConfig(
+            providers={
+                "my_openai": {
+                    "provider": "openai",
+                    "api_key": "sk-eval-key",
+                    "name": "gpt-4o",
+                }
+            }
+        )
+
+        loader = ConfigLoader()
+        result = loader.merge_configs(agent_config, global_config)
+
+        # API key should be merged into evaluation model
+        assert result["evaluations"]["model"]["api_key"] == "sk-eval-key"
+
+
+class TestResolveVectorstoreReferences:
+    """Tests for _resolve_vectorstore_references method."""
+
+    def test_resolve_vectorstore_string_reference(self) -> None:
+        """Test resolving string database reference to DatabaseConfig."""
+        from holodeck.models.config import VectorstoreConfig
+
+        tools = [
+            {
+                "name": "knowledge_base",
+                "type": "vectorstore",
+                "database": "redis_store",
+                "source": "data/",
+            }
+        ]
+
+        vectorstores = {
+            "redis_store": VectorstoreConfig(
+                provider="redis",
+                connection_string="redis://localhost:6379",
+            )
+        }
+
+        loader = ConfigLoader()
+        loader._resolve_vectorstore_references(tools, vectorstores)
+
+        # Database should be resolved to dict
+        assert isinstance(tools[0]["database"], dict)
+        assert tools[0]["database"]["provider"] == "redis-hashset"
+        assert tools[0]["database"]["connection_string"] == "redis://localhost:6379"
+
+    def test_resolve_vectorstore_unknown_reference_logs_warning(
+        self, caplog: Any
+    ) -> None:
+        """Test that unknown vectorstore reference logs warning."""
+        import logging
+
+        from holodeck.models.config import VectorstoreConfig
+
+        tools = [
+            {
+                "name": "knowledge_base",
+                "type": "vectorstore",
+                "database": "unknown_store",
+                "source": "data/",
+            }
+        ]
+
+        vectorstores = {
+            "redis_store": VectorstoreConfig(
+                provider="redis",
+                connection_string="redis://localhost:6379",
+            )
+        }
+
+        with caplog.at_level(logging.WARNING):
+            loader = ConfigLoader()
+            loader._resolve_vectorstore_references(tools, vectorstores)
+
+        # Database should be set to None (fallback)
+        assert tools[0]["database"] is None
+        # Warning should be logged
+        assert any("unknown_store" in record.message for record in caplog.records)
+
+    def test_resolve_vectorstore_dict_database_unchanged(self) -> None:
+        """Test that dict database config is left unchanged."""
+        from holodeck.models.config import VectorstoreConfig
+
+        tools = [
+            {
+                "name": "knowledge_base",
+                "type": "vectorstore",
+                "database": {"provider": "postgres", "connection_string": "local"},
+                "source": "data/",
+            }
+        ]
+
+        vectorstores = {
+            "redis_store": VectorstoreConfig(
+                provider="redis",
+                connection_string="redis://localhost:6379",
+            )
+        }
+
+        loader = ConfigLoader()
+        loader._resolve_vectorstore_references(tools, vectorstores)
+
+        # Database should be unchanged
+        assert tools[0]["database"]["provider"] == "postgres"
+
+    def test_resolve_vectorstore_none_database_unchanged(self) -> None:
+        """Test that None database is left unchanged."""
+        from holodeck.models.config import VectorstoreConfig
+
+        tools = [
+            {
+                "name": "knowledge_base",
+                "type": "vectorstore",
+                "database": None,
+                "source": "data/",
+            }
+        ]
+
+        vectorstores = {
+            "redis_store": VectorstoreConfig(
+                provider="redis",
+                connection_string="redis://localhost:6379",
+            )
+        }
+
+        loader = ConfigLoader()
+        loader._resolve_vectorstore_references(tools, vectorstores)
+
+        # Database should still be None
+        assert tools[0]["database"] is None
+
+    def test_resolve_vectorstore_skips_non_vectorstore_tools(self) -> None:
+        """Test that non-vectorstore tools are skipped."""
+        from holodeck.models.config import VectorstoreConfig
+
+        tools = [
+            {
+                "name": "my_function",
+                "type": "function",
+                "file": "tools/my_func.py",
+                "function": "run",
+            }
+        ]
+
+        vectorstores = {
+            "redis_store": VectorstoreConfig(
+                provider="redis",
+                connection_string="redis://localhost:6379",
+            )
+        }
+
+        loader = ConfigLoader()
+        # Should not raise, just skip
+        loader._resolve_vectorstore_references(tools, vectorstores)
+
+        # Tool should be unchanged
+        assert tools[0]["type"] == "function"
+
+
+class TestConvertVectorstoreToDatabaseConfig:
+    """Tests for _convert_vectorstore_to_database_config function."""
+
+    def test_convert_redis_provider(self) -> None:
+        """Test converting redis provider."""
+        from holodeck.config.loader import _convert_vectorstore_to_database_config
+        from holodeck.models.config import VectorstoreConfig
+
+        vs_config = VectorstoreConfig(
+            provider="redis",
+            connection_string="redis://localhost:6379",
+        )
+
+        result = _convert_vectorstore_to_database_config(vs_config)
+
+        assert result.provider == "redis-hashset"
+        assert result.connection_string == "redis://localhost:6379"
+
+    def test_convert_postgres_provider(self) -> None:
+        """Test converting postgres provider."""
+        from holodeck.config.loader import _convert_vectorstore_to_database_config
+        from holodeck.models.config import VectorstoreConfig
+
+        vs_config = VectorstoreConfig(
+            provider="postgres",
+            connection_string="postgresql://localhost:5432/db",
+        )
+
+        result = _convert_vectorstore_to_database_config(vs_config)
+
+        assert result.provider == "postgres"
+        assert result.connection_string == "postgresql://localhost:5432/db"
+
+    def test_convert_with_options(self) -> None:
+        """Test converting with options merged as extra fields."""
+        from holodeck.config.loader import _convert_vectorstore_to_database_config
+        from holodeck.models.config import VectorstoreConfig
+
+        vs_config = VectorstoreConfig(
+            provider="redis",
+            connection_string="redis://localhost:6379",
+            options={"index_name": "my_index", "custom_field": "value"},
+        )
+
+        result = _convert_vectorstore_to_database_config(vs_config)
+
+        # Options should be merged as extra fields
+        result_dict = result.model_dump()
+        assert result_dict.get("index_name") == "my_index"
+        assert result_dict.get("custom_field") == "value"
+
+
+class TestDeepMerge:
+    """Tests for _deep_merge static method."""
+
+    def test_deep_merge_simple(self) -> None:
+        """Test deep merge with simple values."""
+        base = {"a": 1, "b": 2}
+        override = {"b": 3, "c": 4}
+
+        ConfigLoader._deep_merge(base, override)
+
+        assert base == {"a": 1, "b": 3, "c": 4}
+
+    def test_deep_merge_nested(self) -> None:
+        """Test deep merge with nested dicts."""
+        base = {"a": {"x": 1, "y": 2}, "b": 3}
+        override = {"a": {"y": 20, "z": 30}}
+
+        ConfigLoader._deep_merge(base, override)
+
+        assert base == {"a": {"x": 1, "y": 20, "z": 30}, "b": 3}
+
+    def test_deep_merge_override_non_dict_with_dict(self) -> None:
+        """Test that non-dict value is replaced with dict."""
+        base = {"a": "string"}
+        override = {"a": {"nested": "value"}}
+
+        ConfigLoader._deep_merge(base, override)
+
+        assert base == {"a": {"nested": "value"}}
+
+
+class TestResolveFilePath:
+    """Tests for resolve_file_path method."""
+
+    def test_resolve_absolute_path(self, temp_dir: Path) -> None:
+        """Test resolving absolute path returns as-is."""
+        test_file = temp_dir / "test.txt"
+        test_file.write_text("content")
+
+        loader = ConfigLoader()
+        result = loader.resolve_file_path(str(test_file), "/other/dir")
+
+        assert result == str(test_file)
+
+    def test_resolve_relative_path(self, temp_dir: Path) -> None:
+        """Test resolving relative path against base directory."""
+        test_file = temp_dir / "subdir" / "test.txt"
+        test_file.parent.mkdir(parents=True)
+        test_file.write_text("content")
+
+        loader = ConfigLoader()
+        result = loader.resolve_file_path("subdir/test.txt", str(temp_dir))
+
+        assert result == str(test_file.resolve())
+
+    def test_resolve_file_not_found(self, temp_dir: Path) -> None:
+        """Test resolve_file_path raises FileNotFoundError for missing file."""
+        import pytest
+
+        from holodeck.lib.errors import FileNotFoundError
+
+        loader = ConfigLoader()
+        with pytest.raises(FileNotFoundError) as exc_info:
+            loader.resolve_file_path("nonexistent.txt", str(temp_dir))
+
+        assert "not found" in str(exc_info.value).lower()
+
+
+class TestLoadInstructions:
+    """Tests for load_instructions method."""
+
+    def test_load_inline_instructions(self, temp_dir: Path) -> None:
+        """Test loading inline instructions."""
+        from holodeck.models.agent import Agent, Instructions
+
+        agent = Agent(
+            name="test",
+            model={"provider": "openai", "name": "gpt-4o"},
+            instructions=Instructions(inline="You are helpful."),
+        )
+
+        loader = ConfigLoader()
+        result = loader.load_instructions(str(temp_dir / "agent.yaml"), agent)
+
+        assert result == "You are helpful."
+
+    def test_load_file_instructions(self, temp_dir: Path) -> None:
+        """Test loading instructions from file."""
+        from holodeck.models.agent import Agent, Instructions
+
+        instructions_file = temp_dir / "instructions.txt"
+        instructions_file.write_text("Instructions from file.")
+
+        agent = Agent(
+            name="test",
+            model={"provider": "openai", "name": "gpt-4o"},
+            instructions=Instructions(file="instructions.txt"),
+        )
+
+        loader = ConfigLoader()
+        result = loader.load_instructions(str(temp_dir / "agent.yaml"), agent)
+
+        assert result == "Instructions from file."
+
+    def test_load_no_instructions_returns_none(self, temp_dir: Path) -> None:
+        """Test that missing instructions returns None."""
+        from unittest.mock import MagicMock
+
+        from holodeck.models.agent import Agent, Instructions
+
+        # Create agent with mocked instructions that has neither inline nor file
+        agent = MagicMock(spec=Agent)
+        agent.instructions = MagicMock(spec=Instructions)
+        agent.instructions.inline = None
+        agent.instructions.file = None
+
+        loader = ConfigLoader()
+        result = loader.load_instructions(str(temp_dir / "agent.yaml"), agent)
+
+        assert result is None
+
+
+class TestResolveVectorstoreDatabaseConfig:
+    """Tests for resolve_vectorstore_database_config method."""
+
+    def test_resolve_from_project_config(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test resolving vectorstore config from project config."""
+        # Create project config with vectorstores
+        project_config = {
+            "vectorstores": {
+                "redis_store": {
+                    "provider": "redis",
+                    "connection_string": "redis://localhost:6379",
+                }
+            }
+        }
+        (temp_dir / "config.yml").write_text(yaml.dump(project_config))
+
+        # Create agent yaml
+        agent_yaml = temp_dir / "agent.yaml"
+        agent_yaml.write_text("name: test")
+
+        loader = ConfigLoader()
+        result = loader.resolve_vectorstore_database_config(str(agent_yaml))
+
+        assert result is not None
+        assert result["provider"] == "redis-hashset"
+        assert result["connection_string"] == "redis://localhost:6379"
+
+    def test_resolve_by_name(self, temp_dir: Path, monkeypatch: Any) -> None:
+        """Test resolving specific vectorstore by name."""
+        project_config = {
+            "vectorstores": {
+                "redis_store": {
+                    "provider": "redis",
+                    "connection_string": "redis://localhost:6379",
+                },
+                "postgres_store": {
+                    "provider": "postgres",
+                    "connection_string": "postgresql://localhost:5432/db",
+                },
+            }
+        }
+        (temp_dir / "config.yml").write_text(yaml.dump(project_config))
+
+        agent_yaml = temp_dir / "agent.yaml"
+        agent_yaml.write_text("name: test")
+
+        loader = ConfigLoader()
+        result = loader.resolve_vectorstore_database_config(
+            str(agent_yaml), vectorstore_name="postgres_store"
+        )
+
+        assert result is not None
+        assert result["provider"] == "postgres"
+
+    def test_resolve_unknown_name_returns_none(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test resolving unknown vectorstore name returns None."""
+        project_config = {
+            "vectorstores": {
+                "redis_store": {
+                    "provider": "redis",
+                    "connection_string": "redis://localhost:6379",
+                },
+            }
+        }
+        (temp_dir / "config.yml").write_text(yaml.dump(project_config))
+
+        agent_yaml = temp_dir / "agent.yaml"
+        agent_yaml.write_text("name: test")
+
+        loader = ConfigLoader()
+        result = loader.resolve_vectorstore_database_config(
+            str(agent_yaml), vectorstore_name="nonexistent"
+        )
+
+        assert result is None
+
+    def test_resolve_no_vectorstores_returns_none(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test resolving when no vectorstores configured returns None."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        (temp_dir / ".holodeck").mkdir()
+
+        agent_yaml = temp_dir / "agent.yaml"
+        agent_yaml.write_text("name: test")
+
+        loader = ConfigLoader()
+        result = loader.resolve_vectorstore_database_config(str(agent_yaml))
+
+        assert result is None
+
+    def test_resolve_from_user_config_fallback(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test fallback to user config when no project config."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+
+        # Create user config with vectorstores
+        user_config = {
+            "vectorstores": {
+                "user_redis": {
+                    "provider": "redis",
+                    "connection_string": "redis://user:6379",
+                }
+            }
+        }
+        (holodeck_dir / "config.yml").write_text(yaml.dump(user_config))
+
+        # Create project without vectorstores
+        project_dir = temp_dir / "project"
+        project_dir.mkdir()
+        agent_yaml = project_dir / "agent.yaml"
+        agent_yaml.write_text("name: test")
+
+        loader = ConfigLoader()
+        result = loader.resolve_vectorstore_database_config(str(agent_yaml))
+
+        assert result is not None
+        assert result["connection_string"] == "redis://user:6379"
+
+
+class TestMergeConfigsWithVectorstores:
+    """Tests for merge_configs with vectorstore tool resolution."""
+
+    def test_merge_configs_resolves_vectorstore_references(self) -> None:
+        """Test that merge_configs resolves vectorstore database references."""
+        from holodeck.models.config import GlobalConfig
+
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "tools": [
+                {
+                    "name": "kb",
+                    "type": "vectorstore",
+                    "database": "redis_store",
+                    "source": "data/",
+                }
+            ],
+        }
+
+        global_config = GlobalConfig(
+            vectorstores={
+                "redis_store": {
+                    "provider": "redis",
+                    "connection_string": "redis://localhost:6379",
+                }
+            }
+        )
+
+        loader = ConfigLoader()
+        result = loader.merge_configs(agent_config, global_config)
+
+        # Database should be resolved
+        assert isinstance(result["tools"][0]["database"], dict)
+        assert result["tools"][0]["database"]["provider"] == "redis-hashset"
+
+
+class TestResolveVectorstoreReferencesNonDictTool:
+    """Test _resolve_vectorstore_references with non-dict tools."""
+
+    def test_skips_non_dict_tool(self) -> None:
+        """Test that non-dict tools are skipped without error."""
+        from holodeck.models.config import VectorstoreConfig
+
+        # Include a non-dict item (shouldn't happen but defensive)
+        tools: list[Any] = [
+            "not_a_dict",
+            {
+                "name": "kb",
+                "type": "vectorstore",
+                "database": "redis_store",
+                "source": "data/",
+            },
+        ]
+
+        vectorstores = {
+            "redis_store": VectorstoreConfig(
+                provider="redis",
+                connection_string="redis://localhost:6379",
+            )
+        }
+
+        loader = ConfigLoader()
+        # Should not raise, just skip non-dict
+        loader._resolve_vectorstore_references(tools, vectorstores)
+
+        # Second tool should still be resolved
+        assert tools[1]["database"]["provider"] == "redis-hashset"
+
+
+class TestLoadConfigFileEnvSubstitutionEmpty:
+    """Test _load_config_file when env substitution results in empty."""
+
+    def test_config_file_empty_after_env_substitution(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test config file that becomes empty dict after substitution."""
+        # Test case where env var substitution results in an empty string value
+        # which after YAML parse gives an empty/falsy result
+        monkeypatch.setenv("MY_VAR", "null")
+
+        config_file = temp_dir / "config.yml"
+        # This parses to None/null after substitution
+        config_file.write_text("${MY_VAR}")
+
+        loader = ConfigLoader()
+        result = loader.load_project_config(str(temp_dir))
+
+        # The file content after substitution parses to None, should return None
+        assert result is None
+
+
+class TestEnvValueParsing:
+    """Tests for _parse_env_value and _get_env_value functions."""
+
+    def test_parse_env_value_timeout_int(self) -> None:
+        """Test parsing timeout value as int."""
+        from holodeck.config.loader import _parse_env_value
+
+        result = _parse_env_value("file_timeout", "42")
+        assert result == 42
+        assert isinstance(result, int)
+
+    def test_parse_env_value_bool_true(self) -> None:
+        """Test parsing boolean true variants."""
+        from holodeck.config.loader import _parse_env_value
+
+        for value in ["true", "1", "yes", "on", "TRUE", "Yes", "ON"]:
+            result = _parse_env_value("cache_enabled", value)
+            assert result is True
+
+    def test_parse_env_value_bool_false(self) -> None:
+        """Test parsing boolean false variants."""
+        from holodeck.config.loader import _parse_env_value
+
+        for value in ["false", "0", "no", "off", "FALSE"]:
+            result = _parse_env_value("verbose", value)
+            assert result is False
+
+    def test_parse_env_value_string(self) -> None:
+        """Test parsing string value."""
+        from holodeck.config.loader import _parse_env_value
+
+        result = _parse_env_value("cache_dir", "/custom/path")
+        assert result == "/custom/path"
+
+    def test_get_env_value_not_found(self) -> None:
+        """Test _get_env_value returns None for missing env var."""
+        from holodeck.config.loader import _get_env_value
+
+        result = _get_env_value("file_timeout", {})
+        assert result is None
+
+    def test_get_env_value_invalid_int(self) -> None:
+        """Test _get_env_value returns None for invalid int."""
+        from holodeck.config.loader import _get_env_value
+
+        result = _get_env_value(
+            "file_timeout", {"HOLODECK_FILE_TIMEOUT": "not_a_number"}
+        )
+        assert result is None
