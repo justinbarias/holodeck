@@ -15,7 +15,6 @@ Features:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,7 +25,7 @@ from holodeck.lib.vector_store import (
     DocumentRecord,
     QueryResult,
     convert_document_to_query_result,
-    get_collection_factory,
+    get_collection_class,
 )
 
 if TYPE_CHECKING:
@@ -69,7 +68,9 @@ class VectorStoreTool:
         >>> results = await tool.search("How do I authenticate?")
     """
 
-    def __init__(self, config: VectorstoreToolConfig) -> None:
+    def __init__(
+        self, config: VectorstoreToolConfig, base_dir: str | None = None
+    ) -> None:
         """Initialize VectorStoreTool with configuration.
 
         Args:
@@ -83,8 +84,12 @@ class VectorStoreTool:
                 - min_similarity_score: Minimum score threshold (optional)
                 - chunk_size: Text chunk size in tokens (optional)
                 - chunk_overlap: Chunk overlap in tokens (optional)
+            base_dir: Base directory for resolving relative source paths.
+                If None, source paths are resolved relative to current
+                working directory.
         """
         self.config = config
+        self._base_dir = base_dir
 
         # State tracking
         self.is_initialized: bool = False
@@ -103,13 +108,13 @@ class VectorStoreTool:
         # Embedding service (initialized lazily by AgentFactory)
         self._embedding_service: Any = None
 
-        # Collection factory for vector store operations
-        self._collection_factory: Callable[[], Any] | None = None
+        # Persistent collection instance for vector store operations
+        self._collection: Any = None
         self._provider: str = "in-memory"
 
         logger.debug(
             f"VectorStoreTool initialized: name={config.name}, "
-            f"source={config.source}, top_k={config.top_k}"
+            f"source={config.source}, base_dir={base_dir}, top_k={config.top_k}"
         )
 
     def set_embedding_service(self, service: Any) -> None:
@@ -125,14 +130,14 @@ class VectorStoreTool:
         self._embedding_service = service
         logger.debug(f"Embedding service set for tool: {self.config.name}")
 
-    def _setup_collection_factory(self) -> None:
-        """Set up the collection factory based on database configuration.
+    def _setup_collection(self) -> None:
+        """Set up the collection instance based on database configuration.
 
         Uses config.database to determine the vector store provider.
         Defaults to in-memory if no database is configured.
 
-        The factory returns async context managers for collection operations,
-        supporting all Semantic Kernel vector store providers.
+        Creates a persistent collection instance that is reused for both
+        storing and searching documents.
         """
         if self.config.database:
             self._provider = self.config.database.provider
@@ -149,11 +154,13 @@ class VectorStoreTool:
             self._provider = "in-memory"
             connection_kwargs = {}
 
-        self._collection_factory = get_collection_factory(
-            self._provider,
+        # Create persistent collection instance
+        collection_class = get_collection_class(self._provider)
+        self._collection = collection_class(
+            record_type=DocumentRecord,
             **connection_kwargs,
         )
-        logger.debug(f"Collection factory set up for provider: {self._provider}")
+        logger.debug(f"Collection created for provider: {self._provider}")
 
     def _get_file_processor(self) -> FileProcessor:
         """Get or create FileProcessor instance (lazy initialization)."""
@@ -161,10 +168,44 @@ class VectorStoreTool:
             self._file_processor = FileProcessor()
         return self._file_processor
 
+    def _resolve_source_path(self) -> Path:
+        """Resolve the source path relative to base directory.
+
+        This method handles:
+        - Absolute paths: returned as-is
+        - Relative paths: resolved relative to base_dir in this order:
+          1. Explicit base_dir passed to constructor
+          2. agent_base_dir context variable (set by CLI commands)
+          3. Current working directory (fallback)
+
+        Returns:
+            Resolved absolute Path to the source.
+        """
+        source_path = Path(self.config.source)
+
+        # If path is absolute, use it directly
+        if source_path.is_absolute():
+            return source_path
+
+        # Resolve relative to base directory
+        # Priority: explicit base_dir > context var > cwd
+        base_dir = self._base_dir
+        if base_dir is None:
+            # Try to get from context variable
+            from holodeck.config.context import agent_base_dir
+
+            base_dir = agent_base_dir.get()
+
+        if base_dir:
+            return (Path(base_dir) / self.config.source).resolve()
+
+        return source_path.resolve()
+
     def _discover_files(self) -> list[Path]:
         """Discover files to ingest from configured source.
 
         Recursively traverses directories and filters by supported extensions.
+        Source path is resolved relative to base_dir if set.
 
         Returns:
             List of Path objects for files to process.
@@ -173,7 +214,7 @@ class VectorStoreTool:
             This method does not validate file existence - that happens
             during initialization.
         """
-        source_path = Path(self.config.source)
+        source_path = self._resolve_source_path()
 
         if source_path.is_file():
             # Single file - check if supported
@@ -341,10 +382,10 @@ class VectorStoreTool:
             Number of chunks stored.
 
         Raises:
-            RuntimeError: If collection factory is not initialized.
+            RuntimeError: If collection is not initialized.
         """
-        if self._collection_factory is None:
-            raise RuntimeError("Collection factory not initialized")
+        if self._collection is None:
+            raise RuntimeError("Collection not initialized")
 
         records: list[DocumentRecord] = []
         for idx, (chunk, embedding) in enumerate(
@@ -362,19 +403,20 @@ class VectorStoreTool:
             )
             records.append(record)
 
-        # Batch upsert using collection
-        async with self._collection_factory() as collection:
+        # Batch upsert using persistent collection
+        async with self._collection as collection:
             await collection.ensure_collection_exists()
             await collection.upsert(records)
 
         logger.debug(f"Stored {len(records)} chunks from {source_file.path}")
         return len(records)
 
-    async def initialize(self, force_ingest: bool = False) -> None:
+    async def initialize(self, force_ingest: bool = False) -> None:  # noqa: ARG002
         """Initialize tool and ingest source files.
 
         Discovers files from the configured source, processes them into chunks,
         generates embeddings, and stores them in the vector database.
+        Source path is resolved relative to base_dir if set.
 
         Args:
             force_ingest: If True, re-ingest all files regardless of modification time.
@@ -383,14 +425,22 @@ class VectorStoreTool:
             FileNotFoundError: If the source path doesn't exist.
             RuntimeError: If no supported files are found in source.
         """
-        source_path = Path(self.config.source)
+        source_path = self._resolve_source_path()
 
         # Validate source exists (T035)
         if not source_path.exists():
-            raise FileNotFoundError(f"Source path does not exist: {self.config.source}")
+            # Get effective base_dir for error message
+            from holodeck.config.context import agent_base_dir
 
-        # Set up collection factory before processing files
-        self._setup_collection_factory()
+            effective_base_dir = self._base_dir or agent_base_dir.get()
+            raise FileNotFoundError(
+                f"Source path does not exist: {source_path} "
+                f"(configured source: {self.config.source}, "
+                f"base_dir: {effective_base_dir})"
+            )
+
+        # Set up collection instance before processing files
+        self._setup_collection()
 
         # Discover files
         files = self._discover_files()
@@ -487,21 +537,22 @@ class VectorStoreTool:
             List of QueryResults sorted by descending score.
 
         Raises:
-            RuntimeError: If collection factory is not initialized.
+            RuntimeError: If collection is not initialized.
         """
-        if self._collection_factory is None:
-            raise RuntimeError("Collection factory not initialized")
+        if self._collection is None:
+            raise RuntimeError("Collection not initialized")
 
         results: list[QueryResult] = []
 
-        async with self._collection_factory() as collection:
+        async with self._collection as collection:
             search_results = await collection.search(
                 vector=query_embedding,
                 top=self.config.top_k or 5,
             )
 
             # Process async iterable of search results
-            async for result in search_results:
+            # KernelSearchResults wraps results in .results attribute
+            async for result in search_results.results:
                 # Handle SK result format (may be object with attrs or tuple)
                 record = result.record if hasattr(result, "record") else result[0]
                 score = result.score if hasattr(result, "score") else result[1]

@@ -200,14 +200,15 @@ class TestAgentFactoryOpenAI:
         messages1 = list(result1.chat_history.messages)
         assert any("Paris" in str(msg.content) for msg in messages1)
 
-        # Second invocation (should be independent)
+        # Second invocation (builds on conversation history)
         result2 = await factory.invoke("What is 10 + 5?")
         assert isinstance(result2, AgentExecutionResult)
         messages2 = list(result2.chat_history.messages)
         assert any("15" in str(msg.content) for msg in messages2)
 
-        # Verify results are independent
-        assert result1.chat_history is not result2.chat_history
+        # Verify chat history accumulates both conversations
+        # (AgentFactory maintains a persistent chat history for multi-turn)
+        assert len(messages2) > len(messages1)
 
 
 @pytest.mark.integration
@@ -324,14 +325,15 @@ class TestAgentFactoryAzureOpenAI:
         messages1 = list(result1.chat_history.messages)
         assert any("Berlin" in str(msg.content) for msg in messages1)
 
-        # Second invocation (should be independent)
+        # Second invocation (builds on conversation history)
         result2 = await factory.invoke("What is 12 * 12?")
         assert isinstance(result2, AgentExecutionResult)
         messages2 = list(result2.chat_history.messages)
         assert any("144" in str(msg.content) for msg in messages2)
 
-        # Verify results are independent
-        assert result1.chat_history is not result2.chat_history
+        # Verify chat history accumulates both conversations
+        # (AgentFactory maintains a persistent chat history for multi-turn)
+        assert len(messages2) > len(messages1)
 
     @skip_if_no_azure
     @pytest.mark.asyncio

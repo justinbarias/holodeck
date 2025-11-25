@@ -131,12 +131,17 @@ def test(
             )
 
         # Load agent config to get test count for progress indicator
+        from holodeck.config.context import agent_base_dir
         from holodeck.config.loader import ConfigLoader
 
         logger.debug(f"Loading agent configuration from {agent_config}")
         loader = ConfigLoader()
         agent = loader.load_agent_yaml(agent_config)
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
+
+        # Set the base directory context for resolving relative paths in tools
+        agent_base_dir.set(str(Path(agent_config).parent.resolve()))
+        logger.debug(f"Set agent_base_dir context: {agent_base_dir.get()}")
 
         # Get total test count
         total_tests = len(agent.test_cases) if agent.test_cases else 0

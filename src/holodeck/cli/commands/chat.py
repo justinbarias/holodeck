@@ -125,10 +125,16 @@ def chat(
 
     try:
         # Load agent configuration
+        from holodeck.config.context import agent_base_dir
+
         logger.debug(f"Loading agent configuration from {agent_config}")
         loader = ConfigLoader()
         agent = loader.load_agent_yaml(agent_config)
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
+
+        # Set the base directory context for resolving relative paths in tools
+        agent_base_dir.set(str(Path(agent_config).parent.resolve()))
+        logger.debug(f"Set agent_base_dir context: {agent_base_dir.get()}")
 
         # Run async chat session
         logger.debug("Starting chat session runtime")

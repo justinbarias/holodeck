@@ -23,29 +23,16 @@ Supported Providers:
 - in-memory: Simple in-memory storage (development only)
 """
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import Annotated, Any
+from dataclasses import field
+from typing import Annotated, Any, cast
 from uuid import uuid4
 
-from semantic_kernel.connectors.memory import (
-    AzureAISearchCollection,
-    ChromaCollection,
-    CosmosMongoCollection,
-    CosmosNoSqlCollection,
-    FaissCollection,
-    InMemoryCollection,
-    PineconeCollection,
-    PostgresCollection,
-    QdrantCollection,
-    RedisHashsetCollection,
-    RedisJsonCollection,
-    SqlServerCollection,
-    WeaviateCollection,
-)
+from pydantic.dataclasses import dataclass
+
+# Vector store connectors are imported lazily in _get_collection_class()
+# to avoid import errors when optional dependencies are not installed.
 from semantic_kernel.data.vector import VectorStoreField, vectorstoremodel
 
 logger = logging.getLogger(__name__)
@@ -88,7 +75,7 @@ class DocumentRecord:  # type: ignore[misc]
     )
     embedding: Annotated[
         list[float] | None, VectorStoreField("vector", dimensions=1536)
-    ] = None
+    ] = field(default=None)
     mtime: Annotated[float, VectorStoreField("data")] = field(default=0.0)
     file_type: Annotated[str, VectorStoreField("data")] = field(default="")
     file_size_bytes: Annotated[int, VectorStoreField("data")] = field(default=0)
@@ -120,6 +107,87 @@ class QueryResult:
             raise ValueError(f"Score must be between 0.0 and 1.0, got {self.score}")
 
 
+def get_collection_class(provider: str) -> type[Any]:
+    """Lazily import and return the collection class for a provider.
+
+    This function imports connector classes on-demand to avoid import errors
+    when optional dependencies are not installed.
+
+    Args:
+        provider: Vector store provider name
+
+    Returns:
+        The collection class for the specified provider
+
+    Raises:
+        ValueError: If provider is not supported
+        ImportError: If required dependencies for the provider are not installed
+    """
+    # Map providers to their import paths and class names
+    provider_imports: dict[str, tuple[str, str]] = {
+        "redis-hashset": (
+            "semantic_kernel.connectors.redis",
+            "RedisHashsetCollection",
+        ),
+        "redis-json": ("semantic_kernel.connectors.redis", "RedisJsonCollection"),
+        "postgres": ("semantic_kernel.connectors.postgres", "PostgresCollection"),
+        "azure-ai-search": (
+            "semantic_kernel.connectors.azure_ai_search",
+            "AzureAISearchCollection",
+        ),
+        "qdrant": ("semantic_kernel.connectors.qdrant", "QdrantCollection"),
+        "weaviate": ("semantic_kernel.connectors.weaviate", "WeaviateCollection"),
+        "chromadb": ("semantic_kernel.connectors.chroma", "ChromaCollection"),
+        "faiss": ("semantic_kernel.connectors.faiss", "FaissCollection"),
+        "azure-cosmos-mongo": (
+            "semantic_kernel.connectors.azure_cosmos_db",
+            "CosmosMongoCollection",
+        ),
+        "azure-cosmos-nosql": (
+            "semantic_kernel.connectors.azure_cosmos_db",
+            "CosmosNoSqlCollection",
+        ),
+        "sql-server": ("semantic_kernel.connectors.sql_server", "SqlServerCollection"),
+        "pinecone": ("semantic_kernel.connectors.pinecone", "PineconeCollection"),
+        "in-memory": ("semantic_kernel.connectors.in_memory", "InMemoryCollection"),
+    }
+
+    if provider not in provider_imports:
+        raise ValueError(
+            f"Unsupported vector store provider: {provider}. "
+            f"Supported providers: {', '.join(sorted(provider_imports.keys()))}"
+        )
+
+    module_path, class_name = provider_imports[provider]
+
+    try:
+        import importlib
+
+        module = importlib.import_module(module_path)
+        return cast(type[Any], getattr(module, class_name))
+    except ImportError as e:
+        # Provide helpful error message about missing dependencies
+        dep_hints: dict[str, str] = {
+            "redis-hashset": "redis[hiredis]",
+            "redis-json": "redis[hiredis]",
+            "postgres": "psycopg[binary,pool]",
+            "azure-ai-search": "azure-search-documents",
+            "qdrant": "qdrant-client",
+            "weaviate": "weaviate-client",
+            "chromadb": "chromadb",
+            "faiss": "faiss-cpu",
+            "azure-cosmos-mongo": "pymongo",
+            "azure-cosmos-nosql": "azure-cosmos",
+            "sql-server": "pyodbc",
+            "pinecone": "pinecone-client",
+        }
+        hint = dep_hints.get(provider, "")
+        install_msg = f" Try: pip install {hint}" if hint else ""
+        raise ImportError(
+            f"Missing dependencies for vector store provider '{provider}'.{install_msg}"
+        ) from e
+
+
 def get_collection_factory(
     provider: str,
     **connection_kwargs: Any,
@@ -138,6 +206,7 @@ def get_collection_factory(
 
     Raises:
         ValueError: If provider is not supported
+        ImportError: If required dependencies for the provider are not installed
 
     Example:
         >>> factory = get_collection_factory("postgres",
@@ -145,32 +214,32 @@ def get_collection_factory(
         >>> async with factory() as collection:
         ...     await collection.upsert([record])
     """
-    factories: dict[str, type[Any]] = {
-        "redis-hashset": RedisHashsetCollection,
-        "redis-json": RedisJsonCollection,
-        "postgres": PostgresCollection,
-        "azure-ai-search": AzureAISearchCollection,
-        "qdrant": QdrantCollection,
-        "weaviate": WeaviateCollection,
-        "chromadb": ChromaCollection,
-        "faiss": FaissCollection,
-        "azure-cosmos-mongo": CosmosMongoCollection,
-        "azure-cosmos-nosql": CosmosNoSqlCollection,
-        "sql-server": SqlServerCollection,
-        "pinecone": PineconeCollection,
-        "in-memory": InMemoryCollection,
-    }
+    supported_providers = [
+        "redis-hashset",
+        "redis-json",
+        "postgres",
+        "azure-ai-search",
+        "qdrant",
+        "weaviate",
+        "chromadb",
+        "faiss",
+        "azure-cosmos-mongo",
+        "azure-cosmos-nosql",
+        "sql-server",
+        "pinecone",
+        "in-memory",
+    ]
 
-    if provider not in factories:
+    if provider not in supported_providers:
         raise ValueError(
             f"Unsupported vector store provider: {provider}. "
-            f"Supported providers: {', '.join(sorted(factories.keys()))}"
+            f"Supported providers: {', '.join(sorted(supported_providers))}"
         )
-
-    collection_class = factories[provider]
 
     def factory() -> Any:
         """Return async context manager for the collection."""
+        # Lazy import at factory call time
+        collection_class = get_collection_class(provider)
         return collection_class[str, DocumentRecord](
             record_type=DocumentRecord,
             **connection_kwargs,

@@ -29,7 +29,6 @@ from semantic_kernel.functions import KernelFunction
 from semantic_kernel.functions.kernel_function_from_method import (
     KernelFunctionFromMethod,
 )
-from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
 
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
@@ -264,7 +263,7 @@ class AgentFactory:
         """Create a KernelFunction from VectorStoreTool.search method.
 
         Creates a wrapper function that calls tool.search() and registers it
-        as a KernelFunction using KernelFunctionFromMethod (not decorator).
+        as a KernelFunction using the @kernel_function decorator.
 
         Args:
             tool: Initialized VectorStoreTool instance.
@@ -274,30 +273,20 @@ class AgentFactory:
         Returns:
             KernelFunction that can be registered on the kernel.
         """
+        from semantic_kernel.functions.kernel_function_decorator import (
+            kernel_function as kernel_function_decorator,
+        )
 
+        @kernel_function_decorator(name=tool_name, description=tool_description)
         async def search_wrapper(query: str) -> str:
             """Search the knowledge base for relevant content."""
             result = await tool.search(query)
             return str(result)
 
-        # Set function metadata for proper Semantic Kernel integration
-        search_wrapper.__name__ = tool_name
-        search_wrapper.__doc__ = tool_description
-
-        kernel_function = KernelFunctionFromMethod(
+        return KernelFunctionFromMethod(
             method=search_wrapper,
             plugin_name="vectorstore",
-            parameters=[
-                KernelParameterMetadata(
-                    name="query",
-                    description="Natural language search query",
-                    type_object=str,
-                    is_required=True,
-                )
-            ],
         )
-
-        return kernel_function
 
     async def _register_vectorstore_tools(self) -> None:
         """Discover, initialize, and register vectorstore tools from agent config.
@@ -332,6 +321,7 @@ class AgentFactory:
 
             try:
                 # Create tool and inject embedding service
+                # VectorStoreTool reads base_dir from agent_base_dir context var
                 tool = VectorStoreTool(config)
                 tool.set_embedding_service(self._embedding_service)
 
