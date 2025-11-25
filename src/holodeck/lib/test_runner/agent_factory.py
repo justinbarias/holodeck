@@ -20,9 +20,16 @@ from semantic_kernel.agents import Agent as SKAgent
 from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
 from semantic_kernel.connectors.ai.open_ai import (
     AzureChatCompletion,
+    AzureTextEmbedding,
     OpenAIChatCompletion,
+    OpenAITextEmbedding,
 )
 from semantic_kernel.contents import ChatHistory
+from semantic_kernel.functions import KernelFunction
+from semantic_kernel.functions.kernel_function_from_method import (
+    KernelFunctionFromMethod,
+)
+from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
 
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
@@ -95,6 +102,11 @@ class AgentFactory:
         self.retry_exponential_base = retry_exponential_base
         self._retry_count = 0
 
+        # Vectorstore tool support
+        self._tools_initialized = False
+        self._vectorstore_tools: list[Any] = []
+        self._embedding_service: Any = None
+
         logger.debug(
             f"Initializing AgentFactory: agent={agent_config.name}, "
             f"provider={agent_config.model.provider}, timeout={timeout}s, "
@@ -103,6 +115,11 @@ class AgentFactory:
 
         try:
             self.kernel = self._create_kernel()
+
+            # Register embedding service if vectorstore tools are configured
+            if self._has_vectorstore_tools():
+                self._register_embedding_service()
+
             self.agent = self._create_agent()
             self.chat_history = self._create_chat_history()
             logger.info(
@@ -166,6 +183,193 @@ class AgentFactory:
         except Exception as e:
             logger.error(f"Kernel creation failed: {e}", exc_info=True)
             raise AgentFactoryError(f"Kernel creation failed: {e}") from e
+
+    def _has_vectorstore_tools(self) -> bool:
+        """Check if agent config contains any vectorstore tools.
+
+        Returns:
+            True if at least one vectorstore tool is configured.
+        """
+        if not self.agent_config.tools:
+            return False
+
+        for tool in self.agent_config.tools:
+            if isinstance(tool, dict) and tool.get("type") == "vectorstore":
+                return True
+            if hasattr(tool, "type") and tool.type == "vectorstore":
+                return True
+        return False
+
+    def _get_embedding_model(self) -> str:
+        """Get embedding model from first vectorstore tool or use default.
+
+        Returns:
+            Embedding model name to use for TextEmbedding service.
+        """
+        default_model = "text-embedding-3-small"
+        if not self.agent_config.tools:
+            return default_model
+
+        for tool in self.agent_config.tools:
+            if isinstance(tool, dict) and tool.get("type") == "vectorstore":
+                return tool.get("embedding_model") or default_model
+            if hasattr(tool, "type") and tool.type == "vectorstore":
+                return getattr(tool, "embedding_model", None) or default_model
+        return default_model
+
+    def _register_embedding_service(self) -> None:
+        """Register TextEmbedding service on kernel for vectorstore tools.
+
+        Supports OpenAI and Azure OpenAI embedding providers. Uses the same
+        credentials as the chat model configured in agent_config.model.
+
+        Raises:
+            AgentFactoryError: If provider doesn't support embeddings.
+        """
+        model_config = self.agent_config.model
+        embedding_model = self._get_embedding_model()
+
+        logger.debug(
+            f"Registering embedding service: model={embedding_model}, "
+            f"provider={model_config.provider}"
+        )
+
+        if model_config.provider == ProviderEnum.OPENAI:
+            self._embedding_service = OpenAITextEmbedding(
+                ai_model_id=embedding_model,
+                api_key=model_config.api_key,
+            )
+        elif model_config.provider == ProviderEnum.AZURE_OPENAI:
+            self._embedding_service = AzureTextEmbedding(
+                deployment_name=embedding_model,
+                endpoint=model_config.endpoint,
+                api_key=model_config.api_key,
+            )
+        else:
+            raise AgentFactoryError(
+                f"Embedding service not supported for provider: "
+                f"{model_config.provider}. "
+                "Vectorstore tools require OpenAI or Azure OpenAI provider."
+            )
+
+        self.kernel.add_service(self._embedding_service)
+        logger.debug(f"Embedding service registered: {embedding_model}")
+
+    def _create_search_kernel_function(
+        self,
+        tool: Any,
+        tool_name: str,
+        tool_description: str,
+    ) -> KernelFunction:
+        """Create a KernelFunction from VectorStoreTool.search method.
+
+        Creates a wrapper function that calls tool.search() and registers it
+        as a KernelFunction using KernelFunctionFromMethod (not decorator).
+
+        Args:
+            tool: Initialized VectorStoreTool instance.
+            tool_name: Name for the kernel function (from tool config).
+            tool_description: Description for the function (from tool config).
+
+        Returns:
+            KernelFunction that can be registered on the kernel.
+        """
+
+        async def search_wrapper(query: str) -> str:
+            """Search the knowledge base for relevant content."""
+            result = await tool.search(query)
+            return str(result)
+
+        # Set function metadata for proper Semantic Kernel integration
+        search_wrapper.__name__ = tool_name
+        search_wrapper.__doc__ = tool_description
+
+        kernel_function = KernelFunctionFromMethod(
+            method=search_wrapper,
+            plugin_name="vectorstore",
+            parameters=[
+                KernelParameterMetadata(
+                    name="query",
+                    description="Natural language search query",
+                    type_object=str,
+                    is_required=True,
+                )
+            ],
+        )
+
+        return kernel_function
+
+    async def _register_vectorstore_tools(self) -> None:
+        """Discover, initialize, and register vectorstore tools from agent config.
+
+        Iterates through agent_config.tools, finds vectorstore tools, creates
+        VectorStoreTool instances, initializes them, and registers their search
+        methods as KernelFunctions.
+
+        Raises:
+            AgentFactoryError: If tool initialization fails.
+        """
+        if not self.agent_config.tools:
+            return
+
+        # Check if there are any vectorstore tools before importing
+        if not self._has_vectorstore_tools():
+            return
+
+        from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        for tool_config in self.agent_config.tools:
+            # Check if this is a vectorstore tool
+            if isinstance(tool_config, dict):
+                if tool_config.get("type") != "vectorstore":
+                    continue
+                config = VectorstoreToolConfig(**tool_config)
+            elif hasattr(tool_config, "type") and tool_config.type == "vectorstore":
+                config = tool_config
+            else:
+                continue
+
+            try:
+                # Create tool and inject embedding service
+                tool = VectorStoreTool(config)
+                tool.set_embedding_service(self._embedding_service)
+
+                # Initialize (async - ingests files, generates embeddings)
+                await tool.initialize()
+
+                # Create and register KernelFunction
+                kernel_function = self._create_search_kernel_function(
+                    tool=tool,
+                    tool_name=config.name,
+                    tool_description=config.description,
+                )
+
+                self.kernel.add_function(
+                    plugin_name="vectorstore", function=kernel_function
+                )
+                self._vectorstore_tools.append(tool)
+
+                logger.info(f"Registered vectorstore tool: {config.name}")
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to initialize vectorstore tool {config.name}: {e}"
+                )
+                raise AgentFactoryError(
+                    f"Failed to initialize vectorstore tool {config.name}: {e}"
+                ) from e
+
+    async def _ensure_tools_initialized(self) -> None:
+        """Ensure vectorstore tools are initialized (called before first invoke).
+
+        This implements lazy initialization - tools are initialized on the first
+        call to invoke() rather than during __init__.
+        """
+        if self._tools_initialized:
+            return
+        await self._register_vectorstore_tools()
+        self._tools_initialized = True
 
     def _create_agent(self) -> SKAgent:
         """Create Semantic Kernel Agent with configuration.
@@ -251,6 +455,9 @@ class AgentFactory:
             AgentFactoryError: If invocation fails after retries
         """
         try:
+            # Ensure vectorstore tools are initialized (lazy initialization)
+            await self._ensure_tools_initialized()
+
             # Add user input to chat history
             self.chat_history.add_user_message(user_input)
 

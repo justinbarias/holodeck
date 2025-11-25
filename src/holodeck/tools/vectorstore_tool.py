@@ -15,13 +15,19 @@ Features:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from holodeck.lib.file_processor import FileProcessor, SourceFile
 from holodeck.lib.text_chunker import TextChunker
-from holodeck.lib.vector_store import DocumentRecord, QueryResult
+from holodeck.lib.vector_store import (
+    DocumentRecord,
+    QueryResult,
+    convert_document_to_query_result,
+    get_collection_factory,
+)
 
 if TYPE_CHECKING:
     from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
@@ -94,17 +100,60 @@ class VectorStoreTool:
         )
         self._file_processor: FileProcessor | None = None
 
-        # Vector store and embedding service (initialized lazily)
-        self._vector_store: Any = None
+        # Embedding service (initialized lazily by AgentFactory)
         self._embedding_service: Any = None
 
-        # Document storage (for in-memory operations)
-        self._documents: list[DocumentRecord] = []
+        # Collection factory for vector store operations
+        self._collection_factory: Callable[[], Any] | None = None
+        self._provider: str = "in-memory"
 
         logger.debug(
             f"VectorStoreTool initialized: name={config.name}, "
             f"source={config.source}, top_k={config.top_k}"
         )
+
+    def set_embedding_service(self, service: Any) -> None:
+        """Set the embedding service for generating embeddings.
+
+        This method allows AgentFactory to inject a Semantic Kernel TextEmbedding
+        service for generating real embeddings instead of placeholder zeros.
+
+        Args:
+            service: Semantic Kernel TextEmbedding service instance
+                (OpenAITextEmbedding or AzureTextEmbedding).
+        """
+        self._embedding_service = service
+        logger.debug(f"Embedding service set for tool: {self.config.name}")
+
+    def _setup_collection_factory(self) -> None:
+        """Set up the collection factory based on database configuration.
+
+        Uses config.database to determine the vector store provider.
+        Defaults to in-memory if no database is configured.
+
+        The factory returns async context managers for collection operations,
+        supporting all Semantic Kernel vector store providers.
+        """
+        if self.config.database:
+            self._provider = self.config.database.provider
+            connection_kwargs: dict[str, Any] = {}
+            if self.config.database.connection_string:
+                connection_kwargs["connection_string"] = (
+                    self.config.database.connection_string
+                )
+            # Add extra fields from DatabaseConfig (extra="allow")
+            if hasattr(self.config.database, "model_extra"):
+                extra_fields = self.config.database.model_extra or {}
+                connection_kwargs.update(extra_fields)
+        else:
+            self._provider = "in-memory"
+            connection_kwargs = {}
+
+        self._collection_factory = get_collection_factory(
+            self._provider,
+            **connection_kwargs,
+        )
+        logger.debug(f"Collection factory set up for provider: {self._provider}")
 
     def _get_file_processor(self) -> FileProcessor:
         """Get or create FileProcessor instance (lazy initialization)."""
@@ -245,22 +294,35 @@ class VectorStoreTool:
     async def _embed_chunks(self, chunks: list[str]) -> list[list[float]]:
         """Generate embeddings for a list of text chunks.
 
+        Uses injected embedding service if available, otherwise returns
+        placeholder embeddings (for testing without LLM).
+
         Args:
             chunks: List of text chunks to embed.
 
         Returns:
             List of embedding vectors (one per chunk).
-
-        Note:
-            Currently returns placeholder embeddings. Full implementation
-            will use Semantic Kernel's TextEmbedding service.
         """
-        # Placeholder: Return zero vectors
-        # TODO: Implement actual embedding generation with Semantic Kernel
+        if self._embedding_service is not None:
+            # Use real embedding service
+            try:
+                embeddings = await self._embedding_service.generate_embeddings(chunks)
+                # Convert to list of lists (service may return different types)
+                result = [list(emb) for emb in embeddings]
+                logger.debug(
+                    f"Generated {len(result)} embeddings using embedding service"
+                )
+                return result
+            except Exception as e:
+                logger.warning(
+                    f"Embedding service failed, falling back to placeholder: {e}"
+                )
+
+        # Fallback: placeholder embeddings (zeros)
         embedding_dim = 1536  # text-embedding-3-small default
-        embeddings = [[0.0] * embedding_dim for _ in chunks]
-        logger.debug(f"Generated embeddings for {len(chunks)} chunks")
-        return embeddings
+        placeholder: list[list[float]] = [[0.0] * embedding_dim for _ in chunks]
+        logger.debug(f"Generated {len(chunks)} placeholder embeddings")
+        return placeholder
 
     async def _store_chunks(
         self,
@@ -269,14 +331,22 @@ class VectorStoreTool:
     ) -> int:
         """Store document chunks with embeddings in vector store.
 
+        Uses Semantic Kernel collection abstraction for batch upsert operations.
+
         Args:
             source_file: SourceFile with chunks to store.
             embeddings: Embedding vectors corresponding to chunks.
 
         Returns:
             Number of chunks stored.
+
+        Raises:
+            RuntimeError: If collection factory is not initialized.
         """
-        stored_count = 0
+        if self._collection_factory is None:
+            raise RuntimeError("Collection factory not initialized")
+
+        records: list[DocumentRecord] = []
         for idx, (chunk, embedding) in enumerate(
             zip(source_file.chunks, embeddings, strict=False)
         ):
@@ -290,11 +360,15 @@ class VectorStoreTool:
                 file_type=source_file.file_type,
                 file_size_bytes=source_file.size_bytes,
             )
-            self._documents.append(record)
-            stored_count += 1
+            records.append(record)
 
-        logger.debug(f"Stored {stored_count} chunks from {source_file.path}")
-        return stored_count
+        # Batch upsert using collection
+        async with self._collection_factory() as collection:
+            await collection.ensure_collection_exists()
+            await collection.upsert(records)
+
+        logger.debug(f"Stored {len(records)} chunks from {source_file.path}")
+        return len(records)
 
     async def initialize(self, force_ingest: bool = False) -> None:
         """Initialize tool and ingest source files.
@@ -314,6 +388,9 @@ class VectorStoreTool:
         # Validate source exists (T035)
         if not source_path.exists():
             raise FileNotFoundError(f"Source path does not exist: {self.config.source}")
+
+        # Set up collection factory before processing files
+        self._setup_collection_factory()
 
         # Discover files
         files = self._discover_files()
@@ -399,61 +476,45 @@ class VectorStoreTool:
     async def _search_documents(
         self, query_embedding: list[float]
     ) -> list[QueryResult]:
-        """Search documents using cosine similarity.
+        """Search documents using vector store collection.
+
+        Uses Semantic Kernel collection's native vector search capabilities.
 
         Args:
             query_embedding: Query embedding vector.
 
         Returns:
             List of QueryResults sorted by descending score.
+
+        Raises:
+            RuntimeError: If collection factory is not initialized.
         """
-        # Simplified cosine similarity search
+        if self._collection_factory is None:
+            raise RuntimeError("Collection factory not initialized")
+
         results: list[QueryResult] = []
 
-        for doc in self._documents:
-            if doc.embedding:
-                # Calculate cosine similarity
-                score = self._cosine_similarity(query_embedding, doc.embedding)
-                results.append(
-                    QueryResult(
-                        content=doc.content,
-                        score=max(0.0, min(1.0, score)),  # Clamp to [0, 1]
-                        source_path=doc.source_path,
-                        chunk_index=doc.chunk_index,
-                        metadata={
-                            "file_type": doc.file_type,
-                            "file_size_bytes": doc.file_size_bytes,
-                            "mtime": doc.mtime,
-                        },
-                    )
-                )
+        async with self._collection_factory() as collection:
+            search_results = await collection.search(
+                vector=query_embedding,
+                top=self.config.top_k or 5,
+            )
 
-        # Sort by score descending
+            # Process async iterable of search results
+            async for result in search_results:
+                # Handle SK result format (may be object with attrs or tuple)
+                record = result.record if hasattr(result, "record") else result[0]
+                score = result.score if hasattr(result, "score") else result[1]
+
+                query_result = await convert_document_to_query_result(
+                    record,
+                    score=max(0.0, min(1.0, score)),
+                )
+                results.append(query_result)
+
+        # Results should already be sorted by SK, but ensure ordering
         results.sort(key=lambda r: r.score, reverse=True)
         return results
-
-    @staticmethod
-    def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
-        """Calculate cosine similarity between two vectors.
-
-        Args:
-            vec_a: First vector.
-            vec_b: Second vector.
-
-        Returns:
-            Cosine similarity score (0.0 to 1.0).
-        """
-        if len(vec_a) != len(vec_b):
-            return 0.0
-
-        dot_product: float = sum(a * b for a, b in zip(vec_a, vec_b, strict=False))
-        magnitude_a: float = sum(a * a for a in vec_a) ** 0.5
-        magnitude_b: float = sum(b * b for b in vec_b) ** 0.5
-
-        if magnitude_a == 0 or magnitude_b == 0:
-            return 0.0
-
-        return float(dot_product / (magnitude_a * magnitude_b))
 
     @staticmethod
     def _format_results(results: list[QueryResult], query: str) -> str:
