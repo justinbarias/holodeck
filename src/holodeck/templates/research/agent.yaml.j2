@@ -20,11 +20,10 @@ instructions:
 
 # Tools Configuration - Add vector search for research
 tools:
-  - type: vector_search
+  - type: vectorstore
     name: search_papers
     description: "Search research papers and documents"
-    vector_store: postgres
-    index: papers
+    source: data/papers
     top_k: 5
 
 # Test Cases (sample test cases for learning)

@@ -198,7 +198,9 @@ instructions:
   inline: "Help"
 tools:
   - name: search
+    description: Search through documents
     type: vectorstore
+    source: data/docs
 """
         result = self.renderer.validate_agent_config(valid_yaml)
         assert isinstance(result, Agent)

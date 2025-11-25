@@ -12,6 +12,7 @@ from holodeck.models.config import ExecutionConfig
 from holodeck.models.evaluation import EvaluationConfig
 from holodeck.models.llm import LLMProvider
 from holodeck.models.test_case import TestCaseModel
+from holodeck.models.tool import ToolUnion
 
 
 class Instructions(BaseModel):
@@ -72,7 +73,7 @@ class Agent(BaseModel):
         default=None,
         description="Response format schema (inline dict, file path, or null)",
     )
-    tools: list[Any] | None = Field(
+    tools: list[ToolUnion] | None = Field(
         default=None, description="Agent tools (vectorstore, function, mcp, prompt)"
     )
     evaluations: EvaluationConfig | None = Field(
@@ -119,7 +120,7 @@ class Agent(BaseModel):
 
     @field_validator("tools")
     @classmethod
-    def validate_tools(cls, v: list[Any] | None) -> list[Any] | None:
+    def validate_tools(cls, v: list[ToolUnion] | None) -> list[ToolUnion] | None:
         """Validate tools list."""
         if v is not None and len(v) > 50:
             raise ValueError("Maximum 50 tools per agent")

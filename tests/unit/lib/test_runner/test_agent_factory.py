@@ -792,7 +792,15 @@ class TestAgentFactoryIntegration:
                 api_key="sk-test",
             ),
             instructions=Instructions(inline="You are a helpful assistant."),
-            tools=[{"type": "function", "name": "search"}],
+            tools=[
+                {
+                    "type": "function",
+                    "name": "search",
+                    "description": "Search function",
+                    "file": "search.py",
+                    "function": "search",
+                }
+            ],
         )
 
         with (
@@ -1204,7 +1212,15 @@ class TestVectorstoreToolDiscovery:
                 api_key="sk-test",
             ),
             instructions=Instructions(inline="Test"),
-            tools=[{"type": "function", "name": "other_tool"}],
+            tools=[
+                {
+                    "type": "function",
+                    "name": "other_tool",
+                    "description": "A test function tool",
+                    "file": "tools/test.py",
+                    "function": "test_func",
+                }
+            ],
         )
 
         with (
@@ -1256,7 +1272,13 @@ class TestVectorstoreToolDiscovery:
             ),
             instructions=Instructions(inline="Test"),
             tools=[
-                {"type": "function", "name": "func_tool"},
+                {
+                    "type": "function",
+                    "name": "func_tool",
+                    "description": "A test function tool",
+                    "file": "tools/test.py",
+                    "function": "test_func",
+                },
                 {
                     "type": "vectorstore",
                     "name": "test_kb",

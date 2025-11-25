@@ -10,9 +10,9 @@ Tool types:
 - PromptTool: AI-powered semantic functions
 """
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, field_validator
 
 
 class Tool(BaseModel):
@@ -94,7 +94,7 @@ class VectorstoreTool(BaseModel):
 
     name: str = Field(..., description="Tool identifier")
     description: str = Field(..., description="Tool description")
-    type: str = Field(default="vectorstore", description="Tool type")
+    type: Literal["vectorstore"] = Field(default="vectorstore", description="Tool type")
     source: str = Field(..., description="Path to data file or directory")
     vector_field: str | list[str] | None = Field(
         None, description="Field(s) to vectorize"
@@ -105,8 +105,14 @@ class VectorstoreTool(BaseModel):
     embedding_model: str | None = Field(
         None, description="Custom embedding model (defaults to provider default)"
     )
-    database: DatabaseConfig | None = Field(
-        None, description="Vector database configuration (defaults to in-memory)"
+    database: DatabaseConfig | str | None = Field(
+        None,
+        description=(
+            "Vector database configuration. Can be:\n"
+            "- DatabaseConfig object with provider and connection details\n"
+            "- String reference to a named vectorstore in global config\n"
+            "- None for in-memory storage"
+        ),
     )
     top_k: int = Field(
         default=5, description="Number of top results to return from search"
@@ -124,6 +130,16 @@ class VectorstoreTool(BaseModel):
         """Validate source is not empty."""
         if not v or not v.strip():
             raise ValueError("source must be a non-empty path")
+        return v
+
+    @field_validator("database")
+    @classmethod
+    def validate_database(
+        cls, v: DatabaseConfig | str | None
+    ) -> DatabaseConfig | str | None:
+        """Validate database is not empty string if provided as string."""
+        if isinstance(v, str) and not v.strip():
+            raise ValueError("database reference must be a non-empty string")
         return v
 
     @field_validator("chunk_size")
@@ -168,7 +184,7 @@ class FunctionTool(BaseModel):
 
     name: str = Field(..., description="Tool identifier")
     description: str = Field(..., description="Tool description")
-    type: str = Field(default="function", description="Tool type")
+    type: Literal["function"] = Field(default="function", description="Tool type")
     file: str = Field(..., description="Path to Python file")
     function: str = Field(..., description="Function name")
     parameters: dict[str, dict[str, Any]] | None = Field(
@@ -199,7 +215,7 @@ class MCPTool(BaseModel):
 
     name: str = Field(..., description="Tool identifier")
     description: str = Field(..., description="Tool description")
-    type: str = Field(default="mcp", description="Tool type")
+    type: Literal["mcp"] = Field(default="mcp", description="Tool type")
     server: str = Field(..., description="MCP server identifier")
     config: dict[str, Any] | None = Field(None, description="MCP configuration")
 
@@ -219,7 +235,7 @@ class PromptTool(BaseModel):
 
     name: str = Field(..., description="Tool identifier")
     description: str = Field(..., description="Tool description")
-    type: str = Field(default="prompt", description="Tool type")
+    type: Literal["prompt"] = Field(default="prompt", description="Tool type")
     template: str | None = Field(None, description="Inline prompt template")
     file: str | None = Field(None, description="Path to prompt file")
     parameters: dict[str, dict[str, Any]] = Field(
@@ -267,3 +283,30 @@ class PromptTool(BaseModel):
             raise ValueError("Cannot provide both 'template' and 'file'")
 
         return v
+
+
+def _get_tool_type(v: Any) -> str:
+    """Extract tool type from dict or model for discrimination.
+
+    Args:
+        v: Tool data as dict (from YAML) or model instance
+
+    Returns:
+        Tool type string for discriminator matching
+    """
+    if isinstance(v, dict):
+        tool_type: str = v.get("type", "")
+        return tool_type
+    result: str = getattr(v, "type", "")
+    return result
+
+
+# Discriminated union for all tool types - enables type-safe tool handling
+# Each tool model is tagged with its type value for Pydantic discriminator
+ToolUnion = Annotated[
+    Annotated[VectorstoreTool, Tag("vectorstore")]
+    | Annotated[FunctionTool, Tag("function")]
+    | Annotated[MCPTool, Tag("mcp")]
+    | Annotated[PromptTool, Tag("prompt")],
+    Discriminator(_get_tool_type),
+]

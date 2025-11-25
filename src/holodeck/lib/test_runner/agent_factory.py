@@ -41,6 +41,7 @@ from holodeck.lib.logging_utils import log_retry
 from holodeck.models.agent import Agent
 from holodeck.models.llm import ProviderEnum
 from holodeck.models.token_usage import TokenUsage
+from holodeck.models.tool import VectorstoreTool
 
 # Try to import Anthropic support (optional dependency)
 try:
@@ -211,9 +212,7 @@ class AgentFactory:
             return False
 
         for tool in self.agent_config.tools:
-            if isinstance(tool, dict) and tool.get("type") == "vectorstore":
-                return True
-            if hasattr(tool, "type") and tool.type == "vectorstore":
+            if isinstance(tool, VectorstoreTool):
                 return True
         return False
 
@@ -228,10 +227,8 @@ class AgentFactory:
             return default_model
 
         for tool in self.agent_config.tools:
-            if isinstance(tool, dict) and tool.get("type") == "vectorstore":
-                return tool.get("embedding_model") or default_model
-            if hasattr(tool, "type") and tool.type == "vectorstore":
-                return getattr(tool, "embedding_model", None) or default_model
+            if isinstance(tool, VectorstoreTool):
+                return tool.embedding_model or default_model
         return default_model
 
     def _register_embedding_service(self) -> None:
@@ -323,19 +320,14 @@ class AgentFactory:
         if not self._has_vectorstore_tools():
             return
 
-        from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
         for tool_config in self.agent_config.tools:
-            # Check if this is a vectorstore tool
-            if isinstance(tool_config, dict):
-                if tool_config.get("type") != "vectorstore":
-                    continue
-                config = VectorstoreToolConfig(**tool_config)
-            elif hasattr(tool_config, "type") and tool_config.type == "vectorstore":
-                config = tool_config
-            else:
+            # Only process vectorstore tools
+            if not isinstance(tool_config, VectorstoreTool):
                 continue
+
+            config = tool_config
 
             try:
                 # Create tool and inject embedding service
@@ -641,14 +633,17 @@ class AgentFactory:
         if hasattr(settings, "top_p") and model_config.top_p is not None:
             settings.top_p = model_config.top_p
 
-        if hasattr(settings, "max_tokens") and model_config.max_tokens is not None:
-            settings.max_tokens = model_config.max_tokens
-
         if (
             hasattr(settings, "max_completion_tokens")
             and model_config.max_tokens is not None
         ):
             settings.max_completion_tokens = model_config.max_tokens
+
+        # if (
+        #     hasattr(settings, "max_completion_tokens")
+        #     and model_config.max_tokens is not None
+        # ):
+        #     settings.max_completion_tokens = model_config.max_tokens
 
         if hasattr(settings, "ai_model_id"):
             settings.ai_model_id = model_config.name
