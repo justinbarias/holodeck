@@ -10,6 +10,16 @@ Test IDs:
 - T018: VectorStoreTool file discovery (single file)
 - T019: VectorStoreTool file discovery (directory with nested subdirectories)
 - T020: VectorStoreTool search result formatting
+- T021: VectorStoreTool embedding service injection
+- T022: VectorStoreTool collection setup
+- T023: VectorStoreTool file processor lazy init
+- T024: VectorStoreTool source path resolution with context var
+- T025: VectorStoreTool file processing
+- T026: VectorStoreTool chunk embedding
+- T027: VectorStoreTool chunk storage
+- T028: VectorStoreTool initialization full flow
+- T029: VectorStoreTool search success path
+- T030: VectorStoreTool search documents
 
 Note: This test module requires mocking semantic_kernel modules because the full
 semantic_kernel library is not available in the test environment.
@@ -17,7 +27,7 @@ semantic_kernel library is not available in the test environment.
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Mock semantic_kernel modules BEFORE importing holodeck modules
 # This prevents import errors from semantic_kernel dependencies
@@ -767,3 +777,1125 @@ class TestVectorStoreToolSearchValidation:
 
         with pytest.raises(ValueError, match="cannot be empty"):
             await tool.search("   ")
+
+
+class TestSetEmbeddingService:
+    """T021: Tests for embedding service injection."""
+
+    def test_set_embedding_service_stores_service(self, tmp_path: Path) -> None:
+        """Test that set_embedding_service stores the service."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        mock_service = MagicMock()
+        tool.set_embedding_service(mock_service)
+
+        assert tool._embedding_service is mock_service
+
+    def test_set_embedding_service_with_none(self, tmp_path: Path) -> None:
+        """Test that set_embedding_service can set None."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        tool.set_embedding_service(None)
+
+        assert tool._embedding_service is None
+
+
+class TestSetupCollection:
+    """T022: Tests for collection setup."""
+
+    def test_setup_collection_in_memory_default(self, tmp_path: Path) -> None:
+        """Test that _setup_collection defaults to in-memory provider."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock get_collection_class to avoid actual import
+        mock_collection = MagicMock()
+        with patch(
+            "holodeck.tools.vectorstore_tool.get_collection_class"
+        ) as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+            tool._setup_collection()
+
+        assert tool._provider == "in-memory"
+        assert tool._collection is not None
+
+    def test_setup_collection_with_redis_provider(self, tmp_path: Path) -> None:
+        """Test _setup_collection with Redis provider."""
+        from holodeck.models.tool import DatabaseConfig
+
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+            database=DatabaseConfig(provider="redis-json"),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock get_collection_class to avoid actual import
+        mock_collection = MagicMock()
+        with patch(
+            "holodeck.tools.vectorstore_tool.get_collection_class"
+        ) as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+            tool._setup_collection()
+
+        assert tool._provider == "redis-json"
+        assert tool._collection is not None
+
+    def test_setup_collection_with_connection_string(self, tmp_path: Path) -> None:
+        """Test _setup_collection with connection string."""
+        from holodeck.models.tool import DatabaseConfig
+
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+            database=DatabaseConfig(
+                provider="redis-json",
+                connection_string="redis://localhost:6379",
+            ),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock get_collection_class to avoid actual import
+        mock_collection = MagicMock()
+        with patch(
+            "holodeck.tools.vectorstore_tool.get_collection_class"
+        ) as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+            tool._setup_collection()
+
+        assert tool._provider == "redis-json"
+        assert tool._collection is not None
+
+
+class TestGetFileProcessor:
+    """T023: Tests for file processor lazy initialization."""
+
+    def test_get_file_processor_lazy_initialization(self, tmp_path: Path) -> None:
+        """Test that _get_file_processor creates processor lazily."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Initially None
+        assert tool._file_processor is None
+
+        # After calling _get_file_processor, it should be created
+        processor = tool._get_file_processor()
+        assert processor is not None
+        assert tool._file_processor is not None
+
+    def test_get_file_processor_returns_same_instance(self, tmp_path: Path) -> None:
+        """Test that _get_file_processor returns the same instance."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        processor1 = tool._get_file_processor()
+        processor2 = tool._get_file_processor()
+
+        assert processor1 is processor2
+
+
+class TestResolveSourcePath:
+    """T024: Tests for source path resolution with context variable."""
+
+    def test_resolve_absolute_path(self, tmp_path: Path) -> None:
+        """Test that absolute paths are returned as-is."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),  # Absolute path
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        resolved = tool._resolve_source_path()
+
+        assert resolved == source_file
+
+    def test_resolve_relative_path_with_base_dir(self, tmp_path: Path) -> None:
+        """Test resolution of relative path with explicit base_dir."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        source_file = docs_dir / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source="docs/test.md",  # Relative path
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config, base_dir=str(tmp_path))
+        resolved = tool._resolve_source_path()
+
+        assert resolved == source_file
+
+    def test_resolve_relative_path_with_context_var(self, tmp_path: Path) -> None:
+        """Test resolution of relative path using context variable."""
+        from holodeck.config.context import agent_base_dir
+
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        source_file = docs_dir / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source="docs/test.md",  # Relative path
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        # Set context variable
+        token = agent_base_dir.set(str(tmp_path))
+        try:
+            tool = VectorStoreTool(config)  # No explicit base_dir
+            resolved = tool._resolve_source_path()
+
+            assert resolved == source_file
+        finally:
+            agent_base_dir.reset(token)
+
+    def test_resolve_relative_path_fallback_to_cwd(self, tmp_path: Path) -> None:
+        """Test that relative path falls back to CWD when no base_dir."""
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source="relative/path.md",  # Relative path
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)  # No base_dir, no context var
+        resolved = tool._resolve_source_path()
+
+        # Should resolve relative to CWD
+        expected = Path("relative/path.md").resolve()
+        assert resolved == expected
+
+
+class TestProcessFile:
+    """T025: Tests for file processing."""
+
+    @pytest.mark.asyncio
+    async def test_process_file_success_markdown(self, tmp_path: Path) -> None:
+        """Test successful processing of a markdown file."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test content\n\nThis is test content.")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.lib.file_processor import SourceFile
+        from holodeck.models.test_case import FileInput
+        from holodeck.models.test_result import ProcessedFileInput
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock the file processor
+        mock_processor = MagicMock()
+        mock_processor.process_file.return_value = ProcessedFileInput(
+            original=FileInput(path=str(source_file), type="text"),
+            markdown_content="# Test content\n\nThis is test content.",
+            metadata={},
+            error=None,
+        )
+        tool._file_processor = mock_processor
+
+        result = await tool._process_file(source_file)
+
+        assert result is not None
+        assert isinstance(result, SourceFile)
+        assert result.path == source_file
+        assert result.content == "# Test content\n\nThis is test content."
+        assert len(result.chunks) > 0
+
+    @pytest.mark.asyncio
+    async def test_process_file_returns_none_on_error(self, tmp_path: Path) -> None:
+        """Test that _process_file returns None when processor returns error."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.models.test_case import FileInput
+        from holodeck.models.test_result import ProcessedFileInput
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock processor returning error
+        mock_processor = MagicMock()
+        mock_processor.process_file.return_value = ProcessedFileInput(
+            original=FileInput(path=str(source_file), type="text"),
+            markdown_content="",
+            metadata={},
+            error="Processing failed",
+        )
+        tool._file_processor = mock_processor
+
+        result = await tool._process_file(source_file)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_process_file_returns_none_on_empty_content(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that _process_file returns None for empty content."""
+        source_file = tmp_path / "empty.md"
+        source_file.write_text("")  # Empty file
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.models.test_case import FileInput
+        from holodeck.models.test_result import ProcessedFileInput
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock processor returning empty content
+        mock_processor = MagicMock()
+        mock_processor.process_file.return_value = ProcessedFileInput(
+            original=FileInput(path=str(source_file), type="text"),
+            markdown_content="   ",  # Whitespace only
+            metadata={},
+            error=None,
+        )
+        tool._file_processor = mock_processor
+
+        result = await tool._process_file(source_file)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_process_file_handles_permission_error(self, tmp_path: Path) -> None:
+        """Test that _process_file handles PermissionError gracefully."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Create a non-existent path that will cause stat() to fail
+        non_existent = tmp_path / "nonexistent.md"
+
+        result = await tool._process_file(non_existent)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_process_file_handles_unexpected_error(self, tmp_path: Path) -> None:
+        """Test that _process_file handles unexpected errors gracefully."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock processor raising exception
+        mock_processor = MagicMock()
+        mock_processor.process_file.side_effect = RuntimeError("Unexpected error")
+        tool._file_processor = mock_processor
+
+        result = await tool._process_file(source_file)
+
+        assert result is None
+
+
+class TestEmbedChunks:
+    """T026: Tests for chunk embedding."""
+
+    @pytest.mark.asyncio
+    async def test_embed_chunks_with_embedding_service(self, tmp_path: Path) -> None:
+        """Test embedding with injected embedding service."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock embedding service
+        mock_service = MagicMock()
+        mock_service.generate_embeddings = AsyncMock(
+            return_value=[[0.1] * 1536, [0.2] * 1536]
+        )
+        tool._embedding_service = mock_service
+
+        chunks = ["chunk1", "chunk2"]
+        embeddings = await tool._embed_chunks(chunks)
+
+        assert len(embeddings) == 2
+        assert len(embeddings[0]) == 1536
+        mock_service.generate_embeddings.assert_called_once_with(chunks)
+
+    @pytest.mark.asyncio
+    async def test_embed_chunks_fallback_to_placeholder(self, tmp_path: Path) -> None:
+        """Test embedding falls back to placeholder when no service."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        # No embedding service set
+
+        chunks = ["chunk1", "chunk2"]
+        embeddings = await tool._embed_chunks(chunks)
+
+        # Should return placeholder embeddings
+        assert len(embeddings) == 2
+        assert len(embeddings[0]) == 1536
+        assert all(v == 0.0 for v in embeddings[0])
+
+    @pytest.mark.asyncio
+    async def test_embed_chunks_handles_service_error(self, tmp_path: Path) -> None:
+        """Test embedding handles service errors by falling back."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock embedding service that fails
+        mock_service = MagicMock()
+        mock_service.generate_embeddings = AsyncMock(
+            side_effect=RuntimeError("Service error")
+        )
+        tool._embedding_service = mock_service
+
+        chunks = ["chunk1"]
+        embeddings = await tool._embed_chunks(chunks)
+
+        # Should fall back to placeholder
+        assert len(embeddings) == 1
+        assert len(embeddings[0]) == 1536
+        assert all(v == 0.0 for v in embeddings[0])
+
+
+class TestStoreChunks:
+    """T027: Tests for chunk storage."""
+
+    @pytest.mark.asyncio
+    async def test_store_chunks_creates_document_records(self, tmp_path: Path) -> None:
+        """Test that _store_chunks creates DocumentRecord instances."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.lib.file_processor import SourceFile
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Setup mock collection
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.ensure_collection_exists = AsyncMock()
+        mock_collection.upsert = AsyncMock()
+        tool._collection = mock_collection
+
+        # Create source file with chunks
+        sf = SourceFile(
+            path=source_file,
+            content="Test content",
+            mtime=1234567890.0,
+            size_bytes=100,
+            file_type=".md",
+            chunks=["chunk1", "chunk2"],
+        )
+        embeddings = [[0.1] * 1536, [0.2] * 1536]
+
+        count = await tool._store_chunks(sf, embeddings)
+
+        assert count == 2
+        mock_collection.upsert.assert_called_once()
+
+        # Verify records were created correctly
+        call_args = mock_collection.upsert.call_args[0][0]
+        assert len(call_args) == 2
+        assert call_args[0].content == "chunk1"
+        assert call_args[1].content == "chunk2"
+
+    @pytest.mark.asyncio
+    async def test_store_chunks_raises_if_collection_none(self, tmp_path: Path) -> None:
+        """Test that _store_chunks raises if collection not initialized."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.lib.file_processor import SourceFile
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        # _collection is None
+
+        sf = SourceFile(
+            path=source_file,
+            content="Test",
+            chunks=["chunk1"],
+        )
+
+        with pytest.raises(RuntimeError, match="Collection not initialized"):
+            await tool._store_chunks(sf, [[0.1] * 1536])
+
+
+class TestInitializeFullFlow:
+    """T028: Tests for full initialization flow."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_processes_all_files(self, tmp_path: Path) -> None:
+        """Test that initialize processes all discovered files."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "doc1.md").write_text("# Doc 1")
+        (docs_dir / "doc2.md").write_text("# Doc 2")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(docs_dir),
+        )
+
+        from holodeck.models.test_case import FileInput
+        from holodeck.models.test_result import ProcessedFileInput
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock file processor
+        def mock_process_file(file_input: FileInput) -> ProcessedFileInput:
+            return ProcessedFileInput(
+                original=file_input,
+                markdown_content="# Content",
+                metadata={},
+                error=None,
+            )
+
+        mock_processor = MagicMock()
+        mock_processor.process_file.side_effect = mock_process_file
+        tool._file_processor = mock_processor
+
+        # Mock collection
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.ensure_collection_exists = AsyncMock()
+        mock_collection.upsert = AsyncMock()
+
+        with patch(
+            "holodeck.tools.vectorstore_tool.get_collection_class"
+        ) as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+
+            await tool.initialize()
+
+        assert tool.is_initialized is True
+        assert tool.document_count > 0
+        assert tool.last_ingest_time is not None
+
+    @pytest.mark.asyncio
+    async def test_initialize_sets_state_correctly(self, tmp_path: Path) -> None:
+        """Test that initialize sets state attributes correctly."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test content")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.models.test_case import FileInput
+        from holodeck.models.test_result import ProcessedFileInput
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock file processor
+        mock_processor = MagicMock()
+        mock_processor.process_file.return_value = ProcessedFileInput(
+            original=FileInput(path=str(source_file), type="text"),
+            markdown_content="# Test content",
+            metadata={},
+            error=None,
+        )
+        tool._file_processor = mock_processor
+
+        # Mock collection
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.ensure_collection_exists = AsyncMock()
+        mock_collection.upsert = AsyncMock()
+
+        with patch(
+            "holodeck.tools.vectorstore_tool.get_collection_class"
+        ) as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+
+            await tool.initialize()
+
+        assert tool.is_initialized is True
+        assert tool.document_count >= 0
+        assert tool.last_ingest_time is not None
+
+    @pytest.mark.asyncio
+    async def test_initialize_with_empty_directory(self, tmp_path: Path) -> None:
+        """Test initialization with empty directory."""
+        empty_dir = tmp_path / "empty"
+        empty_dir.mkdir()
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(empty_dir),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock collection
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.ensure_collection_exists = AsyncMock()
+        mock_collection.upsert = AsyncMock()
+
+        with patch(
+            "holodeck.tools.vectorstore_tool.get_collection_class"
+        ) as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+
+            await tool.initialize()
+
+        # Should still be initialized even with no files
+        assert tool.is_initialized is True
+        assert tool.document_count == 0
+
+    @pytest.mark.asyncio
+    async def test_initialize_skips_failed_files(self, tmp_path: Path) -> None:
+        """Test that initialize skips files that fail processing."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "good.md").write_text("# Good")
+        (docs_dir / "bad.md").write_text("# Bad")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(docs_dir),
+        )
+
+        from holodeck.models.test_case import FileInput
+        from holodeck.models.test_result import ProcessedFileInput
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Mock processor that fails on bad.md
+        call_count = [0]
+
+        def mock_process_file(file_input: FileInput) -> ProcessedFileInput:
+            call_count[0] += 1
+            path = file_input.path or ""
+            if "bad.md" in path:
+                return ProcessedFileInput(
+                    original=file_input,
+                    markdown_content="",
+                    metadata={},
+                    error="Processing failed",
+                )
+            return ProcessedFileInput(
+                original=file_input,
+                markdown_content="# Content",
+                metadata={},
+                error=None,
+            )
+
+        mock_processor = MagicMock()
+        mock_processor.process_file.side_effect = mock_process_file
+        tool._file_processor = mock_processor
+
+        # Mock collection
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.ensure_collection_exists = AsyncMock()
+        mock_collection.upsert = AsyncMock()
+
+        with patch(
+            "holodeck.tools.vectorstore_tool.get_collection_class"
+        ) as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+
+            await tool.initialize()
+
+        # Should be initialized with only the successful file
+        assert tool.is_initialized is True
+        assert tool.document_count > 0
+
+
+class TestSearchSuccessPath:
+    """T029: Tests for search success path."""
+
+    @pytest.mark.asyncio
+    async def test_search_generates_query_embedding(self, tmp_path: Path) -> None:
+        """Test that search generates embedding for query."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        tool.is_initialized = True
+
+        # Mock _embed_chunks to track calls
+        mock_embed = AsyncMock(return_value=[[0.1] * 1536])
+        tool._embed_chunks = mock_embed
+
+        # Mock _search_documents
+        mock_search = AsyncMock(return_value=[])
+        tool._search_documents = mock_search
+
+        await tool.search("test query")
+
+        mock_embed.assert_called_once_with(["test query"])
+
+    @pytest.mark.asyncio
+    async def test_search_applies_min_similarity_filter(self, tmp_path: Path) -> None:
+        """Test that search applies min_similarity_score filter."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+            min_similarity_score=0.5,
+        )
+
+        from holodeck.lib.vector_store import QueryResult
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        tool.is_initialized = True
+
+        # Mock _embed_chunks
+        tool._embed_chunks = AsyncMock(return_value=[[0.1] * 1536])
+
+        # Mock _search_documents returning results with various scores
+        mock_results = [
+            QueryResult(content="High", score=0.9, source_path="/a.md", chunk_index=0),
+            QueryResult(content="Low", score=0.3, source_path="/b.md", chunk_index=0),
+            QueryResult(content="Mid", score=0.6, source_path="/c.md", chunk_index=0),
+        ]
+        tool._search_documents = AsyncMock(return_value=mock_results)
+
+        result = await tool.search("test query")
+
+        # Only results with score >= 0.5 should be included
+        assert "High" in result
+        assert "Mid" in result
+        assert "Low" not in result
+
+    @pytest.mark.asyncio
+    async def test_search_applies_top_k_limit(self, tmp_path: Path) -> None:
+        """Test that search applies top_k limit."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+            top_k=2,
+        )
+
+        from holodeck.lib.vector_store import QueryResult
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        tool.is_initialized = True
+
+        # Mock _embed_chunks
+        tool._embed_chunks = AsyncMock(return_value=[[0.1] * 1536])
+
+        # Mock _search_documents returning 3 results
+        mock_results = [
+            QueryResult(content="First", score=0.9, source_path="/a.md", chunk_index=0),
+            QueryResult(
+                content="Second", score=0.8, source_path="/b.md", chunk_index=0
+            ),
+            QueryResult(content="Third", score=0.7, source_path="/c.md", chunk_index=0),
+        ]
+        tool._search_documents = AsyncMock(return_value=mock_results)
+
+        result = await tool.search("test query")
+
+        # Only top 2 results should be included
+        assert "First" in result
+        assert "Second" in result
+        assert "Third" not in result
+
+    @pytest.mark.asyncio
+    async def test_search_returns_formatted_results(self, tmp_path: Path) -> None:
+        """Test that search returns properly formatted results."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.lib.vector_store import QueryResult
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        tool.is_initialized = True
+
+        tool._embed_chunks = AsyncMock(return_value=[[0.1] * 1536])
+
+        mock_results = [
+            QueryResult(
+                content="Result content",
+                score=0.85,
+                source_path="/path/to/doc.md",
+                chunk_index=0,
+            )
+        ]
+        tool._search_documents = AsyncMock(return_value=mock_results)
+
+        result = await tool.search("test query")
+
+        assert "Found 1 result" in result
+        assert "Score: 0.85" in result
+        assert "/path/to/doc.md" in result
+        assert "Result content" in result
+
+
+class TestSearchDocuments:
+    """T030: Tests for _search_documents method."""
+
+    @pytest.mark.asyncio
+    async def test_search_documents_uses_collection_search(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that _search_documents uses collection's search method."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+            top_k=5,
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Create mock async iterator for search results
+        class MockAsyncIterator:
+            def __init__(self, items: list) -> None:
+                self.items = items
+                self.index = 0
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        # Mock search result
+        mock_record = MagicMock()
+        mock_record.id = "test_id"
+        mock_record.source_path = "/test.md"
+        mock_record.chunk_index = 0
+        mock_record.content = "Test content"
+        mock_record.mtime = 1234567890.0
+        mock_record.file_type = ".md"
+        mock_record.file_size_bytes = 100
+
+        mock_result = MagicMock()
+        mock_result.record = mock_record
+        mock_result.score = 0.9
+
+        # Create mock collection
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        # Mock search results
+        mock_search_results = MagicMock()
+        mock_search_results.results = MockAsyncIterator([mock_result])
+        mock_collection.search = AsyncMock(return_value=mock_search_results)
+
+        tool._collection = mock_collection
+
+        query_embedding = [0.1] * 1536
+        results = await tool._search_documents(query_embedding)
+
+        mock_collection.search.assert_called_once_with(
+            vector=query_embedding,
+            top=5,
+        )
+        assert len(results) == 1
+        assert results[0].content == "Test content"
+        assert results[0].score == 0.9
+
+    @pytest.mark.asyncio
+    async def test_search_documents_sorts_by_score(self, tmp_path: Path) -> None:
+        """Test that _search_documents sorts results by score descending."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        # Create mock results with unsorted scores
+        class MockAsyncIterator:
+            def __init__(self, items: list) -> None:
+                self.items = items
+                self.index = 0
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        mock_results = []
+        for i, (score, content) in enumerate(
+            [(0.5, "Low"), (0.9, "High"), (0.7, "Mid")]
+        ):
+            mock_record = MagicMock()
+            mock_record.id = f"test_{i}"
+            mock_record.source_path = f"/test{i}.md"
+            mock_record.chunk_index = 0
+            mock_record.content = content
+            mock_record.mtime = 1234567890.0
+            mock_record.file_type = ".md"
+            mock_record.file_size_bytes = 100
+
+            mock_result = MagicMock()
+            mock_result.record = mock_record
+            mock_result.score = score
+            mock_results.append(mock_result)
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        mock_search_results = MagicMock()
+        mock_search_results.results = MockAsyncIterator(mock_results)
+        mock_collection.search = AsyncMock(return_value=mock_search_results)
+
+        tool._collection = mock_collection
+
+        results = await tool._search_documents([0.1] * 1536)
+
+        # Results should be sorted by score descending
+        assert len(results) == 3
+        assert results[0].score == 0.9
+        assert results[1].score == 0.7
+        assert results[2].score == 0.5
+
+    @pytest.mark.asyncio
+    async def test_search_documents_raises_if_collection_none(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that _search_documents raises if collection not initialized."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        # _collection is None
+
+        with pytest.raises(RuntimeError, match="Collection not initialized"):
+            await tool._search_documents([0.1] * 1536)
+
+
+class TestDiscoverFilesUnsupportedExtension:
+    """Additional tests for unsupported file extension handling."""
+
+    def test_discover_files_single_unsupported_file_logs_warning(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that single unsupported file logs warning and returns empty."""
+        unsupported_file = tmp_path / "image.png"
+        unsupported_file.write_bytes(b"PNG data")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(unsupported_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        discovered = tool._discover_files()
+
+        assert len(discovered) == 0
