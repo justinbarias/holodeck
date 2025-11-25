@@ -6,10 +6,14 @@ This guide explains HoloDeck's four tool types that extend agent capabilities.
 
 Tools are agent capabilities defined in `agent.yaml`. HoloDeck supports four tool types:
 
-1. **Vectorstore Tools** - Semantic search over data
-2. **Function Tools** - Custom Python functions
-3. **MCP Tools** - Model Context Protocol servers
-4. **Prompt Tools** - LLM-powered semantic functions
+| Tool Type | Description | Status |
+|-----------|-------------|--------|
+| **Vectorstore Tools** | Semantic search over data | ✅ Implemented |
+| **Function Tools** | Custom Python functions | 🚧 Planned |
+| **MCP Tools** | Model Context Protocol servers | 🚧 Planned |
+| **Prompt Tools** | LLM-powered semantic functions | 🚧 Planned |
+
+> **Note**: Currently, only **Vectorstore Tools** are fully implemented. Other tool types are defined in the configuration schema but not yet functional.
 
 ## Common Tool Fields
 
@@ -58,7 +62,9 @@ tools:
 
 ---
 
-## Vectorstore Tools
+## Vectorstore Tools ✅
+
+> **Status**: Fully implemented
 
 Semantic search over unstructured or structured data.
 
@@ -75,6 +81,101 @@ Semantic search over unstructured or structured data.
   description: Search knowledge base for answers
   type: vectorstore
   source: knowledge_base/
+```
+
+### Supported Vector Database Providers
+
+HoloDeck supports multiple vector database backends through Semantic Kernel's VectorStoreCollection abstractions. You can switch providers via configuration without changing your agent code.
+
+| Provider | Description | Connection | Dependencies |
+|----------|-------------|------------|--------------|
+| `redis-hashset` | Redis with Hashset storage | `redis://localhost:6379` | `redis[hiredis]` |
+| `redis-json` | Redis with JSON storage | `redis://localhost:6379` | `redis[hiredis]` |
+| `postgres` | PostgreSQL with pgvector extension | `postgresql://user:pass@host/db` | `psycopg[binary,pool]` |
+| `azure-ai-search` | Azure AI Search (Cognitive Search) | `https://search-service.search.windows.net` | `azure-search-documents` |
+| `qdrant` | Qdrant vector database | `http://localhost:6333` | `qdrant-client` |
+| `weaviate` | Weaviate vector database | `http://localhost:8080` | `weaviate-client` |
+| `chromadb` | ChromaDB (local or server) | Local path or host URL | `chromadb` |
+| `faiss` | FAISS (in-memory or file-based) | Local file path | `faiss-cpu` |
+| `azure-cosmos-mongo` | Azure Cosmos DB (MongoDB API) | MongoDB connection string | `pymongo` |
+| `azure-cosmos-nosql` | Azure Cosmos DB (NoSQL API) | Cosmos DB connection string | `azure-cosmos` |
+| `sql-server` | SQL Server with vector support | SQL Server connection string | `pyodbc` |
+| `pinecone` | Pinecone serverless vector database | API key + index name | `pinecone-client` |
+| `in-memory` | Simple in-memory storage | None required | Built-in |
+
+> **Tip**: Use `in-memory` for development and testing. Switch to a persistent provider like `redis-hashset`, `postgres`, or `qdrant` for production.
+
+#### Database Configuration Examples
+
+**Redis (recommended for development)**
+```yaml
+- name: search-kb
+  type: vectorstore
+  source: knowledge_base/
+  database:
+    provider: redis-hashset
+    connection_string: redis://localhost:6379
+```
+
+**PostgreSQL with pgvector**
+```yaml
+- name: search-kb
+  type: vectorstore
+  source: knowledge_base/
+  database:
+    provider: postgres
+    connection_string: postgresql://user:password@localhost:5432/mydb
+```
+
+**Azure AI Search**
+```yaml
+- name: search-kb
+  type: vectorstore
+  source: knowledge_base/
+  database:
+    provider: azure-ai-search
+    connection_string: ${AZURE_SEARCH_ENDPOINT}
+    api_key: ${AZURE_SEARCH_API_KEY}
+```
+
+**Qdrant**
+```yaml
+- name: search-kb
+  type: vectorstore
+  source: knowledge_base/
+  database:
+    provider: qdrant
+    url: http://localhost:6333
+    # api_key: optional-api-key
+```
+
+**In-Memory (development only)**
+```yaml
+- name: search-kb
+  type: vectorstore
+  source: knowledge_base/
+  database:
+    provider: in-memory
+```
+
+**Reference to Global Config**
+
+You can also reference a named vectorstore from your global `config.yaml`:
+
+```yaml
+# In agent.yaml
+- name: search-kb
+  type: vectorstore
+  source: knowledge_base/
+  database: my-redis-store  # Reference to config.yaml vectorstores section
+```
+
+```yaml
+# In config.yaml
+vectorstores:
+  my-redis-store:
+    provider: redis-hashset
+    connection_string: ${REDIS_URL}
 ```
 
 ### Required Fields
@@ -249,7 +350,9 @@ title,content,source
 
 ---
 
-## Function Tools
+## Function Tools 🚧
+
+> **Status**: Planned - Configuration schema defined, execution not yet implemented
 
 Execute custom Python functions.
 
@@ -375,7 +478,9 @@ def create_ticket(title: str, priority: str = "medium", description: str = "") -
 
 ---
 
-## MCP Tools
+## MCP Tools 🚧
+
+> **Status**: Planned - Configuration schema defined, execution not yet implemented
 
 Model Context Protocol server integrations.
 
@@ -481,7 +586,9 @@ To create a custom MCP server:
 
 ---
 
-## Prompt Tools
+## Prompt Tools 🚧
+
+> **Status**: Planned - Configuration schema defined, execution not yet implemented
 
 LLM-powered semantic functions with template substitution.
 
