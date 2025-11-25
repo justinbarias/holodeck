@@ -58,15 +58,19 @@ mkdir my-first-agent
 cd my-first-agent
 ```
 
-### 2. Create Global Configuration
+### 2. Create Project Configuration
 
-Create `config.yaml` for your project's LLM provider settings:
+Initialize a `config.yaml` for your project's LLM provider settings:
 
 ```bash
-cat > config.yaml << 'EOF'
-# HoloDeck Configuration
-# Models and API credentials for your agents
+# Initialize project configuration (creates config.yaml in current directory)
+holodeck config init -p
+```
 
+This creates a `config.yaml` with default settings that you can customize. Edit it to configure your LLM providers:
+
+```yaml
+# config.yaml - Example configuration
 providers:
   azure_openai:
     provider: azure_openai
@@ -81,8 +85,9 @@ execution:
   file_timeout: 30
   cache_enabled: true
   verbose: false
-EOF
 ```
+
+**Tip**: Use `holodeck config init -g` to create a global configuration at `~/.holodeck/config.yaml` that applies to all projects.
 
 ### 3. Create Your First Agent
 

@@ -78,14 +78,18 @@ Open `agent.yaml` and customize:
 Start an interactive chat session with your agent:
 
 ```bash
-# Basic chat
+# Basic chat (from parent directory)
+holodeck chat my-chatbot/agent.yaml
+
+# Or cd into the project directory first
+cd my-chatbot
 holodeck chat agent.yaml
 
 # Verbose mode with detailed status panel
-holodeck chat agent.yaml --verbose
+holodeck chat my-chatbot/agent.yaml --verbose
 
 # Quiet mode (no logging, but spinner still shows)
-holodeck chat agent.yaml --quiet
+holodeck chat my-chatbot/agent.yaml --quiet
 ```
 
 **Chat Features:**
@@ -112,11 +116,11 @@ Agent: Your response here
 #### Run Tests
 
 ```bash
-# Run all tests
-holodeck test agent.yaml
+# Run all tests (from parent directory)
+holodeck test my-chatbot/agent.yaml
 
 # Deploy locally
-holodeck deploy agent.yaml --port 8000
+holodeck deploy my-chatbot/agent.yaml --port 8000
 ```
 
 ## Manual Setup (Alternative)
@@ -158,9 +162,16 @@ evaluations:
 
 ### Step 2: Create Project Configuration
 
-Create `config.yaml` in the same directory:
+Initialize `config.yaml` using the CLI:
+
+```bash
+holodeck config init -p
+```
+
+Then edit the generated file to configure your LLM provider:
 
 ```yaml
+# config.yaml
 providers:
   azure_openai:
     provider: azure_openai
@@ -200,26 +211,26 @@ holodeck chat agent.yaml
 # Show all available commands
 holodeck --help
 
-# Test your agent and run evaluations
-holodeck test agent.yaml
-
-# Interactive chat with your agent
-holodeck chat agent.yaml
-
-# Chat with verbose output (detailed status panel)
-holodeck chat agent.yaml --verbose
-
-# Chat with quiet mode (no logging, spinner only)
-holodeck chat agent.yaml --quiet
-
-# Chat with custom max messages limit
-holodeck chat agent.yaml --max-messages 100
-
-# Deploy as API
-holodeck deploy agent.yaml --port 8000
-
 # Create new project from template
 holodeck init my-project
+
+# Test your agent and run evaluations
+holodeck test my-project/agent.yaml
+
+# Interactive chat with your agent
+holodeck chat my-project/agent.yaml
+
+# Chat with verbose output (detailed status panel)
+holodeck chat my-project/agent.yaml --verbose
+
+# Chat with quiet mode (no logging, spinner only)
+holodeck chat my-project/agent.yaml --quiet
+
+# Chat with custom max messages limit
+holodeck chat my-project/agent.yaml --max-messages 100
+
+# Deploy as API
+holodeck deploy my-project/agent.yaml --port 8000
 ```
 
 ## Tips & Tricks
@@ -283,13 +294,13 @@ providers:
 
 ```bash
 # Run tests first
-holodeck test agent.yaml
+holodeck test my-project/agent.yaml
 
 # Then try interactive chat
-holodeck chat agent.yaml
+holodeck chat my-project/agent.yaml
 
 # Finally deploy if tests pass
-holodeck deploy agent.yaml --port 8000
+holodeck deploy my-project/agent.yaml --port 8000
 ```
 
 ### Organize Multiple Agents
