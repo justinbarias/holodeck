@@ -10,10 +10,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from holodeck.lib.test_runner.agent_factory import (
-    AgentFactory,
-    AgentFactoryError,
-)
+from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentFactoryError
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.llm import LLMProvider, ProviderEnum
 
@@ -360,7 +357,7 @@ class TestOllamaEmbeddingService:
                     name="knowledge_base",
                     description="Search docs",
                     source="data/docs/",
-                    embedding_model="nomic-embed-text",
+                    embedding_model="nomic-embed-text:latest",
                     top_k=5,
                 )
             ],
@@ -371,7 +368,7 @@ class TestOllamaEmbeddingService:
 
         # Verify OllamaTextEmbedding was called with correct params
         mock_ollama_embedding.assert_called_once_with(
-            ai_model_id="nomic-embed-text",
+            ai_model_id="nomic-embed-text:latest",
             host="http://localhost:11434",
         )
 
@@ -423,7 +420,7 @@ class TestOllamaEmbeddingService:
 
         # Verify default model was used
         mock_ollama_embedding.assert_called_once_with(
-            ai_model_id="nomic-embed-text",  # DEFAULT
+            ai_model_id="nomic-embed-text:latest",  # DEFAULT
             host="http://localhost:11434",
         )
 
@@ -521,7 +518,7 @@ class TestOllamaEmbeddingService:
     @pytest.mark.parametrize(
         "model_name",
         [
-            "nomic-embed-text",
+            "nomic-embed-text:latest",
             "mxbai-embed-large",
             "all-minilm",
             "custom-embedding-model",
