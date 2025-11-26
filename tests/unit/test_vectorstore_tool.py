@@ -839,13 +839,13 @@ class TestSetupCollection:
 
         tool = VectorStoreTool(config)
 
-        # Mock get_collection_class to avoid actual import
+        # Mock get_collection_factory to avoid actual import
         mock_collection = MagicMock()
         with patch(
-            "holodeck.tools.vectorstore_tool.get_collection_class"
-        ) as mock_get_class:
-            mock_get_class.return_value = MagicMock(return_value=mock_collection)
-            tool._setup_collection()
+            "holodeck.lib.vector_store.get_collection_factory"
+        ) as mock_get_factory:
+            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
+            tool._setup_collection("openai")
 
         assert tool._provider == "in-memory"
         assert tool._collection is not None
@@ -868,13 +868,13 @@ class TestSetupCollection:
 
         tool = VectorStoreTool(config)
 
-        # Mock get_collection_class to avoid actual import
+        # Mock get_collection_factory to avoid actual import
         mock_collection = MagicMock()
         with patch(
-            "holodeck.tools.vectorstore_tool.get_collection_class"
-        ) as mock_get_class:
-            mock_get_class.return_value = MagicMock(return_value=mock_collection)
-            tool._setup_collection()
+            "holodeck.lib.vector_store.get_collection_factory"
+        ) as mock_get_factory:
+            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
+            tool._setup_collection("openai")
 
         assert tool._provider == "redis-json"
         assert tool._collection is not None
@@ -900,13 +900,13 @@ class TestSetupCollection:
 
         tool = VectorStoreTool(config)
 
-        # Mock get_collection_class to avoid actual import
+        # Mock get_collection_factory to avoid actual import
         mock_collection = MagicMock()
         with patch(
-            "holodeck.tools.vectorstore_tool.get_collection_class"
-        ) as mock_get_class:
-            mock_get_class.return_value = MagicMock(return_value=mock_collection)
-            tool._setup_collection()
+            "holodeck.lib.vector_store.get_collection_factory"
+        ) as mock_get_factory:
+            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
+            tool._setup_collection("openai")
 
         assert tool._provider == "redis-json"
         assert tool._collection is not None
@@ -1422,9 +1422,9 @@ class TestInitializeFullFlow:
         mock_collection.get = AsyncMock(return_value=None)
 
         with patch(
-            "holodeck.tools.vectorstore_tool.get_collection_class"
-        ) as mock_get_class:
-            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+            "holodeck.lib.vector_store.get_collection_factory"
+        ) as mock_get_factory:
+            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
 
             await tool.initialize()
 
@@ -1470,9 +1470,9 @@ class TestInitializeFullFlow:
         mock_collection.get = AsyncMock(return_value=None)
 
         with patch(
-            "holodeck.tools.vectorstore_tool.get_collection_class"
-        ) as mock_get_class:
-            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+            "holodeck.lib.vector_store.get_collection_factory"
+        ) as mock_get_factory:
+            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
 
             await tool.initialize()
 
@@ -1505,9 +1505,9 @@ class TestInitializeFullFlow:
         mock_collection.upsert = AsyncMock()
 
         with patch(
-            "holodeck.tools.vectorstore_tool.get_collection_class"
-        ) as mock_get_class:
-            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+            "holodeck.lib.vector_store.get_collection_factory"
+        ) as mock_get_factory:
+            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
 
             await tool.initialize()
 
@@ -1569,9 +1569,9 @@ class TestInitializeFullFlow:
         mock_collection.get = AsyncMock(return_value=None)
 
         with patch(
-            "holodeck.tools.vectorstore_tool.get_collection_class"
-        ) as mock_get_class:
-            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+            "holodeck.lib.vector_store.get_collection_factory"
+        ) as mock_get_factory:
+            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
 
             await tool.initialize()
 
@@ -2168,9 +2168,9 @@ class TestForceIngestFlag:
         mock_collection.upsert = AsyncMock()
 
         with patch(
-            "holodeck.tools.vectorstore_tool.get_collection_class"
-        ) as mock_get_class:
-            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+            "holodeck.lib.vector_store.get_collection_factory"
+        ) as mock_get_factory:
+            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
 
             await tool.initialize(force_ingest=True)
 
@@ -2219,9 +2219,9 @@ class TestForceIngestFlag:
         mock_collection.upsert = AsyncMock()
 
         with patch(
-            "holodeck.tools.vectorstore_tool.get_collection_class"
-        ) as mock_get_class:
-            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+            "holodeck.lib.vector_store.get_collection_factory"
+        ) as mock_get_factory:
+            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
 
             await tool.initialize(force_ingest=False)
 
@@ -2279,9 +2279,9 @@ class TestForceIngestFlag:
         mock_collection.upsert = AsyncMock()
 
         with patch(
-            "holodeck.tools.vectorstore_tool.get_collection_class"
-        ) as mock_get_class:
-            mock_get_class.return_value = MagicMock(return_value=mock_collection)
+            "holodeck.lib.vector_store.get_collection_factory"
+        ) as mock_get_factory:
+            mock_get_factory.return_value = MagicMock(return_value=mock_collection)
 
             await tool.initialize(force_ingest=True)
 

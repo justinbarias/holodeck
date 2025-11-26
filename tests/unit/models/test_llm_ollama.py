@@ -29,35 +29,32 @@ class TestOllamaProvider:
         assert provider.provider == ProviderEnum.OLLAMA
         assert provider.name == "llama3"
 
-    def test_ollama_endpoint_required_missing(self) -> None:
-        """Test that Ollama provider fails validation when endpoint is missing."""
-        with pytest.raises(ValidationError) as exc_info:
-            LLMProvider(
-                provider=ProviderEnum.OLLAMA,
-                name="llama3",
-                endpoint=None,
-            )
-        assert "endpoint is required" in str(exc_info.value).lower()
+    def test_ollama_endpoint_optional_missing(self) -> None:
+        """Test that Ollama provider accepts missing endpoint (optional)."""
+        provider = LLMProvider(
+            provider=ProviderEnum.OLLAMA,
+            name="llama3",
+            endpoint=None,
+        )
+        assert provider.endpoint is None
 
-    def test_ollama_endpoint_required_empty_string(self) -> None:
-        """Test that Ollama provider fails validation when endpoint is empty."""
-        with pytest.raises(ValidationError) as exc_info:
-            LLMProvider(
-                provider=ProviderEnum.OLLAMA,
-                name="llama3",
-                endpoint="",
-            )
-        assert "endpoint is required" in str(exc_info.value).lower()
+    def test_ollama_endpoint_optional_empty_string(self) -> None:
+        """Test that Ollama provider accepts empty endpoint (optional)."""
+        provider = LLMProvider(
+            provider=ProviderEnum.OLLAMA,
+            name="llama3",
+            endpoint="",
+        )
+        assert provider.endpoint == ""
 
-    def test_ollama_endpoint_required_whitespace(self) -> None:
-        """Test that Ollama provider fails validation when endpoint is whitespace."""
-        with pytest.raises(ValidationError) as exc_info:
-            LLMProvider(
-                provider=ProviderEnum.OLLAMA,
-                name="llama3",
-                endpoint="   ",
-            )
-        assert "endpoint is required" in str(exc_info.value).lower()
+    def test_ollama_endpoint_optional_whitespace(self) -> None:
+        """Test that Ollama provider accepts whitespace endpoint (optional)."""
+        provider = LLMProvider(
+            provider=ProviderEnum.OLLAMA,
+            name="llama3",
+            endpoint="   ",
+        )
+        assert provider.endpoint == "   "
 
     # T011 [P] [US1] - Parameter Validation
     @pytest.mark.parametrize(
