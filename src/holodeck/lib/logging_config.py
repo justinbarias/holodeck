@@ -167,29 +167,38 @@ def _add_file_handler(
 
 def _configure_all_loggers(log_level: int) -> None:
     """
-    Configure all existing loggers to respect the application log level.
+    Configure holodeck and known third-party loggers to respect the log level.
 
-    This function iterates through all loggers that have been created and
-    ensures they respect the configured log level. This is necessary because
-    loggers created before setup_logging() is called with quiet=True may
-    have their effective level cached.
+    This function configures:
+    1. Known third-party loggers (THIRD_PARTY_LOGGERS) - sets level and clears
+       handlers to ensure they propagate to root and respect quiet mode.
+    2. HoloDeck loggers (holodeck.*) - clears handlers and sets appropriate level.
+
+    Other third-party loggers are left untouched to avoid interfering with
+    libraries that configure their own logging handlers.
 
     Parameters:
-        log_level (int): The log level to apply to all loggers.
+        log_level (int): The log level to apply to configured loggers.
 
     Returns:
         None
     """
     # Configure known third-party loggers (even if not yet created)
+    # These are libraries that can be noisy and we want to control
     for logger_name in THIRD_PARTY_LOGGERS:
         third_party_logger = logging.getLogger(logger_name)
         third_party_logger.setLevel(log_level)
         third_party_logger.handlers.clear()
         third_party_logger.propagate = True
 
-    # Configure ALL existing loggers in the logging manager
-    # This catches any loggers that were created during module imports
+    # Configure holodeck loggers only (not all loggers system-wide)
+    # This avoids interfering with third-party libraries that configure
+    # their own logging handlers
     for name in list(logging.Logger.manager.loggerDict.keys()):
+        # Only configure holodeck.* loggers
+        if not name.startswith("holodeck"):
+            continue
+
         logger = logging.getLogger(name)
         # Clear any handlers the logger might have
         logger.handlers.clear()
