@@ -7,7 +7,7 @@ def get_default_model_config(provider: str = "openai") -> dict[str, Any]:
     """Get default model configuration for a provider.
 
     Args:
-        provider: LLM provider name (openai, azure_openai, anthropic)
+        provider: LLM provider name (openai, azure_openai, anthropic, ollama)
 
     Returns:
         Dictionary with default model configuration
@@ -30,6 +30,14 @@ def get_default_model_config(provider: str = "openai") -> dict[str, Any]:
             "name": "claude-3-haiku-20240307",
             "temperature": 0.7,
             "max_tokens": 2048,
+        },
+        "ollama": {
+            "provider": "ollama",
+            "endpoint": "http://localhost:11434",
+            "temperature": 0.3,
+            "max_tokens": 1000,
+            "top_p": None,
+            "api_key": None,
         },
     }
     return defaults.get(provider, defaults["openai"])
@@ -132,6 +140,15 @@ def get_default_evaluation_config(metric_name: str | None = None) -> dict[str, A
         }
     return metric_defaults.get(metric_name, {})
 
+
+# Ollama provider defaults
+OLLAMA_DEFAULTS: dict[str, int | float | str | None] = {
+    "endpoint": "http://localhost:11434",
+    "temperature": 0.3,
+    "max_tokens": 1000,
+    "top_p": None,
+    "api_key": None,
+}
 
 # Execution configuration defaults
 DEFAULT_EXECUTION_CONFIG: dict[str, int | bool | str] = {

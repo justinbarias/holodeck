@@ -23,9 +23,9 @@
 
 **Purpose**: Project initialization and infrastructure updates
 
-- [ ] T001 Review existing LLM provider implementation in src/holodeck/models/llm.py (validate OLLAMA enum exists at line 18)
-- [ ] T002 Review existing endpoint validation in src/holodeck/models/llm.py (validate check_endpoint_required exists at line 74-80)
-- [ ] T003 Review existing AgentFactory implementation in src/holodeck/lib/test_runner/agent_factory.py (understand _create_kernel pattern)
+- [x] T001 Review existing LLM provider implementation in src/holodeck/models/llm.py (validate OLLAMA enum exists at line 18)
+- [x] T002 Review existing endpoint validation in src/holodeck/models/llm.py (validate check_endpoint_required exists at line 74-80)
+- [x] T003 Review existing AgentFactory implementation in src/holodeck/lib/test_runner/agent_factory.py (understand _create_kernel pattern)
 
 ---
 
@@ -35,12 +35,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Add Ollama defaults to src/holodeck/config/defaults.py (OLLAMA_DEFAULTS with endpoint, temperature, max_tokens, top_p, api_key)
-- [ ] T005 [P] Add OllamaConnectionError exception class to src/holodeck/lib/errors.py (inherits from AgentFactoryError)
-- [ ] T006 [P] Add OllamaModelNotFoundError exception class to src/holodeck/lib/errors.py (inherits from AgentFactoryError)
-- [ ] T007 Create test fixtures directory tests/fixtures/ollama/
-- [ ] T008 [P] Create sample Ollama agent config tests/fixtures/ollama/agent_ollama_local.yaml (local endpoint)
-- [ ] T009 [P] Create sample Ollama agent config tests/fixtures/ollama/agent_ollama_remote.yaml (remote endpoint with env vars)
+- [x] T004 Add Ollama defaults to src/holodeck/config/defaults.py (OLLAMA_DEFAULTS with endpoint, temperature, max_tokens, top_p, api_key)
+- [x] T005 [P] Add OllamaConnectionError exception class to src/holodeck/lib/errors.py (inherits from AgentFactoryError)
+- [x] T006 [P] Add OllamaModelNotFoundError exception class to src/holodeck/lib/errors.py (inherits from AgentFactoryError)
+- [x] T007 Create test fixtures directory tests/fixtures/ollama/
+- [x] T008 [P] Create sample Ollama agent config tests/fixtures/ollama/agent_ollama_local.yaml (local endpoint)
+- [x] T009 [P] Create sample Ollama agent config tests/fixtures/ollama/agent_ollama_remote.yaml (remote endpoint with env vars)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 

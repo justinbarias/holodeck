@@ -148,3 +148,72 @@ class EvaluationError(HoloDeckError):
     """
 
     pass
+
+
+class AgentFactoryError(HoloDeckError):
+    """Exception raised during agent factory operations.
+
+    Base exception for errors during agent initialization and execution.
+
+    Attributes:
+        message: Human-readable error message
+    """
+
+    pass
+
+
+class OllamaConnectionError(AgentFactoryError):
+    """Error raised when Ollama endpoint is unreachable.
+
+    Provides actionable guidance for resolving connectivity issues with
+    local or remote Ollama servers.
+
+    Attributes:
+        endpoint: The Ollama endpoint URL that failed
+        message: Human-readable error message with resolution guidance
+    """
+
+    def __init__(self, endpoint: str, original_error: Exception | None = None) -> None:
+        """Initialize OllamaConnectionError with endpoint and optional cause.
+
+        Args:
+            endpoint: The Ollama endpoint URL that failed to connect
+            original_error: The underlying exception that caused the connection failure
+        """
+        self.endpoint = endpoint
+        message = (
+            f"Failed to connect to Ollama endpoint at {endpoint}.\n"
+            f"Ensure Ollama is running: ollama serve\n"
+            f"Check endpoint URL is correct and accessible."
+        )
+        if original_error:
+            message += f"\nOriginal error: {original_error}"
+        super().__init__(message)
+
+
+class OllamaModelNotFoundError(AgentFactoryError):
+    """Error raised when requested Ollama model is not found.
+
+    Provides specific resolution steps for pulling missing models.
+
+    Attributes:
+        model_name: The model that was not found
+        endpoint: The Ollama endpoint that was queried
+        message: Human-readable error message with resolution guidance
+    """
+
+    def __init__(self, model_name: str, endpoint: str) -> None:
+        """Initialize OllamaModelNotFoundError with model and endpoint details.
+
+        Args:
+            model_name: The name of the model that was not found
+            endpoint: The Ollama endpoint URL that was queried
+        """
+        self.model_name = model_name
+        self.endpoint = endpoint
+        message = (
+            f"Model '{model_name}' not found on Ollama endpoint {endpoint}.\n"
+            f"Pull the model first: ollama pull {model_name}\n"
+            f"List available models: ollama list"
+        )
+        super().__init__(message)
