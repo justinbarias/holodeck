@@ -35,7 +35,9 @@ nav:
     - Quickstart: getting-started/quickstart.md
   - Guides:
     - Agent Configuration: guides/agent-configuration.md
+    - LLM Providers: guides/llm-providers.md
     - Tools: guides/tools.md
+    - Vector Stores: guides/vector-stores.md
     - Evaluations: guides/evaluations.md
     - Global Configuration: guides/global-config.md
     - File References: guides/file-references.md
