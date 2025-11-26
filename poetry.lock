@@ -3937,6 +3937,22 @@ files = [
 tests = ["pytest", "pytest-cov"]
 
 [[package]]
+name = "ollama"
+version = "0.6.1"
+description = "The official Python client for Ollama."
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "ollama-0.6.1-py3-none-any.whl", hash = "sha256:fc4c984b345735c5486faeee67d8a265214a31cbb828167782dc642ce0a2bf8c"},
+    {file = "ollama-0.6.1.tar.gz", hash = "sha256:478c67546836430034b415ed64fa890fd3d1ff91781a9d548b3325274e69d7c6"},
+]
+
+[package.dependencies]
+httpx = ">=0.27"
+pydantic = ">=2.9"
+
+[[package]]
 name = "onnxruntime"
 version = "1.20.1"
 description = "ONNX Runtime is a runtime accelerator for Machine Learning models"
@@ -7533,4 +7549,4 @@ dev = ["bandit", "black", "detect-secrets", "mkdocstrings", "mypy", "poetry", "p
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "4e07261ed46a8f05265dad356fc51cb82d943b14f2e5e9f5a15bde3a0a91ce64"
+content-hash = "6a9b26c76d2e12d7bb0d6be64e87323fceab60b918a914bc7b8d928585798e3c"

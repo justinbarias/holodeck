@@ -49,6 +49,12 @@ try:
 except ImportError:
     AnthropicChatCompletion = None  # type: ignore[misc,assignment]
 
+# Try to import Ollama support (optional dependency)
+try:
+    from semantic_kernel.connectors.ai.ollama import OllamaChatCompletion
+except ImportError:
+    OllamaChatCompletion = None  # type: ignore[misc,assignment]
+
 logger = get_logger(__name__)
 
 
@@ -181,6 +187,17 @@ class AgentFactory:
                 service = AnthropicChatCompletion(
                     ai_model_id=model_config.name,
                     api_key=model_config.api_key,
+                )
+            elif model_config.provider == ProviderEnum.OLLAMA:
+                if OllamaChatCompletion is None:
+                    raise AgentFactoryError(
+                        "Ollama provider requires 'ollama' package. "
+                        "Install with: pip install ollama"
+                    )
+                # Use endpoint if provided, otherwise let Ollama use its default (http://127.0.0.1:11434)
+                service = OllamaChatCompletion(
+                    ai_model_id=model_config.name,
+                    host=model_config.endpoint if model_config.endpoint else None,
                 )
             else:
                 raise AgentFactoryError(
