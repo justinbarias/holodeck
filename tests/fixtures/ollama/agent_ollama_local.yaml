@@ -1,0 +1,26 @@
+name: test-ollama-local-agent
+description: Test agent using local Ollama endpoint for unit testing
+author: HoloDeck Test Suite
+
+model:
+  provider: ollama
+  name: phi3
+  endpoint: http://localhost:11434
+  temperature: 0.7
+  max_tokens: 1000
+
+instructions:
+  inline: |
+    You are a helpful AI assistant for testing purposes.
+    Provide concise, accurate responses to user questions.
+    Be friendly and professional.
+
+tools: []
+
+test_cases:
+  - input: "What is the capital of France?"
+    ground_truth: "Paris"
+    expected_tools: []
+  - input: "What is 2 + 2?"
+    ground_truth: "4"
+    expected_tools: []

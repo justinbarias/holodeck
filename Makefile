@@ -16,7 +16,7 @@ NC := $(shell tput sgr0 2>/dev/null)
 .DEFAULT_GOAL := help
 
 # Phony targets
-.PHONY: help install install-dev install-prod test test-unit test-integration \
+.PHONY: help install install-dev install-prod install-redisvl test test-unit test-integration \
         test-coverage test-parallel test-integration-parallel test-unit-parallel \
         lint format type-check security clean clean-all \
         pre-commit ci ci-github build docs run docker-build docker-run \
@@ -61,13 +61,20 @@ install-dev: check-venv ## Install development dependencies
 	@echo "$(GREEN)Installing development dependencies...$(NC)"
 	$(PIP) install --upgrade pip setuptools wheel
 	$(PIP) install -e ".[dev]"
+	@$(MAKE) install-redisvl
 	@echo "$(GREEN)✓ Development dependencies installed$(NC)"
 
 install-prod: check-venv ## Install production dependencies only
 	@echo "$(GREEN)Installing production dependencies...$(NC)"
 	$(PIP) install --upgrade pip setuptools wheel
 	$(PIP) install -e .
+	@$(MAKE) install-redisvl
 	@echo "$(GREEN)✓ Production dependencies installed$(NC)"
+
+install-redisvl: ## Install redisvl 0.4.x (bypasses redis version conflict)
+	@echo "$(GREEN)Installing redisvl 0.4.x (bypassing dependency resolution)...$(NC)"
+	$(PIP) install "redisvl>=0.4.0,<0.5.0" --no-deps
+	@echo "$(GREEN)✓ redisvl installed$(NC)"
 
 install-hooks: ## Install pre-commit hooks
 	@echo "$(GREEN)Installing pre-commit hooks...$(NC)"

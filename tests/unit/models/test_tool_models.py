@@ -179,6 +179,69 @@ class TestVectorstoreTool:
         )
         assert tool.vector_field == ["title", "content"]
 
+    def test_vectorstore_embedding_dimensions_valid(self) -> None:
+        """Test that embedding_dimensions can be set to valid values."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.txt",
+            embedding_dimensions=768,
+        )
+        assert tool.embedding_dimensions == 768
+
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.txt",
+            embedding_dimensions=3072,
+        )
+        assert tool.embedding_dimensions == 3072
+
+    def test_vectorstore_embedding_dimensions_optional(self) -> None:
+        """Test that embedding_dimensions is optional."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.txt",
+        )
+        assert tool.embedding_dimensions is None
+
+    def test_vectorstore_embedding_dimensions_zero_invalid(self) -> None:
+        """Test that zero embedding_dimensions raises ValueError."""
+        with pytest.raises(ValueError, match="embedding_dimensions must be positive"):
+            VectorstoreTool(
+                name="test",
+                description="Test",
+                type="vectorstore",
+                source="data.txt",
+                embedding_dimensions=0,
+            )
+
+    def test_vectorstore_embedding_dimensions_negative_invalid(self) -> None:
+        """Test that negative embedding_dimensions raises ValueError."""
+        with pytest.raises(ValueError, match="embedding_dimensions must be positive"):
+            VectorstoreTool(
+                name="test",
+                description="Test",
+                type="vectorstore",
+                source="data.txt",
+                embedding_dimensions=-1,
+            )
+
+    def test_vectorstore_embedding_dimensions_too_large_invalid(self) -> None:
+        """Test that dimensions over 10000 raises ValueError."""
+        with pytest.raises(ValueError, match="embedding_dimensions unreasonably large"):
+            VectorstoreTool(
+                name="test",
+                description="Test",
+                type="vectorstore",
+                source="data.txt",
+                embedding_dimensions=10001,
+            )
+
 
 class TestFunctionTool:
     """Tests for FunctionTool model."""

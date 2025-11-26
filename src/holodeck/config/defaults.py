@@ -1,13 +1,16 @@
 """Default configuration templates for HoloDeck."""
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def get_default_model_config(provider: str = "openai") -> dict[str, Any]:
     """Get default model configuration for a provider.
 
     Args:
-        provider: LLM provider name (openai, azure_openai, anthropic)
+        provider: LLM provider name (openai, azure_openai, anthropic, ollama)
 
     Returns:
         Dictionary with default model configuration
@@ -30,6 +33,14 @@ def get_default_model_config(provider: str = "openai") -> dict[str, Any]:
             "name": "claude-3-haiku-20240307",
             "temperature": 0.7,
             "max_tokens": 2048,
+        },
+        "ollama": {
+            "provider": "ollama",
+            "endpoint": "http://localhost:11434",
+            "temperature": 0.3,
+            "max_tokens": 1000,
+            "top_p": None,
+            "api_key": None,
         },
     }
     return defaults.get(provider, defaults["openai"])
@@ -133,6 +144,20 @@ def get_default_evaluation_config(metric_name: str | None = None) -> dict[str, A
     return metric_defaults.get(metric_name, {})
 
 
+# Ollama provider defaults
+OLLAMA_DEFAULTS: dict[str, int | float | str | None] = {
+    "endpoint": "http://localhost:11434",
+    "temperature": 0.3,
+    "max_tokens": 1000,
+    "top_p": None,
+    "api_key": None,
+}
+
+# Ollama provider embedding model defaults
+OLLAMA_EMBEDDING_DEFAULTS: dict[str, str | None] = {
+    "embedding_model": "nomic-embed-text:latest",
+}
+
 # Execution configuration defaults
 DEFAULT_EXECUTION_CONFIG: dict[str, int | bool | str] = {
     "file_timeout": 30,  # seconds
@@ -143,3 +168,56 @@ DEFAULT_EXECUTION_CONFIG: dict[str, int | bool | str] = {
     "verbose": False,
     "quiet": False,
 }
+
+# Embedding model dimension defaults
+EMBEDDING_MODEL_DIMENSIONS: dict[str, int] = {
+    # OpenAI models
+    "text-embedding-3-small": 1536,
+    "text-embedding-3-large": 3072,
+    "text-embedding-ada-002": 1536,
+    # Ollama models
+    "nomic-embed-text:latest": 768,
+    "mxbai-embed-large": 1024,
+    "snowflake-arctic-embed": 1024,
+}
+
+
+def get_embedding_dimensions(
+    model_name: str | None,
+    provider: str = "openai",
+) -> int:
+    """Get embedding dimensions for a model.
+
+    Resolution order:
+    1. Known model in EMBEDDING_MODEL_DIMENSIONS
+    2. Provider default (openai: 1536, ollama: 768)
+    3. Fallback to 1536 with warning
+
+    Args:
+        model_name: Embedding model name (e.g., "text-embedding-3-small")
+        provider: LLM provider ("openai", "azure_openai", "ollama")
+
+    Returns:
+        Embedding dimensions for the model
+    """
+    # Check if model is in the known mappings
+    if model_name and model_name in EMBEDDING_MODEL_DIMENSIONS:
+        return EMBEDDING_MODEL_DIMENSIONS[model_name]
+
+    # Provider-specific defaults
+    if provider == "ollama":
+        if model_name:
+            logger.warning(
+                f"Unknown Ollama model '{model_name}', assuming 768 dimensions. "
+                "Set 'embedding_dimensions' explicitly if different."
+            )
+        return 768
+
+    # OpenAI/Azure default
+    if model_name:
+        logger.warning(
+            f"Unknown embedding model '{model_name}', assuming 1536 dimensions. "
+            f"Supported: {', '.join(EMBEDDING_MODEL_DIMENSIONS.keys())}. "
+            "Set 'embedding_dimensions' explicitly if different."
+        )
+    return 1536

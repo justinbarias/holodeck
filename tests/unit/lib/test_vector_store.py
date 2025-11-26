@@ -55,6 +55,7 @@ from holodeck.lib.vector_store import (  # noqa: E402
     DocumentRecord,
     QueryResult,
     convert_document_to_query_result,
+    create_document_record_class,
     get_collection_factory,
 )
 
@@ -272,6 +273,56 @@ class TestQueryResult:
         assert isinstance(result.metadata, dict)
 
 
+class TestCreateDocumentRecordClass:
+    """Tests for create_document_record_class factory function."""
+
+    def test_creates_class_with_default_dimensions(self) -> None:
+        """Test creating DocumentRecord class with default 1536 dimensions."""
+        record_class = create_document_record_class()
+        record = record_class(id="test", content="test content", embedding=[0.1] * 1536)
+        assert record.id == "test"
+        assert record.content == "test content"
+        assert len(record.embedding) == 1536
+
+    def test_creates_class_with_custom_dimensions(self) -> None:
+        """Test creating DocumentRecord class with custom dimensions."""
+        record_class = create_document_record_class(dimensions=768)
+        record = record_class(id="test", content="test", embedding=[0.1] * 768)
+        assert len(record.embedding) == 768
+
+    def test_creates_class_with_large_dimensions(self) -> None:
+        """Test creating DocumentRecord class with large dimensions (3072)."""
+        record_class = create_document_record_class(dimensions=3072)
+        record = record_class(id="test", content="test", embedding=[0.1] * 3072)
+        assert len(record.embedding) == 3072
+
+    def test_invalid_dimensions_zero(self) -> None:
+        """Test that zero dimensions raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid dimensions"):
+            create_document_record_class(dimensions=0)
+
+    def test_invalid_dimensions_negative(self) -> None:
+        """Test that negative dimensions raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid dimensions"):
+            create_document_record_class(dimensions=-1)
+
+    def test_invalid_dimensions_too_large(self) -> None:
+        """Test that dimensions over 10000 raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid dimensions"):
+            create_document_record_class(dimensions=10001)
+
+    def test_different_dimension_classes_are_independent(self) -> None:
+        """Test that different dimension classes don't interfere."""
+        record_class_1536 = create_document_record_class(1536)
+        record_class_768 = create_document_record_class(768)
+
+        record_1536 = record_class_1536(id="test1", embedding=[0.1] * 1536)
+        record_768 = record_class_768(id="test2", embedding=[0.2] * 768)
+
+        assert len(record_1536.embedding) == 1536
+        assert len(record_768.embedding) == 768
+
+
 class TestGetCollectionFactory:
     """Tests for get_collection_factory function using mocks."""
 
@@ -328,6 +379,37 @@ class TestGetCollectionFactory:
             connection_string="postgresql://localhost/db",
             pool_size=10,
         )
+        assert callable(factory)
+
+    def test_factory_with_custom_dimensions(self) -> None:
+        """Test factory with custom embedding dimensions."""
+        factory = get_collection_factory("in-memory", dimensions=768)
+        assert callable(factory)
+
+    def test_factory_with_large_dimensions(self) -> None:
+        """Test factory with large embedding dimensions (3072)."""
+        factory = get_collection_factory("in-memory", dimensions=3072)
+        assert callable(factory)
+
+    def test_factory_invalid_dimensions_zero(self) -> None:
+        """Test that zero dimensions raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid dimensions"):
+            get_collection_factory("in-memory", dimensions=0)
+
+    def test_factory_invalid_dimensions_negative(self) -> None:
+        """Test that negative dimensions raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid dimensions"):
+            get_collection_factory("in-memory", dimensions=-100)
+
+    def test_factory_invalid_dimensions_too_large(self) -> None:
+        """Test that dimensions over 10000 raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid dimensions"):
+            get_collection_factory("in-memory", dimensions=10001)
+
+    def test_factory_dimensions_default_to_1536(self) -> None:
+        """Test that dimensions default to 1536 when not specified."""
+        factory = get_collection_factory("in-memory")
+        # This should work without errors, using default 1536
         assert callable(factory)
 
 

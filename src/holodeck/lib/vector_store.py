@@ -38,47 +38,71 @@ from semantic_kernel.data.vector import VectorStoreField, vectorstoremodel
 logger = logging.getLogger(__name__)
 
 
-@vectorstoremodel(collection_name="documents")
-@dataclass
-class DocumentRecord:  # type: ignore[misc]
-    """Vector store record for document chunks with embeddings.
+def create_document_record_class(dimensions: int = 1536) -> type[Any]:
+    """Create a DocumentRecord class with specified embedding dimensions.
 
-    Each document file is split into multiple chunks, each with its own embedding.
-    This record is compatible with all Semantic Kernel vector store backends.
+    This factory creates a new DocumentRecord dataclass with custom dimensions.
+    Each collection can have its own DocumentRecord type.
 
-    The @vectorstoremodel decorator enables automatic schema generation for the
-    underlying vector database, supporting all major vector store providers.
+    Args:
+        dimensions: Embedding vector dimensions
 
-    Attributes:
-        id: Unique identifier (key field) following format:
-            {source_path}_chunk_{chunk_index}
-        source_path: Original source file path (indexed for filtering)
-        chunk_index: Chunk index within document (0-indexed, indexed)
-        content: Chunk content for semantic search (full-text indexed)
-        embedding: Vector embedding (1536 dimensions for text-embedding-3-small)
-        mtime: File modification time (Unix timestamp) for change detection
-        file_type: Source file extension (.txt, .md, .pdf, etc.)
-        file_size_bytes: Original file size in bytes
+    Returns:
+        DocumentRecord class configured for the specified dimensions
+
+    Raises:
+        ValueError: If dimensions is invalid
     """
+    if dimensions <= 0 or dimensions > 10000:
+        raise ValueError(f"Invalid dimensions: {dimensions}")
 
-    id: Annotated[str, VectorStoreField("key")] = field(
-        default_factory=lambda: str(uuid4())
-    )
-    source_path: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(
-        default=""
-    )
-    chunk_index: Annotated[int, VectorStoreField("data", is_indexed=True)] = field(
-        default=0
-    )
-    content: Annotated[str, VectorStoreField("data", is_full_text_indexed=True)] = (
-        field(default="")
-    )
-    embedding: Annotated[
-        list[float] | None, VectorStoreField("vector", dimensions=1536)
-    ] = field(default=None)
-    mtime: Annotated[float, VectorStoreField("data")] = field(default=0.0)
-    file_type: Annotated[str, VectorStoreField("data")] = field(default="")
-    file_size_bytes: Annotated[int, VectorStoreField("data")] = field(default=0)
+    @vectorstoremodel(collection_name=f"documents_dim{dimensions}")
+    @dataclass
+    class DynamicDocumentRecord:  # type: ignore[misc]
+        """Vector store record for document chunks with embeddings.
+
+        Each document file is split into multiple chunks, each with its own embedding.
+        This record is compatible with all Semantic Kernel vector store backends.
+
+        The @vectorstoremodel decorator enables automatic schema generation for the
+        underlying vector database, supporting all major vector store providers.
+
+        Attributes:
+            id: Unique identifier (key field) following format:
+                {source_path}_chunk_{chunk_index}
+            source_path: Original source file path (indexed for filtering)
+            chunk_index: Chunk index within document (0-indexed, indexed)
+            content: Chunk content for semantic search (full-text indexed)
+            embedding: Vector embedding
+            mtime: File modification time (Unix timestamp) for change detection
+            file_type: Source file extension (.txt, .md, .pdf, etc.)
+            file_size_bytes: Original file size in bytes
+        """
+
+        id: Annotated[str, VectorStoreField("key")] = field(
+            default_factory=lambda: str(uuid4())
+        )
+        source_path: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(
+            default=""
+        )
+        chunk_index: Annotated[int, VectorStoreField("data", is_indexed=True)] = field(
+            default=0
+        )
+        content: Annotated[str, VectorStoreField("data", is_full_text_indexed=True)] = (
+            field(default="")
+        )
+        embedding: Annotated[
+            list[float] | None, VectorStoreField("vector", dimensions=dimensions)
+        ] = field(default=None)
+        mtime: Annotated[float, VectorStoreField("data")] = field(default=0.0)
+        file_type: Annotated[str, VectorStoreField("data")] = field(default="")
+        file_size_bytes: Annotated[int, VectorStoreField("data")] = field(default=0)
+
+    return cast(type[Any], DynamicDocumentRecord)
+
+
+# Keep original DocumentRecord for backward compatibility (1536 dimensions)
+DocumentRecord = create_document_record_class(1536)
 
 
 @dataclass
@@ -190,6 +214,7 @@ def get_collection_class(provider: str) -> type[Any]:
 
 def get_collection_factory(
     provider: str,
+    dimensions: int = 1536,
     **connection_kwargs: Any,
 ) -> Callable[[], Any]:
     """Get a vector store collection factory for the specified provider.
@@ -199,17 +224,19 @@ def get_collection_factory(
 
     Args:
         provider: Vector store provider name (redis-hashset, postgres, etc.)
+        dimensions: Embedding vector dimensions (default: 1536)
         **connection_kwargs: Provider-specific connection parameters
 
     Returns:
         Callable that returns an async context manager for the collection
 
     Raises:
-        ValueError: If provider is not supported
+        ValueError: If provider or dimensions are invalid
         ImportError: If required dependencies for the provider are not installed
 
     Example:
         >>> factory = get_collection_factory("postgres",
+        ...     dimensions=1536,
         ...     connection_string="postgresql://user:pass@localhost/db")
         >>> async with factory() as collection:
         ...     await collection.upsert([record])
@@ -230,18 +257,25 @@ def get_collection_factory(
         "in-memory",
     ]
 
+    # Validate dimensions
+    if dimensions <= 0 or dimensions > 10000:
+        raise ValueError(f"Invalid dimensions: {dimensions}")
+
     if provider not in supported_providers:
         raise ValueError(
             f"Unsupported vector store provider: {provider}. "
             f"Supported providers: {', '.join(sorted(supported_providers))}"
         )
 
+    # Create DocumentRecord class for these dimensions
+    record_class = create_document_record_class(dimensions)
+
     def factory() -> Any:
         """Return async context manager for the collection."""
         # Lazy import at factory call time
         collection_class = get_collection_class(provider)
-        return collection_class[str, DocumentRecord](
-            record_type=DocumentRecord,
+        return collection_class[str, record_class](
+            record_type=record_class,
             **connection_kwargs,
         )
 
@@ -249,13 +283,13 @@ def get_collection_factory(
 
 
 async def convert_document_to_query_result(
-    record: DocumentRecord,
+    record: Any,
     score: float,
 ) -> QueryResult:
     """Convert a DocumentRecord search result to QueryResult.
 
     Args:
-        record: DocumentRecord from vector search
+        record: DocumentRecord from vector search (dynamically created)
         score: Relevance/similarity score (0.0-1.0)
 
     Returns:

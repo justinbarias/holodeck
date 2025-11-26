@@ -1,0 +1,27 @@
+name: test-ollama-remote-agent
+description: Test agent using remote Ollama endpoint with authentication for unit testing
+author: HoloDeck Test Suite
+
+model:
+  provider: ollama
+  name: llama3
+  endpoint: ${OLLAMA_ENDPOINT}
+  api_key: ${OLLAMA_API_KEY}
+  temperature: 0.5
+  max_tokens: 2000
+  top_p: 0.9
+
+instructions:
+  inline: |
+    You are a helpful AI assistant for testing remote Ollama connections.
+    Provide concise, accurate responses to user questions.
+    Be friendly and professional.
+
+tools: []
+
+test_cases:
+  - input: "What is the capital of France?"
+    ground_truth: "Paris"
+    expected_tools: []
+  - input: "Explain quantum computing in one sentence"
+    expected_tools: []

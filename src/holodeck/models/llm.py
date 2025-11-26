@@ -73,7 +73,7 @@ class LLMProvider(BaseModel):
     @model_validator(mode="after")
     def check_endpoint_required(self) -> "LLMProvider":
         """Validate endpoint is provided for Azure OpenAI and Ollama."""
-        if self.provider in (ProviderEnum.AZURE_OPENAI, ProviderEnum.OLLAMA) and (
+        if self.provider in (ProviderEnum.AZURE_OPENAI,) and (
             not self.endpoint or not self.endpoint.strip()
         ):
             raise ValueError(f"endpoint is required for {self.provider.value} provider")
