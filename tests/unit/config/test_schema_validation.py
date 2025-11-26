@@ -469,6 +469,8 @@ class TestExternalSchemaFileLoading:
         self, temp_dir: Path, monkeypatch: Any
     ) -> None:
         """Test that current working directory is used as default base_dir."""
+        from holodeck.config.context import agent_base_dir
+
         schema_content = {"type": "object"}
         schema_file = temp_dir / "schema.json"
         schema_file.write_text(json.dumps(schema_content))
@@ -476,5 +478,11 @@ class TestExternalSchemaFileLoading:
         # Change to temp_dir and load relative path
         monkeypatch.chdir(temp_dir)
 
-        result = SchemaValidator.load_schema_from_file("schema.json")
-        assert result == schema_content
+        # Reset context variable to ensure cwd fallback is tested
+        # (other parallel tests may have set this)
+        token = agent_base_dir.set(None)
+        try:
+            result = SchemaValidator.load_schema_from_file("schema.json")
+            assert result == schema_content
+        finally:
+            agent_base_dir.reset(token)

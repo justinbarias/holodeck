@@ -119,7 +119,7 @@ class TestUserLevelConfigDiscovery:
         yml_file.write_text(yaml.dump(config_content))
         yaml_file.write_text(yaml.dump(config_content))
 
-        with caplog.at_level(logging.INFO):
+        with caplog.at_level(logging.INFO, logger="holodeck.config.loader"):
             loader = ConfigLoader()
             result = loader.load_global_config()
 

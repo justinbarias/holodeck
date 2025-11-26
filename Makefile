@@ -71,10 +71,12 @@ install-prod: check-venv ## Install production dependencies only
 	@$(MAKE) install-redisvl
 	@echo "$(GREEN)✓ Production dependencies installed$(NC)"
 
-install-redisvl: ## Install redisvl 0.4.x (bypasses redis version conflict)
+install-redisvl: ## Install redisvl 0.4.x and patch for redis 6.x+ compatibility
 	@echo "$(GREEN)Installing redisvl 0.4.x (bypassing dependency resolution)...$(NC)"
 	$(PIP) install "redisvl>=0.4.0,<0.5.0" --no-deps
-	@echo "$(GREEN)✓ redisvl installed$(NC)"
+	@echo "$(GREEN)Patching redisvl for redis 6.x+ compatibility...$(NC)"
+	$(PYTHON) scripts/patch_redisvl.py
+	@echo "$(GREEN)✓ redisvl installed and patched$(NC)"
 
 install-hooks: ## Install pre-commit hooks
 	@echo "$(GREEN)Installing pre-commit hooks...$(NC)"

@@ -114,7 +114,9 @@ def test(
     AGENT_CONFIG is the path to the agent.yaml configuration file.
     """
     # Reconfigure logging based on CLI flags
-    setup_logging(verbose=verbose, quiet=quiet)
+    # If verbose is enabled, it overrides quiet mode
+    effective_quiet = quiet and not verbose
+    setup_logging(verbose=verbose, quiet=effective_quiet)
 
     logger.info(
         f"Test command invoked: config={agent_config}, "

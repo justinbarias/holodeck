@@ -28,6 +28,20 @@ ENV_LOG_FORMAT = "HOLODECK_LOG_FORMAT"
 DEFAULT_LOG_FILE_MAX_BYTES = 10 * 1024 * 1024  # 10MB
 DEFAULT_LOG_FILE_BACKUP_COUNT = 5
 
+# Third-party loggers to configure (these can be noisy at INFO level)
+THIRD_PARTY_LOGGERS = [
+    "httpx",
+    "httpcore",
+    "semantic_kernel",
+    "openai",
+    "anthropic",
+    "ollama",
+    "urllib3",
+    "asyncio",
+    "redis",
+    "azure",
+]
+
 
 def setup_logging(
     level: str | None = None,
@@ -41,6 +55,7 @@ def setup_logging(
 
     This function sets up the root logger with appropriate handlers and formatters.
     It respects environment variables and command-line flags for configuration.
+    It also configures third-party library loggers to respect the quiet flag.
 
     Parameters:
         level (str, optional): Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
@@ -99,6 +114,10 @@ def setup_logging(
     if log_file:
         _add_file_handler(root_logger, log_file, log_level, formatter)
 
+    # Configure all existing loggers to respect the log level
+    # This ensures quiet mode works even for loggers created during imports
+    _configure_all_loggers(log_level)
+
     # Log initial setup message at DEBUG level
     logger = logging.getLogger(__name__)
     logger.debug(
@@ -146,6 +165,54 @@ def _add_file_handler(
         console_logger.warning(f"Failed to setup file logging to {log_file}: {e}")
 
 
+def _configure_all_loggers(log_level: int) -> None:
+    """
+    Configure holodeck and known third-party loggers to respect the log level.
+
+    This function configures:
+    1. Known third-party loggers (THIRD_PARTY_LOGGERS) - sets level and clears
+       handlers to ensure they propagate to root and respect quiet mode.
+    2. HoloDeck loggers (holodeck.*) - clears handlers and sets appropriate level.
+
+    Other third-party loggers are left untouched to avoid interfering with
+    libraries that configure their own logging handlers.
+
+    Parameters:
+        log_level (int): The log level to apply to configured loggers.
+
+    Returns:
+        None
+    """
+    # Configure known third-party loggers (even if not yet created)
+    # These are libraries that can be noisy and we want to control
+    for logger_name in THIRD_PARTY_LOGGERS:
+        third_party_logger = logging.getLogger(logger_name)
+        third_party_logger.setLevel(log_level)
+        third_party_logger.handlers.clear()
+        third_party_logger.propagate = True
+
+    # Configure holodeck loggers only (not all loggers system-wide)
+    # This avoids interfering with third-party libraries that configure
+    # their own logging handlers
+    for name in list(logging.Logger.manager.loggerDict.keys()):
+        # Only configure holodeck.* loggers
+        if not name.startswith("holodeck"):
+            continue
+
+        logger = logging.getLogger(name)
+        # Clear any handlers the logger might have
+        logger.handlers.clear()
+        # Set level to NOTSET so it inherits from root, OR set explicitly
+        # For quiet mode, we set explicitly to ensure no messages get through
+        if log_level >= logging.ERROR:
+            logger.setLevel(log_level)
+        else:
+            # For non-quiet modes, let loggers inherit from root
+            logger.setLevel(logging.NOTSET)
+        # Ensure propagation to root logger
+        logger.propagate = True
+
+
 def get_logger(name: str) -> logging.Logger:
     """
     Get a logger instance for the specified module.
@@ -186,6 +253,9 @@ def set_log_level(level: str) -> None:
     # Update all handlers
     for handler in root_logger.handlers:
         handler.setLevel(log_level)
+
+    # Also update all existing loggers
+    _configure_all_loggers(log_level)
 
     logger = get_logger(__name__)
     logger.debug(f"Log level changed to {logging.getLevelName(log_level)}")
