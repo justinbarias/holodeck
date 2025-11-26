@@ -7351,4 +7351,4 @@ dev = ["bandit", "black", "detect-secrets", "mkdocstrings", "mypy", "poetry", "p
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "eb67c928390b4774fdb2d8f33890ffec9863f9899da0d4b02124b11754403cc6"
+content-hash = "88e3488926fcf8b782a81ce132ef9709df4771c29b2ec8318d27fb65fc8aa030"
