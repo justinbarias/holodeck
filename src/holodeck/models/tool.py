@@ -105,6 +105,12 @@ class VectorstoreTool(BaseModel):
     embedding_model: str | None = Field(
         None, description="Custom embedding model (defaults to provider default)"
     )
+    embedding_dimensions: int | None = Field(
+        None,
+        description=(
+            "Embedding vector dimensions (auto-detected from model if not specified)"
+        ),
+    )
     database: DatabaseConfig | str | None = Field(
         None,
         description=(
@@ -174,6 +180,17 @@ class VectorstoreTool(BaseModel):
         """Validate min_similarity_score is between 0.0 and 1.0 if provided."""
         if v is not None and not (0.0 <= v <= 1.0):
             raise ValueError("min_similarity_score must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("embedding_dimensions")
+    @classmethod
+    def validate_embedding_dimensions(cls, v: int | None) -> int | None:
+        """Validate embedding_dimensions is positive and reasonable if provided."""
+        if v is not None:
+            if v <= 0:
+                raise ValueError("embedding_dimensions must be positive")
+            if v > 10000:
+                raise ValueError("embedding_dimensions unreasonably large (max 10000)")
         return v
 
 

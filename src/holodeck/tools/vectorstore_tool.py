@@ -22,10 +22,8 @@ from typing import TYPE_CHECKING, Any
 from holodeck.lib.file_processor import FileProcessor, SourceFile
 from holodeck.lib.text_chunker import TextChunker
 from holodeck.lib.vector_store import (
-    DocumentRecord,
     QueryResult,
     convert_document_to_query_result,
-    get_collection_class,
 )
 
 if TYPE_CHECKING:
@@ -96,6 +94,9 @@ class VectorStoreTool:
         self.document_count: int = 0
         self.last_ingest_time: datetime | None = None
 
+        # Embedding dimensions (resolved during initialization)
+        self._embedding_dimensions: int | None = None
+
         # Initialize components (lazy initialization for some)
         chunk_size = config.chunk_size or TextChunker.DEFAULT_CHUNK_SIZE
         chunk_overlap = config.chunk_overlap or TextChunker.DEFAULT_CHUNK_OVERLAP
@@ -130,7 +131,42 @@ class VectorStoreTool:
         self._embedding_service = service
         logger.debug(f"Embedding service set for tool: {self.config.name}")
 
-    def _setup_collection(self) -> None:
+    def _resolve_dimensions(self, provider: str) -> int:
+        """Resolve embedding dimensions from config or auto-detect.
+
+        Resolution order:
+        1. Explicit config.embedding_dimensions
+        2. Auto-detect from config.embedding_model + provider
+        3. Provider default
+
+        Args:
+            provider: LLM provider ("openai", "azure_openai", "ollama")
+
+        Returns:
+            Resolved embedding dimensions
+        """
+        # Explicit configuration takes precedence
+        if self.config.embedding_dimensions is not None:
+            logger.debug(
+                f"Using explicit "
+                f"embedding_dimensions={self.config.embedding_dimensions}"
+            )
+            return self.config.embedding_dimensions
+
+        # Auto-detect from model name
+        from holodeck.config.defaults import get_embedding_dimensions
+
+        dimensions = get_embedding_dimensions(
+            self.config.embedding_model, provider=provider
+        )
+
+        logger.debug(
+            f"Auto-detected embedding_dimensions={dimensions} "
+            f"for model={self.config.embedding_model}, provider={provider}"
+        )
+        return dimensions
+
+    def _setup_collection(self, provider_type: str) -> None:
         """Set up the collection instance based on database configuration.
 
         Uses config.database to determine the vector store provider.
@@ -139,7 +175,13 @@ class VectorStoreTool:
 
         Creates a persistent collection instance that is reused for both
         storing and searching documents.
+
+        Args:
+            provider_type: LLM provider type for dimension resolution
         """
+        # Resolve dimensions before creating collection
+        if self._embedding_dimensions is None:
+            self._embedding_dimensions = self._resolve_dimensions(provider_type)
         # Handle database configuration (can be DatabaseConfig, string ref, or None)
         database = self.config.database
         if isinstance(database, str):
@@ -168,12 +210,18 @@ class VectorStoreTool:
 
         # Create persistent collection instance with fallback
         try:
-            collection_class = get_collection_class(self._provider)
-            self._collection = collection_class(
-                record_type=DocumentRecord,
+            from holodeck.lib.vector_store import get_collection_factory
+
+            factory = get_collection_factory(
+                provider=self._provider,
+                dimensions=self._embedding_dimensions,
                 **connection_kwargs,
             )
-            logger.info(f"Vector store connected: provider={self._provider}")
+            self._collection = factory()
+            logger.info(
+                f"Vector store connected: provider={self._provider}, "
+                f"dimensions={self._embedding_dimensions}"
+            )
         except (ImportError, ConnectionError, Exception) as e:
             # Fall back to in-memory storage for non-in-memory providers
             if self._provider != "in-memory":
@@ -182,14 +230,21 @@ class VectorStoreTool:
                     "Falling back to in-memory storage."
                 )
                 self._provider = "in-memory"
-                collection_class = get_collection_class("in-memory")
-                self._collection = collection_class(record_type=DocumentRecord)
+                from holodeck.lib.vector_store import get_collection_factory
+
+                factory = get_collection_factory(
+                    provider="in-memory", dimensions=self._embedding_dimensions
+                )
+                self._collection = factory()
                 logger.info("Using in-memory vector storage (fallback)")
             else:
                 # Don't catch errors for in-memory provider
                 raise
 
-        logger.debug(f"Collection created for provider: {self._provider}")
+        logger.debug(
+            f"Collection created for provider: {self._provider}, "
+            f"dimensions={self._embedding_dimensions}"
+        )
 
     def _get_file_processor(self) -> FileProcessor:
         """Get or create FileProcessor instance (lazy initialization)."""
@@ -369,11 +424,16 @@ class VectorStoreTool:
         Uses injected embedding service if available, otherwise returns
         placeholder embeddings (for testing without LLM).
 
+        Validates that embedding dimensions match configuration.
+
         Args:
             chunks: List of text chunks to embed.
 
         Returns:
             List of embedding vectors (one per chunk).
+
+        Raises:
+            ValueError: If embedding dimensions don't match configuration.
         """
         if self._embedding_service is not None:
             # Use real embedding service
@@ -381,19 +441,42 @@ class VectorStoreTool:
                 embeddings = await self._embedding_service.generate_embeddings(chunks)
                 # Convert to list of lists (service may return different types)
                 result = [list(emb) for emb in embeddings]
+
+                # Validate dimensions match configuration
+                if result and self._embedding_dimensions is not None:
+                    actual_dim = len(result[0])
+                    if actual_dim != self._embedding_dimensions:
+                        raise ValueError(
+                            f"Embedding dimension mismatch: expected "
+                            f"{self._embedding_dimensions}, got {actual_dim}. "
+                            f"This usually means:\n"
+                            f"1. Your embedding_model produces different dimensions\n"
+                            f"2. The embedding_dimensions setting is incorrect\n"
+                            f"Fix: Set 'embedding_dimensions: {actual_dim}' "
+                            f"in tool config"
+                        )
+
                 logger.debug(
-                    f"Generated {len(result)} embeddings using embedding service"
+                    f"Generated {len(result)} embeddings, dim={len(result[0])}"
                 )
                 return result
+
             except Exception as e:
                 logger.warning(
                     f"Embedding service failed, falling back to placeholder: {e}"
                 )
 
-        # Fallback: placeholder embeddings (zeros)
-        embedding_dim = 1536  # text-embedding-3-small default
-        placeholder: list[list[float]] = [[0.0] * embedding_dim for _ in chunks]
-        logger.debug(f"Generated {len(chunks)} placeholder embeddings")
+        # Fallback: placeholder embeddings using configured dimensions
+        if self._embedding_dimensions is None:
+            self._embedding_dimensions = 1536
+
+        placeholder: list[list[float]] = [
+            [0.0] * self._embedding_dimensions for _ in chunks
+        ]
+        logger.debug(
+            f"Generated {len(chunks)} placeholder embeddings, "
+            f"dim={self._embedding_dimensions}"
+        )
         return placeholder
 
     async def _store_chunks(
@@ -418,11 +501,20 @@ class VectorStoreTool:
         if self._collection is None:
             raise RuntimeError("Collection not initialized")
 
-        records: list[DocumentRecord] = []
+        # Import DocumentRecord creation factory
+        from holodeck.lib.vector_store import create_document_record_class
+
+        # Create DocumentRecord class with correct dimensions
+        if self._embedding_dimensions is None:
+            self._embedding_dimensions = 1536
+
+        record_class = create_document_record_class(self._embedding_dimensions)
+
+        records: list[Any] = []
         for idx, (chunk, embedding) in enumerate(
             zip(source_file.chunks, embeddings, strict=False)
         ):
-            record = DocumentRecord(
+            record = record_class(
                 id=f"{source_file.path}_chunk_{idx}",
                 source_path=str(source_file.path),
                 chunk_index=idx,
@@ -516,7 +608,9 @@ class VectorStoreTool:
 
         return deleted_count
 
-    async def initialize(self, force_ingest: bool = False) -> None:
+    async def initialize(
+        self, force_ingest: bool = False, provider_type: str | None = None
+    ) -> None:
         """Initialize tool and ingest source files.
 
         Discovers files from the configured source, processes them into chunks,
@@ -525,11 +619,20 @@ class VectorStoreTool:
 
         Args:
             force_ingest: If True, re-ingest all files regardless of modification time.
+            provider_type: LLM provider for dimension auto-detection
+                (defaults to "openai" if not specified)
 
         Raises:
             FileNotFoundError: If the source path doesn't exist.
             RuntimeError: If no supported files are found in source.
         """
+        # Default to openai if not specified
+        if provider_type is None:
+            provider_type = "openai"
+            logger.debug(
+                f"Defaulting to '{provider_type}' for dimension auto-detection"
+            )
+
         source_path = self._resolve_source_path()
 
         # Validate source exists (T035)
@@ -544,8 +647,8 @@ class VectorStoreTool:
                 f"base_dir: {effective_base_dir})"
             )
 
-        # Set up collection instance before processing files
-        self._setup_collection()
+        # Set up collection instance with provider type before processing files
+        self._setup_collection(provider_type)
 
         # Discover files
         files = self._discover_files()

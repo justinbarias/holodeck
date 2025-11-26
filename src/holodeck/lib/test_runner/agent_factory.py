@@ -253,7 +253,7 @@ class AgentFactory:
 
         # Return provider-specific default
         if self.agent_config.model.provider == ProviderEnum.OLLAMA:
-            return "nomic-embed-text"
+            return "nomic-embed-text:latest"
         else:
             # OpenAI/Azure OpenAI default
             return "text-embedding-3-small"
@@ -359,6 +359,9 @@ class AgentFactory:
 
         from holodeck.tools.vectorstore_tool import VectorStoreTool
 
+        # Get provider type from agent config for dimension resolution
+        provider_type = self.agent_config.model.provider.value
+
         for tool_config in self.agent_config.tools:
             # Only process vectorstore tools
             if not isinstance(tool_config, VectorstoreTool):
@@ -373,7 +376,10 @@ class AgentFactory:
                 tool.set_embedding_service(self._embedding_service)
 
                 # Initialize (async - ingests files, generates embeddings)
-                await tool.initialize(force_ingest=self._force_ingest)
+                # Pass provider type for dimension auto-detection
+                await tool.initialize(
+                    force_ingest=self._force_ingest, provider_type=provider_type
+                )
 
                 # Create and register KernelFunction
                 kernel_function = self._create_search_kernel_function(
