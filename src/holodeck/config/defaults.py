@@ -150,6 +150,11 @@ OLLAMA_DEFAULTS: dict[str, int | float | str | None] = {
     "api_key": None,
 }
 
+# Ollama provider embedding model defaults
+OLLAMA_EMBEDDING_DEFAULTS: dict[str, str | None] = {
+    "embedding_model": "nomic-embed-text",
+}
+
 # Execution configuration defaults
 DEFAULT_EXECUTION_CONFIG: dict[str, int | bool | str] = {
     "file_timeout": 30,  # seconds
