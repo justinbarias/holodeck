@@ -100,7 +100,7 @@ model:
 
 ### Top P (Nucleus Sampling)
 
-Alternative to temperature for controlling randomness. Use one or the other, not both:
+Alternative to temperature for controlling randomness. While both can be used simultaneously, it's recommended to adjust one or the other for more predictable results:
 
 ```yaml
 model:
@@ -410,6 +410,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 | `claude-opus-4-20250514` | Most capable, best for complex tasks | 200K tokens |
 | `claude-3-5-sonnet-20241022` | Previous generation Sonnet | 200K tokens |
 | `claude-3-5-haiku-20241022` | Fast and cost-effective | 200K tokens |
+
+> **Note**: Model identifiers include version dates (e.g., `20250514`). Check [Anthropic's documentation](https://docs.anthropic.com/en/docs/about-claude/models) for the latest available models and their capabilities.
 
 ### Complete Example
 

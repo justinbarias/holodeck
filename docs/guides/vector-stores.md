@@ -366,6 +366,7 @@ version: "3.8"
 services:
   redis:
     image: redis/redis-stack:latest
+    container_name: holodeck-redis
     ports:
       - "6379:6379"
       - "8001:8001"
