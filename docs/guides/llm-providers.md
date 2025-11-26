@@ -528,6 +528,8 @@ Pull models with `ollama pull <model-name>`:
 
 | Model | Command | Description | Size |
 |-------|---------|-------------|------|
+| GPT-OSS (20B) | `ollama pull gpt-oss:20b` | Recommended completion model | 40GB |
+| Nomic Embed Text | `ollama pull nomic-embed-text:latest` | Recommended embedding model | 274MB |
 | Llama 3.2 | `ollama pull llama3.2` | Meta's latest, general purpose | 2GB |
 | Llama 3.2 (3B) | `ollama pull llama3.2:3b` | Larger Llama variant | 5GB |
 | Mistral | `ollama pull mistral` | Fast and capable | 4GB |
@@ -554,6 +556,45 @@ docker run -d \
   -v ollama-data:/root/.ollama \
   ollama/ollama
 ```
+
+### Context Size Configuration
+
+For agent workloads, we recommend configuring a context size of at least **16k tokens**. By default, Ollama models may use smaller context windows which can limit agent capabilities.
+
+**Create a custom model with extended context:**
+
+```bash
+# Create a Modelfile with extended context
+cat <<EOF > Modelfile
+FROM gpt-oss:20b
+PARAMETER num_ctx 16384
+EOF
+
+# Create the custom model
+ollama create gpt-oss:20b-16k -f Modelfile
+```
+
+**For larger context needs (32k):**
+
+```bash
+cat <<EOF > Modelfile
+FROM gpt-oss:20b
+PARAMETER num_ctx 32768
+EOF
+
+ollama create gpt-oss:20b-32k -f Modelfile
+```
+
+**Use the custom model in your configuration:**
+
+```yaml
+model:
+  provider: ollama
+  name: gpt-oss:20b-16k  # or gpt-oss:20b-32k for larger context
+  endpoint: http://localhost:11434
+```
+
+> **Note**: Larger context sizes require more memory. A 32k context with a 20B parameter model may require 48GB+ RAM or a GPU with 16GB+ VRAM.
 
 ### Complete Example
 
