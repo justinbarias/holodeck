@@ -63,14 +63,13 @@ class ChatSpinnerThread(threading.Thread):
     "--verbose",
     "-v",
     is_flag=True,
-    help="Show detailed tool execution (parameters, internal state)",
+    help="Show detailed logging and tool execution (parameters, internal state)",
 )
 @click.option(
-    "--quiet",
-    "-q",
-    is_flag=True,
+    "--quiet/--no-quiet",
+    "-q/-Q",
     default=True,
-    help="Suppress logging output (enabled by default)",
+    help="Suppress logging output (default: quiet). Use -Q or --no-quiet to show logs.",
 )
 @click.option(
     "--observability",
@@ -122,7 +121,9 @@ def chat(
         --max-messages / -m     Set max messages before context warning (default: 50)
     """
     # Reconfigure logging based on CLI flags
-    setup_logging(verbose=verbose, quiet=quiet)
+    # If verbose is enabled, it overrides quiet mode
+    effective_quiet = quiet and not verbose
+    setup_logging(verbose=verbose, quiet=effective_quiet)
 
     logger.info(
         f"Chat command invoked: config={agent_config}, "

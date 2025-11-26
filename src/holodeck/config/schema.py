@@ -97,6 +97,12 @@ class SchemaValidator:
             ValueError: If schema is invalid
         """
         # Resolve file path
+        if base_dir is None:
+            # Try to get from context variable
+            from holodeck.config.context import agent_base_dir
+
+            base_dir = agent_base_dir.get()
+
         base_dir = Path.cwd() if base_dir is None else Path(base_dir)
 
         path = Path(file_path)

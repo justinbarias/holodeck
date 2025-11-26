@@ -47,7 +47,9 @@ jobs:
         run: poetry install --with dev
 
       - name: Install redisvl (bypasses redis version conflict)
-        run: poetry run pip install "redisvl>=0.4.0,<0.5.0" --no-deps
+        run: |
+          poetry run pip install "redisvl>=0.4.0,<0.5.0" --no-deps
+          poetry run python scripts/patch_redisvl.py
 
       - name: Build package
         run: poetry build
