@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev
 
+      - name: Install redisvl (bypasses redis version conflict)
+        run: poetry run pip install "redisvl>=0.4.0,<0.5.0" --no-deps
+
       - name: Run pre-commit
         run: poetry run pre-commit run --all-files
 
