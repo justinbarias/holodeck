@@ -55,8 +55,11 @@ from holodeck.lib.vector_store import (  # noqa: E402
     DocumentRecord,
     QueryResult,
     convert_document_to_query_result,
+    create_chromadb_client,
     create_document_record_class,
+    get_collection_class,
     get_collection_factory,
+    parse_chromadb_connection_string,
 )
 
 # Restore original modules after import to avoid polluting other tests
@@ -671,3 +674,674 @@ class TestVectorStoreSearchTopK:
         limited_results = results[:top_k]
 
         assert len(limited_results) == 0
+
+
+class TestParseChromadbConnectionString:
+    """Tests for parse_chromadb_connection_string function."""
+
+    def test_parse_http_localhost_with_port(self) -> None:
+        """Test parsing http://localhost:8000."""
+        result = parse_chromadb_connection_string("http://localhost:8000")
+        assert result["host"] == "localhost"
+        assert result["port"] == 8000
+        assert result["ssl"] is False
+
+    def test_parse_https_with_custom_host(self) -> None:
+        """Test parsing https://chroma.example.com."""
+        result = parse_chromadb_connection_string("https://chroma.example.com")
+        assert result["host"] == "chroma.example.com"
+        assert result["port"] == 443  # Default HTTPS port
+        assert result["ssl"] is True
+
+    def test_parse_http_without_port(self) -> None:
+        """Test parsing http://localhost without explicit port."""
+        result = parse_chromadb_connection_string("http://localhost")
+        assert result["host"] == "localhost"
+        assert result["port"] == 8000  # Default HTTP port
+        assert result["ssl"] is False
+
+    def test_parse_https_with_custom_port(self) -> None:
+        """Test parsing https://chroma.internal:9000."""
+        result = parse_chromadb_connection_string("https://chroma.internal:9000")
+        assert result["host"] == "chroma.internal"
+        assert result["port"] == 9000
+        assert result["ssl"] is True
+
+    def test_parse_http_with_path(self) -> None:
+        """Test parsing URL with path (path is ignored)."""
+        result = parse_chromadb_connection_string("http://localhost:8000/api/v1")
+        assert result["host"] == "localhost"
+        assert result["port"] == 8000
+        assert result["ssl"] is False
+
+    def test_parse_empty_connection_string_raises_error(self) -> None:
+        """Test that empty connection string raises ValueError."""
+        with pytest.raises(ValueError, match="Connection string cannot be empty"):
+            parse_chromadb_connection_string("")
+
+    def test_parse_invalid_scheme_raises_error(self) -> None:
+        """Test that invalid scheme raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid scheme"):
+            parse_chromadb_connection_string("ftp://localhost:8000")
+
+    def test_parse_no_scheme_raises_error(self) -> None:
+        """Test that URL without scheme raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid scheme"):
+            parse_chromadb_connection_string("localhost:8000")
+
+    def test_parse_tcp_scheme_raises_error(self) -> None:
+        """Test that tcp:// scheme raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid scheme"):
+            parse_chromadb_connection_string("tcp://localhost:8000")
+
+    def test_parse_ip_address_host(self) -> None:
+        """Test parsing URL with IP address as host."""
+        result = parse_chromadb_connection_string("http://192.168.1.100:8000")
+        assert result["host"] == "192.168.1.100"
+        assert result["port"] == 8000
+        assert result["ssl"] is False
+
+    def test_parse_subdomain_host(self) -> None:
+        """Test parsing URL with subdomain."""
+        result = parse_chromadb_connection_string("https://chroma.prod.example.com:443")
+        assert result["host"] == "chroma.prod.example.com"
+        assert result["port"] == 443
+        assert result["ssl"] is True
+
+    def test_parse_default_host_when_missing(self) -> None:
+        """Test that hostname defaults to localhost when missing."""
+        result = parse_chromadb_connection_string("http://:8000")
+        assert result["host"] == "localhost"
+        assert result["port"] == 8000
+
+
+class TestCreateChromadbClient:
+    """Tests for create_chromadb_client function."""
+
+    def test_create_http_client_with_connection_string(self) -> None:
+        """Test creating HttpClient with connection string."""
+        # Mock chromadb module
+        mock_chromadb = MagicMock()
+        sys.modules["chromadb"] = mock_chromadb
+
+        try:
+            client = create_chromadb_client(connection_string="http://localhost:8000")
+            mock_chromadb.HttpClient.assert_called_once_with(
+                host="localhost",
+                port=8000,
+                ssl=False,
+                headers=None,
+                tenant="default_tenant",
+                database="default_database",
+            )
+            assert client == mock_chromadb.HttpClient.return_value
+        finally:
+            del sys.modules["chromadb"]
+
+    def test_create_http_client_with_https(self) -> None:
+        """Test creating HttpClient with HTTPS connection string."""
+        mock_chromadb = MagicMock()
+        sys.modules["chromadb"] = mock_chromadb
+
+        try:
+            create_chromadb_client(connection_string="https://chroma.example.com")
+            mock_chromadb.HttpClient.assert_called_once_with(
+                host="chroma.example.com",
+                port=443,
+                ssl=True,
+                headers=None,
+                tenant="default_tenant",
+                database="default_database",
+            )
+        finally:
+            del sys.modules["chromadb"]
+
+    def test_create_http_client_with_headers(self) -> None:
+        """Test creating HttpClient with authentication headers."""
+        mock_chromadb = MagicMock()
+        sys.modules["chromadb"] = mock_chromadb
+
+        try:
+            create_chromadb_client(
+                connection_string="http://localhost:8000",
+                headers={"Authorization": "Bearer token123"},
+            )
+            mock_chromadb.HttpClient.assert_called_once_with(
+                host="localhost",
+                port=8000,
+                ssl=False,
+                headers={"Authorization": "Bearer token123"},
+                tenant="default_tenant",
+                database="default_database",
+            )
+        finally:
+            del sys.modules["chromadb"]
+
+    def test_create_http_client_with_custom_tenant(self) -> None:
+        """Test creating HttpClient with custom tenant."""
+        mock_chromadb = MagicMock()
+        sys.modules["chromadb"] = mock_chromadb
+
+        try:
+            create_chromadb_client(
+                connection_string="http://localhost:8000",
+                tenant="my_tenant",
+                database="my_database",
+            )
+            mock_chromadb.HttpClient.assert_called_once_with(
+                host="localhost",
+                port=8000,
+                ssl=False,
+                headers=None,
+                tenant="my_tenant",
+                database="my_database",
+            )
+        finally:
+            del sys.modules["chromadb"]
+
+    def test_create_persistent_client(self) -> None:
+        """Test creating PersistentClient with persist_directory."""
+        mock_chromadb = MagicMock()
+        sys.modules["chromadb"] = mock_chromadb
+
+        try:
+            client = create_chromadb_client(persist_directory="/var/data/chromadb")
+            mock_chromadb.PersistentClient.assert_called_once_with(
+                path="/var/data/chromadb",
+                tenant="default_tenant",
+                database="default_database",
+            )
+            assert client == mock_chromadb.PersistentClient.return_value
+        finally:
+            del sys.modules["chromadb"]
+
+    def test_create_persistent_client_with_custom_tenant(self) -> None:
+        """Test creating PersistentClient with custom tenant and database."""
+        mock_chromadb = MagicMock()
+        sys.modules["chromadb"] = mock_chromadb
+
+        try:
+            create_chromadb_client(
+                persist_directory="/data/vectors",
+                tenant="custom_tenant",
+                database="custom_db",
+            )
+            mock_chromadb.PersistentClient.assert_called_once_with(
+                path="/data/vectors",
+                tenant="custom_tenant",
+                database="custom_db",
+            )
+        finally:
+            del sys.modules["chromadb"]
+
+    def test_create_ephemeral_client(self) -> None:
+        """Test creating EphemeralClient with no parameters."""
+        mock_chromadb = MagicMock()
+        sys.modules["chromadb"] = mock_chromadb
+
+        try:
+            client = create_chromadb_client()
+            mock_chromadb.EphemeralClient.assert_called_once_with(
+                tenant="default_tenant",
+                database="default_database",
+            )
+            assert client == mock_chromadb.EphemeralClient.return_value
+        finally:
+            del sys.modules["chromadb"]
+
+    def test_create_ephemeral_client_with_custom_tenant(self) -> None:
+        """Test creating EphemeralClient with custom tenant."""
+        mock_chromadb = MagicMock()
+        sys.modules["chromadb"] = mock_chromadb
+
+        try:
+            create_chromadb_client(
+                tenant="test_tenant",
+                database="test_db",
+            )
+            mock_chromadb.EphemeralClient.assert_called_once_with(
+                tenant="test_tenant",
+                database="test_db",
+            )
+        finally:
+            del sys.modules["chromadb"]
+
+    def test_connection_string_takes_precedence(self) -> None:
+        """Test that connection_string takes precedence over persist_directory."""
+        mock_chromadb = MagicMock()
+        sys.modules["chromadb"] = mock_chromadb
+
+        try:
+            # When both are provided, connection_string should be used
+            create_chromadb_client(
+                connection_string="http://localhost:8000",
+                persist_directory="/data/vectors",
+            )
+            mock_chromadb.HttpClient.assert_called_once()
+            mock_chromadb.PersistentClient.assert_not_called()
+        finally:
+            del sys.modules["chromadb"]
+
+    def test_import_error_when_chromadb_not_installed(self) -> None:
+        """Test ImportError is raised when chromadb is not installed."""
+        # Use unittest.mock to patch the import statement within the function
+        import builtins
+        from unittest.mock import patch
+
+        original_import = builtins.__import__
+
+        def mock_import(name: str, *args: object, **kwargs: object) -> MagicMock:
+            if name == "chromadb":
+                raise ImportError("No module named 'chromadb'")
+            return original_import(name, *args, **kwargs)
+
+        with (
+            patch.object(builtins, "__import__", side_effect=mock_import),
+            pytest.raises(ImportError, match="ChromaDB is not installed"),
+        ):
+            create_chromadb_client()
+
+
+class TestGetCollectionClass:
+    """Tests for get_collection_class function."""
+
+    def test_get_collection_class_unsupported_provider(self) -> None:
+        """Test that unsupported provider raises ValueError."""
+        with pytest.raises(ValueError, match="Unsupported vector store provider"):
+            get_collection_class("unsupported-provider")
+
+    def test_get_collection_class_empty_provider(self) -> None:
+        """Test that empty provider raises ValueError."""
+        with pytest.raises(ValueError, match="Unsupported vector store provider"):
+            get_collection_class("")
+
+    def test_get_collection_class_returns_error_message_with_supported_providers(
+        self,
+    ) -> None:
+        """Test that error message lists supported providers."""
+        with pytest.raises(ValueError) as exc_info:
+            get_collection_class("invalid")
+        error_msg = str(exc_info.value)
+        # Check that some supported providers are mentioned
+        assert "chromadb" in error_msg
+        assert "postgres" in error_msg
+        assert "in-memory" in error_msg
+
+    def test_get_collection_class_import_error_with_hint(self) -> None:
+        """Test that ImportError includes installation hint."""
+        # Mock importlib to raise ImportError
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if "chroma" in name:
+                raise ImportError(f"No module named '{name}'")
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+            with pytest.raises(ImportError, match="chromadb"):
+                get_collection_class("chromadb")
+        finally:
+            importlib.import_module = original_import
+
+    def test_get_collection_class_valid_provider_chromadb(self) -> None:
+        """Test get_collection_class with chromadb provider."""
+        # Setup mock for the import
+        mock_module = MagicMock()
+        mock_module.ChromaCollection = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.chroma":
+                return mock_module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+            result = get_collection_class("chromadb")
+            assert result == mock_module.ChromaCollection
+        finally:
+            importlib.import_module = original_import
+
+    def test_get_collection_class_valid_provider_postgres(self) -> None:
+        """Test get_collection_class with postgres provider."""
+        mock_module = MagicMock()
+        mock_module.PostgresCollection = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.postgres":
+                return mock_module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+            result = get_collection_class("postgres")
+            assert result == mock_module.PostgresCollection
+        finally:
+            importlib.import_module = original_import
+
+    def test_get_collection_class_valid_provider_in_memory(self) -> None:
+        """Test get_collection_class with in-memory provider."""
+        mock_module = MagicMock()
+        mock_module.InMemoryCollection = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.in_memory":
+                return mock_module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+            result = get_collection_class("in-memory")
+            assert result == mock_module.InMemoryCollection
+        finally:
+            importlib.import_module = original_import
+
+
+class TestGetCollectionFactoryChromadb:
+    """Tests for get_collection_factory with ChromaDB provider."""
+
+    def test_factory_chromadb_with_connection_string(self) -> None:
+        """Test factory creates ChromaDB collection with connection string."""
+        # This test verifies the factory is created correctly
+        # The actual collection creation happens when the factory is called
+        factory = get_collection_factory(
+            "chromadb",
+            dimensions=768,
+            connection_string="http://localhost:8000",
+        )
+        assert callable(factory)
+
+    def test_factory_chromadb_with_persist_directory(self) -> None:
+        """Test factory creates ChromaDB collection with persist directory."""
+        factory = get_collection_factory(
+            "chromadb",
+            dimensions=768,
+            persist_directory="/data/vectors",
+        )
+        assert callable(factory)
+
+    def test_factory_chromadb_ephemeral(self) -> None:
+        """Test factory creates ephemeral ChromaDB collection."""
+        factory = get_collection_factory(
+            "chromadb",
+            dimensions=768,
+        )
+        assert callable(factory)
+
+    def test_factory_chromadb_with_headers(self) -> None:
+        """Test factory creates ChromaDB collection with auth headers."""
+        factory = get_collection_factory(
+            "chromadb",
+            dimensions=768,
+            connection_string="https://chroma.example.com",
+            headers={"Authorization": "Bearer token"},
+        )
+        assert callable(factory)
+
+    def test_factory_chromadb_with_tenant_and_database(self) -> None:
+        """Test factory creates ChromaDB collection with tenant/database."""
+        factory = get_collection_factory(
+            "chromadb",
+            dimensions=768,
+            connection_string="http://localhost:8000",
+            tenant="my_tenant",
+            database="my_database",
+        )
+        assert callable(factory)
+
+    def test_factory_chromadb_calls_create_chromadb_client(self) -> None:
+        """Test that factory() calls create_chromadb_client when invoked."""
+        # Setup mocks
+        mock_chromadb = MagicMock()
+        mock_client = MagicMock()
+        mock_chromadb.HttpClient.return_value = mock_client
+        sys.modules["chromadb"] = mock_chromadb
+
+        # Setup mock for collection class
+        mock_collection_class = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.chroma":
+                module = MagicMock()
+                module.ChromaCollection = mock_collection_class
+                return module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+
+            factory = get_collection_factory(
+                "chromadb",
+                dimensions=768,
+                connection_string="http://localhost:8000",
+            )
+
+            # Call the factory
+            factory()
+
+            # Verify HttpClient was called with correct params
+            mock_chromadb.HttpClient.assert_called_once_with(
+                host="localhost",
+                port=8000,
+                ssl=False,
+                headers=None,
+                tenant="default_tenant",
+                database="default_database",
+            )
+
+            # Verify ChromaCollection was instantiated with the client
+            mock_collection_class.__getitem__.return_value.assert_called()
+        finally:
+            del sys.modules["chromadb"]
+            importlib.import_module = original_import
+
+    def test_factory_chromadb_with_persist_directory_calls_persistent_client(
+        self,
+    ) -> None:
+        """Test that factory() calls PersistentClient when persist_directory set."""
+        mock_chromadb = MagicMock()
+        mock_client = MagicMock()
+        mock_chromadb.PersistentClient.return_value = mock_client
+        sys.modules["chromadb"] = mock_chromadb
+
+        mock_collection_class = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.chroma":
+                module = MagicMock()
+                module.ChromaCollection = mock_collection_class
+                return module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+
+            factory = get_collection_factory(
+                "chromadb",
+                dimensions=768,
+                persist_directory="/data/vectors",
+            )
+
+            # Call the factory
+            factory()
+
+            # Verify PersistentClient was called
+            mock_chromadb.PersistentClient.assert_called_once_with(
+                path="/data/vectors",
+                tenant="default_tenant",
+                database="default_database",
+            )
+        finally:
+            del sys.modules["chromadb"]
+            importlib.import_module = original_import
+
+    def test_factory_chromadb_ephemeral_calls_ephemeral_client(self) -> None:
+        """Test that factory() calls EphemeralClient when no params set."""
+        mock_chromadb = MagicMock()
+        mock_client = MagicMock()
+        mock_chromadb.EphemeralClient.return_value = mock_client
+        sys.modules["chromadb"] = mock_chromadb
+
+        mock_collection_class = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.chroma":
+                module = MagicMock()
+                module.ChromaCollection = mock_collection_class
+                return module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+
+            factory = get_collection_factory(
+                "chromadb",
+                dimensions=768,
+            )
+
+            # Call the factory
+            factory()
+
+            # Verify EphemeralClient was called
+            mock_chromadb.EphemeralClient.assert_called_once_with(
+                tenant="default_tenant",
+                database="default_database",
+            )
+        finally:
+            del sys.modules["chromadb"]
+            importlib.import_module = original_import
+
+
+class TestGetCollectionFactoryNonChromadb:
+    """Tests for get_collection_factory with non-ChromaDB providers."""
+
+    def test_factory_non_chromadb_calls_collection_with_kwargs(self) -> None:
+        """Test that factory() for non-chromadb provider passes connection kwargs."""
+        mock_collection_class = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.postgres":
+                module = MagicMock()
+                module.PostgresCollection = mock_collection_class
+                return module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+
+            factory = get_collection_factory(
+                "postgres",
+                dimensions=768,
+                connection_string="postgresql://localhost/db",
+                pool_size=10,
+            )
+
+            # Call the factory
+            factory()
+
+            # Verify PostgresCollection was instantiated with connection kwargs
+            mock_collection_class.__getitem__.return_value.assert_called_once()
+            call_kwargs = mock_collection_class.__getitem__.return_value.call_args
+            # Check that connection_string and pool_size are passed
+            assert call_kwargs is not None
+            assert "connection_string" in call_kwargs.kwargs
+            assert (
+                call_kwargs.kwargs["connection_string"] == "postgresql://localhost/db"
+            )
+            assert call_kwargs.kwargs["pool_size"] == 10
+        finally:
+            importlib.import_module = original_import
+
+    def test_factory_in_memory_calls_collection_class(self) -> None:
+        """Test that factory() for in-memory provider works."""
+        mock_collection_class = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.in_memory":
+                module = MagicMock()
+                module.InMemoryCollection = mock_collection_class
+                return module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+
+            factory = get_collection_factory(
+                "in-memory",
+                dimensions=1536,
+            )
+
+            # Call the factory
+            result = factory()
+
+            # Verify InMemoryCollection was instantiated
+            mock_collection_class.__getitem__.return_value.assert_called_once()
+            assert result == mock_collection_class.__getitem__.return_value.return_value
+        finally:
+            importlib.import_module = original_import
+
+    def test_factory_redis_hashset_calls_collection_class(self) -> None:
+        """Test that factory() for redis-hashset provider works."""
+        mock_collection_class = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.redis":
+                module = MagicMock()
+                module.RedisHashsetCollection = mock_collection_class
+                return module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+
+            factory = get_collection_factory(
+                "redis-hashset",
+                dimensions=768,
+                connection_string="redis://localhost:6379",
+            )
+
+            # Call the factory
+            factory()
+
+            # Verify RedisHashsetCollection was instantiated
+            mock_collection_class.__getitem__.return_value.assert_called_once()
+        finally:
+            importlib.import_module = original_import
