@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 from holodeck.lib.file_processor import FileProcessor
+from holodeck.models.config import ExecutionConfig
 from holodeck.models.test_case import FileInput
 from holodeck.models.test_result import ProcessedFileInput
 
@@ -1845,3 +1846,78 @@ class TestFileProcessorRemoteFilePreprocessing:
 
             finally:
                 tmp_path.unlink(missing_ok=True)
+
+
+class TestFileProcessorFromExecutionConfig:
+    """Tests for FileProcessor.from_execution_config factory method."""
+
+    def test_from_execution_config_with_all_values(self) -> None:
+        """Test factory with all timeout values specified."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            custom_cache = Path(tmpdir) / "custom" / "cache"
+            config = ExecutionConfig(
+                file_timeout=60,
+                download_timeout=45,
+                cache_dir=str(custom_cache),
+            )
+
+            processor = FileProcessor.from_execution_config(config)
+
+            # Verify seconds -> milliseconds conversion
+            assert processor.processing_timeout_ms == 60000  # 60s -> 60000ms
+            assert processor.download_timeout_ms == 45000  # 45s -> 45000ms
+            assert processor.cache_dir == custom_cache
+
+    def test_from_execution_config_with_defaults(self) -> None:
+        """Test factory uses defaults when values not specified."""
+        config = ExecutionConfig()  # All None
+
+        processor = FileProcessor.from_execution_config(config)
+
+        # Should use default 30s -> 30000ms
+        assert processor.processing_timeout_ms == 30000
+        assert processor.download_timeout_ms == 30000
+        assert str(processor.cache_dir) == ".holodeck/cache"
+
+    def test_from_execution_config_cache_dir_override(self) -> None:
+        """Test cache_dir parameter overrides config."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_cache = Path(tmpdir) / "config" / "cache"
+            override_cache = Path(tmpdir) / "override" / "cache"
+            config = ExecutionConfig(cache_dir=str(config_cache))
+
+            processor = FileProcessor.from_execution_config(
+                config, cache_dir=str(override_cache)
+            )
+
+            assert processor.cache_dir == override_cache
+
+    def test_from_execution_config_max_retries(self) -> None:
+        """Test max_retries parameter is passed through."""
+        config = ExecutionConfig()
+
+        processor = FileProcessor.from_execution_config(config, max_retries=5)
+
+        assert processor.max_retries == 5
+
+    def test_from_execution_config_partial_values(self) -> None:
+        """Test factory with only some values specified."""
+        config = ExecutionConfig(
+            file_timeout=120,  # Only file timeout specified
+            download_timeout=None,
+            cache_dir=None,
+        )
+
+        processor = FileProcessor.from_execution_config(config)
+
+        assert processor.processing_timeout_ms == 120000  # 120s -> 120000ms
+        assert processor.download_timeout_ms == 30000  # default 30s
+        assert str(processor.cache_dir) == ".holodeck/cache"
+
+    def test_from_execution_config_preserves_default_max_retries(self) -> None:
+        """Test that default max_retries is 3."""
+        config = ExecutionConfig()
+
+        processor = FileProcessor.from_execution_config(config)
+
+        assert processor.max_retries == 3

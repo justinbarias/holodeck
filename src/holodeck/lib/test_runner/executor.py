@@ -207,13 +207,7 @@ class TestExecutor:
         Returns:
             Initialized FileProcessor instance
         """
-        # Convert download timeout from seconds to milliseconds
-        download_timeout_ms = (self.config.download_timeout or 30) * 1000
-
-        return FileProcessor(
-            cache_dir=self.config.cache_dir or ".holodeck/cache",
-            download_timeout_ms=download_timeout_ms,
-        )
+        return FileProcessor.from_execution_config(self.config)
 
     def _create_agent_factory(self) -> AgentFactory:
         """Create agent factory with resolved config.
