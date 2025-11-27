@@ -166,6 +166,96 @@ docker run -d \
 
 ---
 
+## Setting Up ChromaDB
+
+[ChromaDB](https://www.trychroma.com/) is an open-source embedding database that's simple to set up and ideal for development. It provides a lightweight alternative to Redis with native Python support.
+
+### Quick Start with Docker
+
+**Run ChromaDB:**
+
+```bash
+docker run -d \
+  --name chromadb \
+  -p 8000:8000 \
+  -v ./chroma-data:/chroma/chroma \
+  -e IS_PERSISTENT=TRUE \
+  -e ANONYMIZED_TELEMETRY=FALSE \
+  chromadb/chroma:latest
+```
+
+This exposes:
+
+- **Port 8000**: ChromaDB HTTP API (for HoloDeck connections)
+
+**Verify ChromaDB is running:**
+
+```bash
+curl http://localhost:8000/api/v2/heartbeat
+# {"nanosecond heartbeat":1234567890}
+```
+
+### Docker Compose (Recommended for Projects)
+
+Create a `docker-compose.yml` file in your project root:
+
+```yaml
+version: "3.9"
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: holodeck-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+
+volumes:
+  chroma-data:
+```
+
+**Start the service:**
+
+```bash
+docker compose up -d
+```
+
+**Stop the service:**
+
+```bash
+docker compose down
+```
+
+### Podman Equivalent
+
+```bash
+podman run -d \
+  --name chromadb \
+  -p 8000:8000 \
+  -v ./chroma-data:/chroma/chroma \
+  -e IS_PERSISTENT=TRUE \
+  -e ANONYMIZED_TELEMETRY=FALSE \
+  docker.io/chromadb/chroma:latest
+```
+
+### ChromaDB Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `IS_PERSISTENT` | Enable data persistence | `FALSE` |
+| `PERSIST_DIRECTORY` | Path for persistent storage | `/chroma/chroma` |
+| `ANONYMIZED_TELEMETRY` | Send anonymous usage data | `TRUE` |
+
+> **Version Pinning**: For stability, pin to a specific version (e.g., `chromadb/chroma:0.6.3`) instead of `latest` to avoid unexpected changes during upgrades.
+
+---
+
 ## Configuring Vector Stores in HoloDeck
 
 ### Global Configuration (config.yaml)
@@ -185,6 +275,11 @@ vectorstores:
   my-redis-json:
     provider: redis-json
     connection_string: ${REDIS_URL}
+
+  # ChromaDB (lightweight, Python-native)
+  my-chroma-store:
+    provider: chromadb
+    connection_string: http://localhost:8000
 
   # Production Redis with authentication
   production-redis:
@@ -400,6 +495,7 @@ HoloDeck supports multiple vector database backends. See the [Tools Guide](tools
 |----------|----------|------------------|
 | `redis-hashset` | Development, small-medium datasets | Low |
 | `redis-json` | Complex nested data structures | Low |
+| `chromadb` | Lightweight development, Python-native | Low |
 | `postgres` | Existing PostgreSQL infrastructure | Medium |
 | `qdrant` | High-performance production | Medium |
 | `in-memory` | Testing and prototyping | None |
@@ -483,6 +579,8 @@ docker rm -f redis-stack
 
 - [Redis Stack on Docker Hub](https://hub.docker.com/r/redis/redis-stack)
 - [Redis Vector Similarity Documentation](https://redis.io/docs/stack/search/reference/vectors/)
+- [ChromaDB on Docker Hub](https://hub.docker.com/r/chromadb/chroma)
+- [ChromaDB Documentation](https://docs.trychroma.com/)
 - [Tools Reference Guide](tools.md) - Complete vectorstore tool configuration
 - [Global Configuration Guide](global-config.md) - Shared settings across agents
 
