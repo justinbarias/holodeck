@@ -271,11 +271,12 @@ class FileProcessor:
             try:
                 response = requests.get(url, timeout=timeout_sec)
                 response.raise_for_status()
-                size_bytes = len(response.content)
+                content: bytes = response.content
+                size_bytes = len(content)
                 logger.debug(
                     f"File downloaded successfully: {url} ({size_bytes} bytes)"
                 )
-                return response.content
+                return content
             except Exception as e:
                 if attempt == self.max_retries - 1:
                     logger.error(
