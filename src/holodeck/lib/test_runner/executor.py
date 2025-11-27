@@ -24,6 +24,7 @@ import logging
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from semantic_kernel.contents import ChatHistory
@@ -195,9 +196,20 @@ class TestExecutor:
         Returns:
             ExecutionConfig with all fields resolved
         """
+        # Load project-level config (same directory as agent.yaml)
+        agent_dir = str(Path(self.agent_config_path).parent)
+        project_config = self.config_loader.load_project_config(agent_dir)
+        project_execution = project_config.execution if project_config else None
+
+        # Load user-level config (~/.holodeck/)
+        user_config = self.config_loader.load_global_config()
+        user_execution = user_config.execution if user_config else None
+
         return self.config_loader.resolve_execution_config(
             cli_config=self.cli_config,
             yaml_config=self.agent_config.execution,
+            project_config=project_execution,
+            user_config=user_execution,
             defaults=DEFAULT_EXECUTION_CONFIG,
         )
 

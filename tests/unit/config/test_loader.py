@@ -225,6 +225,8 @@ class TestExecutionConfigResolution:
         resolved = config_loader.resolve_execution_config(
             cli_config=cli_config,
             yaml_config=yaml_config,
+            project_config=None,
+            user_config=None,
             defaults=DEFAULT_EXECUTION_CONFIG,
         )
 
@@ -256,6 +258,8 @@ class TestExecutionConfigResolution:
         resolved = config_loader.resolve_execution_config(
             cli_config=cli_config,
             yaml_config=yaml_config,
+            project_config=None,
+            user_config=None,
             defaults=DEFAULT_EXECUTION_CONFIG,
         )
 
@@ -284,6 +288,8 @@ class TestExecutionConfigResolution:
         resolved = config_loader.resolve_execution_config(
             cli_config=cli_config,
             yaml_config=yaml_config,
+            project_config=None,
+            user_config=None,
             defaults=DEFAULT_EXECUTION_CONFIG,
         )
 
@@ -313,6 +319,8 @@ class TestExecutionConfigResolution:
         resolved = config_loader.resolve_execution_config(
             cli_config=cli_config,
             yaml_config=yaml_config,
+            project_config=None,
+            user_config=None,
             defaults=DEFAULT_EXECUTION_CONFIG,
         )
 
@@ -343,6 +351,8 @@ class TestExecutionConfigResolution:
         resolved = config_loader.resolve_execution_config(
             cli_config=cli_config,
             yaml_config=yaml_config,
+            project_config=None,
+            user_config=None,
             defaults=DEFAULT_EXECUTION_CONFIG,
         )
 
@@ -366,6 +376,8 @@ class TestExecutionConfigResolution:
         resolved = config_loader.resolve_execution_config(
             cli_config=cli_config,
             yaml_config=yaml_config,
+            project_config=None,
+            user_config=None,
             defaults=DEFAULT_EXECUTION_CONFIG,
         )
 
@@ -391,11 +403,134 @@ class TestExecutionConfigResolution:
         resolved = config_loader.resolve_execution_config(
             cli_config=cli_config,
             yaml_config=yaml_config,
+            project_config=None,
+            user_config=None,
             defaults=DEFAULT_EXECUTION_CONFIG,
         )
 
         assert resolved.file_timeout == 50  # YAML (env invalid, skipped)
         assert resolved.llm_timeout == 75  # env (valid)
+
+    def test_project_config_overrides_user_config(self, monkeypatch: Any) -> None:
+        """Project config takes priority over user config."""
+        # Clear env vars
+        monkeypatch.delenv("HOLODECK_FILE_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_LLM_TIMEOUT", raising=False)
+
+        project_config = ExecutionConfig(
+            file_timeout=45,
+            llm_timeout=90,
+        )
+
+        user_config = ExecutionConfig(
+            file_timeout=35,
+            llm_timeout=70,
+            download_timeout=40,
+        )
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=None,
+            yaml_config=None,
+            project_config=project_config,
+            user_config=user_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 45  # project
+        assert resolved.llm_timeout == 90  # project
+        assert resolved.download_timeout == 40  # user (not in project)
+
+    def test_user_config_overrides_env_and_defaults(self, monkeypatch: Any) -> None:
+        """User config takes priority over env vars and defaults."""
+        monkeypatch.setenv("HOLODECK_FILE_TIMEOUT", "25")
+        monkeypatch.delenv("HOLODECK_LLM_TIMEOUT", raising=False)
+
+        user_config = ExecutionConfig(
+            file_timeout=35,
+            llm_timeout=70,
+        )
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=None,
+            yaml_config=None,
+            project_config=None,
+            user_config=user_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 35  # user (not env)
+        assert resolved.llm_timeout == 70  # user
+
+    def test_yaml_overrides_project_and_user_config(self, monkeypatch: Any) -> None:
+        """YAML config takes priority over project and user config."""
+        # Clear env vars
+        monkeypatch.delenv("HOLODECK_FILE_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_LLM_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_DOWNLOAD_TIMEOUT", raising=False)
+
+        yaml_config = ExecutionConfig(
+            file_timeout=100,
+        )
+
+        project_config = ExecutionConfig(
+            file_timeout=45,
+            llm_timeout=90,
+        )
+
+        user_config = ExecutionConfig(
+            file_timeout=35,
+            llm_timeout=70,
+            download_timeout=40,
+        )
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=None,
+            yaml_config=yaml_config,
+            project_config=project_config,
+            user_config=user_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 100  # yaml
+        assert resolved.llm_timeout == 90  # project (not in yaml)
+        assert resolved.download_timeout == 40  # user (not in yaml or project)
+
+    def test_full_priority_hierarchy(self, monkeypatch: Any) -> None:
+        """Test complete priority: CLI > YAML > project > user > env > default."""
+        monkeypatch.setenv("HOLODECK_CACHE_DIR", "/env/cache")
+        monkeypatch.delenv("HOLODECK_FILE_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_LLM_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_DOWNLOAD_TIMEOUT", raising=False)
+        monkeypatch.delenv("HOLODECK_CACHE_ENABLED", raising=False)
+        monkeypatch.delenv("HOLODECK_VERBOSE", raising=False)
+        monkeypatch.delenv("HOLODECK_QUIET", raising=False)
+
+        cli_config = ExecutionConfig(file_timeout=200)
+        yaml_config = ExecutionConfig(llm_timeout=150)
+        project_config = ExecutionConfig(download_timeout=120)
+        user_config = ExecutionConfig(cache_enabled=False)
+        # env: cache_dir="/env/cache"
+        # default: verbose=False, quiet=False
+
+        config_loader = ConfigLoader()
+        resolved = config_loader.resolve_execution_config(
+            cli_config=cli_config,
+            yaml_config=yaml_config,
+            project_config=project_config,
+            user_config=user_config,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        assert resolved.file_timeout == 200  # CLI
+        assert resolved.llm_timeout == 150  # YAML
+        assert resolved.download_timeout == 120  # project
+        assert resolved.cache_enabled is False  # user
+        assert resolved.cache_dir == "/env/cache"  # env
+        assert resolved.verbose is False  # default
+        assert resolved.quiet is False  # default
 
 
 class TestParseYaml:

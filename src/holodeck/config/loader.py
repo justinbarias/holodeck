@@ -556,6 +556,8 @@ class ConfigLoader:
         self,
         cli_config: ExecutionConfig | None,
         yaml_config: ExecutionConfig | None,
+        project_config: ExecutionConfig | None,
+        user_config: ExecutionConfig | None,
         defaults: dict[str, Any],
     ) -> ExecutionConfig:
         """Resolve execution configuration with priority hierarchy.
@@ -563,12 +565,16 @@ class ConfigLoader:
         Configuration priority (highest to lowest):
         1. CLI flags (cli_config)
         2. agent.yaml execution section (yaml_config)
-        3. Environment variables (HOLODECK_* vars)
-        4. Built-in defaults
+        3. Project config execution section (project_config from ./config.yaml)
+        4. User config execution section (user_config from ~/.holodeck/config.yaml)
+        5. Environment variables (HOLODECK_* vars)
+        6. Built-in defaults
 
         Args:
             cli_config: Execution config from CLI flags (optional)
             yaml_config: Execution config from agent.yaml (optional)
+            project_config: Execution config from project config.yaml (optional)
+            user_config: Execution config from ~/.holodeck/config.yaml (optional)
             defaults: Dictionary of default values
 
         Returns:
@@ -595,10 +601,16 @@ class ConfigLoader:
             # Priority 2: agent.yaml execution section
             elif yaml_config and getattr(yaml_config, field, None) is not None:
                 resolved[field] = getattr(yaml_config, field)
-            # Priority 3: Environment variable
+            # Priority 3: Project config execution section
+            elif project_config and getattr(project_config, field, None) is not None:
+                resolved[field] = getattr(project_config, field)
+            # Priority 4: User config execution section (~/.holodeck/)
+            elif user_config and getattr(user_config, field, None) is not None:
+                resolved[field] = getattr(user_config, field)
+            # Priority 5: Environment variable
             elif (env_value := _get_env_value(field, env_vars)) is not None:
                 resolved[field] = env_value
-            # Priority 4: Built-in default
+            # Priority 6: Built-in default
             else:
                 resolved[field] = defaults.get(field)
 
