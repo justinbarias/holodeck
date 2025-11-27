@@ -151,7 +151,7 @@ def chat(
         # CLI flags > agent.yaml > project config > user config > env vars > defaults
         cli_config = ExecutionConfig(
             verbose=verbose if verbose else None,
-            quiet=quiet if not quiet else None,  # quiet defaults True in CLI
+            quiet=quiet if quiet else None,  # Set to True if True, else None
         )
 
         # Load project-level config (same directory as agent.yaml)

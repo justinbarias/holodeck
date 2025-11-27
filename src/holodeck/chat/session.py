@@ -60,9 +60,7 @@ class ChatSessionManager:
             logger.info(f"Starting chat session for agent: {self.agent_config.name}")
 
             # Create executor with resolved timeout
-            timeout = (
-                float(self.config.llm_timeout) if self.config.llm_timeout else 60.0
-            )
+            timeout = self.config.llm_timeout if self.config.llm_timeout else 60
             self._executor = AgentExecutor(
                 self.agent_config,
                 enable_observability=self.config.enable_observability,
