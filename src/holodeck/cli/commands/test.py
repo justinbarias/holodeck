@@ -142,6 +142,7 @@ def test(
 
         # Load agent config to get test count for progress indicator
         from holodeck.config.context import agent_base_dir
+        from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
         from holodeck.config.loader import ConfigLoader
 
         logger.debug(f"Loading agent configuration from {agent_config}")
@@ -150,8 +151,27 @@ def test(
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
 
         # Set the base directory context for resolving relative paths in tools
-        agent_base_dir.set(str(Path(agent_config).parent.resolve()))
+        agent_dir = str(Path(agent_config).parent.resolve())
+        agent_base_dir.set(agent_dir)
         logger.debug(f"Set agent_base_dir context: {agent_base_dir.get()}")
+
+        # Resolve execution config once (CLI > agent.yaml > project > user > defaults)
+        project_config = loader.load_project_config(agent_dir)
+        project_execution = project_config.execution if project_config else None
+        user_config = loader.load_global_config()
+        user_execution = user_config.execution if user_config else None
+
+        resolved_config = loader.resolve_execution_config(
+            cli_config=cli_config,
+            yaml_config=agent.execution,
+            project_config=project_execution,
+            user_config=user_execution,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+        logger.debug(
+            f"Resolved execution config: verbose={resolved_config.verbose}, "
+            f"quiet={resolved_config.quiet}, llm_timeout={resolved_config.llm_timeout}"
+        )
 
         # Get total test count
         total_tests = len(agent.test_cases) if agent.test_cases else 0
@@ -193,14 +213,15 @@ def test(
                 sys.stdout.write("\r" + " " * 60 + "\r")
                 click.echo(progress_line)
 
-        # Initialize executor with callbacks
+        # Initialize executor with pre-loaded configs to avoid duplicate I/O
         logger.debug("Initializing test executor")
         executor = TestExecutor(
             agent_config_path=agent_config,
-            execution_config=cli_config,
             progress_callback=progress_callback,
             on_test_start=on_test_start,
             force_ingest=force_ingest,
+            agent_config=agent,
+            resolved_execution_config=resolved_config,
         )
 
         # Run tests asynchronously

@@ -24,6 +24,7 @@ import logging
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from semantic_kernel.contents import ChatHistory
@@ -129,6 +130,8 @@ class TestExecutor:
         progress_callback: Callable[[TestResult], None] | None = None,
         on_test_start: Callable[[TestCaseModel], None] | None = None,
         force_ingest: bool = False,
+        agent_config: Agent | None = None,
+        resolved_execution_config: ExecutionConfig | None = None,
     ) -> None:
         """Initialize test executor with optional dependency injection.
 
@@ -146,6 +149,9 @@ class TestExecutor:
             progress_callback: Optional callback function called after each test.
                               Called with TestResult instance. Use for progress display.
             force_ingest: Force re-ingestion of vector store source files.
+            agent_config: Optional pre-loaded Agent config (auto-loaded if None)
+            resolved_execution_config: Optional pre-resolved execution config
+                                       (auto-resolved if None)
         """
         self.agent_config_path = agent_config_path
         self.cli_config = execution_config
@@ -156,11 +162,11 @@ class TestExecutor:
 
         logger.debug(f"Initializing TestExecutor for config: {agent_config_path}")
 
-        # Load agent config
-        self.agent_config = self._load_agent_config()
+        # Use injected agent config or load from file
+        self.agent_config = agent_config or self._load_agent_config()
 
-        # Resolve execution config (CLI > YAML > env > defaults)
-        self.config = self._resolve_execution_config()
+        # Use injected resolved config or resolve from hierarchy
+        self.config = resolved_execution_config or self._resolve_execution_config()
 
         # Use injected dependencies or create defaults
         logger.debug("Initializing FileProcessor component")
@@ -195,9 +201,20 @@ class TestExecutor:
         Returns:
             ExecutionConfig with all fields resolved
         """
+        # Load project-level config (same directory as agent.yaml)
+        agent_dir = str(Path(self.agent_config_path).parent)
+        project_config = self.config_loader.load_project_config(agent_dir)
+        project_execution = project_config.execution if project_config else None
+
+        # Load user-level config (~/.holodeck/)
+        user_config = self.config_loader.load_global_config()
+        user_execution = user_config.execution if user_config else None
+
         return self.config_loader.resolve_execution_config(
             cli_config=self.cli_config,
             yaml_config=self.agent_config.execution,
+            project_config=project_execution,
+            user_config=user_execution,
             defaults=DEFAULT_EXECUTION_CONFIG,
         )
 

@@ -59,11 +59,13 @@ class ChatSessionManager:
         try:
             logger.info(f"Starting chat session for agent: {self.agent_config.name}")
 
-            # Create executor
+            # Create executor with resolved timeout
+            timeout = self.config.llm_timeout if self.config.llm_timeout else 60
             self._executor = AgentExecutor(
                 self.agent_config,
                 enable_observability=self.config.enable_observability,
                 force_ingest=self.config.force_ingest,
+                timeout=timeout,
             )
 
             # Create chat session with empty history

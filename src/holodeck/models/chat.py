@@ -94,6 +94,9 @@ class ChatConfig(BaseModel):
     enable_observability: bool = Field(default=False)
     max_messages: int = Field(default=50, gt=0)
     force_ingest: bool = Field(default=False)
+    llm_timeout: int | None = Field(
+        default=None, description="LLM API call timeout in seconds"
+    )
 
     @field_validator("agent_config_path")
     @classmethod

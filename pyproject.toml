@@ -140,3 +140,8 @@ tests = []
 
 [tool.pdoc]
 output-dir = "docs/api"
+
+[dependency-groups]
+dev = [
+    "types-requests>=2.32.4.20250913",
+]
