@@ -630,7 +630,7 @@ is_tty = sys.stdout.isatty()
 
 ### Python Version
 
-- Minimum: Python 3.13+
+- Minimum: Python 3.10+
 
 ### Operating Systems
 

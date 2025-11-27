@@ -309,7 +309,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.13"
+          python-version: "3.10"
 
       - name: Install HoloDeck
         run: pip install holodeck-ai
@@ -335,7 +335,7 @@ jobs:
 
 ```yaml
 test-agent:
-  image: python:3.13
+  image: python:3.10
   script:
     - pip install holodeck-ai
     - holodeck test agent.yaml --quiet --output report.json

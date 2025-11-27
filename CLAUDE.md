@@ -101,20 +101,26 @@ Native OpenTelemetry integration following [GenAI Semantic Conventions](https://
 ## Development Setup
 
 ```bash
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or: brew install uv
+
 # Initialize project (creates venv, installs deps, sets up pre-commit)
 make init
 
 # Activate virtual environment
 source .venv/bin/activate
 
-# Install dependencies manually with Poetry
-make install-dev  # Development dependencies (uses poetry install)
-make install-prod # Production only (uses poetry install --only main)
+# Install dependencies with uv
+make install-dev  # Development dependencies (uses uv sync --all-extras)
+make install-prod # Production only (uses uv sync --no-dev)
 
-# Alternative: Direct Poetry commands
-poetry install              # Install all dependencies
-poetry install --only main  # Production only
-poetry install --only dev   # Dev dependencies only
+# Alternative: Direct uv commands
+uv sync --all-extras  # Install all dependencies including dev
+uv sync --no-dev      # Production only
+uv add <package>      # Add a new dependency
+uv remove <package>   # Remove a dependency
+uv lock --upgrade     # Update all dependencies
 ```
 
 ## Common Development Commands
@@ -159,7 +165,7 @@ Key conventions enforced by tooling:
 - **Linting**: Ruff (pycodestyle, pyflakes, isort, flake8-bugbear, pyupgrade, pep8-naming, flake8-simplify, flake8-bandit)
 - **Type Checking**: MyPy with strict settings
 - **Security**: Bandit, Safety, detect-secrets
-- **Target**: Python 3.13+
+- **Target**: Python 3.10+
 
 Additional requirements from existing CLAUDE.md:
 
@@ -233,7 +239,7 @@ holodeck/
 
 - `pyproject.toml`: All tool configuration (Black, Ruff, MyPy, Pytest) and dependencies
   - Package name: `holodeck-ai`
-  - Python: 3.13+
+  - Python: 3.10+
   - CLI entry point: `holodeck` command
   - Dev dependencies: pytest, black, ruff, mypy, pre-commit, bandit, safety
 - `Makefile`: 30+ development workflow commands
@@ -318,7 +324,7 @@ observability:
 
 - **Testing**: pytest, pytest-cov, pytest-asyncio, pytest-mock
 - **Code Quality**: black, ruff, mypy, bandit, safety, detect-secrets
-- **Tooling**: pre-commit, tox, poetry
+- **Tooling**: pre-commit, tox, uv
 - **Type Stubs**: types-PyYAML
 - **Documentation**: mkdocstrings[python]
 
@@ -329,7 +335,7 @@ observability:
 - Azure AI Evaluation: Evaluation metrics
 - OpenTelemetry: Observability instrumentation
 
-The project uses **Poetry** for dependency management via `pyproject.toml`. Poetry handles all dependency resolution, virtual environment management, and package building.
+The project uses **uv** for dependency management via `pyproject.toml` and `uv.lock`. UV handles all dependency resolution, virtual environment management, and package building. UV is 10-100x faster than pip/Poetry and provides flexible dependency overrides via `[tool.uv]` in pyproject.toml.
 
 ## Implementation Status
 

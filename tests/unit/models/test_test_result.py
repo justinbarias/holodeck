@@ -500,7 +500,7 @@ class TestTestReport:
             total_duration_ms=1000,
         )
         environment = {
-            "python_version": "3.13.0",
+            "python_version": "3.10.0",
             "os": "Darwin",
             "platform": "macOS",
         }
@@ -515,7 +515,7 @@ class TestTestReport:
         )
 
         assert report.environment == environment
-        assert report.environment["python_version"] == "3.13.0"
+        assert report.environment["python_version"] == "3.10.0"
 
     def test_test_report_json_serialization(self) -> None:
         """Test TestReport JSON serialization."""

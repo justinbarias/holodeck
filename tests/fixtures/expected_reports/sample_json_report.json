@@ -226,7 +226,7 @@
   "timestamp": "2025-11-22T10:33:00Z",
   "holodeck_version": "0.1.0",
   "environment": {
-    "python_version": "3.13.0",
+    "python_version": "3.10.0",
     "os": "Darwin",
     "platform": "darwin"
   }

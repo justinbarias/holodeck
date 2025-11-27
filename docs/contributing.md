@@ -15,7 +15,7 @@ Thank you for your interest in contributing to HoloDeck! This guide will help yo
 
 ### Prerequisites
 
-- Python 3.13 or higher
+- Python 3.10 or higher
 - Git
 - Virtual environment manager (venv)
 
@@ -276,7 +276,7 @@ Fixes #89
 ```
 
 ```
-docs: update installation instructions for Python 3.13
+docs: update installation instructions for Python 3.10
 ```
 
 ## Pull Request Workflow

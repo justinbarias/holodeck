@@ -4,7 +4,7 @@ Get HoloDeck up and running in minutes to start building and testing AI agents.
 
 ## Prerequisites
 
-- **Python 3.13+** (check with `python --version`)
+- **Python 3.10+** (check with `python --version`)
 - **pip** (usually included with Python)
 
 ## Quick Start
@@ -153,6 +153,7 @@ holodeck test agent.yaml
 ```
 
 This command will:
+
 - Load your agent configuration
 - Execute test cases against the agent
 - Run evaluation metrics
@@ -166,6 +167,7 @@ holodeck chat agent.yaml
 ```
 
 This starts an interactive session where you can:
+
 - Send messages to your agent
 - See responses in real-time
 - Test agent behavior manually
@@ -234,7 +236,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 ## Troubleshooting
 
-### "Python 3.13+ required"
+### "Python 3.10+ required"
 
 Check your Python version and upgrade if needed:
 
@@ -242,10 +244,10 @@ Check your Python version and upgrade if needed:
 python --version
 
 # macOS (Homebrew)
-brew install python@3.13
+brew install python@3.10
 
 # Ubuntu/Debian
-sudo apt-get install python3.13
+sudo apt-get install python3.10
 
 # Windows: Download from python.org
 ```
@@ -284,11 +286,13 @@ If using `.env` file, ensure it's in the same directory as `agent.yaml`.
 ### "Error: Failed to load agent.yaml"
 
 Common issues:
+
 - YAML syntax error (check indentation)
 - File path incorrect
 - Required fields missing (`name`, `model.provider`, `instructions`)
 
 Verify your YAML:
+
 ```bash
 # Check YAML syntax
 python -c "import yaml; yaml.safe_load(open('agent.yaml'))"

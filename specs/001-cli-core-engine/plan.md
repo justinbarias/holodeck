@@ -20,7 +20,7 @@
 
 ## Technical Context
 
-**Language/Version**: Python 3.13+ (per CLAUDE.md)
+**Language/Version**: Python 3.10+ (per CLAUDE.md)
 **Primary Dependencies**:
 
 - Pydantic v2 (schema validation, data models)

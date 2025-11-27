@@ -398,7 +398,7 @@ Add to `pyproject.toml`:
 ```toml
 [tool.poetry.dependencies]
 # Existing dependencies
-python = "^3.13"
+python = "^3.10"
 click = "^8.0.0"
 pydantic = "^2.0.0"
 pyyaml = "^6.0.0"
