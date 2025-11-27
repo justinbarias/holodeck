@@ -18,9 +18,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import requests
+
+if TYPE_CHECKING:
+    from holodeck.models.config import ExecutionConfig
 
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_exception, log_retry
@@ -96,6 +99,37 @@ class FileProcessor:
                 "markitdown is required for file processing. "
                 "Install with: pip install 'markitdown[all]'"
             ) from e
+
+    @classmethod
+    def from_execution_config(
+        cls,
+        config: "ExecutionConfig",
+        cache_dir: str | None = None,
+        max_retries: int = 3,
+    ) -> "FileProcessor":
+        """Create FileProcessor from ExecutionConfig.
+
+        Factory method that handles conversion from ExecutionConfig's
+        seconds-based timeouts to FileProcessor's milliseconds-based timeouts.
+
+        Args:
+            config: ExecutionConfig with timeout settings in seconds
+            cache_dir: Override cache directory (defaults to config.cache_dir)
+            max_retries: Maximum retry attempts for downloads
+
+        Returns:
+            Configured FileProcessor instance
+        """
+        # Convert seconds to milliseconds, using defaults if not specified
+        download_timeout_ms = (config.download_timeout or 30) * 1000
+        processing_timeout_ms = (config.file_timeout or 30) * 1000
+
+        return cls(
+            cache_dir=cache_dir or config.cache_dir or ".holodeck/cache",
+            download_timeout_ms=download_timeout_ms,
+            processing_timeout_ms=processing_timeout_ms,
+            max_retries=max_retries,
+        )
 
     def _get_markitdown(self) -> Any:
         """Get or create MarkItDown instance."""
