@@ -26,7 +26,8 @@ Supported Providers:
 import logging
 from collections.abc import Callable
 from dataclasses import field
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, TypedDict, cast
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from pydantic.dataclasses import dataclass
@@ -36,6 +37,173 @@ from pydantic.dataclasses import dataclass
 from semantic_kernel.data.vector import VectorStoreField, vectorstoremodel
 
 logger = logging.getLogger(__name__)
+
+
+class ChromaConnectionParams(TypedDict):
+    """Parameters for ChromaDB connection.
+
+    Attributes:
+        host: Server hostname (e.g., 'localhost')
+        port: Server port (e.g., 8000)
+        ssl: Whether to use HTTPS
+    """
+
+    host: str
+    port: int
+    ssl: bool
+
+
+def parse_chromadb_connection_string(connection_string: str) -> ChromaConnectionParams:
+    """Parse a ChromaDB connection string into connection parameters.
+
+    Supports URL format: http[s]://[host][:port][/path]
+
+    The connection string follows standard URL conventions:
+    - Scheme (http/https) determines SSL setting
+    - Host defaults to 'localhost' if not specified
+    - Port defaults to 8000 for HTTP, 443 for HTTPS
+
+    Args:
+        connection_string: URL-style connection string for ChromaDB server
+
+    Returns:
+        ChromaConnectionParams with host, port, and ssl values
+
+    Raises:
+        ValueError: If connection string is empty or uses unsupported scheme
+
+    Examples:
+        >>> parse_chromadb_connection_string("http://localhost:8000")
+        {'host': 'localhost', 'port': 8000, 'ssl': False}
+
+        >>> parse_chromadb_connection_string("https://chroma.example.com")
+        {'host': 'chroma.example.com', 'port': 443, 'ssl': True}
+
+        >>> parse_chromadb_connection_string("http://localhost")
+        {'host': 'localhost', 'port': 8000, 'ssl': False}
+
+        >>> parse_chromadb_connection_string("https://chroma.internal:9000")
+        {'host': 'chroma.internal', 'port': 9000, 'ssl': True}
+    """
+    if not connection_string:
+        raise ValueError("Connection string cannot be empty")
+
+    parsed = urlparse(connection_string)
+
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(
+            f"Invalid scheme '{parsed.scheme}'. ChromaDB connection string must use "
+            "http:// or https:// scheme"
+        )
+
+    ssl = parsed.scheme == "https"
+    host = parsed.hostname or "localhost"
+
+    # Default ports based on scheme
+    port = parsed.port or (443 if ssl else 8000)
+
+    params: ChromaConnectionParams = {
+        "host": host,
+        "port": port,
+        "ssl": ssl,
+    }
+
+    return params
+
+
+def create_chromadb_client(
+    connection_string: str | None = None,
+    persist_directory: str | None = None,
+    **kwargs: Any,
+) -> Any:
+    """Create a ChromaDB client from connection parameters.
+
+    This function handles the complexity of creating the appropriate ChromaDB
+    client type based on the provided parameters. It abstracts away the
+    differences between ChromaDB's HttpClient, PersistentClient, and
+    EphemeralClient.
+
+    Client Selection Logic:
+        1. If connection_string is provided: Creates HttpClient for remote server
+        2. If persist_directory is provided: Creates PersistentClient for local storage
+        3. Otherwise: Creates EphemeralClient (in-memory, data lost on exit)
+
+    Args:
+        connection_string: URL for remote ChromaDB server.
+            Format: "http[s]://host[:port]"
+            Examples: "http://localhost:8000", "https://chroma.prod.example.com"
+        persist_directory: Local directory path for persistent storage.
+            The directory will be created if it doesn't exist.
+            Example: "/var/data/chromadb", "./data/vectors"
+        **kwargs: Additional parameters passed to the client:
+            - headers (dict[str, str]): HTTP headers for authentication
+              (only used with connection_string)
+            - tenant (str): Tenant name (default: 'default_tenant')
+            - database (str): Database name (default: 'default_database')
+
+    Returns:
+        ChromaDB ClientAPI instance (HttpClient, PersistentClient, or EphemeralClient)
+
+    Raises:
+        ValueError: If connection_string format is invalid
+        ImportError: If chromadb package is not installed
+
+    Examples:
+        >>> # Connect to remote ChromaDB server
+        >>> client = create_chromadb_client(
+        ...     connection_string="http://localhost:8000"
+        ... )
+
+        >>> # Connect to remote server with authentication
+        >>> client = create_chromadb_client(
+        ...     connection_string="https://chroma.example.com",
+        ...     headers={"Authorization": "Bearer token123"}
+        ... )
+
+        >>> # Create persistent local database
+        >>> client = create_chromadb_client(
+        ...     persist_directory="/path/to/data"
+        ... )
+
+        >>> # Create ephemeral in-memory database (for testing/development)
+        >>> client = create_chromadb_client()
+    """
+    try:
+        import chromadb
+    except ImportError as e:
+        raise ImportError(
+            "ChromaDB is not installed. Install with: pip install chromadb"
+        ) from e
+
+    # Extract known kwargs
+    headers = kwargs.pop("headers", None)
+    tenant = kwargs.pop("tenant", "default_tenant")
+    database = kwargs.pop("database", "default_database")
+
+    if connection_string:
+        # Remote server mode - parse connection string and create HttpClient
+        params = parse_chromadb_connection_string(connection_string)
+        return chromadb.HttpClient(
+            host=params["host"],
+            port=params["port"],
+            ssl=params["ssl"],
+            headers=headers,
+            tenant=tenant,
+            database=database,
+        )
+    elif persist_directory:
+        # Persistent local mode
+        return chromadb.PersistentClient(
+            path=persist_directory,
+            tenant=tenant,
+            database=database,
+        )
+    else:
+        # Ephemeral in-memory mode
+        return chromadb.EphemeralClient(
+            tenant=tenant,
+            database=database,
+        )
 
 
 def create_document_record_class(dimensions: int = 1536) -> type[Any]:
@@ -223,23 +391,88 @@ def get_collection_factory(
     collection type based on the provider name and connection parameters.
 
     Args:
-        provider: Vector store provider name (redis-hashset, postgres, etc.)
-        dimensions: Embedding vector dimensions (default: 1536)
-        **connection_kwargs: Provider-specific connection parameters
+        provider: Vector store provider name. Supported providers:
+            - redis-hashset: Redis with Hashset storage
+            - redis-json: Redis with JSON storage
+            - postgres: PostgreSQL with pgvector extension
+            - azure-ai-search: Azure AI Search (Cognitive Search)
+            - qdrant: Qdrant vector database
+            - weaviate: Weaviate vector database
+            - chromadb: ChromaDB (local or server)
+            - faiss: FAISS (in-memory or file-based)
+            - azure-cosmos-mongo: Azure Cosmos DB (MongoDB API)
+            - azure-cosmos-nosql: Azure Cosmos DB (NoSQL API)
+            - sql-server: SQL Server with vector support
+            - pinecone: Pinecone serverless vector database
+            - in-memory: Simple in-memory storage (development only)
+
+        dimensions: Embedding vector dimensions (default: 1536).
+            Must be between 1 and 10000.
+
+        **connection_kwargs: Provider-specific connection parameters.
+
+            For chromadb provider:
+                - connection_string (str): URL for remote ChromaDB server.
+                  Format: "http[s]://host[:port]"
+                  Examples: "http://localhost:8000", "https://chroma.example.com"
+                - persist_directory (str): Local directory for persistent storage.
+                  If provided, creates a PersistentClient instead of HttpClient.
+                - headers (dict[str, str]): HTTP headers for authentication
+                  (only used with connection_string)
+                - tenant (str): Tenant name (default: 'default_tenant')
+                - database (str): Database name (default: 'default_database')
+
+                Note: If neither connection_string nor persist_directory is
+                provided, an ephemeral in-memory client is created.
+
+            For other providers:
+                Refer to Semantic Kernel documentation for provider-specific
+                connection parameters (e.g., connection_string for postgres).
 
     Returns:
-        Callable that returns an async context manager for the collection
+        Callable that returns a Semantic Kernel VectorStoreCollection instance
 
     Raises:
-        ValueError: If provider or dimensions are invalid
+        ValueError: If provider is not supported or dimensions are invalid
         ImportError: If required dependencies for the provider are not installed
 
-    Example:
-        >>> factory = get_collection_factory("postgres",
+    Examples:
+        >>> # PostgreSQL with connection string
+        >>> factory = get_collection_factory(
+        ...     "postgres",
         ...     dimensions=1536,
-        ...     connection_string="postgresql://user:pass@localhost/db")
+        ...     connection_string="postgresql://user:pass@localhost/db"
+        ... )
         >>> async with factory() as collection:
         ...     await collection.upsert([record])
+
+        >>> # ChromaDB - Connect to remote server
+        >>> factory = get_collection_factory(
+        ...     "chromadb",
+        ...     dimensions=1536,
+        ...     connection_string="http://localhost:8000"
+        ... )
+
+        >>> # ChromaDB - Connect with authentication headers
+        >>> factory = get_collection_factory(
+        ...     "chromadb",
+        ...     dimensions=1536,
+        ...     connection_string="https://chroma.example.com",
+        ...     headers={"Authorization": "Bearer token123"}
+        ... )
+
+        >>> # ChromaDB - Persistent local storage
+        >>> factory = get_collection_factory(
+        ...     "chromadb",
+        ...     dimensions=1536,
+        ...     persist_directory="/var/data/vectors"
+        ... )
+
+        >>> # ChromaDB - Ephemeral in-memory (for testing)
+        >>> factory = get_collection_factory("chromadb", dimensions=768)
+
+        >>> # In-memory provider (development only)
+        >>> factory = get_collection_factory("in-memory", dimensions=1536)
     """
     supported_providers = [
         "redis-hashset",
@@ -270,10 +503,36 @@ def get_collection_factory(
     # Create DocumentRecord class for these dimensions
     record_class = create_document_record_class(dimensions)
 
+    # Pre-process ChromaDB kwargs to avoid mutating the original dict in factory
+    if provider == "chromadb":
+        chromadb_connection_string = connection_kwargs.pop("connection_string", None)
+        chromadb_persist_directory = connection_kwargs.pop("persist_directory", None)
+        chromadb_extra_kwargs = connection_kwargs.copy()
+    else:
+        chromadb_connection_string = None
+        chromadb_persist_directory = None
+        chromadb_extra_kwargs = {}
+
     def factory() -> Any:
         """Return async context manager for the collection."""
         # Lazy import at factory call time
         collection_class = get_collection_class(provider)
+
+        # ChromaDB requires special handling for connection_string
+        if provider == "chromadb":
+            # Create the appropriate client
+            client = create_chromadb_client(
+                connection_string=chromadb_connection_string,
+                persist_directory=chromadb_persist_directory,
+                **chromadb_extra_kwargs,
+            )
+
+            # Pass the pre-configured client to ChromaCollection
+            return collection_class[str, record_class](
+                record_type=record_class,
+                client=client,
+            )
+
         return collection_class[str, record_class](
             record_type=record_class,
             **connection_kwargs,
