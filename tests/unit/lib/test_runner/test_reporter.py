@@ -148,7 +148,7 @@ def sample_test_report(
         summary=sample_report_summary,
         timestamp="2025-11-22T10:33:00Z",
         holodeck_version="0.1.0",
-        environment={"python_version": "3.13.0", "os": "Darwin"},
+        environment={"python_version": "3.10.0", "os": "Darwin"},
     )
 
 
@@ -690,7 +690,7 @@ class TestJSONReportGeneration:
         assert "environment" in data
         assert "python_version" in data["environment"]
         assert "os" in data["environment"]
-        assert data["environment"]["python_version"] == "3.13.0"
+        assert data["environment"]["python_version"] == "3.10.0"
         assert data["environment"]["os"] == "Darwin"
 
     def test_json_report_results_array(self, sample_test_report: TestReport) -> None:

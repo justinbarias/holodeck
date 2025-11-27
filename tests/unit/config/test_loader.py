@@ -744,7 +744,7 @@ class TestResolveVectorstoreReferences:
             )
         }
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger="holodeck.config.loader"):
             loader = ConfigLoader()
             loader._resolve_vectorstore_references(tools, vectorstores)
 

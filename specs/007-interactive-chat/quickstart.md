@@ -12,7 +12,7 @@ This quickstart provides a step-by-step guide for implementing the interactive c
 
 ## Prerequisites
 
-- Python 3.13+ environment activated
+- Python 3.10+ environment activated
 - Dependencies installed: `poetry install`
 - Familiarity with Semantic Kernel concepts (Kernel, ChatHistory, plugins)
 - Understanding of Click CLI framework
@@ -26,11 +26,13 @@ This quickstart provides a step-by-step guide for implementing the interactive c
 **Goal**: Implement Pydantic models for chat sessions, messages, and tool execution.
 
 **Files to Create**:
+
 1. `src/holodeck/models/chat.py`
 2. `src/holodeck/models/tool_execution.py`
 3. `src/holodeck/models/token_usage.py`
 
 **Steps**:
+
 1. Implement `MessageRole`, `SessionState`, `ToolStatus`, `ToolEventType` enums
 2. Implement `TokenUsage` model with validation
 3. Implement `ToolExecution` model with sanitization
@@ -39,6 +41,7 @@ This quickstart provides a step-by-step guide for implementing the interactive c
 6. Implement `ChatConfig` model with path validation
 
 **Validation**:
+
 ```bash
 # Run unit tests
 pytest tests/unit/models/test_chat.py -v
@@ -49,6 +52,7 @@ mypy src/holodeck/models/chat.py
 ```
 
 **Success Criteria**:
+
 - All models pass Pydantic validation
 - Field validators enforce constraints (size limits, enum values)
 - Type hints pass MyPy strict checks
@@ -60,9 +64,11 @@ mypy src/holodeck/models/chat.py
 **Goal**: Implement extensible validation pipeline and output sanitization.
 
 **Files to Create**:
+
 1. `src/holodeck/lib/validation.py`
 
 **Steps**:
+
 1. Define `MessageValidator` protocol
 2. Implement `ValidationPipeline` class
 3. Implement built-in validators:
@@ -73,6 +79,7 @@ mypy src/holodeck/models/chat.py
 4. Implement `sanitize_tool_output()` function (ANSI escape removal, HTML escaping)
 
 **Validation**:
+
 ```bash
 pytest tests/unit/lib/test_validation.py -v
 
@@ -83,6 +90,7 @@ pytest tests/unit/lib/test_validation.py::test_terminal_injection -v
 ```
 
 **Success Criteria**:
+
 - Validators correctly reject invalid inputs
 - Sanitization removes terminal escape sequences
 - Pipeline is extensible (easy to add new validators)
@@ -94,10 +102,12 @@ pytest tests/unit/lib/test_validation.py::test_terminal_injection -v
 **Goal**: Implement Semantic Kernel integration for agent execution.
 
 **Files to Create**:
+
 1. `src/holodeck/agent/__init__.py`
 2. `src/holodeck/agent/executor.py`
 
 **Steps**:
+
 1. Implement `AgentExecutor.__init__()`:
    - Initialize Semantic Kernel `Kernel`
    - Configure LLM service from `AgentConfig`
@@ -113,6 +123,7 @@ pytest tests/unit/lib/test_validation.py::test_terminal_injection -v
 5. Implement `AgentExecutor.shutdown()`
 
 **Validation**:
+
 ```bash
 # Unit tests with mocked Semantic Kernel
 pytest tests/unit/agent/test_executor.py -v
@@ -122,6 +133,7 @@ pytest tests/integration/test_agent_executor.py -v --slow
 ```
 
 **Success Criteria**:
+
 - Agent successfully initializes with valid config
 - Multi-turn conversations maintain context
 - Tool executions are captured and returned
@@ -134,9 +146,11 @@ pytest tests/integration/test_agent_executor.py -v --slow
 **Goal**: Implement chat session lifecycle and context management.
 
 **Files to Create**:
+
 1. `src/holodeck/agent/session.py`
 
 **Steps**:
+
 1. Implement `ChatSessionManager.__init__()`
 2. Implement `ChatSessionManager.start()`:
    - Create `ChatSession` instance
@@ -148,12 +162,13 @@ pytest tests/integration/test_agent_executor.py -v --slow
    - Increment message count
    - Return response
 4. Implement `ChatSessionManager.should_warn_context_limit()`:
-   - Check if message_count >= max_messages * 0.8
+   - Check if message_count >= max_messages \* 0.8
 5. Implement `ChatSessionManager.terminate()`:
    - Set state to TERMINATED
    - Shutdown executor
 
 **Validation**:
+
 ```bash
 pytest tests/unit/agent/test_session.py -v
 
@@ -162,6 +177,7 @@ pytest tests/unit/agent/test_session.py::test_context_warning -v
 ```
 
 **Success Criteria**:
+
 - Session lifecycle managed correctly
 - Context limit warnings triggered at 80%
 - Invalid inputs rejected with clear errors
@@ -173,11 +189,13 @@ pytest tests/unit/agent/test_session.py::test_context_warning -v
 **Goal**: Implement interactive chat command interface.
 
 **Files to Create/Update**:
+
 1. `src/holodeck/cli/commands/chat.py` (NEW)
 2. `src/holodeck/cli/main.py` (UPDATE: register chat command)
 3. `src/holodeck/cli/exceptions.py` (UPDATE: add chat exceptions)
 
 **Steps**:
+
 1. Implement `chat()` Click command:
    - Define arguments and options
    - Load agent configuration
@@ -199,6 +217,7 @@ pytest tests/unit/agent/test_session.py::test_context_warning -v
 5. Register command in `cli/main.py`
 
 **Validation**:
+
 ```bash
 # Unit test CLI command
 pytest tests/unit/cli/commands/test_chat.py -v
@@ -211,6 +230,7 @@ holodeck chat examples/conversational/agent.yaml --verbose
 ```
 
 **Success Criteria**:
+
 - Command starts session in <1 second
 - User can send messages and receive responses
 - Exit commands work correctly
@@ -223,9 +243,11 @@ holodeck chat examples/conversational/agent.yaml --verbose
 **Goal**: Implement real-time tool execution event streaming.
 
 **Files to Create**:
+
 1. `src/holodeck/agent/streaming.py`
 
 **Steps**:
+
 1. Implement `ToolExecutionStream` class
 2. Implement `stream_execution()` async generator:
    - Yield `ToolEvent(STARTED)` when tool begins
@@ -235,6 +257,7 @@ holodeck chat examples/conversational/agent.yaml --verbose
 4. Update CLI to display events in real-time
 
 **Validation**:
+
 ```bash
 pytest tests/unit/agent/test_streaming.py -v
 
@@ -243,6 +266,7 @@ pytest tests/integration/test_tool_streaming.py -v --slow
 ```
 
 **Success Criteria**:
+
 - Tool events stream in real-time (<100ms latency)
 - Events display correctly in terminal
 - Failed tools show clear error messages
@@ -254,9 +278,11 @@ pytest tests/integration/test_tool_streaming.py -v --slow
 **Goal**: Implement observability instrumentation.
 
 **Files to Create**:
+
 1. `src/holodeck/lib/observability.py`
 
 **Steps**:
+
 1. Implement OpenTelemetry setup:
    - Initialize `TracerProvider`
    - Configure exporters (console, OTLP)
@@ -274,6 +300,7 @@ pytest tests/integration/test_tool_streaming.py -v --slow
 5. Integrate with CLI `--observability` flag
 
 **Validation**:
+
 ```bash
 pytest tests/unit/lib/test_observability.py -v
 
@@ -284,6 +311,7 @@ holodeck chat examples/conversational/agent.yaml --observability
 ```
 
 **Success Criteria**:
+
 - Traces exported to configured backend
 - GenAI semantic attributes present
 - Token usage metrics accurate
@@ -296,6 +324,7 @@ holodeck chat examples/conversational/agent.yaml --observability
 **Goal**: Comprehensive error handling and edge case coverage.
 
 **Steps**:
+
 1. Add error classes to `src/holodeck/lib/errors.py`
 2. Implement error handling in all modules
 3. Add edge case tests:
@@ -307,6 +336,7 @@ holodeck chat examples/conversational/agent.yaml --observability
    - Unicode edge cases
 
 **Validation**:
+
 ```bash
 # Run all tests including edge cases
 pytest tests/ -v --cov=src/holodeck/agent --cov=src/holodeck/cli/commands/chat.py
@@ -317,6 +347,7 @@ open htmlcov/index.html
 ```
 
 **Success Criteria**:
+
 - All error scenarios handled gracefully
 - No uncaught exceptions in normal usage
 - Clear error messages for users
@@ -329,9 +360,11 @@ open htmlcov/index.html
 **Goal**: End-to-end integration tests with real agents.
 
 **Files to Create**:
+
 1. `tests/integration/test_chat_integration.py`
 
 **Steps**:
+
 1. Create test agent configurations
 2. Implement integration test scenarios:
    - Basic chat session
@@ -342,6 +375,7 @@ open htmlcov/index.html
 3. Test with multiple LLM providers (OpenAI, Anthropic)
 
 **Validation**:
+
 ```bash
 # Run integration tests
 pytest tests/integration/test_chat_integration.py -v --slow
@@ -351,6 +385,7 @@ ANTHROPIC_API_KEY=... pytest tests/integration/ -v --slow
 ```
 
 **Success Criteria**:
+
 - All user stories from spec validated
 - Tests pass with real LLM providers
 - Performance targets met (SC-001 through SC-007)
@@ -362,6 +397,7 @@ ANTHROPIC_API_KEY=... pytest tests/integration/ -v --slow
 **Goal**: User documentation and final polish.
 
 **Steps**:
+
 1. Add docstrings to all public functions/classes
 2. Update README with chat command examples
 3. Create example agent configurations
@@ -378,6 +414,7 @@ ANTHROPIC_API_KEY=... pytest tests/integration/ -v --slow
    ```
 
 **Validation**:
+
 ```bash
 # All checks must pass
 make ci
@@ -387,6 +424,7 @@ holodeck chat examples/conversational/agent.yaml
 ```
 
 **Success Criteria**:
+
 - All code quality checks pass
 - Documentation complete and accurate
 - Examples work out of the box
@@ -426,23 +464,27 @@ holodeck chat examples/conversational/agent.yaml
 ## Debugging Tips
 
 **Enable verbose logging**:
+
 ```bash
 export HOLODECK_LOG_LEVEL=DEBUG
 holodeck chat agent.yaml --verbose
 ```
 
 **Enable OpenTelemetry console export**:
+
 ```bash
 holodeck chat agent.yaml --observability
 ```
 
 **Run with debugger**:
+
 ```python
 # In chat.py, add breakpoint
 import pdb; pdb.set_trace()
 ```
 
 **Profile performance**:
+
 ```bash
 python -m cProfile -o chat.prof src/holodeck/cli/main.py chat agent.yaml
 python -m pstats chat.prof
@@ -452,13 +494,13 @@ python -m pstats chat.prof
 
 ## Common Issues & Solutions
 
-| Issue | Solution |
-|-------|----------|
-| LLM API key errors | Check `.env` file has correct keys |
-| Import errors | Ensure all `__init__.py` files created |
-| Type errors | Run `mypy src/holodeck/agent/` to identify issues |
-| Test failures | Check test fixtures in `tests/fixtures/` |
-| Slow tests | Use `@pytest.mark.slow` and skip with `-m "not slow"` |
+| Issue              | Solution                                              |
+| ------------------ | ----------------------------------------------------- |
+| LLM API key errors | Check `.env` file has correct keys                    |
+| Import errors      | Ensure all `__init__.py` files created                |
+| Type errors        | Run `mypy src/holodeck/agent/` to identify issues     |
+| Test failures      | Check test fixtures in `tests/fixtures/`              |
+| Slow tests         | Use `@pytest.mark.slow` and skip with `-m "not slow"` |
 
 ---
 

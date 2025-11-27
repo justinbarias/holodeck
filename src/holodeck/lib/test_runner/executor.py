@@ -23,7 +23,7 @@ Test execution follows a sequential flow:
 import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from semantic_kernel.contents import ChatHistory
@@ -452,7 +452,7 @@ class TestExecutor:
             passed=passed,
             execution_time_ms=elapsed_ms,
             errors=errors,
-            timestamp=datetime.now(UTC).isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
 
     def _prepare_agent_input(
@@ -773,7 +773,7 @@ class TestExecutor:
             agent_config_path=self.agent_config_path,
             results=results,
             summary=summary,
-            timestamp=datetime.now(UTC).isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             holodeck_version=version,
             environment={"execution_config": str(self.config.model_dump())},
         )

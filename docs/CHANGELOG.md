@@ -114,7 +114,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Makefile with 30+ development commands
   - Poetry dependency management
   - Pre-commit hooks (black, ruff, mypy, detect-secrets)
-  - Python 3.13+ support
+  - Python 3.10+ support
 
 - **Testing**:
 

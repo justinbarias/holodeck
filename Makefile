@@ -1,6 +1,5 @@
 # Project variables
 PYTHON := python
-PIP := $(PYTHON) -m pip
 PROJECT_NAME := your_package
 SRC_DIR := src
 TEST_DIR := tests
@@ -16,11 +15,11 @@ NC := $(shell tput sgr0 2>/dev/null)
 .DEFAULT_GOAL := help
 
 # Phony targets
-.PHONY: help install install-dev install-prod install-redisvl test test-unit test-integration \
+.PHONY: help install install-dev install-prod patch-redisvl test test-unit test-integration \
         test-coverage test-parallel test-integration-parallel test-unit-parallel \
         lint format type-check security clean clean-all \
         pre-commit ci ci-github build docs run docker-build docker-run \
-        check-python check-venv init
+        check-python check-uv init
 
 #################################
 # Help and Verification Targets #
@@ -40,13 +39,13 @@ check-python: ## Verify Python installation
 	@which $(PYTHON) > /dev/null || (echo "$(RED)Python not found$(NC)" && exit 1)
 	@echo "$(GREEN)✓ Python found: $$($(PYTHON) --version)$(NC)"
 
-check-venv: ## Verify virtual environment is activated
-	@$(PYTHON) -c "import sys; exit(0 if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix) else 1)" || \
-		(echo "$(YELLOW)Warning: Virtual environment not activated$(NC)" && echo "Run: source .venv/bin/activate")
+check-uv: ## Verify uv is installed
+	@which uv > /dev/null || (echo "$(RED)uv not found. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh$(NC)" && exit 1)
+	@echo "$(GREEN)✓ uv found: $$(uv --version)$(NC)"
 
-init: check-python ## Initialize project (create venv, install deps, setup pre-commit)
+init: check-python check-uv ## Initialize project (create venv, install deps, setup pre-commit)
 	@echo "$(GREEN)Initializing project...$(NC)"
-	$(PYTHON) -m venv .venv
+	uv venv
 	@echo "$(YELLOW)Virtual environment created. Activate with: source .venv/bin/activate$(NC)"
 	$(MAKE) install-dev
 	$(MAKE) install-hooks
@@ -57,38 +56,33 @@ init: check-python ## Initialize project (create venv, install deps, setup pre-c
 
 install: install-dev ## Install all dependencies (alias for install-dev)
 
-install-dev: check-venv ## Install development dependencies
+install-dev: check-uv ## Install development dependencies
 	@echo "$(GREEN)Installing development dependencies...$(NC)"
-	$(PIP) install --upgrade pip setuptools wheel
-	$(PIP) install -e ".[dev]"
-	@$(MAKE) install-redisvl
+	uv sync --all-extras
+	@$(MAKE) patch-redisvl
 	@echo "$(GREEN)✓ Development dependencies installed$(NC)"
 
-install-prod: check-venv ## Install production dependencies only
+install-prod: check-uv ## Install production dependencies only
 	@echo "$(GREEN)Installing production dependencies...$(NC)"
-	$(PIP) install --upgrade pip setuptools wheel
-	$(PIP) install -e .
-	@$(MAKE) install-redisvl
+	uv sync --no-dev
+	@$(MAKE) patch-redisvl
 	@echo "$(GREEN)✓ Production dependencies installed$(NC)"
 
-install-redisvl: ## Install redisvl 0.4.x and patch for redis 6.x+ compatibility
-	@echo "$(GREEN)Installing redisvl 0.4.x (bypassing dependency resolution)...$(NC)"
-	$(PIP) install "redisvl>=0.4.0,<0.5.0" --no-deps
+patch-redisvl: ## Patch redisvl for redis 6.x+ compatibility
 	@echo "$(GREEN)Patching redisvl for redis 6.x+ compatibility...$(NC)"
-	$(PYTHON) scripts/patch_redisvl.py
-	@echo "$(GREEN)✓ redisvl installed and patched$(NC)"
+	uv run python scripts/patch_redisvl.py
+	@echo "$(GREEN)✓ redisvl patched$(NC)"
 
 install-hooks: ## Install pre-commit hooks
 	@echo "$(GREEN)Installing pre-commit hooks...$(NC)"
-	pre-commit install
+	uv run pre-commit install
 	@echo "$(GREEN)✓ Pre-commit hooks installed$(NC)"
 
 update-deps: ## Update all dependencies to latest versions
 	@echo "$(GREEN)Updating dependencies...$(NC)"
-	$(PIP) install --upgrade pip setuptools wheel
-	$(PIP) list --outdated
-	$(PIP) install --upgrade -e ".[dev]"
-	pre-commit autoupdate
+	uv lock --upgrade
+	uv sync --all-extras
+	uv run pre-commit autoupdate
 	@echo "$(GREEN)✓ Dependencies updated$(NC)"
 
 #############################
@@ -97,19 +91,19 @@ update-deps: ## Update all dependencies to latest versions
 
 test: ## Run all tests with coverage
 	@echo "$(GREEN)Running all tests...$(NC)"
-	$(PYTHON) -m pytest -v --tb=short
+	uv run pytest -v --tb=short
 
 test-unit: ## Run unit tests only
 	@echo "$(GREEN)Running unit tests...$(NC)"
-	$(PYTHON) -m pytest tests/unit -v --tb=short
+	uv run pytest tests/unit -v --tb=short
 
 test-integration: ## Run integration tests only
 	@echo "$(GREEN)Running integration tests...$(NC)"
-	$(PYTHON) -m pytest tests/integration -v --tb=short
+	uv run pytest tests/integration -v --tb=short
 
 test-coverage: ## Run tests with coverage report
 	@echo "$(GREEN)Running tests with coverage...$(NC)"
-	$(PYTHON) -m pytest \
+	uv run pytest \
 		--cov=$(SRC_DIR) \
 		--cov-branch \
 		--cov-report=term-missing \
@@ -119,22 +113,22 @@ test-coverage: ## Run tests with coverage report
 	@echo "$(GREEN)✓ Coverage report generated (HTML: htmlcov/index.html)$(NC)"
 
 test-failed: ## Re-run only failed tests
-	$(PYTHON) -m pytest --lf -v
+	uv run pytest --lf -v
 
 test-watch: ## Run tests in watch mode (requires pytest-watch)
-	$(PYTHON) -m pytest_watch -- -v
+	uv run pytest_watch -- -v
 
 test-parallel: ## Run all tests in parallel (requires pytest-xdist)
 	@echo "$(GREEN)Running all tests in parallel...$(NC)"
-	$(PYTHON) -m pytest -n auto -v
+	uv run pytest -n auto -v
 
 test-integration-parallel: ## Run integration tests in parallel
 	@echo "$(GREEN)Running integration tests in parallel...$(NC)"
-	$(PYTHON) -m pytest tests/integration -n auto -v
+	uv run pytest tests/integration -n auto -v
 
 test-unit-parallel: ## Run unit tests in parallel
 	@echo "$(GREEN)Running unit tests in parallel...$(NC)"
-	$(PYTHON) -m pytest tests/unit -n auto -v
+	uv run pytest tests/unit -n auto -v
 
 #############################
 # Code Quality Targets      #
@@ -143,46 +137,46 @@ test-unit-parallel: ## Run unit tests in parallel
 lint: ## Run all linters
 	@echo "$(GREEN)Running linters...$(NC)"
 	@echo "Running ruff (includes security checks)..."
-	ruff check $(SRC_DIR) $(TEST_DIR)
+	uv run ruff check $(SRC_DIR) $(TEST_DIR)
 	@echo "$(GREEN)✓ Linting complete$(NC)"
 
 lint-fix: ## Run linters with auto-fix
 	@echo "$(GREEN)Auto-fixing linting issues...$(NC)"
-	ruff check --fix $(SRC_DIR) $(TEST_DIR)
+	uv run ruff check --fix $(SRC_DIR) $(TEST_DIR)
 	@echo "$(GREEN)✓ Linting issues fixed$(NC)"
 
 format: ## Format code with black and ruff
 	@echo "$(GREEN)Formatting code...$(NC)"
-	black $(SRC_DIR) $(TEST_DIR)
-	ruff check --select I --fix $(SRC_DIR) $(TEST_DIR)
+	uv run black $(SRC_DIR) $(TEST_DIR)
+	uv run ruff check --select I --fix $(SRC_DIR) $(TEST_DIR)
 	@echo "$(GREEN)✓ Code formatted$(NC)"
 
 format-check: ## Check code formatting without changes
 	@echo "$(GREEN)Checking code format...$(NC)"
-	black --check --diff $(SRC_DIR) $(TEST_DIR)
-	ruff check --select I $(SRC_DIR) $(TEST_DIR)
+	uv run black --check --diff $(SRC_DIR) $(TEST_DIR)
+	uv run ruff check --select I $(SRC_DIR) $(TEST_DIR)
 	@echo "$(GREEN)✓ Format check complete$(NC)"
 
 type-check: ## Run type checking with mypy
 	@echo "$(GREEN)Running type checks...$(NC)"
-	mypy $(SRC_DIR) --ignore-missing-imports --no-error-summary --install-types --non-interactive
+	uv run mypy $(SRC_DIR) --ignore-missing-imports --no-error-summary --install-types --non-interactive
 	@echo "$(GREEN)✓ Type checking complete$(NC)"
 
 security: ## Run security checks
 	@echo "$(GREEN)Running security checks...$(NC)"
 	@echo "Checking for known vulnerabilities..."
-	safety check --json --ignore=80470
+	uv run safety check --json --ignore=80470
 	@echo "Scanning for security issues with Ruff..."
-	ruff check $(SRC_DIR) --select S
+	uv run ruff check $(SRC_DIR) --select S
 	@echo "Scanning for security issues with Bandit..."
-	bandit -r $(SRC_DIR)
+	uv run bandit -r $(SRC_DIR)
 	@echo "Checking for hardcoded secrets..."
-	detect-secrets scan --baseline .secrets.baseline
+	uv run detect-secrets scan --baseline .secrets.baseline
 	@echo "$(GREEN)✓ Security checks complete$(NC)"
 
 pre-commit: ## Run pre-commit hooks on all files
 	@echo "$(GREEN)Running pre-commit hooks...$(NC)"
-	pre-commit run --all-files
+	uv run pre-commit run --all-files
 	@echo "$(GREEN)✓ Pre-commit checks complete$(NC)"
 
 #############################
@@ -229,7 +223,7 @@ ci-github: ## Run CI checks with GitHub Actions formatted output
 	@$(MAKE) type-check || echo "::warning title=Type Check Warning::Type checking failed. Review mypy output above."
 	@echo "::endgroup::"
 	@echo "::group::🧪 Running Tests with Coverage"
-	@$(PYTHON) -m pytest \
+	@uv run pytest \
 		--cov=$(SRC_DIR) \
 		--cov-branch \
 		--cov-report=term \
@@ -239,8 +233,8 @@ ci-github: ## Run CI checks with GitHub Actions formatted output
 		--cov-fail-under=$(MIN_COVERAGE) \
 		--junitxml=test-results.xml \
 		-v || (echo "::error title=Tests Failed::Tests or coverage requirements failed." && exit 1)
-	@echo "COVERAGE=$$($(PYTHON) -c "import json; print(json.load(open('coverage.json'))['totals']['percent_covered'])")" >> $$GITHUB_OUTPUT 2>/dev/null || true
-	@echo "::notice title=Coverage Report::Coverage is $$($(PYTHON) -c "import json; print(f\"{json.load(open('coverage.json'))['totals']['percent_covered']:.2f}%\")" 2>/dev/null || echo "unknown")"
+	@echo "COVERAGE=$$(uv run python -c "import json; print(json.load(open('coverage.json'))['totals']['percent_covered'])")" >> $$GITHUB_OUTPUT 2>/dev/null || true
+	@echo "::notice title=Coverage Report::Coverage is $$(uv run python -c "import json; print(f\"{json.load(open('coverage.json'))['totals']['percent_covered']:.2f}%\")" 2>/dev/null || echo "unknown")"
 	@echo "::endgroup::"
 	@echo "::group::🔒 Security Scanning"
 	@$(MAKE) security || echo "::warning title=Security Scan::Potential security issues found. Review the security report."
@@ -251,19 +245,19 @@ ci-github-annotations: ## Generate GitHub annotations from test/lint results
 	@echo "::group::📊 Generating GitHub Annotations"
 	@# Parse pytest results for failures
 	@if [ -f test-results.xml ]; then \
-		$(PYTHON) -c "import xml.etree.ElementTree as ET; \
+		uv run python -c "import xml.etree.ElementTree as ET; \
 		tree = ET.parse('test-results.xml'); \
 		root = tree.getroot(); \
 		failures = root.findall('.//failure'); \
 		[print(f\"::error file={tc.get('classname').replace('.', '/')}.py,line=1,title=Test Failed::{tc.get('name')} failed\") for tc in failures]" 2>/dev/null || true; \
 	fi
 	@# Parse ruff output for issues
-	@ruff check $(SRC_DIR) $(TEST_DIR) --output-format=json 2>/dev/null | \
-		$(PYTHON) -c "import sys, json; \
+	@uv run ruff check $(SRC_DIR) $(TEST_DIR) --output-format=json 2>/dev/null | \
+		uv run python -c "import sys, json; \
 		issues = json.load(sys.stdin) if sys.stdin.isatty() == False else []; \
 		[print(f\"::warning file={i['filename']},line={i['location']['row']},col={i['location']['column']},title={i['code']}::{i['message']}\") for i in issues]" 2>/dev/null || true
 	@# Parse mypy output for type errors
-	@mypy $(SRC_DIR) --ignore-missing-imports --no-error-summary --install-types --non-interactive 2>&1 | \
+	@uv run mypy $(SRC_DIR) --ignore-missing-imports --no-error-summary --install-types --non-interactive 2>&1 | \
 		grep -E "^[^:]+:[0-9]+:" | \
 		while read line; do \
 			file=$$(echo "$$line" | cut -d: -f1); \
@@ -284,7 +278,7 @@ ci-github-fast: ## Fast CI for GitHub Actions (parallel tests, no coverage thres
 	@echo "::notice::Running in fast mode - no coverage requirements"
 	@$(MAKE) format-check || echo "::warning::Format check failed"
 	@$(MAKE) lint || echo "::warning::Linting failed"
-	@$(PYTHON) -m pytest -n auto --tb=short -q
+	@uv run pytest -n auto --tb=short -q
 	@echo "::endgroup::"
 	@echo "::notice title=⚡ Fast CI Complete::Quick checks completed"
 
@@ -310,7 +304,7 @@ ci-github-pr: ## CI specifically for pull requests with PR comments
 	@echo "### 🧪 Test Results" >> pr-comment.md
 	@echo "" >> pr-comment.md
 	@# Run tests and capture results
-	@if $(PYTHON) -m pytest --cov=$(SRC_DIR) --cov-report=json:coverage.json --junitxml=test-results.xml -q; then \
+	@if uv run pytest --cov=$(SRC_DIR) --cov-report=json:coverage.json --junitxml=test-results.xml -q; then \
 		echo "✅ All tests passed!" >> pr-comment.md; \
 	else \
 		echo "❌ Some tests failed - see details below" >> pr-comment.md; \
@@ -318,7 +312,7 @@ ci-github-pr: ## CI specifically for pull requests with PR comments
 	@echo "" >> pr-comment.md
 	@# Add coverage badge
 	@if [ -f coverage.json ]; then \
-		COV=$$($(PYTHON) -c "import json; print(f\"{json.load(open('coverage.json'))['totals']['percent_covered']:.1f}\")"); \
+		COV=$$(uv run python -c "import json; print(f\"{json.load(open('coverage.json'))['totals']['percent_covered']:.1f}\")"); \
 		echo "**Coverage:** $$COV%" >> pr-comment.md; \
 		if (( $$(echo "$$COV >= $(MIN_COVERAGE)" | bc -l) )); then \
 			echo "![Coverage](https://img.shields.io/badge/coverage-$$COV%25-brightgreen)" >> pr-comment.md; \
@@ -336,7 +330,7 @@ ci-fast: ## Run fast CI checks (no coverage, parallel tests)
 	@echo "$(GREEN)Running fast CI checks...$(NC)"
 	@$(MAKE) format-check
 	@$(MAKE) lint
-	$(PYTHON) -m pytest -n auto --tb=short
+	uv run pytest -n auto --tb=short
 	@echo "$(GREEN)✓ Fast CI complete$(NC)"
 
 #############################
@@ -345,11 +339,11 @@ ci-fast: ## Run fast CI checks (no coverage, parallel tests)
 
 build: clean ## Build distribution packages
 	@echo "$(GREEN)Building distribution packages...$(NC)"
-	$(PYTHON) -m build
+	uv build
 	@echo "$(GREEN)✓ Package built (see dist/ directory)$(NC)"
 
 build-check: build ## Build and check package
-	$(PYTHON) -m twine check dist/*
+	uv run twine check dist/*
 	@echo "$(GREEN)✓ Package validation complete$(NC)"
 
 docs: ## Build documentation
@@ -358,7 +352,7 @@ docs: ## Build documentation
 	@echo "$(GREEN)✓ Documentation built (see docs/_build/html/index.html)$(NC)"
 
 docs-serve: ## Serve documentation locally
-	cd docs/_build/html && $(PYTHON) -m http.server
+	cd docs/_build/html && uv run python -m http.server
 
 #############################
 # Docker Targets            #
@@ -402,20 +396,20 @@ clean-all: clean ## Deep clean including virtual environment
 #############################
 
 run: ## Run the application
-	$(PYTHON) -m $(PROJECT_NAME)
+	uv run python -m $(PROJECT_NAME)
 
 shell: ## Start Python shell with project context
-	$(PYTHON) -c "from $(PROJECT_NAME) import *; import IPython; IPython.embed()"
+	uv run python -c "from $(PROJECT_NAME) import *; import IPython; IPython.embed()"
 
 debug: ## Run with debugger
-	$(PYTHON) -m pdb -m $(PROJECT_NAME)
+	uv run python -m pdb -m $(PROJECT_NAME)
 
 profile: ## Profile the application
-	$(PYTHON) -m cProfile -o profile.stats -m $(PROJECT_NAME)
-	$(PYTHON) -m pstats profile.stats
+	uv run python -m cProfile -o profile.stats -m $(PROJECT_NAME)
+	uv run python -m pstats profile.stats
 
-requirements: ## Generate requirements.txt from pyproject.toml
-	pip-compile pyproject.toml -o requirements.txt --resolver=backtracking
+requirements: ## Generate requirements.txt from uv.lock
+	uv export --format requirements-txt > requirements.txt
 
 #############################
 # Git Helpers               #

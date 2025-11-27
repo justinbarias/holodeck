@@ -11,7 +11,7 @@ Implement the `holodeck test` CLI command to execute agent test cases with evalu
 
 ## Technical Context
 
-**Language/Version**: Python 3.13+
+**Language/Version**: Python 3.10+
 
 **Primary Dependencies**:
 
@@ -90,7 +90,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Code Quality & Testing Discipline
 
-✅ **PASS** - Follows Python 3.13+, Google Python Style Guide, MyPy strict mode, pytest with markers, 80% coverage minimum, Bandit/Safety/detect-secrets security scanning.
+✅ **PASS** - Follows Python 3.10+, Google Python Style Guide, MyPy strict mode, pytest with markers, 80% coverage minimum, Bandit/Safety/detect-secrets security scanning.
 
 **Gate Status**: ✅ PASS (1 principle deferred with justification)
 

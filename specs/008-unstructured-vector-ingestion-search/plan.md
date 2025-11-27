@@ -11,7 +11,7 @@ Implement vectorstore tool support enabling agents to perform semantic search ov
 
 ## Technical Context
 
-**Language/Version**: Python 3.13+
+**Language/Version**: Python 3.10+
 **Primary Dependencies**: Semantic Kernel (vector stores, text chunking, embeddings), markitdown (file-to-markdown conversion - already implemented in src/holodeck/lib/file_processor.py), Pydantic (config models)
 **Storage**: Redis (via Semantic Kernel connector, optional), In-memory (default fallback)
 **Testing**: pytest with markers (@pytest.mark.unit, @pytest.mark.integration), pytest-cov (80% minimum coverage)
@@ -23,40 +23,47 @@ Implement vectorstore tool support enabling agents to perform semantic search ov
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Principle I: No-Code-First Agent Definition ✅ PASS
+
 - **Requirement**: Agent configuration must be YAML-only, no Python code required
 - **Status**: Compliant - vectorstore tools are configured via `type: vectorstore` in agent.yaml with declarative parameters (source, embedding_model, top_k, min_similarity_score)
 - **Evidence**: Feature spec FR-001 through FR-013 define pure YAML configuration interface
 
 ### Principle II: MCP for API Integrations ✅ PASS
+
 - **Requirement**: External APIs must use MCP servers
 - **Status**: Not applicable - this feature uses Semantic Kernel for vector operations and file processing, not external API integrations
 - **Evidence**: No external API integrations required; uses local/embedded libraries
 
 ### Principle III: Test-First with Multimodal Support ✅ PASS
+
 - **Requirement**: Test cases with multimodal inputs, expected_tools validation, ground truth
 - **Status**: Compliant - feature leverages existing FileProcessor (src/holodeck/lib/file_processor.py) which supports multimodal files (.txt, .md, .pdf, .csv, .json, images, Office docs)
 - **Evidence**: User Story 1 acceptance scenarios define testable behavior with file/directory sources; existing test infrastructure supports multimodal validation
 
 ### Principle IV: OpenTelemetry-Native Observability ⚠️ DEFERRED
+
 - **Requirement**: OTel instrumentation with GenAI semantic conventions from day one
 - **Status**: Deferred to project-wide observability implementation (not specific to this feature)
 - **Evidence**: CLAUDE.md Phase 3 lists "OpenTelemetry instrumentation" as future work; will be applied across all features consistently
 
 ### Principle V: Evaluation Flexibility with Model Overrides ✅ PASS
+
 - **Requirement**: Support global/run/metric-level model configuration
 - **Status**: Compliant - embedding model configuration supports default (provider-based) and per-tool override via `embedding_model` parameter
 - **Evidence**: FR-008, FR-009, User Story 2 define flexible embedding model configuration
 
 ### Architecture Constraints ✅ PASS
+
 - **Requirement**: Three decoupled engines (Agent, Evaluation, Deployment)
 - **Status**: Compliant - vectorstore tool is part of Agent Engine tool execution system
 - **Evidence**: Fits within existing architecture defined in CLAUDE.md (Agent Engine section)
 
 ### Code Quality & Testing Discipline ✅ PASS
-- **Requirement**: Python 3.13+, Google Style Guide, MyPy strict, 80% coverage, pre-commit hooks
+
+- **Requirement**: Python 3.10+, Google Style Guide, MyPy strict, 80% coverage, pre-commit hooks
 - **Status**: Compliant - follows existing project standards
 - **Evidence**: Will use existing Makefile commands (format, lint, type-check, security), pytest infrastructure with unit/integration markers
 
@@ -102,6 +109,7 @@ tests/
 ```
 
 **Structure Decision**: Single project structure (Option 1). This feature extends the existing holodeck agent tool system by adding vectorstore capabilities. Key integration points:
+
 - Reuses existing FileProcessor (src/holodeck/lib/file_processor.py) for file-to-markdown conversion
 - Extends existing tool configuration models in src/holodeck/models/tool.py
 - Integrates with agent execution system via new VectorStoreTool class
@@ -109,7 +117,7 @@ tests/
 
 ## Complexity Tracking
 
-*No constitutional violations - table not required.*
+_No constitutional violations - table not required._
 
 ---
 
@@ -123,16 +131,19 @@ After completing Phase 0 (research.md) and Phase 1 (data-model.md, contracts/, q
 ### Design Artifacts Verification
 
 1. **research.md** ✅
+
    - Technical decisions documented for: Semantic Kernel abstractions, text chunking, embedding generation, Redis integration, file modification tracking, in-memory fallback
    - All "NEEDS CLARIFICATION" items from Technical Context resolved
    - No violations introduced
 
 2. **data-model.md** ✅
+
    - Defines 7 core entities with validation rules and relationships
    - All entities align with no-code principle (YAML-configurable)
    - No custom code required for agent definition
 
 3. **contracts/vectorstore-tool-interface.md** ✅
+
    - Tool invocation contract documented
    - Configuration precedence: tool-specific → project config → user config → in-memory
    - Supports multimodal file inputs via existing FileProcessor
@@ -145,15 +156,15 @@ After completing Phase 0 (research.md) and Phase 1 (data-model.md, contracts/, q
 
 ### Constitutional Principles - Post-Design Status
 
-| Principle | Pre-Design | Post-Design | Notes |
-|-----------|-----------|-------------|-------|
-| I. No-Code-First | ✅ PASS | ✅ PASS | Quickstart confirms pure YAML workflow |
-| II. MCP for APIs | ✅ PASS (N/A) | ✅ PASS (N/A) | No API integrations added |
-| III. Test-First Multimodal | ✅ PASS | ✅ PASS | Reuses existing FileProcessor |
-| IV. OTel Observability | ⚠️ DEFERRED | ⚠️ DEFERRED | Project-wide feature |
-| V. Eval Flexibility | ✅ PASS | ✅ PASS | Embedding model overrides confirmed |
-| Architecture Constraints | ✅ PASS | ✅ PASS | Agent Engine integration |
-| Code Quality | ✅ PASS | ✅ PASS | Standards maintained |
+| Principle                  | Pre-Design    | Post-Design   | Notes                                  |
+| -------------------------- | ------------- | ------------- | -------------------------------------- |
+| I. No-Code-First           | ✅ PASS       | ✅ PASS       | Quickstart confirms pure YAML workflow |
+| II. MCP for APIs           | ✅ PASS (N/A) | ✅ PASS (N/A) | No API integrations added              |
+| III. Test-First Multimodal | ✅ PASS       | ✅ PASS       | Reuses existing FileProcessor          |
+| IV. OTel Observability     | ⚠️ DEFERRED   | ⚠️ DEFERRED   | Project-wide feature                   |
+| V. Eval Flexibility        | ✅ PASS       | ✅ PASS       | Embedding model overrides confirmed    |
+| Architecture Constraints   | ✅ PASS       | ✅ PASS       | Agent Engine integration               |
+| Code Quality               | ✅ PASS       | ✅ PASS       | Standards maintained                   |
 
 ### New Dependencies Added
 
@@ -168,6 +179,7 @@ All dependencies align with constitution (no violations).
 **Gate Status**: ✅ **APPROVED FOR IMPLEMENTATION**
 
 All constitutional gates pass. The design maintains:
+
 - Pure YAML configuration (no Python required)
 - Reuse of existing multimodal file processing
 - Integration within Agent Engine architecture

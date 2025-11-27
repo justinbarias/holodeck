@@ -11,7 +11,7 @@ Implement three-level configuration hierarchy (user-level → project-level → 
 
 ## Technical Context
 
-**Language/Version**: Python 3.13+ (per CLAUDE.md)
+**Language/Version**: Python 3.10+ (per CLAUDE.md)
 **Primary Dependencies**:
 
 - PyYAML (YAML parsing)
@@ -119,7 +119,7 @@ All critical unknowns were resolved during spec clarification phase:
 | YAML Parsing             | PyYAML             | Standard, battle-tested Python YAML library with wide adoption                          |
 | JSON Schema Validation   | jsonschema         | Pure Python, supports draft 2020-12, no native C dependencies                           |
 | Configuration Models     | Pydantic           | Type-safe configuration with automatic validation; integrates with FastAPI              |
-| File Path Handling       | pathlib            | Cross-platform path handling; Python 3.13+ standard                                     |
+| File Path Handling       | pathlib            | Cross-platform path handling; Python 3.10+ standard                                     |
 | Configuration Precedence | Custom merge logic | Simple precedence chain (user → project → agent); no complex conflict resolution needed |
 
 ### Research Output

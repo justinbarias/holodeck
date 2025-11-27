@@ -9,7 +9,7 @@ Implement the `holodeck init` CLI command to bootstrap new AI agent projects wit
 
 ## Technical Context
 
-**Language/Version**: Python 3.13+ (per Constitution)
+**Language/Version**: Python 3.10+ (per Constitution)
 **Primary Dependencies**: Click (CLI framework), Pyyaml (YAML parsing/generation), Jinja2 (template rendering)
 **Storage**: File system only (project directory structure and files)
 **Testing**: pytest with @pytest.mark.unit, @pytest.mark.integration markers

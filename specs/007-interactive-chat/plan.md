@@ -11,8 +11,9 @@ Implement an interactive chat command (`holodeck chat agent.yaml`) that enables 
 
 ## Technical Context
 
-**Language/Version**: Python 3.13+ (as defined in pyproject.toml)
+**Language/Version**: Python 3.10+ (as defined in pyproject.toml)
 **Primary Dependencies**:
+
 - Click 8.0+ (CLI framework)
 - Semantic Kernel 1.37+ (agent execution runtime)
 - Pydantic 2.0+ (configuration validation)
@@ -25,67 +26,80 @@ Implement an interactive chat command (`holodeck chat agent.yaml`) that enables 
 **Target Platform**: Cross-platform CLI (macOS, Linux, Windows with terminal support)
 **Project Type**: Single project (CLI-based agent development tool)
 **Performance Goals**:
+
 - Session startup: <1 second
 - Response processing: <5 seconds (excluding LLM latency)
 - Multi-turn conversations: 10+ exchanges without degradation
 - Session stability: 30+ minutes without memory leaks
 
 **Constraints**:
+
 - Terminal-based interaction only (no web UI)
 - Single-agent sessions (no multi-agent orchestration)
 - Input size limit: ~10K characters per message
 - Context window management required for long conversations
 
 **Scale/Scope**:
+
 - MVP supports individual developers testing agents locally
 - No concurrent session support required
 - Conversation history: 50 message warning threshold
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### Principle I: No-Code-First Agent Definition
+
 **Status**: ✅ **PASS** - This feature enables testing of agents defined via YAML. The chat command loads existing agent configurations without requiring code changes.
 
 **Evaluation**: Interactive chat is a testing tool that operates on declarative YAML configurations. Users do not write Python code to use the chat feature; they provide YAML paths.
 
 ### Principle II: MCP for API Integrations
+
 **Status**: ✅ **PASS** - No new API integrations introduced. Chat command executes existing agent tools (which may include MCP servers).
 
 **Evaluation**: This feature does not create new API tool types. It leverages the existing tool execution framework defined in agent YAML files.
 
 ### Principle III: Test-First with Multimodal Support
+
 **Status**: ✅ **PASS** - Chat feature supports agents with multimodal capabilities defined in their configurations.
 
 **Evaluation**: The chat interface will support sending messages to agents that have multimodal tools configured. File inputs can be tested via the agent's tool execution (e.g., vector search with document inputs). Unit and integration tests will validate chat session behavior.
 
 ### Principle IV: OpenTelemetry-Native Observability
+
 **Status**: ⚠️ **NEEDS CLARIFICATION** - Observability integration approach needs definition.
 
 **Evaluation**: Chat sessions should emit traces/metrics for LLM calls, tool executions, and session events. Research needed to determine:
+
 - How to instrument interactive sessions with OpenTelemetry
 - Whether to log conversation history for debugging
 - Cost tracking for interactive LLM usage
 
 ### Principle V: Evaluation Flexibility with Model Overrides
+
 **Status**: ✅ **PASS** - Chat command respects agent configuration's LLM settings.
 
 **Evaluation**: Agents loaded in chat mode use their configured LLM provider and model settings. No evaluation metrics are executed during interactive chat (evaluation is separate via `holodeck test`).
 
 ### Architecture Constraints
+
 **Status**: ✅ **PASS** - Chat feature integrates with Agent Engine without tight coupling.
 
 **Evaluation**:
+
 - Uses Agent Engine for LLM execution and tool calls
 - Does not interfere with Evaluation Framework or Deployment Engine
 - CLI command structure maintains separation of concerns
 
 ### Code Quality & Testing Discipline
+
 **Status**: ✅ **PASS** - Standard testing and quality requirements apply.
 
 **Evaluation**:
-- Python 3.13+ target enforced via pyproject.toml
+
+- Python 3.10+ target enforced via pyproject.toml
 - pytest unit and integration tests required
 - Type hints, docstrings, and Google Python Style Guide compliance
 - Pre-commit hooks (Black, Ruff, MyPy, Bandit) will validate code
@@ -159,6 +173,6 @@ tests/
 
 ## Complexity Tracking
 
-*Fill ONLY if Constitution Check has violations that must be justified*
+_Fill ONLY if Constitution Check has violations that must be justified_
 
 **Status**: No violations requiring justification. One area (OpenTelemetry observability) marked as "NEEDS CLARIFICATION" will be resolved through Phase 0 research.

@@ -11,7 +11,7 @@ Enable HoloDeck users to configure and use Ollama endpoints (local or remote) as
 
 ## Technical Context
 
-**Language/Version**: Python 3.13+
+**Language/Version**: Python 3.10+
 **Primary Dependencies**: Semantic Kernel (microsoft/semantic-kernel), Pydantic 2.0+, PyYAML 6.0+, python-dotenv 1.0+
 **Storage**: N/A (configuration only)
 **Testing**: pytest with markers (unit, integration), pytest-cov, pytest-asyncio
@@ -23,28 +23,35 @@ Enable HoloDeck users to configure and use Ollama endpoints (local or remote) as
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### I. No-Code-First Agent Definition
+
 ✅ **PASS** - Ollama configuration is fully declarative via YAML (provider, host, model name, execution settings). No Python code required from users.
 
 ### II. MCP for API Integrations
+
 ✅ **PASS** - Ollama integration does not introduce custom API tool types. It extends LLM provider configuration only. API integrations (if needed) will continue to use MCP servers.
 
 ### III. Test-First with Multimodal Support
+
 ✅ **PASS** - Feature enables `holodeck test` command to work with Ollama endpoints. Existing multimodal test infrastructure (images, PDFs, Office docs) remains unchanged and functional.
 
 ### IV. OpenTelemetry-Native Observability
+
 ⚠️ **DEFERRED** - OpenTelemetry instrumentation is planned for the Agent Engine but not yet implemented. This feature extends configuration and will align with observability when Agent Engine implements it (FR-016 requires logging of connection attempts, errors, response times as preparation).
 
 ### V. Evaluation Flexibility with Model Overrides
+
 ✅ **PASS** - Feature enables Ollama as an evaluation model option, maintaining existing three-level model configuration hierarchy (global, per-evaluation, per-metric).
 
 ### Architecture Constraints
+
 ✅ **PASS** - Changes are isolated to configuration layer (models, validation) and will integrate with Agent Engine when implemented. No cross-engine coupling introduced.
 
 ### Code Quality & Testing Discipline
-✅ **PASS** - Implementation will follow Python 3.13+, Google Style Guide, MyPy strict mode, pytest with markers, 80% coverage minimum, Black/Ruff formatting, Bandit/Safety security scanning, and pre-commit hooks as defined in CLAUDE.md.
+
+✅ **PASS** - Implementation will follow Python 3.10+, Google Style Guide, MyPy strict mode, pytest with markers, 80% coverage minimum, Black/Ruff formatting, Bandit/Safety security scanning, and pre-commit hooks as defined in CLAUDE.md.
 
 **Overall Status**: ✅ APPROVED (1 deferred item aligns with project roadmap)
 
@@ -52,27 +59,34 @@ Enable HoloDeck users to configure and use Ollama endpoints (local or remote) as
 
 ## Constitution Check (Post-Design Re-Evaluation)
 
-*Re-evaluation after Phase 1 design completion*
+_Re-evaluation after Phase 1 design completion_
 
 ### I. No-Code-First Agent Definition
+
 ✅ **PASS** - Design maintains fully declarative YAML configuration. No new code requirements introduced for users.
 
 ### II. MCP for API Integrations
+
 ✅ **PASS** - Design does not introduce custom API tool types. Ollama integration is LLM provider level, not tool level.
 
 ### III. Test-First with Multimodal Support
+
 ✅ **PASS** - Design preserves existing test infrastructure. Quickstart guide includes test case examples with ground_truth validation.
 
 ### IV. OpenTelemetry-Native Observability
+
 ⚠️ **DEFERRED** - Still deferred pending Agent Engine observability implementation. Error logging added as preparation (research.md Q4).
 
 ### V. Evaluation Flexibility with Model Overrides
+
 ✅ **PASS** - Design verified: Ollama models can be used at all three levels (global, per-evaluation, per-metric). Quickstart guide demonstrates this pattern.
 
 ### Architecture Constraints
+
 ✅ **PASS** - Design isolated to configuration layer and AgentFactory (Agent Engine component). No cross-engine coupling. Clean separation maintained.
 
 ### Code Quality & Testing Discipline
+
 ✅ **PASS** - Design includes comprehensive test strategy with unit tests (mocked) and optional integration tests. Follows pytest conventions with markers.
 
 **Post-Design Status**: ✅ APPROVED - All principles maintained through design phase
@@ -128,6 +142,6 @@ tests/
 
 ## Complexity Tracking
 
-*Fill ONLY if Constitution Check has violations that must be justified*
+_Fill ONLY if Constitution Check has violations that must be justified_
 
 No violations requiring justification. All constitution principles are satisfied or appropriately deferred in alignment with project roadmap.
