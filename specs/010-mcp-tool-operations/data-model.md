@@ -137,8 +137,7 @@ Arbitrary commands are NOT allowed to prevent command injection attacks.
 
 **Environment Variable Resolution** (DRY - reuse existing):
 - `${VAR}` pattern: Use `holodeck.config.env_loader.substitute_env_vars()`
-- `envFile` loading: Use `holodeck.config.env_loader.load_env_file()`
-- `${input:var}` pattern: New `substitute_input_vars()` in `env_loader.py`
+- `env_file` loading: Use `holodeck.config.env_loader.load_env_file()`
 
 ### TransportType
 

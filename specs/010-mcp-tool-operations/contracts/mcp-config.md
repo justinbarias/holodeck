@@ -177,20 +177,6 @@ env:
 - If `MY_API_KEY` is not set, configuration load fails with error:
   `ConfigError: Environment variable 'MY_API_KEY' not found`
 
-### Input Pattern: `${input:variable-id}`
-
-Prompts user for value at runtime (for interactive scenarios).
-
-```yaml
-env:
-  API_KEY: "${input:api-key}"       # Prompts user for api-key value
-```
-
-**Behavior**:
-- CLI prompts user: "Enter value for api-key:"
-- Value is not logged or persisted
-- Suitable for sensitive values in interactive mode
-
 ## Validation Error Messages
 
 | Error Condition | Error Message |

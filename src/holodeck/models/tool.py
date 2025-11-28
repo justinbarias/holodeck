@@ -10,9 +10,49 @@ Tool types:
 - PromptTool: AI-powered semantic functions
 """
 
+from enum import Enum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    Tag,
+    field_validator,
+    model_validator,
+)
+
+
+class TransportType(str, Enum):
+    """Supported MCP transport types.
+
+    Defines the communication protocol used to connect to MCP servers:
+    - STDIO: Local process via stdin/stdout (default, most common)
+    - SSE: Server-Sent Events over HTTP
+    - WEBSOCKET: WebSocket for bidirectional communication
+    - HTTP: Streamable HTTP transport
+    """
+
+    STDIO = "stdio"
+    SSE = "sse"
+    WEBSOCKET = "websocket"
+    HTTP = "http"
+
+
+class CommandType(str, Enum):
+    """Allowed stdio commands for MCP servers (security constraint).
+
+    Only these commands are permitted for spawning MCP server processes
+    to prevent command injection attacks:
+    - NPX: Node.js/npm package runner
+    - UVX: Python/uv package runner
+    - DOCKER: Docker container runner
+    """
+
+    NPX = "npx"
+    UVX = "uvx"
+    DOCKER = "docker"
 
 
 class Tool(BaseModel):
@@ -226,15 +266,56 @@ class FunctionTool(BaseModel):
 
 
 class MCPTool(BaseModel):
-    """MCP (Model Context Protocol) tool for standardized integrations."""
+    """MCP (Model Context Protocol) tool for standardized integrations.
+
+    Supports four transport types:
+    - stdio (default): Local MCP servers via subprocess
+    - sse: Remote servers via Server-Sent Events
+    - websocket: Bidirectional WebSocket communication
+    - http: Streamable HTTP transport
+
+    For stdio transport, only npx, uvx, or docker commands are allowed
+    for security reasons.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
+    # Required fields
     name: str = Field(..., description="Tool identifier")
     description: str = Field(..., description="Tool description")
     type: Literal["mcp"] = Field(default="mcp", description="Tool type")
     server: str = Field(..., description="MCP server identifier")
-    config: dict[str, Any] | None = Field(None, description="MCP configuration")
+
+    # Transport configuration
+    transport: TransportType = Field(
+        default=TransportType.STDIO, description="Transport type"
+    )
+
+    # Stdio transport fields
+    command: CommandType | None = Field(
+        None, description="Command to run (required for stdio: npx, uvx, or docker)"
+    )
+    args: list[str] | None = Field(None, description="Command arguments")
+    env: dict[str, str] | None = Field(None, description="Environment variables")
+    env_file: str | None = Field(None, description="Path to .env file")
+    encoding: str | None = Field(None, description="Stream encoding (default: utf-8)")
+
+    # HTTP/SSE/WebSocket transport fields
+    url: str | None = Field(None, description="Server URL for HTTP/SSE/WebSocket")
+    headers: dict[str, str] | None = Field(None, description="HTTP headers")
+    timeout: float | None = Field(None, description="Connection timeout (seconds)")
+    sse_read_timeout: float | None = Field(None, description="SSE read timeout")
+    terminate_on_close: bool | None = Field(
+        None, description="Terminate HTTP connection on close"
+    )
+
+    # Common optional fields
+    config: dict[str, Any] | None = Field(
+        None, description="Server-specific configuration"
+    )
+    load_tools: bool = Field(True, description="Auto-discover tools from server")
+    load_prompts: bool = Field(True, description="Auto-discover prompts from server")
+    request_timeout: int = Field(60, description="Operation timeout (seconds)")
 
     @field_validator("server")
     @classmethod
@@ -243,6 +324,55 @@ class MCPTool(BaseModel):
         if not v or not v.strip():
             raise ValueError("server must be a non-empty identifier")
         return v
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_scheme(cls, v: str | None) -> str | None:
+        """Validate URL scheme for HTTP-based transports.
+
+        Allows http:// only for localhost, requires https:// for remote URLs.
+        WebSocket URLs can use wss:// or ws://.
+        """
+        if v is None:
+            return v
+        # Allow http:// for localhost, require https:// otherwise
+        if v.startswith("http://"):
+            localhost_prefixes = (
+                "http://localhost",
+                "http://127.0.0.1",
+                "http://[::1]",
+            )
+            if not any(v.startswith(prefix) for prefix in localhost_prefixes):
+                raise ValueError("'url' must use https:// (or http:// for localhost)")
+        elif not v.startswith(("https://", "wss://", "ws://")):
+            raise ValueError("'url' must use https://, wss://, or ws:// scheme")
+        return v
+
+    @field_validator("request_timeout")
+    @classmethod
+    def validate_request_timeout(cls, v: int) -> int:
+        """Validate request_timeout is positive."""
+        if v <= 0:
+            raise ValueError("request_timeout must be positive")
+        return v
+
+    @model_validator(mode="after")
+    def validate_transport_fields(self) -> "MCPTool":
+        """Validate transport-specific required fields.
+
+        - stdio transport requires 'command'
+        - sse, websocket, http transports require 'url'
+        """
+        if self.transport == TransportType.STDIO:
+            if self.command is None:
+                raise ValueError("'command' is required for stdio transport")
+        elif (
+            self.transport
+            in (TransportType.SSE, TransportType.WEBSOCKET, TransportType.HTTP)
+            and self.url is None
+        ):
+            raise ValueError(f"'url' is required for {self.transport.value} transport")
+        return self
 
 
 class PromptTool(BaseModel):

@@ -84,8 +84,7 @@
 
 **Implementation** (REUSE existing code):
 - **REUSE**: `holodeck.config.env_loader.substitute_env_vars()` for `${VAR}` pattern
-- **REUSE**: `holodeck.config.env_loader.load_env_file()` for `envFile` loading
-- **EXTEND**: Add `substitute_input_vars()` function for `${input:variable-id}` pattern only
+- **REUSE**: `holodeck.config.env_loader.load_env_file()` for `env_file` loading
 - **DO NOT**: Create new env resolution logic - use existing functions
 
 **Existing Functions in `env_loader.py`**:
@@ -182,7 +181,7 @@ async with mcp_plugin:
 ### YAML Configuration Best Practices
 
 1. **Transport Selection**: Always explicit, default to stdio
-2. **Environment Variables**: Use `${VAR}` for process env, `${input:id}` for interactive
+2. **Environment Variables**: Use `${VAR}` for process env vars
 3. **Timeouts**: Configure realistic timeouts based on expected operation duration
 4. **Server References**: Use npm package names for stdio (e.g., `@modelcontextprotocol/server-filesystem`)
 
@@ -193,7 +192,7 @@ async with mcp_plugin:
 | Module | Function | Purpose | MCP Usage |
 |--------|----------|---------|-----------|
 | `holodeck.config.env_loader` | `substitute_env_vars(text)` | `${VAR}` substitution with fail-fast | Resolve env vars in MCP config |
-| `holodeck.config.env_loader` | `load_env_file(path)` | Load .env file to dict | Handle `envFile` config option |
+| `holodeck.config.env_loader` | `load_env_file(path)` | Load .env file to dict | Handle `env_file` config option |
 | `holodeck.config.env_loader` | `get_env_var(key, default)` | Get single env var | Optional fallback lookups |
 | `holodeck.lib.errors` | `ConfigError` | Configuration errors | Base for MCPConfigError |
 | `holodeck.lib.errors` | `HoloDeckError` | Base exception | Base for MCPError |
@@ -209,7 +208,6 @@ async with mcp_plugin:
 
 | Module | Function/Class | Purpose |
 |--------|----------------|---------|
-| `holodeck.config.env_loader` | `substitute_input_vars(text, prompt_fn)` | Handle `${input:var}` pattern (NEW) |
 | `holodeck.tools.mcp.errors` | `MCPConfigError(ConfigError)` | MCP-specific config errors |
 | `holodeck.tools.mcp.errors` | `MCPError(HoloDeckError)` | MCP runtime errors base |
 | `holodeck.tools.mcp.errors` | `MCPConnectionError(MCPError)` | Server connection failures |

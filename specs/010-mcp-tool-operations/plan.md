@@ -82,8 +82,7 @@ src/holodeck/
 │       ├── errors.py        # MCP-specific errors
 │       └── factory.py       # Plugin factory based on transport type
 ├── config/
-│   └── env_loader.py        # UPDATE: Add ${input:var} pattern support
-│                            # REUSE: substitute_env_vars(), load_env_file()
+│   └── env_loader.py        # REUSE: substitute_env_vars(), load_env_file()
 └── lib/
     └── errors.py            # UPDATE: Add MCP error types
 

@@ -33,13 +33,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Enhance MCPToolConfig model in `src/holodeck/models/tool.py` with all transport fields (transport, command, args, env, envFile, encoding, url, headers, timeout, sse_read_timeout, terminate_on_close, config, load_tools, load_prompts, request_timeout)
+- [ ] T004 Enhance MCPToolConfig model in `src/holodeck/models/tool.py` with all transport fields (transport, command, args, env, env_file, encoding, url, headers, timeout, sse_read_timeout, terminate_on_close, config, load_tools, load_prompts, request_timeout)
 - [ ] T005 [P] Add transport-specific Pydantic validators in `src/holodeck/models/tool.py` (validate command for stdio, url for sse/websocket/http, allowed commands only npx/uvx/docker)
-- [ ] T006 [P] Add `substitute_input_vars()` function in `src/holodeck/config/env_loader.py` for `${input:variable-id}` pattern
-- [ ] T007 Create ContentBlock models (TextContent, ImageContent, AudioContent, BinaryContent) in `src/holodeck/tools/mcp/content.py`
-- [ ] T008 [P] Create MCPToolResult model in `src/holodeck/tools/mcp/content.py` with success, content, error, metadata fields
-- [ ] T009 Create MCPPluginWrapper base class in `src/holodeck/tools/mcp/plugin.py` with connect(), disconnect(), call_tool(), get_prompt(), list_tools(), list_prompts() interface
-- [ ] T010 Create plugin factory in `src/holodeck/tools/mcp/factory.py` with create_mcp_plugin(config: MCPToolConfig) function that returns appropriate SK plugin wrapper
+- [ ] T006 Create ContentBlock models (TextContent, ImageContent, AudioContent, BinaryContent) in `src/holodeck/tools/mcp/content.py`
+- [ ] T007 [P] Create MCPToolResult model in `src/holodeck/tools/mcp/content.py` with success, content, error, metadata fields
+- [ ] T008 Create MCPPluginWrapper base class in `src/holodeck/tools/mcp/plugin.py` with connect(), disconnect(), call_tool(), get_prompt(), list_tools(), list_prompts() interface
+- [ ] T009 Create plugin factory in `src/holodeck/tools/mcp/factory.py` with create_mcp_plugin(config: MCPToolConfig) function that returns appropriate SK plugin wrapper
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -53,13 +52,13 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Implement MCPStdioPluginWrapper in `src/holodeck/tools/mcp/plugin.py` wrapping SK MCPStdioPlugin with command, args, env, encoding support
-- [ ] T012 [US1] Implement async context manager (`__aenter__`, `__aexit__`) in MCPPluginWrapper for proper lifecycle management in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T013 [US1] Implement call_tool() method in MCPPluginWrapper that invokes MCP server tools and returns MCPToolResult in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T014 [US1] Add tool name normalization (replace invalid chars with "-") in MCPPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T015 [US1] Register stdio transport in factory create_mcp_plugin() in `src/holodeck/tools/mcp/factory.py`
-- [ ] T016 [P] [US1] Add unit tests for MCPToolConfig validation in `tests/unit/tools/mcp/test_config.py`
-- [ ] T017 [P] [US1] Add unit tests for MCPStdioPluginWrapper in `tests/unit/tools/mcp/test_plugin.py`
+- [ ] T010 [US1] Implement MCPStdioPluginWrapper in `src/holodeck/tools/mcp/plugin.py` wrapping SK MCPStdioPlugin with command, args, env, encoding support
+- [ ] T011 [US1] Implement async context manager (`__aenter__`, `__aexit__`) in MCPPluginWrapper for proper lifecycle management in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T012 [US1] Implement call_tool() method in MCPPluginWrapper that invokes MCP server tools and returns MCPToolResult in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T013 [US1] Add tool name normalization (replace invalid chars with "-") in MCPPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T014 [US1] Register stdio transport in factory create_mcp_plugin() in `src/holodeck/tools/mcp/factory.py`
+- [ ] T015 [P] [US1] Add unit tests for MCPToolConfig validation in `tests/unit/tools/mcp/test_config.py`
+- [ ] T016 [P] [US1] Add unit tests for MCPStdioPluginWrapper in `tests/unit/tools/mcp/test_plugin.py`
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - agents can invoke stdio MCP servers
 
@@ -73,12 +72,12 @@
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Implement environment variable resolution using existing `substitute_env_vars()` in MCPPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T019 [US2] Implement envFile loading using existing `load_env_file()` in MCPPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T020 [US2] Implement config passthrough to MCP server initialization in MCPPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T021 [US2] Implement encoding parameter for stdin/stdout streams in MCPStdioPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T022 [P] [US2] Add unit tests for environment variable resolution in `tests/unit/tools/mcp/test_config.py`
-- [ ] T023 [P] [US2] Add unit tests for envFile loading in `tests/unit/tools/mcp/test_config.py`
+- [ ] T017 [US2] Implement environment variable resolution using existing `substitute_env_vars()` in MCPPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T018 [US2] Implement env_file loading using existing `load_env_file()` in MCPPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T019 [US2] Implement config passthrough to MCP server initialization in MCPPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T020 [US2] Implement encoding parameter for stdin/stdout streams in MCPStdioPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T021 [P] [US2] Add unit tests for environment variable resolution in `tests/unit/tools/mcp/test_config.py`
+- [ ] T022 [P] [US2] Add unit tests for env_file loading in `tests/unit/tools/mcp/test_config.py`
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - full stdio MCP configuration support
 
@@ -92,13 +91,13 @@
 
 ### Implementation for User Story 3
 
-- [ ] T024 [US3] Implement content type conversion from MCP TextContent to internal TextContent in `src/holodeck/tools/mcp/content.py`
-- [ ] T025 [P] [US3] Implement content type conversion from MCP ImageContent to internal ImageContent in `src/holodeck/tools/mcp/content.py`
-- [ ] T026 [P] [US3] Implement content type conversion from MCP AudioContent to internal AudioContent in `src/holodeck/tools/mcp/content.py`
-- [ ] T027 [P] [US3] Implement content type conversion from MCP EmbeddedResource/ResourceLink to internal BinaryContent in `src/holodeck/tools/mcp/content.py`
-- [ ] T028 [US3] Implement convert_mcp_content() function that handles all MCP content types in `src/holodeck/tools/mcp/content.py`
-- [ ] T029 [US3] Integrate content conversion into call_tool() response processing in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T030 [P] [US3] Add unit tests for content type conversion in `tests/unit/tools/mcp/test_content.py`
+- [ ] T023 [US3] Implement content type conversion from MCP TextContent to internal TextContent in `src/holodeck/tools/mcp/content.py`
+- [ ] T024 [P] [US3] Implement content type conversion from MCP ImageContent to internal ImageContent in `src/holodeck/tools/mcp/content.py`
+- [ ] T025 [P] [US3] Implement content type conversion from MCP AudioContent to internal AudioContent in `src/holodeck/tools/mcp/content.py`
+- [ ] T026 [P] [US3] Implement content type conversion from MCP EmbeddedResource/ResourceLink to internal BinaryContent in `src/holodeck/tools/mcp/content.py`
+- [ ] T027 [US3] Implement convert_mcp_content() function that handles all MCP content types in `src/holodeck/tools/mcp/content.py`
+- [ ] T028 [US3] Integrate content conversion into call_tool() response processing in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T029 [P] [US3] Add unit tests for content type conversion in `tests/unit/tools/mcp/test_content.py`
 
 **Checkpoint**: At this point, User Stories 1, 2, AND 3 should work - full stdio MCP with response processing
 
@@ -112,13 +111,13 @@
 
 ### Implementation for User Story 4
 
-- [ ] T031 [US4] Implement list_tools() method that returns discovered tool definitions in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T032 [US4] Implement list_prompts() method that returns discovered prompt definitions in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T033 [US4] Implement get_prompt() method to retrieve MCP prompts in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T034 [US4] Implement tool list refresh on `notifications/tools/list_changed` notification in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T035 [US4] Implement prompt list refresh on `notifications/prompts/list_changed` notification in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T036 [US4] Implement load_tools and load_prompts configuration options in MCPPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T037 [P] [US4] Add unit tests for tool/prompt discovery in `tests/unit/tools/mcp/test_plugin.py`
+- [ ] T030 [US4] Implement list_tools() method that returns discovered tool definitions in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T031 [US4] Implement list_prompts() method that returns discovered prompt definitions in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T032 [US4] Implement get_prompt() method to retrieve MCP prompts in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T033 [US4] Implement tool list refresh on `notifications/tools/list_changed` notification in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T034 [US4] Implement prompt list refresh on `notifications/prompts/list_changed` notification in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T035 [US4] Implement load_tools and load_prompts configuration options in MCPPluginWrapper in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T036 [P] [US4] Add unit tests for tool/prompt discovery in `tests/unit/tools/mcp/test_plugin.py`
 
 **Checkpoint**: At this point, all P1 user stories complete - full stdio MCP functionality
 
@@ -132,12 +131,12 @@
 
 ### Implementation for User Story 5
 
-- [ ] T038 [US5] Implement connection error handling with clear command path in error message in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T039 [US5] Implement server crash detection and MCPConnectionError in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T040 [US5] Implement MCP protocol error extraction and MCPProtocolError in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T041 [US5] Implement request_timeout handling with MCPTimeoutError in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T042 [US5] Implement MCPToolNotFoundError when tool not found on server in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T043 [P] [US5] Add unit tests for error handling scenarios in `tests/unit/tools/mcp/test_plugin.py`
+- [ ] T037 [US5] Implement connection error handling with clear command path in error message in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T038 [US5] Implement server crash detection and MCPConnectionError in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T039 [US5] Implement MCP protocol error extraction and MCPProtocolError in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T040 [US5] Implement request_timeout handling with MCPTimeoutError in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T041 [US5] Implement MCPToolNotFoundError when tool not found on server in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T042 [P] [US5] Add unit tests for error handling scenarios in `tests/unit/tools/mcp/test_plugin.py`
 
 **Checkpoint**: At this point, User Story 5 complete - robust error handling for stdio MCP
 
@@ -151,10 +150,10 @@
 
 ### Implementation for User Story 6
 
-- [ ] T044 [US6] Implement MCPSsePluginWrapper in `src/holodeck/tools/mcp/plugin.py` wrapping SK MCPSsePlugin with url, headers, timeout, sse_read_timeout
-- [ ] T045 [US6] Implement header environment variable resolution in MCPSsePluginWrapper in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T046 [US6] Register SSE transport in factory create_mcp_plugin() in `src/holodeck/tools/mcp/factory.py`
-- [ ] T047 [P] [US6] Add unit tests for MCPSsePluginWrapper in `tests/unit/tools/mcp/test_plugin.py`
+- [ ] T043 [US6] Implement MCPSsePluginWrapper in `src/holodeck/tools/mcp/plugin.py` wrapping SK MCPSsePlugin with url, headers, timeout, sse_read_timeout
+- [ ] T044 [US6] Implement header environment variable resolution in MCPSsePluginWrapper in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T045 [US6] Register SSE transport in factory create_mcp_plugin() in `src/holodeck/tools/mcp/factory.py`
+- [ ] T046 [P] [US6] Add unit tests for MCPSsePluginWrapper in `tests/unit/tools/mcp/test_plugin.py`
 
 **Checkpoint**: At this point, User Story 6 complete - SSE transport support
 
@@ -168,9 +167,9 @@
 
 ### Implementation for User Story 7
 
-- [ ] T048 [US7] Implement MCPWebsocketPluginWrapper in `src/holodeck/tools/mcp/plugin.py` wrapping SK MCPWebsocketPlugin with url
-- [ ] T049 [US7] Register WebSocket transport in factory create_mcp_plugin() in `src/holodeck/tools/mcp/factory.py`
-- [ ] T050 [P] [US7] Add unit tests for MCPWebsocketPluginWrapper in `tests/unit/tools/mcp/test_plugin.py`
+- [ ] T047 [US7] Implement MCPWebsocketPluginWrapper in `src/holodeck/tools/mcp/plugin.py` wrapping SK MCPWebsocketPlugin with url
+- [ ] T048 [US7] Register WebSocket transport in factory create_mcp_plugin() in `src/holodeck/tools/mcp/factory.py`
+- [ ] T049 [P] [US7] Add unit tests for MCPWebsocketPluginWrapper in `tests/unit/tools/mcp/test_plugin.py`
 
 **Checkpoint**: At this point, User Story 7 complete - WebSocket transport support
 
@@ -184,9 +183,9 @@
 
 ### Implementation for User Story 8
 
-- [ ] T051 [US8] Implement MCPStreamableHttpPluginWrapper in `src/holodeck/tools/mcp/plugin.py` wrapping SK MCPStreamableHttpPlugin with url, headers, timeout, sse_read_timeout, terminate_on_close
-- [ ] T052 [US8] Register HTTP transport in factory create_mcp_plugin() in `src/holodeck/tools/mcp/factory.py`
-- [ ] T053 [P] [US8] Add unit tests for MCPStreamableHttpPluginWrapper in `tests/unit/tools/mcp/test_plugin.py`
+- [ ] T050 [US8] Implement MCPStreamableHttpPluginWrapper in `src/holodeck/tools/mcp/plugin.py` wrapping SK MCPStreamableHttpPlugin with url, headers, timeout, sse_read_timeout, terminate_on_close
+- [ ] T051 [US8] Register HTTP transport in factory create_mcp_plugin() in `src/holodeck/tools/mcp/factory.py`
+- [ ] T052 [P] [US8] Add unit tests for MCPStreamableHttpPluginWrapper in `tests/unit/tools/mcp/test_plugin.py`
 
 **Checkpoint**: At this point, all user stories complete - full MCP transport support
 
@@ -196,13 +195,13 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T054 [P] Export public API from `src/holodeck/tools/mcp/__init__.py` (MCPPluginWrapper, MCPToolResult, ContentBlock, create_mcp_plugin, MCP errors)
-- [ ] T055 [P] Add MCP logging callbacks with log level mapping in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T056 [P] Add message handler callbacks for server exceptions in `src/holodeck/tools/mcp/plugin.py`
-- [ ] T057 Update `src/holodeck/tools/__init__.py` to export MCP module
-- [ ] T058 [P] Add integration tests for stdio MCP server in `tests/integration/tools/test_mcp_integration.py`
-- [ ] T059 Run quickstart.md validation with actual MCP server
-- [ ] T060 Run `make format && make lint && make type-check && make security` to ensure code quality
+- [ ] T053 [P] Export public API from `src/holodeck/tools/mcp/__init__.py` (MCPPluginWrapper, MCPToolResult, ContentBlock, create_mcp_plugin, MCP errors)
+- [ ] T054 [P] Add MCP logging callbacks with log level mapping in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T055 [P] Add message handler callbacks for server exceptions in `src/holodeck/tools/mcp/plugin.py`
+- [ ] T056 Update `src/holodeck/tools/__init__.py` to export MCP module
+- [ ] T057 [P] Add integration tests for stdio MCP server in `tests/integration/tools/test_mcp_integration.py`
+- [ ] T058 Run quickstart.md validation with actual MCP server
+- [ ] T059 Run `make format && make lint && make type-check && make security` to ensure code quality
 
 ---
 
@@ -250,7 +249,6 @@
 ```bash
 # Launch all parallel foundational tasks together:
 Task: "Add transport-specific Pydantic validators in src/holodeck/models/tool.py"
-Task: "Add substitute_input_vars() function in src/holodeck/config/env_loader.py"
 Task: "Create MCPToolResult model in src/holodeck/tools/mcp/content.py"
 ```
 

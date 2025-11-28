@@ -181,37 +181,36 @@ A developer configures an MCP tool to use HTTP with streaming response support. 
 
 #### Configuration
 - **FR-008**: System MUST support environment variable configuration for MCP servers via `env` mapping
-- **FR-009**: System MUST support environment variable file loading via `envFile` configuration
+- **FR-009**: System MUST support environment variable file loading via `env_file` configuration
 - **FR-010**: System MUST resolve environment variable references using `${VAR_NAME}` syntax in configuration; unresolvable references MUST cause configuration load to fail with a clear error message identifying the missing variable
-- **FR-011**: System MUST support input variable placeholders using `${input:variable-id}` syntax for sensitive values
-- **FR-012**: System MUST support configuration passthrough to MCP servers via `config` object
-- **FR-013**: System MUST support `request_timeout` configuration for MCP operations (default: 60 seconds)
+- **FR-011**: System MUST support configuration passthrough to MCP servers via `config` object
+- **FR-012**: System MUST support `request_timeout` configuration for MCP operations (default: 60 seconds)
 
 #### Tool & Prompt Discovery
-- **FR-014**: System MUST automatically discover and register tools from MCP servers when `load_tools: true` (default)
-- **FR-015**: System MUST automatically discover prompts from MCP servers when `load_prompts: true` (default)
-- **FR-016**: System MUST normalize tool names by replacing invalid characters with "-" (per Semantic Kernel pattern)
-- **FR-017**: System MUST handle `notifications/tools/list_changed` and `notifications/prompts/list_changed` notifications to refresh tool/prompt lists
+- **FR-013**: System MUST automatically discover and register tools from MCP servers when `load_tools: true` (default)
+- **FR-014**: System MUST automatically discover prompts from MCP servers when `load_prompts: true` (default)
+- **FR-015**: System MUST normalize tool names by replacing invalid characters with "-" (per Semantic Kernel pattern)
+- **FR-016**: System MUST handle `notifications/tools/list_changed` and `notifications/prompts/list_changed` notifications to refresh tool/prompt lists
 
 #### Content Type Conversion
-- **FR-018**: System MUST convert MCP TextContent to internal TextContent representation
-- **FR-019**: System MUST convert MCP ImageContent to internal ImageContent representation
-- **FR-020**: System MUST convert MCP AudioContent to internal AudioContent representation
-- **FR-021**: System MUST convert MCP EmbeddedResource and ResourceLink to internal BinaryContent representation
+- **FR-017**: System MUST convert MCP TextContent to internal TextContent representation
+- **FR-018**: System MUST convert MCP ImageContent to internal ImageContent representation
+- **FR-019**: System MUST convert MCP AudioContent to internal AudioContent representation
+- **FR-020**: System MUST convert MCP EmbeddedResource and ResourceLink to internal BinaryContent representation
 
 #### Error Handling
-- **FR-022**: System MUST provide clear error messages when MCP server connection fails, including the command that failed
-- **FR-023**: System MUST provide clear error messages when MCP server returns an error response
-- **FR-024**: System MUST handle server process crashes gracefully and report server unavailability
+- **FR-021**: System MUST provide clear error messages when MCP server connection fails, including the command that failed
+- **FR-022**: System MUST provide clear error messages when MCP server returns an error response
+- **FR-023**: System MUST handle server process crashes gracefully and report server unavailability
 
 #### Lifecycle Management
-- **FR-025**: System MUST manage MCP server process lifecycle (start on first use, terminate on agent shutdown)
-- **FR-026**: System MUST support async context management for proper resource cleanup
-- **FR-027**: System MUST validate MCP tool configuration at agent load time and provide helpful validation errors
+- **FR-024**: System MUST manage MCP server process lifecycle (start on first use, terminate on agent shutdown)
+- **FR-025**: System MUST support async context management for proper resource cleanup
+- **FR-026**: System MUST validate MCP tool configuration at agent load time and provide helpful validation errors
 
 #### Logging & Callbacks
-- **FR-028**: System MUST support MCP logging callbacks and map MCP log levels to standard logging levels
-- **FR-029**: System MUST support message handler callbacks for server exceptions and notifications
+- **FR-027**: System MUST support MCP logging callbacks and map MCP log levels to standard logging levels
+- **FR-028**: System MUST support message handler callbacks for server exceptions and notifications
 
 ### Key Entities
 
