@@ -65,8 +65,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Remove old files (except .git) and copy new ones
-          find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} +
+          # Remove old files (except .git and CNAME) and copy new ones
+          find . -maxdepth 1 ! -name '.git' ! -name '.' ! -name 'CNAME' -exec rm -rf {} +
           cp -r ../site/* .
 
           # Commit and push if there are changes
