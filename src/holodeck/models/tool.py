@@ -46,11 +46,13 @@ class CommandType(str, Enum):
     Only these commands are permitted for spawning MCP server processes
     to prevent command injection attacks:
     - NPX: Node.js/npm package runner
+    - NODE: Direct Node.js script runner
     - UVX: Python/uv package runner
     - DOCKER: Docker container runner
     """
 
     NPX = "npx"
+    NODE = "node"
     UVX = "uvx"
     DOCKER = "docker"
 
@@ -284,7 +286,6 @@ class MCPTool(BaseModel):
     name: str = Field(..., description="Tool identifier")
     description: str = Field(..., description="Tool description")
     type: Literal["mcp"] = Field(default="mcp", description="Tool type")
-    server: str = Field(..., description="MCP server identifier")
 
     # Transport configuration
     transport: TransportType = Field(
@@ -316,14 +317,6 @@ class MCPTool(BaseModel):
     load_tools: bool = Field(True, description="Auto-discover tools from server")
     load_prompts: bool = Field(True, description="Auto-discover prompts from server")
     request_timeout: int = Field(60, description="Operation timeout (seconds)")
-
-    @field_validator("server")
-    @classmethod
-    def validate_server(cls, v: str) -> str:
-        """Validate server is not empty."""
-        if not v or not v.strip():
-            raise ValueError("server must be a non-empty identifier")
-        return v
 
     @field_validator("url")
     @classmethod

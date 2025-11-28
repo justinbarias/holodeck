@@ -54,7 +54,8 @@ tools:
   - name: file-browser
     description: Read and explore files on the filesystem (MCP server)
     type: mcp
-    server: "@modelcontextprotocol/server-filesystem"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/Users/shared"]
     config:
       allowed_directories:
         - /Users/shared/documents

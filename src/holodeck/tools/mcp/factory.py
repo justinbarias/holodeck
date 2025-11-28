@@ -13,8 +13,8 @@ Usage:
     config = MCPTool(
         name="filesystem",
         description="File operations",
-        server="@modelcontextprotocol/server-filesystem",
         command=CommandType.NPX,
+        args=["-y", "@modelcontextprotocol/server-filesystem", "./data"],
     )
     plugin = create_mcp_plugin(config)
     async with plugin:
@@ -22,10 +22,50 @@ Usage:
         tools = await plugin.list_tools()
 """
 
+import json
 from typing import Any
 
+from holodeck.config.env_loader import load_env_file, substitute_env_vars
 from holodeck.models.tool import MCPTool, TransportType
 from holodeck.tools.mcp.errors import MCPConfigError
+
+
+def _resolve_env_vars(config: MCPTool) -> dict[str, str]:
+    """Resolve environment variables for MCP plugin.
+
+    Loads env_file if specified, then resolves ${VAR} patterns
+    in env dict values. Fail-fast on missing variables.
+
+    Precedence (highest to lowest):
+    1. Explicit env vars from config.env
+    2. Variables loaded from config.env_file
+    3. Process environment (for ${VAR} substitution)
+
+    Args:
+        config: MCP tool configuration
+
+    Returns:
+        Dictionary of resolved environment variables
+
+    Raises:
+        ConfigError: If a referenced environment variable is not found
+    """
+    resolved_env: dict[str, str] = {}
+
+    # Load env_file first (lower precedence)
+    if config.env_file:
+        resolved_env.update(load_env_file(config.env_file))
+
+    # Apply explicit env vars (higher precedence)
+    if config.env:
+        for key, value in config.env.items():
+            resolved_env[key] = substitute_env_vars(value)
+
+    # Pass config as JSON via MCP_CONFIG env var if provided
+    if config.config:
+        resolved_env["MCP_CONFIG"] = json.dumps(config.config)
+
+    return resolved_env
 
 
 def create_mcp_plugin(config: MCPTool) -> Any:
@@ -54,28 +94,34 @@ def create_mcp_plugin(config: MCPTool) -> Any:
         >>> config = MCPTool(
         ...     name="filesystem",
         ...     description="File operations",
-        ...     server="@modelcontextprotocol/server-filesystem",
         ...     command=CommandType.NPX,
+        ...     args=["-y", "@modelcontextprotocol/server-filesystem"],
         ... )
         >>> plugin = create_mcp_plugin(config)
         >>> # plugin is an MCPStdioPlugin instance
     """
-    # TODO: Add environment variable resolution using substitute_env_vars()
-    # before passing to SK plugin constructors (T007)
+    # Resolve environment variables (env_file + explicit env + config passthrough)
+    resolved_env = _resolve_env_vars(config)
 
     if config.transport == TransportType.STDIO:
-        # TODO: Implement in T008 (Phase 3 - User Story 1)
-        # from semantic_kernel.connectors.mcp import MCPStdioPlugin
-        # return MCPStdioPlugin(
-        #     name=config.name,
-        #     command=config.command.value if config.command else "npx",
-        #     args=[config.server] + (config.args or []),
-        #     env=config.env,
-        #     encoding=config.encoding or "utf-8",
-        # )
-        raise MCPConfigError(
-            field="transport",
-            message="Stdio transport not yet implemented. Coming in Phase 3.",
+        # Import SK plugin lazily to avoid hard dependency
+        try:
+            from semantic_kernel.connectors.mcp import MCPStdioPlugin
+        except ImportError as e:
+            raise MCPConfigError(
+                field="transport",
+                message=(
+                    "Semantic Kernel MCP support not installed. "
+                    "Install with: pip install semantic-kernel[mcp]"
+                ),
+            ) from e
+
+        return MCPStdioPlugin(
+            name=config.name,
+            command=config.command.value if config.command else "npx",
+            args=(config.args or []),
+            env=resolved_env if resolved_env else None,
+            encoding=config.encoding or "utf-8",
         )
 
     elif config.transport == TransportType.SSE:

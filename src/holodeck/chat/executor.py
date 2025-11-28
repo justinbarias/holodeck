@@ -166,10 +166,14 @@ class AgentExecutor:
         """Cleanup executor resources.
 
         Called when ending a chat session to release any held resources.
+        Must be called from the same task context where the executor was used
+        to properly cleanup MCP plugins.
         """
         try:
             logger.debug("AgentExecutor shutting down")
-            # Currently no special cleanup needed, but provided for future extension
+            # Shutdown the underlying factory (cleans up MCP plugins, vectorstores)
+            await self._factory.shutdown()
+            logger.debug("AgentExecutor shutdown complete")
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
 

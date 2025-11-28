@@ -41,7 +41,7 @@ from holodeck.lib.logging_utils import log_retry
 from holodeck.models.agent import Agent
 from holodeck.models.llm import ProviderEnum
 from holodeck.models.token_usage import TokenUsage
-from holodeck.models.tool import VectorstoreTool
+from holodeck.models.tool import MCPTool, VectorstoreTool
 
 # Try to import Anthropic support (optional dependency)
 try:
@@ -129,6 +129,9 @@ class AgentFactory:
         self._tools_initialized = False
         self._vectorstore_tools: list[Any] = []
         self._embedding_service: Any = None
+
+        # MCP tool support
+        self._mcp_plugins: list[Any] = []
 
         logger.debug(
             f"Initializing AgentFactory: agent={agent_config.name}, "
@@ -403,8 +406,66 @@ class AgentFactory:
                     f"Failed to initialize vectorstore tool {config.name}: {e}"
                 ) from e
 
+    def _has_mcp_tools(self) -> bool:
+        """Check if agent config contains any MCP tools.
+
+        Returns:
+            True if at least one MCP tool is configured.
+        """
+        if not self.agent_config.tools:
+            return False
+
+        return any(isinstance(tool, MCPTool) for tool in self.agent_config.tools)
+
+    async def _register_mcp_tools(self) -> None:
+        """Discover, initialize, and register MCP tools from agent config.
+
+        Iterates through agent_config.tools, finds MCP tools, creates
+        SK MCP plugins via the factory, connects them, and registers
+        their discovered tools on the kernel.
+
+        MCP plugins handle their own lifecycle via async context managers.
+        SK will manage cleanup when plugins go out of scope.
+
+        Raises:
+            AgentFactoryError: If MCP plugin creation or connection fails.
+        """
+        if not self.agent_config.tools:
+            return
+
+        if not self._has_mcp_tools():
+            return
+
+        # Import factory lazily to avoid circular imports
+        from holodeck.tools.mcp.factory import create_mcp_plugin
+
+        for tool_config in self.agent_config.tools:
+            # Only process MCP tools
+            if not isinstance(tool_config, MCPTool):
+                continue
+
+            try:
+                # Create SK MCP plugin via factory
+                plugin = create_mcp_plugin(tool_config)
+
+                # Connect plugin (enters async context manager)
+                await plugin.__aenter__()
+
+                # Register the plugin on the kernel
+                # SK MCP plugins auto-register their tools when connected
+                self.kernel.add_plugin(plugin)
+                self._mcp_plugins.append(plugin)
+
+                logger.info(f"Registered MCP tool: {tool_config.name}")
+
+            except Exception as e:
+                logger.error(f"Failed to initialize MCP tool {tool_config.name}: {e}")
+                raise AgentFactoryError(
+                    f"Failed to initialize MCP tool {tool_config.name}: {e}"
+                ) from e
+
     async def _ensure_tools_initialized(self) -> None:
-        """Ensure vectorstore tools are initialized (called before first invoke).
+        """Ensure all tools are initialized (called before first invoke).
 
         This implements lazy initialization - tools are initialized on the first
         call to invoke() rather than during __init__.
@@ -412,7 +473,46 @@ class AgentFactory:
         if self._tools_initialized:
             return
         await self._register_vectorstore_tools()
+        await self._register_mcp_tools()
         self._tools_initialized = True
+
+    async def shutdown(self) -> None:
+        """Shutdown all MCP plugins and release resources.
+
+        Must be called from the same task context where the factory was used.
+        Properly exits all MCP plugin async context managers to avoid
+        'Attempted to exit cancel scope in a different task' errors.
+        """
+        errors: list[Exception] = []
+
+        # Shutdown MCP plugins in reverse order
+        for plugin in reversed(self._mcp_plugins):
+            try:
+                plugin_name = getattr(plugin, "name", "unknown")
+                logger.debug(f"Shutting down MCP plugin: {plugin_name}")
+                await plugin.__aexit__(None, None, None)
+                logger.info(f"MCP plugin shut down: {plugin_name}")
+            except Exception as e:
+                plugin_name = getattr(plugin, "name", "unknown")
+                logger.warning(f"Error shutting down MCP plugin {plugin_name}: {e}")
+                errors.append(e)
+
+        self._mcp_plugins.clear()
+
+        # Cleanup vectorstore tools if they have cleanup methods
+        for tool in self._vectorstore_tools:
+            try:
+                if hasattr(tool, "cleanup"):
+                    await tool.cleanup()
+            except Exception as e:
+                logger.warning(f"Error cleaning up vectorstore tool: {e}")
+                errors.append(e)
+
+        self._vectorstore_tools.clear()
+        self._tools_initialized = False
+
+        if errors:
+            logger.warning(f"Shutdown completed with {len(errors)} error(s)")
 
     def _create_agent(self) -> SKAgent:
         """Create Semantic Kernel Agent with configuration.
