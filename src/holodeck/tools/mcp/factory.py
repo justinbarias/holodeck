@@ -23,11 +23,17 @@ Usage:
 """
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING
 
 from holodeck.config.env_loader import load_env_file, substitute_env_vars
 from holodeck.models.tool import MCPTool, TransportType
 from holodeck.tools.mcp.errors import MCPConfigError
+
+# Default encoding for MCP stdio transport
+DEFAULT_STDIO_ENCODING: str = "utf-8"
+
+if TYPE_CHECKING:
+    from semantic_kernel.connectors.mcp import MCPStdioPlugin
 
 
 def _resolve_env_vars(config: MCPTool) -> dict[str, str]:
@@ -68,7 +74,7 @@ def _resolve_env_vars(config: MCPTool) -> dict[str, str]:
     return resolved_env
 
 
-def create_mcp_plugin(config: MCPTool) -> Any:
+def create_mcp_plugin(config: MCPTool) -> "MCPStdioPlugin":
     """Create an SK MCP plugin based on transport type.
 
     This factory function creates the appropriate Semantic Kernel MCP plugin
@@ -85,7 +91,8 @@ def create_mcp_plugin(config: MCPTool) -> Any:
         config: MCP tool configuration from agent.yaml
 
     Returns:
-        Appropriate SK MCP plugin instance (MCPStdioPlugin, MCPSsePlugin, etc.)
+        MCPStdioPlugin instance. Other transport types (SSE, WebSocket, HTTP)
+        will return their respective plugin types when implemented.
 
     Raises:
         MCPConfigError: If transport type is not supported or not yet implemented
@@ -121,7 +128,7 @@ def create_mcp_plugin(config: MCPTool) -> Any:
             command=config.command.value if config.command else "npx",
             args=(config.args or []),
             env=resolved_env if resolved_env else None,
-            encoding=config.encoding or "utf-8",
+            encoding=config.encoding or DEFAULT_STDIO_ENCODING,
         )
 
     elif config.transport == TransportType.SSE:

@@ -10,7 +10,9 @@ Tests factory function for creating MCP plugins, including:
 import json
 import os
 import sys
+from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,6 +21,39 @@ from holodeck.lib.errors import ConfigError
 from holodeck.models.tool import CommandType, MCPTool, TransportType
 from holodeck.tools.mcp.errors import MCPConfigError
 from holodeck.tools.mcp.factory import _resolve_env_vars, create_mcp_plugin
+
+
+@pytest.fixture
+def mock_mcp_stdio_plugin() -> Generator[tuple[MagicMock, MagicMock], None, None]:
+    """Fixture providing a mocked MCPStdioPlugin class and instance.
+
+    Yields:
+        Tuple of (mock_plugin_class, mock_plugin_instance)
+    """
+    mock_plugin_class = MagicMock()
+    mock_plugin_instance = MagicMock()
+    mock_plugin_class.return_value = mock_plugin_instance
+
+    with patch.dict(
+        sys.modules,
+        {"semantic_kernel.connectors.mcp": MagicMock(MCPStdioPlugin=mock_plugin_class)},
+    ):
+        yield mock_plugin_class, mock_plugin_instance
+
+
+@pytest.fixture
+def create_plugin_with_mock(
+    mock_mcp_stdio_plugin: tuple[MagicMock, MagicMock],
+) -> Any:
+    """Fixture providing the create_mcp_plugin function with mocked SK.
+
+    Returns:
+        The create_mcp_plugin function that uses mocked SK imports.
+    """
+    # Re-import to pick up the mock
+    from holodeck.tools.mcp.factory import create_mcp_plugin as create_plugin
+
+    return create_plugin
 
 
 class TestCreateMCPPluginNotImplemented:
@@ -67,116 +102,89 @@ class TestCreateMCPPluginNotImplemented:
 class TestCreateMCPPluginStdio:
     """Test stdio transport plugin creation with mocked SK."""
 
-    def test_stdio_creates_plugin_with_correct_args(self) -> None:
+    def test_stdio_creates_plugin_with_correct_args(
+        self,
+        mock_mcp_stdio_plugin: tuple[MagicMock, MagicMock],
+        create_plugin_with_mock: Any,
+    ) -> None:
         """Stdio transport creates MCPStdioPlugin with correct constructor args."""
-        mock_plugin_class = MagicMock()
-        mock_plugin_instance = MagicMock()
-        mock_plugin_class.return_value = mock_plugin_instance
+        mock_plugin_class, mock_plugin_instance = mock_mcp_stdio_plugin
 
-        with patch.dict(
-            sys.modules,
-            {
-                "semantic_kernel.connectors.mcp": MagicMock(
-                    MCPStdioPlugin=mock_plugin_class
-                )
-            },
-        ):
-            # Re-import to pick up the mock
-            from holodeck.tools.mcp.factory import create_mcp_plugin as create_plugin
+        # User must specify full args including the server package
+        config = MCPTool(
+            name="filesystem",
+            description="File ops",
+            command=CommandType.NPX,
+            args=["-y", "@modelcontextprotocol/server-filesystem"],
+        )
+        result = create_plugin_with_mock(config)
 
-            # User must specify full args including the server package
-            config = MCPTool(
-                name="filesystem",
-                description="File ops",
-                command=CommandType.NPX,
-                args=["-y", "@modelcontextprotocol/server-filesystem"],
-            )
-            result = create_plugin(config)
+        mock_plugin_class.assert_called_once_with(
+            name="filesystem",
+            command="npx",
+            args=["-y", "@modelcontextprotocol/server-filesystem"],
+            env=None,
+            encoding="utf-8",
+        )
+        assert result == mock_plugin_instance
 
-            mock_plugin_class.assert_called_once_with(
-                name="filesystem",
-                command="npx",
-                args=["-y", "@modelcontextprotocol/server-filesystem"],
-                env=None,
-                encoding="utf-8",
-            )
-            assert result == mock_plugin_instance
-
-    def test_stdio_includes_additional_args(self) -> None:
+    def test_stdio_includes_additional_args(
+        self,
+        mock_mcp_stdio_plugin: tuple[MagicMock, MagicMock],
+        create_plugin_with_mock: Any,
+    ) -> None:
         """Stdio transport passes args directly to plugin."""
-        mock_plugin_class = MagicMock()
+        mock_plugin_class, _ = mock_mcp_stdio_plugin
 
-        with patch.dict(
-            sys.modules,
-            {
-                "semantic_kernel.connectors.mcp": MagicMock(
-                    MCPStdioPlugin=mock_plugin_class
-                )
-            },
-        ):
-            from holodeck.tools.mcp.factory import create_mcp_plugin as create_plugin
+        config = MCPTool(
+            name="test",
+            description="Test",
+            command=CommandType.NPX,
+            args=["-y", "test-server", "--verbose"],
+        )
+        create_plugin_with_mock(config)
 
-            config = MCPTool(
-                name="test",
-                description="Test",
-                command=CommandType.NPX,
-                args=["-y", "test-server", "--verbose"],
-            )
-            create_plugin(config)
+        call_args = mock_plugin_class.call_args
+        # Args are passed directly as configured by user
+        assert call_args.kwargs["args"] == ["-y", "test-server", "--verbose"]
 
-            call_args = mock_plugin_class.call_args
-            # Args are passed directly as configured by user
-            assert call_args.kwargs["args"] == ["-y", "test-server", "--verbose"]
-
-    def test_stdio_docker_command(self) -> None:
+    def test_stdio_docker_command(
+        self,
+        mock_mcp_stdio_plugin: tuple[MagicMock, MagicMock],
+        create_plugin_with_mock: Any,
+    ) -> None:
         """Stdio transport uses docker command correctly."""
-        mock_plugin_class = MagicMock()
+        mock_plugin_class, _ = mock_mcp_stdio_plugin
 
-        with patch.dict(
-            sys.modules,
-            {
-                "semantic_kernel.connectors.mcp": MagicMock(
-                    MCPStdioPlugin=mock_plugin_class
-                )
-            },
-        ):
-            from holodeck.tools.mcp.factory import create_mcp_plugin as create_plugin
+        config = MCPTool(
+            name="test",
+            description="Test",
+            command=CommandType.DOCKER,
+            args=["run", "-i", "--rm", "my-container:latest"],
+        )
+        create_plugin_with_mock(config)
 
-            config = MCPTool(
-                name="test",
-                description="Test",
-                command=CommandType.DOCKER,
-                args=["run", "-i", "--rm", "my-container:latest"],
-            )
-            create_plugin(config)
+        call_args = mock_plugin_class.call_args
+        assert call_args.kwargs["command"] == "docker"
 
-            call_args = mock_plugin_class.call_args
-            assert call_args.kwargs["command"] == "docker"
-
-    def test_stdio_custom_encoding(self) -> None:
+    def test_stdio_custom_encoding(
+        self,
+        mock_mcp_stdio_plugin: tuple[MagicMock, MagicMock],
+        create_plugin_with_mock: Any,
+    ) -> None:
         """Stdio transport respects custom encoding."""
-        mock_plugin_class = MagicMock()
+        mock_plugin_class, _ = mock_mcp_stdio_plugin
 
-        with patch.dict(
-            sys.modules,
-            {
-                "semantic_kernel.connectors.mcp": MagicMock(
-                    MCPStdioPlugin=mock_plugin_class
-                )
-            },
-        ):
-            from holodeck.tools.mcp.factory import create_mcp_plugin as create_plugin
+        config = MCPTool(
+            name="test",
+            description="Test",
+            command=CommandType.NPX,
+            encoding="latin-1",
+        )
+        create_plugin_with_mock(config)
 
-            config = MCPTool(
-                name="test",
-                description="Test",
-                command=CommandType.NPX,
-                encoding="latin-1",
-            )
-            create_plugin(config)
-
-            call_args = mock_plugin_class.call_args
-            assert call_args.kwargs["encoding"] == "latin-1"
+        call_args = mock_plugin_class.call_args
+        assert call_args.kwargs["encoding"] == "latin-1"
 
     def test_stdio_import_error_raises_config_error(self) -> None:
         """Missing SK MCP module raises helpful MCPConfigError."""

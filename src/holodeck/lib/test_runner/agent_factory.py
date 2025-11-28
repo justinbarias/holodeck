@@ -43,6 +43,12 @@ from holodeck.models.llm import ProviderEnum
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool import MCPTool, VectorstoreTool
 
+# Default configuration constants for AgentFactory
+DEFAULT_TIMEOUT_SECONDS: float = 60.0
+DEFAULT_MAX_RETRIES: int = 3
+DEFAULT_RETRY_DELAY_SECONDS: float = 2.0
+DEFAULT_RETRY_EXPONENTIAL_BASE: float = 2.0
+
 # Try to import Anthropic support (optional dependency)
 try:
     from semantic_kernel.connectors.ai.anthropic import AnthropicChatCompletion
@@ -96,10 +102,10 @@ class AgentFactory:
     def __init__(
         self,
         agent_config: Agent,
-        timeout: float | None = 60.0,
-        max_retries: int = 3,
-        retry_delay: float = 2.0,
-        retry_exponential_base: float = 2.0,
+        timeout: float | None = DEFAULT_TIMEOUT_SECONDS,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_delay: float = DEFAULT_RETRY_DELAY_SECONDS,
+        retry_exponential_base: float = DEFAULT_RETRY_EXPONENTIAL_BASE,
         force_ingest: bool = False,
     ) -> None:
         """Initialize agent factory with Semantic Kernel.
@@ -444,6 +450,7 @@ class AgentFactory:
             if not isinstance(tool_config, MCPTool):
                 continue
 
+            plugin = None
             try:
                 # Create SK MCP plugin via factory
                 plugin = create_mcp_plugin(tool_config)
@@ -451,14 +458,27 @@ class AgentFactory:
                 # Connect plugin (enters async context manager)
                 await plugin.__aenter__()
 
+                # Track plugin IMMEDIATELY after __aenter__ succeeds
+                # This ensures cleanup happens even if add_plugin fails
+                self._mcp_plugins.append(plugin)
+
                 # Register the plugin on the kernel
                 # SK MCP plugins auto-register their tools when connected
                 self.kernel.add_plugin(plugin)
-                self._mcp_plugins.append(plugin)
 
                 logger.info(f"Registered MCP tool: {tool_config.name}")
 
             except Exception as e:
+                # If plugin was entered but not yet tracked, clean it up
+                if plugin is not None and plugin not in self._mcp_plugins:
+                    try:
+                        await plugin.__aexit__(None, None, None)
+                    except Exception as cleanup_error:
+                        logger.warning(
+                            f"Error cleaning up MCP plugin {tool_config.name} "
+                            f"after initialization failure: {cleanup_error}"
+                        )
+
                 logger.error(f"Failed to initialize MCP tool {tool_config.name}: {e}")
                 raise AgentFactoryError(
                     f"Failed to initialize MCP tool {tool_config.name}: {e}"
