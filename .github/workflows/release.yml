@@ -48,14 +48,34 @@ jobs:
 
       - name: Deploy docs
         run: |
+          # Build documentation
           uv run mkdocs build -d site/
-          cd site/
-          git init
+
+          # Clone existing docs repo to preserve history
+          git clone https://${{ secrets.DOCS_DEPLOY_TOKEN }}@github.com/${{ github.repository_owner }}/holodeck-docs.git docs-repo || {
+            # If repo doesn't exist or is empty, initialize it
+            mkdir docs-repo
+            cd docs-repo
+            git init
+            git checkout -b main
+            cd ..
+          }
+
+          cd docs-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b main
-          git add .
-          git commit -m "Deploy documentation"
-          git push -f https://${{ secrets.DOCS_DEPLOY_TOKEN }}@github.com/${{ github.repository_owner }}/holodeck-docs.git main:main
+
+          # Remove old files (except .git) and copy new ones
+          find . -maxdepth 1 ! -name '.git' ! -name '.' -exec rm -rf {} +
+          cp -r ../site/* .
+
+          # Commit and push if there are changes
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to documentation"
+          else
+            git commit -m "Deploy documentation for ${{ github.ref_name }}"
+            git push origin main
+          fi
         env:
           DOCS_DEPLOY_TOKEN: ${{ secrets.DOCS_DEPLOY_TOKEN }}

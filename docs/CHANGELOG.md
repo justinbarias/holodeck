@@ -2,21 +2,159 @@
 
 All notable changes to HoloDeck will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Planned Features
 
-- **Agent Engine Phase 2**: Agent execution and LLM interaction
-- **Tool Execution**: Dynamic tool loading and execution
-- **Evaluation Engine**: AI-powered metrics (groundedness, relevance) and NLP metrics (F1, BLEU, ROUGE)
 - **Deployment Engine**: Convert agents to production FastAPI endpoints
-- **CLI Commands**: `holodeck run`, `holodeck evaluate`, `holodeck deploy`
+- **CLI Commands**: `holodeck deploy`
 - **Observability**: OpenTelemetry integration with GenAI semantic conventions
 - **Plugin System**: Pre-built plugin packages for common integrations
-- **Vector Stores**: Redis/Postgres-backed semantic search support
+
+---
+
+## [0.1.6] - 2025-11-28
+
+### Added
+
+- **MCP Tool Integration**: Full Model Context Protocol (MCP) tool support with stdio transport
+- MCP server configuration and connection management
+- Tool discovery and invocation via MCP protocol
+
+### Fixed
+
+- Instruction loading issues in agent configuration
+
+---
+
+## [0.1.5] - 2025-11-27
+
+### Added
+
+- **Project and User Config Support**: Execution config resolution now supports project-level and user-level configuration files
+
+### Fixed
+
+- ChromaDB connection issues
+
+---
+
+## [0.1.4] - 2025-11-27
+
+### Fixed
+
+- PyPI release by removing local version identifiers
+
+---
+
+## [0.1.3] - 2025-11-27
+
+### Added
+
+- **ChromaDB Support**: Explicit ChromaDB vector store integration
+
+### Changed
+
+- **Package Manager**: Switched from Poetry to uv for faster dependency management
+
+### Fixed
+
+- Test logging improvements
+- RedisVL compatibility issues
+- CLI quiet mode behavior
+
+---
+
+## [0.1.2] - 2025-11-26
+
+### Added
+
+- **Ollama Endpoint Support**: Local LLM execution via Ollama
+- **Vector Stores Setup Guide**: Comprehensive Redis vector store documentation
+- Claude Code integration for development assistance
+
+---
+
+## [0.1.1] - 2025-11-25
+
+### Added
+
+- **Semantic Kernel Vector Store Abstractions**: Support for all vector store providers (Redis, ChromaDB, etc.)
+- Agent config execution settings applied to Semantic Kernel
+
+---
+
+## [0.1.0] - 2025-11-23
+
+### Added
+
+- **Chat Models and Validation Pipeline**: Scaffold for interactive chat functionality
+- **Markdown Report Generation**: Comprehensive test result reporting (T123-T127)
+- **Progress Display Enhancements**: Spinner, ANSI colors, elapsed time display
+- **Per-Test Metric Resolution**: EvaluationMetric objects for fine-grained metric configuration (T095-T096)
+- **File Processing Improvements**: Enhanced file input handling
+
+### Changed
+
+- Consolidated and refactored tests to parameterized tests for better maintainability
+- Config init command improvements
+
+---
+
+## [0.0.14] - 2025-11-15
+
+### Fixed
+
+- Poetry development dependencies
+- MkDocs build step
+- Poetry version configuration
+- Various Poetry configuration issues
+
+---
+
+## [0.0.7] - 2025-11-08
+
+### Added
+
+- **Agent Execution Implementation**: Core agent execution engine
+- **Evaluators**: User Story 1 evaluator implementation
+- **Response Format Definition**: Phase 4 implementation (T014-T019)
+- **Global Settings Configuration**: Phase 2 & 3 with TDD approach
+
+---
+
+## [0.0.6] - 2025-10-25
+
+### Added
+
+- **`holodeck init` Command**: Complete project initialization with templates
+  - Phase 8: Polish & QA for init command
+  - Phase 7: Project metadata specification (US5)
+  - Phase 5: Sample files and examples generation (US3)
+  - User Story 2: Project template selection (Phase 4)
+- Core init engine implementation
+- Basic agent creation from templates
+- ConfigLoader returns GlobalConfig rather than dict
+
+---
+
+## [0.0.5] - 2025-10-20
+
+### Fixed
+
+- Version tag configuration
+
+---
+
+## [0.0.4] - 2025-10-20
+
+### Added
+
+- GitHub release workflow
+- Automated PyPI publishing
 
 ---
 
@@ -220,49 +358,53 @@ None reported in 0.0.1.
 
 ### User Story 1: Define Agent Configuration ✅ **0.0.1**
 
-Implemented in 0.0.1:
-
 - YAML-based agent configuration
 - Schema validation
 - Configuration loading and merging
 - File references and environment variables
 
-### User Story 2: Initialize New Agent Project (planned 0.1.0)
+### User Story 2: Initialize New Agent Project ✅ **0.0.6**
 
 - `holodeck init` command
 - Project scaffolding
 - Template agent creation
 - Directory structure setup
 
-### User Story 3: Execute Agent (planned 0.1.0)
+### User Story 3: Execute Agent ✅ **0.0.7 - 0.1.0**
 
-- `holodeck run` command
 - Agent execution engine
-- LLM provider integration
+- LLM provider integration (OpenAI, Azure, Anthropic, Ollama)
 - Tool execution runtime
+- Vector store integrations (Redis, ChromaDB)
 
-### User Story 4: Evaluate Results (planned 0.2.0)
+### User Story 4: Evaluate Results ✅ **0.1.0**
 
-- `holodeck evaluate` command
+- `holodeck test` command
 - Evaluation metric execution
 - AI-powered and NLP metrics
-- Result reporting
+- Markdown report generation
 
-### User Story 5: Deploy Agent (planned 0.2.0)
+### User Story 5: MCP Tool Integration ✅ **0.1.6**
+
+- Model Context Protocol (MCP) support
+- Stdio transport for tool servers
+- Tool discovery and invocation
+
+### User Story 6: Deploy Agent (planned 0.2.0)
 
 - `holodeck deploy` command
 - FastAPI endpoint generation
 - Docker containerization
 - Cloud deployment support
 
-### User Story 6: Observability & Monitoring (planned 0.2.0)
+### User Story 7: Observability & Monitoring (planned 0.2.0)
 
 - OpenTelemetry integration
 - Trace and log instrumentation
 - Cost tracking
 - Performance monitoring
 
-### User Story 7: Plugin System (planned 0.3.0)
+### User Story 8: Plugin System (planned 0.3.0)
 
 - Plugin registry
 - Plugin installation
@@ -316,3 +458,20 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 - [Configuration Guide](guides/agent-configuration.md)
 - [API Reference](api/models.md)
 - [Contributing Guide](contributing.md)
+
+---
+
+[unreleased]: https://github.com/justinbarias/agentlab/compare/0.1.6...HEAD
+[0.1.6]: https://github.com/justinbarias/agentlab/compare/0.1.5...0.1.6
+[0.1.5]: https://github.com/justinbarias/agentlab/compare/0.1.4...0.1.5
+[0.1.4]: https://github.com/justinbarias/agentlab/compare/0.1.3...0.1.4
+[0.1.3]: https://github.com/justinbarias/agentlab/compare/0.1.2...0.1.3
+[0.1.2]: https://github.com/justinbarias/agentlab/compare/0.1.1...0.1.2
+[0.1.1]: https://github.com/justinbarias/agentlab/compare/0.1.0...0.1.1
+[0.1.0]: https://github.com/justinbarias/agentlab/compare/0.0.14...0.1.0
+[0.0.14]: https://github.com/justinbarias/agentlab/compare/0.0.7...0.0.14
+[0.0.7]: https://github.com/justinbarias/agentlab/compare/0.0.6...0.0.7
+[0.0.6]: https://github.com/justinbarias/agentlab/compare/0.0.5...0.0.6
+[0.0.5]: https://github.com/justinbarias/agentlab/compare/0.0.4...0.0.5
+[0.0.4]: https://github.com/justinbarias/agentlab/compare/0.0.1...0.0.4
+[0.0.1]: https://github.com/justinbarias/agentlab/releases/tag/0.0.1
