@@ -4,11 +4,13 @@ import pytest
 from pydantic import ValidationError
 
 from holodeck.models.tool import (
+    CommandType,
     DatabaseConfig,
     FunctionTool,
     MCPTool,
     PromptTool,
     Tool,
+    TransportType,
     VectorstoreTool,
 )
 
@@ -339,22 +341,33 @@ class TestFunctionTool:
 class TestMCPTool:
     """Tests for MCPTool model."""
 
-    def test_mcp_tool_valid_creation(self) -> None:
-        """Test creating a valid MCPTool."""
+    def test_mcp_tool_valid_creation_with_stdio(self) -> None:
+        """Test creating a valid MCPTool with stdio transport."""
         tool = MCPTool(
             name="filesystem",
             description="Filesystem access via MCP",
             type="mcp",
             server="@modelcontextprotocol/server-filesystem",
+            command=CommandType.NPX,
         )
         assert tool.name == "filesystem"
         assert tool.server == "@modelcontextprotocol/server-filesystem"
         assert tool.type == "mcp"
+        assert tool.command == CommandType.NPX
+        assert tool.transport == TransportType.STDIO
 
     @pytest.mark.parametrize(
         "missing_field,kwargs",
         [
-            ("server", {"name": "test", "description": "Test", "type": "mcp"}),
+            (
+                "server",
+                {
+                    "name": "test",
+                    "description": "Test",
+                    "type": "mcp",
+                    "command": CommandType.NPX,
+                },
+            ),
         ],
         ids=["server_required"],
     )
@@ -376,6 +389,7 @@ class TestMCPTool:
             "description": "Test",
             "type": "mcp",
             "server": "my_server",
+            "command": CommandType.NPX,
         }
         kwargs[empty_field] = ""
         with pytest.raises(ValidationError):
@@ -388,6 +402,7 @@ class TestMCPTool:
             description="Test",
             type="mcp",
             server="my_server",
+            command=CommandType.NPX,
         )
         assert tool.config is None or isinstance(tool.config, dict)
 
@@ -399,9 +414,353 @@ class TestMCPTool:
             description="Test",
             type="mcp",
             server="filesystem",
+            command=CommandType.NPX,
             config=config,
         )
         assert tool.config == config
+
+
+class TestMCPToolEnhanced:
+    """Tests for enhanced MCPTool with transport configuration."""
+
+    def test_default_transport_is_stdio(self) -> None:
+        """Default transport should be stdio."""
+        tool = MCPTool(
+            name="test",
+            description="Test tool",
+            server="test-server",
+            command=CommandType.NPX,
+        )
+        assert tool.transport == TransportType.STDIO
+
+    def test_stdio_requires_command(self) -> None:
+        """Stdio transport should require command field."""
+        with pytest.raises(ValidationError) as exc_info:
+            MCPTool(
+                name="test",
+                description="Test tool",
+                server="test-server",
+                transport=TransportType.STDIO,
+            )
+        assert "command" in str(exc_info.value).lower()
+
+    def test_sse_requires_url(self) -> None:
+        """SSE transport should require url field."""
+        with pytest.raises(ValidationError) as exc_info:
+            MCPTool(
+                name="test",
+                description="Test tool",
+                server="test-server",
+                transport=TransportType.SSE,
+            )
+        assert "url" in str(exc_info.value).lower()
+
+    def test_websocket_requires_url(self) -> None:
+        """WebSocket transport should require url field."""
+        with pytest.raises(ValidationError) as exc_info:
+            MCPTool(
+                name="test",
+                description="Test tool",
+                server="test-server",
+                transport=TransportType.WEBSOCKET,
+            )
+        assert "url" in str(exc_info.value).lower()
+
+    def test_http_requires_url(self) -> None:
+        """HTTP transport should require url field."""
+        with pytest.raises(ValidationError) as exc_info:
+            MCPTool(
+                name="test",
+                description="Test tool",
+                server="test-server",
+                transport=TransportType.HTTP,
+            )
+        assert "url" in str(exc_info.value).lower()
+
+    def test_valid_stdio_config(self) -> None:
+        """Test valid stdio transport configuration."""
+        tool = MCPTool(
+            name="filesystem",
+            description="FS access",
+            server="@modelcontextprotocol/server-filesystem",
+            command=CommandType.NPX,
+            args=["-y", "@modelcontextprotocol/server-filesystem"],
+            env={"PATH": "/usr/bin"},
+        )
+        assert tool.command == CommandType.NPX
+        assert tool.args is not None
+        assert len(tool.args) == 2
+
+    def test_valid_sse_config(self) -> None:
+        """Test valid SSE transport configuration."""
+        tool = MCPTool(
+            name="remote",
+            description="Remote server",
+            server="remote-mcp",
+            transport=TransportType.SSE,
+            url="https://example.com/sse",
+            headers={"Authorization": "Bearer token"},
+        )
+        assert tool.url == "https://example.com/sse"
+        assert tool.headers is not None
+        assert "Authorization" in tool.headers
+
+    def test_valid_websocket_config(self) -> None:
+        """Test valid WebSocket transport configuration."""
+        tool = MCPTool(
+            name="realtime",
+            description="Realtime server",
+            server="realtime-mcp",
+            transport=TransportType.WEBSOCKET,
+            url="wss://example.com/ws",
+        )
+        assert tool.url == "wss://example.com/ws"
+
+    def test_valid_http_config(self) -> None:
+        """Test valid HTTP transport configuration."""
+        tool = MCPTool(
+            name="streaming",
+            description="Streaming server",
+            server="streaming-mcp",
+            transport=TransportType.HTTP,
+            url="https://example.com/stream",
+            terminate_on_close=True,
+        )
+        assert tool.url == "https://example.com/stream"
+        assert tool.terminate_on_close is True
+
+    def test_url_scheme_validation_rejects_remote_http(self) -> None:
+        """URL validation should reject http:// for remote hosts."""
+        with pytest.raises(ValidationError) as exc_info:
+            MCPTool(
+                name="test",
+                description="Test",
+                server="test",
+                transport=TransportType.SSE,
+                url="http://remote.example.com/sse",
+            )
+        assert "https://" in str(exc_info.value)
+
+    def test_url_scheme_allows_localhost_http(self) -> None:
+        """URL validation should allow http:// for localhost."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            transport=TransportType.SSE,
+            url="http://localhost:8080/sse",
+        )
+        assert tool.url == "http://localhost:8080/sse"
+
+    def test_url_scheme_allows_127_0_0_1_http(self) -> None:
+        """URL validation should allow http:// for 127.0.0.1."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            transport=TransportType.SSE,
+            url="http://127.0.0.1:8080/sse",
+        )
+        assert tool.url == "http://127.0.0.1:8080/sse"
+
+    def test_url_scheme_allows_ipv6_localhost_http(self) -> None:
+        """URL validation should allow http:// for [::1] (IPv6 localhost)."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            transport=TransportType.SSE,
+            url="http://[::1]:8080/sse",
+        )
+        assert tool.url == "http://[::1]:8080/sse"
+
+    def test_url_scheme_allows_https(self) -> None:
+        """URL validation should allow https://."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            transport=TransportType.SSE,
+            url="https://example.com/sse",
+        )
+        assert tool.url == "https://example.com/sse"
+
+    def test_url_scheme_allows_wss(self) -> None:
+        """URL validation should allow wss://."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            transport=TransportType.WEBSOCKET,
+            url="wss://example.com/ws",
+        )
+        assert tool.url == "wss://example.com/ws"
+
+    def test_url_scheme_allows_ws(self) -> None:
+        """URL validation should allow ws://."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            transport=TransportType.WEBSOCKET,
+            url="ws://example.com/ws",
+        )
+        assert tool.url == "ws://example.com/ws"
+
+    def test_request_timeout_must_be_positive(self) -> None:
+        """request_timeout must be a positive integer."""
+        with pytest.raises(ValidationError) as exc_info:
+            MCPTool(
+                name="test",
+                description="Test",
+                server="test",
+                command=CommandType.NPX,
+                request_timeout=0,
+            )
+        assert "positive" in str(exc_info.value).lower()
+
+    def test_request_timeout_negative_rejected(self) -> None:
+        """request_timeout must not be negative."""
+        with pytest.raises(ValidationError):
+            MCPTool(
+                name="test",
+                description="Test",
+                server="test",
+                command=CommandType.NPX,
+                request_timeout=-1,
+            )
+
+    def test_default_request_timeout_is_60(self) -> None:
+        """Default request_timeout should be 60 seconds."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            command=CommandType.NPX,
+        )
+        assert tool.request_timeout == 60
+
+    def test_default_load_tools_is_true(self) -> None:
+        """Default load_tools should be True."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            command=CommandType.NPX,
+        )
+        assert tool.load_tools is True
+
+    def test_default_load_prompts_is_true(self) -> None:
+        """Default load_prompts should be True."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            command=CommandType.NPX,
+        )
+        assert tool.load_prompts is True
+
+    @pytest.mark.parametrize(
+        "cmd", [CommandType.NPX, CommandType.UVX, CommandType.DOCKER]
+    )
+    def test_allowed_commands(self, cmd: CommandType) -> None:
+        """All CommandType values should be accepted."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            command=cmd,
+        )
+        assert tool.command == cmd
+
+    def test_command_enum_rejects_invalid_values(self) -> None:
+        """Invalid command values should be rejected."""
+        with pytest.raises(ValidationError):
+            MCPTool(
+                name="test",
+                description="Test",
+                server="test",
+                command="bash",  # type: ignore[arg-type]
+            )
+
+    def test_transport_enum_rejects_invalid_values(self) -> None:
+        """Invalid transport values should be rejected."""
+        with pytest.raises(ValidationError):
+            MCPTool(
+                name="test",
+                description="Test",
+                server="test",
+                transport="invalid",  # type: ignore[arg-type]
+                url="https://example.com",
+            )
+
+    def test_env_file_optional(self) -> None:
+        """env_file should be optional."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            command=CommandType.NPX,
+        )
+        assert tool.env_file is None
+
+    def test_env_file_accepted(self) -> None:
+        """env_file should be accepted."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            command=CommandType.NPX,
+            env_file=".env",
+        )
+        assert tool.env_file == ".env"
+
+    def test_encoding_optional(self) -> None:
+        """encoding should be optional."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            command=CommandType.NPX,
+        )
+        assert tool.encoding is None
+
+    def test_encoding_accepted(self) -> None:
+        """encoding should be accepted."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            command=CommandType.NPX,
+            encoding="utf-8",
+        )
+        assert tool.encoding == "utf-8"
+
+    def test_timeout_and_sse_read_timeout_optional(self) -> None:
+        """timeout and sse_read_timeout should be optional."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            transport=TransportType.SSE,
+            url="https://example.com/sse",
+        )
+        assert tool.timeout is None
+        assert tool.sse_read_timeout is None
+
+    def test_timeout_and_sse_read_timeout_accepted(self) -> None:
+        """timeout and sse_read_timeout should be accepted."""
+        tool = MCPTool(
+            name="test",
+            description="Test",
+            server="test",
+            transport=TransportType.SSE,
+            url="https://example.com/sse",
+            timeout=30.0,
+            sse_read_timeout=120.0,
+        )
+        assert tool.timeout == 30.0
+        assert tool.sse_read_timeout == 120.0
 
 
 class TestPromptTool:

@@ -38,9 +38,8 @@
 ### Reference Implementations Incorporated
 
 1. **VS Code mcp.json specification**: Configuration format for stdio, HTTP, and SSE servers including:
-   - `command`, `args`, `env`, `envFile` for stdio servers
+   - `command`, `args`, `env`, `env_file` for stdio servers
    - `url`, `headers`, `timeout` for HTTP/SSE servers
-   - `${input:variable-id}` syntax for sensitive values
 
 2. **Semantic Kernel MCP Module** (mcp.py): Architecture patterns including:
    - MCPPluginBase with `load_tools`, `load_prompts`, `request_timeout` configuration

@@ -56,6 +56,69 @@ result = await factory.invoke(user_input)
 
 ---
 
+## 1.1 MCP Tool Integration
+
+### Decision: Use Semantic Kernel MCP Plugins Directly
+
+Integrate MCP tools using Semantic Kernel's native MCP connector (`semantic_kernel.connectors.mcp`). The SK plugins handle complete server lifecycle management automatically.
+
+### Rationale
+
+- **Lifecycle handled**: SK's `MCPPluginBase` manages spawn/connect/close via async context managers
+- **Resource cleanup**: Uses `AsyncExitStack` for deterministic cleanup on exit
+- **Transport abstraction**: Supports stdio, SSE, WebSocket, HTTP without custom code
+- **Tool discovery**: Automatic tool/prompt loading from MCP servers via `list_tools()`/`list_prompts()`
+- **Notification handling**: Responds to `tools/list_changed` and `prompts/list_changed` events
+- **No custom wrapper needed**: HoloDeck doesn't need to reimplement lifecycle management
+
+### Implementation Notes
+
+**Key SK Plugin Classes**:
+- `MCPStdioPlugin`: Local servers via subprocess (command + args)
+- `MCPSsePlugin`: Remote servers via Server-Sent Events
+- `MCPWebsocketPlugin`: Bidirectional real-time communication
+- `MCPStreamableHttpPlugin`: HTTP with streaming response support
+
+**Usage Pattern**:
+```python
+from semantic_kernel.connectors.mcp import MCPStdioPlugin
+
+# Context manager handles full lifecycle automatically
+async with MCPStdioPlugin(
+    name="filesystem",
+    description="File system access",
+    command="npx",
+    args=["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"],
+) as plugin:
+    # Plugin is connected, tools are loaded
+    kernel.add_plugin(plugin)
+    result = await kernel.invoke_prompt("Read file.txt")
+
+# Exiting context: server process terminated, resources cleaned up
+```
+
+**Lifecycle Methods** (handled by SK):
+```python
+# Internal to MCPPluginBase:
+async def __aenter__(self) -> Self:
+    await self.connect()  # Spawns process, initializes session, loads tools
+    return self
+
+async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+    await self.close()  # Sets stop event, awaits task completion, cleans up
+```
+
+**Integration with AgentFactory**:
+The `AgentFactory` can load MCP tool configurations from `agent.yaml` and instantiate the appropriate SK plugin based on the `transport` field. No additional lifecycle management code is needed in HoloDeck.
+
+### Alternatives Considered
+
+- **Custom MCP lifecycle management**: Unnecessary duplication of SK's existing implementation
+- **Direct mcp-sdk usage**: Would bypass SK's conveniences and require more code
+- **Wrapper abstraction**: Adds complexity without value since SK plugins are already well-designed
+
+---
+
 ## 2. OpenTelemetry Observability
 
 ### Decision: Semantic Kernel Native OpenTelemetry Integration
@@ -339,6 +402,7 @@ class ManagedChatHistory:
 
 **Technology Stack**:
 - **Agent Runtime**: Semantic Kernel 1.37+ (ChatHistory, chat completions, plugins)
+- **MCP Tools**: Semantic Kernel MCP plugins (stdio, SSE, WebSocket, HTTP transports)
 - **Observability**: OpenTelemetry with Semantic Kernel native instrumentation
 - **CLI Framework**: Click (existing) + built-in input() for interactive prompts
 - **Validation**: Custom pipeline architecture (extensible for future safety filters)
@@ -346,9 +410,10 @@ class ManagedChatHistory:
 
 **Key Architectural Decisions**:
 1. Leverage Semantic Kernel's native capabilities (chat, tools, observability)
-2. Keep terminal interface simple for MVP (upgrade to rich UI later if needed)
-3. Design validation pipeline for extensibility (prompt injection, content filters)
-4. In-memory conversation storage (file persistence deferred to P3)
-5. Stream tool execution events inline with conversation flow
+2. Use SK MCP plugins directly for tool lifecycle management (no custom wrappers)
+3. Keep terminal interface simple for MVP (upgrade to rich UI later if needed)
+4. Design validation pipeline for extensibility (prompt injection, content filters)
+5. In-memory conversation storage (file persistence deferred to P3)
+6. Stream tool execution events inline with conversation flow
 
 **No unresolved NEEDS CLARIFICATION items remain.** All technical decisions documented with rationale.
