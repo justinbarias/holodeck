@@ -231,8 +231,15 @@ def test(
         if not quiet and sys.stdout.isatty():
             spinner_thread.start()
 
+        async def run_tests_with_cleanup() -> TestReport:
+            """Execute tests and ensure proper cleanup of MCP plugins."""
+            try:
+                return await executor.execute_tests()
+            finally:
+                await executor.shutdown()
+
         try:
-            report = asyncio.run(executor.execute_tests())
+            report = asyncio.run(run_tests_with_cleanup())
         finally:
             # Ensure spinner stops
             if spinner_thread.is_alive():

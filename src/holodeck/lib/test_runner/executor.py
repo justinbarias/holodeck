@@ -718,6 +718,20 @@ class TestExecutor:
         # Test fails if any metric failed
         return not (metric_results and any(not m.passed for m in metric_results))
 
+    async def shutdown(self) -> None:
+        """Shutdown executor and cleanup resources.
+
+        Must be called from the same task context where the executor was used
+        to properly cleanup MCP plugins and other async resources.
+        """
+        try:
+            logger.debug("TestExecutor shutting down")
+            # Shutdown the agent factory (cleans up MCP plugins, vectorstores)
+            await self.agent_factory.shutdown()
+            logger.debug("TestExecutor shutdown complete")
+        except Exception as e:
+            logger.error(f"Error during TestExecutor shutdown: {e}")
+
     def _generate_report(self, results: list[TestResult]) -> TestReport:
         """Generate test report with summary statistics.
 

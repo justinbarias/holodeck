@@ -336,7 +336,8 @@ tools:
   - name: file-system
     description: File system access
     type: mcp
-    server: "@modelcontextprotocol/server-filesystem"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/data"]
     config:
       allowed_directories: ["/data", "/tmp"]
 
@@ -634,7 +635,8 @@ tools:
     function: check_status
   - name: external-api
     type: mcp
-    server: "custom-server"
+    command: npx
+    args: ["-y", "custom-mcp-server"]
 
 evaluations:
   model:

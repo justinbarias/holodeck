@@ -208,7 +208,6 @@ class TestConfigEndToEndWorkflow:
                 {
                     "name": "github",
                     "type": "mcp",
-                    "server": "github_server",
                     "command": "npx",
                     "args": ["-y", "@modelcontextprotocol/server-github"],
                     "description": "GitHub operations",

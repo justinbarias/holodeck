@@ -385,6 +385,7 @@ class TestCLIExitCodeLogic:
                         environment={},
                     )
                 )
+                mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
                 result = runner.invoke(test, [tmp_path])
@@ -447,6 +448,7 @@ class TestCLIExitCodeLogic:
                         environment={},
                     )
                 )
+                mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
                 result = runner.invoke(test, [tmp_path])
@@ -541,6 +543,7 @@ class TestCLIExitCodeLogic:
                 mock_instance.execute_tests = AsyncMock(
                     side_effect=EvaluationError("Failed to evaluate metrics")
                 )
+                mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
                 result = runner.invoke(test, [tmp_path])
@@ -619,6 +622,7 @@ class TestCLIExitCodeLogic:
                         environment={},
                     )
                 )
+                mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
                 result = runner.invoke(test, [tmp_path])
@@ -690,6 +694,7 @@ class TestCLIProgressDisplay:
                         environment={},
                     )
                 )
+                mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
                 # Mock progress indicator
@@ -728,6 +733,7 @@ class TestCLIProgressDisplay:
                 mock_instance.execute_tests = AsyncMock(
                     return_value=_create_mock_report(tmp_path)
                 )
+                mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
                 mock_progress_instance = MagicMock()
@@ -764,6 +770,7 @@ class TestCLIProgressDisplay:
                 mock_instance.execute_tests = AsyncMock(
                     return_value=_create_mock_report(tmp_path)
                 )
+                mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
                 mock_progress_instance = MagicMock()
@@ -798,6 +805,7 @@ class TestCLIProgressDisplay:
                 mock_instance.execute_tests = AsyncMock(
                     return_value=_create_mock_report(tmp_path)
                 )
+                mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
                 runner.invoke(test, [tmp_path])
@@ -871,6 +879,7 @@ class TestCLIProgressDisplay:
                             environment={},
                         )
                     )
+                    mock_instance.shutdown = AsyncMock()
                     return mock_instance
 
                 mock_executor.side_effect = capture_callback
@@ -951,6 +960,7 @@ class TestCLIProgressDisplay:
                             environment={},
                         )
                     )
+                    mock_instance.shutdown = AsyncMock()
                     return mock_instance
 
                 mock_executor.side_effect = capture_callback
@@ -997,6 +1007,7 @@ class TestCLIProgressDisplay:
                 mock_instance.execute_tests = AsyncMock(
                     return_value=_create_mock_report(tmp_path)
                 )
+                mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
                 mock_progress_instance = MagicMock()
@@ -1035,6 +1046,7 @@ class TestCLIProgressDisplay:
                 mock_instance.execute_tests = AsyncMock(
                     return_value=_create_mock_report(tmp_path)
                 )
+                mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
                 mock_progress_instance = MagicMock()

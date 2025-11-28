@@ -6,14 +6,14 @@ This guide explains HoloDeck's four tool types that extend agent capabilities.
 
 Tools are agent capabilities defined in `agent.yaml`. HoloDeck supports four tool types:
 
-| Tool Type | Description | Status |
-|-----------|-------------|--------|
-| **Vectorstore Tools** | Semantic search over data | ✅ Implemented |
-| **Function Tools** | Custom Python functions | 🚧 Planned |
-| **MCP Tools** | Model Context Protocol servers | 🚧 Planned |
-| **Prompt Tools** | LLM-powered semantic functions | 🚧 Planned |
+| Tool Type             | Description                    | Status         |
+| --------------------- | ------------------------------ | -------------- |
+| **Vectorstore Tools** | Semantic search over data      | ✅ Implemented |
+| **MCP Tools**         | Model Context Protocol servers | ✅ Implemented |
+| **Function Tools**    | Custom Python functions        | 🚧 Planned     |
+| **Prompt Tools**      | LLM-powered semantic functions | 🚧 Planned     |
 
-> **Note**: Currently, only **Vectorstore Tools** are fully implemented. Other tool types are defined in the configuration schema but not yet functional.
+> **Note**: **Vectorstore Tools** and **MCP Tools** are fully implemented. Function and Prompt tools are defined in the configuration schema but not yet functional.
 
 ## Common Tool Fields
 
@@ -21,9 +21,9 @@ All tools share these fields:
 
 ```yaml
 tools:
-  - name: tool-id              # Required: Tool identifier (unique)
-    description: What it does  # Required: Human-readable description
-    type: vectorstore|function|mcp|prompt  # Required: Tool type
+  - name: tool-id # Required: Tool identifier (unique)
+    description: What it does # Required: Human-readable description
+    type: vectorstore|function|mcp|prompt # Required: Tool type
 ```
 
 ### Name
@@ -87,27 +87,28 @@ Semantic search over unstructured or structured data.
 
 HoloDeck supports multiple vector database backends through Semantic Kernel's VectorStoreCollection abstractions. You can switch providers via configuration without changing your agent code.
 
-| Provider | Description | Connection | Dependencies |
-|----------|-------------|------------|--------------|
-| `redis-hashset` | Redis with Hashset storage | `redis://localhost:6379` | `redis[hiredis]` |
-| `redis-json` | Redis with JSON storage | `redis://localhost:6379` | `redis[hiredis]` |
-| `postgres` | PostgreSQL with pgvector extension | `postgresql://user:pass@host/db` | `psycopg[binary,pool]` |
-| `azure-ai-search` | Azure AI Search (Cognitive Search) | `https://search-service.search.windows.net` | `azure-search-documents` |
-| `qdrant` | Qdrant vector database | `http://localhost:6333` | `qdrant-client` |
-| `weaviate` | Weaviate vector database | `http://localhost:8080` | `weaviate-client` |
-| `chromadb` | ChromaDB (local or server) | Local path or host URL | `chromadb` |
-| `faiss` | FAISS (in-memory or file-based) | Local file path | `faiss-cpu` |
-| `azure-cosmos-mongo` | Azure Cosmos DB (MongoDB API) | MongoDB connection string | `pymongo` |
-| `azure-cosmos-nosql` | Azure Cosmos DB (NoSQL API) | Cosmos DB connection string | `azure-cosmos` |
-| `sql-server` | SQL Server with vector support | SQL Server connection string | `pyodbc` |
-| `pinecone` | Pinecone serverless vector database | API key + index name | `pinecone-client` |
-| `in-memory` | Simple in-memory storage | None required | Built-in |
+| Provider             | Description                         | Connection                                  | Dependencies             |
+| -------------------- | ----------------------------------- | ------------------------------------------- | ------------------------ |
+| `redis-hashset`      | Redis with Hashset storage          | `redis://localhost:6379`                    | `redis[hiredis]`         |
+| `redis-json`         | Redis with JSON storage             | `redis://localhost:6379`                    | `redis[hiredis]`         |
+| `postgres`           | PostgreSQL with pgvector extension  | `postgresql://user:pass@host/db`            | `psycopg[binary,pool]`   |
+| `azure-ai-search`    | Azure AI Search (Cognitive Search)  | `https://search-service.search.windows.net` | `azure-search-documents` |
+| `qdrant`             | Qdrant vector database              | `http://localhost:6333`                     | `qdrant-client`          |
+| `weaviate`           | Weaviate vector database            | `http://localhost:8080`                     | `weaviate-client`        |
+| `chromadb`           | ChromaDB (local or server)          | Local path or host URL                      | `chromadb`               |
+| `faiss`              | FAISS (in-memory or file-based)     | Local file path                             | `faiss-cpu`              |
+| `azure-cosmos-mongo` | Azure Cosmos DB (MongoDB API)       | MongoDB connection string                   | `pymongo`                |
+| `azure-cosmos-nosql` | Azure Cosmos DB (NoSQL API)         | Cosmos DB connection string                 | `azure-cosmos`           |
+| `sql-server`         | SQL Server with vector support      | SQL Server connection string                | `pyodbc`                 |
+| `pinecone`           | Pinecone serverless vector database | API key + index name                        | `pinecone-client`        |
+| `in-memory`          | Simple in-memory storage            | None required                               | Built-in                 |
 
 > **Tip**: Use `in-memory` for development and testing. Switch to a persistent provider like `redis-hashset`, `postgres`, or `qdrant` for production.
 
 #### Database Configuration Examples
 
 **Redis (recommended for development)**
+
 ```yaml
 - name: search-kb
   type: vectorstore
@@ -118,6 +119,7 @@ HoloDeck supports multiple vector database backends through Semantic Kernel's Ve
 ```
 
 **PostgreSQL with pgvector**
+
 ```yaml
 - name: search-kb
   type: vectorstore
@@ -128,6 +130,7 @@ HoloDeck supports multiple vector database backends through Semantic Kernel's Ve
 ```
 
 **Azure AI Search**
+
 ```yaml
 - name: search-kb
   type: vectorstore
@@ -139,6 +142,7 @@ HoloDeck supports multiple vector database backends through Semantic Kernel's Ve
 ```
 
 **Qdrant**
+
 ```yaml
 - name: search-kb
   type: vectorstore
@@ -150,6 +154,7 @@ HoloDeck supports multiple vector database backends through Semantic Kernel's Ve
 ```
 
 **In-Memory (development only)**
+
 ```yaml
 - name: search-kb
   type: vectorstore
@@ -167,7 +172,7 @@ You can also reference a named vectorstore from your global `config.yaml`:
 - name: search-kb
   type: vectorstore
   source: knowledge_base/
-  database: my-redis-store  # Reference to config.yaml vectorstores section
+  database: my-redis-store # Reference to config.yaml vectorstores section
 ```
 
 ```yaml
@@ -350,6 +355,359 @@ title,content,source
 
 ---
 
+## MCP Tools ✅
+
+> **Status**: Fully implemented (stdio transport)
+
+Model Context Protocol (MCP) server integrations enable agents to interact with external systems through a standardized protocol. HoloDeck uses Semantic Kernel's MCP plugins for seamless integration.
+
+> **Finding MCP Servers**: Browse the official MCP server registry at [github.com/modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) for a curated list of available servers including filesystem, GitHub, Slack, Google Drive, PostgreSQL, and many more community-contributed integrations.
+
+### When to Use
+
+- File system operations (read, write, list files)
+- GitHub/GitLab operations (issues, PRs, code)
+- Database access (SQLite, PostgreSQL)
+- Web browsing and search
+- Any standardized MCP server
+
+### Basic Example
+
+```yaml
+- name: filesystem
+  description: Read and write files in the workspace
+  type: mcp
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
+```
+
+### Complete Example
+
+```yaml
+tools:
+  # MCP filesystem tool for reading/writing files
+  - type: mcp
+    name: filesystem
+    description: Read and write files in the workspace data directory
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "./sample/data"]
+    config:
+      allowed_directories: ["./sample/data"]
+    request_timeout: 30
+```
+
+### Required Fields
+
+#### Command
+
+- **Type**: String (enum: `npx`, `node`, `uvx`, `docker`)
+- **Purpose**: How to launch the MCP server
+- **Required**: Yes (for stdio transport)
+
+```yaml
+command: npx     # For npm packages (auto-installs if needed)
+# OR
+command: node    # For local .js files or installed packages
+# OR
+command: uvx     # For Python packages via uv
+# OR
+command: docker  # For containerized servers
+```
+
+**When to use each:**
+
+- `npx` - Run npm packages directly (e.g., `@modelcontextprotocol/server-filesystem`)
+- `node` - Run local JavaScript files (e.g., `./tools/my-server.js`)
+- `uvx` - Run Python packages via uv (e.g., `mcp-server-fetch`)
+- `docker` - Run containerized MCP servers
+
+#### Args
+
+- **Type**: List of strings
+- **Purpose**: Command-line arguments for the server
+- **Note**: Often includes the server package name and configuration
+
+```yaml
+args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
+```
+
+### Optional Fields
+
+#### Transport
+
+- **Type**: String (enum: `stdio`, `sse`, `websocket`, `http`)
+- **Default**: `stdio`
+- **Purpose**: Communication protocol with the server
+- **Note**: Currently only `stdio` is implemented
+
+```yaml
+transport: stdio # Default, works with most servers
+```
+
+#### Config
+
+- **Type**: Object (free-form)
+- **Purpose**: Server-specific configuration passed via MCP_CONFIG env var
+- **Validation**: Server validates at runtime
+
+```yaml
+config:
+  allowed_directories: ["./data", "/tmp"]
+  max_file_size: 1048576
+```
+
+#### Env
+
+- **Type**: Object (string key-value pairs)
+- **Purpose**: Environment variables for the server process
+- **Supports**: Variable substitution with `${VAR_NAME}`
+
+```yaml
+env:
+  GITHUB_TOKEN: "${GITHUB_TOKEN}"
+  API_KEY: "static-value"
+```
+
+#### Env File
+
+- **Type**: String (path)
+- **Purpose**: Load environment variables from a file
+- **Format**: Standard `.env` file format
+
+```yaml
+env_file: .env.mcp
+```
+
+#### Request Timeout
+
+- **Type**: Integer (seconds)
+- **Default**: 30
+- **Purpose**: Timeout for individual MCP requests
+
+```yaml
+request_timeout: 60
+```
+
+#### Encoding
+
+- **Type**: String
+- **Default**: `utf-8`
+- **Purpose**: Character encoding for stdio communication
+
+```yaml
+encoding: utf-8
+```
+
+### Sample MCP Servers
+
+#### Filesystem (stdio)
+
+Read, write, and manage files:
+
+```yaml
+- name: filesystem
+  type: mcp
+  description: File system operations
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
+  config:
+    allowed_directories: ["./data"]
+```
+
+**Tools provided**: `read_file`, `write_file`, `list_directory`, `create_directory`, `move_file`, `search_files`, `get_file_info`
+
+#### GitHub
+
+Interact with GitHub repositories:
+
+```yaml
+- name: github
+  type: mcp
+  description: GitHub repository operations
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-github"]
+  env:
+    GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+```
+
+**Tools provided**: `search_repositories`, `create_issue`, `list_issues`, `get_file_contents`, `create_pull_request`, `fork_repository`
+
+#### SQLite
+
+Query SQLite databases:
+
+```yaml
+- name: sqlite
+  type: mcp
+  description: SQLite database queries
+  command: npx
+  args:
+    [
+      "-y",
+      "@modelcontextprotocol/server-sqlite",
+      "--db-path",
+      "./data/database.db",
+    ]
+```
+
+**Tools provided**: `read_query`, `write_query`, `create_table`, `list_tables`, `describe_table`
+
+#### Brave Search
+
+Web search capabilities:
+
+```yaml
+- name: brave-search
+  type: mcp
+  description: Web search via Brave
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-brave-search"]
+  env:
+    BRAVE_API_KEY: "${BRAVE_API_KEY}"
+```
+
+**Tools provided**: `brave_web_search`, `brave_local_search`
+
+#### Puppeteer (Browser Automation)
+
+Browser automation and web scraping:
+
+```yaml
+- name: puppeteer
+  type: mcp
+  description: Browser automation
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-puppeteer"]
+```
+
+**Tools provided**: `puppeteer_navigate`, `puppeteer_screenshot`, `puppeteer_click`, `puppeteer_fill`, `puppeteer_evaluate`
+
+### Local Node.js Servers (node)
+
+For local JavaScript MCP server files, use `node`:
+
+```yaml
+- name: my-custom-server
+  type: mcp
+  description: Custom local MCP server
+  command: node
+  args: ["./tools/my-mcp-server.js", "--config", "./config.json"]
+```
+
+> **Note**: Use `node` for local `.js` files. Use `npx` for npm packages.
+
+### Python MCP Servers (uvx)
+
+For Python-based MCP servers, use `uvx`:
+
+```yaml
+- name: mcp-server-fetch
+  type: mcp
+  description: Fetch web content
+  command: uvx
+  args: ["mcp-server-fetch"]
+```
+
+#### Memory (Short-Term Storage)
+
+Scratchpad for agent short-term memory storage:
+
+```yaml
+- name: memory
+  type: mcp
+  description: Scratchpad for short term memory storage
+  command: uvx
+  args: ["basic-memory", "mcp"]
+  request_timeout: 30
+```
+
+**Tools provided**: `write_note`, `read_note`, `search_notes`, `delete_note`
+
+> **Use case**: Enable agents to persist information across conversation turns, store intermediate results, or maintain context during multi-step tasks, and especially between chat sessions.
+
+### Docker MCP Servers
+
+For containerized servers:
+
+```yaml
+- name: custom-server
+  type: mcp
+  description: Custom containerized server
+  command: docker
+  args: ["run", "-i", "--rm", "my-mcp-server:latest"]
+```
+
+### Environment Variable Patterns
+
+**Static values:**
+
+```yaml
+env:
+  API_KEY: "sk-1234567890"
+```
+
+**Environment substitution:**
+
+```yaml
+env:
+  GITHUB_TOKEN: "${GITHUB_TOKEN}" # From process environment
+```
+
+**From env file:**
+
+```yaml
+env_file: .env.mcp
+env:
+  OVERRIDE_VAR: "override-value" # Overrides env_file
+```
+
+### Error Handling
+
+- **Server unavailable**: Error during agent startup
+- **Connection timeout**: Configurable via `request_timeout`
+- **Invalid config**: Error during agent startup (validation)
+- **Runtime errors**: Logged and returned as tool error responses
+
+### Prerequisites
+
+MCP tools require the appropriate runtime to be installed on your machine based on the `command` you use:
+
+| Command  | Required Software | Installation                                                            |
+| -------- | ----------------- | ----------------------------------------------------------------------- |
+| `npx`    | Node.js + npm     | [nodejs.org](https://nodejs.org/) or `brew install node`                |
+| `node`   | Node.js           | [nodejs.org](https://nodejs.org/) or `brew install node`                |
+| `uvx`    | uv (Python)       | `curl -LsSf https://astral.sh/uv/install.sh \| sh` or `brew install uv` |
+| `docker` | Docker            | [docker.com](https://docker.com/) or `brew install --cask docker`       |
+
+**Verify installation:**
+
+```bash
+# For npm-based MCP servers
+node --version    # Should show v18+ recommended
+npx --version
+
+# For Python-based MCP servers
+uv --version
+uvx --version
+
+# For containerized servers
+docker --version
+```
+
+> **Tip**: Most MCP servers use `npx` with npm packages. Ensure Node.js 18+ is installed for best compatibility.
+
+### Lifecycle Management
+
+MCP plugins are automatically managed:
+
+1. **Startup**: Plugin initialized and connected when agent starts
+2. **Execution**: Tools discovered and registered on the kernel
+3. **Shutdown**: Plugin properly closed when session ends
+
+> **Important**: Always terminate chat sessions properly (`exit` or `quit`) to ensure MCP servers are cleanly shut down.
+
+---
+
 ## Function Tools 🚧
 
 > **Status**: Planned - Configuration schema defined, execution not yet implemented
@@ -478,114 +836,6 @@ def create_ticket(title: str, priority: str = "medium", description: str = "") -
 
 ---
 
-## MCP Tools 🚧
-
-> **Status**: Planned - Configuration schema defined, execution not yet implemented
-
-Model Context Protocol server integrations.
-
-### When to Use
-
-- GitHub, GitLab operations
-- Database access
-- File system operations
-- Any standardized MCP server
-
-### Basic Example
-
-```yaml
-- name: file-system
-  description: Access file system
-  type: mcp
-  server: "@modelcontextprotocol/server-filesystem"
-```
-
-### Required Fields
-
-#### Server
-
-- **Type**: String
-- **Purpose**: MCP server identifier
-- **Formats**:
-  - Package name: `@modelcontextprotocol/server-filesystem`
-  - Local path: `/path/to/server`
-  - Custom identifier: `my-custom-server`
-
-```yaml
-server: "@modelcontextprotocol/server-filesystem"
-```
-
-### Optional Fields
-
-#### Config
-
-- **Type**: Object (free-form)
-- **Purpose**: MCP server-specific configuration
-- **Validation**: MCP server validates at runtime
-
-```yaml
-config:
-  allowed_directories: ["/data", "/tmp"]
-  max_file_size: 1048576  # 1MB
-```
-
-### Available MCP Servers
-
-#### Filesystem
-
-```yaml
-- name: filesystem
-  type: mcp
-  server: "@modelcontextprotocol/server-filesystem"
-  config:
-    allowed_directories: ["/home/user/data"]
-```
-
-Resources: List files, read files, write files, create directories
-
-#### GitHub
-
-```yaml
-- name: github
-  type: mcp
-  server: "@modelcontextprotocol/server-github"
-  config:
-    access_token: "${GITHUB_TOKEN}"
-    repository: "user/repo"
-```
-
-Resources: List issues, create issues, read files, etc.
-
-#### SQLite
-
-```yaml
-- name: sqlite
-  type: mcp
-  server: "@modelcontextprotocol/server-sqlite"
-  config:
-    database: "/path/to/database.db"
-```
-
-Resources: Query database, list tables, etc.
-
-### Custom MCP Servers
-
-To create a custom MCP server:
-
-1. Implement MCP protocol
-2. Deploy as standalone service or Python package
-3. Reference by path or package identifier
-
-```yaml
-- name: custom-service
-  type: mcp
-  server: "/path/to/custom_server.py"
-  config:
-    api_url: "http://localhost:8000"
-```
-
----
-
 ## Prompt Tools 🚧
 
 > **Status**: Planned - Configuration schema defined, execution not yet implemented
@@ -671,7 +921,7 @@ parameters:
 ```yaml
 model:
   provider: openai
-  name: gpt-4  # Different from agent's model
+  name: gpt-4 # Different from agent's model
   temperature: 0.2
 ```
 
@@ -732,14 +982,15 @@ Loops (if parameter is array):
 
 ## Tool Comparison
 
-| Feature | Vectorstore | Function | MCP | Prompt |
-|---------|-------------|----------|-----|--------|
-| **Use Case** | Search data | Custom logic | Integrations | Template-based |
-| **Execution** | Vector similarity | Python function | MCP protocol | LLM generation |
-| **Setup** | Data files | Python files | Server config | Template text |
-| **Parameters** | Implicit (search query) | Defined in code | Server-specific | Defined in YAML |
-| **Latency** | Medium (~100ms) | Low (<10ms) | Medium | High (LLM call) |
-| **Cost** | Embedding API | Internal | Service cost | LLM tokens |
+| Feature        | Vectorstore             | MCP                     | Function        | Prompt          |
+| -------------- | ----------------------- | ----------------------- | --------------- | --------------- |
+| **Status**     | ✅ Implemented          | ✅ Implemented          | 🚧 Planned      | 🚧 Planned      |
+| **Use Case**   | Search data             | External integrations   | Custom logic    | Template-based  |
+| **Execution**  | Vector similarity       | MCP protocol (stdio)    | Python function | LLM generation  |
+| **Setup**      | Data files              | Server config + runtime | Python files    | Template text   |
+| **Parameters** | Implicit (search query) | Server-specific tools   | Defined in code | Defined in YAML |
+| **Latency**    | Medium (~100ms)         | Medium (~50-500ms)      | Low (<10ms)     | High (LLM call) |
+| **Cost**       | Embedding API           | Server resource         | Internal        | LLM tokens      |
 
 ---
 
@@ -767,14 +1018,28 @@ Loops (if parameter is array):
       type: string
 ```
 
-### File Operations
+### File Operations (MCP)
 
 ```yaml
 - name: filesystem
   type: mcp
-  server: "@modelcontextprotocol/server-filesystem"
+  description: Read and write files
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
   config:
-    allowed_directories: ["/data"]
+    allowed_directories: ["./data"]
+```
+
+### GitHub Integration (MCP)
+
+```yaml
+- name: github
+  type: mcp
+  description: GitHub repository operations
+  command: npx
+  args: ["-y", "@modelcontextprotocol/server-github"]
+  env:
+    GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
 ```
 
 ### Text Transformation
@@ -808,9 +1073,11 @@ Loops (if parameter is array):
 
 ### MCP Tool Errors
 
-- **Server unavailable**: Soft failure (logged, empty results)
-- **Permission denied**: Soft failure (logged)
-- **Invalid config**: Error during agent startup
+- **Server unavailable**: Error during agent startup (fails fast)
+- **Command not found**: Error if runtime (npx, uvx, docker) not installed
+- **Connection timeout**: Configurable via `request_timeout`, returns error
+- **Invalid config**: Error during agent startup (validation)
+- **Runtime errors**: Returned as tool error responses to the LLM
 
 ### Prompt Tool Errors
 

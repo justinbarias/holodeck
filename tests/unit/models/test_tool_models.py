@@ -347,53 +347,14 @@ class TestMCPTool:
             name="filesystem",
             description="Filesystem access via MCP",
             type="mcp",
-            server="@modelcontextprotocol/server-filesystem",
             command=CommandType.NPX,
+            args=["-y", "@modelcontextprotocol/server-filesystem"],
         )
         assert tool.name == "filesystem"
-        assert tool.server == "@modelcontextprotocol/server-filesystem"
         assert tool.type == "mcp"
         assert tool.command == CommandType.NPX
+        assert tool.args == ["-y", "@modelcontextprotocol/server-filesystem"]
         assert tool.transport == TransportType.STDIO
-
-    @pytest.mark.parametrize(
-        "missing_field,kwargs",
-        [
-            (
-                "server",
-                {
-                    "name": "test",
-                    "description": "Test",
-                    "type": "mcp",
-                    "command": CommandType.NPX,
-                },
-            ),
-        ],
-        ids=["server_required"],
-    )
-    def test_mcp_required_fields(self, missing_field: str, kwargs: dict) -> None:
-        """Test that required fields raise ValidationError when missing."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPTool(**kwargs)
-        assert missing_field in str(exc_info.value).lower()
-
-    @pytest.mark.parametrize(
-        "empty_field",
-        ["server"],
-        ids=["server_not_empty"],
-    )
-    def test_mcp_string_fields_not_empty(self, empty_field: str) -> None:
-        """Test that string fields cannot be empty."""
-        kwargs = {
-            "name": "test",
-            "description": "Test",
-            "type": "mcp",
-            "server": "my_server",
-            "command": CommandType.NPX,
-        }
-        kwargs[empty_field] = ""
-        with pytest.raises(ValidationError):
-            MCPTool(**kwargs)
 
     def test_mcp_config_optional(self) -> None:
         """Test that config dict is optional."""
@@ -401,7 +362,6 @@ class TestMCPTool:
             name="test",
             description="Test",
             type="mcp",
-            server="my_server",
             command=CommandType.NPX,
         )
         assert tool.config is None or isinstance(tool.config, dict)
@@ -413,7 +373,6 @@ class TestMCPTool:
             name="test",
             description="Test",
             type="mcp",
-            server="filesystem",
             command=CommandType.NPX,
             config=config,
         )
@@ -428,7 +387,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test tool",
-            server="test-server",
             command=CommandType.NPX,
         )
         assert tool.transport == TransportType.STDIO
@@ -439,7 +397,6 @@ class TestMCPToolEnhanced:
             MCPTool(
                 name="test",
                 description="Test tool",
-                server="test-server",
                 transport=TransportType.STDIO,
             )
         assert "command" in str(exc_info.value).lower()
@@ -450,7 +407,6 @@ class TestMCPToolEnhanced:
             MCPTool(
                 name="test",
                 description="Test tool",
-                server="test-server",
                 transport=TransportType.SSE,
             )
         assert "url" in str(exc_info.value).lower()
@@ -461,7 +417,6 @@ class TestMCPToolEnhanced:
             MCPTool(
                 name="test",
                 description="Test tool",
-                server="test-server",
                 transport=TransportType.WEBSOCKET,
             )
         assert "url" in str(exc_info.value).lower()
@@ -472,7 +427,6 @@ class TestMCPToolEnhanced:
             MCPTool(
                 name="test",
                 description="Test tool",
-                server="test-server",
                 transport=TransportType.HTTP,
             )
         assert "url" in str(exc_info.value).lower()
@@ -482,7 +436,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="filesystem",
             description="FS access",
-            server="@modelcontextprotocol/server-filesystem",
             command=CommandType.NPX,
             args=["-y", "@modelcontextprotocol/server-filesystem"],
             env={"PATH": "/usr/bin"},
@@ -496,7 +449,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="remote",
             description="Remote server",
-            server="remote-mcp",
             transport=TransportType.SSE,
             url="https://example.com/sse",
             headers={"Authorization": "Bearer token"},
@@ -510,7 +462,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="realtime",
             description="Realtime server",
-            server="realtime-mcp",
             transport=TransportType.WEBSOCKET,
             url="wss://example.com/ws",
         )
@@ -521,7 +472,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="streaming",
             description="Streaming server",
-            server="streaming-mcp",
             transport=TransportType.HTTP,
             url="https://example.com/stream",
             terminate_on_close=True,
@@ -535,7 +485,6 @@ class TestMCPToolEnhanced:
             MCPTool(
                 name="test",
                 description="Test",
-                server="test",
                 transport=TransportType.SSE,
                 url="http://remote.example.com/sse",
             )
@@ -546,7 +495,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             transport=TransportType.SSE,
             url="http://localhost:8080/sse",
         )
@@ -557,7 +505,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             transport=TransportType.SSE,
             url="http://127.0.0.1:8080/sse",
         )
@@ -568,7 +515,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             transport=TransportType.SSE,
             url="http://[::1]:8080/sse",
         )
@@ -579,7 +525,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             transport=TransportType.SSE,
             url="https://example.com/sse",
         )
@@ -590,7 +535,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             transport=TransportType.WEBSOCKET,
             url="wss://example.com/ws",
         )
@@ -601,7 +545,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             transport=TransportType.WEBSOCKET,
             url="ws://example.com/ws",
         )
@@ -613,7 +556,6 @@ class TestMCPToolEnhanced:
             MCPTool(
                 name="test",
                 description="Test",
-                server="test",
                 command=CommandType.NPX,
                 request_timeout=0,
             )
@@ -625,7 +567,6 @@ class TestMCPToolEnhanced:
             MCPTool(
                 name="test",
                 description="Test",
-                server="test",
                 command=CommandType.NPX,
                 request_timeout=-1,
             )
@@ -635,7 +576,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             command=CommandType.NPX,
         )
         assert tool.request_timeout == 60
@@ -645,7 +585,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             command=CommandType.NPX,
         )
         assert tool.load_tools is True
@@ -655,7 +594,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             command=CommandType.NPX,
         )
         assert tool.load_prompts is True
@@ -668,7 +606,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             command=cmd,
         )
         assert tool.command == cmd
@@ -679,7 +616,6 @@ class TestMCPToolEnhanced:
             MCPTool(
                 name="test",
                 description="Test",
-                server="test",
                 command="bash",  # type: ignore[arg-type]
             )
 
@@ -689,7 +625,6 @@ class TestMCPToolEnhanced:
             MCPTool(
                 name="test",
                 description="Test",
-                server="test",
                 transport="invalid",  # type: ignore[arg-type]
                 url="https://example.com",
             )
@@ -699,7 +634,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             command=CommandType.NPX,
         )
         assert tool.env_file is None
@@ -709,7 +643,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             command=CommandType.NPX,
             env_file=".env",
         )
@@ -720,7 +653,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             command=CommandType.NPX,
         )
         assert tool.encoding is None
@@ -730,7 +662,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             command=CommandType.NPX,
             encoding="utf-8",
         )
@@ -741,7 +672,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             transport=TransportType.SSE,
             url="https://example.com/sse",
         )
@@ -753,7 +683,6 @@ class TestMCPToolEnhanced:
         tool = MCPTool(
             name="test",
             description="Test",
-            server="test",
             transport=TransportType.SSE,
             url="https://example.com/sse",
             timeout=30.0,

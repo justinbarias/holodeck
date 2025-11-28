@@ -1439,3 +1439,1663 @@ class TestVectorstoreToolDiscovery:
 
                 assert first_initialized is True
                 assert first_tool_count == second_tool_count == 1
+
+
+# Check if Ollama is available
+try:
+    from semantic_kernel.connectors.ai.ollama import (
+        OllamaChatCompletion,  # noqa: F401
+    )
+
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+
+
+class TestOllamaProvider:
+    """Tests for Ollama provider support."""
+
+    @pytest.mark.skipif(
+        not OLLAMA_AVAILABLE,
+        reason="Ollama package not installed",
+    )
+    def test_initialize_with_ollama_provider(self) -> None:
+        """Test initialization with Ollama provider."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OLLAMA,
+                name="llama3.2",
+                endpoint="http://localhost:11434",
+                api_key="",  # Ollama doesn't require API key
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+            mock.patch(
+                "holodeck.lib.test_runner.agent_factory.OllamaChatCompletion"
+            ) as mock_ollama,
+        ):
+            factory = AgentFactory(agent_config)
+
+            mock_ollama.assert_called_once_with(
+                ai_model_id="llama3.2",
+                host="http://localhost:11434",
+            )
+            assert factory.agent_config == agent_config
+
+    @pytest.mark.skipif(
+        not OLLAMA_AVAILABLE,
+        reason="Ollama package not installed",
+    )
+    def test_initialize_ollama_without_endpoint_uses_default(self) -> None:
+        """Test Ollama with no endpoint uses default host (None)."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OLLAMA,
+                name="llama3.2",
+                api_key="",
+                # No endpoint specified
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+            mock.patch(
+                "holodeck.lib.test_runner.agent_factory.OllamaChatCompletion"
+            ) as mock_ollama,
+        ):
+            factory = AgentFactory(agent_config)
+
+            mock_ollama.assert_called_once_with(
+                ai_model_id="llama3.2",
+                host=None,
+            )
+            assert factory.agent_config == agent_config
+
+    @pytest.mark.skipif(
+        not OLLAMA_AVAILABLE,
+        reason="Ollama package not installed",
+    )
+    def test_ollama_embedding_model_default(self) -> None:
+        """Test Ollama uses nomic-embed-text as default embedding model."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OLLAMA,
+                name="llama3.2",
+                endpoint="http://localhost:11434",
+                api_key="",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=[
+                {
+                    "type": "vectorstore",
+                    "name": "test_kb",
+                    "description": "Test knowledge base",
+                    "source": "test.md",
+                }
+            ],
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion"),
+            mock.patch(
+                "holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding"
+            ) as mock_embed,
+        ):
+            factory = AgentFactory(agent_config)
+
+            mock_embed.assert_called_once_with(
+                ai_model_id="nomic-embed-text:latest",
+                host="http://localhost:11434",
+            )
+            assert factory._embedding_service is not None
+
+    @pytest.mark.skipif(
+        not OLLAMA_AVAILABLE,
+        reason="Ollama package not installed",
+    )
+    def test_ollama_embedding_without_endpoint(self) -> None:
+        """Test Ollama embedding service with no endpoint uses None host."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OLLAMA,
+                name="llama3.2",
+                api_key="",
+                # No endpoint
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=[
+                {
+                    "type": "vectorstore",
+                    "name": "test_kb",
+                    "description": "Test knowledge base",
+                    "source": "test.md",
+                }
+            ],
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion"),
+            mock.patch(
+                "holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding"
+            ) as mock_embed,
+        ):
+            factory = AgentFactory(agent_config)
+
+            mock_embed.assert_called_once_with(
+                ai_model_id="nomic-embed-text:latest",
+                host=None,
+            )
+            assert factory._embedding_service is not None
+
+
+class TestOllamaNotAvailable:
+    """Tests for Ollama when package is not installed."""
+
+    def test_ollama_provider_raises_when_not_available(self) -> None:
+        """Test Ollama provider raises error when package not installed."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OLLAMA,
+                name="llama3.2",
+                api_key="",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch(
+                "holodeck.lib.test_runner.agent_factory.OllamaChatCompletion", None
+            ),
+        ):
+            with pytest.raises(AgentFactoryError) as exc_info:
+                AgentFactory(agent_config)
+
+            assert "Ollama provider requires" in str(exc_info.value)
+
+    def test_ollama_embedding_raises_when_not_available(self) -> None:
+        """Test Ollama embedding raises error when package not installed."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OLLAMA,
+                name="llama3.2",
+                api_key="",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=[
+                {
+                    "type": "vectorstore",
+                    "name": "test_kb",
+                    "description": "Test knowledge base",
+                    "source": "test.md",
+                }
+            ],
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion"),
+            mock.patch(
+                "holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding", None
+            ),
+        ):
+            with pytest.raises(AgentFactoryError) as exc_info:
+                AgentFactory(agent_config)
+
+            assert "Ollama provider requires" in str(exc_info.value)
+
+
+class TestMCPTools:
+    """Tests for MCP tool support."""
+
+    def test_has_mcp_tools_returns_true_when_mcp_configured(self) -> None:
+        """Test detection of MCP tools in agent config."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=[
+                {
+                    "type": "mcp",
+                    "name": "filesystem",
+                    "description": "Filesystem access",
+                    "command": "npx",
+                    "args": ["-y", "@anthropic/mcp-server-filesystem"],
+                }
+            ],
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            assert factory._has_mcp_tools() is True
+
+    def test_has_mcp_tools_returns_false_without_mcp(self) -> None:
+        """Test no MCP tools detected when only other tool types."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=[
+                {
+                    "type": "function",
+                    "name": "other_tool",
+                    "description": "A test function tool",
+                    "file": "tools/test.py",
+                    "function": "test_func",
+                }
+            ],
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            assert factory._has_mcp_tools() is False
+
+    def test_has_mcp_tools_returns_false_empty_tools(self) -> None:
+        """Test no MCP tools when tools list is empty."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=[],
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            assert factory._has_mcp_tools() is False
+
+    def test_has_mcp_tools_returns_false_no_tools(self) -> None:
+        """Test no MCP tools when tools is None."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            assert factory._has_mcp_tools() is False
+
+    @pytest.mark.asyncio
+    async def test_register_mcp_tools_success(self) -> None:
+        """Test successful MCP tool registration."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=[
+                {
+                    "type": "mcp",
+                    "name": "filesystem",
+                    "description": "Filesystem access",
+                    "command": "npx",
+                    "args": ["-y", "@anthropic/mcp-server-filesystem"],
+                }
+            ],
+        )
+
+        # Create mock plugin
+        mock_plugin = mock.AsyncMock()
+        mock_plugin.name = "filesystem"
+        mock_plugin.__aenter__ = mock.AsyncMock(return_value=mock_plugin)
+        mock_plugin.__aexit__ = mock.AsyncMock(return_value=None)
+
+        mock_create_plugin = mock.Mock(return_value=mock_plugin)
+        mock_factory_module = mock.Mock()
+        mock_factory_module.create_mcp_plugin = mock_create_plugin
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            with mock.patch.dict(
+                "sys.modules",
+                {"holodeck.tools.mcp.factory": mock_factory_module},
+            ):
+                await factory._register_mcp_tools()
+
+                assert len(factory._mcp_plugins) == 1
+                mock_plugin.__aenter__.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_register_mcp_tools_skips_non_mcp(self) -> None:
+        """Test that non-MCP tools are skipped during MCP registration."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=[
+                {
+                    "type": "function",
+                    "name": "func_tool",
+                    "description": "A test function tool",
+                    "file": "tools/test.py",
+                    "function": "test_func",
+                }
+            ],
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # This should be a no-op since there are no MCP tools
+            await factory._register_mcp_tools()
+
+            assert len(factory._mcp_plugins) == 0
+
+    @pytest.mark.asyncio
+    async def test_register_mcp_tools_failure_cleanup(self) -> None:
+        """Test MCP plugin cleanup on initialization failure."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=[
+                {
+                    "type": "mcp",
+                    "name": "failing_mcp",
+                    "description": "Failing MCP server",
+                    "command": "npx",  # Valid command enum value
+                    "args": ["-y", "failing-server"],
+                }
+            ],
+        )
+
+        # Create mock plugin that fails on __aenter__
+        mock_plugin = mock.AsyncMock()
+        mock_plugin.name = "failing_mcp"
+        mock_plugin.__aenter__ = mock.AsyncMock(
+            side_effect=RuntimeError("Connection failed")
+        )
+        mock_plugin.__aexit__ = mock.AsyncMock(return_value=None)
+
+        mock_create_plugin = mock.Mock(return_value=mock_plugin)
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            with mock.patch(
+                "holodeck.tools.mcp.factory.create_mcp_plugin",
+                mock_create_plugin,
+            ):
+                with pytest.raises(AgentFactoryError) as exc_info:
+                    await factory._register_mcp_tools()
+
+                assert "Failed to initialize MCP tool" in str(exc_info.value)
+                assert "failing_mcp" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_shutdown_mcp_plugins(self) -> None:
+        """Test MCP plugin shutdown cleans up all plugins."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Manually add mock plugins
+            mock_plugin1 = mock.AsyncMock()
+            mock_plugin1.name = "plugin1"
+            mock_plugin1.__aexit__ = mock.AsyncMock(return_value=None)
+
+            mock_plugin2 = mock.AsyncMock()
+            mock_plugin2.name = "plugin2"
+            mock_plugin2.__aexit__ = mock.AsyncMock(return_value=None)
+
+            factory._mcp_plugins = [mock_plugin1, mock_plugin2]
+            factory._tools_initialized = True
+
+            await factory.shutdown()
+
+            mock_plugin1.__aexit__.assert_called_once_with(None, None, None)
+            mock_plugin2.__aexit__.assert_called_once_with(None, None, None)
+            assert len(factory._mcp_plugins) == 0
+            assert factory._tools_initialized is False
+
+    @pytest.mark.asyncio
+    async def test_shutdown_with_vectorstore_cleanup(self) -> None:
+        """Test shutdown cleans up vectorstore tools with cleanup method."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Add mock vectorstore tool with cleanup
+            mock_vs_tool = mock.AsyncMock()
+            mock_vs_tool.cleanup = mock.AsyncMock()
+            factory._vectorstore_tools = [mock_vs_tool]
+            factory._tools_initialized = True
+
+            await factory.shutdown()
+
+            mock_vs_tool.cleanup.assert_called_once()
+            assert len(factory._vectorstore_tools) == 0
+
+    @pytest.mark.asyncio
+    async def test_shutdown_handles_plugin_errors(self) -> None:
+        """Test shutdown continues despite plugin errors."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Plugin that raises on __aexit__
+            mock_plugin = mock.AsyncMock()
+            mock_plugin.name = "failing_plugin"
+            mock_plugin.__aexit__ = mock.AsyncMock(
+                side_effect=RuntimeError("Cleanup failed")
+            )
+
+            factory._mcp_plugins = [mock_plugin]
+            factory._tools_initialized = True
+
+            # Should not raise despite error
+            await factory.shutdown()
+
+            assert len(factory._mcp_plugins) == 0
+            assert factory._tools_initialized is False
+
+
+class TestResponseFormatWrapping:
+    """Tests for response format wrapping logic."""
+
+    @staticmethod
+    def _build_factory_with_service(agent_config: Agent) -> AgentFactory:
+        """Create a factory instance seeded with a fake kernel service."""
+
+        class FakeSettings:
+            def __init__(self) -> None:
+                self.temperature = None
+                self.top_p = None
+                self.max_tokens = None
+                self.max_completion_tokens = None
+                self.ai_model_id = None
+                self.response_format = None
+                self.service_id = "fake-service"
+
+        class FakeService:
+            service_id = "fake-service"
+
+            @staticmethod
+            def get_prompt_execution_settings_class() -> type[FakeSettings]:
+                return FakeSettings
+
+        factory = AgentFactory.__new__(AgentFactory)
+        factory.agent_config = agent_config
+        factory.kernel_arguments = None
+        factory.kernel = mock.Mock()
+        fake_service = FakeService()
+        factory.kernel.services = {"fake": fake_service}
+        factory._llm_service = fake_service
+
+        return factory
+
+    def test_wrap_response_format_already_has_json_schema(self) -> None:
+        """Test wrapping skips if json_schema key already exists."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        factory = self._build_factory_with_service(agent_config)
+
+        schema_with_json_schema = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "existing",
+                "schema": {"type": "object"},
+            },
+        }
+
+        result = factory._wrap_response_format(schema_with_json_schema)
+
+        # Should return as-is since json_schema key exists
+        assert result == schema_with_json_schema
+
+    def test_wrap_response_format_with_type_json_schema_and_schema_key(self) -> None:
+        """Test wrapping format with type=json_schema and schema key."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        factory = self._build_factory_with_service(agent_config)
+
+        # Schema with type=json_schema and schema key but no json_schema key
+        schema_input = {
+            "type": "json_schema",
+            "schema": {"type": "object"},
+            "name": "my_schema",
+        }
+
+        result = factory._wrap_response_format(schema_input)
+
+        # Should wrap in json_schema structure
+        assert result == {
+            "type": "json_schema",
+            "json_schema": schema_input,
+        }
+
+    def test_wrap_response_format_plain_schema(self) -> None:
+        """Test wrapping a plain JSON schema."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        factory = self._build_factory_with_service(agent_config)
+
+        plain_schema = {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+        }
+
+        result = factory._wrap_response_format(plain_schema)
+
+        assert result == {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "test-agent",
+                "schema": plain_schema,
+                "strict": True,
+            },
+        }
+
+    def test_sanitize_response_format_name_with_special_chars(self) -> None:
+        """Test name sanitization removes special characters."""
+        agent_config = Agent(
+            name="my agent!@#$%^&*()",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        factory = self._build_factory_with_service(agent_config)
+
+        result = factory._sanitize_response_format_name()
+
+        assert result == "my_agent_"
+
+    def test_sanitize_response_format_name_fallback(self) -> None:
+        """Test name sanitization fallback for empty result."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        factory = self._build_factory_with_service(agent_config)
+
+        # Override agent name to test fallback behavior (after validation)
+        factory.agent_config.name = ""  # Empty name
+
+        result = factory._sanitize_response_format_name()
+
+        assert result == "response_format"
+
+    def test_load_response_format_from_file(self, tmp_path: Any) -> None:
+        """Test loading response format from file path."""
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text('{"type": "object", "properties": {}}')
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            response_format=str(schema_file),
+        )
+
+        factory = self._build_factory_with_service(agent_config)
+
+        result = factory._load_response_format()
+
+        assert result is not None
+        assert result["type"] == "object"
+
+    def test_load_response_format_returns_none_when_not_set(self) -> None:
+        """Test loading response format returns None when not configured."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            # No response_format
+        )
+
+        factory = self._build_factory_with_service(agent_config)
+
+        result = factory._load_response_format()
+
+        assert result is None
+
+    def test_apply_response_format_exception_handling(self) -> None:
+        """Test response format loading exception is wrapped."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            response_format="/nonexistent/path/schema.json",
+        )
+
+        factory = self._build_factory_with_service(agent_config)
+
+        class FakeSettings:
+            response_format = None
+
+        settings = FakeSettings()
+
+        with pytest.raises(AgentFactoryError) as exc_info:
+            factory._apply_response_format(settings)
+
+        assert "Failed to load response_format" in str(exc_info.value)
+
+
+class TestToolCallExtraction:
+    """Tests for tool call extraction from thread."""
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_with_function_call_content(self) -> None:
+        """Test extraction of tool calls from thread messages."""
+        from semantic_kernel.contents import FunctionCallContent
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Create mock FunctionCallContent
+            mock_fcc = mock.Mock(spec=FunctionCallContent)
+            mock_fcc.id = "call_123"
+            mock_fcc.plugin_name = "vectorstore"
+            mock_fcc.function_name = "search"
+            mock_fcc.arguments = '{"query": "test"}'
+
+            # Create mock message with items
+            mock_message = mock.Mock()
+            mock_message.items = [mock_fcc]
+
+            # Create mock thread
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message
+
+            mock_thread.get_messages = mock_get_messages
+
+            result = await factory._extract_tool_calls_from_thread(mock_thread)
+
+            assert len(result) == 1
+            assert result[0]["name"] == "vectorstore-search"
+            assert result[0]["arguments"] == {"query": "test"}
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_with_dict_arguments(self) -> None:
+        """Test extraction when arguments are already a dict."""
+        from semantic_kernel.contents import FunctionCallContent
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Create mock FunctionCallContent with dict arguments
+            mock_fcc = mock.Mock(spec=FunctionCallContent)
+            mock_fcc.id = "call_456"
+            mock_fcc.plugin_name = ""
+            mock_fcc.function_name = "calculate"
+            mock_fcc.arguments = {"x": 10, "y": 20}
+
+            mock_message = mock.Mock()
+            mock_message.items = [mock_fcc]
+
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message
+
+            mock_thread.get_messages = mock_get_messages
+
+            result = await factory._extract_tool_calls_from_thread(mock_thread)
+
+            assert len(result) == 1
+            assert result[0]["name"] == "calculate"
+            assert result[0]["arguments"] == {"x": 10, "y": 20}
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_with_invalid_json_arguments(self) -> None:
+        """Test extraction handles invalid JSON in arguments."""
+        from semantic_kernel.contents import FunctionCallContent
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Create mock FunctionCallContent with invalid JSON
+            mock_fcc = mock.Mock(spec=FunctionCallContent)
+            mock_fcc.id = "call_789"
+            mock_fcc.plugin_name = "test"
+            mock_fcc.function_name = "func"
+            mock_fcc.arguments = "not valid json {"
+
+            mock_message = mock.Mock()
+            mock_message.items = [mock_fcc]
+
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message
+
+            mock_thread.get_messages = mock_get_messages
+
+            result = await factory._extract_tool_calls_from_thread(mock_thread)
+
+            assert len(result) == 1
+            assert result[0]["name"] == "test-func"
+            assert result[0]["arguments"] == {"raw": "not valid json {"}
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_deduplicates_by_id(self) -> None:
+        """Test that duplicate tool calls with same ID are filtered."""
+        from semantic_kernel.contents import FunctionCallContent
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Two FunctionCallContent with same ID
+            mock_fcc1 = mock.Mock(spec=FunctionCallContent)
+            mock_fcc1.id = "same_id"
+            mock_fcc1.plugin_name = "plugin"
+            mock_fcc1.function_name = "func"
+            mock_fcc1.arguments = {}
+
+            mock_fcc2 = mock.Mock(spec=FunctionCallContent)
+            mock_fcc2.id = "same_id"  # Same ID
+            mock_fcc2.plugin_name = "plugin"
+            mock_fcc2.function_name = "func"
+            mock_fcc2.arguments = {}
+
+            mock_message = mock.Mock()
+            mock_message.items = [mock_fcc1, mock_fcc2]
+
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message
+
+            mock_thread.get_messages = mock_get_messages
+
+            result = await factory._extract_tool_calls_from_thread(mock_thread)
+
+            # Should only have one result due to deduplication
+            assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_handles_exception(self) -> None:
+        """Test extraction handles exceptions gracefully."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            mock_thread = mock.AsyncMock()
+
+            async def failing_get_messages() -> Any:
+                raise RuntimeError("Thread error")
+                yield  # Make it a generator
+
+            mock_thread.get_messages = failing_get_messages
+
+            # Should return empty list, not raise
+            result = await factory._extract_tool_calls_from_thread(mock_thread)
+
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_with_none_arguments(self) -> None:
+        """Test extraction handles None arguments."""
+        from semantic_kernel.contents import FunctionCallContent
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            mock_fcc = mock.Mock(spec=FunctionCallContent)
+            mock_fcc.id = "call_none"
+            mock_fcc.plugin_name = "plugin"
+            mock_fcc.function_name = "func"
+            mock_fcc.arguments = None
+
+            mock_message = mock.Mock()
+            mock_message.items = [mock_fcc]
+
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message
+
+            mock_thread.get_messages = mock_get_messages
+
+            result = await factory._extract_tool_calls_from_thread(mock_thread)
+
+            assert len(result) == 1
+            assert result[0]["arguments"] == {}
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_uses_call_id_fallback(self) -> None:
+        """Test extraction uses call_id when id is not present."""
+        from semantic_kernel.contents import FunctionCallContent
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            mock_fcc = mock.Mock(spec=FunctionCallContent)
+            mock_fcc.id = None
+            mock_fcc.call_id = "fallback_call_id"
+            mock_fcc.plugin_name = "plugin"
+            mock_fcc.function_name = "func"
+            mock_fcc.arguments = {}
+
+            mock_message = mock.Mock()
+            mock_message.items = [mock_fcc]
+
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message
+
+            mock_thread.get_messages = mock_get_messages
+
+            result = await factory._extract_tool_calls_from_thread(mock_thread)
+
+            assert len(result) == 1
+            assert result[0]["name"] == "plugin-func"
+
+
+class TestErrorHandlingBranches:
+    """Tests for error handling branches and edge cases."""
+
+    def test_extract_response_content_handles_exception(self) -> None:
+        """Test response content extraction handles exceptions gracefully."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Response object where str(content) raises an exception
+            class FailingContent:
+                def __str__(self) -> str:
+                    raise RuntimeError("Cannot convert to string")
+
+            mock_response = mock.Mock()
+            mock_response.content = FailingContent()
+
+            result = factory._extract_response_content(mock_response)
+
+            # Should return empty string on error (warning logged)
+            assert result == ""
+
+    def test_extract_token_usage_handles_missing_attributes(self) -> None:
+        """Test token usage extraction handles missing attributes gracefully."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Response with no metadata attribute
+            mock_response = mock.Mock(spec=[])  # No attributes
+
+            result = factory._extract_token_usage(mock_response)
+
+            # Should return None when no metadata
+            assert result is None
+
+    def test_create_prompt_execution_settings_no_kernel(self) -> None:
+        """Test error when kernel not initialized."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        factory = AgentFactory.__new__(AgentFactory)
+        factory.agent_config = agent_config
+        # kernel attribute not set
+
+        with pytest.raises(AgentFactoryError) as exc_info:
+            factory._create_prompt_execution_settings()
+
+        assert "Kernel must be initialized" in str(exc_info.value)
+
+    def test_create_prompt_execution_settings_no_services(self) -> None:
+        """Test error when no services configured."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        factory = AgentFactory.__new__(AgentFactory)
+        factory.agent_config = agent_config
+        factory.kernel = mock.Mock()
+        factory.kernel.services = {}  # Empty services
+        factory._llm_service = None
+
+        with pytest.raises(AgentFactoryError) as exc_info:
+            factory._create_prompt_execution_settings()
+
+        assert "No LLM services configured" in str(exc_info.value)
+
+    def test_create_prompt_execution_settings_uses_llm_service_fallback(self) -> None:
+        """Test fallback to _llm_service when kernel.services is empty."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        class FakeSettings:
+            def __init__(self) -> None:
+                self.temperature = None
+                self.service_id = "fake"
+
+        class FakeService:
+            @staticmethod
+            def get_prompt_execution_settings_class() -> type[FakeSettings]:
+                return FakeSettings
+
+        factory = AgentFactory.__new__(AgentFactory)
+        factory.agent_config = agent_config
+        factory.kernel = mock.Mock()
+        factory.kernel.services = {}  # Empty
+        factory._llm_service = FakeService()
+
+        settings = factory._create_prompt_execution_settings()
+
+        assert settings is not None
+
+    def test_load_instructions_file_not_found(self, tmp_path: Any) -> None:
+        """Test error when instructions file does not exist."""
+        # Create config with non-existent file
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(file="nonexistent_instructions.txt"),
+        )
+
+        from holodeck.config.context import agent_base_dir
+
+        token = agent_base_dir.set(str(tmp_path))
+        try:
+            with (
+                mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+                mock.patch(
+                    "holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"
+                ),
+            ):
+                with pytest.raises(AgentFactoryError) as exc_info:
+                    AgentFactory(agent_config)
+
+                assert "Instructions file not found" in str(exc_info.value)
+        finally:
+            agent_base_dir.reset(token)
+
+    def test_load_instructions_with_agent_base_dir_context(self, tmp_path: Any) -> None:
+        """Test loading instructions from file with agent_base_dir context."""
+        instructions_file = tmp_path / "instructions.txt"
+        instructions_file.write_text("You are a helpful assistant.")
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(file="instructions.txt"),
+        )
+
+        from holodeck.config.context import agent_base_dir
+
+        token = agent_base_dir.set(str(tmp_path))
+        try:
+            with (
+                mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+                mock.patch(
+                    "holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"
+                ),
+            ):
+                factory = AgentFactory(agent_config)
+                # Should succeed with context set
+                assert factory is not None
+        finally:
+            agent_base_dir.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_invoke_general_exception_handling(self) -> None:
+        """Test general exception is properly wrapped."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Mock _invoke_with_retry to raise generic Exception
+            async def failing_invoke() -> Any:
+                raise ValueError("Something went wrong")
+
+            with mock.patch.object(factory, "_invoke_with_retry", failing_invoke):
+                with pytest.raises(AgentFactoryError) as exc_info:
+                    await factory.invoke("Test")
+
+                assert "Agent invocation failed" in str(exc_info.value)
+
+    def test_unsupported_provider_raises_error(self) -> None:
+        """Test unsupported provider raises appropriate error."""
+        # This tests the else branch in _create_kernel
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,  # Start with valid provider
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"):
+            factory = AgentFactory.__new__(AgentFactory)
+            factory.agent_config = agent_config
+            factory._force_ingest = False
+            factory._vectorstore_tools = []
+            factory._mcp_plugins = []
+            factory._tools_initialized = False
+            factory._embedding_service = None
+            factory._llm_service = None
+
+            # Temporarily modify provider to trigger unsupported branch
+            original_provider = agent_config.model.provider
+            agent_config.model.provider = mock.Mock()  # Invalid provider
+            agent_config.model.provider.value = "unsupported_provider"
+
+            with pytest.raises(AgentFactoryError) as exc_info:
+                factory._create_kernel()
+
+            assert "Unsupported LLM provider" in str(exc_info.value)
+
+            # Restore
+            agent_config.model.provider = original_provider
+
+
+class TestMiscellaneousCoverage:
+    """Miscellaneous tests to increase coverage."""
+
+    def test_create_chat_history_with_user_input(self) -> None:
+        """Test chat history creation with initial user input."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Test with user input
+            history = factory._create_chat_history(user_input="Hello")
+
+            # Should have at least one message
+            assert len(history.messages) == 1
+
+    def test_invoke_agent_impl_builds_kernel_arguments_when_none(self) -> None:
+        """Test _invoke_agent_impl builds kernel_arguments if None."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        # The main test here is ensuring the code path is covered
+        # when kernel_arguments is None in _invoke_agent_impl
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+            # kernel_arguments should be set after init
+            assert factory.kernel_arguments is not None
+
+    def test_apply_model_settings_with_max_tokens_fallback(self) -> None:
+        """Test max_tokens is used when max_completion_tokens not available."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+                max_tokens=100,
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        # Settings class without max_completion_tokens
+        class LegacySettings:
+            def __init__(self) -> None:
+                self.temperature = None
+                self.top_p = None
+                self.max_tokens = None
+                self.ai_model_id = None
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            settings = LegacySettings()
+            factory._apply_model_settings(settings)
+
+            assert settings.max_tokens == 100
+
+    @pytest.mark.asyncio
+    async def test_register_vectorstore_tools_returns_early_no_tools(self) -> None:
+        """Test _register_vectorstore_tools returns early when no tools."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=None,
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Should return early without error
+            await factory._register_vectorstore_tools()
+
+            assert len(factory._vectorstore_tools) == 0
+
+    @pytest.mark.asyncio
+    async def test_register_mcp_tools_returns_early_no_tools(self) -> None:
+        """Test _register_mcp_tools returns early when no tools."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=None,
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Should return early without error
+            await factory._register_mcp_tools()
+
+            assert len(factory._mcp_plugins) == 0
+
+    def test_token_usage_extraction_success(self) -> None:
+        """Test successful token usage extraction."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Create mock response with proper usage object
+            mock_usage = mock.Mock()
+            mock_usage.prompt_tokens = 10
+            mock_usage.completion_tokens = 20
+
+            mock_response = mock.Mock()
+            mock_response.metadata = {"usage": mock_usage}
+
+            result = factory._extract_token_usage(mock_response)
+
+            assert result is not None
+            assert result.prompt_tokens == 10
+            assert result.completion_tokens == 20
+            assert result.total_tokens == 30
+
+    def test_extract_response_content_without_content_attr(self) -> None:
+        """Test response extraction when no content attribute."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Response without content attribute
+            mock_response = mock.Mock(spec=[])  # No attributes
+
+            result = factory._extract_response_content(mock_response)
+
+            assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_skips_non_function_call_items(self) -> None:
+        """Test extraction skips items that are not FunctionCallContent."""
+        from semantic_kernel.contents import FunctionCallContent
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Mix of FunctionCallContent and other items
+            mock_fcc = mock.Mock(spec=FunctionCallContent)
+            mock_fcc.id = "call_1"
+            mock_fcc.plugin_name = "plugin"
+            mock_fcc.function_name = "func"
+            mock_fcc.arguments = {}
+
+            other_item = mock.Mock()  # Not a FunctionCallContent
+
+            mock_message = mock.Mock()
+            mock_message.items = [mock_fcc, other_item]
+
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message
+
+            mock_thread.get_messages = mock_get_messages
+
+            result = await factory._extract_tool_calls_from_thread(mock_thread)
+
+            # Should only have the FunctionCallContent
+            assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_message_without_items(self) -> None:
+        """Test extraction handles messages without items attribute."""
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+
+            # Message without items attribute
+            mock_message = mock.Mock(spec=[])
+
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message
+
+            mock_thread.get_messages = mock_get_messages
+
+            result = await factory._extract_tool_calls_from_thread(mock_thread)
+
+            assert result == []

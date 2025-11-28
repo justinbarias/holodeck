@@ -29,10 +29,11 @@ dependencies = [
     "anthropic>=0.72.0,<0.73.0",
     "redis[hiredis]>=6.0",
     "ollama>=0.4,<1.0",
-    "redisvl>=0.4.0,<0.5.0",  # redis version conflict handled by [tool.uv].override-dependencies
+    "redisvl>=0.4.0,<0.5.0", # redis version conflict handled by [tool.uv].override-dependencies
     "python-ulid>=3.1.0,<4.0.0",
     "ml-dtypes>=0.4.0,<0.5.0",
     "chromadb (>=0.5,<1.1)",
+    "mcp>=1.8",
 ]
 
 [project.scripts]
