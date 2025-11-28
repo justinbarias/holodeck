@@ -1,21 +1,15 @@
 """MCP (Model Context Protocol) tool module for HoloDeck.
 
 This module provides MCP server integration capabilities:
-- MCPPluginWrapper: Base wrapper for Semantic Kernel MCP plugins
-- MCPToolResult: Standardized result from MCP tool invocations
-- ContentBlock types: TextContent, ImageContent, AudioContent, BinaryContent
-- create_mcp_plugin: Factory function for creating appropriate plugin wrappers
+- create_mcp_plugin: Factory function for creating SK MCP plugin instances
+- normalize_tool_name: Utility for normalizing MCP tool names
 - MCP error types: MCPError, MCPConfigError, MCPConnectionError, etc.
+
+Note: Semantic Kernel's MCP plugins handle lifecycle, tool discovery,
+and response processing automatically. HoloDeck uses SK plugins directly
+with thin configuration translation.
 """
 
-from holodeck.tools.mcp.content import (
-    AudioContent,
-    BinaryContent,
-    ContentBlock,
-    ImageContent,
-    MCPToolResult,
-    TextContent,
-)
 from holodeck.tools.mcp.errors import (
     MCPConfigError,
     MCPConnectionError,
@@ -25,20 +19,13 @@ from holodeck.tools.mcp.errors import (
     MCPToolNotFoundError,
 )
 from holodeck.tools.mcp.factory import create_mcp_plugin
-from holodeck.tools.mcp.plugin import MCPPluginWrapper
+from holodeck.tools.mcp.utils import normalize_tool_name
 
 __all__ = [
-    # Content types
-    "TextContent",
-    "ImageContent",
-    "AudioContent",
-    "BinaryContent",
-    "ContentBlock",
-    "MCPToolResult",
-    # Plugin wrapper
-    "MCPPluginWrapper",
     # Factory
     "create_mcp_plugin",
+    # Utility
+    "normalize_tool_name",
     # Errors
     "MCPError",
     "MCPConfigError",
