@@ -19,17 +19,17 @@
 
 ---
 
-## Phase 1: Setup (Shared Infrastructure)
+## Phase 1: Setup (Shared Infrastructure) ✅
 
 **Purpose**: Create project structure for MCP tool module
 
-- [ ] T001 Create MCP module directory structure: `src/holodeck/tools/mcp/__init__.py`
-- [ ] T002 [P] Create MCP errors module in `src/holodeck/tools/mcp/errors.py` with MCPError, MCPConfigError, MCPConnectionError, MCPTimeoutError, MCPProtocolError, MCPToolNotFoundError
-- [ ] T003 [P] Create TransportType and CommandType enums in `src/holodeck/models/tool.py`
+- [x] T001 Create MCP module directory structure: `src/holodeck/tools/mcp/__init__.py`
+- [x] T002 [P] Create MCP errors module in `src/holodeck/tools/mcp/errors.py` with MCPError, MCPConfigError, MCPConnectionError, MCPTimeoutError, MCPProtocolError, MCPToolNotFoundError
+- [x] T003 [P] Create TransportType and CommandType enums in `src/holodeck/models/tool.py`
 
 ---
 
-## Phase 2: Foundational (Blocking Prerequisites)
+## Phase 2: Foundational (Blocking Prerequisites) ✅
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
@@ -41,12 +41,12 @@
 - Tool invocation via the kernel's automatic function calling
 - No custom wrappers or adapters needed
 
-- [ ] T004 Enhance MCPToolConfig model in `src/holodeck/models/tool.py` with all transport fields (transport, command, args, env, env_file, encoding, url, headers, timeout, sse_read_timeout, terminate_on_close, config, load_tools, load_prompts, request_timeout)
-- [ ] T005 [P] Add transport-specific Pydantic validators in `src/holodeck/models/tool.py` (validate command for stdio, url for sse/websocket/http, allowed commands only npx/uvx/docker)
-- [ ] T006 Create factory function in `src/holodeck/tools/mcp/factory.py` with `create_mcp_plugin(config: MCPToolConfig)` that returns the appropriate SK plugin instance (MCPStdioPlugin, MCPSsePlugin, MCPWebsocketPlugin, MCPStreamableHttpPlugin)
-- [ ] T007 [P] Add environment variable resolution in factory using existing `substitute_env_vars()` before passing to SK plugin constructors
+- [x] T004 Enhance MCPToolConfig model in `src/holodeck/models/tool.py` with all transport fields (transport, command, args, env, env_file, encoding, url, headers, timeout, sse_read_timeout, terminate_on_close, config, load_tools, load_prompts, request_timeout)
+- [x] T005 [P] Add transport-specific Pydantic validators in `src/holodeck/models/tool.py` (validate command for stdio, url for sse/websocket/http, allowed commands only npx/uvx/docker)
+- [x] T006 Create factory function in `src/holodeck/tools/mcp/factory.py` with `create_mcp_plugin(config: MCPToolConfig)` that returns the appropriate SK plugin instance (MCPStdioPlugin, MCPSsePlugin, MCPWebsocketPlugin, MCPStreamableHttpPlugin)
+- [x] T007 [P] Add environment variable resolution in factory using existing `substitute_env_vars()` before passing to SK plugin constructors
 
-**Checkpoint**: Foundation ready - user story implementation can now begin in parallel
+**Checkpoint**: Foundation ready - user story implementation can now begin in parallel ✅
 
 ---
 
