@@ -9,15 +9,20 @@ industry-standard metrics without being locked into a specific LLM provider.
 Key components:
 - DeepEvalModelConfig: Configuration adapter for LLM providers
 - DeepEvalBaseEvaluator: Abstract base class for DeepEval metrics
+- GEvalEvaluator: Custom criteria evaluator using G-Eval algorithm
 - Error classes for handling evaluation failures
 
 Example:
     >>> from holodeck.lib.evaluators.deepeval import (
+    ...     GEvalEvaluator,
     ...     DeepEvalModelConfig,
-    ...     DeepEvalBaseEvaluator,
     ... )
     >>> config = DeepEvalModelConfig()  # Default: Ollama with gpt-oss:20b
-    >>> # Use with specific evaluators (GEvalEvaluator, etc.)
+    >>> evaluator = GEvalEvaluator(
+    ...     name="Helpfulness",
+    ...     criteria="Evaluate if the response is helpful",
+    ...     model_config=config
+    ... )
 """
 
 from holodeck.lib.evaluators.deepeval.base import DeepEvalBaseEvaluator
@@ -29,11 +34,13 @@ from holodeck.lib.evaluators.deepeval.errors import (
     DeepEvalError,
     ProviderNotSupportedError,
 )
+from holodeck.lib.evaluators.deepeval.geval import GEvalEvaluator
 
 __all__ = [
     "DeepEvalBaseEvaluator",
     "DeepEvalModelConfig",
     "DEFAULT_MODEL_CONFIG",
     "DeepEvalError",
+    "GEvalEvaluator",
     "ProviderNotSupportedError",
 ]
