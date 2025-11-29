@@ -1,15 +1,13 @@
 """Vector store abstractions using Semantic Kernel collection types.
 
 This module provides a unified interface for working with various vector storage
-backends (Redis, PostgreSQL, Azure AI Search, Qdrant, Weaviate, etc.) through
+backends (PostgreSQL, Azure AI Search, Qdrant, Weaviate, etc.) through
 Semantic Kernel's VectorStoreCollection abstractions.
 
 The DocumentRecord model is compatible with all supported backends, allowing
 seamless switching between providers via configuration.
 
 Supported Providers:
-- redis-hashset: Redis with Hashset storage
-- redis-json: Redis with JSON storage
 - postgres: PostgreSQL with pgvector extension
 - azure-ai-search: Azure AI Search (Cognitive Search)
 - qdrant: Qdrant vector database
@@ -317,11 +315,6 @@ def get_collection_class(provider: str) -> type[Any]:
     """
     # Map providers to their import paths and class names
     provider_imports: dict[str, tuple[str, str]] = {
-        "redis-hashset": (
-            "semantic_kernel.connectors.redis",
-            "RedisHashsetCollection",
-        ),
-        "redis-json": ("semantic_kernel.connectors.redis", "RedisJsonCollection"),
         "postgres": ("semantic_kernel.connectors.postgres", "PostgresCollection"),
         "azure-ai-search": (
             "semantic_kernel.connectors.azure_ai_search",
@@ -360,8 +353,6 @@ def get_collection_class(provider: str) -> type[Any]:
     except ImportError as e:
         # Provide helpful error message about missing dependencies
         dep_hints: dict[str, str] = {
-            "redis-hashset": "redis[hiredis]",
-            "redis-json": "redis[hiredis]",
             "postgres": "psycopg[binary,pool]",
             "azure-ai-search": "azure-search-documents",
             "qdrant": "qdrant-client",
@@ -392,8 +383,6 @@ def get_collection_factory(
 
     Args:
         provider: Vector store provider name. Supported providers:
-            - redis-hashset: Redis with Hashset storage
-            - redis-json: Redis with JSON storage
             - postgres: PostgreSQL with pgvector extension
             - azure-ai-search: Azure AI Search (Cognitive Search)
             - qdrant: Qdrant vector database
@@ -475,8 +464,6 @@ def get_collection_factory(
         >>> factory = get_collection_factory("in-memory", dimensions=1536)
     """
     supported_providers = [
-        "redis-hashset",
-        "redis-json",
         "postgres",
         "azure-ai-search",
         "qdrant",

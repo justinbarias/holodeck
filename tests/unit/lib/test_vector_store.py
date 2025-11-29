@@ -39,8 +39,6 @@ mock_memory.InMemoryCollection = MagicMock()  # type: ignore[assignment]
 mock_memory.PineconeCollection = MagicMock()  # type: ignore[assignment]
 mock_memory.PostgresCollection = MagicMock()  # type: ignore[assignment]
 mock_memory.QdrantCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.RedisHashsetCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.RedisJsonCollection = MagicMock()  # type: ignore[assignment]
 mock_memory.SqlServerCollection = MagicMock()  # type: ignore[assignment]
 mock_memory.WeaviateCollection = MagicMock()  # type: ignore[assignment]
 
@@ -347,7 +345,7 @@ class TestGetCollectionFactory:
     def test_factory_case_sensitive(self) -> None:
         """Test that provider names are case-sensitive."""
         with pytest.raises(ValueError, match="Unsupported vector store provider"):
-            get_collection_factory("Redis-Hashset")  # Wrong case
+            get_collection_factory("Postgres")  # Wrong case
 
     def test_factory_returns_callable(self) -> None:
         """Test that get_collection_factory returns a callable."""
@@ -357,8 +355,6 @@ class TestGetCollectionFactory:
     def test_factory_supported_providers(self) -> None:
         """Test that all documented providers return callables."""
         providers = [
-            "redis-hashset",
-            "redis-json",
             "postgres",
             "azure-ai-search",
             "qdrant",
@@ -1311,37 +1307,5 @@ class TestGetCollectionFactoryNonChromadb:
             # Verify InMemoryCollection was instantiated
             mock_collection_class.__getitem__.return_value.assert_called_once()
             assert result == mock_collection_class.__getitem__.return_value.return_value
-        finally:
-            importlib.import_module = original_import
-
-    def test_factory_redis_hashset_calls_collection_class(self) -> None:
-        """Test that factory() for redis-hashset provider works."""
-        mock_collection_class = MagicMock()
-
-        import importlib
-
-        original_import = importlib.import_module
-
-        def mock_import(name: str) -> MagicMock:
-            if name == "semantic_kernel.connectors.redis":
-                module = MagicMock()
-                module.RedisHashsetCollection = mock_collection_class
-                return module
-            return original_import(name)
-
-        try:
-            importlib.import_module = mock_import  # type: ignore[method-assign]
-
-            factory = get_collection_factory(
-                "redis-hashset",
-                dimensions=768,
-                connection_string="redis://localhost:6379",
-            )
-
-            # Call the factory
-            factory()
-
-            # Verify RedisHashsetCollection was instantiated
-            mock_collection_class.__getitem__.return_value.assert_called_once()
         finally:
             importlib.import_module = original_import

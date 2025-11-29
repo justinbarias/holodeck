@@ -835,15 +835,15 @@ class TestResolveVectorstoreReferences:
             {
                 "name": "knowledge_base",
                 "type": "vectorstore",
-                "database": "redis_store",
+                "database": "postgres_store",
                 "source": "data/",
             }
         ]
 
         vectorstores = {
-            "redis_store": VectorstoreConfig(
-                provider="redis",
-                connection_string="redis://localhost:6379",
+            "postgres_store": VectorstoreConfig(
+                provider="postgres",
+                connection_string="postgresql://localhost:5432/db",
             )
         }
 
@@ -852,8 +852,11 @@ class TestResolveVectorstoreReferences:
 
         # Database should be resolved to dict
         assert isinstance(tools[0]["database"], dict)
-        assert tools[0]["database"]["provider"] == "redis-hashset"
-        assert tools[0]["database"]["connection_string"] == "redis://localhost:6379"
+        assert tools[0]["database"]["provider"] == "postgres"
+        assert (
+            tools[0]["database"]["connection_string"]
+            == "postgresql://localhost:5432/db"
+        )
 
     def test_resolve_vectorstore_unknown_reference_logs_warning(
         self, caplog: Any
@@ -873,9 +876,9 @@ class TestResolveVectorstoreReferences:
         ]
 
         vectorstores = {
-            "redis_store": VectorstoreConfig(
-                provider="redis",
-                connection_string="redis://localhost:6379",
+            "postgres_store": VectorstoreConfig(
+                provider="postgres",
+                connection_string="postgresql://localhost:5432/db",
             )
         }
 
@@ -902,9 +905,9 @@ class TestResolveVectorstoreReferences:
         ]
 
         vectorstores = {
-            "redis_store": VectorstoreConfig(
-                provider="redis",
-                connection_string="redis://localhost:6379",
+            "postgres_store": VectorstoreConfig(
+                provider="postgres",
+                connection_string="postgresql://localhost:5432/db",
             )
         }
 
@@ -928,9 +931,9 @@ class TestResolveVectorstoreReferences:
         ]
 
         vectorstores = {
-            "redis_store": VectorstoreConfig(
-                provider="redis",
-                connection_string="redis://localhost:6379",
+            "postgres_store": VectorstoreConfig(
+                provider="postgres",
+                connection_string="postgresql://localhost:5432/db",
             )
         }
 
@@ -954,9 +957,9 @@ class TestResolveVectorstoreReferences:
         ]
 
         vectorstores = {
-            "redis_store": VectorstoreConfig(
-                provider="redis",
-                connection_string="redis://localhost:6379",
+            "postgres_store": VectorstoreConfig(
+                provider="postgres",
+                connection_string="postgresql://localhost:5432/db",
             )
         }
 
@@ -970,21 +973,6 @@ class TestResolveVectorstoreReferences:
 
 class TestConvertVectorstoreToDatabaseConfig:
     """Tests for _convert_vectorstore_to_database_config function."""
-
-    def test_convert_redis_provider(self) -> None:
-        """Test converting redis provider."""
-        from holodeck.config.loader import _convert_vectorstore_to_database_config
-        from holodeck.models.config import VectorstoreConfig
-
-        vs_config = VectorstoreConfig(
-            provider="redis",
-            connection_string="redis://localhost:6379",
-        )
-
-        result = _convert_vectorstore_to_database_config(vs_config)
-
-        assert result.provider == "redis-hashset"
-        assert result.connection_string == "redis://localhost:6379"
 
     def test_convert_postgres_provider(self) -> None:
         """Test converting postgres provider."""
@@ -1001,14 +989,29 @@ class TestConvertVectorstoreToDatabaseConfig:
         assert result.provider == "postgres"
         assert result.connection_string == "postgresql://localhost:5432/db"
 
+    def test_convert_chromadb_provider(self) -> None:
+        """Test converting chromadb provider."""
+        from holodeck.config.loader import _convert_vectorstore_to_database_config
+        from holodeck.models.config import VectorstoreConfig
+
+        vs_config = VectorstoreConfig(
+            provider="chromadb",
+            connection_string="http://localhost:8000",
+        )
+
+        result = _convert_vectorstore_to_database_config(vs_config)
+
+        assert result.provider == "chromadb"
+        assert result.connection_string == "http://localhost:8000"
+
     def test_convert_with_options(self) -> None:
         """Test converting with options merged as extra fields."""
         from holodeck.config.loader import _convert_vectorstore_to_database_config
         from holodeck.models.config import VectorstoreConfig
 
         vs_config = VectorstoreConfig(
-            provider="redis",
-            connection_string="redis://localhost:6379",
+            provider="chromadb",
+            connection_string="http://localhost:8000",
             options={"index_name": "my_index", "custom_field": "value"},
         )
 
@@ -1152,9 +1155,9 @@ class TestResolveVectorstoreDatabaseConfig:
         # Create project config with vectorstores
         project_config = {
             "vectorstores": {
-                "redis_store": {
-                    "provider": "redis",
-                    "connection_string": "redis://localhost:6379",
+                "postgres_store": {
+                    "provider": "postgres",
+                    "connection_string": "postgresql://localhost:5432/db",
                 }
             }
         }
@@ -1168,16 +1171,16 @@ class TestResolveVectorstoreDatabaseConfig:
         result = loader.resolve_vectorstore_database_config(str(agent_yaml))
 
         assert result is not None
-        assert result["provider"] == "redis-hashset"
-        assert result["connection_string"] == "redis://localhost:6379"
+        assert result["provider"] == "postgres"
+        assert result["connection_string"] == "postgresql://localhost:5432/db"
 
     def test_resolve_by_name(self, temp_dir: Path, monkeypatch: Any) -> None:
         """Test resolving specific vectorstore by name."""
         project_config = {
             "vectorstores": {
-                "redis_store": {
-                    "provider": "redis",
-                    "connection_string": "redis://localhost:6379",
+                "chromadb_store": {
+                    "provider": "chromadb",
+                    "connection_string": "http://localhost:8000",
                 },
                 "postgres_store": {
                     "provider": "postgres",
@@ -1204,9 +1207,9 @@ class TestResolveVectorstoreDatabaseConfig:
         """Test resolving unknown vectorstore name returns None."""
         project_config = {
             "vectorstores": {
-                "redis_store": {
-                    "provider": "redis",
-                    "connection_string": "redis://localhost:6379",
+                "postgres_store": {
+                    "provider": "postgres",
+                    "connection_string": "postgresql://localhost:5432/db",
                 },
             }
         }
@@ -1248,9 +1251,9 @@ class TestResolveVectorstoreDatabaseConfig:
         # Create user config with vectorstores
         user_config = {
             "vectorstores": {
-                "user_redis": {
-                    "provider": "redis",
-                    "connection_string": "redis://user:6379",
+                "user_chromadb": {
+                    "provider": "chromadb",
+                    "connection_string": "http://localhost:8000",
                 }
             }
         }
@@ -1266,7 +1269,7 @@ class TestResolveVectorstoreDatabaseConfig:
         result = loader.resolve_vectorstore_database_config(str(agent_yaml))
 
         assert result is not None
-        assert result["connection_string"] == "redis://user:6379"
+        assert result["connection_string"] == "http://localhost:8000"
 
 
 class TestMergeConfigsWithVectorstores:
@@ -1283,7 +1286,7 @@ class TestMergeConfigsWithVectorstores:
                 {
                     "name": "kb",
                     "type": "vectorstore",
-                    "database": "redis_store",
+                    "database": "postgres_store",
                     "source": "data/",
                 }
             ],
@@ -1291,9 +1294,9 @@ class TestMergeConfigsWithVectorstores:
 
         global_config = GlobalConfig(
             vectorstores={
-                "redis_store": {
-                    "provider": "redis",
-                    "connection_string": "redis://localhost:6379",
+                "postgres_store": {
+                    "provider": "postgres",
+                    "connection_string": "postgresql://localhost:5432/db",
                 }
             }
         )
@@ -1303,7 +1306,7 @@ class TestMergeConfigsWithVectorstores:
 
         # Database should be resolved
         assert isinstance(result["tools"][0]["database"], dict)
-        assert result["tools"][0]["database"]["provider"] == "redis-hashset"
+        assert result["tools"][0]["database"]["provider"] == "postgres"
 
 
 class TestResolveVectorstoreReferencesNonDictTool:
@@ -1319,15 +1322,15 @@ class TestResolveVectorstoreReferencesNonDictTool:
             {
                 "name": "kb",
                 "type": "vectorstore",
-                "database": "redis_store",
+                "database": "postgres_store",
                 "source": "data/",
             },
         ]
 
         vectorstores = {
-            "redis_store": VectorstoreConfig(
-                provider="redis",
-                connection_string="redis://localhost:6379",
+            "postgres_store": VectorstoreConfig(
+                provider="postgres",
+                connection_string="postgresql://localhost:5432/db",
             )
         }
 
@@ -1336,7 +1339,7 @@ class TestResolveVectorstoreReferencesNonDictTool:
         loader._resolve_vectorstore_references(tools, vectorstores)
 
         # Second tool should still be resolved
-        assert tools[1]["database"]["provider"] == "redis-hashset"
+        assert tools[1]["database"]["provider"] == "postgres"
 
 
 class TestLoadConfigFileEnvSubstitutionEmpty:

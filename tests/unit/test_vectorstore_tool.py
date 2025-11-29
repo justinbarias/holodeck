@@ -55,8 +55,6 @@ mock_memory.InMemoryCollection = MagicMock()
 mock_memory.PineconeCollection = MagicMock()
 mock_memory.PostgresCollection = MagicMock()
 mock_memory.QdrantCollection = MagicMock()
-mock_memory.RedisHashsetCollection = MagicMock()
-mock_memory.RedisJsonCollection = MagicMock()
 mock_memory.SqlServerCollection = MagicMock()
 mock_memory.WeaviateCollection = MagicMock()
 
@@ -850,8 +848,8 @@ class TestSetupCollection:
         assert tool._provider == "in-memory"
         assert tool._collection is not None
 
-    def test_setup_collection_with_redis_provider(self, tmp_path: Path) -> None:
-        """Test _setup_collection with Redis provider."""
+    def test_setup_collection_with_chromadb_provider(self, tmp_path: Path) -> None:
+        """Test _setup_collection with ChromaDB provider."""
         from holodeck.models.tool import DatabaseConfig
 
         source_file = tmp_path / "test.md"
@@ -861,7 +859,7 @@ class TestSetupCollection:
             name="test_vectorstore",
             description="Test tool",
             source=str(source_file),
-            database=DatabaseConfig(provider="redis-json"),
+            database=DatabaseConfig(provider="chromadb"),
         )
 
         from holodeck.tools.vectorstore_tool import VectorStoreTool
@@ -876,7 +874,7 @@ class TestSetupCollection:
             mock_get_factory.return_value = MagicMock(return_value=mock_collection)
             tool._setup_collection("openai")
 
-        assert tool._provider == "redis-json"
+        assert tool._provider == "chromadb"
         assert tool._collection is not None
 
     def test_setup_collection_with_connection_string(self, tmp_path: Path) -> None:
@@ -891,8 +889,8 @@ class TestSetupCollection:
             description="Test tool",
             source=str(source_file),
             database=DatabaseConfig(
-                provider="redis-json",
-                connection_string="redis://localhost:6379",
+                provider="chromadb",
+                connection_string="http://localhost:8000",
             ),
         )
 
@@ -908,7 +906,7 @@ class TestSetupCollection:
             mock_get_factory.return_value = MagicMock(return_value=mock_collection)
             tool._setup_collection("openai")
 
-        assert tool._provider == "redis-json"
+        assert tool._provider == "chromadb"
         assert tool._collection is not None
 
 

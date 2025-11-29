@@ -89,8 +89,6 @@ HoloDeck supports multiple vector database backends through Semantic Kernel's Ve
 
 | Provider             | Description                         | Connection                                  | Dependencies             |
 | -------------------- | ----------------------------------- | ------------------------------------------- | ------------------------ |
-| `redis-hashset`      | Redis with Hashset storage          | `redis://localhost:6379`                    | `redis[hiredis]`         |
-| `redis-json`         | Redis with JSON storage             | `redis://localhost:6379`                    | `redis[hiredis]`         |
 | `postgres`           | PostgreSQL with pgvector extension  | `postgresql://user:pass@host/db`            | `psycopg[binary,pool]`   |
 | `azure-ai-search`    | Azure AI Search (Cognitive Search)  | `https://search-service.search.windows.net` | `azure-search-documents` |
 | `qdrant`             | Qdrant vector database              | `http://localhost:6333`                     | `qdrant-client`          |
@@ -103,20 +101,9 @@ HoloDeck supports multiple vector database backends through Semantic Kernel's Ve
 | `pinecone`           | Pinecone serverless vector database | API key + index name                        | `pinecone-client`        |
 | `in-memory`          | Simple in-memory storage            | None required                               | Built-in                 |
 
-> **Tip**: Use `in-memory` for development and testing. Switch to a persistent provider like `redis-hashset`, `postgres`, or `qdrant` for production.
+> **Tip**: Use `in-memory` for development and testing. Switch to a persistent provider like `postgres`, `qdrant`, or `chromadb` for production.
 
 #### Database Configuration Examples
-
-**Redis (recommended for development)**
-
-```yaml
-- name: search-kb
-  type: vectorstore
-  source: knowledge_base/
-  database:
-    provider: redis-hashset
-    connection_string: redis://localhost:6379
-```
 
 **PostgreSQL with pgvector**
 
@@ -172,15 +159,15 @@ You can also reference a named vectorstore from your global `config.yaml`:
 - name: search-kb
   type: vectorstore
   source: knowledge_base/
-  database: my-redis-store # Reference to config.yaml vectorstores section
+  database: my-postgres-store # Reference to config.yaml vectorstores section
 ```
 
 ```yaml
 # In config.yaml
 vectorstores:
-  my-redis-store:
-    provider: redis-hashset
-    connection_string: ${REDIS_URL}
+  my-postgres-store:
+    provider: postgres
+    connection_string: ${DATABASE_URL}
 ```
 
 ### Required Fields
