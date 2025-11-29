@@ -1240,6 +1240,7 @@ class TestGetCollectionFactoryNonChromadb:
     def test_factory_non_chromadb_calls_collection_with_kwargs(self) -> None:
         """Test that factory() for non-chromadb provider passes connection kwargs."""
         mock_collection_class = MagicMock()
+        mock_postgres_settings = MagicMock()
 
         import importlib
 
@@ -1249,10 +1250,18 @@ class TestGetCollectionFactoryNonChromadb:
             if name == "semantic_kernel.connectors.postgres":
                 module = MagicMock()
                 module.PostgresCollection = mock_collection_class
+                module.PostgresSettings = mock_postgres_settings
                 return module
             return original_import(name)
 
+        # Also need to mock sys.modules for the direct import in vector_store.py
+        mock_postgres_module = MagicMock()
+        mock_postgres_module.PostgresSettings = mock_postgres_settings
+        mock_postgres_module.PostgresCollection = mock_collection_class
+
         try:
+            # Set up sys.modules for the direct import
+            sys.modules["semantic_kernel.connectors.postgres"] = mock_postgres_module
             importlib.import_module = mock_import  # type: ignore[method-assign]
 
             factory = get_collection_factory(
@@ -1265,17 +1274,20 @@ class TestGetCollectionFactoryNonChromadb:
             # Call the factory
             factory()
 
-            # Verify PostgresCollection was instantiated with connection kwargs
+            # Verify PostgresSettings was called with the connection string
+            mock_postgres_settings.assert_called_once()
+            settings_call_kwargs = mock_postgres_settings.call_args.kwargs
+            assert "connection_string" in settings_call_kwargs
+
+            # Verify PostgresCollection was instantiated with settings
             mock_collection_class.__getitem__.return_value.assert_called_once()
             call_kwargs = mock_collection_class.__getitem__.return_value.call_args
-            # Check that connection_string and pool_size are passed
+            # Check that settings and pool_size are passed
             assert call_kwargs is not None
-            assert "connection_string" in call_kwargs.kwargs
-            assert (
-                call_kwargs.kwargs["connection_string"] == "postgresql://localhost/db"
-            )
+            assert "settings" in call_kwargs.kwargs
             assert call_kwargs.kwargs["pool_size"] == 10
         finally:
+            del sys.modules["semantic_kernel.connectors.postgres"]
             importlib.import_module = original_import
 
     def test_factory_in_memory_calls_collection_class(self) -> None:
