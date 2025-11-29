@@ -92,10 +92,31 @@ class DeepEvalBaseEvaluator(BaseEvaluator):
         Returns:
             LLMTestCase configured with the provided parameters
         """
+        # Resolve input with standard name taking precedence over alias
+        input_value: str = (
+            str(kwargs.get("input"))
+            if "input" in kwargs
+            else str(kwargs.get("query", ""))
+        )
+
+        # Resolve actual_output with standard name taking precedence over alias
+        actual_output_value: str = (
+            str(kwargs.get("actual_output"))
+            if "actual_output" in kwargs
+            else str(kwargs.get("response", ""))
+        )
+
+        # Resolve expected_output with standard name taking precedence over alias
+        expected_output_value: str | None = (
+            str(kwargs.get("expected_output"))
+            if "expected_output" in kwargs
+            else (str(kwargs.get("ground_truth")) if "ground_truth" in kwargs else None)
+        )
+
         return LLMTestCase(
-            input=kwargs.get("input") or kwargs.get("query", ""),
-            actual_output=kwargs.get("actual_output") or kwargs.get("response", ""),
-            expected_output=kwargs.get("expected_output") or kwargs.get("ground_truth"),
+            input=input_value,
+            actual_output=actual_output_value,
+            expected_output=expected_output_value,
             context=kwargs.get("context"),
             retrieval_context=kwargs.get("retrieval_context"),
         )

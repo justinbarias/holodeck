@@ -4,11 +4,22 @@ This module provides the DeepEvalModelConfig class that adapts HoloDeck's
 LLM provider configuration to DeepEval's native model classes.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from holodeck.models.llm import ProviderEnum
+
+if TYPE_CHECKING:
+    from deepeval.models import (
+        AnthropicModel,
+        AzureOpenAIModel,
+        GPTModel,
+        OllamaModel,
+    )
+
+# Type alias for DeepEval model return types
+DeepEvalModel = Union["GPTModel", "AzureOpenAIModel", "AnthropicModel", "OllamaModel"]
 
 
 class DeepEvalModelConfig(BaseModel):
@@ -29,6 +40,17 @@ class DeepEvalModelConfig(BaseModel):
         deployment_name: Azure OpenAI deployment name
         temperature: Temperature for generation (defaults to 0.0 for determinism)
 
+    API Key Behavior:
+        - **OpenAI**: API key can be provided via `api_key` field or the
+          `OPENAI_API_KEY` environment variable. If neither is set, DeepEval's
+          GPTModel will raise an error at runtime.
+        - **Anthropic**: API key can be provided via `api_key` field or the
+          `ANTHROPIC_API_KEY` environment variable. If neither is set,
+          DeepEval's AnthropicModel will raise an error at runtime.
+        - **Azure OpenAI**: The `api_key` field is **required** and validated
+          at configuration time (no environment variable fallback).
+        - **Ollama**: No API key required (local inference).
+
     Example:
         >>> config = DeepEvalModelConfig()  # Default Ollama
         >>> model = config.to_deepeval_model()
@@ -36,7 +58,7 @@ class DeepEvalModelConfig(BaseModel):
         >>> openai_config = DeepEvalModelConfig(
         ...     provider=ProviderEnum.OPENAI,
         ...     model_name="gpt-4o",
-        ...     api_key="sk-..."
+        ...     api_key="sk-..."  # Or set OPENAI_API_KEY env var
         ... )
     """
 
@@ -91,7 +113,7 @@ class DeepEvalModelConfig(BaseModel):
                 raise ValueError("api_key is required for Azure OpenAI provider")
         return self
 
-    def to_deepeval_model(self) -> Any:
+    def to_deepeval_model(self) -> DeepEvalModel:
         """Convert configuration to native DeepEval model class.
 
         Returns the appropriate DeepEval model class instance based on
