@@ -9,31 +9,82 @@ description: {{ description | tojson }}
 
 # Model Configuration
 model:
-  provider: openai
-  name: gpt-4o
+  provider: ollama
+  name: llama3.2:latest
   temperature: 0.7
   max_tokens: 4096
+
+# Response Format - Structured output schema
+response_format:
+  type: object
+  properties:
+    response:
+      type: string
+      description: The assistant's response to the user
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+      description: Confidence level of the response (0-1)
+    follow_up_needed:
+      type: boolean
+      description: Whether follow-up clarification is recommended
+  required:
+    - response
 
 # Agent Instructions - System Prompt
 instructions:
   file: instructions/system-prompt.md
 
-# Tools Configuration (add tools here)
-tools: []
+# Tools Configuration
+tools:
+  # MCP Memory tool for persistent conversation context
+  - type: mcp
+    name: memory
+    description: Knowledge graph-based persistent memory for conversation context
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-memory"
+    request_timeout: 30
 
-# Test Cases (sample test cases for learning)
+# Evaluation Configuration
+evaluations:
+  model:
+    provider: ollama
+    name: llama3.2:latest
+    temperature: 0.0
+  metrics:
+    - metric: coherence
+      threshold: 0.7
+    - metric: relevance
+      threshold: 0.8
+
+# Test Cases
 test_cases:
   - name: "Simple greeting"
     input: "Hello, how are you?"
     expected_tools: []
     ground_truth: "Should respond politely and offer assistance"
+    evaluations:
+      - metric: coherence
+        threshold: 0.7
 
   - name: "Multi-turn conversation"
     input: "Can you help me learn Python?"
-    expected_tools: []
+    expected_tools:
+      - memory
     ground_truth: "Should provide helpful Python learning resources and tips"
+    evaluations:
+      - metric: coherence
+        threshold: 0.7
+      - metric: relevance
+        threshold: 0.8
 
   - name: "Handling unknown queries"
     input: "Can you help me with quantum physics?"
     expected_tools: []
     ground_truth: "Should acknowledge the topic and offer to help or clarify limitations"
+    evaluations:
+      - metric: coherence
+        threshold: 0.7

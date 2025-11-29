@@ -29,8 +29,8 @@ variables:
     default: 0.7
 
 defaults:
-  model.provider: "openai"
-  model.name: "gpt-4o"
+  model.provider: "ollama"
+  model.name: "llama3.2:latest"
   model.temperature: 0.7
   model.max_tokens: 4096
 

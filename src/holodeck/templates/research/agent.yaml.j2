@@ -9,45 +9,133 @@ description: {{ description | tojson }}
 
 # Model Configuration - Lower temperature for analytical consistency
 model:
-  provider: openai
-  name: gpt-4o
+  provider: ollama
+  name: llama3.2:latest
   temperature: 0.3
   max_tokens: 8192
+
+# Response Format - Structured output for research findings
+response_format:
+  type: object
+  properties:
+    summary:
+      type: string
+      description: Research summary in 1-2 sentences
+    key_findings:
+      type: array
+      items:
+        type: string
+      description: List of key findings from the research
+    sources:
+      type: array
+      items:
+        type: object
+        properties:
+          title:
+            type: string
+            description: Title of the source
+          url:
+            type: string
+            description: URL or reference of the source
+          relevance_score:
+            type: number
+            minimum: 0
+            maximum: 1
+            description: Relevance score (0-1)
+      description: List of sources supporting the findings
+    confidence_level:
+      type: string
+      enum:
+        - low
+        - medium
+        - high
+      description: Confidence level in the findings
+  required:
+    - summary
+    - key_findings
 
 # Agent Instructions - Research Focus
 instructions:
   file: instructions/system-prompt.md
 
-# Tools Configuration - Add vector search for research
+# Tools Configuration
 tools:
+  # Vectorstore for research paper search
   - type: vectorstore
     name: search_papers
-    description: "Search research papers and documents"
+    description: Search research papers and documents for relevant passages
     source: data/papers
+    embedding_model: nomic-embed-text:latest
     top_k: 5
+    chunk_size: 256
+    chunk_overlap: 64
+    min_similarity_score: 0.75
+    database: chromadb
 
-# Test Cases (sample test cases for learning)
+  # MCP Fetch tool for web content fetching
+  - type: mcp
+    name: web_fetch
+    description: Fetch and analyze web content for current research
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-fetch"
+    request_timeout: 60
+
+# Evaluation Configuration
+evaluations:
+  model:
+    provider: ollama
+    name: llama3.2:latest
+    temperature: 0.0
+  metrics:
+    - metric: groundedness
+      threshold: 0.9
+    - metric: relevance
+      threshold: 0.85
+    - metric: coherence
+      threshold: 0.8
+
+# Test Cases
 test_cases:
   - name: "Literature search"
     input: "Find recent papers on machine learning"
     expected_tools:
       - search_papers
     ground_truth: "Should return top 5 relevant papers on machine learning"
+    evaluations:
+      - metric: groundedness
+        threshold: 0.9
+      - metric: relevance
+        threshold: 0.85
 
   - name: "Synthesis of findings"
     input: "Compare approaches to language model optimization"
     expected_tools:
       - search_papers
+      - web_fetch
     ground_truth: "Should identify key papers and synthesize comparison insights"
+    evaluations:
+      - metric: coherence
+        threshold: 0.8
+      - metric: groundedness
+        threshold: 0.9
 
   - name: "Research gap identification"
     input: "What are the current gaps in multimodal AI research?"
     expected_tools:
       - search_papers
+      - web_fetch
     ground_truth: "Should identify underexplored areas and suggest research directions"
+    evaluations:
+      - metric: relevance
+        threshold: 0.85
 
   - name: "Citation analysis"
     input: "Who are the key researchers in zero-shot learning?"
     expected_tools:
       - search_papers
     ground_truth: "Should list influential papers and identify key researchers"
+    evaluations:
+      - metric: groundedness
+        threshold: 0.9

@@ -9,10 +9,37 @@ description: {{ description | tojson }}
 
 # Model Configuration - Balanced for friendly support
 model:
-  provider: openai
-  name: gpt-4o
+  provider: ollama
+  name: llama3.2:latest
   temperature: 0.5
   max_tokens: 4096
+
+# Response Format - Structured output for support responses
+response_format:
+  type: object
+  properties:
+    response:
+      type: string
+      description: Support response to customer
+    ticket_category:
+      type: string
+      enum:
+        - billing
+        - technical
+        - general
+        - escalation
+      description: Category of the support ticket
+    requires_escalation:
+      type: boolean
+      description: Whether the issue requires human escalation
+    suggested_actions:
+      type: array
+      items:
+        type: string
+      description: List of suggested next steps
+  required:
+    - response
+    - ticket_category
 
 # Agent Instructions - Customer Support Focus
 instructions:
@@ -20,52 +47,93 @@ instructions:
 
 # Tools Configuration - For customer issue management
 tools:
-  - type: function
-    name: lookup_customer
-    description: "Look up customer account information"
-    file: tools/customer.py
-    function: lookup_customer
-  - type: function
-    name: create_ticket
-    description: "Create a support ticket for customer issues"
-    file: tools/support.py
-    function: create_ticket
+  # Vectorstore for knowledge base search
   - type: vectorstore
     name: search_kb
-    description: "Search knowledge base for solutions"
+    description: Search knowledge base for solutions
     source: data/knowledge_base
+    embedding_model: nomic-embed-text:latest
+    top_k: 5
+    chunk_size: 512
+    chunk_overlap: 64
+    min_similarity_score: 0.7
+    database: chromadb
 
-# Test Cases (sample test cases for learning)
+  # MCP Slack integration for support workflows
+  - type: mcp
+    name: slack_integration
+    description: Channel management and messaging for support workflows
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-slack"
+    env:
+      SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN}"
+      SLACK_TEAM_ID: "${SLACK_TEAM_ID}"
+    request_timeout: 30
+
+# Evaluation Configuration
+evaluations:
+  model:
+    provider: ollama
+    name: llama3.2:latest
+    temperature: 0.0
+  metrics:
+    - metric: relevance
+      threshold: 0.8
+    - metric: groundedness
+      threshold: 0.85
+    - metric: f1_score
+      threshold: 0.7
+
+# Test Cases
 test_cases:
   - name: "Simple issue resolution"
     input: "I forgot my password, can you help?"
     expected_tools:
       - search_kb
     ground_truth: "Should provide password reset instructions"
+    evaluations:
+      - metric: relevance
+        threshold: 0.8
+      - metric: groundedness
+        threshold: 0.85
 
   - name: "Account issue acknowledgment"
     input: "I was charged twice for my order"
     expected_tools:
-      - lookup_customer
-      - create_ticket
-    ground_truth: "Should acknowledge issue and offer to create support ticket"
+      - search_kb
+    ground_truth: "Should acknowledge issue and offer to escalate via Slack"
+    evaluations:
+      - metric: relevance
+        threshold: 0.8
 
   - name: "Knowledge base search"
     input: "How do I update my billing information?"
     expected_tools:
       - search_kb
     ground_truth: "Should find and provide billing update instructions"
+    evaluations:
+      - metric: groundedness
+        threshold: 0.85
 
   - name: "Issue requiring escalation"
     input: "I need to dispute a charge from last month"
     expected_tools:
-      - lookup_customer
-      - create_ticket
-    ground_truth: "Should create support ticket and offer human escalation"
+      - search_kb
+      - slack_integration
+    ground_truth: "Should search KB and offer human escalation via Slack"
+    evaluations:
+      - metric: relevance
+        threshold: 0.8
 
   - name: "Troubleshooting flow"
     input: "I can't log into my account"
     expected_tools:
-      - lookup_customer
       - search_kb
     ground_truth: "Should provide troubleshooting steps and offer escalation if needed"
+    evaluations:
+      - metric: relevance
+        threshold: 0.8
+      - metric: groundedness
+        threshold: 0.85
