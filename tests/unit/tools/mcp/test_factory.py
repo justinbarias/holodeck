@@ -188,18 +188,29 @@ class TestCreateMCPPluginStdio:
 
     def test_stdio_import_error_raises_config_error(self) -> None:
         """Missing SK MCP module raises helpful MCPConfigError."""
-        # Remove the mock module if it exists
-        with patch.dict(sys.modules, {"semantic_kernel.connectors.mcp": None}):
-            # Force ImportError by removing the module
-            if "semantic_kernel.connectors.mcp" in sys.modules:
-                del sys.modules["semantic_kernel.connectors.mcp"]
+        config = MCPTool(
+            name="test",
+            description="Test",
+            command=CommandType.NPX,
+        )
 
-            config = MCPTool(
-                name="test",
-                description="Test",
-                command=CommandType.NPX,
-            )
+        # Patch the import to raise ImportError by using builtins.__import__
+        import builtins
 
+        original_import = builtins.__import__
+
+        def mock_import(
+            name: str,
+            globals_: dict[str, Any] | None = None,
+            locals_: dict[str, Any] | None = None,
+            fromlist: tuple[str, ...] = (),
+            level: int = 0,
+        ) -> Any:
+            if name == "semantic_kernel.connectors.mcp":
+                raise ImportError("No module named 'semantic_kernel.connectors.mcp'")
+            return original_import(name, globals_, locals_, fromlist, level)
+
+        with patch.object(builtins, "__import__", mock_import):
             with pytest.raises(MCPConfigError) as exc_info:
                 create_mcp_plugin(config)
 
