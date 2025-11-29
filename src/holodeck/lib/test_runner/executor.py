@@ -250,7 +250,6 @@ class TestExecutor:
             return evaluators
 
         # Create evaluators for configured metrics
-        # Create evaluators for configured metrics
         for metric_config in self.agent_config.evaluations.metrics:
             metric_name = metric_config.metric
 
