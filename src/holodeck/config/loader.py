@@ -76,9 +76,6 @@ def _get_env_value(field_name: str, env_vars: dict[str, str]) -> Any | None:
 
 # Provider name mapping from GlobalConfig.vectorstores to DatabaseConfig.provider
 _PROVIDER_MAPPING: dict[str, str] = {
-    "redis": "redis-hashset",
-    "redis-hashset": "redis-hashset",
-    "redis-json": "redis-json",
     "postgres": "postgres",
     "postgresql": "postgres",
     "qdrant": "qdrant",

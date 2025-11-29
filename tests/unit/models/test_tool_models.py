@@ -806,15 +806,6 @@ class TestPromptTool:
 class TestDatabaseConfig:
     """Tests for DatabaseConfig model."""
 
-    def test_database_config_valid_redis_hashset(self) -> None:
-        """Test creating a valid DatabaseConfig for Redis Hashset."""
-        config = DatabaseConfig(
-            provider="redis-hashset",
-            connection_string="redis://localhost:6379",
-        )
-        assert config.provider == "redis-hashset"
-        assert config.connection_string == "redis://localhost:6379"
-
     def test_database_config_valid_postgres(self) -> None:
         """Test creating a valid DatabaseConfig for PostgreSQL."""
         config = DatabaseConfig(
@@ -859,7 +850,7 @@ class TestDatabaseConfig:
         """Test that connection_string must be non-empty if provided."""
         with pytest.raises(ValidationError):
             DatabaseConfig(
-                provider="redis-hashset",
+                provider="postgres",
                 connection_string="",
             )
 
@@ -894,8 +885,8 @@ class TestVectorstoreToolExtended:
     def test_vectorstore_with_database_config(self) -> None:
         """Test VectorstoreTool with database configuration."""
         db_config = DatabaseConfig(
-            provider="redis-hashset",
-            connection_string="redis://localhost:6379",
+            provider="postgres",
+            connection_string="postgresql://user:pass@localhost/db",
         )
         tool = VectorstoreTool(
             name="test",
@@ -905,7 +896,7 @@ class TestVectorstoreToolExtended:
             database=db_config,
         )
         assert tool.database is not None
-        assert tool.database.provider == "redis-hashset"
+        assert tool.database.provider == "postgres"
 
     def test_vectorstore_without_database_config(self) -> None:
         """Test VectorstoreTool works without database (in-memory default)."""
@@ -1004,8 +995,8 @@ class TestVectorstoreToolExtended:
     def test_vectorstore_all_extended_fields(self) -> None:
         """Test VectorstoreTool with all extended fields."""
         db_config = DatabaseConfig(
-            provider="redis-json",
-            connection_string="redis://localhost:6379",
+            provider="chromadb",
+            connection_string="http://localhost:8000",
         )
         tool = VectorstoreTool(
             name="knowledge_base",
@@ -1019,7 +1010,7 @@ class TestVectorstoreToolExtended:
         )
         assert tool.name == "knowledge_base"
         assert tool.database is not None
-        assert tool.database.provider == "redis-json"
+        assert tool.database.provider == "chromadb"
         assert tool.embedding_model == "text-embedding-3-large"
         assert tool.top_k == 20
         assert tool.min_similarity_score == 0.7

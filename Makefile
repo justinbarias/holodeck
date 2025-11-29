@@ -15,7 +15,7 @@ NC := $(shell tput sgr0 2>/dev/null)
 .DEFAULT_GOAL := help
 
 # Phony targets
-.PHONY: help install install-dev install-prod patch-redisvl test test-unit test-integration \
+.PHONY: help install install-dev install-prod test test-unit test-integration \
         test-coverage test-parallel test-integration-parallel test-unit-parallel \
         lint format type-check security clean clean-all \
         pre-commit ci ci-github build docs run docker-build docker-run \
@@ -59,19 +59,12 @@ install: install-dev ## Install all dependencies (alias for install-dev)
 install-dev: check-uv ## Install development dependencies
 	@echo "$(GREEN)Installing development dependencies...$(NC)"
 	uv sync --all-extras
-	@$(MAKE) patch-redisvl
 	@echo "$(GREEN)✓ Development dependencies installed$(NC)"
 
 install-prod: check-uv ## Install production dependencies only
 	@echo "$(GREEN)Installing production dependencies...$(NC)"
 	uv sync --no-dev
-	@$(MAKE) patch-redisvl
 	@echo "$(GREEN)✓ Production dependencies installed$(NC)"
-
-patch-redisvl: ## Patch redisvl for redis 6.x+ compatibility
-	@echo "$(GREEN)Patching redisvl for redis 6.x+ compatibility...$(NC)"
-	uv run python scripts/patch_redisvl.py
-	@echo "$(GREEN)✓ redisvl patched$(NC)"
 
 install-hooks: ## Install pre-commit hooks
 	@echo "$(GREEN)Installing pre-commit hooks...$(NC)"

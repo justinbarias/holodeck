@@ -13,6 +13,46 @@ Vector stores enable semantic search capabilities for your agents, allowing them
 - **Knowledge Bases**: Build searchable document repositories
 - **FAQ Systems**: Match user questions to relevant answers
 
+## Installing Vector Store Providers
+
+HoloDeck uses optional dependencies for vector database providers. Install only what you need:
+
+### Individual Providers
+
+```bash
+# PostgreSQL with pgvector
+uv add holodeck-ai[postgres]
+
+# Qdrant
+uv add holodeck-ai[qdrant]
+
+# Pinecone
+uv add holodeck-ai[pinecone]
+
+# ChromaDB
+uv add holodeck-ai[chromadb]
+```
+
+### All Vector Stores
+
+```bash
+# Install all vector store providers at once
+uv add holodeck-ai[vectorstores]
+```
+
+### With pip
+
+```bash
+pip install holodeck-ai[postgres]
+pip install holodeck-ai[qdrant]
+pip install holodeck-ai[pinecone]
+pip install holodeck-ai[chromadb]
+# Or all at once
+pip install holodeck-ai[vectorstores]
+```
+
+---
+
 ## Prerequisites
 
 Before setting up a vector store, you need a container runtime:
@@ -61,114 +101,9 @@ podman --version
 
 ---
 
-## Setting Up Redis Stack
-
-[Redis Stack](https://hub.docker.com/r/redis/redis-stack) is the recommended vector store for development. It includes Redis with the RediSearch and RedisJSON modules required for vector similarity search.
-
-### Quick Start with Docker
-
-**Run Redis Stack:**
-
-```bash
-docker run -d \
-  --name redis-stack \
-  -p 6379:6379 \
-  -p 8001:8001 \
-  redis/redis-stack:latest
-```
-
-This exposes:
-
-- **Port 6379**: Redis server (for HoloDeck connections)
-- **Port 8001**: RedisInsight web UI (optional, for debugging)
-
-**Verify Redis is running:**
-
-```bash
-docker exec -it redis-stack redis-cli ping
-# PONG
-```
-
-### Docker Compose (Recommended for Projects)
-
-Create a `docker-compose.yml` file in your project root:
-
-```yaml
-version: "3.8"
-
-services:
-  redis:
-    image: redis/redis-stack:latest
-    container_name: holodeck-redis
-    ports:
-      - "6379:6379"
-      - "8001:8001"
-    volumes:
-      - redis-data:/data
-    environment:
-      - REDIS_ARGS=--save 60 1
-    restart: unless-stopped
-
-volumes:
-  redis-data:
-```
-
-**Start the service:**
-
-```bash
-docker compose up -d
-```
-
-**Stop the service:**
-
-```bash
-docker compose down
-```
-
-### Podman Equivalent
-
-```bash
-podman run -d \
-  --name redis-stack \
-  -p 6379:6379 \
-  -p 8001:8001 \
-  docker.io/redis/redis-stack:latest
-```
-
-### Redis Stack Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `REDIS_ARGS` | Additional Redis server arguments | None |
-| `REDISEARCH_ARGS` | RediSearch module arguments | None |
-| `REDISJSON_ARGS` | RedisJSON module arguments | None |
-
-**Example with persistence:**
-
-```bash
-docker run -d \
-  --name redis-stack \
-  -p 6379:6379 \
-  -v redis-data:/data \
-  -e REDIS_ARGS="--save 60 1 --appendonly yes" \
-  redis/redis-stack:latest
-```
-
-**Persistence flags explained:**
-
-| Flag | Description | Use Case |
-|------|-------------|----------|
-| `--save 60 1` | Save to disk if at least 1 key changed in 60 seconds | Basic durability |
-| `--appendonly yes` | Enable append-only file (AOF) for write logging | Maximum durability |
-| `--save ""` | Disable RDB snapshots (use with AOF) | AOF-only persistence |
-
-> **Production Tip**: For production deployments, use both `--save` and `--appendonly yes` for maximum data durability. The AOF file logs every write operation, while RDB provides point-in-time snapshots.
-
----
-
 ## Setting Up ChromaDB
 
-[ChromaDB](https://www.trychroma.com/) is an open-source embedding database that's simple to set up and ideal for development. It provides a lightweight alternative to Redis with native Python support.
+[ChromaDB](https://www.trychroma.com/) is an open-source embedding database that's simple to set up and ideal for development. It provides a lightweight vector database with native Python support.
 
 ### Quick Start with Docker
 
@@ -256,6 +191,196 @@ podman run -d \
 
 ---
 
+## Setting Up PostgreSQL with pgvector
+
+[PostgreSQL with pgvector](https://github.com/pgvector/pgvector) provides production-grade vector storage with full SQL capabilities. It's ideal if you already have PostgreSQL infrastructure.
+
+### Quick Start with Docker
+
+**Run PostgreSQL with pgvector:**
+
+```bash
+docker run -d \
+  --name postgres \
+  -p 5432:5432 \
+  -e POSTGRES_PASSWORD=your_password \
+  -v pgdata:/var/lib/postgresql/data \
+  pgvector/pgvector:pg17
+```
+
+This exposes:
+
+- **Port 5432**: PostgreSQL database (for HoloDeck connections)
+
+**Verify PostgreSQL is running:**
+
+```bash
+docker exec -it postgres psql -U postgres -c "SELECT 1;"
+```
+
+### Docker Compose (Recommended for Projects)
+
+```yaml
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: holodeck-postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=holodeck
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+```
+
+### PostgreSQL Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POSTGRES_PASSWORD` | Database password (required) | - |
+| `POSTGRES_USER` | Database user | `postgres` |
+| `POSTGRES_DB` | Default database name | `postgres` |
+
+> **Security**: Always use environment variables for passwords. Never commit plaintext passwords to version control.
+
+---
+
+## Setting Up Qdrant
+
+[Qdrant](https://qdrant.tech/) is a high-performance vector database designed for production workloads. It supports both HTTP and gRPC protocols.
+
+### Quick Start with Docker
+
+**Run Qdrant:**
+
+```bash
+docker run -d \
+  --name qdrant \
+  -p 6333:6333 \
+  -p 6334:6334 \
+  -v $(pwd)/qdrant_storage:/qdrant/storage:z \
+  qdrant/qdrant
+```
+
+This exposes:
+
+- **Port 6333**: HTTP API (for HoloDeck connections)
+- **Port 6334**: gRPC API (for high-performance connections)
+
+**Verify Qdrant is running:**
+
+```bash
+curl http://localhost:6333/healthz
+# {"title":"qdrant - vector search engine","version":"..."}
+```
+
+### Docker Compose (Recommended for Projects)
+
+```yaml
+version: "3.9"
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: holodeck-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  qdrant-data:
+```
+
+### Qdrant with API Key (Production)
+
+For production deployments, enable API key authentication:
+
+```yaml
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+```
+
+> **Version Pinning**: For stability, pin to a specific version (e.g., `qdrant/qdrant:v1.9.0`) instead of `latest`.
+
+---
+
+## Setting Up Pinecone
+
+[Pinecone](https://www.pinecone.io/) is a fully managed, serverless vector database. For production, use the cloud service with an API key. For local development and testing, use Pinecone Local.
+
+### Cloud Setup (Production)
+
+1. Create an account at [pinecone.io](https://www.pinecone.io/)
+2. Create an index in the Pinecone console
+3. Copy your API key from the console
+
+**Configure in HoloDeck:**
+
+```yaml
+database:
+  provider: pinecone
+  api_key: ${PINECONE_API_KEY}
+  namespace: my-namespace  # optional
+```
+
+### Local Development with Docker
+
+For local development without a Pinecone account, use [Pinecone Local](https://www.pinecone.io/learn/series/vector-databases-in-production-for-busy-engineers/cicd-pinecone-local/):
+
+**Pull the image:**
+
+```bash
+docker pull ghcr.io/pinecone-io/pinecone-index:latest
+```
+
+**Run Pinecone Local:**
+
+```bash
+docker run -d \
+  --name pinecone-local \
+  -e PORT=5081 \
+  -e INDEX_TYPE=serverless \
+  -e DIMENSION=1536 \
+  -e METRIC=cosine \
+  -p 5081:5081 \
+  --platform linux/amd64 \
+  ghcr.io/pinecone-io/pinecone-index:latest
+```
+
+This exposes:
+
+- **Port 5081**: Pinecone Local API
+
+### Pinecone Local Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `PORT` | API port | `5081` |
+| `INDEX_TYPE` | Index type | `serverless` |
+| `DIMENSION` | Vector dimensions | `1536` |
+| `METRIC` | Distance metric | `cosine`, `euclidean`, `dotproduct` |
+
+> **Note**: Pinecone Local is for development and testing only. Use the cloud service for production workloads.
+
+---
+
 ## Configuring Vector Stores in HoloDeck
 
 ### Global Configuration (config.yaml)
@@ -266,25 +391,20 @@ Define reusable vector store connections in your global configuration:
 # config.yaml (project root or ~/.holodeck/config.yaml)
 
 vectorstores:
-  # Redis with Hashset storage (recommended for most use cases)
-  my-redis-store:
-    provider: redis-hashset
-    connection_string: redis://localhost:6379
-
-  # Redis with JSON storage (for complex nested data)
-  my-redis-json:
-    provider: redis-json
-    connection_string: ${REDIS_URL}
-
   # ChromaDB (lightweight, Python-native)
   my-chroma-store:
     provider: chromadb
     connection_string: http://localhost:8000
 
-  # Production Redis with authentication
-  production-redis:
-    provider: redis-hashset
-    connection_string: redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379
+  # PostgreSQL with pgvector
+  my-postgres-store:
+    provider: postgres
+    connection_string: ${DATABASE_URL}
+
+  # Qdrant (high-performance)
+  my-qdrant-store:
+    provider: qdrant
+    url: http://localhost:6333
 ```
 
 ### Environment Variables
@@ -293,9 +413,8 @@ Store sensitive connection details in environment variables:
 
 ```bash
 # .env file (DO NOT commit to version control)
-REDIS_URL=redis://localhost:6379
-REDIS_HOST=redis.example.com
-REDIS_PASSWORD=your-secure-password
+DATABASE_URL=postgresql://user:password@localhost:5432/mydb
+QDRANT_API_KEY=your-api-key
 ```
 
 ### Agent Configuration (agent.yaml)
@@ -321,7 +440,7 @@ tools:
     description: Search the knowledge base for relevant information
     type: vectorstore
     source: knowledge_base/
-    database: my-redis-store  # Reference to config.yaml
+    database: my-chroma-store  # Reference to config.yaml
 ```
 
 ### Inline Database Configuration
@@ -335,47 +454,102 @@ tools:
     type: vectorstore
     source: docs/
     database:
-      provider: redis-hashset
-      connection_string: redis://localhost:6379
+      provider: chromadb
+      connection_string: http://localhost:8000
 ```
 
 ---
 
 ## Connection String Formats
 
-### Redis Connection Strings
+### PostgreSQL Connection Strings
+
+PostgreSQL uses standard connection string format:
 
 | Format | Example |
 |--------|---------|
-| Basic | `redis://localhost:6379` |
-| With password | `redis://:${REDIS_PASSWORD}@localhost:6379` |
-| With username | `redis://${REDIS_USER}:${REDIS_PASSWORD}@localhost:6379` |
-| With database | `redis://localhost:6379/0` |
-| TLS/SSL | `rediss://localhost:6379` |
-
-### Full Connection String Reference
-
-```
-redis[s]://[[username:]password@]host[:port][/database]
-```
-
-**Examples (using environment variables for security):**
+| Basic | `postgresql://localhost:5432/mydb` |
+| With credentials | `postgresql://user:password@localhost:5432/mydb` |
+| With SSL | `postgresql://user:password@host:5432/mydb?sslmode=require` |
 
 ```yaml
-# Local development
-connection_string: redis://localhost:6379
-
-# With authentication (use environment variables!)
-connection_string: redis://:${REDIS_PASSWORD}@localhost:6379
-
-# Remote server with TLS
-connection_string: rediss://${REDIS_USER}:${REDIS_PASSWORD}@${REDIS_HOST}:6380
-
-# Specific database (0-15)
-connection_string: redis://localhost:6379/1
+database:
+  provider: postgres
+  connection_string: postgresql://user:password@localhost:5432/mydb
 ```
 
-> **Security**: Always use environment variables (`${VAR_NAME}`) for passwords and sensitive connection details. Never commit plaintext passwords to version control.
+### ChromaDB Connection Strings
+
+ChromaDB accepts HTTP/HTTPS URLs or local paths:
+
+| Format | Example |
+|--------|---------|
+| HTTP | `http://localhost:8000` |
+| HTTPS | `https://chroma.example.com` |
+| Local persistent | (use `persist_directory` instead) |
+
+```yaml
+# Remote server
+database:
+  provider: chromadb
+  connection_string: http://localhost:8000
+
+# Local persistent storage
+database:
+  provider: chromadb
+  persist_directory: ./data/chromadb
+```
+
+### Qdrant Connection Strings
+
+Qdrant supports multiple connection formats:
+
+| Format | Example |
+|--------|---------|
+| HTTP (local) | `http://localhost:6333` |
+| HTTPS (remote) | `https://qdrant.example.com:6333` |
+| gRPC (high-performance) | `qdrant+grpc://localhost:6334` |
+| In-memory | `:memory:` |
+| Local path | `/path/to/qdrant/data` |
+
+```yaml
+# HTTP connection
+database:
+  provider: qdrant
+  connection_string: http://localhost:6333
+
+# With API key (recommended for remote)
+database:
+  provider: qdrant
+  connection_string: https://qdrant.example.com:6333
+  api_key: ${QDRANT_API_KEY}
+
+# gRPC for high-performance
+database:
+  provider: qdrant
+  connection_string: qdrant+grpc://localhost:6334
+```
+
+### Pinecone Connection
+
+Pinecone uses API key authentication (no connection string):
+
+```yaml
+database:
+  provider: pinecone
+  api_key: ${PINECONE_API_KEY}
+  namespace: my-namespace  # optional
+```
+
+Or use the connection string format:
+
+```yaml
+database:
+  provider: pinecone
+  connection_string: pinecone://pc-abc123@my-namespace
+```
+
+> **Security**: Always use environment variables (`${VAR_NAME}`) for passwords, API keys, and sensitive connection details. Never commit plaintext credentials to version control.
 
 ---
 
@@ -405,8 +579,8 @@ providers:
 
 vectorstores:
   knowledge-store:
-    provider: redis-hashset
-    connection_string: ${REDIS_URL}
+    provider: chromadb
+    connection_string: http://localhost:8000
 
 execution:
   cache_enabled: true
@@ -450,36 +624,37 @@ test_cases:
 
 ```bash
 OPENAI_API_KEY=sk-...
-REDIS_URL=redis://localhost:6379
 ```
 
 ### docker-compose.yml
 
 ```yaml
-version: "3.8"
+version: "3.9"
 
 services:
-  redis:
-    image: redis/redis-stack:latest
-    container_name: holodeck-redis
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: holodeck-chromadb
     ports:
-      - "6379:6379"
-      - "8001:8001"
+      - "8000:8000"
     volumes:
-      - redis-data:/data
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
 
 volumes:
-  redis-data:
+  chroma-data:
 ```
 
 ### Running the Agent
 
 ```bash
-# 1. Start Redis
+# 1. Start ChromaDB
 docker compose up -d
 
-# 2. Verify Redis is running
-docker exec -it holodeck-redis redis-cli ping
+# 2. Verify ChromaDB is running
+curl http://localhost:8000/api/v2/heartbeat
 
 # 3. Run the agent
 holodeck test agent.yaml
@@ -491,65 +666,40 @@ holodeck test agent.yaml
 
 HoloDeck supports multiple vector database backends. See the [Tools Guide](tools.md#supported-vector-database-providers) for the complete list.
 
-| Provider | Best For | Setup Complexity |
-|----------|----------|------------------|
-| `redis-hashset` | Development, small-medium datasets | Low |
-| `redis-json` | Complex nested data structures | Low |
-| `chromadb` | Lightweight development, Python-native | Low |
-| `postgres` | Existing PostgreSQL infrastructure | Medium |
-| `qdrant` | High-performance production | Medium |
-| `in-memory` | Testing and prototyping | None |
+| Provider    | Best For                             | Setup Complexity |
+| ----------- | ------------------------------------ | ---------------- |
+| `chromadb`  | Lightweight development, Python-native | Low              |
+| `postgres`  | Existing PostgreSQL infrastructure   | Medium           |
+| `qdrant`    | High-performance production          | Medium           |
+| `pinecone`  | Serverless, managed cloud            | Low              |
+| `in-memory` | Testing and prototyping              | None             |
 
 ---
 
 ## Troubleshooting
 
-### Cannot connect to Redis
+### Cannot connect to ChromaDB
 
-**Error:** `Connection refused` or `Cannot connect to redis://localhost:6379`
+**Error:** `Connection refused` or `Cannot connect to http://localhost:8000`
 
 **Solutions:**
 
-1. Verify Redis is running:
+1. Verify ChromaDB is running:
    ```bash
-   docker ps | grep redis
+   docker ps | grep chromadb
    ```
 
 2. Check the container logs:
    ```bash
-   docker logs redis-stack
+   docker logs holodeck-chromadb
    ```
 
 3. Test connectivity:
    ```bash
-   docker exec -it redis-stack redis-cli ping
+   curl http://localhost:8000/api/v2/heartbeat
    ```
 
-4. Ensure port 6379 is not blocked by firewall
-
-### Authentication failed
-
-**Error:** `NOAUTH Authentication required`
-
-**Solution:** Include password in connection string:
-
-```yaml
-connection_string: redis://:your-password@localhost:6379
-```
-
-### Module not loaded
-
-**Error:** `unknown command 'FT.CREATE'`
-
-**Solution:** Use `redis/redis-stack` image instead of plain `redis`:
-
-```bash
-# Wrong (missing vector search modules)
-docker run -d redis:latest
-
-# Correct (includes RediSearch)
-docker run -d redis/redis-stack:latest
-```
+4. Ensure port 8000 is not blocked by firewall
 
 ### Data not persisting
 
@@ -557,30 +707,31 @@ docker run -d redis/redis-stack:latest
 
 ```bash
 docker run -d \
-  --name redis-stack \
-  -p 6379:6379 \
-  -v redis-data:/data \
-  redis/redis-stack:latest
+  --name chromadb \
+  -p 8000:8000 \
+  -v chroma-data:/chroma/chroma \
+  -e IS_PERSISTENT=TRUE \
+  chromadb/chroma:latest
 ```
 
 ### Container already exists
 
-**Error:** `container name "redis-stack" is already in use`
+**Error:** `container name "chromadb" is already in use`
 
 **Solution:** Remove the existing container:
 
 ```bash
-docker rm -f redis-stack
+docker rm -f chromadb
 ```
 
 ---
 
 ## Additional Resources
 
-- [Redis Stack on Docker Hub](https://hub.docker.com/r/redis/redis-stack)
-- [Redis Vector Similarity Documentation](https://redis.io/docs/stack/search/reference/vectors/)
 - [ChromaDB on Docker Hub](https://hub.docker.com/r/chromadb/chroma)
 - [ChromaDB Documentation](https://docs.trychroma.com/)
+- [Qdrant Documentation](https://qdrant.tech/documentation/)
+- [PostgreSQL pgvector](https://github.com/pgvector/pgvector)
 - [Tools Reference Guide](tools.md) - Complete vectorstore tool configuration
 - [Global Configuration Guide](global-config.md) - Shared settings across agents
 

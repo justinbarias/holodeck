@@ -9,6 +9,10 @@ Ensure you've completed the [Installation Guide](installation.md):
 ```bash
 pip install holodeck-ai
 holodeck --version  # Should output: holodeck 0.2.0
+
+# Optional: Install vector store providers for semantic search
+pip install holodeck-ai[vectorstores]  # All providers
+# Or individual: holodeck-ai[postgres], holodeck-ai[qdrant], holodeck-ai[pinecone], holodeck-ai[chromadb]
 ```
 
 Set up your API credentials (example for Azure OpenAI):

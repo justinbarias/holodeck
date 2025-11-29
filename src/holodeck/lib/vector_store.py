@@ -1,15 +1,13 @@
 """Vector store abstractions using Semantic Kernel collection types.
 
 This module provides a unified interface for working with various vector storage
-backends (Redis, PostgreSQL, Azure AI Search, Qdrant, Weaviate, etc.) through
+backends (PostgreSQL, Azure AI Search, Qdrant, Weaviate, etc.) through
 Semantic Kernel's VectorStoreCollection abstractions.
 
 The DocumentRecord model is compatible with all supported backends, allowing
 seamless switching between providers via configuration.
 
 Supported Providers:
-- redis-hashset: Redis with Hashset storage
-- redis-json: Redis with JSON storage
 - postgres: PostgreSQL with pgvector extension
 - azure-ai-search: Azure AI Search (Cognitive Search)
 - qdrant: Qdrant vector database
@@ -51,6 +49,70 @@ class ChromaConnectionParams(TypedDict):
     host: str
     port: int
     ssl: bool
+
+
+class QdrantConnectionParams(TypedDict, total=False):
+    """Parameters for Qdrant connection.
+
+    All fields are optional since Qdrant defaults to in-memory when no params provided.
+
+    Attributes:
+        url: Full URL to Qdrant server (e.g., 'https://qdrant.example.com:6333')
+        api_key: API key for authentication
+        host: Server hostname
+        port: HTTP port (default: 6333)
+        grpc_port: gRPC port (default: 6334)
+        prefer_grpc: Whether to prefer gRPC over HTTP
+        location: Special location string (e.g., ':memory:' for in-memory)
+        path: Path for persistent local storage
+    """
+
+    url: str | None
+    api_key: str | None
+    host: str | None
+    port: int | None
+    grpc_port: int | None
+    prefer_grpc: bool
+    location: str | None
+    path: str | None
+
+
+class PineconeConnectionParams(TypedDict, total=False):
+    """Parameters for Pinecone connection.
+
+    Attributes:
+        api_key: Pinecone API key (required)
+        namespace: Namespace for the index (optional)
+        use_grpc: Whether to use gRPC client (default: False)
+    """
+
+    api_key: str | None
+    namespace: str | None
+    use_grpc: bool
+
+
+class PostgresConnectionParams(TypedDict, total=False):
+    """Parameters for PostgreSQL connection.
+
+    Attributes:
+        connection_string: Full PostgreSQL connection string
+        host: Database host
+        port: Database port
+        dbname: Database name
+        user: Database user
+        password: Database password
+        sslmode: SSL mode (disable, allow, prefer, require, verify-ca, verify-full)
+        db_schema: PostgreSQL schema (default: 'public')
+    """
+
+    connection_string: str | None
+    host: str | None
+    port: int | None
+    dbname: str | None
+    user: str | None
+    password: str | None
+    sslmode: str | None
+    db_schema: str | None
 
 
 def parse_chromadb_connection_string(connection_string: str) -> ChromaConnectionParams:
@@ -107,6 +169,169 @@ def parse_chromadb_connection_string(connection_string: str) -> ChromaConnection
         "port": port,
         "ssl": ssl,
     }
+
+    return params
+
+
+def parse_qdrant_connection_string(connection_string: str) -> QdrantConnectionParams:
+    """Parse a Qdrant connection string into connection parameters.
+
+    Supports multiple formats for flexibility:
+    - Standard URL: https://host:port or http://localhost:6333
+    - With API key in userinfo: https://api_key@host:port
+    - gRPC preference: qdrant+grpc://host:port
+    - In-memory: :memory:
+    - Local path: /path/to/qdrant/data or file:///path/to/data
+
+    The connection string is parsed and mapped to QdrantCollection parameters.
+
+    Args:
+        connection_string: Connection string in one of the supported formats
+
+    Returns:
+        QdrantConnectionParams with appropriate fields set
+
+    Raises:
+        ValueError: If connection string is empty or uses unsupported scheme
+
+    Examples:
+        >>> parse_qdrant_connection_string("https://qdrant.example.com:6333")
+        {'url': 'https://qdrant.example.com:6333'}
+
+        >>> parse_qdrant_connection_string("http://localhost:6333")
+        {'host': 'localhost', 'port': 6333}
+
+        >>> parse_qdrant_connection_string(":memory:")
+        {'location': ':memory:'}
+
+        >>> parse_qdrant_connection_string("qdrant+grpc://localhost:6334")
+        {'host': 'localhost', 'grpc_port': 6334, 'prefer_grpc': True}
+    """
+    if not connection_string:
+        raise ValueError("Connection string cannot be empty")
+
+    # Handle special in-memory location
+    if connection_string == ":memory:":
+        return {"location": ":memory:"}
+
+    # Handle local file path (for persistent local storage)
+    if connection_string.startswith("/") or connection_string.startswith("file://"):
+        path = connection_string.replace("file://", "")
+        return {"path": path}
+
+    parsed = urlparse(connection_string)
+
+    # Handle gRPC preference via scheme
+    prefer_grpc = parsed.scheme in ("qdrant+grpc", "grpc")
+
+    # Normalize scheme for URL construction
+    if parsed.scheme in ("qdrant", "qdrant+grpc", "grpc"):
+        # Convert custom schemes to http/https
+        actual_scheme = "https" if parsed.port == 443 else "http"
+    elif parsed.scheme in ("http", "https"):
+        actual_scheme = parsed.scheme
+    else:
+        raise ValueError(
+            f"Invalid scheme '{parsed.scheme}'. Qdrant connection string must use "
+            "http://, https://, qdrant://, or qdrant+grpc:// scheme"
+        )
+
+    host = parsed.hostname or "localhost"
+
+    # Default ports based on transport
+    if prefer_grpc:
+        grpc_port = parsed.port or 6334
+        params: QdrantConnectionParams = {
+            "host": host,
+            "grpc_port": grpc_port,
+            "prefer_grpc": True,
+        }
+    else:
+        port = parsed.port or 6333
+        # For remote servers, pass full URL; for localhost use host/port
+        if host == "localhost" or host == "127.0.0.1":
+            params = {
+                "host": host,
+                "port": port,
+            }
+        else:
+            # Use full URL for remote servers
+            url = f"{actual_scheme}://{host}"
+            if parsed.port:
+                url += f":{parsed.port}"
+            params = {"url": url}
+
+    # Extract API key from userinfo if present
+    if parsed.username:
+        params["api_key"] = parsed.username
+
+    return params
+
+
+def parse_pinecone_connection_string(
+    connection_string: str,
+) -> PineconeConnectionParams:
+    """Parse a Pinecone connection string into connection parameters.
+
+    Pinecone primarily uses API key authentication. The connection string
+    can be the API key directly or a URL-like format for consistency.
+
+    Supported formats:
+    - Direct API key: "pc-abc123..." (starts with 'pc-')
+    - URL format: pinecone://api_key or pinecone://api_key@namespace
+
+    Args:
+        connection_string: Connection string with API key
+
+    Returns:
+        PineconeConnectionParams with api_key and optional namespace
+
+    Raises:
+        ValueError: If connection string is empty
+
+    Examples:
+        >>> parse_pinecone_connection_string("pc-abc123def456")
+        {'api_key': 'pc-abc123def456'}
+
+        >>> parse_pinecone_connection_string("pinecone://pc-abc123")
+        {'api_key': 'pc-abc123'}
+
+        >>> parse_pinecone_connection_string("pinecone://pc-abc123@my-namespace")
+        {'api_key': 'pc-abc123', 'namespace': 'my-namespace'}
+    """
+    if not connection_string:
+        raise ValueError("Connection string cannot be empty")
+
+    # Direct API key format (Pinecone keys typically start with 'pc-')
+    if connection_string.startswith("pc-") or not connection_string.startswith(
+        "pinecone://"
+    ):
+        return {"api_key": connection_string}
+
+    # URL-like format: pinecone://api_key[@namespace]
+    parsed = urlparse(connection_string)
+
+    if parsed.scheme != "pinecone":
+        raise ValueError(
+            f"Invalid scheme '{parsed.scheme}'. "
+            "Use 'pinecone://' or provide API key directly"
+        )
+
+    params: PineconeConnectionParams = {}
+
+    # API key can be in username position or hostname
+    if parsed.username:
+        params["api_key"] = parsed.username
+        if parsed.hostname:
+            params["namespace"] = parsed.hostname
+    elif parsed.hostname:
+        params["api_key"] = parsed.hostname
+
+    # Check for namespace in path
+    if parsed.path and parsed.path.startswith("/"):
+        namespace = parsed.path[1:]  # Remove leading slash
+        if namespace:
+            params["namespace"] = namespace
 
     return params
 
@@ -317,11 +542,6 @@ def get_collection_class(provider: str) -> type[Any]:
     """
     # Map providers to their import paths and class names
     provider_imports: dict[str, tuple[str, str]] = {
-        "redis-hashset": (
-            "semantic_kernel.connectors.redis",
-            "RedisHashsetCollection",
-        ),
-        "redis-json": ("semantic_kernel.connectors.redis", "RedisJsonCollection"),
         "postgres": ("semantic_kernel.connectors.postgres", "PostgresCollection"),
         "azure-ai-search": (
             "semantic_kernel.connectors.azure_ai_search",
@@ -359,22 +579,27 @@ def get_collection_class(provider: str) -> type[Any]:
         return cast(type[Any], getattr(module, class_name))
     except ImportError as e:
         # Provide helpful error message about missing dependencies
+        # Use holodeck-ai[extra] format for optional dependencies we provide
         dep_hints: dict[str, str] = {
-            "redis-hashset": "redis[hiredis]",
-            "redis-json": "redis[hiredis]",
-            "postgres": "psycopg[binary,pool]",
+            "postgres": "holodeck-ai[postgres]",
             "azure-ai-search": "azure-search-documents",
-            "qdrant": "qdrant-client",
+            "qdrant": "holodeck-ai[qdrant]",
             "weaviate": "weaviate-client",
-            "chromadb": "chromadb",
+            "chromadb": "holodeck-ai[chromadb]",
             "faiss": "faiss-cpu",
             "azure-cosmos-mongo": "pymongo",
             "azure-cosmos-nosql": "azure-cosmos",
             "sql-server": "pyodbc",
-            "pinecone": "pinecone-client",
+            "pinecone": "holodeck-ai[pinecone]",
         }
         hint = dep_hints.get(provider, "")
-        install_msg = f" Try: pip install {hint}" if hint else ""
+        if hint:
+            if hint.startswith("holodeck-ai["):
+                install_msg = f" Install with: uv add {hint}"
+            else:
+                install_msg = f" Install with: pip install {hint}"
+        else:
+            install_msg = ""
         raise ImportError(
             f"Missing dependencies for vector store provider '{provider}'.{install_msg}"
         ) from e
@@ -392,8 +617,6 @@ def get_collection_factory(
 
     Args:
         provider: Vector store provider name. Supported providers:
-            - redis-hashset: Redis with Hashset storage
-            - redis-json: Redis with JSON storage
             - postgres: PostgreSQL with pgvector extension
             - azure-ai-search: Azure AI Search (Cognitive Search)
             - qdrant: Qdrant vector database
@@ -475,8 +698,6 @@ def get_collection_factory(
         >>> factory = get_collection_factory("in-memory", dimensions=1536)
     """
     supported_providers = [
-        "redis-hashset",
-        "redis-json",
         "postgres",
         "azure-ai-search",
         "qdrant",
@@ -503,7 +724,10 @@ def get_collection_factory(
     # Create DocumentRecord class for these dimensions
     record_class = create_document_record_class(dimensions)
 
-    # Pre-process ChromaDB kwargs to avoid mutating the original dict in factory
+    # Pre-process provider-specific kwargs to avoid mutating original dict in factory
+    # Each provider may need connection_string parsed into specific parameters
+
+    # ChromaDB handling
     if provider == "chromadb":
         chromadb_connection_string = connection_kwargs.pop("connection_string", None)
         chromadb_persist_directory = connection_kwargs.pop("persist_directory", None)
@@ -512,6 +736,54 @@ def get_collection_factory(
         chromadb_connection_string = None
         chromadb_persist_directory = None
         chromadb_extra_kwargs = {}
+
+    # Qdrant handling - parse connection_string into Qdrant-specific params
+    if provider == "qdrant":
+        qdrant_params: QdrantConnectionParams = {}
+        if "connection_string" in connection_kwargs:
+            qdrant_params = parse_qdrant_connection_string(
+                connection_kwargs.pop("connection_string")
+            )
+        # Merge any explicit kwargs (they override parsed values)
+        qdrant_params.update(connection_kwargs)  # type: ignore[typeddict-item]
+    else:
+        qdrant_params = {}
+
+    # Pinecone handling - parse connection_string or use api_key directly
+    if provider == "pinecone":
+        pinecone_params: PineconeConnectionParams = {}
+        if "connection_string" in connection_kwargs:
+            pinecone_params = parse_pinecone_connection_string(
+                connection_kwargs.pop("connection_string")
+            )
+        # Merge any explicit kwargs (api_key, namespace, use_grpc)
+        if "api_key" in connection_kwargs:
+            pinecone_params["api_key"] = connection_kwargs.pop("api_key")
+        if "namespace" in connection_kwargs:
+            pinecone_params["namespace"] = connection_kwargs.pop("namespace")
+        if "use_grpc" in connection_kwargs:
+            pinecone_params["use_grpc"] = connection_kwargs.pop("use_grpc")
+        pinecone_extra_kwargs = connection_kwargs.copy()
+    else:
+        pinecone_params = {}
+        pinecone_extra_kwargs = {}
+
+    # PostgreSQL handling - connection_string is passed directly to SK
+    # SK's PostgresSettings handles parsing internally
+    if provider == "postgres":
+        postgres_params: PostgresConnectionParams = {}
+        if "connection_string" in connection_kwargs:
+            # Pass connection_string to SK which will parse it via PostgresSettings
+            postgres_params["connection_string"] = connection_kwargs.pop(
+                "connection_string"
+            )
+        # Handle db_schema separately
+        if "db_schema" in connection_kwargs:
+            postgres_params["db_schema"] = connection_kwargs.pop("db_schema")
+        postgres_extra_kwargs = connection_kwargs.copy()
+    else:
+        postgres_params = {}
+        postgres_extra_kwargs = {}
 
     def factory() -> Any:
         """Return async context manager for the collection."""
@@ -533,6 +805,42 @@ def get_collection_factory(
                 client=client,
             )
 
+        # Qdrant - pass parsed parameters directly to QdrantCollection
+        if provider == "qdrant":
+            return collection_class[str, record_class](
+                record_type=record_class,
+                **qdrant_params,
+            )
+
+        # Pinecone - pass parsed parameters to PineconeCollection
+        if provider == "pinecone":
+            return collection_class[str, record_class](
+                record_type=record_class,
+                **pinecone_params,
+                **pinecone_extra_kwargs,
+            )
+
+        # PostgreSQL - SK handles connection_string parsing via PostgresSettings
+        if provider == "postgres":
+            # PostgresCollection accepts settings or individual connection params
+            # We pass connection_string which PostgresSettings will parse
+            kwargs_for_postgres: dict[str, Any] = {"record_type": record_class}
+            conn_str = postgres_params.get("connection_string")
+            if conn_str:
+                # Create PostgresSettings with connection_string
+                # SK will handle the parsing internally
+                from pydantic import SecretStr
+                from semantic_kernel.connectors.postgres import PostgresSettings
+
+                settings = PostgresSettings(connection_string=SecretStr(conn_str))
+                kwargs_for_postgres["settings"] = settings
+            db_schema = postgres_params.get("db_schema")
+            if db_schema:
+                kwargs_for_postgres["db_schema"] = db_schema
+            kwargs_for_postgres.update(postgres_extra_kwargs)
+            return collection_class[str, record_class](**kwargs_for_postgres)
+
+        # Default handling for other providers
         return collection_class[str, record_class](
             record_type=record_class,
             **connection_kwargs,

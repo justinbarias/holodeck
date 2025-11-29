@@ -39,8 +39,6 @@ mock_memory.InMemoryCollection = MagicMock()  # type: ignore[assignment]
 mock_memory.PineconeCollection = MagicMock()  # type: ignore[assignment]
 mock_memory.PostgresCollection = MagicMock()  # type: ignore[assignment]
 mock_memory.QdrantCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.RedisHashsetCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.RedisJsonCollection = MagicMock()  # type: ignore[assignment]
 mock_memory.SqlServerCollection = MagicMock()  # type: ignore[assignment]
 mock_memory.WeaviateCollection = MagicMock()  # type: ignore[assignment]
 
@@ -60,6 +58,8 @@ from holodeck.lib.vector_store import (  # noqa: E402
     get_collection_class,
     get_collection_factory,
     parse_chromadb_connection_string,
+    parse_pinecone_connection_string,
+    parse_qdrant_connection_string,
 )
 
 # Restore original modules after import to avoid polluting other tests
@@ -347,7 +347,7 @@ class TestGetCollectionFactory:
     def test_factory_case_sensitive(self) -> None:
         """Test that provider names are case-sensitive."""
         with pytest.raises(ValueError, match="Unsupported vector store provider"):
-            get_collection_factory("Redis-Hashset")  # Wrong case
+            get_collection_factory("Postgres")  # Wrong case
 
     def test_factory_returns_callable(self) -> None:
         """Test that get_collection_factory returns a callable."""
@@ -357,8 +357,6 @@ class TestGetCollectionFactory:
     def test_factory_supported_providers(self) -> None:
         """Test that all documented providers return callables."""
         providers = [
-            "redis-hashset",
-            "redis-json",
             "postgres",
             "azure-ai-search",
             "qdrant",
@@ -1244,6 +1242,7 @@ class TestGetCollectionFactoryNonChromadb:
     def test_factory_non_chromadb_calls_collection_with_kwargs(self) -> None:
         """Test that factory() for non-chromadb provider passes connection kwargs."""
         mock_collection_class = MagicMock()
+        mock_postgres_settings = MagicMock()
 
         import importlib
 
@@ -1253,10 +1252,18 @@ class TestGetCollectionFactoryNonChromadb:
             if name == "semantic_kernel.connectors.postgres":
                 module = MagicMock()
                 module.PostgresCollection = mock_collection_class
+                module.PostgresSettings = mock_postgres_settings
                 return module
             return original_import(name)
 
+        # Also need to mock sys.modules for the direct import in vector_store.py
+        mock_postgres_module = MagicMock()
+        mock_postgres_module.PostgresSettings = mock_postgres_settings
+        mock_postgres_module.PostgresCollection = mock_collection_class
+
         try:
+            # Set up sys.modules for the direct import
+            sys.modules["semantic_kernel.connectors.postgres"] = mock_postgres_module
             importlib.import_module = mock_import  # type: ignore[method-assign]
 
             factory = get_collection_factory(
@@ -1269,17 +1276,20 @@ class TestGetCollectionFactoryNonChromadb:
             # Call the factory
             factory()
 
-            # Verify PostgresCollection was instantiated with connection kwargs
+            # Verify PostgresSettings was called with the connection string
+            mock_postgres_settings.assert_called_once()
+            settings_call_kwargs = mock_postgres_settings.call_args.kwargs
+            assert "connection_string" in settings_call_kwargs
+
+            # Verify PostgresCollection was instantiated with settings
             mock_collection_class.__getitem__.return_value.assert_called_once()
             call_kwargs = mock_collection_class.__getitem__.return_value.call_args
-            # Check that connection_string and pool_size are passed
+            # Check that settings and pool_size are passed
             assert call_kwargs is not None
-            assert "connection_string" in call_kwargs.kwargs
-            assert (
-                call_kwargs.kwargs["connection_string"] == "postgresql://localhost/db"
-            )
+            assert "settings" in call_kwargs.kwargs
             assert call_kwargs.kwargs["pool_size"] == 10
         finally:
+            del sys.modules["semantic_kernel.connectors.postgres"]
             importlib.import_module = original_import
 
     def test_factory_in_memory_calls_collection_class(self) -> None:
@@ -1314,8 +1324,170 @@ class TestGetCollectionFactoryNonChromadb:
         finally:
             importlib.import_module = original_import
 
-    def test_factory_redis_hashset_calls_collection_class(self) -> None:
-        """Test that factory() for redis-hashset provider works."""
+
+class TestParseQdrantConnectionString:
+    """Tests for parse_qdrant_connection_string function."""
+
+    def test_parse_http_localhost_with_port(self) -> None:
+        """Test parsing http://localhost:6333."""
+        result = parse_qdrant_connection_string("http://localhost:6333")
+        assert result["host"] == "localhost"
+        assert result["port"] == 6333
+
+    def test_parse_https_remote_server(self) -> None:
+        """Test parsing https://qdrant.example.com:6333."""
+        result = parse_qdrant_connection_string("https://qdrant.example.com:6333")
+        assert result["url"] == "https://qdrant.example.com:6333"
+
+    def test_parse_http_without_port(self) -> None:
+        """Test parsing http://localhost without explicit port."""
+        result = parse_qdrant_connection_string("http://localhost")
+        assert result["host"] == "localhost"
+        assert result["port"] == 6333  # Default Qdrant HTTP port
+
+    def test_parse_in_memory(self) -> None:
+        """Test parsing :memory: for in-memory storage."""
+        result = parse_qdrant_connection_string(":memory:")
+        assert result["location"] == ":memory:"
+
+    def test_parse_local_file_path(self) -> None:
+        """Test parsing local file path for persistent storage."""
+        result = parse_qdrant_connection_string("/var/data/qdrant")
+        assert result["path"] == "/var/data/qdrant"
+
+    def test_parse_file_uri(self) -> None:
+        """Test parsing file:// URI for persistent storage."""
+        result = parse_qdrant_connection_string("file:///var/data/qdrant")
+        assert result["path"] == "/var/data/qdrant"
+
+    def test_parse_grpc_scheme(self) -> None:
+        """Test parsing qdrant+grpc:// for gRPC preference."""
+        result = parse_qdrant_connection_string("qdrant+grpc://localhost:6334")
+        assert result["host"] == "localhost"
+        assert result["grpc_port"] == 6334
+        assert result["prefer_grpc"] is True
+
+    def test_parse_grpc_scheme_alternative(self) -> None:
+        """Test parsing grpc:// scheme."""
+        result = parse_qdrant_connection_string("grpc://localhost:6334")
+        assert result["host"] == "localhost"
+        assert result["grpc_port"] == 6334
+        assert result["prefer_grpc"] is True
+
+    def test_parse_with_api_key_in_userinfo(self) -> None:
+        """Test parsing URL with API key in userinfo."""
+        result = parse_qdrant_connection_string("https://my-api-key@qdrant.example.com")
+        assert result["url"] == "https://qdrant.example.com"
+        assert result["api_key"] == "my-api-key"
+
+    def test_parse_localhost_127_0_0_1(self) -> None:
+        """Test parsing 127.0.0.1 as localhost."""
+        result = parse_qdrant_connection_string("http://127.0.0.1:6333")
+        assert result["host"] == "127.0.0.1"
+        assert result["port"] == 6333
+
+    def test_parse_empty_connection_string_raises_error(self) -> None:
+        """Test that empty connection string raises ValueError."""
+        with pytest.raises(ValueError, match="Connection string cannot be empty"):
+            parse_qdrant_connection_string("")
+
+    def test_parse_invalid_scheme_raises_error(self) -> None:
+        """Test that invalid scheme raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid scheme"):
+            parse_qdrant_connection_string("ftp://localhost:6333")
+
+    def test_parse_tcp_scheme_raises_error(self) -> None:
+        """Test that tcp:// scheme raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid scheme"):
+            parse_qdrant_connection_string("tcp://localhost:6333")
+
+    def test_parse_qdrant_custom_scheme(self) -> None:
+        """Test parsing qdrant:// custom scheme."""
+        result = parse_qdrant_connection_string("qdrant://localhost:6333")
+        assert result["host"] == "localhost"
+        assert result["port"] == 6333
+
+    def test_parse_https_remote_without_port(self) -> None:
+        """Test parsing https remote server without explicit port."""
+        result = parse_qdrant_connection_string("https://qdrant.example.com")
+        assert result["url"] == "https://qdrant.example.com"
+
+
+class TestParsePineconeConnectionString:
+    """Tests for parse_pinecone_connection_string function."""
+
+    def test_parse_direct_api_key(self) -> None:
+        """Test parsing direct API key starting with pc-."""
+        result = parse_pinecone_connection_string("pc-abc123def456")
+        assert result["api_key"] == "pc-abc123def456"
+
+    def test_parse_non_pc_api_key(self) -> None:
+        """Test parsing API key not starting with pc- (treated as direct key)."""
+        result = parse_pinecone_connection_string("my-custom-api-key-12345")
+        assert result["api_key"] == "my-custom-api-key-12345"
+
+    def test_parse_pinecone_url_with_api_key(self) -> None:
+        """Test parsing pinecone://api_key format."""
+        result = parse_pinecone_connection_string("pinecone://pc-abc123")
+        assert result["api_key"] == "pc-abc123"
+
+    def test_parse_pinecone_url_with_namespace(self) -> None:
+        """Test parsing pinecone://api_key@namespace format."""
+        result = parse_pinecone_connection_string("pinecone://pc-abc123@my-namespace")
+        assert result["api_key"] == "pc-abc123"
+        assert result["namespace"] == "my-namespace"
+
+    def test_parse_pinecone_url_with_namespace_in_path(self) -> None:
+        """Test parsing pinecone://api_key/namespace format."""
+        result = parse_pinecone_connection_string("pinecone://pc-abc123/production")
+        assert result["api_key"] == "pc-abc123"
+        assert result["namespace"] == "production"
+
+    def test_parse_empty_connection_string_raises_error(self) -> None:
+        """Test that empty connection string raises ValueError."""
+        with pytest.raises(ValueError, match="Connection string cannot be empty"):
+            parse_pinecone_connection_string("")
+
+    def test_parse_pinecone_url_empty_namespace_ignored(self) -> None:
+        """Test that empty namespace in path is ignored."""
+        result = parse_pinecone_connection_string("pinecone://pc-abc123/")
+        assert result["api_key"] == "pc-abc123"
+        assert "namespace" not in result
+
+
+class TestGetCollectionFactoryQdrant:
+    """Tests for get_collection_factory with Qdrant provider."""
+
+    def test_factory_qdrant_with_connection_string(self) -> None:
+        """Test factory creates Qdrant collection with connection string."""
+        factory = get_collection_factory(
+            "qdrant",
+            dimensions=768,
+            connection_string="http://localhost:6333",
+        )
+        assert callable(factory)
+
+    def test_factory_qdrant_in_memory(self) -> None:
+        """Test factory creates in-memory Qdrant collection."""
+        factory = get_collection_factory(
+            "qdrant",
+            dimensions=768,
+            connection_string=":memory:",
+        )
+        assert callable(factory)
+
+    def test_factory_qdrant_with_api_key(self) -> None:
+        """Test factory creates Qdrant collection with API key."""
+        factory = get_collection_factory(
+            "qdrant",
+            dimensions=768,
+            connection_string="https://qdrant.example.com:6333",
+            api_key="my-secret-key",
+        )
+        assert callable(factory)
+
+    def test_factory_qdrant_calls_collection_class(self) -> None:
+        """Test that factory() for Qdrant provider calls collection properly."""
         mock_collection_class = MagicMock()
 
         import importlib
@@ -1323,9 +1495,9 @@ class TestGetCollectionFactoryNonChromadb:
         original_import = importlib.import_module
 
         def mock_import(name: str) -> MagicMock:
-            if name == "semantic_kernel.connectors.redis":
+            if name == "semantic_kernel.connectors.qdrant":
                 module = MagicMock()
-                module.RedisHashsetCollection = mock_collection_class
+                module.QdrantCollection = mock_collection_class
                 return module
             return original_import(name)
 
@@ -1333,15 +1505,189 @@ class TestGetCollectionFactoryNonChromadb:
             importlib.import_module = mock_import  # type: ignore[method-assign]
 
             factory = get_collection_factory(
-                "redis-hashset",
+                "qdrant",
                 dimensions=768,
-                connection_string="redis://localhost:6379",
+                connection_string="http://localhost:6333",
             )
 
             # Call the factory
             factory()
 
-            # Verify RedisHashsetCollection was instantiated
+            # Verify QdrantCollection was instantiated
             mock_collection_class.__getitem__.return_value.assert_called_once()
+            call_kwargs = mock_collection_class.__getitem__.return_value.call_args
+            assert call_kwargs is not None
+            # Should have host and port from parsed connection string
+            assert call_kwargs.kwargs["host"] == "localhost"
+            assert call_kwargs.kwargs["port"] == 6333
+        finally:
+            importlib.import_module = original_import
+
+    def test_factory_qdrant_with_grpc(self) -> None:
+        """Test factory creates Qdrant collection with gRPC preference."""
+        mock_collection_class = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.qdrant":
+                module = MagicMock()
+                module.QdrantCollection = mock_collection_class
+                return module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+
+            factory = get_collection_factory(
+                "qdrant",
+                dimensions=768,
+                connection_string="qdrant+grpc://localhost:6334",
+            )
+
+            factory()
+
+            call_kwargs = mock_collection_class.__getitem__.return_value.call_args
+            assert call_kwargs is not None
+            assert call_kwargs.kwargs["host"] == "localhost"
+            assert call_kwargs.kwargs["grpc_port"] == 6334
+            assert call_kwargs.kwargs["prefer_grpc"] is True
+        finally:
+            importlib.import_module = original_import
+
+
+class TestGetCollectionFactoryPinecone:
+    """Tests for get_collection_factory with Pinecone provider."""
+
+    def test_factory_pinecone_with_api_key(self) -> None:
+        """Test factory creates Pinecone collection with API key."""
+        factory = get_collection_factory(
+            "pinecone",
+            dimensions=768,
+            api_key="pc-abc123def456",
+        )
+        assert callable(factory)
+
+    def test_factory_pinecone_with_connection_string(self) -> None:
+        """Test factory creates Pinecone collection with connection string."""
+        factory = get_collection_factory(
+            "pinecone",
+            dimensions=768,
+            connection_string="pc-abc123def456",
+        )
+        assert callable(factory)
+
+    def test_factory_pinecone_with_namespace(self) -> None:
+        """Test factory creates Pinecone collection with namespace."""
+        factory = get_collection_factory(
+            "pinecone",
+            dimensions=768,
+            api_key="pc-abc123def456",
+            namespace="production",
+        )
+        assert callable(factory)
+
+    def test_factory_pinecone_calls_collection_class(self) -> None:
+        """Test that factory() for Pinecone provider calls collection properly."""
+        mock_collection_class = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.pinecone":
+                module = MagicMock()
+                module.PineconeCollection = mock_collection_class
+                return module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+
+            factory = get_collection_factory(
+                "pinecone",
+                dimensions=768,
+                api_key="pc-abc123def456",
+                namespace="my-namespace",
+            )
+
+            # Call the factory
+            factory()
+
+            # Verify PineconeCollection was instantiated
+            mock_collection_class.__getitem__.return_value.assert_called_once()
+            call_kwargs = mock_collection_class.__getitem__.return_value.call_args
+            assert call_kwargs is not None
+            assert call_kwargs.kwargs["api_key"] == "pc-abc123def456"
+            assert call_kwargs.kwargs["namespace"] == "my-namespace"
+        finally:
+            importlib.import_module = original_import
+
+    def test_factory_pinecone_with_connection_string_parsed(self) -> None:
+        """Test that factory parses Pinecone connection string."""
+        mock_collection_class = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.pinecone":
+                module = MagicMock()
+                module.PineconeCollection = mock_collection_class
+                return module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+
+            factory = get_collection_factory(
+                "pinecone",
+                dimensions=768,
+                connection_string="pinecone://pc-abc123@production",
+            )
+
+            factory()
+
+            call_kwargs = mock_collection_class.__getitem__.return_value.call_args
+            assert call_kwargs is not None
+            assert call_kwargs.kwargs["api_key"] == "pc-abc123"
+            assert call_kwargs.kwargs["namespace"] == "production"
+        finally:
+            importlib.import_module = original_import
+
+    def test_factory_pinecone_with_use_grpc(self) -> None:
+        """Test factory creates Pinecone collection with gRPC option."""
+        mock_collection_class = MagicMock()
+
+        import importlib
+
+        original_import = importlib.import_module
+
+        def mock_import(name: str) -> MagicMock:
+            if name == "semantic_kernel.connectors.pinecone":
+                module = MagicMock()
+                module.PineconeCollection = mock_collection_class
+                return module
+            return original_import(name)
+
+        try:
+            importlib.import_module = mock_import  # type: ignore[method-assign]
+
+            factory = get_collection_factory(
+                "pinecone",
+                dimensions=768,
+                api_key="pc-abc123",
+                use_grpc=True,
+            )
+
+            factory()
+
+            call_kwargs = mock_collection_class.__getitem__.return_value.call_args
+            assert call_kwargs is not None
+            assert call_kwargs.kwargs["use_grpc"] is True
         finally:
             importlib.import_module = original_import

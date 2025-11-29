@@ -72,11 +72,10 @@ class Tool(BaseModel):
 class DatabaseConfig(BaseModel):
     """Vector database connection configuration.
 
-    Supports all Semantic Kernel vector store providers including Redis, PostgreSQL,
+    Supports all Semantic Kernel vector store providers including PostgreSQL,
     Azure AI Search, Qdrant, Weaviate, ChromaDB, FAISS, Pinecone, and more.
 
     Provider-specific parameters are passed via the config dict:
-    - redis-hashset/redis-json: connection_string
     - postgres: connection_string
     - azure-ai-search: connection_string, api_key
     - qdrant: url, api_key (optional)
@@ -90,8 +89,6 @@ class DatabaseConfig(BaseModel):
     model_config = ConfigDict(extra="allow")  # Allow provider-specific parameters
 
     provider: Literal[
-        "redis-hashset",
-        "redis-json",
         "postgres",
         "azure-ai-search",
         "qdrant",
@@ -106,16 +103,16 @@ class DatabaseConfig(BaseModel):
     ] = Field(
         ...,
         description=(
-            "Vector database provider: redis-hashset, redis-json, postgres, "
-            "azure-ai-search, qdrant, weaviate, chromadb, faiss, "
-            "azure-cosmos-mongo, azure-cosmos-nosql, sql-server, pinecone, in-memory"
+            "Vector database provider: postgres, azure-ai-search, qdrant, "
+            "weaviate, chromadb, faiss, azure-cosmos-mongo, azure-cosmos-nosql, "
+            "sql-server, pinecone, in-memory"
         ),
     )
     connection_string: str | None = Field(
         None,
         description=(
             "Database connection string (format depends on provider). "
-            "Examples: redis://localhost:6379, postgresql://user:pass@host/db, "
+            "Examples: postgresql://user:pass@host/db, "
             "https://search-service.search.windows.net"
         ),
     )
