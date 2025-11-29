@@ -827,6 +827,9 @@ class AgentFactory:
         if response_format is not None and hasattr(settings, "response_format"):
             settings.response_format = self._wrap_response_format(response_format)
 
+        if response_format is not None and hasattr(settings, "format"):
+            settings.format = response_format
+
     def _wrap_response_format(self, schema: dict[str, Any]) -> dict[str, Any]:
         """Wrap JSON schema using the OpenAI response_format structure."""
 

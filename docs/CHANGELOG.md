@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CLI Commands**: `holodeck deploy`
 - **Observability**: OpenTelemetry integration with GenAI semantic conventions
 - **Plugin System**: Pre-built plugin packages for common integrations
+- **Agent Framework Migration**: Plans to migrate the Agents abstraction to [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/agent-framework-overview) once it reaches 1.0
 
 ---
 
@@ -356,60 +357,13 @@ None reported in 0.0.1.
 
 ## Roadmap
 
-### User Story 1: Define Agent Configuration ✅ **0.0.1**
-
-- YAML-based agent configuration
-- Schema validation
-- Configuration loading and merging
-- File references and environment variables
-
-### User Story 2: Initialize New Agent Project ✅ **0.0.6**
-
-- `holodeck init` command
-- Project scaffolding
-- Template agent creation
-- Directory structure setup
-
-### User Story 3: Execute Agent ✅ **0.0.7 - 0.1.0**
-
-- Agent execution engine
-- LLM provider integration (OpenAI, Azure, Anthropic, Ollama)
-- Tool execution runtime
-- Vector store integrations (Redis, ChromaDB)
-
-### User Story 4: Evaluate Results ✅ **0.1.0**
-
-- `holodeck test` command
-- Evaluation metric execution
-- AI-powered and NLP metrics
-- Markdown report generation
-
-### User Story 5: MCP Tool Integration ✅ **0.1.6**
-
-- Model Context Protocol (MCP) support
-- Stdio transport for tool servers
-- Tool discovery and invocation
-
-### User Story 6: Deploy Agent (planned 0.2.0)
-
-- `holodeck deploy` command
-- FastAPI endpoint generation
-- Docker containerization
-- Cloud deployment support
-
-### User Story 7: Observability & Monitoring (planned 0.2.0)
-
-- OpenTelemetry integration
-- Trace and log instrumentation
-- Cost tracking
-- Performance monitoring
-
-### User Story 8: Plugin System (planned 0.3.0)
-
-- Plugin registry
-- Plugin installation
-- Pre-built plugin packages
-- Custom plugin development
+- [x] **v0.1** - Core agent engine + CLI
+- [x] **v0.2** - Evaluation framework
+- [ ] **v0.3** - API deployment
+- [ ] **v0.4** - Multi-agent orchestration & workflows
+- [ ] **v0.5** - Web UI (no-code editor)
+- [ ] **v0.6** - Enterprise features (SSO, audit logs, RBAC)
+- [ ] **v1.0** - Production-ready release
 
 ---
 
