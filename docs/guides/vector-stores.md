@@ -13,6 +13,46 @@ Vector stores enable semantic search capabilities for your agents, allowing them
 - **Knowledge Bases**: Build searchable document repositories
 - **FAQ Systems**: Match user questions to relevant answers
 
+## Installing Vector Store Providers
+
+HoloDeck uses optional dependencies for vector database providers. Install only what you need:
+
+### Individual Providers
+
+```bash
+# PostgreSQL with pgvector
+uv add holodeck-ai[postgres]
+
+# Qdrant
+uv add holodeck-ai[qdrant]
+
+# Pinecone
+uv add holodeck-ai[pinecone]
+
+# ChromaDB
+uv add holodeck-ai[chromadb]
+```
+
+### All Vector Stores
+
+```bash
+# Install all vector store providers at once
+uv add holodeck-ai[vectorstores]
+```
+
+### With pip
+
+```bash
+pip install holodeck-ai[postgres]
+pip install holodeck-ai[qdrant]
+pip install holodeck-ai[pinecone]
+pip install holodeck-ai[chromadb]
+# Or all at once
+pip install holodeck-ai[vectorstores]
+```
+
+---
+
 ## Prerequisites
 
 Before setting up a vector store, you need a container runtime:
@@ -151,6 +191,196 @@ podman run -d \
 
 ---
 
+## Setting Up PostgreSQL with pgvector
+
+[PostgreSQL with pgvector](https://github.com/pgvector/pgvector) provides production-grade vector storage with full SQL capabilities. It's ideal if you already have PostgreSQL infrastructure.
+
+### Quick Start with Docker
+
+**Run PostgreSQL with pgvector:**
+
+```bash
+docker run -d \
+  --name postgres \
+  -p 5432:5432 \
+  -e POSTGRES_PASSWORD=your_password \
+  -v pgdata:/var/lib/postgresql/data \
+  pgvector/pgvector:pg17
+```
+
+This exposes:
+
+- **Port 5432**: PostgreSQL database (for HoloDeck connections)
+
+**Verify PostgreSQL is running:**
+
+```bash
+docker exec -it postgres psql -U postgres -c "SELECT 1;"
+```
+
+### Docker Compose (Recommended for Projects)
+
+```yaml
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: holodeck-postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=holodeck
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+```
+
+### PostgreSQL Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POSTGRES_PASSWORD` | Database password (required) | - |
+| `POSTGRES_USER` | Database user | `postgres` |
+| `POSTGRES_DB` | Default database name | `postgres` |
+
+> **Security**: Always use environment variables for passwords. Never commit plaintext passwords to version control.
+
+---
+
+## Setting Up Qdrant
+
+[Qdrant](https://qdrant.tech/) is a high-performance vector database designed for production workloads. It supports both HTTP and gRPC protocols.
+
+### Quick Start with Docker
+
+**Run Qdrant:**
+
+```bash
+docker run -d \
+  --name qdrant \
+  -p 6333:6333 \
+  -p 6334:6334 \
+  -v $(pwd)/qdrant_storage:/qdrant/storage:z \
+  qdrant/qdrant
+```
+
+This exposes:
+
+- **Port 6333**: HTTP API (for HoloDeck connections)
+- **Port 6334**: gRPC API (for high-performance connections)
+
+**Verify Qdrant is running:**
+
+```bash
+curl http://localhost:6333/healthz
+# {"title":"qdrant - vector search engine","version":"..."}
+```
+
+### Docker Compose (Recommended for Projects)
+
+```yaml
+version: "3.9"
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: holodeck-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  qdrant-data:
+```
+
+### Qdrant with API Key (Production)
+
+For production deployments, enable API key authentication:
+
+```yaml
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+```
+
+> **Version Pinning**: For stability, pin to a specific version (e.g., `qdrant/qdrant:v1.9.0`) instead of `latest`.
+
+---
+
+## Setting Up Pinecone
+
+[Pinecone](https://www.pinecone.io/) is a fully managed, serverless vector database. For production, use the cloud service with an API key. For local development and testing, use Pinecone Local.
+
+### Cloud Setup (Production)
+
+1. Create an account at [pinecone.io](https://www.pinecone.io/)
+2. Create an index in the Pinecone console
+3. Copy your API key from the console
+
+**Configure in HoloDeck:**
+
+```yaml
+database:
+  provider: pinecone
+  api_key: ${PINECONE_API_KEY}
+  namespace: my-namespace  # optional
+```
+
+### Local Development with Docker
+
+For local development without a Pinecone account, use [Pinecone Local](https://www.pinecone.io/learn/series/vector-databases-in-production-for-busy-engineers/cicd-pinecone-local/):
+
+**Pull the image:**
+
+```bash
+docker pull ghcr.io/pinecone-io/pinecone-index:latest
+```
+
+**Run Pinecone Local:**
+
+```bash
+docker run -d \
+  --name pinecone-local \
+  -e PORT=5081 \
+  -e INDEX_TYPE=serverless \
+  -e DIMENSION=1536 \
+  -e METRIC=cosine \
+  -p 5081:5081 \
+  --platform linux/amd64 \
+  ghcr.io/pinecone-io/pinecone-index:latest
+```
+
+This exposes:
+
+- **Port 5081**: Pinecone Local API
+
+### Pinecone Local Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `PORT` | API port | `5081` |
+| `INDEX_TYPE` | Index type | `serverless` |
+| `DIMENSION` | Vector dimensions | `1536` |
+| `METRIC` | Distance metric | `cosine`, `euclidean`, `dotproduct` |
+
+> **Note**: Pinecone Local is for development and testing only. Use the cloud service for production workloads.
+
+---
+
 ## Configuring Vector Stores in HoloDeck
 
 ### Global Configuration (config.yaml)
@@ -234,27 +464,92 @@ tools:
 
 ### PostgreSQL Connection Strings
 
+PostgreSQL uses standard connection string format:
+
 | Format | Example |
 |--------|---------|
 | Basic | `postgresql://localhost:5432/mydb` |
 | With credentials | `postgresql://user:password@localhost:5432/mydb` |
 | With SSL | `postgresql://user:password@host:5432/mydb?sslmode=require` |
 
+```yaml
+database:
+  provider: postgres
+  connection_string: postgresql://user:password@localhost:5432/mydb
+```
+
 ### ChromaDB Connection Strings
+
+ChromaDB accepts HTTP/HTTPS URLs or local paths:
 
 | Format | Example |
 |--------|---------|
 | HTTP | `http://localhost:8000` |
 | HTTPS | `https://chroma.example.com` |
+| Local persistent | (use `persist_directory` instead) |
+
+```yaml
+# Remote server
+database:
+  provider: chromadb
+  connection_string: http://localhost:8000
+
+# Local persistent storage
+database:
+  provider: chromadb
+  persist_directory: ./data/chromadb
+```
 
 ### Qdrant Connection Strings
 
+Qdrant supports multiple connection formats:
+
 | Format | Example |
 |--------|---------|
-| HTTP | `http://localhost:6333` |
-| HTTPS | `https://qdrant.example.com` |
+| HTTP (local) | `http://localhost:6333` |
+| HTTPS (remote) | `https://qdrant.example.com:6333` |
+| gRPC (high-performance) | `qdrant+grpc://localhost:6334` |
+| In-memory | `:memory:` |
+| Local path | `/path/to/qdrant/data` |
 
-> **Security**: Always use environment variables (`${VAR_NAME}`) for passwords and sensitive connection details. Never commit plaintext passwords to version control.
+```yaml
+# HTTP connection
+database:
+  provider: qdrant
+  connection_string: http://localhost:6333
+
+# With API key (recommended for remote)
+database:
+  provider: qdrant
+  connection_string: https://qdrant.example.com:6333
+  api_key: ${QDRANT_API_KEY}
+
+# gRPC for high-performance
+database:
+  provider: qdrant
+  connection_string: qdrant+grpc://localhost:6334
+```
+
+### Pinecone Connection
+
+Pinecone uses API key authentication (no connection string):
+
+```yaml
+database:
+  provider: pinecone
+  api_key: ${PINECONE_API_KEY}
+  namespace: my-namespace  # optional
+```
+
+Or use the connection string format:
+
+```yaml
+database:
+  provider: pinecone
+  connection_string: pinecone://pc-abc123@my-namespace
+```
+
+> **Security**: Always use environment variables (`${VAR_NAME}`) for passwords, API keys, and sensitive connection details. Never commit plaintext credentials to version control.
 
 ---
 
@@ -371,12 +666,13 @@ holodeck test agent.yaml
 
 HoloDeck supports multiple vector database backends. See the [Tools Guide](tools.md#supported-vector-database-providers) for the complete list.
 
-| Provider | Best For | Setup Complexity |
-|----------|----------|------------------|
-| `chromadb` | Lightweight development, Python-native | Low |
-| `postgres` | Existing PostgreSQL infrastructure | Medium |
-| `qdrant` | High-performance production | Medium |
-| `in-memory` | Testing and prototyping | None |
+| Provider    | Best For                             | Setup Complexity |
+| ----------- | ------------------------------------ | ---------------- |
+| `chromadb`  | Lightweight development, Python-native | Low              |
+| `postgres`  | Existing PostgreSQL infrastructure   | Medium           |
+| `qdrant`    | High-performance production          | Medium           |
+| `pinecone`  | Serverless, managed cloud            | Low              |
+| `in-memory` | Testing and prototyping              | None             |
 
 ---
 

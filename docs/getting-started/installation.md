@@ -15,7 +15,28 @@ Get HoloDeck up and running in minutes to start building and testing AI agents.
 pip install holodeck-ai
 ```
 
-This installs the `holodeck` command-line tool and all required dependencies.
+This installs the `holodeck` command-line tool and core dependencies.
+
+### Install Vector Store Providers (Optional)
+
+If you plan to use semantic search with vector databases, install the providers you need:
+
+```bash
+# Individual providers
+pip install holodeck-ai[postgres]   # PostgreSQL with pgvector
+pip install holodeck-ai[qdrant]     # Qdrant
+pip install holodeck-ai[pinecone]   # Pinecone
+pip install holodeck-ai[chromadb]   # ChromaDB
+
+# Or install all vector store providers at once
+pip install holodeck-ai[vectorstores]
+```
+
+Using **uv** (recommended for faster installs):
+
+```bash
+uv add holodeck-ai[vectorstores]
+```
 
 ### 2. Verify Installation
 
