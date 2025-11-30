@@ -1,20 +1,21 @@
 # Agent with Evaluations Example
 #
 # This example demonstrates the evaluation framework with:
-# - Global evaluation model configuration
+# - DeepEval GEval metrics (custom criteria with chain-of-thought)
+# - DeepEval RAG metrics (faithfulness, answer relevancy)
+# - NLP metrics (F1, ROUGE)
+# - Legacy Azure AI metrics (deprecated, for backwards compatibility)
 # - Per-metric model overrides
-# - Different metric types (AI-powered and NLP-based)
-# - Soft failure configuration
 # - Threshold-based pass/fail criteria
 #
-# Usage: holodeck evaluate with_evaluations.yaml
+# Usage: holodeck test with_evaluations.yaml
 
 name: qa-agent
 description: Quality assurance agent with comprehensive evaluation
 
 model:
-  provider: anthropic
-  name: claude-3-5-sonnet-20241022
+  provider: ollama
+  name: llama3.2:latest
   temperature: 0.3
   max_tokens: 1024
 
@@ -27,67 +28,120 @@ instructions:
     4. Provide actionable feedback
 
 evaluations:
-  # Global model used for all metrics (can be overridden per metric)
+  # Global model used for all DeepEval metrics (can be overridden per metric)
   model:
-    provider: openai
-    name: gpt-4o
-    temperature: 0.2
+    provider: ollama
+    name: llama3.2:latest
+    temperature: 0.0  # Use 0 for deterministic evaluation
 
   metrics:
-    # AI-powered metric: Groundedness
-    # Evaluates if response is grounded in provided context
-    - metric: groundedness
-      threshold: 4.0  # Minimum score on 1-5 scale
-      enabled: true
-      scale: 5
-      fail_on_error: false  # Soft failure - continues on error
+    # ============================================
+    # TIER 1: DeepEval Metrics (Recommended)
+    # ============================================
 
-    # AI-powered metric: Relevance
-    # Evaluates if response directly addresses the query
-    - metric: relevance
-      threshold: 4.0
+    # GEval: Custom criteria with chain-of-thought evaluation
+    - type: geval
+      name: "Coherence"
+      criteria: |
+        Evaluate whether the response is clear, well-structured,
+        and easy to understand.
+      evaluation_steps:
+        - "Evaluate whether the response uses clear and direct language."
+        - "Check if the explanation avoids jargon or explains it when used."
+        - "Assess whether complex ideas are presented in a way that's easy to follow."
+        - "Identify any vague or confusing parts that reduce understanding."
+      evaluation_params:
+        - actual_output
+      threshold: 0.7
       enabled: true
-      scale: 5
       fail_on_error: false
 
-    # AI-powered metric: Coherence
-    # Evaluates logical flow and clarity
-    - metric: coherence
-      threshold: 3.5
-      enabled: true
-      scale: 5
-      fail_on_error: false
-
-    # NLP metric: F1 Score
-    # Measures precision/recall against ground truth
-    - metric: f1_score
-      threshold: 0.8
-      enabled: true
-      scale: 100  # 0-100 percentage scale
-      fail_on_error: true  # Hard failure for critical metric
-
-    # NLP metric: ROUGE
-    # Measures n-gram overlap with reference text
-    - metric: rouge
+    # GEval: Helpfulness check
+    - type: geval
+      name: "Helpfulness"
+      criteria: |
+        Evaluate whether the response provides actionable, practical help
+        that addresses the user's needs.
+      evaluation_params:
+        - actual_output
+        - input
       threshold: 0.75
       enabled: true
-      scale: 100
+
+    # RAG: Faithfulness - detect hallucinations
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.8
+      include_reason: true
+      enabled: true
       fail_on_error: false
 
-    # Custom metric with per-metric model override
-    # Uses GPT-4o instead of the default Claude model
-    - metric: custom_accuracy
-      threshold: 0.9
+    # RAG: Answer Relevancy - response addresses query
+    - type: rag
+      metric_type: answer_relevancy
+      threshold: 0.7
+      include_reason: true
       enabled: true
-      scale: 100
-      fail_on_error: false
-      model:  # Override global model for this metric only
-        provider: openai
-        name: gpt-4o
-        temperature: 0.1
-      custom_prompt: |
+
+    # GEval with per-metric model override for critical evaluation
+    - type: geval
+      name: "Technical Accuracy"
+      criteria: |
         Evaluate the response for accuracy in technical content.
-        Score 0-100 based on correctness of technical details.
+        Check that code examples, commands, and technical details are correct.
+      evaluation_params:
+        - actual_output
+        - input
+        - expected_output
+      threshold: 0.85
+      enabled: true
+      fail_on_error: false
+      model:  # Override global model for this critical metric
+        provider: openai
+        name: gpt-4
+        temperature: 0.0
+
+    # ============================================
+    # TIER 2: NLP Metrics (Standard)
+    # ============================================
+
+    # F1 Score: Token-level precision/recall
+    - type: standard
+      metric: f1_score
+      threshold: 0.7
+      enabled: true
+      fail_on_error: true  # Hard failure for this metric
+
+    # ROUGE: N-gram overlap for summarization
+    - type: standard
+      metric: rouge
+      threshold: 0.6
+      enabled: true
+      fail_on_error: false
+
+    # ============================================
+    # TIER 3: Legacy AI Metrics (Deprecated)
+    # ============================================
+    # NOTE: These Azure AI-based metrics are deprecated.
+    # Migrate to DeepEval metrics for better flexibility.
+    #
+    # Migration guide:
+    # - groundedness -> type: rag, metric_type: faithfulness
+    # - relevance -> type: rag, metric_type: answer_relevancy
+    # - coherence -> type: geval with custom criteria
+    # - safety -> type: geval with custom criteria
+
+    # DEPRECATED - Use type: rag with metric_type: faithfulness instead
+    # - type: standard
+    #   metric: groundedness
+    #   threshold: 0.8
+    #   enabled: false  # Disabled - using faithfulness instead
+
+    # DEPRECATED - Use type: rag with metric_type: answer_relevancy instead
+    # - type: standard
+    #   metric: relevance
+    #   threshold: 0.75
+    #   enabled: false  # Disabled - using answer_relevancy instead
 
 test_cases:
   - name: "Review product specification"
@@ -104,9 +158,16 @@ test_cases:
       3. Testing strategy
       4. Rollback plan
     evaluations:
-      - groundedness
-      - relevance
-      - f1_score
+      # Per-test evaluation overrides
+      - type: rag
+        metric_type: faithfulness
+        threshold: 0.8
+      - type: rag
+        metric_type: answer_relevancy
+        threshold: 0.7
+      - type: standard
+        metric: f1_score
+        threshold: 0.6
 
   - name: "Technical documentation quality"
     input: |
@@ -121,6 +182,39 @@ test_cases:
       3. Rate limiting information
       4. Pagination for list endpoints (if applicable)
     evaluations:
-      - relevance
-      - coherence
-      - custom_accuracy
+      - type: geval
+        name: "Coherence"
+        criteria: "Evaluate whether the response is clear and well-structured."
+        evaluation_params:
+          - actual_output
+        threshold: 0.7
+      - type: geval
+        name: "Technical Accuracy"
+        criteria: "Evaluate technical accuracy of the feedback provided."
+        evaluation_params:
+          - actual_output
+          - input
+        threshold: 0.8
+
+  - name: "Code review feedback"
+    input: |
+      Review this Python code:
+      def calculate_discount(price, discount):
+          return price - (price * discount)
+    ground_truth: |
+      The code needs:
+      1. Type hints for parameters and return value
+      2. Input validation (negative price, discount > 1)
+      3. Docstring explaining the function
+      4. Consider using Decimal for financial calculations
+    evaluations:
+      - type: geval
+        name: "Helpfulness"
+        criteria: "Evaluate if the feedback is actionable and helpful."
+        evaluation_params:
+          - actual_output
+          - input
+        threshold: 0.75
+      - type: rag
+        metric_type: answer_relevancy
+        threshold: 0.7
