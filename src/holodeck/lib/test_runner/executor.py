@@ -39,6 +39,7 @@ from holodeck.lib.evaluators.azure_ai import (
 )
 from holodeck.lib.evaluators.base import BaseEvaluator
 from holodeck.lib.evaluators.deepeval import (
+    AnswerRelevancyEvaluator,
     ContextualPrecisionEvaluator,
     ContextualRecallEvaluator,
     ContextualRelevancyEvaluator,
@@ -351,6 +352,12 @@ class TestExecutor:
                     )
                 elif metric_config.metric_type == RAGMetricType.CONTEXTUAL_RECALL:
                     evaluators[metric_name] = ContextualRecallEvaluator(
+                        model_config=deepeval_config,
+                        threshold=metric_config.threshold,
+                        include_reason=metric_config.include_reason,
+                    )
+                elif metric_config.metric_type == RAGMetricType.ANSWER_RELEVANCY:
+                    evaluators[metric_name] = AnswerRelevancyEvaluator(
                         model_config=deepeval_config,
                         threshold=metric_config.threshold,
                         include_reason=metric_config.include_reason,

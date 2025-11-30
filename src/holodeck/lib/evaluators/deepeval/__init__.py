@@ -28,6 +28,7 @@ Example:
     >>> rag_evaluator = FaithfulnessEvaluator(threshold=0.8)
 """
 
+from holodeck.lib.evaluators.deepeval.answer_relevancy import AnswerRelevancyEvaluator
 from holodeck.lib.evaluators.deepeval.base import DeepEvalBaseEvaluator
 from holodeck.lib.evaluators.deepeval.config import (
     DEFAULT_MODEL_CONFIG,
@@ -58,6 +59,7 @@ __all__ = [
     # Evaluators
     "GEvalEvaluator",
     # RAG Evaluators
+    "AnswerRelevancyEvaluator",
     "ContextualPrecisionEvaluator",
     "ContextualRecallEvaluator",
     "ContextualRelevancyEvaluator",

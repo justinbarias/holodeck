@@ -28,6 +28,7 @@ class RAGMetricType(str, Enum):
     CONTEXTUAL_RELEVANCY = "contextual_relevancy"
     CONTEXTUAL_PRECISION = "contextual_precision"
     CONTEXTUAL_RECALL = "contextual_recall"
+    ANSWER_RELEVANCY = "answer_relevancy"
 
 
 class EvaluationMetric(BaseModel):
