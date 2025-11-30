@@ -7,7 +7,7 @@ environments and CI/CD-compatible plain text output.
 import sys
 from datetime import datetime
 
-from holodeck.models.test_result import TestResult
+from holodeck.models.test_result import MetricResult, TestResult
 
 
 class ProgressIndicator:
@@ -179,6 +179,42 @@ class ProgressIndicator:
             return False
         return execution_time_ms >= 1000
 
+    def _format_metric_symbol(self, passed: bool | None) -> str:
+        """Get symbol for metric pass/fail status.
+
+        Args:
+            passed: Whether the metric passed its threshold (None if no threshold)
+
+        Returns:
+            Colored symbol for TTY, plain text for non-TTY
+        """
+        if passed is None:
+            # No threshold defined, show neutral indicator
+            return self._colorize("-", self._COLOR_RESET) if self.is_tty else "-"
+        elif passed:
+            return (
+                self._colorize("\u2713", self._COLOR_GREEN) if self.is_tty else "PASS"
+            )
+        else:
+            return self._colorize("\u2717", self._COLOR_RED) if self.is_tty else "FAIL"
+
+    def _format_metric_score(self, metric: MetricResult) -> str:
+        """Format metric score with threshold information.
+
+        Args:
+            metric: MetricResult to format
+
+        Returns:
+            Formatted score string (e.g., "0.85 (threshold: 0.80)")
+        """
+        if metric.error:
+            return self._colorize(f"ERROR: {metric.error}", self._COLOR_RED)
+
+        score_str = f"{metric.score:.2f}"
+        if metric.threshold is not None:
+            score_str += f" (threshold: {metric.threshold:.2f})"
+        return score_str
+
     def _format_test_status(self, result: "TestResult") -> str:
         """Format a single test result status line.
 
@@ -275,7 +311,7 @@ class ProgressIndicator:
             elapsed = (datetime.now() - self.start_time).total_seconds()
             summary_lines.append(f"  Duration: {elapsed:.2f}s")
 
-        # Verbose mode: show per-test details
+        # Verbose mode: show per-test details with metrics
         if self.verbose and self.test_results:
             summary_lines.append("")
             summary_lines.append("Test Details:")
@@ -291,6 +327,15 @@ class ProgressIndicator:
                     else ""
                 )
                 summary_lines.append(f"  {check} {name}{timing}")
+
+                # Display metric results for each test
+                if result.metric_results:
+                    for metric in result.metric_results:
+                        metric_symbol = self._format_metric_symbol(metric.passed)
+                        score_str = self._format_metric_score(metric)
+                        summary_lines.append(
+                            f"      {metric_symbol} {metric.metric_name}: {score_str}"
+                        )
 
         summary_lines.append("=" * 60)
 

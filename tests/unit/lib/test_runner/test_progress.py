@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from holodeck.lib.test_runner.progress import ProgressIndicator
-from holodeck.models.test_result import TestResult
+from holodeck.models.test_result import MetricResult, TestResult
 
 
 class TestTTYDetection:
@@ -395,12 +395,72 @@ class TestVerboseMode:
             result.test_name = f"Test {i+1}"
             result.passed = True
             result.execution_time_ms = 500 * (i + 1)
+            result.metric_results = []
             indicator.update(result)
 
         summary = indicator.get_summary()
 
         # Verbose summary should have more information
         assert len(summary) > 50  # Should be more detailed
+
+    def test_verbose_summary_includes_metric_scores(self) -> None:
+        """Test that verbose summary displays metric scores under test results."""
+        indicator = ProgressIndicator(total_tests=1, verbose=True)
+
+        result = MagicMock(spec=TestResult)
+        result.test_name = "Test with Metrics"
+        result.passed = True
+        result.execution_time_ms = 500
+        result.metric_results = [
+            MetricResult(
+                metric_name="groundedness",
+                score=0.85,
+                threshold=0.80,
+                passed=True,
+            ),
+            MetricResult(
+                metric_name="relevance",
+                score=0.72,
+                threshold=0.75,
+                passed=False,
+            ),
+        ]
+        indicator.update(result)
+
+        summary = indicator.get_summary()
+
+        # Check that metric names and scores are included
+        assert "groundedness" in summary
+        assert "relevance" in summary
+        assert "0.85" in summary
+        assert "0.72" in summary
+        # Check threshold values are shown
+        assert "0.80" in summary
+        assert "0.75" in summary
+
+    def test_verbose_summary_handles_metric_errors(self) -> None:
+        """Test that metric errors are displayed properly."""
+        with patch("sys.stdout.isatty", return_value=True):
+            indicator = ProgressIndicator(total_tests=1, verbose=True)
+
+            result = MagicMock(spec=TestResult)
+            result.test_name = "Test with Error"
+            result.passed = False
+            result.execution_time_ms = 100
+            result.metric_results = [
+                MetricResult(
+                    metric_name="groundedness",
+                    score=0.0,
+                    error="LLM API error",
+                ),
+            ]
+            indicator.update(result)
+
+            summary = indicator.get_summary()
+
+            # Check error message is included
+            assert "ERROR" in summary
+            assert "LLM API error" in summary
 
 
 class TestSpinnerDisplay:
@@ -809,12 +869,14 @@ class TestGetSummaryEdgeCases:
         result1.test_name = "Test 1"
         result1.passed = True
         result1.execution_time_ms = 100
+        result1.metric_results = []
         indicator.update(result1)
 
         result2 = MagicMock(spec=TestResult)
         result2.test_name = "Test 2"
         result2.passed = False
         result2.execution_time_ms = 200
+        result2.metric_results = []
         indicator.update(result2)
 
         summary = indicator.get_summary()
