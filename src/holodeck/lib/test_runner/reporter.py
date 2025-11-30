@@ -249,52 +249,66 @@ def _format_processed_files(files: list[ProcessedFileInput]) -> str:
 
 
 def _format_metrics_table(metrics: list[MetricResult]) -> str:
-    """Format metric results as a markdown table.
+    """Format metric results as a compact summary table with detailed subsections.
+
+    Displays a scannable summary table followed by detailed reasoning for each
+    metric in dedicated subsections. This preserves full reasoning without
+    truncation while keeping the summary readable.
 
     Parameters:
         metrics: List of MetricResult objects.
 
     Returns:
-        A formatted markdown table string, or empty string if no metrics.
+        A formatted markdown string with summary table and detail sections.
     """
     if not metrics:
         return ""
 
-    header = (
-        "| Metric | Score | Threshold | Status | Model "
-        "| Eval Time | Retries | Reasoning | Error |"
-    )
-    separator = (
-        "|--------|-------|-----------|--------|-------"
-        "|-----------|---------|-----------|-------|"
-    )
-    lines = [header, separator]
+    # Compact summary table
+    lines = [
+        "| Metric | Score | Threshold | Status | Model | Eval Time |",
+        "|--------|-------|-----------|--------|-------|-----------|",
+    ]
 
     for metric in metrics:
         scale = metric.scale or "0-1"
         score_display = f"{metric.score}/{scale.split('-')[1]}"
-        threshold = f"{metric.threshold}" if metric.threshold is not None else ""
+        threshold = f"{metric.threshold}" if metric.threshold is not None else "-"
         status = "✅ PASS" if metric.passed else "❌ FAIL"
-        model = metric.model_used or ""
+        model = metric.model_used or "-"
         eval_time = (
-            f"{metric.evaluation_time_ms}ms" if metric.evaluation_time_ms else ""
-        )
-        retries = str(metric.retry_count) if metric.retry_count is not None else ""
-        reasoning = (
-            metric.reasoning[:100] + "..."
-            if metric.reasoning and len(metric.reasoning) > 100
-            else (metric.reasoning or "")
-        )
-        error = (
-            metric.error[:50] + "..."
-            if metric.error and len(metric.error) > 50
-            else (metric.error or "")
+            f"{metric.evaluation_time_ms}ms" if metric.evaluation_time_ms else "-"
         )
 
         lines.append(
-            f"| {metric.metric_name} | {score_display} | {threshold} | {status} | "
-            f"{model} | {eval_time} | {retries} | {reasoning} | {error} |"
+            f"| {metric.metric_name} | {score_display} | {threshold} | "
+            f"{status} | {model} | {eval_time} |"
         )
+
+    # Detailed subsections with full reasoning
+    lines.append("")
+    lines.append("##### Metric Details\n")
+
+    for metric in metrics:
+        scale = metric.scale or "0-1"
+        score_display = f"{metric.score}/{scale.split('-')[1]}"
+        status_emoji = "✅" if metric.passed else "❌"
+
+        lines.append(f"**{metric.metric_name}** — {score_display} {status_emoji}")
+
+        if metric.reasoning:
+            # Format reasoning as blockquote, preserving line breaks
+            reasoning_lines = metric.reasoning.strip().split("\n")
+            for reasoning_line in reasoning_lines:
+                lines.append(f"> {reasoning_line}")
+
+        if metric.error:
+            lines.append(f"> ⚠️ **Error:** {metric.error}")
+
+        if metric.retry_count and metric.retry_count > 0:
+            lines.append(f"> *(Retries: {metric.retry_count})*")
+
+        lines.append("")  # Blank line between metrics
 
     return "\n".join(lines)
 
