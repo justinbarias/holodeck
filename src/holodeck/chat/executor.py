@@ -10,7 +10,7 @@ from typing import Any
 from semantic_kernel.contents import ChatHistory
 
 from holodeck.lib.logging_config import get_logger
-from holodeck.lib.test_runner.agent_factory import AgentFactory
+from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentThreadRun
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.token_usage import TokenUsage
@@ -80,6 +80,8 @@ class AgentExecutor:
                 force_ingest=force_ingest,
                 execution_config=execution_config,
             )
+            # Thread run is lazily initialized on first execute_turn()
+            self._thread_run: AgentThreadRun | None = None
             logger.info(f"AgentExecutor initialized for agent: {agent_config.name}")
         except Exception as e:
             logger.error(f"Failed to initialize AgentExecutor: {e}", exc_info=True)
@@ -109,8 +111,12 @@ class AgentExecutor:
             if self.on_execution_start:
                 self.on_execution_start(message)
 
-            # Invoke agent
-            result = await self._factory.invoke(message)
+            # Lazy initialize thread run (preserves conversation history across turns)
+            if self._thread_run is None:
+                self._thread_run = await self._factory.create_thread_run()
+
+            # Invoke agent using the persistent thread run
+            result = await self._thread_run.invoke(message)
             elapsed = time.time() - start_time
 
             # Extract content from chat history
@@ -148,24 +154,20 @@ class AgentExecutor:
         """Get current conversation history.
 
         Returns:
-            Empty ChatHistory (TODO: retrieve from agent state).
+            Current ChatHistory from the thread run, or empty if not initialized.
         """
-        # Note: Semantic Kernel Agent doesn't expose chat_history directly.
-        # This is a placeholder that returns empty history.
-        # TODO: Integrate with Agent's internal history tracking.
+        if self._thread_run is not None:
+            return self._thread_run.chat_history
         return ChatHistory()
 
     def clear_history(self) -> None:
-        """Clear conversation history while preserving system message.
+        """Clear conversation history by discarding current thread run.
 
         Resets the agent's chat history to start fresh conversation.
+        The next execute_turn() will create a new thread run with fresh history.
         """
-        try:
-            logger.debug("Chat history cleared")
-            # Note: Semantic Kernel Agent doesn't expose chat_history directly.
-            # TODO: Implement history clearing via agent state management.
-        except Exception as e:
-            logger.error(f"Failed to clear history: {e}")
+        logger.debug("Clearing chat history by discarding thread run")
+        self._thread_run = None
 
     async def shutdown(self) -> None:
         """Cleanup executor resources.

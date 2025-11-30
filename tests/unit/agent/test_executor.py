@@ -87,17 +87,20 @@ class TestAgentExecutorExecution:
         """Successful execution returns AgentResponse."""
         agent_config = self._make_agent()
 
-        # Create mock AgentFactory
-        mock_factory = AsyncMock(spec=AgentFactory)
+        # Create mock AgentFactory and thread run
+        mock_factory = MagicMock()
+        mock_thread_run = AsyncMock()
         mock_history = ChatHistory()
         mock_history.add_user_message("Hello")
         mock_history.add_assistant_message("Hi there!")
 
-        mock_factory.invoke.return_value = AgentExecutionResult(
+        mock_thread_run.invoke.return_value = AgentExecutionResult(
             tool_calls=[],
             tool_results=[],
             chat_history=mock_history,
         )
+        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_factory.shutdown = AsyncMock()
         mock_factory_class.return_value = mock_factory
 
         executor = AgentExecutor(agent_config)
@@ -115,12 +118,13 @@ class TestAgentExecutorExecution:
         """Tool calls extracted from response."""
         agent_config = self._make_agent()
 
-        mock_factory = AsyncMock(spec=AgentFactory)
+        mock_factory = MagicMock()
+        mock_thread_run = AsyncMock()
         mock_history = ChatHistory()
         mock_history.add_user_message("Use the search tool")
         mock_history.add_assistant_message("Searching...")
 
-        mock_factory.invoke.return_value = AgentExecutionResult(
+        mock_thread_run.invoke.return_value = AgentExecutionResult(
             tool_calls=[
                 {
                     "name": "search",
@@ -130,6 +134,8 @@ class TestAgentExecutorExecution:
             tool_results=[],
             chat_history=mock_history,
         )
+        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_factory.shutdown = AsyncMock()
         mock_factory_class.return_value = mock_factory
 
         executor = AgentExecutor(agent_config)
@@ -145,16 +151,19 @@ class TestAgentExecutorExecution:
         """Execution returns properly structured AgentResponse."""
         agent_config = self._make_agent()
 
-        mock_factory = AsyncMock(spec=AgentFactory)
+        mock_factory = MagicMock()
+        mock_thread_run = AsyncMock()
         mock_history = ChatHistory()
         mock_history.add_user_message("Test")
         mock_history.add_assistant_message("Response")
 
-        mock_factory.invoke.return_value = AgentExecutionResult(
+        mock_thread_run.invoke.return_value = AgentExecutionResult(
             tool_calls=[],
             tool_results=[],
             chat_history=mock_history,
         )
+        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_factory.shutdown = AsyncMock()
         mock_factory_class.return_value = mock_factory
 
         executor = AgentExecutor(agent_config)

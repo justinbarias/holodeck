@@ -14,7 +14,7 @@ import pytest
 from holodeck.config.loader import ConfigLoader
 from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.file_processor import FileProcessor
-from holodeck.lib.test_runner.agent_factory import AgentFactory
+from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentThreadRun
 from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.config import ExecutionConfig
@@ -448,8 +448,10 @@ class TestGEvalExecutionFlow:
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
+        mock_thread_run = Mock(spec=AgentThreadRun)
+        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
         mock_factory = Mock(spec=AgentFactory)
-        mock_factory.invoke = AsyncMock(return_value=mock_result)
+        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
 
         # Mock GEval evaluator to return a score
         # Must use Mock() with proper get_param_spec, not AsyncMock
@@ -553,8 +555,10 @@ class TestGEvalExecutionFlow:
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
+        mock_thread_run = Mock(spec=AgentThreadRun)
+        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
         mock_factory = Mock(spec=AgentFactory)
-        mock_factory.invoke = AsyncMock(return_value=mock_result)
+        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
 
         # Mock evaluators with proper get_param_spec
         mock_bleu = Mock()
@@ -664,8 +668,10 @@ class TestGEvalExecutionFlow:
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
+        mock_thread_run = Mock(spec=AgentThreadRun)
+        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
         mock_factory = Mock(spec=AgentFactory)
-        mock_factory.invoke = AsyncMock(return_value=mock_result)
+        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
 
         # Mock all possible evaluators with proper get_param_spec
         mock_bleu = Mock()

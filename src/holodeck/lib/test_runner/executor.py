@@ -509,7 +509,7 @@ class TestExecutor:
         logger.debug(f"Preparing agent input for test: {test_case.name}")
         agent_input = self._prepare_agent_input(test_case, processed_files)
 
-        # Step 3: Invoke agent
+        # Step 3: Invoke agent with isolated thread run
         agent_response = None
         tool_calls: list[str] = []
         tool_results: list[dict[str, Any]] = []
@@ -517,7 +517,9 @@ class TestExecutor:
         logger.debug(f"Invoking agent for test: {test_case.name}")
         try:
             invoke_start = time.time()
-            result = await self.agent_factory.invoke(agent_input)
+            # Create isolated thread run for this test case
+            thread_run = await self.agent_factory.create_thread_run()
+            result = await thread_run.invoke(agent_input)
             invoke_elapsed = time.time() - invoke_start
 
             agent_response = self._extract_response_text(result.chat_history)

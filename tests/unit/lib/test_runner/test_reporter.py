@@ -414,13 +414,13 @@ class TestMetricsTable:
     def test_metrics_table_includes_reasoning(
         self, sample_metric_result: MetricResult
     ) -> None:
-        """Test that reasoning is displayed in the metrics table."""
+        """Test that reasoning is displayed in the metric details section."""
         table = _format_metrics_table([sample_metric_result])
-        assert "Reasoning" in table  # Column header
+        assert "Metric Details" in table  # Section header
         assert "well-grounded" in table  # Part of the reasoning text
 
     def test_metrics_table_reasoning_none(self) -> None:
-        """Test that empty string is shown when reasoning is None."""
+        """Test that metric details section handles None reasoning gracefully."""
         metric = MetricResult(
             metric_name="relevance",
             score=0.85,
@@ -434,15 +434,17 @@ class TestMetricsTable:
             reasoning=None,
         )
         table = _format_metrics_table([metric])
-        assert "Reasoning" in table  # Column header still present
-        # The row should have empty string in reasoning column
+        assert "Metric Details" in table  # Section header still present
+        # Metric name should appear in details section
+        assert "**relevance**" in table
+        # No blockquote reasoning should appear (since reasoning is None)
         lines = table.split("\n")
-        data_row = [line for line in lines if "relevance" in line][0]
-        # Count the pipes to verify column structure
-        assert data_row.count("|") >= 9  # 10 columns = at least 9 pipes
+        detail_lines = [line for line in lines if line.startswith(">")]
+        # No reasoning blockquotes when reasoning is None
+        assert len(detail_lines) == 0
 
-    def test_metrics_table_reasoning_truncation(self) -> None:
-        """Test that long reasoning is truncated to 100 characters."""
+    def test_metrics_table_reasoning_full_display(self) -> None:
+        """Test that full reasoning is displayed without truncation."""
         long_reasoning = "A" * 150  # 150 characters
         metric = MetricResult(
             metric_name="coherence",
@@ -457,10 +459,10 @@ class TestMetricsTable:
             reasoning=long_reasoning,
         )
         table = _format_metrics_table([metric])
-        # Should show first 100 chars + "..."
-        assert "A" * 100 + "..." in table
-        # Should NOT contain the full 150 chars
-        assert "A" * 150 not in table
+        # Full reasoning should be displayed (no truncation in new format)
+        assert "A" * 150 in table
+        # Should be in blockquote format
+        assert "> " + "A" * 150 in table
 
 
 class TestToolUsageSection:

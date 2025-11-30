@@ -28,6 +28,26 @@ from holodeck.models.agent import Agent, Instructions
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import LLMProvider, ProviderEnum
 
+
+async def invoke_factory(
+    factory: AgentFactory, user_input: str
+) -> AgentExecutionResult:
+    """Helper to invoke factory using the thread run pattern.
+
+    Creates a thread run and invokes with the given input.
+    This provides backward-compatible invoke semantics for tests.
+
+    Args:
+        factory: The AgentFactory instance.
+        user_input: The user message to send.
+
+    Returns:
+        AgentExecutionResult from the invocation.
+    """
+    thread_run = await factory.create_thread_run()
+    return await thread_run.invoke(user_input)
+
+
 # Load environment variables from tests/integration/.env
 env_path = Path(__file__).parent / ".env"
 if env_path.exists():
@@ -93,7 +113,7 @@ class TestAgentFactoryOpenAI:
         factory = AgentFactory(
             agent_config, execution_config=ExecutionConfig(llm_timeout=30)
         )
-        result = await factory.invoke("What is 2 + 2? Answer in one sentence.")
+        result = await invoke_factory(factory, "What is 2 + 2? Answer in one sentence.")
 
         # Verify result structure
         assert isinstance(result, AgentExecutionResult)
@@ -136,7 +156,7 @@ class TestAgentFactoryOpenAI:
         factory = AgentFactory(
             agent_config, execution_config=ExecutionConfig(llm_timeout=30)
         )
-        result = await factory.invoke("What is 5 * 6?")
+        result = await invoke_factory(factory, "What is 5 * 6?")
 
         assert isinstance(result, AgentExecutionResult)
         assert result.chat_history is not None
@@ -172,7 +192,7 @@ class TestAgentFactoryOpenAI:
         )
 
         with pytest.raises(AgentFactoryError) as exc_info:
-            await factory.invoke("Tell me a long story about AI.")
+            await invoke_factory(factory, "Tell me a long story about AI.")
 
         assert "timeout" in str(exc_info.value).lower()
 
@@ -203,20 +223,23 @@ class TestAgentFactoryOpenAI:
             agent_config, execution_config=ExecutionConfig(llm_timeout=30)
         )
 
+        # Create a thread run for multi-turn conversation
+        thread_run = await factory.create_thread_run()
+
         # First invocation
-        result1 = await factory.invoke("What is the capital of France?")
+        result1 = await thread_run.invoke("What is the capital of France?")
         assert isinstance(result1, AgentExecutionResult)
         messages1 = list(result1.chat_history.messages)
         assert any("Paris" in str(msg.content) for msg in messages1)
 
         # Second invocation (builds on conversation history)
-        result2 = await factory.invoke("What is 10 + 5?")
+        result2 = await thread_run.invoke("What is 10 + 5?")
         assert isinstance(result2, AgentExecutionResult)
         messages2 = list(result2.chat_history.messages)
         assert any("15" in str(msg.content) for msg in messages2)
 
         # Verify chat history accumulates both conversations
-        # (AgentFactory maintains a persistent chat history for multi-turn)
+        # (ThreadRun maintains a persistent chat history for multi-turn)
         assert len(messages2) > len(messages1)
 
 
@@ -255,7 +278,9 @@ class TestAgentFactoryAzureOpenAI:
         factory = AgentFactory(
             agent_config, execution_config=ExecutionConfig(llm_timeout=30)
         )
-        result = await factory.invoke("What is the largest planet? One sentence only.")
+        result = await invoke_factory(
+            factory, "What is the largest planet? One sentence only."
+        )
 
         # Verify result structure
         assert isinstance(result, AgentExecutionResult)
@@ -299,7 +324,7 @@ class TestAgentFactoryAzureOpenAI:
         factory = AgentFactory(
             agent_config, execution_config=ExecutionConfig(llm_timeout=30)
         )
-        result = await factory.invoke("What is photosynthesis? One sentence.")
+        result = await invoke_factory(factory, "What is photosynthesis? One sentence.")
 
         assert isinstance(result, AgentExecutionResult)
         assert result.chat_history is not None
@@ -337,20 +362,23 @@ class TestAgentFactoryAzureOpenAI:
             agent_config, execution_config=ExecutionConfig(llm_timeout=30)
         )
 
+        # Create a thread run for multi-turn conversation
+        thread_run = await factory.create_thread_run()
+
         # First invocation
-        result1 = await factory.invoke("What is the capital of Germany?")
+        result1 = await thread_run.invoke("What is the capital of Germany?")
         assert isinstance(result1, AgentExecutionResult)
         messages1 = list(result1.chat_history.messages)
         assert any("Berlin" in str(msg.content) for msg in messages1)
 
         # Second invocation (builds on conversation history)
-        result2 = await factory.invoke("What is 12 * 12?")
+        result2 = await thread_run.invoke("What is 12 * 12?")
         assert isinstance(result2, AgentExecutionResult)
         messages2 = list(result2.chat_history.messages)
         assert any("144" in str(msg.content) for msg in messages2)
 
         # Verify chat history accumulates both conversations
-        # (AgentFactory maintains a persistent chat history for multi-turn)
+        # (ThreadRun maintains a persistent chat history for multi-turn)
         assert len(messages2) > len(messages1)
 
     @skip_if_no_azure
@@ -383,7 +411,7 @@ class TestAgentFactoryAzureOpenAI:
         factory = AgentFactory(
             agent_config, execution_config=ExecutionConfig(llm_timeout=30)
         )
-        result = await factory.invoke("What is 2 + 2?")
+        result = await invoke_factory(factory, "What is 2 + 2?")
 
         assert isinstance(result, AgentExecutionResult)
         messages = list(result.chat_history.messages)
@@ -424,7 +452,7 @@ class TestAgentFactoryAzureOpenAI:
             retry_exponential_base=2.0,
         )
 
-        result = await factory.invoke("Say hello.")
+        result = await invoke_factory(factory, "Say hello.")
 
         assert isinstance(result, AgentExecutionResult)
         assert result.chat_history is not None
@@ -475,8 +503,8 @@ class TestAgentFactoryAzureOpenAI:
 
         # Run invocations concurrently
         results = await asyncio.gather(
-            factory1.invoke("What is 9 * 9?"),
-            factory2.invoke("Who was the first president of the USA?"),
+            invoke_factory(factory1, "What is 9 * 9?"),
+            invoke_factory(factory2, "Who was the first president of the USA?"),
         )
 
         # Verify both results
@@ -541,7 +569,9 @@ class TestAgentFactoryAnthropic:
         factory = AgentFactory(
             agent_config, execution_config=ExecutionConfig(llm_timeout=30)
         )
-        result = await factory.invoke("What is Python? Answer in one sentence.")
+        result = await invoke_factory(
+            factory, "What is Python? Answer in one sentence."
+        )
 
         # Verify result structure
         assert isinstance(result, AgentExecutionResult)
@@ -591,7 +621,7 @@ class TestAgentFactoryErrorScenarios:
         )
 
         with pytest.raises(AgentFactoryError):
-            await factory.invoke("Test query")
+            await invoke_factory(factory, "Test query")
 
     @skip_if_no_openai
     @pytest.mark.asyncio
@@ -620,7 +650,7 @@ class TestAgentFactoryErrorScenarios:
         factory = AgentFactory(
             agent_config, execution_config=ExecutionConfig(llm_timeout=30)
         )
-        result = await factory.invoke("")
+        result = await invoke_factory(factory, "")
 
         assert isinstance(result, AgentExecutionResult)
         assert result.chat_history is not None
@@ -676,8 +706,8 @@ class TestAgentFactoryConcurrency:
 
         # Run invocations concurrently
         results = await asyncio.gather(
-            factory1.invoke("What is 7 * 8?"),
-            factory2.invoke("What is the capital of Japan?"),
+            invoke_factory(factory1, "What is 7 * 8?"),
+            invoke_factory(factory2, "What is the capital of Japan?"),
         )
 
         # Verify both results

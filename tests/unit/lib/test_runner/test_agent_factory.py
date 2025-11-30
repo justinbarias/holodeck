@@ -238,6 +238,15 @@ class TestAgentFactoryKernelArguments:
         fake_service = FakeService()
         factory.kernel.services = {"fake": fake_service}
         factory._llm_service = fake_service
+        factory._tools_initialized = True  # Skip tool initialization for tests
+        factory._mcp_plugins = []  # No MCP plugins in test
+        factory._vectorstore_tool_instances = []  # No vectorstore tools in test
+        # Add retry and timeout attributes needed by create_thread_run
+        factory.timeout = 60.0
+        factory.max_retries = 3
+        factory.retry_delay = 2.0
+        factory.retry_exponential_base = 2.0
+        factory.agent = mock.Mock()
 
         return factory
 
@@ -291,8 +300,8 @@ class TestAgentFactoryKernelArguments:
         }
 
     @pytest.mark.asyncio
-    async def test_invoke_agent_impl_reuses_kernel_arguments(self) -> None:
-        """Invocation should use the configured KernelArguments instance."""
+    async def test_thread_run_invoke_uses_kernel_arguments(self) -> None:
+        """Thread run invocation should use the configured KernelArguments."""
 
         agent_config = Agent(
             name="test-agent",
@@ -306,10 +315,6 @@ class TestAgentFactoryKernelArguments:
         )
 
         factory = self._build_factory_with_service(agent_config)
-        factory.chat_history = mock.MagicMock()
-        factory.chat_history.add_assistant_message = mock.MagicMock()
-        factory.chat_history.add_user_message = mock.MagicMock()
-        factory.chat_history.messages = []
 
         class FakeSettings:
             def __init__(self) -> None:
@@ -322,8 +327,9 @@ class TestAgentFactoryKernelArguments:
         mock_response.tool_calls = None
         mock_response.metadata = {}
 
+        mock_thread = mock.Mock()
+
         async def fake_invoke(*, thread: Any, arguments: Any) -> Any:
-            assert thread is mock_thread
             assert arguments is kernel_arguments
             yield mock_response
 
@@ -331,23 +337,23 @@ class TestAgentFactoryKernelArguments:
         mock_agent.invoke = fake_invoke
         factory.agent = mock_agent
 
-        mock_thread = mock.Mock()
         with mock.patch(
             "holodeck.lib.test_runner.agent_factory.ChatHistoryAgentThread",
             return_value=mock_thread,
         ):
-            result = await factory._invoke_agent_impl()
+            thread_run = await factory.create_thread_run()
+            result = await thread_run.invoke("test input")
 
-        assert result.chat_history is factory.chat_history
+        assert result.chat_history is thread_run.chat_history
         assert factory.kernel_arguments is kernel_arguments
 
 
 class TestAgentFactoryInvocation:
-    """Tests for agent invocation through the public API."""
+    """Tests for agent invocation through AgentThreadRun."""
 
     @pytest.mark.asyncio
     async def test_invoke_returns_execution_result(self) -> None:
-        """Test successful agent invocation returns AgentExecutionResult."""
+        """Test successful thread run invocation returns AgentExecutionResult."""
         agent_config = Agent(
             name="test-agent",
             model=LLMProvider(
@@ -375,7 +381,8 @@ class TestAgentFactoryInvocation:
 
             factory.agent.invoke = mock_invoke  # type: ignore
 
-            result = await factory.invoke("What is the capital of France?")
+            thread_run = await factory.create_thread_run()
+            result = await thread_run.invoke("What is the capital of France?")
 
             assert isinstance(result, AgentExecutionResult)
             assert isinstance(result.tool_calls, list)
@@ -420,10 +427,11 @@ class TestAgentFactoryInvocation:
             ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
                 return expected_tool_calls, expected_tool_results
 
+            thread_run = await factory.create_thread_run()
             with mock.patch.object(
-                factory, "_extract_tool_calls_from_thread", side_effect=mock_extract
+                thread_run, "_extract_tool_calls_from_thread", side_effect=mock_extract
             ):
-                result = await factory.invoke("Search for Python testing")
+                result = await thread_run.invoke("Search for Python testing")
 
                 assert len(result.tool_calls) == 1
                 assert result.tool_calls[0]["name"] == "search"
@@ -470,10 +478,11 @@ class TestAgentFactoryInvocation:
             ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
                 return expected_tool_calls, expected_tool_results
 
+            thread_run = await factory.create_thread_run()
             with mock.patch.object(
-                factory, "_extract_tool_calls_from_thread", side_effect=mock_extract
+                thread_run, "_extract_tool_calls_from_thread", side_effect=mock_extract
             ):
-                result = await factory.invoke("Process this data")
+                result = await thread_run.invoke("Process this data")
 
                 assert len(result.tool_calls) == 3
                 assert result.tool_calls[0]["name"] == "search"
@@ -509,7 +518,8 @@ class TestAgentFactoryInvocation:
 
             factory.agent.invoke = mock_invoke  # type: ignore
 
-            result = await factory.invoke("Test")
+            thread_run = await factory.create_thread_run()
+            result = await thread_run.invoke("Test")
 
             assert isinstance(result, AgentExecutionResult)
             assert result.tool_calls == []
@@ -543,13 +553,14 @@ class TestAgentFactoryInvocation:
 
             factory.agent.invoke = mock_invoke  # type: ignore
 
-            result = await factory.invoke("Test")
+            thread_run = await factory.create_thread_run()
+            result = await thread_run.invoke("Test")
 
             assert isinstance(result, AgentExecutionResult)
 
 
 class TestAgentFactoryTimeout:
-    """Tests for timeout handling."""
+    """Tests for timeout handling via AgentThreadRun."""
 
     @pytest.mark.asyncio
     async def test_invoke_respects_timeout(self) -> None:
@@ -584,8 +595,9 @@ class TestAgentFactoryTimeout:
 
             factory.agent.invoke = slow_invoke  # type: ignore
 
+            thread_run = await factory.create_thread_run()
             with pytest.raises(AgentFactoryError) as exc_info:
-                await factory.invoke("Test")
+                await thread_run.invoke("Test")
 
             # Error message should indicate timeout or invocation failure
             error_msg = str(exc_info.value).lower()
@@ -622,13 +634,14 @@ class TestAgentFactoryTimeout:
 
             factory.agent.invoke = delayed_invoke  # type: ignore
 
-            result = await factory.invoke("Test")
+            thread_run = await factory.create_thread_run()
+            result = await thread_run.invoke("Test")
 
             assert isinstance(result, AgentExecutionResult)
 
 
 class TestAgentFactoryRetry:
-    """Tests for retry logic with exponential backoff."""
+    """Tests for retry logic with exponential backoff via AgentThreadRun."""
 
     @pytest.mark.asyncio
     async def test_invoke_retries_on_connection_error(self) -> None:
@@ -665,11 +678,12 @@ class TestAgentFactoryRetry:
                     tool_calls=[], tool_results=[], chat_history=history
                 )
 
-            # Patch the internal implementation method
+            thread_run = await factory.create_thread_run()
+            # Patch the internal implementation method on the thread run
             with mock.patch.object(
-                factory, "_invoke_agent_impl", side_effect=failing_then_success
+                thread_run, "_invoke_agent_impl", side_effect=failing_then_success
             ):
-                result = await factory.invoke("Test")
+                result = await thread_run.invoke("Test")
 
                 assert isinstance(result, AgentExecutionResult)
                 assert call_count == 2  # Failed once, succeeded on retry
@@ -701,11 +715,12 @@ class TestAgentFactoryRetry:
                 call_count += 1
                 raise ConnectionError("Persistent error")
 
+            thread_run = await factory.create_thread_run()
             with mock.patch.object(
-                factory, "_invoke_agent_impl", side_effect=always_fail
+                thread_run, "_invoke_agent_impl", side_effect=always_fail
             ):
                 with pytest.raises(AgentFactoryError) as exc_info:
-                    await factory.invoke("Test")
+                    await thread_run.invoke("Test")
 
                 assert "after 2 attempts" in str(exc_info.value)
                 assert call_count == 2
@@ -737,11 +752,12 @@ class TestAgentFactoryRetry:
                 call_count += 1
                 raise ValueError("Invalid input")
 
+            thread_run = await factory.create_thread_run()
             with mock.patch.object(
-                factory, "_invoke_agent_impl", side_effect=non_retryable_error
+                thread_run, "_invoke_agent_impl", side_effect=non_retryable_error
             ):
                 with pytest.raises(AgentFactoryError) as exc_info:
-                    await factory.invoke("Test")
+                    await thread_run.invoke("Test")
 
                 assert "Non-retryable error" in str(exc_info.value)
                 assert call_count == 1  # Should not retry
@@ -775,8 +791,9 @@ class TestAgentFactoryErrorHandling:
 
             factory.agent.invoke = runtime_error  # type: ignore
 
+            thread_run = await factory.create_thread_run()
             with pytest.raises(AgentFactoryError) as exc_info:
-                await factory.invoke("Test")
+                await thread_run.invoke("Test")
 
             assert "Non-retryable error" in str(exc_info.value)
 
@@ -862,10 +879,11 @@ class TestAgentFactoryIntegration:
             ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
                 return expected_tool_calls, expected_tool_results
 
+            thread_run = await factory.create_thread_run()
             with mock.patch.object(
-                factory, "_extract_tool_calls_from_thread", side_effect=mock_extract
+                thread_run, "_extract_tool_calls_from_thread", side_effect=mock_extract
             ):
-                result = await factory.invoke("How can you help me?")
+                result = await thread_run.invoke("How can you help me?")
 
                 assert isinstance(result, AgentExecutionResult)
                 assert len(result.tool_calls) == 1
@@ -915,10 +933,11 @@ class TestAgentFactoryIntegration:
                     tool_calls=[], tool_results=[], chat_history=history
                 )
 
+            thread_run = await factory.create_thread_run()
             with mock.patch.object(
-                factory, "_invoke_agent_impl", side_effect=flaky_invoke
+                thread_run, "_invoke_agent_impl", side_effect=flaky_invoke
             ):
-                result = await factory.invoke("Test query")
+                result = await thread_run.invoke("Test query")
 
                 assert isinstance(result, AgentExecutionResult)
                 assert attempt == 3  # Failed twice, succeeded on third attempt
@@ -2062,6 +2081,15 @@ class TestResponseFormatWrapping:
         fake_service = FakeService()
         factory.kernel.services = {"fake": fake_service}
         factory._llm_service = fake_service
+        factory._tools_initialized = True  # Skip tool initialization for tests
+        factory._mcp_plugins = []  # No MCP plugins in test
+        factory._vectorstore_tool_instances = []  # No vectorstore tools in test
+        # Add retry and timeout attributes needed by create_thread_run
+        factory.timeout = 60.0
+        factory.max_retries = 3
+        factory.retry_delay = 2.0
+        factory.retry_exponential_base = 2.0
+        factory.agent = mock.Mock()
 
         return factory
 
@@ -2267,7 +2295,7 @@ class TestResponseFormatWrapping:
 
 
 class TestToolCallExtraction:
-    """Tests for tool call extraction from thread."""
+    """Tests for tool call extraction from AgentThreadRun."""
 
     @pytest.mark.asyncio
     async def test_extract_tool_calls_with_function_call_content(self) -> None:
@@ -2290,6 +2318,7 @@ class TestToolCallExtraction:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Create mock FunctionCallContent
             mock_fcc = mock.Mock(spec=FunctionCallContent)
@@ -2310,7 +2339,7 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
                 mock_thread
             )
 
@@ -2340,6 +2369,7 @@ class TestToolCallExtraction:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Create mock FunctionCallContent with dict arguments
             mock_fcc = mock.Mock(spec=FunctionCallContent)
@@ -2358,7 +2388,7 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
                 mock_thread
             )
 
@@ -2388,6 +2418,7 @@ class TestToolCallExtraction:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Create mock FunctionCallContent with invalid JSON
             mock_fcc = mock.Mock(spec=FunctionCallContent)
@@ -2406,7 +2437,7 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
                 mock_thread
             )
 
@@ -2436,6 +2467,7 @@ class TestToolCallExtraction:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Two FunctionCallContent with same ID
             mock_fcc1 = mock.Mock(spec=FunctionCallContent)
@@ -2460,7 +2492,7 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
                 mock_thread
             )
 
@@ -2487,6 +2519,7 @@ class TestToolCallExtraction:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             mock_thread = mock.AsyncMock()
 
@@ -2497,7 +2530,7 @@ class TestToolCallExtraction:
             mock_thread.get_messages = failing_get_messages
 
             # Should return empty lists, not raise
-            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
                 mock_thread
             )
 
@@ -2525,6 +2558,7 @@ class TestToolCallExtraction:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             mock_fcc = mock.Mock(spec=FunctionCallContent)
             mock_fcc.id = "call_none"
@@ -2542,7 +2576,7 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
                 mock_thread
             )
 
@@ -2571,6 +2605,7 @@ class TestToolCallExtraction:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             mock_fcc = mock.Mock(spec=FunctionCallContent)
             mock_fcc.id = None
@@ -2589,7 +2624,7 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
                 mock_thread
             )
 
@@ -2601,7 +2636,8 @@ class TestToolCallExtraction:
 class TestErrorHandlingBranches:
     """Tests for error handling branches and edge cases."""
 
-    def test_extract_response_content_handles_exception(self) -> None:
+    @pytest.mark.asyncio
+    async def test_extract_response_content_handles_exception(self) -> None:
         """Test response content extraction handles exceptions gracefully."""
         agent_config = Agent(
             name="test-agent",
@@ -2619,6 +2655,7 @@ class TestErrorHandlingBranches:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Response object where str(content) raises an exception
             class FailingContent:
@@ -2628,12 +2665,13 @@ class TestErrorHandlingBranches:
             mock_response = mock.Mock()
             mock_response.content = FailingContent()
 
-            result = factory._extract_response_content(mock_response)
+            result = thread_run._extract_response_content(mock_response)
 
             # Should return empty string on error (warning logged)
             assert result == ""
 
-    def test_extract_token_usage_handles_missing_attributes(self) -> None:
+    @pytest.mark.asyncio
+    async def test_extract_token_usage_handles_missing_attributes(self) -> None:
         """Test token usage extraction handles missing attributes gracefully."""
         agent_config = Agent(
             name="test-agent",
@@ -2651,11 +2689,12 @@ class TestErrorHandlingBranches:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Response with no metadata attribute
             mock_response = mock.Mock(spec=[])  # No attributes
 
-            result = factory._extract_token_usage(mock_response)
+            result = thread_run._extract_token_usage(mock_response)
 
             # Should return None when no metadata
             assert result is None
@@ -2822,13 +2861,15 @@ class TestErrorHandlingBranches:
         ):
             factory = AgentFactory(agent_config)
 
+            thread_run = await factory.create_thread_run()
+
             # Mock _invoke_with_retry to raise generic Exception
             async def failing_invoke() -> Any:
                 raise ValueError("Something went wrong")
 
-            with mock.patch.object(factory, "_invoke_with_retry", failing_invoke):
+            with mock.patch.object(thread_run, "_invoke_with_retry", failing_invoke):
                 with pytest.raises(AgentFactoryError) as exc_info:
-                    await factory.invoke("Test")
+                    await thread_run.invoke("Test")
 
                 assert "Agent invocation failed" in str(exc_info.value)
 
@@ -2873,8 +2914,9 @@ class TestErrorHandlingBranches:
 class TestMiscellaneousCoverage:
     """Miscellaneous tests to increase coverage."""
 
-    def test_create_chat_history_with_user_input(self) -> None:
-        """Test chat history creation with initial user input."""
+    @pytest.mark.asyncio
+    async def test_thread_run_chat_history_isolation(self) -> None:
+        """Test each thread run gets its own isolated chat history."""
         agent_config = Agent(
             name="test-agent",
             model=LLMProvider(
@@ -2892,11 +2934,14 @@ class TestMiscellaneousCoverage:
         ):
             factory = AgentFactory(agent_config)
 
-            # Test with user input
-            history = factory._create_chat_history(user_input="Hello")
+            # Create two thread runs
+            thread_run1 = await factory.create_thread_run()
+            thread_run2 = await factory.create_thread_run()
 
-            # Should have at least one message
-            assert len(history.messages) == 1
+            # Each should have its own chat history
+            assert thread_run1.chat_history is not thread_run2.chat_history
+            assert len(thread_run1.chat_history.messages) == 0
+            assert len(thread_run2.chat_history.messages) == 0
 
     def test_invoke_agent_impl_builds_kernel_arguments_when_none(self) -> None:
         """Test _invoke_agent_impl builds kernel_arguments if None."""
@@ -3006,7 +3051,8 @@ class TestMiscellaneousCoverage:
 
             assert len(factory._mcp_plugins) == 0
 
-    def test_token_usage_extraction_success(self) -> None:
+    @pytest.mark.asyncio
+    async def test_token_usage_extraction_success(self) -> None:
         """Test successful token usage extraction."""
         agent_config = Agent(
             name="test-agent",
@@ -3024,6 +3070,7 @@ class TestMiscellaneousCoverage:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Create mock response with proper usage object
             mock_usage = mock.Mock()
@@ -3033,14 +3080,15 @@ class TestMiscellaneousCoverage:
             mock_response = mock.Mock()
             mock_response.metadata = {"usage": mock_usage}
 
-            result = factory._extract_token_usage(mock_response)
+            result = thread_run._extract_token_usage(mock_response)
 
             assert result is not None
             assert result.prompt_tokens == 10
             assert result.completion_tokens == 20
             assert result.total_tokens == 30
 
-    def test_extract_response_content_without_content_attr(self) -> None:
+    @pytest.mark.asyncio
+    async def test_extract_response_content_without_content_attr(self) -> None:
         """Test response extraction when no content attribute."""
         agent_config = Agent(
             name="test-agent",
@@ -3058,11 +3106,12 @@ class TestMiscellaneousCoverage:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Response without content attribute
             mock_response = mock.Mock(spec=[])  # No attributes
 
-            result = factory._extract_response_content(mock_response)
+            result = thread_run._extract_response_content(mock_response)
 
             assert result == ""
 
@@ -3087,6 +3136,7 @@ class TestMiscellaneousCoverage:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Mix of FunctionCallContent and other items
             mock_fcc = mock.Mock(spec=FunctionCallContent)
@@ -3107,7 +3157,7 @@ class TestMiscellaneousCoverage:
 
             mock_thread.get_messages = mock_get_messages
 
-            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
                 mock_thread
             )
 
@@ -3134,6 +3184,7 @@ class TestMiscellaneousCoverage:
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Message without items attribute
             mock_message = mock.Mock(spec=[])
@@ -3145,7 +3196,7 @@ class TestMiscellaneousCoverage:
 
             mock_thread.get_messages = mock_get_messages
 
-            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
                 mock_thread
             )
 

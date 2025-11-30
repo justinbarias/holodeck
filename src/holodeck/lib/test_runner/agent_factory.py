@@ -97,6 +97,363 @@ class AgentFactoryError(Exception):
     pass
 
 
+class AgentThreadRun:
+    """Encapsulates a single agent execution thread with isolated chat history.
+
+    Each instance maintains its own ChatHistory, ensuring test case isolation.
+    Created by AgentFactory.create_thread_run().
+
+    This class owns the invocation logic and response extraction methods,
+    providing complete isolation between different test cases or chat sessions.
+    """
+
+    def __init__(
+        self,
+        agent: SKAgent,
+        kernel: Kernel,
+        kernel_arguments: KernelArguments,
+        timeout: float | None = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        retry_delay: float = DEFAULT_RETRY_DELAY_SECONDS,
+        retry_exponential_base: float = DEFAULT_RETRY_EXPONENTIAL_BASE,
+    ) -> None:
+        """Initialize an agent thread run with isolated chat history.
+
+        Args:
+            agent: Semantic Kernel agent instance.
+            kernel: Configured Kernel instance.
+            kernel_arguments: KernelArguments for agent invocation.
+            timeout: Timeout in seconds for agent invocation.
+            max_retries: Maximum retry attempts for transient failures.
+            retry_delay: Base delay in seconds for exponential backoff.
+            retry_exponential_base: Exponential base for backoff calculation.
+        """
+        self.agent = agent
+        self.kernel = kernel
+        self.kernel_arguments = kernel_arguments
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.retry_exponential_base = retry_exponential_base
+        self.chat_history = ChatHistory()  # Fresh history per instance
+
+    async def invoke(self, user_input: str) -> AgentExecutionResult:
+        """Invoke agent with user input.
+
+        Args:
+            user_input: User's input message.
+
+        Returns:
+            AgentExecutionResult with tool_calls and complete chat_history.
+
+        Raises:
+            AgentFactoryError: If invocation fails after retries.
+        """
+        try:
+            # Add user input to chat history
+            self.chat_history.add_user_message(user_input)
+
+            # Invoke with timeout and retry logic
+            if self.timeout:
+                result = await asyncio.wait_for(
+                    self._invoke_with_retry(), timeout=self.timeout
+                )
+            else:
+                result = await self._invoke_with_retry()
+
+            return result
+
+        except TimeoutError as e:
+            raise AgentFactoryError(
+                f"Agent invocation timeout after {self.timeout}s"
+            ) from e
+        except AgentFactoryError:
+            raise
+        except Exception as e:
+            raise AgentFactoryError(f"Agent invocation failed: {e}") from e
+
+    async def _invoke_with_retry(self) -> AgentExecutionResult:
+        """Invoke agent with retry logic for transient failures.
+
+        Returns:
+            AgentExecutionResult with tool_calls and complete chat_history.
+
+        Raises:
+            AgentFactoryError: If all retries are exhausted.
+        """
+        last_error = None
+        delay = self.retry_delay
+
+        for attempt in range(self.max_retries):
+            try:
+                logger.debug(
+                    f"Agent invocation attempt {attempt + 1}/{self.max_retries}"
+                )
+                result = await self._invoke_agent_impl()
+                logger.debug(
+                    f"Agent invocation succeeded on attempt {attempt + 1}, "
+                    f"tool_calls={len(result.tool_calls)}"
+                )
+                return result
+
+            except (ConnectionError, TimeoutError) as e:
+                # Retryable error
+                last_error = e
+                if attempt < self.max_retries - 1:
+                    log_retry(
+                        logger,
+                        "Agent invocation",
+                        attempt=attempt + 1,
+                        max_attempts=self.max_retries,
+                        delay=delay,
+                        error=e,
+                    )
+                    await asyncio.sleep(delay)
+                    delay = min(delay * self.retry_exponential_base, 60.0)  # Cap at 60s
+                else:
+                    logger.error(
+                        f"All {self.max_retries} retries exhausted for agent invocation"
+                    )
+
+            except Exception as e:
+                # Non-retryable error
+                logger.error(
+                    f"Non-retryable error during agent invocation: {e}", exc_info=True
+                )
+                raise AgentFactoryError(
+                    f"Non-retryable error during agent invocation: {e}"
+                ) from e
+
+        # All retries exhausted
+        logger.error(
+            f"Agent invocation failed after {self.max_retries} attempts: {last_error}"
+        )
+        raise AgentFactoryError(
+            f"Agent invocation failed after {self.max_retries} attempts: {last_error}"
+        ) from last_error
+
+    async def _invoke_agent_impl(self) -> AgentExecutionResult:
+        """Internal implementation of agent invocation.
+
+        Returns:
+            AgentExecutionResult with tool_calls, tool_results, and chat_history.
+        """
+        response_text = ""
+        tool_calls: list[dict[str, Any]] = []
+        tool_results: list[dict[str, Any]] = []
+        token_usage: TokenUsage | None = None
+        try:
+            # Invoke agent with chat history
+            thread = ChatHistoryAgentThread(self.chat_history)
+            arguments = self.kernel_arguments
+            async for (
+                response
+            ) in self.agent.invoke(  # pyright: ignore[reportUnknownMemberType]
+                thread=thread,
+                arguments=arguments,
+            ):
+                # Extract response content
+                response_text = self._extract_response_content(response)
+
+                # Extract token usage
+                token_usage = self._extract_token_usage(response)
+                break  # Only process first response
+
+            # Extract tool calls and results from thread's chat history
+            tool_calls, tool_results = await self._extract_tool_calls_from_thread(
+                thread
+            )
+
+            # Add agent's response to chat history
+            if response_text:
+                self.chat_history.add_assistant_message(response_text)
+
+            return AgentExecutionResult(
+                tool_calls=tool_calls,
+                tool_results=tool_results,
+                chat_history=self.chat_history,
+                token_usage=token_usage,
+            )
+
+        except Exception as e:
+            raise AgentFactoryError(f"Agent execution failed: {e}") from e
+
+    def _extract_response_content(self, response: Any) -> str:
+        """Extract text content from agent response.
+
+        Args:
+            response: Response object from agent invocation.
+
+        Returns:
+            Extracted response text, or empty string if no content.
+        """
+        try:
+            if hasattr(response, "content"):
+                content = response.content
+                return str(content) if content else ""
+            return ""
+        except Exception as e:
+            logger.warning(f"Failed to extract response content: {e}")
+            return ""
+
+    async def _extract_tool_calls_from_thread(
+        self, thread: ChatHistoryAgentThread
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Extract tool calls and results from ChatHistoryAgentThread.
+
+        Scans the thread's message history for FunctionCallContent items to track
+        which tools were invoked, and FunctionResultContent items to capture
+        tool execution results for RAG evaluation metrics.
+
+        Args:
+            thread: ChatHistoryAgentThread containing the conversation history
+                after agent invocation.
+
+        Returns:
+            Tuple of:
+            - tool_calls: List of dicts with 'name' and 'arguments' keys
+            - tool_results: List of dicts with 'name' and 'result' keys
+        """
+        from semantic_kernel.contents import FunctionCallContent, FunctionResultContent
+
+        tool_calls: list[dict[str, Any]] = []
+        tool_results: list[dict[str, Any]] = []
+        seen_call_ids: set[str] = set()  # Avoid duplicates
+        seen_result_ids: set[str] = set()  # Avoid duplicate results
+
+        # Map call_id -> tool name for matching results to calls
+        call_id_to_name: dict[str, str] = {}
+
+        try:
+            # Iterate through thread messages (async generator)
+            async for message in thread.get_messages():
+                if hasattr(message, "items") and message.items:
+                    for item in message.items:
+                        if isinstance(item, FunctionCallContent):
+                            call_id = getattr(item, "id", None) or getattr(
+                                item, "call_id", ""
+                            )
+                            if call_id and call_id in seen_call_ids:
+                                continue
+                            if call_id:
+                                seen_call_ids.add(call_id)
+
+                            # Build full function name from plugin_name + function_name
+                            plugin_name = getattr(item, "plugin_name", "") or ""
+                            function_name = getattr(
+                                item, "function_name", ""
+                            ) or getattr(item, "name", "")
+                            full_name = (
+                                f"{plugin_name}-{function_name}"
+                                if plugin_name
+                                else function_name
+                            )
+
+                            # Store mapping for result matching
+                            if call_id:
+                                call_id_to_name[call_id] = full_name
+
+                            # Parse arguments (can be str, Mapping, or None)
+                            raw_args = getattr(item, "arguments", None)
+                            if isinstance(raw_args, str):
+                                import json
+
+                                try:
+                                    arguments = json.loads(raw_args)
+                                except json.JSONDecodeError:
+                                    arguments = {"raw": raw_args}
+                            elif isinstance(raw_args, dict):
+                                arguments = raw_args
+                            else:
+                                arguments = dict(raw_args) if raw_args else {}
+
+                            tool_calls.append(
+                                {
+                                    "name": full_name,
+                                    "arguments": arguments,
+                                }
+                            )
+
+                        elif isinstance(item, FunctionResultContent):
+                            # Extract tool result for RAG evaluation
+                            raw_result_id = getattr(item, "id", None) or getattr(
+                                item, "call_id", ""
+                            )
+                            result_id = str(raw_result_id) if raw_result_id else ""
+                            if result_id and result_id in seen_result_ids:
+                                continue
+                            if result_id:
+                                seen_result_ids.add(result_id)
+
+                            # Get result content
+                            result_value = getattr(item, "result", None)
+                            if result_value is None:
+                                result_value = getattr(item, "content", "")
+
+                            # Convert to string if needed
+                            result_str = (
+                                str(result_value) if result_value is not None else ""
+                            )
+
+                            # Match result to tool name via call_id
+                            tool_name = call_id_to_name.get(result_id, "")
+                            if not tool_name:
+                                # Try to get name from FunctionResultContent
+                                plugin_name = getattr(item, "plugin_name", "") or ""
+                                function_name = getattr(
+                                    item, "function_name", ""
+                                ) or getattr(item, "name", "")
+                                tool_name = (
+                                    f"{plugin_name}-{function_name}"
+                                    if plugin_name
+                                    else function_name
+                                )
+
+                            if result_str:  # Only add non-empty results
+                                tool_results.append(
+                                    {
+                                        "name": tool_name,
+                                        "result": result_str,
+                                    }
+                                )
+
+        except Exception as e:
+            logger.warning(f"Failed to extract tool calls from thread: {e}")
+
+        return tool_calls, tool_results
+
+    def _extract_token_usage(self, response: Any) -> TokenUsage | None:
+        """Extract token usage from agent response metadata.
+
+        Accesses token usage from the response message's metadata dictionary,
+        which is populated by OpenAI/Azure providers. Returns None if usage
+        data is not available.
+
+        Args:
+            response: Response object (ChatMessageContent) from agent invocation.
+
+        Returns:
+            TokenUsage object if available, None otherwise.
+        """
+        try:
+            # Check for metadata attribute (present on ChatMessageContent)
+            if (
+                hasattr(response, "metadata")
+                and isinstance(response.metadata, dict)
+                and "usage" in response.metadata
+            ):
+                usage_obj: Any = response.metadata["usage"]
+                return TokenUsage(
+                    prompt_tokens=int(getattr(usage_obj, "prompt_tokens", 0)),
+                    completion_tokens=int(getattr(usage_obj, "completion_tokens", 0)),
+                    total_tokens=int(getattr(usage_obj, "prompt_tokens", 0))
+                    + int(getattr(usage_obj, "completion_tokens", 0)),
+                )
+        except Exception as e:
+            logger.warning(f"Failed to extract token usage: {e}")
+        return None
+
+
 class AgentFactory:
     """Factory for creating and executing agents using Semantic Kernel.
 
@@ -164,7 +521,6 @@ class AgentFactory:
                 self._register_embedding_service()
 
             self.agent = self._create_agent()
-            self.chat_history = self._create_chat_history()
             logger.info(
                 f"AgentFactory initialized successfully for agent: {agent_config.name}"
             )
@@ -615,167 +971,33 @@ class AgentFactory:
         except Exception as e:
             raise AgentFactoryError(f"Failed to load instructions: {e}") from e
 
-    def _create_chat_history(self, user_input: str | None = None) -> ChatHistory:
-        """Create ChatHistory with system instructions and optional user message.
+    async def create_thread_run(self) -> AgentThreadRun:
+        """Create a new isolated agent thread run.
 
-        Args:
-            user_input: User's input message (optional)
+        Each thread run has its own ChatHistory, suitable for:
+        - Individual test case execution
+        - Isolated conversation sessions
 
-        Returns:
-            Populated ChatHistory instance
-        """
-        history = ChatHistory()
-        # Add user input if provided
-        if user_input:
-            history.add_user_message(user_input)
-
-        return history
-
-    async def invoke(self, user_input: str) -> AgentExecutionResult:
-        """Invoke agent with timeout and retry logic.
-
-        Args:
-            user_input: User's input message
+        This method ensures tools are initialized before creating the run.
 
         Returns:
-            AgentExecutionResult with tool_calls and complete chat_history
-
-        Raises:
-            AgentFactoryError: If invocation fails after retries
+            A new AgentThreadRun instance with fresh chat history.
         """
-        try:
-            # Ensure vectorstore tools are initialized (lazy initialization)
-            await self._ensure_tools_initialized()
+        await self._ensure_tools_initialized()
 
-            # Add user input to chat history
-            self.chat_history.add_user_message(user_input)
+        # Ensure kernel_arguments are built
+        if self.kernel_arguments is None:
+            self.kernel_arguments = self._build_kernel_arguments()
 
-            # Invoke with timeout and retry logic
-            if self.timeout:
-                result = await asyncio.wait_for(
-                    self._invoke_with_retry(), timeout=self.timeout
-                )
-            else:
-                result = await self._invoke_with_retry()
-
-            return result
-
-        except TimeoutError as e:
-            raise AgentFactoryError(
-                f"Agent invocation timeout after {self.timeout}s"
-            ) from e
-        except AgentFactoryError:
-            raise
-        except Exception as e:
-            raise AgentFactoryError(f"Agent invocation failed: {e}") from e
-
-    async def _invoke_with_retry(self) -> AgentExecutionResult:
-        """Invoke agent with retry logic for transient failures.
-
-        Returns:
-            AgentExecutionResult with tool_calls and complete chat_history
-
-        Raises:
-            AgentFactoryError: If all retries are exhausted
-        """
-        last_error = None
-        delay = self.retry_delay
-
-        for attempt in range(self.max_retries):
-            try:
-                logger.debug(
-                    f"Agent invocation attempt {attempt + 1}/{self.max_retries}"
-                )
-                result = await self._invoke_agent_impl()
-                logger.debug(
-                    f"Agent invocation succeeded on attempt {attempt + 1}, "
-                    f"tool_calls={len(result.tool_calls)}"
-                )
-                return result
-
-            except (ConnectionError, TimeoutError) as e:
-                # Retryable error
-                last_error = e
-                if attempt < self.max_retries - 1:
-                    log_retry(
-                        logger,
-                        "Agent invocation",
-                        attempt=attempt + 1,
-                        max_attempts=self.max_retries,
-                        delay=delay,
-                        error=e,
-                    )
-                    await asyncio.sleep(delay)
-                    delay = min(delay * self.retry_exponential_base, 60.0)  # Cap at 60s
-                else:
-                    logger.error(
-                        f"All {self.max_retries} retries exhausted for agent invocation"
-                    )
-
-            except Exception as e:
-                # Non-retryable error
-                logger.error(
-                    f"Non-retryable error during agent invocation: {e}", exc_info=True
-                )
-                raise AgentFactoryError(
-                    f"Non-retryable error during agent invocation: {e}"
-                ) from e
-
-        # All retries exhausted
-        logger.error(
-            f"Agent invocation failed after {self.max_retries} attempts: {last_error}"
+        return AgentThreadRun(
+            agent=self.agent,
+            kernel=self.kernel,
+            kernel_arguments=self.kernel_arguments,
+            timeout=self.timeout,
+            max_retries=self.max_retries,
+            retry_delay=self.retry_delay,
+            retry_exponential_base=self.retry_exponential_base,
         )
-        raise AgentFactoryError(
-            f"Agent invocation failed after {self.max_retries} attempts: {last_error}"
-        ) from last_error
-
-    async def _invoke_agent_impl(self) -> AgentExecutionResult:
-        """Internal implementation of agent invocation.
-
-        Returns:
-            AgentExecutionResult with tool_calls, tool_results, and chat_history
-        """
-        response_text = ""
-        tool_calls: list[dict[str, Any]] = []
-        tool_results: list[dict[str, Any]] = []
-        token_usage: TokenUsage | None = None
-        try:
-            # Invoke agent with chat history
-            thread = ChatHistoryAgentThread(self.chat_history)
-            if self.kernel_arguments is None:
-                self.kernel_arguments = self._build_kernel_arguments()
-            arguments = self.kernel_arguments
-            async for (
-                response
-            ) in self.agent.invoke(  # pyright: ignore[reportUnknownMemberType]
-                thread=thread,
-                arguments=arguments,
-            ):
-                # Extract response content
-                response_text = self._extract_response_content(response)
-
-                # Extract token usage
-                token_usage = self._extract_token_usage(response)
-                break  # Only process first response
-
-            # Extract tool calls and results from thread's chat history
-            tool_calls, tool_results = await self._extract_tool_calls_from_thread(
-                thread
-            )
-
-            # Add agent's response to chat history
-            if response_text:
-                self.chat_history.add_assistant_message(response_text)
-
-            return AgentExecutionResult(
-                tool_calls=tool_calls,
-                tool_results=tool_results,
-                chat_history=self.chat_history,
-                token_usage=token_usage,
-            )
-
-        except Exception as e:
-            raise AgentFactoryError(f"Agent execution failed: {e}") from e
 
     def _build_kernel_arguments(self) -> KernelArguments:
         """Create kernel arguments with execution settings from configuration."""
@@ -886,178 +1108,3 @@ class AgentFactory:
 
         path = Path(response_format)
         return SchemaValidator.load_schema_from_file(path.as_posix())
-
-    def _extract_response_content(self, response: Any) -> str:
-        """Extract text content from agent response.
-
-        Args:
-            response: Response object from agent invocation
-
-        Returns:
-            Extracted response text, or empty string if no content
-        """
-        try:
-            if hasattr(response, "content"):
-                content = response.content
-                return str(content) if content else ""
-            return ""
-        except Exception as e:
-            logger.warning(f"Failed to extract response content: {e}")
-            return ""
-
-    async def _extract_tool_calls_from_thread(
-        self, thread: ChatHistoryAgentThread
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Extract tool calls and results from ChatHistoryAgentThread.
-
-        Scans the thread's message history for FunctionCallContent items to track
-        which tools were invoked, and FunctionResultContent items to capture
-        tool execution results for RAG evaluation metrics.
-
-        Args:
-            thread: ChatHistoryAgentThread containing the conversation history
-                after agent invocation.
-
-        Returns:
-            Tuple of:
-            - tool_calls: List of dicts with 'name' and 'arguments' keys
-            - tool_results: List of dicts with 'name' and 'result' keys
-        """
-        from semantic_kernel.contents import FunctionCallContent, FunctionResultContent
-
-        tool_calls: list[dict[str, Any]] = []
-        tool_results: list[dict[str, Any]] = []
-        seen_call_ids: set[str] = set()  # Avoid duplicates
-        seen_result_ids: set[str] = set()  # Avoid duplicate results
-
-        # Map call_id -> tool name for matching results to calls
-        call_id_to_name: dict[str, str] = {}
-
-        try:
-            # Iterate through thread messages (async generator)
-            async for message in thread.get_messages():
-                if hasattr(message, "items") and message.items:
-                    for item in message.items:
-                        if isinstance(item, FunctionCallContent):
-                            call_id = getattr(item, "id", None) or getattr(
-                                item, "call_id", ""
-                            )
-                            if call_id and call_id in seen_call_ids:
-                                continue
-                            if call_id:
-                                seen_call_ids.add(call_id)
-
-                            # Build full function name from plugin_name + function_name
-                            plugin_name = getattr(item, "plugin_name", "") or ""
-                            function_name = getattr(
-                                item, "function_name", ""
-                            ) or getattr(item, "name", "")
-                            full_name = (
-                                f"{plugin_name}-{function_name}"
-                                if plugin_name
-                                else function_name
-                            )
-
-                            # Store mapping for result matching
-                            if call_id:
-                                call_id_to_name[call_id] = full_name
-
-                            # Parse arguments (can be str, Mapping, or None)
-                            raw_args = getattr(item, "arguments", None)
-                            if isinstance(raw_args, str):
-                                import json
-
-                                try:
-                                    arguments = json.loads(raw_args)
-                                except json.JSONDecodeError:
-                                    arguments = {"raw": raw_args}
-                            elif isinstance(raw_args, dict):
-                                arguments = raw_args
-                            else:
-                                arguments = dict(raw_args) if raw_args else {}
-
-                            tool_calls.append(
-                                {
-                                    "name": full_name,
-                                    "arguments": arguments,
-                                }
-                            )
-
-                        elif isinstance(item, FunctionResultContent):
-                            # Extract tool result for RAG evaluation
-                            raw_result_id = getattr(item, "id", None) or getattr(
-                                item, "call_id", ""
-                            )
-                            result_id = str(raw_result_id) if raw_result_id else ""
-                            if result_id and result_id in seen_result_ids:
-                                continue
-                            if result_id:
-                                seen_result_ids.add(result_id)
-
-                            # Get result content
-                            result_value = getattr(item, "result", None)
-                            if result_value is None:
-                                result_value = getattr(item, "content", "")
-
-                            # Convert to string if needed
-                            result_str = (
-                                str(result_value) if result_value is not None else ""
-                            )
-
-                            # Match result to tool name via call_id
-                            tool_name = call_id_to_name.get(result_id, "")
-                            if not tool_name:
-                                # Try to get name from FunctionResultContent
-                                plugin_name = getattr(item, "plugin_name", "") or ""
-                                function_name = getattr(
-                                    item, "function_name", ""
-                                ) or getattr(item, "name", "")
-                                tool_name = (
-                                    f"{plugin_name}-{function_name}"
-                                    if plugin_name
-                                    else function_name
-                                )
-
-                            if result_str:  # Only add non-empty results
-                                tool_results.append(
-                                    {
-                                        "name": tool_name,
-                                        "result": result_str,
-                                    }
-                                )
-
-        except Exception as e:
-            logger.warning(f"Failed to extract tool calls from thread: {e}")
-
-        return tool_calls, tool_results
-
-    def _extract_token_usage(self, response: Any) -> TokenUsage | None:
-        """Extract token usage from agent response metadata.
-
-        Accesses token usage from the response message's metadata dictionary,
-        which is populated by OpenAI/Azure providers. Returns None if usage
-        data is not available.
-
-        Args:
-            response: Response object (ChatMessageContent) from agent invocation.
-
-        Returns:
-            TokenUsage object if available, None otherwise.
-        """
-        try:
-            # Check for metadata attribute (present on ChatMessageContent)
-            if (
-                hasattr(response, "metadata")
-                and isinstance(response.metadata, dict)
-                and "usage" in response.metadata
-            ):
-                usage_obj: Any = response.metadata["usage"]
-                return TokenUsage(
-                    prompt_tokens=int(getattr(usage_obj, "prompt_tokens", 0)),
-                    completion_tokens=int(getattr(usage_obj, "completion_tokens", 0)),
-                    total_tokens=int(getattr(usage_obj, "prompt_tokens", 0))
-                    + int(getattr(usage_obj, "completion_tokens", 0)),
-                )
-        except Exception as e:
-            logger.warning(f"Failed to extract token usage: {e}")
-        return None
