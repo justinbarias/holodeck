@@ -159,8 +159,8 @@ class VectorstoreTool(BaseModel):
             "- None for in-memory storage"
         ),
     )
-    top_k: int | None = Field(
-        None, description="Number of top results to return from search"
+    top_k: int = Field(
+        default=5, description="Number of top results to return from search"
     )
     min_similarity_score: float | None = Field(
         None, description="Minimum similarity score threshold for results (0.0-1.0)"

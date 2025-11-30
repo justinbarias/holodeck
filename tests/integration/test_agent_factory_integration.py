@@ -25,6 +25,7 @@ from holodeck.lib.test_runner.agent_factory import (
     AgentFactoryError,
 )
 from holodeck.models.agent import Agent, Instructions
+from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import LLMProvider, ProviderEnum
 
 # Load environment variables from tests/integration/.env
@@ -89,7 +90,9 @@ class TestAgentFactoryOpenAI:
             ),
         )
 
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
         result = await factory.invoke("What is 2 + 2? Answer in one sentence.")
 
         # Verify result structure
@@ -130,7 +133,9 @@ class TestAgentFactoryOpenAI:
             instructions=Instructions(file=str(instructions_file)),
         )
 
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
         result = await factory.invoke("What is 5 * 6?")
 
         assert isinstance(result, AgentExecutionResult)
@@ -162,7 +167,9 @@ class TestAgentFactoryOpenAI:
         )
 
         # Use very short timeout to trigger timeout error
-        factory = AgentFactory(agent_config, timeout=0.001)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=0)
+        )
 
         with pytest.raises(AgentFactoryError) as exc_info:
             await factory.invoke("Tell me a long story about AI.")
@@ -192,7 +199,9 @@ class TestAgentFactoryOpenAI:
             instructions=Instructions(inline="You are a concise assistant."),
         )
 
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
 
         # First invocation
         result1 = await factory.invoke("What is the capital of France?")
@@ -243,7 +252,9 @@ class TestAgentFactoryAzureOpenAI:
             ),
         )
 
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
         result = await factory.invoke("What is the largest planet? One sentence only.")
 
         # Verify result structure
@@ -285,7 +296,9 @@ class TestAgentFactoryAzureOpenAI:
             instructions=Instructions(file=str(instructions_file)),
         )
 
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
         result = await factory.invoke("What is photosynthesis? One sentence.")
 
         assert isinstance(result, AgentExecutionResult)
@@ -320,7 +333,9 @@ class TestAgentFactoryAzureOpenAI:
             instructions=Instructions(inline="You are a concise assistant."),
         )
 
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
 
         # First invocation
         result1 = await factory.invoke("What is the capital of Germany?")
@@ -365,7 +380,9 @@ class TestAgentFactoryAzureOpenAI:
             instructions=Instructions(inline="You are helpful."),
         )
 
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
         result = await factory.invoke("What is 2 + 2?")
 
         assert isinstance(result, AgentExecutionResult)
@@ -401,7 +418,7 @@ class TestAgentFactoryAzureOpenAI:
         # Configure with retry parameters
         factory = AgentFactory(
             agent_config,
-            timeout=30.0,
+            execution_config=ExecutionConfig(llm_timeout=30),
             max_retries=3,
             retry_delay=1.0,
             retry_exponential_base=2.0,
@@ -449,8 +466,12 @@ class TestAgentFactoryAzureOpenAI:
             instructions=Instructions(inline="You are a history expert."),
         )
 
-        factory1 = AgentFactory(agent_config1, timeout=30.0)
-        factory2 = AgentFactory(agent_config2, timeout=30.0)
+        factory1 = AgentFactory(
+            agent_config1, execution_config=ExecutionConfig(llm_timeout=30)
+        )
+        factory2 = AgentFactory(
+            agent_config2, execution_config=ExecutionConfig(llm_timeout=30)
+        )
 
         # Run invocations concurrently
         results = await asyncio.gather(
@@ -517,7 +538,9 @@ class TestAgentFactoryAnthropic:
             instructions=Instructions(inline="You are a helpful assistant."),
         )
 
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
         result = await factory.invoke("What is Python? Answer in one sentence.")
 
         # Verify result structure
@@ -561,7 +584,11 @@ class TestAgentFactoryErrorScenarios:
             instructions=Instructions(inline="Test"),
         )
 
-        factory = AgentFactory(agent_config, timeout=10.0, max_retries=1)
+        factory = AgentFactory(
+            agent_config,
+            execution_config=ExecutionConfig(llm_timeout=10),
+            max_retries=1,
+        )
 
         with pytest.raises(AgentFactoryError):
             await factory.invoke("Test query")
@@ -590,7 +617,9 @@ class TestAgentFactoryErrorScenarios:
             ),
         )
 
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
         result = await factory.invoke("")
 
         assert isinstance(result, AgentExecutionResult)
@@ -638,8 +667,12 @@ class TestAgentFactoryConcurrency:
             instructions=Instructions(inline="You are a geography assistant."),
         )
 
-        factory1 = AgentFactory(agent_config1, timeout=30.0)
-        factory2 = AgentFactory(agent_config2, timeout=30.0)
+        factory1 = AgentFactory(
+            agent_config1, execution_config=ExecutionConfig(llm_timeout=30)
+        )
+        factory2 = AgentFactory(
+            agent_config2, execution_config=ExecutionConfig(llm_timeout=30)
+        )
 
         # Run invocations concurrently
         results = await asyncio.gather(

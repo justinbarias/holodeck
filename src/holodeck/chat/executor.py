@@ -12,6 +12,7 @@ from semantic_kernel.contents import ChatHistory
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.test_runner.agent_factory import AgentFactory
 from holodeck.models.agent import Agent
+from holodeck.models.config import ExecutionConfig
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool_execution import ToolExecution, ToolStatus
 
@@ -69,11 +70,15 @@ class AgentExecutor:
         self.on_execution_complete = on_execution_complete
 
         try:
+            # Create ExecutionConfig from timeout parameter for AgentFactory
+            execution_config = ExecutionConfig(
+                llm_timeout=int(timeout) if timeout else 60
+            )
             self._factory = AgentFactory(
                 agent_config=agent_config,
-                timeout=timeout,
                 max_retries=max_retries,
                 force_ingest=force_ingest,
+                execution_config=execution_config,
             )
             logger.info(f"AgentExecutor initialized for agent: {agent_config.name}")
         except Exception as e:

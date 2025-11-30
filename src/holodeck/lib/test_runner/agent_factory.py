@@ -39,6 +39,7 @@ from holodeck.config.schema import SchemaValidator
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
 from holodeck.models.agent import Agent
+from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import ProviderEnum
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool import MCPTool, VectorstoreTool
@@ -106,27 +107,33 @@ class AgentFactory:
     def __init__(
         self,
         agent_config: Agent,
-        timeout: float | None = DEFAULT_TIMEOUT_SECONDS,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = DEFAULT_RETRY_DELAY_SECONDS,
         retry_exponential_base: float = DEFAULT_RETRY_EXPONENTIAL_BASE,
         force_ingest: bool = False,
+        execution_config: ExecutionConfig | None = None,
     ) -> None:
         """Initialize agent factory with Semantic Kernel.
 
         Args:
             agent_config: Agent configuration with model and instructions
-            timeout: Timeout for agent invocation in seconds (None for no timeout)
             max_retries: Maximum number of retry attempts for transient failures
             retry_delay: Base delay in seconds for exponential backoff
             retry_exponential_base: Exponential base for backoff calculation
             force_ingest: Force re-ingestion of vector store source files
+            execution_config: Execution configuration for timeouts and file processing
 
         Raises:
             AgentFactoryError: If kernel initialization fails
         """
         self.agent_config = agent_config
-        self.timeout = timeout
+        self._execution_config = execution_config
+        # Get timeout from execution_config or use default
+        self.timeout: float | None = (
+            execution_config.llm_timeout
+            if execution_config
+            else DEFAULT_TIMEOUT_SECONDS
+        )
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.retry_exponential_base = retry_exponential_base
@@ -145,7 +152,7 @@ class AgentFactory:
 
         logger.debug(
             f"Initializing AgentFactory: agent={agent_config.name}, "
-            f"provider={agent_config.model.provider}, timeout={timeout}s, "
+            f"provider={agent_config.model.provider}, timeout={self.timeout}s, "
             f"max_retries={max_retries}"
         )
 
@@ -385,7 +392,7 @@ class AgentFactory:
             try:
                 # Create tool and inject embedding service
                 # VectorStoreTool reads base_dir from agent_base_dir context var
-                tool = VectorStoreTool(config)
+                tool = VectorStoreTool(config, execution_config=self._execution_config)
                 tool.set_embedding_service(self._embedding_service)
 
                 # Initialize (async - ingests files, generates embeddings)

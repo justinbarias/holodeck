@@ -12,6 +12,7 @@ import pytest
 
 from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentFactoryError
 from holodeck.models.agent import Agent, Instructions
+from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import LLMProvider, ProviderEnum
 
 
@@ -603,7 +604,9 @@ class TestOllamaIntegration:
         )
 
         # Initialize factory
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
 
         # Verify initialization
         assert factory.agent_config.name == "ollama-integration-test"
@@ -652,7 +655,7 @@ class TestOllamaIntegration:
         # Create factory with custom timeout and retry settings
         factory = AgentFactory(
             agent_config,
-            timeout=45.0,
+            execution_config=ExecutionConfig(llm_timeout=45),
             max_retries=5,
             retry_delay=1.5,
         )

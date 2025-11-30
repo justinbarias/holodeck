@@ -280,8 +280,8 @@ class TestExecutor:
         """
         return AgentFactory(
             agent_config=self.agent_config,
-            timeout=self.config.llm_timeout or 60.0,
             force_ingest=self._force_ingest,
+            execution_config=self.config,
         )
 
     def _build_deepeval_config(

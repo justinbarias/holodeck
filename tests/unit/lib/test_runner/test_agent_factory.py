@@ -21,6 +21,7 @@ from holodeck.lib.test_runner.agent_factory import (
     AgentFactoryError,
 )
 from holodeck.models.agent import Agent, Instructions
+from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import LLMProvider, ProviderEnum
 
 # Check if anthropic is available
@@ -105,13 +106,13 @@ class TestAgentFactoryInitialization:
         ):
             factory = AgentFactory(
                 agent_config,
-                timeout=30.0,
+                execution_config=ExecutionConfig(llm_timeout=30),
                 max_retries=5,
                 retry_delay=1.0,
                 retry_exponential_base=3.0,
             )
 
-            assert factory.timeout == 30.0
+            assert factory.timeout == 30
             assert factory.max_retries == 5
             assert factory.retry_delay == 1.0
             assert factory.retry_exponential_base == 3.0
@@ -133,9 +134,11 @@ class TestAgentFactoryInitialization:
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
-            factory = AgentFactory(agent_config, timeout=None)
+            # When no execution_config is provided, factory uses default timeout
+            factory = AgentFactory(agent_config)
 
-            assert factory.timeout is None
+            # Default timeout is DEFAULT_TIMEOUT_SECONDS (60.0)
+            assert factory.timeout == 60.0
 
     def test_initialize_with_file_instructions(self, tmp_path: Any) -> None:
         """Test initialization with instructions loaded from file."""
@@ -566,9 +569,15 @@ class TestAgentFactoryTimeout:
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
-            factory = AgentFactory(agent_config, timeout=0.1)
+            # Use short timeout (1 second) via execution_config
+            # Note: llm_timeout=0 disables timeout due to `if self.timeout:` check
+            factory = AgentFactory(
+                agent_config, execution_config=ExecutionConfig(llm_timeout=1)
+            )
+            # Override to fraction for faster test (original test used 0.1s)
+            factory.timeout = 0.1
 
-            # Mock slow response
+            # Mock slow response (takes longer than timeout)
             async def slow_invoke(*_args: Any, **_kwargs: Any) -> Any:
                 await asyncio.sleep(1.0)
                 yield mock.Mock()
@@ -600,14 +609,15 @@ class TestAgentFactoryTimeout:
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
-            factory = AgentFactory(agent_config, timeout=None)
+            # No execution_config means default timeout is used
+            factory = AgentFactory(agent_config)
 
             mock_response = mock.Mock()
             mock_response.content = "Response"
             mock_response.tool_calls = None
 
             async def delayed_invoke(*_args: Any, **_kwargs: Any) -> Any:
-                await asyncio.sleep(0.1)  # Small delay
+                await asyncio.sleep(0.1)  # Small delay (well under default timeout)
                 yield mock_response
 
             factory.agent.invoke = delayed_invoke  # type: ignore
@@ -819,7 +829,9 @@ class TestAgentFactoryIntegration:
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
         ):
-            factory = AgentFactory(agent_config, timeout=60.0)
+            factory = AgentFactory(
+                agent_config, execution_config=ExecutionConfig(llm_timeout=60)
+            )
 
             # Verify configuration is preserved
             assert factory.agent_config.name == "integration-test-agent"
@@ -885,7 +897,7 @@ class TestAgentFactoryIntegration:
         ):
             factory = AgentFactory(
                 agent_config,
-                timeout=5.0,
+                execution_config=ExecutionConfig(llm_timeout=5),
                 max_retries=3,
                 retry_delay=0.01,
             )
