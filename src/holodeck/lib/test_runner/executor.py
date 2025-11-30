@@ -734,6 +734,8 @@ class TestExecutor:
                 score = result.get(metric_name, result.get("score", 0.0))
                 threshold = metric_config.threshold
                 passed = score >= threshold if threshold else True
+                # Extract reasoning (DeepEval metrics return this, NLP metrics don't)
+                reasoning = result.get("reasoning")
 
                 logger.debug(
                     f"Metric evaluation completed: {metric_name}, "
@@ -756,6 +758,7 @@ class TestExecutor:
                             if metric_config.model and metric_config.model.name
                             else None
                         ),
+                        reasoning=reasoning,
                     )
                 )
 
@@ -778,6 +781,7 @@ class TestExecutor:
                         retry_count=0,
                         evaluation_time_ms=0,
                         model_used=None,
+                        reasoning=None,
                     )
                 )
 

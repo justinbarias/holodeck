@@ -336,6 +336,11 @@ class ProgressIndicator:
                         summary_lines.append(
                             f"      {metric_symbol} {metric.metric_name}: {score_str}"
                         )
+                        # Show reasoning if available (DeepEval metrics only)
+                        if metric.reasoning:
+                            summary_lines.append(
+                                f"        Reasoning: {metric.reasoning}"
+                            )
 
         summary_lines.append("=" * 60)
 

@@ -32,7 +32,11 @@ from pydantic.dataclasses import dataclass
 
 # Vector store connectors are imported lazily in _get_collection_class()
 # to avoid import errors when optional dependencies are not installed.
-from semantic_kernel.data.vector import VectorStoreField, vectorstoremodel
+from semantic_kernel.data.vector import (
+    DistanceFunction,
+    VectorStoreField,
+    vectorstoremodel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -485,7 +489,12 @@ def create_document_record_class(dimensions: int = 1536) -> type[Any]:
             field(default="")
         )
         embedding: Annotated[
-            list[float] | None, VectorStoreField("vector", dimensions=dimensions)
+            list[float] | None,
+            VectorStoreField(
+                "vector",
+                dimensions=dimensions,
+                distance_function=DistanceFunction.COSINE_SIMILARITY,
+            ),
         ] = field(default=None)
         mtime: Annotated[float, VectorStoreField("data")] = field(default=0.0)
         file_type: Annotated[str, VectorStoreField("data")] = field(default="")

@@ -21,10 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from holodeck.lib.file_processor import FileProcessor, SourceFile
 from holodeck.lib.text_chunker import TextChunker
-from holodeck.lib.vector_store import (
-    QueryResult,
-    convert_document_to_query_result,
-)
+from holodeck.lib.vector_store import QueryResult, convert_document_to_query_result
 
 if TYPE_CHECKING:
     from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
@@ -776,11 +773,17 @@ class VectorStoreTool:
             async for result in search_results.results:
                 # Handle SK result format (may be object with attrs or tuple)
                 record = result.record if hasattr(result, "record") else result[0]
-                score = result.score if hasattr(result, "score") else result[1]
+                distance = result.score if hasattr(result, "score") else result[1]
+
+                # ChromaDB returns distance, not similarity.
+                # For cosine distance: distance = 1 - cosine_similarity
+                # Convert to similarity: similarity = 1 - distance
+                # Clamp to [0, 1] range (distance can be 0-2 for cosine)
+                similarity = max(0.0, min(1.0, 1.0 - distance))
 
                 query_result = await convert_document_to_query_result(
                     record,
-                    score=max(0.0, min(1.0, score)),
+                    score=similarity,
                 )
                 results.append(query_result)
 
