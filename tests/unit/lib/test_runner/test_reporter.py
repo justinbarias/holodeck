@@ -47,6 +47,7 @@ def sample_metric_result() -> MetricResult:
         retry_count=0,
         evaluation_time_ms=1250,
         model_used="gpt-4o-mini",
+        reasoning="The response is well-grounded in the source material.",
     )
 
 
@@ -63,6 +64,7 @@ def sample_metric_result_failed() -> MetricResult:
         retry_count=2,
         evaluation_time_ms=2150,
         model_used="gpt-4o-mini",
+        reasoning="The response failed to address key aspects of the query.",
     )
 
 
@@ -408,6 +410,57 @@ class TestMetricsTable:
         )
         assert "groundedness" in table
         assert "completeness" in table
+
+    def test_metrics_table_includes_reasoning(
+        self, sample_metric_result: MetricResult
+    ) -> None:
+        """Test that reasoning is displayed in the metrics table."""
+        table = _format_metrics_table([sample_metric_result])
+        assert "Reasoning" in table  # Column header
+        assert "well-grounded" in table  # Part of the reasoning text
+
+    def test_metrics_table_reasoning_none(self) -> None:
+        """Test that empty string is shown when reasoning is None."""
+        metric = MetricResult(
+            metric_name="relevance",
+            score=0.85,
+            threshold=0.7,
+            passed=True,
+            scale="0-1",
+            error=None,
+            retry_count=0,
+            evaluation_time_ms=500,
+            model_used="gpt-4o",
+            reasoning=None,
+        )
+        table = _format_metrics_table([metric])
+        assert "Reasoning" in table  # Column header still present
+        # The row should have empty string in reasoning column
+        lines = table.split("\n")
+        data_row = [line for line in lines if "relevance" in line][0]
+        # Count the pipes to verify column structure
+        assert data_row.count("|") >= 9  # 10 columns = at least 9 pipes
+
+    def test_metrics_table_reasoning_truncation(self) -> None:
+        """Test that long reasoning is truncated to 100 characters."""
+        long_reasoning = "A" * 150  # 150 characters
+        metric = MetricResult(
+            metric_name="coherence",
+            score=0.9,
+            threshold=0.7,
+            passed=True,
+            scale="0-1",
+            error=None,
+            retry_count=0,
+            evaluation_time_ms=800,
+            model_used="gpt-4o",
+            reasoning=long_reasoning,
+        )
+        table = _format_metrics_table([metric])
+        # Should show first 100 chars + "..."
+        assert "A" * 100 + "..." in table
+        # Should NOT contain the full 150 chars
+        assert "A" * 150 not in table
 
 
 class TestToolUsageSection:
