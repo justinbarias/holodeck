@@ -792,16 +792,7 @@ class VectorStoreTool:
                 record = result.record if hasattr(result, "record") else result[0]
                 raw_score = result.score if hasattr(result, "score") else result[1]
 
-                # ChromaDB returns distance, not similarity.
-                # For cosine distance: distance = 1 - cosine_similarity
-                # Convert to similarity: similarity = 1 - distance
-                # Other providers return similarity directly.
-                if self._provider == "chromadb":
-                    # Clamp to [0, 1] range (distance can be 0-2 for cosine)
-                    similarity = max(0.0, min(1.0, 1.0 - raw_score))
-                else:
-                    # Most providers return similarity scores directly
-                    similarity = max(0.0, min(1.0, raw_score))
+                similarity = max(0.0, min(1.0, raw_score))
 
                 query_result = await convert_document_to_query_result(
                     record,

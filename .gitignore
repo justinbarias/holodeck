@@ -37,3 +37,4 @@ metrics/*
 
 # samples folder
 /sample
+src/holodeck/tools/vectorstore_tool.py
