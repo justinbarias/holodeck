@@ -146,7 +146,8 @@ def build_retrieval_context_from_tools(
     Only includes results from tools marked as retrieval tools.
 
     Args:
-        tool_results: List of tool result dicts with 'name' and 'result'.
+        tool_results: List of tool result dicts with 'name' and 'result' keys.
+            The 'result' value can be a string, list of strings, or other types.
         retrieval_tool_names: Set of tool names that provide retrieval context.
 
     Returns:
@@ -155,11 +156,16 @@ def build_retrieval_context_from_tools(
     context: list[str] = []
     for result in tool_results:
         tool_name = result.get("name", "")
-        result_content = result.get("result", "")
+        result_content: Any = result.get("result", "")
         if tool_name in retrieval_tool_names and result_content:
             if isinstance(result_content, str):
                 context.append(result_content)
             elif isinstance(result_content, list):
-                context.extend(str(item) for item in result_content if item)
+                # Safely convert list items to strings, filtering out empty values
+                for item in result_content:
+                    if item is not None:
+                        str_item = str(item)
+                        if str_item:
+                            context.append(str_item)
 
     return context if context else None

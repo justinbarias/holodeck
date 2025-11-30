@@ -31,6 +31,7 @@ from semantic_kernel.contents import ChatHistory
 
 from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
+from holodeck.lib.errors import ConfigError
 from holodeck.lib.evaluators.azure_ai import (
     CoherenceEvaluator,
     FluencyEvaluator,
@@ -381,14 +382,18 @@ class TestExecutor:
             if llm_model:
                 from holodeck.lib.evaluators.azure_ai import ModelConfig
 
-                # Use defaults if not specified in config
-                # Note: In a real scenario, we might need to resolve these from env vars
-                # if they are not in the config. For now, we assume they are present
-                # or handled by the LLMProvider validation.
+                # Validate required Azure config - fail fast with clear error message
+                if not llm_model.endpoint or not llm_model.api_key:
+                    raise ConfigError(
+                        f"evaluations.metrics.{metric_name}",
+                        f"Azure AI metrics require 'endpoint' and 'api_key' in LLM "
+                        f"config for metric '{metric_name}'. Please configure these "
+                        f"in your agent.yaml or set via environment variables.",
+                    )
+
                 azure_model_config = ModelConfig(
-                    azure_endpoint=llm_model.endpoint
-                    or "https://example.openai.azure.com/",
-                    api_key=llm_model.api_key or "dummy-key",
+                    azure_endpoint=llm_model.endpoint,
+                    api_key=llm_model.api_key,
                     azure_deployment=llm_model.name,
                 )
 
@@ -746,7 +751,9 @@ class TestExecutor:
                         retry_count=0,
                         evaluation_time_ms=elapsed_ms,
                         model_used=(
-                            metric_config.model.name if metric_config.model else None
+                            metric_config.model.name
+                            if metric_config.model and metric_config.model.name
+                            else None
                         ),
                     )
                 )
