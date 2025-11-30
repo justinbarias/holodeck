@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from holodeck.models.evaluation import EvaluationMetric
+from holodeck.models.evaluation import EvaluationMetric, GEvalMetric, RAGMetric
 
 
 class FileInput(BaseModel):
@@ -71,7 +71,7 @@ class TestCaseModel(BaseModel):
     """Test case for agent evaluation.
 
     Represents a single test scenario with input, optional expected output,
-    expected tool usage, and multimodal file inputs.
+    expected tool usage, multimodal file inputs, and RAG context.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -83,8 +83,11 @@ class TestCaseModel(BaseModel):
     )
     ground_truth: str | None = Field(None, description="Expected output for comparison")
     files: list[FileInput] | None = Field(None, description="Multimodal file inputs")
-    evaluations: list[EvaluationMetric] | None = Field(
-        None, description="Per-test metric overrides (subset of global metrics)"
+    retrieval_context: list[str] | None = Field(
+        None, description="Retrieved text chunks for RAG evaluation metrics"
+    )
+    evaluations: list[EvaluationMetric | GEvalMetric | RAGMetric] | None = Field(
+        None, description="Per-test metric overrides (standard, GEval, or RAG)"
     )
 
     @field_validator("input")

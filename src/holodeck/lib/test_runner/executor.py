@@ -25,12 +25,13 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from semantic_kernel.contents import ChatHistory
 
 from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
+from holodeck.lib.errors import ConfigError
 from holodeck.lib.evaluators.azure_ai import (
     CoherenceEvaluator,
     FluencyEvaluator,
@@ -38,6 +39,15 @@ from holodeck.lib.evaluators.azure_ai import (
     RelevanceEvaluator,
 )
 from holodeck.lib.evaluators.base import BaseEvaluator
+from holodeck.lib.evaluators.deepeval import (
+    AnswerRelevancyEvaluator,
+    ContextualPrecisionEvaluator,
+    ContextualRecallEvaluator,
+    ContextualRelevancyEvaluator,
+    FaithfulnessEvaluator,
+    GEvalEvaluator,
+)
+from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.evaluators.nlp_metrics import (
     BLEUEvaluator,
     METEOREvaluator,
@@ -47,9 +57,19 @@ from holodeck.lib.file_processor import FileProcessor
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_exception
 from holodeck.lib.test_runner.agent_factory import AgentFactory
+from holodeck.lib.test_runner.eval_kwargs_builder import (
+    EvalKwargsBuilder,
+    build_retrieval_context_from_tools,
+)
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
-from holodeck.models.evaluation import EvaluationMetric
+from holodeck.models.evaluation import (
+    EvaluationMetric,
+    GEvalMetric,
+    RAGMetric,
+    RAGMetricType,
+)
+from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.test_result import (
     MetricResult,
@@ -60,6 +80,32 @@ from holodeck.models.test_result import (
 )
 
 logger = get_logger(__name__)
+
+
+class RAGEvaluatorConstructor(Protocol):
+    """Protocol for RAG evaluator constructor signature.
+
+    Defines the expected constructor interface for all RAG evaluators,
+    enabling type-safe mapping of RAGMetricType to evaluator classes.
+    """
+
+    def __call__(
+        self,
+        model_config: DeepEvalModelConfig | None = None,
+        threshold: float = 0.5,
+        include_reason: bool = True,
+    ) -> BaseEvaluator: ...
+
+
+# Mapping of RAG metric types to their evaluator classes
+# Used to eliminate repetitive if/elif chains in _create_evaluators
+RAG_EVALUATOR_MAP: dict[RAGMetricType, RAGEvaluatorConstructor] = {
+    RAGMetricType.FAITHFULNESS: FaithfulnessEvaluator,
+    RAGMetricType.CONTEXTUAL_RELEVANCY: ContextualRelevancyEvaluator,
+    RAGMetricType.CONTEXTUAL_PRECISION: ContextualPrecisionEvaluator,
+    RAGMetricType.CONTEXTUAL_RECALL: ContextualRecallEvaluator,
+    RAGMetricType.ANSWER_RELEVANCY: AnswerRelevancyEvaluator,
+}
 
 
 def validate_tool_calls(
@@ -238,8 +284,39 @@ class TestExecutor:
             force_ingest=self._force_ingest,
         )
 
+    def _build_deepeval_config(
+        self, llm_provider: LLMProvider | None
+    ) -> DeepEvalModelConfig | None:
+        """Convert LLMProvider to DeepEvalModelConfig.
+
+        Args:
+            llm_provider: HoloDeck LLM provider configuration
+
+        Returns:
+            DeepEvalModelConfig instance or None if no provider
+        """
+        if not llm_provider:
+            return None
+
+        # Build config with fields available in LLMProvider
+        # For Azure OpenAI, use model name as deployment name if not specified
+        deployment_name = None
+        if llm_provider.provider == ProviderEnum.AZURE_OPENAI:
+            deployment_name = llm_provider.name  # Use model name as deployment name
+
+        return DeepEvalModelConfig(
+            provider=llm_provider.provider,
+            model_name=llm_provider.name,
+            api_key=llm_provider.api_key,
+            endpoint=llm_provider.endpoint,
+            deployment_name=deployment_name,
+            temperature=0.0,  # Deterministic for evaluation
+        )
+
     def _create_evaluators(self) -> dict[str, BaseEvaluator]:
         """Create evaluator instances from evaluation config.
+
+        Supports standard EvaluationMetric, GEvalMetric, and RAGMetric types.
 
         Returns:
             Dictionary mapping metric names to evaluator instances
@@ -249,17 +326,54 @@ class TestExecutor:
         if not self.agent_config.evaluations:
             return evaluators
 
-        # Create evaluators for configured metrics
+        # Get default model for all metrics
+        default_model = self.agent_config.evaluations.model
+
         # Create evaluators for configured metrics
         for metric_config in self.agent_config.evaluations.metrics:
-            metric_name = metric_config.metric
+            # Handle GEval custom criteria metrics
+            if isinstance(metric_config, GEvalMetric):
+                llm_model = metric_config.model or default_model
+                deepeval_config = self._build_deepeval_config(llm_model)
 
-            # Azure AI evaluators
-            default_model = (
-                self.agent_config.evaluations.model
-                if self.agent_config.evaluations
-                else None
-            )
+                # Use metric name as the evaluator key
+                evaluators[metric_config.name] = GEvalEvaluator(
+                    name=metric_config.name,
+                    criteria=metric_config.criteria,
+                    evaluation_params=metric_config.evaluation_params,
+                    evaluation_steps=metric_config.evaluation_steps,
+                    strict_mode=metric_config.strict_mode,
+                    model_config=deepeval_config,
+                    threshold=metric_config.threshold or 0.5,
+                )
+                logger.debug(
+                    f"Created GEvalEvaluator: name={metric_config.name}, "
+                    f"criteria_len={len(metric_config.criteria)}"
+                )
+                continue
+
+            # Handle RAG evaluation metrics
+            if isinstance(metric_config, RAGMetric):
+                llm_model = metric_config.model or default_model
+                deepeval_config = self._build_deepeval_config(llm_model)
+
+                # Map RAGMetricType to evaluator class and create instance
+                metric_name = metric_config.metric_type.value
+                evaluator_class = RAG_EVALUATOR_MAP.get(metric_config.metric_type)
+                if evaluator_class:
+                    evaluators[metric_name] = evaluator_class(
+                        model_config=deepeval_config,
+                        threshold=metric_config.threshold,
+                        include_reason=metric_config.include_reason,
+                    )
+                    logger.debug(
+                        f"Created RAG evaluator: type={metric_name}, "
+                        f"threshold={metric_config.threshold}"
+                    )
+                continue
+
+            # Handle standard EvaluationMetric types
+            metric_name = metric_config.metric
 
             # Get model config (per-metric or default)
             llm_model = metric_config.model or default_model
@@ -269,14 +383,18 @@ class TestExecutor:
             if llm_model:
                 from holodeck.lib.evaluators.azure_ai import ModelConfig
 
-                # Use defaults if not specified in config
-                # Note: In a real scenario, we might need to resolve these from env vars
-                # if they are not in the config. For now, we assume they are present
-                # or handled by the LLMProvider validation.
+                # Validate required Azure config - fail fast with clear error message
+                if not llm_model.endpoint or not llm_model.api_key:
+                    raise ConfigError(
+                        f"evaluations.metrics.{metric_name}",
+                        f"Azure AI metrics require 'endpoint' and 'api_key' in LLM "
+                        f"config for metric '{metric_name}'. Please configure these "
+                        f"in your agent.yaml or set via environment variables.",
+                    )
+
                 azure_model_config = ModelConfig(
-                    azure_endpoint=llm_model.endpoint
-                    or "https://example.openai.azure.com/",
-                    api_key=llm_model.api_key or "dummy-key",
+                    azure_endpoint=llm_model.endpoint,
+                    api_key=llm_model.api_key,
                     azure_deployment=llm_model.name,
                 )
 
@@ -394,6 +512,7 @@ class TestExecutor:
         # Step 3: Invoke agent
         agent_response = None
         tool_calls: list[str] = []
+        tool_results: list[dict[str, Any]] = []
 
         logger.debug(f"Invoking agent for test: {test_case.name}")
         try:
@@ -403,10 +522,11 @@ class TestExecutor:
 
             agent_response = self._extract_response_text(result.chat_history)
             tool_calls = self._extract_tool_names(result.tool_calls)
+            tool_results = result.tool_results
 
             logger.debug(
                 f"Agent invocation completed in {invoke_elapsed:.2f}s, "
-                f"tools_called={len(tool_calls)}"
+                f"tools_called={len(tool_calls)}, tool_results={len(tool_results)}"
             )
         except TimeoutError:
             logger.error(
@@ -431,7 +551,7 @@ class TestExecutor:
         # Step 5: Run evaluations
         logger.debug(f"Running evaluations for test: {test_case.name}")
         metric_results = await self._run_evaluations(
-            test_case, agent_response, processed_files
+            test_case, agent_response, processed_files, tool_results
         )
         logger.debug(
             f"Completed {len(metric_results)} evaluations for test: {test_case.name}"
@@ -534,16 +654,22 @@ class TestExecutor:
         test_case: TestCaseModel,
         agent_response: str | None,
         processed_files: list[ProcessedFileInput],
+        tool_results: list[dict[str, Any]] | None = None,
     ) -> list[MetricResult]:
         """Run evaluation metrics for test case.
 
         Evaluations are run with graceful degradation - if a metric fails,
         the error is recorded but execution continues with other metrics.
 
+        For RAG metrics, retrieval_context is resolved with priority:
+        1. Manual override from test_case.retrieval_context (if provided)
+        2. Dynamic extraction from retrieval tool results
+
         Args:
             test_case: Test case configuration
             agent_response: Agent's response text (can be None if agent failed)
             processed_files: Processed file inputs
+            tool_results: List of tool result dicts with 'name' and 'result' keys
 
         Returns:
             List of metric results
@@ -558,7 +684,13 @@ class TestExecutor:
 
         # Run each metric
         for metric_config in metrics:
-            metric_name = metric_config.metric
+            # Get metric name based on metric type
+            if isinstance(metric_config, GEvalMetric):
+                metric_name = metric_config.name
+            elif isinstance(metric_config, RAGMetric):
+                metric_name = metric_config.metric_type.value
+            else:
+                metric_name = metric_config.metric
 
             if metric_name not in self.evaluators:
                 # Metric not configured, skip
@@ -570,22 +702,27 @@ class TestExecutor:
                 evaluator = self.evaluators[metric_name]
                 start_time = time.time()
 
-                # Prepare evaluation inputs
-                eval_kwargs = {
-                    "response": agent_response,
-                }
-
-                # Add optional inputs based on metric type
-                if test_case.input:
-                    eval_kwargs["query"] = test_case.input
-
-                if test_case.ground_truth:
-                    eval_kwargs["ground_truth"] = test_case.ground_truth
-
-                # Combine file contents as context
+                # Prepare evaluation inputs using EvalKwargsBuilder
+                # This handles the parameter name differences between evaluator types:
+                # - Azure AI / NLP: response, query, ground_truth, context
+                # - DeepEval: actual_output, input, expected_output, retrieval_context
                 file_content = self._combine_file_contents(processed_files)
-                if file_content and metric_name in ("groundedness", "relevance"):
-                    eval_kwargs["context"] = file_content
+
+                # Resolve retrieval_context: manual override > dynamic from tools
+                retrieval_context = test_case.retrieval_context
+                if not retrieval_context and tool_results:
+                    retrieval_context = build_retrieval_context_from_tools(
+                        tool_results, self._get_retrieval_tool_names()
+                    )
+
+                kwargs_builder = EvalKwargsBuilder(
+                    agent_response=agent_response,
+                    input_query=test_case.input,
+                    ground_truth=test_case.ground_truth,
+                    file_content=file_content,
+                    retrieval_context=retrieval_context,
+                )
+                eval_kwargs = kwargs_builder.build_for(evaluator)
 
                 # Run evaluation
                 result = await evaluator.evaluate(**eval_kwargs)
@@ -615,7 +752,9 @@ class TestExecutor:
                         retry_count=0,
                         evaluation_time_ms=elapsed_ms,
                         model_used=(
-                            metric_config.model.name if metric_config.model else None
+                            metric_config.model.name
+                            if metric_config.model and metric_config.model.name
+                            else None
                         ),
                     )
                 )
@@ -647,14 +786,14 @@ class TestExecutor:
     def _get_metrics_for_test(
         self,
         test_case: TestCaseModel,
-    ) -> list[EvaluationMetric]:
+    ) -> list[EvaluationMetric | GEvalMetric | RAGMetric]:
         """Resolve metrics for a test case (per-test override or global).
 
         Args:
             test_case: Test case configuration with optional per-test metrics
 
         Returns:
-            List of metrics to evaluate
+            List of metrics to evaluate (standard, GEval, or RAG)
 
         Logic:
             - If test_case.evaluations is provided and non-empty, use those
@@ -668,7 +807,7 @@ class TestExecutor:
 
         # Fall back to global metrics
         if self.agent_config.evaluations:
-            return self.agent_config.evaluations.metrics
+            return list(self.agent_config.evaluations.metrics)
         return []
 
     def _combine_file_contents(self, processed_files: list[ProcessedFileInput]) -> str:
@@ -685,6 +824,57 @@ class TestExecutor:
             if processed.markdown_content:
                 contents.append(processed.markdown_content)
         return "\n\n".join(contents)
+
+    def _get_retrieval_tool_names(self) -> set[str]:
+        """Get names of tools that contribute to retrieval_context for RAG metrics.
+
+        Retrieval tools are:
+        - All vectorstore tools (type='vectorstore')
+        - MCP tools with is_retrieval=True
+
+        Returns:
+            Set of tool names that are retrieval tools
+        """
+        from holodeck.models.tool import MCPTool, VectorstoreTool
+
+        retrieval_tools: set[str] = set()
+
+        if not self.agent_config.tools:
+            return retrieval_tools
+
+        for tool in self.agent_config.tools:
+            if isinstance(tool, VectorstoreTool):
+                # Vectorstore tools include plugin prefix in name
+                retrieval_tools.add(f"vectorstore-{tool.name}")
+            elif isinstance(tool, MCPTool) and tool.is_retrieval:
+                # MCP tools use their configured name
+                retrieval_tools.add(tool.name)
+
+        return retrieval_tools
+
+    def _build_retrieval_context(
+        self,
+        tool_results: list[dict[str, Any]],
+    ) -> list[str]:
+        """Build retrieval_context from retrieval tool results for RAG evaluation.
+
+        Only results from retrieval tools (vectorstore, MCP with is_retrieval=True)
+        are included. Non-retrieval tool results are excluded.
+
+        Args:
+            tool_results: List of tool result dicts with 'name' and 'result' keys
+
+        Returns:
+            List of retrieval context strings from retrieval tools only
+
+        Note:
+            This method delegates to build_retrieval_context_from_tools for
+            the actual extraction logic.
+        """
+        retrieval_tool_names = self._get_retrieval_tool_names()
+        return (
+            build_retrieval_context_from_tools(tool_results, retrieval_tool_names) or []
+        )
 
     def _determine_test_passed(
         self,

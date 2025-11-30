@@ -8,7 +8,7 @@ This directory contains example agent.yaml files demonstrating different feature
 |---------|----------|----------------------|
 | [`basic_agent.yaml`](#basic_agent) | Getting started | Minimal valid config, inline instructions, no tools |
 | [`with_tools.yaml`](#with-tools) | Real-world workflows | All 4 tool types: vectorstore, function, MCP, prompt |
-| [`with_evaluations.yaml`](#with-evaluations) | Quality assurance | AI metrics, NLP metrics, per-metric model override |
+| [`with_evaluations.yaml`](#with-evaluations) | Quality assurance | DeepEval metrics, NLP metrics, per-metric model override |
 | [`with_global_config.yaml`](#with-global-config) | Multi-environment setups | Config precedence, env var substitution, inheritance |
 
 ---
@@ -138,60 +138,97 @@ holodeck run with_tools.yaml
 **Purpose**: Quality assurance and evaluation framework
 
 **Features**:
-- AI-powered metrics (groundedness, relevance, coherence)
-- NLP metrics (F1 score, ROUGE)
+- **DeepEval GEval metrics**: Custom criteria with chain-of-thought evaluation (recommended)
+- **DeepEval RAG metrics**: Faithfulness, answer relevancy (recommended)
+- **NLP metrics**: F1 score, ROUGE (standard)
+- **Legacy AI metrics**: Deprecated Azure AI metrics (backwards compatibility)
 - Per-metric model overrides
-- Soft failure mode (continue on evaluation errors)
 - Threshold-based pass/fail criteria
 
 **When to use**:
 - Validating agent response quality
-- Ensuring responses are grounded in data
+- Ensuring responses are grounded in data (faithfulness)
 - Measuring accuracy against ground truth
 - Running quality gates in production pipelines
 
-**Metric Types**:
+**Metric Types** (in order of recommendation):
 
-| Metric | Type | Scale | Use Case |
-|--------|------|-------|----------|
-| `groundedness` | AI | 1-5 | Response uses provided context |
-| `relevance` | AI | 1-5 | Response addresses the query |
-| `coherence` | AI | 1-5 | Response is logical and clear |
-| `f1_score` | NLP | 0-100 | Precision/recall vs. ground truth |
-| `rouge` | NLP | 0-100 | N-gram overlap with reference |
-| `bleu` | NLP | 0-100 | Bilingual evaluation study |
+| Tier | Type | Metrics | Use Case |
+|------|------|---------|----------|
+| **1 (Recommended)** | DeepEval GEval | Custom criteria | Flexible semantic evaluation with natural language |
+| **1 (Recommended)** | DeepEval RAG | `faithfulness`, `answer_relevancy`, `contextual_relevancy`, `contextual_precision`, `contextual_recall` | RAG pipeline evaluation |
+| **2 (Standard)** | NLP | `f1_score`, `bleu`, `rouge`, `meteor` | Token-level comparison with ground truth |
+| **3 (Deprecated)** | Legacy AI | `groundedness`, `relevance`, `coherence`, `safety` | Azure AI-based (migrate to DeepEval) |
+
+**DeepEval Metrics Example**:
+```yaml
+evaluations:
+  model:
+    provider: ollama
+    name: llama3.2:latest
+    temperature: 0.0
+
+  metrics:
+    # GEval: Custom criteria
+    - type: geval
+      name: "Coherence"
+      criteria: "Evaluate whether the response is clear and well-structured."
+      threshold: 0.7
+
+    # RAG: Hallucination detection
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.8
+
+    # RAG: Response relevance
+    - type: rag
+      metric_type: answer_relevancy
+      threshold: 0.7
+```
 
 **Try it**:
 ```bash
-export OPENAI_API_KEY=your-key-here
-export ANTHROPIC_API_KEY=your-key-here
+# For local evaluation (free, no API keys needed)
+# Make sure Ollama is running with llama3.2:latest
 
 # Run evaluations
-holodeck evaluate with_evaluations.yaml
+holodeck test with_evaluations.yaml
 
 # Run with verbose output
-holodeck evaluate with_evaluations.yaml --verbose
+holodeck test with_evaluations.yaml --verbose
 ```
 
 **Configuration Precedence**:
 ```yaml
 evaluations:
   model:                              # Global model (applies to all metrics)
-    provider: openai
-    name: gpt-4o
+    provider: ollama
+    name: llama3.2:latest
   metrics:
-    - metric: groundedness
+    - type: geval
+      name: "Quality"
+      criteria: "..."
       model:                          # Per-metric override (highest precedence)
         provider: openai
-        name: gpt-4o-mini             # Different model for this metric only
+        name: gpt-4                   # Use powerful model for critical metric
 ```
 
 **Key Concepts**:
 - Evaluations run after agent execution completes
 - Each metric can override the evaluation model
-- `threshold` defines minimum passing score
+- `threshold` defines minimum passing score (0-1 scale)
 - `fail_on_error: false` = soft failure (evaluation error doesn't block)
 - `fail_on_error: true` = hard failure (evaluation error stops test)
+- DeepEval metrics support local models via Ollama (free)
+
+**Legacy Metric Migration**:
+
+| Legacy Metric | Recommended Replacement |
+|--------------|------------------------|
+| `groundedness` | `type: rag`, `metric_type: faithfulness` |
+| `relevance` | `type: rag`, `metric_type: answer_relevancy` |
+| `coherence` | `type: geval` with custom criteria |
+| `safety` | `type: geval` with custom criteria |
 
 ---
 
@@ -326,13 +363,36 @@ tools:
     source: ./data/kb/
 ```
 
+### Pattern 4: Cost-Effective Evaluation
+
+```yaml
+# Use local models for development, paid APIs for production
+
+evaluations:
+  model:
+    provider: ollama           # Free, local (development)
+    name: llama3.2:latest
+
+  metrics:
+    - type: geval
+      name: "Quality"
+      criteria: "..."
+      # Uses local model by default
+
+    - type: rag
+      metric_type: faithfulness
+      model:
+        provider: openai       # Override for critical metric
+        name: gpt-4
+```
+
 ---
 
 ## Next Steps
 
 1. **Start with `basic_agent.yaml`**: Understand structure
 2. **Progress to `with_tools.yaml`**: Add tool integration
-3. **Explore `with_evaluations.yaml`**: Add quality gates
+3. **Explore `with_evaluations.yaml`**: Add quality gates with DeepEval
 4. **Deploy with `with_global_config.yaml`**: Production setup
 
 For more information:
@@ -362,9 +422,18 @@ For more information:
 
 **Q: Evaluations run but show errors**
 - If `fail_on_error: false`, errors are logged but don't block
-- Check model API keys are set
+- Check model API keys are set (or use Ollama for local evaluation)
 - Verify ground_truth and test input are clear and specific
+
+**Q: DeepEval metrics not working**
+- Ensure Ollama is running if using local models
+- Check that required parameters are available (e.g., retrieval_context for faithfulness)
+- Try with a simpler model first to debug
+
+**Q: Legacy metrics deprecated warning**
+- Migrate to DeepEval equivalents (see migration table above)
+- Legacy metrics still work but will be removed in future versions
 
 ---
 
-**Created**: 2025-10-19 | **Version**: 0.1.0
+**Created**: 2025-10-19 | **Updated**: 2025-11-30 | **Version**: 0.2.0

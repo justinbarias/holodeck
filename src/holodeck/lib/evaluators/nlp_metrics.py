@@ -18,9 +18,10 @@ References:
 - SacreBLEU: https://github.com/mjpost/sacrebleu
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from holodeck.lib.evaluators.base import BaseEvaluator, EvaluationError
+from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
 from holodeck.lib.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -99,6 +100,10 @@ class BLEUEvaluator(BaseEvaluator):
         >>> print(result["bleu"])  # 0.0-1.0
         >>> print(result["passed"])  # True if >= threshold
     """
+
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset({EvalParam.RESPONSE, EvalParam.GROUND_TRUTH}),
+    )
 
     def __init__(
         self,
@@ -213,6 +218,10 @@ class ROUGEEvaluator(BaseEvaluator):
         >>> print(result["rougeL"])  # 0.0-1.0
         >>> print(result["passed"])  # True if rougeL >= threshold
     """
+
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset({EvalParam.RESPONSE, EvalParam.GROUND_TRUTH}),
+    )
 
     def __init__(
         self,
@@ -335,6 +344,10 @@ class METEOREvaluator(BaseEvaluator):
         >>> print(result["meteor"])  # Higher than BLEU due to synonym handling
         >>> print(result["passed"])  # True if >= threshold
     """
+
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset({EvalParam.RESPONSE, EvalParam.GROUND_TRUTH}),
+    )
 
     def __init__(
         self,

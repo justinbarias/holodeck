@@ -79,11 +79,25 @@ evaluations:
     name: llama3.2:latest
     temperature: 0.0
   metrics:
-    - metric: relevance
-      threshold: 0.8
-    - metric: groundedness
+    - type: geval
+      name: Coherence
+      criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
+      evaluation_steps:
+        - "Evaluate whether the response uses clear and direct language."
+        - "Check if the explanation avoids jargon or explains it when used."
+        - "Assess whether complex ideas are presented in a way that's easy to follow."
+        - "Identify any vague or confusing parts that reduce understanding."
+      evaluation_params:
+        - actual_output
+      threshold: 0.7
+    - type: rag
+      metric_type: answer_relevancy
+      threshold: 0.7
+    - type: standard
+      metric: groundedness
       threshold: 0.85
-    - metric: f1_score
+    - type: standard
+      metric: f1_score
       threshold: 0.7
 
 # Test Cases
@@ -94,9 +108,11 @@ test_cases:
       - search_kb
     ground_truth: "Should provide password reset instructions"
     evaluations:
-      - metric: relevance
-        threshold: 0.8
-      - metric: groundedness
+      - type: rag
+        metric_type: answer_relevancy
+        threshold: 0.7
+      - type: standard
+        metric: groundedness
         threshold: 0.85
 
   - name: "Account issue acknowledgment"
@@ -105,8 +121,20 @@ test_cases:
       - search_kb
     ground_truth: "Should acknowledge issue and offer to escalate via Slack"
     evaluations:
-      - metric: relevance
-        threshold: 0.8
+      - type: rag
+        metric_type: answer_relevancy
+        threshold: 0.7
+      - type: geval
+        name: Coherence
+        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
+        evaluation_steps:
+          - "Evaluate whether the response uses clear and direct language."
+          - "Check if the explanation avoids jargon or explains it when used."
+          - "Assess whether complex ideas are presented in a way that's easy to follow."
+          - "Identify any vague or confusing parts that reduce understanding."
+        evaluation_params:
+          - actual_output
+        threshold: 0.7
 
   - name: "Knowledge base search"
     input: "How do I update my billing information?"
@@ -114,7 +142,8 @@ test_cases:
       - search_kb
     ground_truth: "Should find and provide billing update instructions"
     evaluations:
-      - metric: groundedness
+      - type: standard
+        metric: groundedness
         threshold: 0.85
 
   - name: "Issue requiring escalation"
@@ -124,8 +153,9 @@ test_cases:
       - slack_integration
     ground_truth: "Should search KB and offer human escalation via Slack"
     evaluations:
-      - metric: relevance
-        threshold: 0.8
+      - type: rag
+        metric_type: answer_relevancy
+        threshold: 0.7
 
   - name: "Troubleshooting flow"
     input: "I can't log into my account"
@@ -133,7 +163,9 @@ test_cases:
       - search_kb
     ground_truth: "Should provide troubleshooting steps and offer escalation if needed"
     evaluations:
-      - metric: relevance
-        threshold: 0.8
-      - metric: groundedness
+      - type: rag
+        metric_type: answer_relevancy
+        threshold: 0.7
+      - type: standard
+        metric: groundedness
         threshold: 0.85

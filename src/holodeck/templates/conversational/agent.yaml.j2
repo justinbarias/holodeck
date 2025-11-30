@@ -55,10 +55,20 @@ evaluations:
     name: llama3.2:latest
     temperature: 0.0
   metrics:
-    - metric: coherence
+    - type: geval
+      name: Coherence
+      criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
+      evaluation_steps:
+        - "Evaluate whether the response uses clear and direct language."
+        - "Check if the explanation avoids jargon or explains it when used."
+        - "Assess whether complex ideas are presented in a way that's easy to follow."
+        - "Identify any vague or confusing parts that reduce understanding."
+      evaluation_params:
+        - actual_output
       threshold: 0.7
-    - metric: relevance
-      threshold: 0.8
+    - type: rag
+      metric_type: answer_relevancy
+      threshold: 0.7
 
 # Test Cases
 test_cases:
@@ -67,7 +77,16 @@ test_cases:
     expected_tools: []
     ground_truth: "Should respond politely and offer assistance"
     evaluations:
-      - metric: coherence
+      - type: geval
+        name: Coherence
+        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
+        evaluation_steps:
+          - "Evaluate whether the response uses clear and direct language."
+          - "Check if the explanation avoids jargon or explains it when used."
+          - "Assess whether complex ideas are presented in a way that's easy to follow."
+          - "Identify any vague or confusing parts that reduce understanding."
+        evaluation_params:
+          - actual_output
         threshold: 0.7
 
   - name: "Multi-turn conversation"
@@ -76,15 +95,34 @@ test_cases:
       - memory
     ground_truth: "Should provide helpful Python learning resources and tips"
     evaluations:
-      - metric: coherence
+      - type: geval
+        name: Coherence
+        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
+        evaluation_steps:
+          - "Evaluate whether the response uses clear and direct language."
+          - "Check if the explanation avoids jargon or explains it when used."
+          - "Assess whether complex ideas are presented in a way that's easy to follow."
+          - "Identify any vague or confusing parts that reduce understanding."
+        evaluation_params:
+          - actual_output
         threshold: 0.7
-      - metric: relevance
-        threshold: 0.8
+      - type: rag
+        metric_type: answer_relevancy
+        threshold: 0.7
 
   - name: "Handling unknown queries"
     input: "Can you help me with quantum physics?"
     expected_tools: []
     ground_truth: "Should acknowledge the topic and offer to help or clarify limitations"
     evaluations:
-      - metric: coherence
+      - type: geval
+        name: Coherence
+        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
+        evaluation_steps:
+          - "Evaluate whether the response uses clear and direct language."
+          - "Check if the explanation avoids jargon or explains it when used."
+          - "Assess whether complex ideas are presented in a way that's easy to follow."
+          - "Identify any vague or confusing parts that reduce understanding."
+        evaluation_params:
+          - actual_output
         threshold: 0.7

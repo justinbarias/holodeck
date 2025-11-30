@@ -75,13 +75,17 @@ class AgentExecutionResult:
     """Result of agent execution containing tool calls and conversation history.
 
     Attributes:
-        tool_calls: List of tool calls made by the agent during execution
+        tool_calls: List of tool calls made by the agent during execution.
+            Each dict contains 'name' and 'arguments' keys.
+        tool_results: List of tool execution results for retrieval context.
+            Each dict contains 'name' (tool name) and 'result' (execution output).
         chat_history: Complete conversation history including user inputs
             and agent responses
         token_usage: Token usage metadata if provided by LLM provider
     """
 
     tool_calls: list[dict[str, Any]]
+    tool_results: list[dict[str, Any]]
     chat_history: ChatHistory
     token_usage: TokenUsage | None = None
 
@@ -722,10 +726,11 @@ class AgentFactory:
         """Internal implementation of agent invocation.
 
         Returns:
-            AgentExecutionResult with tool_calls and complete chat_history
+            AgentExecutionResult with tool_calls, tool_results, and chat_history
         """
         response_text = ""
         tool_calls: list[dict[str, Any]] = []
+        tool_results: list[dict[str, Any]] = []
         token_usage: TokenUsage | None = None
         try:
             # Invoke agent with chat history
@@ -746,8 +751,10 @@ class AgentFactory:
                 token_usage = self._extract_token_usage(response)
                 break  # Only process first response
 
-            # Extract tool calls from thread's chat history (includes internal calls)
-            tool_calls = await self._extract_tool_calls_from_thread(thread)
+            # Extract tool calls and results from thread's chat history
+            tool_calls, tool_results = await self._extract_tool_calls_from_thread(
+                thread
+            )
 
             # Add agent's response to chat history
             if response_text:
@@ -755,6 +762,7 @@ class AgentFactory:
 
             return AgentExecutionResult(
                 tool_calls=tool_calls,
+                tool_results=tool_results,
                 chat_history=self.chat_history,
                 token_usage=token_usage,
             )
@@ -892,23 +900,31 @@ class AgentFactory:
 
     async def _extract_tool_calls_from_thread(
         self, thread: ChatHistoryAgentThread
-    ) -> list[dict[str, Any]]:
-        """Extract tool calls from ChatHistoryAgentThread after agent invocation.
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Extract tool calls and results from ChatHistoryAgentThread.
 
         Scans the thread's message history for FunctionCallContent items to track
-        which tools were invoked during agent execution.
+        which tools were invoked, and FunctionResultContent items to capture
+        tool execution results for RAG evaluation metrics.
 
         Args:
             thread: ChatHistoryAgentThread containing the conversation history
                 after agent invocation.
 
         Returns:
-            List of tool call dictionaries with 'name' and 'arguments' keys.
+            Tuple of:
+            - tool_calls: List of dicts with 'name' and 'arguments' keys
+            - tool_results: List of dicts with 'name' and 'result' keys
         """
-        from semantic_kernel.contents import FunctionCallContent
+        from semantic_kernel.contents import FunctionCallContent, FunctionResultContent
 
         tool_calls: list[dict[str, Any]] = []
+        tool_results: list[dict[str, Any]] = []
         seen_call_ids: set[str] = set()  # Avoid duplicates
+        seen_result_ids: set[str] = set()  # Avoid duplicate results
+
+        # Map call_id -> tool name for matching results to calls
+        call_id_to_name: dict[str, str] = {}
 
         try:
             # Iterate through thread messages (async generator)
@@ -935,6 +951,10 @@ class AgentFactory:
                                 else function_name
                             )
 
+                            # Store mapping for result matching
+                            if call_id:
+                                call_id_to_name[call_id] = full_name
+
                             # Parse arguments (can be str, Mapping, or None)
                             raw_args = getattr(item, "arguments", None)
                             if isinstance(raw_args, str):
@@ -956,10 +976,53 @@ class AgentFactory:
                                 }
                             )
 
+                        elif isinstance(item, FunctionResultContent):
+                            # Extract tool result for RAG evaluation
+                            raw_result_id = getattr(item, "id", None) or getattr(
+                                item, "call_id", ""
+                            )
+                            result_id = str(raw_result_id) if raw_result_id else ""
+                            if result_id and result_id in seen_result_ids:
+                                continue
+                            if result_id:
+                                seen_result_ids.add(result_id)
+
+                            # Get result content
+                            result_value = getattr(item, "result", None)
+                            if result_value is None:
+                                result_value = getattr(item, "content", "")
+
+                            # Convert to string if needed
+                            result_str = (
+                                str(result_value) if result_value is not None else ""
+                            )
+
+                            # Match result to tool name via call_id
+                            tool_name = call_id_to_name.get(result_id, "")
+                            if not tool_name:
+                                # Try to get name from FunctionResultContent
+                                plugin_name = getattr(item, "plugin_name", "") or ""
+                                function_name = getattr(
+                                    item, "function_name", ""
+                                ) or getattr(item, "name", "")
+                                tool_name = (
+                                    f"{plugin_name}-{function_name}"
+                                    if plugin_name
+                                    else function_name
+                                )
+
+                            if result_str:  # Only add non-empty results
+                                tool_results.append(
+                                    {
+                                        "name": tool_name,
+                                        "result": result_str,
+                                    }
+                                )
+
         except Exception as e:
             logger.warning(f"Failed to extract tool calls from thread: {e}")
 
-        return tool_calls
+        return tool_calls, tool_results
 
     def _extract_token_usage(self, response: Any) -> TokenUsage | None:
         """Extract token usage from agent response metadata.

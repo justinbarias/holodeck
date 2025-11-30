@@ -95,6 +95,7 @@ class TestAgentExecutorExecution:
 
         mock_factory.invoke.return_value = AgentExecutionResult(
             tool_calls=[],
+            tool_results=[],
             chat_history=mock_history,
         )
         mock_factory_class.return_value = mock_factory
@@ -126,6 +127,7 @@ class TestAgentExecutorExecution:
                     "arguments": {"query": "test query"},
                 }
             ],
+            tool_results=[],
             chat_history=mock_history,
         )
         mock_factory_class.return_value = mock_factory
@@ -150,6 +152,7 @@ class TestAgentExecutorExecution:
 
         mock_factory.invoke.return_value = AgentExecutionResult(
             tool_calls=[],
+            tool_results=[],
             chat_history=mock_history,
         )
         mock_factory_class.return_value = mock_factory

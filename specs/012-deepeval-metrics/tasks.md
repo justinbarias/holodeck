@@ -14,36 +14,36 @@
 
 ---
 
-## Phase 1: Setup (Shared Infrastructure)
+## Phase 1: Setup (Shared Infrastructure) ✅
 
 **Purpose**: Add DeepEval dependency and create module structure
 
-- [ ] T001 Add `deepeval>=0.21.0,<1.0.0` to dependencies in pyproject.toml
-- [ ] T002 [P] Create deepeval evaluators module directory at src/holodeck/lib/evaluators/deepeval/
-- [ ] T003 [P] Create src/holodeck/lib/evaluators/deepeval/__init__.py with module exports
-- [ ] T004 [P] Create tests/unit/lib/evaluators/deepeval/ directory structure
+- [x] T001 Add `deepeval>=0.21.0,<1.0.0` to dependencies in pyproject.toml
+- [x] T002 [P] Create deepeval evaluators module directory at src/holodeck/lib/evaluators/deepeval/
+- [x] T003 [P] Create src/holodeck/lib/evaluators/deepeval/__init__.py with module exports
+- [x] T004 [P] Create tests/unit/lib/evaluators/deepeval/ directory structure
 
 ---
 
-## Phase 2: Foundational (Blocking Prerequisites)
+## Phase 2: Foundational (Blocking Prerequisites) ✅
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T005 Implement ProviderNotSupportedError in src/holodeck/lib/evaluators/deepeval/errors.py
-- [ ] T006 Implement DeepEvalError in src/holodeck/lib/evaluators/deepeval/errors.py
-- [ ] T007 Implement DeepEvalModelConfig with provider validation in src/holodeck/lib/evaluators/deepeval/config.py
-- [ ] T008 Implement to_deepeval_model() method using native DeepEval classes (GPTModel, AzureOpenAIModel, AnthropicModel, OllamaModel) in src/holodeck/lib/evaluators/deepeval/config.py
-- [ ] T009 Implement DeepEvalBaseEvaluator with _build_test_case and _evaluate_impl in src/holodeck/lib/evaluators/deepeval/base.py
-- [ ] T010 [P] Create unit tests for DeepEvalModelConfig in tests/unit/lib/evaluators/deepeval/test_config.py
-- [ ] T011 [P] Create unit tests for DeepEvalBaseEvaluator in tests/unit/lib/evaluators/deepeval/test_base.py
+- [x] T005 Implement ProviderNotSupportedError in src/holodeck/lib/evaluators/deepeval/errors.py
+- [x] T006 Implement DeepEvalError in src/holodeck/lib/evaluators/deepeval/errors.py
+- [x] T007 Implement DeepEvalModelConfig with provider validation in src/holodeck/lib/evaluators/deepeval/config.py
+- [x] T008 Implement to_deepeval_model() method using native DeepEval classes (GPTModel, AzureOpenAIModel, AnthropicModel, OllamaModel) in src/holodeck/lib/evaluators/deepeval/config.py
+- [x] T009 Implement DeepEvalBaseEvaluator with _build_test_case and _evaluate_impl in src/holodeck/lib/evaluators/deepeval/base.py
+- [x] T010 [P] Create unit tests for DeepEvalModelConfig in tests/unit/lib/evaluators/deepeval/test_config.py
+- [x] T011 [P] Create unit tests for DeepEvalBaseEvaluator in tests/unit/lib/evaluators/deepeval/test_base.py
 
-**Checkpoint**: Foundation ready - user story implementation can now begin
+**Checkpoint**: Foundation ready - user story implementation can now begin ✅
 
 ---
 
-## Phase 3: User Story 1 - Multi-Provider Support (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - Multi-Provider Support (Priority: P1) 🎯 MVP ✅
 
 **Goal**: Enable evaluation using OpenAI, Anthropic, or Ollama as judge models
 
@@ -51,22 +51,32 @@
 
 ### Tests for User Story 1
 
-- [ ] T012 [P] [US1] Create unit tests for GEvalEvaluator in tests/unit/lib/evaluators/deepeval/test_geval.py
+- [x] T012 [P] [US1] Create unit tests for GEvalEvaluator in tests/unit/lib/evaluators/deepeval/test_geval.py
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Implement GEvalEvaluator with criteria and evaluation_steps support in src/holodeck/lib/evaluators/deepeval/geval.py
-- [ ] T014 [US1] Add _create_metric() method wrapping DeepEval's GEval in src/holodeck/lib/evaluators/deepeval/geval.py
-- [ ] T015 [US1] Add _extract_result() method normalizing score to 0-1 in src/holodeck/lib/evaluators/deepeval/geval.py
-- [ ] T016 [US1] Add logging for evaluation scores and reasoning using HoloDeck logger in src/holodeck/lib/evaluators/deepeval/base.py
-- [ ] T017 [US1] Update src/holodeck/lib/evaluators/deepeval/__init__.py to export GEvalEvaluator
-- [ ] T018 [US1] Update src/holodeck/lib/evaluators/__init__.py to include deepeval module exports
+- [x] T013 [US1] Implement GEvalEvaluator with criteria and evaluation_steps support in src/holodeck/lib/evaluators/deepeval/geval.py
+- [x] T014 [US1] Add _create_metric() method wrapping DeepEval's GEval in src/holodeck/lib/evaluators/deepeval/geval.py
+- [x] T015 [US1] Add _extract_result() method normalizing score to 0-1 in src/holodeck/lib/evaluators/deepeval/geval.py (Note: handled by base class)
+- [x] T016 [US1] Add logging for evaluation scores and reasoning using HoloDeck logger in src/holodeck/lib/evaluators/deepeval/base.py (Note: already in base class)
+- [x] T017 [US1] Update src/holodeck/lib/evaluators/deepeval/__init__.py to export GEvalEvaluator
+- [x] T018 [US1] Update src/holodeck/lib/evaluators/__init__.py to include deepeval module exports
 
-**Checkpoint**: User Story 1 complete - can evaluate with any LLM provider using G-Eval
+### TestExecutor Integration for User Story 1
+
+- [x] T049 [US1] Create GEvalMetric model (discriminated union) with criteria, evaluation_steps, strict_mode, evaluation_params fields in src/holodeck/models/evaluation.py
+- [x] T050 [US1] Update EvaluationConfig.metrics to accept Union[EvaluationMetric, GEvalMetric] with discriminator on type field in src/holodeck/models/evaluation.py
+- [x] T051 [P] [US1] Create unit tests for GEvalMetric model validation in tests/unit/models/test_evaluation_deepeval.py
+- [x] T052 [US1] Add DeepEval imports (GEvalEvaluator, DeepEvalModelConfig) to src/holodeck/lib/test_runner/executor.py
+- [x] T053 [US1] Add _build_deepeval_config() helper method to convert LLMProvider to DeepEvalModelConfig in src/holodeck/lib/test_runner/executor.py
+- [x] T054 [US1] Extend _create_evaluators() to handle GEvalMetric instances in src/holodeck/lib/test_runner/executor.py
+- [x] T055 [P] [US1] Create unit tests for TestExecutor GEval integration in tests/unit/lib/test_runner/test_executor_deepeval.py
+
+**Checkpoint**: User Story 1 complete - can evaluate with any LLM provider using G-Eval ✅
 
 ---
 
-## Phase 4: User Story 2 - Custom Evaluation Criteria (Priority: P1)
+## Phase 4: User Story 2 - Custom Evaluation Criteria (Priority: P1) ✅
 
 **Goal**: Define custom evaluation criteria in natural language
 
@@ -74,16 +84,16 @@
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Create unit tests for custom criteria with threshold validation in tests/unit/lib/evaluators/deepeval/test_geval.py
+- [x] T019 [P] [US2] Create unit tests for custom criteria with threshold validation in tests/unit/lib/evaluators/deepeval/test_geval.py
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Add evaluation_params support (input, actual_output, expected_output, context, retrieval_context) in src/holodeck/lib/evaluators/deepeval/geval.py
-- [ ] T021 [US2] Add strict_mode support for binary scoring in src/holodeck/lib/evaluators/deepeval/geval.py
-- [ ] T022 [US2] Add threshold configuration with pass/fail logic in src/holodeck/lib/evaluators/deepeval/geval.py
-- [ ] T023 [US2] Add auto-generation of evaluation_steps when not provided in src/holodeck/lib/evaluators/deepeval/geval.py
+- [x] T020 [US2] Add evaluation_params support (input, actual_output, expected_output, context, retrieval_context) in src/holodeck/lib/evaluators/deepeval/geval.py
+- [x] T021 [US2] Add strict_mode support for binary scoring in src/holodeck/lib/evaluators/deepeval/geval.py
+- [x] T022 [US2] Add threshold configuration with pass/fail logic in src/holodeck/lib/evaluators/deepeval/geval.py (Note: inherited from base)
+- [x] T023 [US2] Add auto-generation of evaluation_steps when not provided in src/holodeck/lib/evaluators/deepeval/geval.py (Note: delegated to DeepEval)
 
-**Checkpoint**: User Story 2 complete - custom criteria evaluation working
+**Checkpoint**: User Story 2 complete - custom criteria evaluation working ✅
 
 ---
 
@@ -108,6 +118,17 @@
 - [ ] T031 [P] [US3] Implement ContextualRecallEvaluator in src/holodeck/lib/evaluators/deepeval/contextual_recall.py
 - [ ] T032 [US3] Add retrieval_context validation (required for RAG metrics) in src/holodeck/lib/evaluators/deepeval/base.py
 - [ ] T033 [US3] Update src/holodeck/lib/evaluators/deepeval/__init__.py to export all RAG evaluators
+
+### TestExecutor Integration for User Story 3
+
+- [ ] T056 [US3] Add retrieval_context field to TestCaseModel for RAG metrics in src/holodeck/models/test_case.py
+- [ ] T057 [US3] Create RAGMetric model (discriminated union) for faithfulness, contextual_relevancy, contextual_precision, contextual_recall in src/holodeck/models/evaluation.py
+- [ ] T058 [US3] Update EvaluationConfig.metrics Union to include RAGMetric in src/holodeck/models/evaluation.py
+- [ ] T059 [P] [US3] Create unit tests for RAGMetric model validation in tests/unit/models/test_evaluation_deepeval.py
+- [ ] T060 [US3] Add RAG evaluator imports (FaithfulnessEvaluator, ContextualRelevancyEvaluator, etc.) to src/holodeck/lib/test_runner/executor.py
+- [ ] T061 [US3] Extend _create_evaluators() to handle RAGMetric instances in src/holodeck/lib/test_runner/executor.py
+- [ ] T062 [US3] Update _run_evaluations() to pass retrieval_context for RAG metrics when available in src/holodeck/lib/test_runner/executor.py
+- [ ] T063 [P] [US3] Create unit tests for TestExecutor RAG metrics integration in tests/unit/lib/test_runner/test_executor_rag_metrics.py
 
 **Checkpoint**: User Story 3 complete - RAG evaluation suite working
 
@@ -149,6 +170,15 @@
 - [ ] T040 [US5] Implement AnswerRelevancyEvaluator wrapping DeepEval's AnswerRelevancyMetric in src/holodeck/lib/evaluators/deepeval/answer_relevancy.py
 - [ ] T041 [US5] Add include_reason parameter support in src/holodeck/lib/evaluators/deepeval/answer_relevancy.py
 - [ ] T042 [US5] Update src/holodeck/lib/evaluators/deepeval/__init__.py to export AnswerRelevancyEvaluator
+
+### TestExecutor Integration for User Story 5
+
+- [ ] T064 [US5] Create AnswerRelevancyMetric model (discriminated union) with include_reason field in src/holodeck/models/evaluation.py
+- [ ] T065 [US5] Update EvaluationConfig.metrics Union to include AnswerRelevancyMetric in src/holodeck/models/evaluation.py
+- [ ] T066 [P] [US5] Create unit tests for AnswerRelevancyMetric model validation in tests/unit/models/test_evaluation_deepeval.py
+- [ ] T067 [US5] Add AnswerRelevancyEvaluator import to src/holodeck/lib/test_runner/executor.py
+- [ ] T068 [US5] Extend _create_evaluators() to handle AnswerRelevancyMetric instances in src/holodeck/lib/test_runner/executor.py
+- [ ] T069 [P] [US5] Create unit tests for TestExecutor AnswerRelevancy integration in tests/unit/lib/test_runner/test_executor_answer_relevancy.py
 
 **Checkpoint**: User Story 5 complete - answer relevancy evaluation working
 
