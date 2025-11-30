@@ -150,6 +150,25 @@ class DeepEvalBaseEvaluator(BaseEvaluator):
 
         return summary
 
+    def _validate_retrieval_context(self, **kwargs: Any) -> None:
+        """Validate that retrieval_context is present for RAG metrics.
+
+        RAG-specific metrics (Faithfulness, ContextualRelevancy, etc.) require
+        retrieval_context to function properly. This method should be called
+        by RAG evaluators to ensure required inputs are provided.
+
+        Args:
+            **kwargs: Evaluation parameters to validate
+
+        Raises:
+            ValueError: If retrieval_context is not provided
+        """
+        if "retrieval_context" not in kwargs or kwargs["retrieval_context"] is None:
+            raise ValueError(
+                f"{self.__class__.__name__} requires retrieval_context. "
+                "Provide retrieval_context=[...] with retrieved text chunks."
+            )
+
     @abstractmethod
     def _create_metric(self) -> Any:
         """Create the DeepEval metric instance.

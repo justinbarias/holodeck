@@ -38,7 +38,13 @@ from holodeck.lib.evaluators.azure_ai import (
     RelevanceEvaluator,
 )
 from holodeck.lib.evaluators.base import BaseEvaluator
-from holodeck.lib.evaluators.deepeval import GEvalEvaluator
+from holodeck.lib.evaluators.deepeval import (
+    ContextualPrecisionEvaluator,
+    ContextualRecallEvaluator,
+    ContextualRelevancyEvaluator,
+    FaithfulnessEvaluator,
+    GEvalEvaluator,
+)
 from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.evaluators.nlp_metrics import (
     BLEUEvaluator,
@@ -51,7 +57,12 @@ from holodeck.lib.logging_utils import log_exception
 from holodeck.lib.test_runner.agent_factory import AgentFactory
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
-from holodeck.models.evaluation import EvaluationMetric, GEvalMetric
+from holodeck.models.evaluation import (
+    EvaluationMetric,
+    GEvalMetric,
+    RAGMetric,
+    RAGMetricType,
+)
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.test_result import (
@@ -273,7 +284,7 @@ class TestExecutor:
     def _create_evaluators(self) -> dict[str, BaseEvaluator]:
         """Create evaluator instances from evaluation config.
 
-        Supports both standard EvaluationMetric and GEvalMetric types.
+        Supports standard EvaluationMetric, GEvalMetric, and RAGMetric types.
 
         Returns:
             Dictionary mapping metric names to evaluator instances
@@ -307,6 +318,45 @@ class TestExecutor:
                     f"Created GEvalEvaluator: name={metric_config.name}, "
                     f"criteria_len={len(metric_config.criteria)}"
                 )
+                continue
+
+            # Handle RAG evaluation metrics
+            if isinstance(metric_config, RAGMetric):
+                llm_model = metric_config.model or default_model
+                deepeval_config = self._build_deepeval_config(llm_model)
+
+                # Map RAGMetricType to evaluator class and create instance
+                metric_name = metric_config.metric_type.value
+                if metric_config.metric_type == RAGMetricType.FAITHFULNESS:
+                    evaluators[metric_name] = FaithfulnessEvaluator(
+                        model_config=deepeval_config,
+                        threshold=metric_config.threshold,
+                        include_reason=metric_config.include_reason,
+                    )
+                elif metric_config.metric_type == RAGMetricType.CONTEXTUAL_RELEVANCY:
+                    evaluators[metric_name] = ContextualRelevancyEvaluator(
+                        model_config=deepeval_config,
+                        threshold=metric_config.threshold,
+                        include_reason=metric_config.include_reason,
+                    )
+                elif metric_config.metric_type == RAGMetricType.CONTEXTUAL_PRECISION:
+                    evaluators[metric_name] = ContextualPrecisionEvaluator(
+                        model_config=deepeval_config,
+                        threshold=metric_config.threshold,
+                        include_reason=metric_config.include_reason,
+                    )
+                elif metric_config.metric_type == RAGMetricType.CONTEXTUAL_RECALL:
+                    evaluators[metric_name] = ContextualRecallEvaluator(
+                        model_config=deepeval_config,
+                        threshold=metric_config.threshold,
+                        include_reason=metric_config.include_reason,
+                    )
+
+                if metric_name in evaluators:
+                    logger.debug(
+                        f"Created RAG evaluator: type={metric_name}, "
+                        f"threshold={metric_config.threshold}"
+                    )
                 continue
 
             # Handle standard EvaluationMetric types
@@ -609,9 +659,11 @@ class TestExecutor:
 
         # Run each metric
         for metric_config in metrics:
-            # Get metric name - GEvalMetric uses .name, EvaluationMetric uses .metric
+            # Get metric name based on metric type
             if isinstance(metric_config, GEvalMetric):
                 metric_name = metric_config.name
+            elif isinstance(metric_config, RAGMetric):
+                metric_name = metric_config.metric_type.value
             else:
                 metric_name = metric_config.metric
 
@@ -626,7 +678,7 @@ class TestExecutor:
                 start_time = time.time()
 
                 # Prepare evaluation inputs
-                eval_kwargs = {
+                eval_kwargs: dict[str, Any] = {
                     "response": agent_response,
                 }
 
@@ -641,6 +693,16 @@ class TestExecutor:
                 file_content = self._combine_file_contents(processed_files)
                 if file_content and metric_name in ("groundedness", "relevance"):
                     eval_kwargs["context"] = file_content
+
+                # Add retrieval_context for RAG metrics
+                rag_metric_names = {
+                    "faithfulness",
+                    "contextual_relevancy",
+                    "contextual_precision",
+                    "contextual_recall",
+                }
+                if metric_name in rag_metric_names and test_case.retrieval_context:
+                    eval_kwargs["retrieval_context"] = test_case.retrieval_context
 
                 # Run evaluation
                 result = await evaluator.evaluate(**eval_kwargs)
@@ -702,14 +764,14 @@ class TestExecutor:
     def _get_metrics_for_test(
         self,
         test_case: TestCaseModel,
-    ) -> list[EvaluationMetric | GEvalMetric]:
+    ) -> list[EvaluationMetric | GEvalMetric | RAGMetric]:
         """Resolve metrics for a test case (per-test override or global).
 
         Args:
             test_case: Test case configuration with optional per-test metrics
 
         Returns:
-            List of metrics to evaluate (standard or GEval)
+            List of metrics to evaluate (standard, GEval, or RAG)
 
         Logic:
             - If test_case.evaluations is provided and non-empty, use those

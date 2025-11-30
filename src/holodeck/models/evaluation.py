@@ -1,9 +1,10 @@
 """Evaluation models for agent configuration.
 
-This module defines the EvaluationMetric and related models used in agent.yaml
-configuration for specifying evaluation criteria and metrics.
+This module defines the EvaluationMetric, GEvalMetric, RAGMetric and related
+models used in agent.yaml configuration for specifying evaluation criteria.
 """
 
+from enum import Enum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -14,6 +15,19 @@ from holodeck.models.llm import LLMProvider
 VALID_EVALUATION_PARAMS = frozenset(
     ["input", "actual_output", "expected_output", "context", "retrieval_context"]
 )
+
+
+class RAGMetricType(str, Enum):
+    """RAG pipeline evaluation metric types.
+
+    These metrics evaluate the quality of Retrieval-Augmented Generation (RAG)
+    pipelines by assessing various aspects of retrieval and response generation.
+    """
+
+    FAITHFULNESS = "faithfulness"
+    CONTEXTUAL_RELEVANCY = "contextual_relevancy"
+    CONTEXTUAL_PRECISION = "contextual_precision"
+    CONTEXTUAL_RECALL = "contextual_recall"
 
 
 class EvaluationMetric(BaseModel):
@@ -211,9 +225,70 @@ class GEvalMetric(BaseModel):
         return v
 
 
+class RAGMetric(BaseModel):
+    """RAG pipeline evaluation metric configuration.
+
+    Uses discriminator pattern with type="rag" to distinguish from standard
+    EvaluationMetric and GEvalMetric instances in a discriminated union.
+
+    RAG metrics evaluate the quality of retrieval-augmented generation pipelines:
+    - Faithfulness: Detects hallucinations by comparing response to context
+    - ContextualRelevancy: Measures relevance of retrieved chunks to query
+    - ContextualPrecision: Evaluates ranking quality of retrieved chunks
+    - ContextualRecall: Measures retrieval completeness against expected output
+
+    Example:
+        >>> metric = RAGMetric(
+        ...     metric_type=RAGMetricType.FAITHFULNESS,
+        ...     threshold=0.8
+        ... )
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["rag"] = Field(
+        default="rag",
+        description="Discriminator field - always 'rag' for RAG metrics",
+    )
+    metric_type: RAGMetricType = Field(
+        ...,
+        description="RAG metric type (faithfulness, contextual_relevancy, etc.)",
+    )
+    threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Minimum passing score (0.0-1.0)",
+    )
+    include_reason: bool = Field(
+        default=True,
+        description="Include reasoning in evaluation results",
+    )
+    model: LLMProvider | None = Field(
+        None,
+        description="LLM model override for this metric",
+    )
+    enabled: bool = Field(
+        default=True,
+        description="Whether metric is enabled",
+    )
+    fail_on_error: bool = Field(
+        default=False,
+        description="Fail test if metric evaluation fails",
+    )
+
+    @field_validator("threshold")
+    @classmethod
+    def validate_threshold(cls, v: float) -> float:
+        """Validate threshold is in valid range."""
+        if v < 0.0 or v > 1.0:
+            raise ValueError("threshold must be between 0.0 and 1.0")
+        return v
+
+
 # Discriminated union type for metrics - uses 'type' field as discriminator
 MetricType = Annotated[
-    EvaluationMetric | GEvalMetric,
+    EvaluationMetric | GEvalMetric | RAGMetric,
     Field(discriminator="type"),
 ]
 
@@ -222,7 +297,8 @@ class EvaluationConfig(BaseModel):
     """Evaluation framework configuration.
 
     Container for evaluation metrics with optional default model configuration.
-    Supports both standard EvaluationMetric and GEvalMetric (custom criteria).
+    Supports standard EvaluationMetric, GEvalMetric (custom criteria), and
+    RAGMetric (RAG pipeline evaluation).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -231,14 +307,14 @@ class EvaluationConfig(BaseModel):
         None, description="Default LLM model for all metrics"
     )
     metrics: list[MetricType] = Field(
-        ..., description="List of metrics to evaluate (standard or GEval)"
+        ..., description="List of metrics to evaluate (standard, GEval, or RAG)"
     )
 
     @field_validator("metrics")
     @classmethod
     def validate_metrics(
-        cls, v: list[EvaluationMetric | GEvalMetric]
-    ) -> list[EvaluationMetric | GEvalMetric]:
+        cls, v: list[EvaluationMetric | GEvalMetric | RAGMetric]
+    ) -> list[EvaluationMetric | GEvalMetric | RAGMetric]:
         """Validate metrics list is not empty."""
         if not v:
             raise ValueError("metrics must have at least one metric")
