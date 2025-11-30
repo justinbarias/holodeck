@@ -388,6 +388,8 @@ class TestGEvalExecutionFlow:
     @pytest.mark.asyncio
     async def test_geval_metric_in_test_execution(self):
         """Test execution with GEval metric invokes evaluator correctly."""
+        from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
+
         test_case = TestCaseModel(
             name="test_geval",
             input="What is machine learning?",
@@ -443,13 +445,21 @@ class TestGEvalExecutionFlow:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
         mock_factory.invoke = AsyncMock(return_value=mock_result)
 
         # Mock GEval evaluator to return a score
-        mock_geval_evaluator = AsyncMock()
+        # Must use Mock() with proper get_param_spec, not AsyncMock
+        mock_geval_evaluator = Mock()
+        mock_geval_evaluator.name = "Comprehensiveness"
+        mock_geval_evaluator.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset({EvalParam.RESPONSE, EvalParam.QUERY}),
+            )
+        )
         mock_geval_evaluator.evaluate = AsyncMock(
             return_value={
                 "score": 0.85,
@@ -487,6 +497,8 @@ class TestGEvalExecutionFlow:
     @pytest.mark.asyncio
     async def test_mixed_metrics_execution(self):
         """Test execution with both standard and GEval metrics."""
+        from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
+
         test_case = TestCaseModel(
             name="test_mixed",
             input="Translate hello to Spanish",
@@ -538,16 +550,29 @@ class TestGEvalExecutionFlow:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
         mock_factory.invoke = AsyncMock(return_value=mock_result)
 
-        # Mock evaluators
-        mock_bleu = AsyncMock()
+        # Mock evaluators with proper get_param_spec
+        mock_bleu = Mock()
+        mock_bleu.name = "bleu"
+        mock_bleu.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset({EvalParam.RESPONSE, EvalParam.GROUND_TRUTH}),
+            )
+        )
         mock_bleu.evaluate = AsyncMock(return_value={"bleu": 1.0})
 
-        mock_geval = AsyncMock()
+        mock_geval = Mock()
+        mock_geval.name = "Correctness"
+        mock_geval.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset({EvalParam.RESPONSE, EvalParam.QUERY}),
+            )
+        )
         mock_geval.evaluate = AsyncMock(return_value={"score": 0.9})
 
         executor = TestExecutor(
@@ -571,6 +596,8 @@ class TestGEvalExecutionFlow:
     @pytest.mark.asyncio
     async def test_geval_per_test_override(self):
         """Test that per-test GEval metrics override global metrics."""
+        from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
+
         # Per-test metric
         per_test_metric = GEvalMetric(
             name="SpecificCriteria",
@@ -634,18 +661,44 @@ class TestGEvalExecutionFlow:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
         mock_factory.invoke = AsyncMock(return_value=mock_result)
 
-        # Mock all possible evaluators
+        # Mock all possible evaluators with proper get_param_spec
+        mock_bleu = Mock()
+        mock_bleu.name = "bleu"
+        mock_bleu.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset({EvalParam.RESPONSE, EvalParam.GROUND_TRUTH}),
+            )
+        )
+        mock_bleu.evaluate = AsyncMock(return_value={"bleu": 0.8})
+
+        mock_global = Mock()
+        mock_global.name = "GlobalMetric"
+        mock_global.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset({EvalParam.RESPONSE, EvalParam.QUERY}),
+            )
+        )
+        mock_global.evaluate = AsyncMock(return_value={"score": 0.85})
+
+        mock_specific = Mock()
+        mock_specific.name = "SpecificCriteria"
+        mock_specific.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset({EvalParam.RESPONSE, EvalParam.QUERY}),
+            )
+        )
+        mock_specific.evaluate = AsyncMock(return_value={"score": 0.95})
+
         mock_evaluators = {
-            "bleu": AsyncMock(evaluate=AsyncMock(return_value={"bleu": 0.8})),
-            "GlobalMetric": AsyncMock(evaluate=AsyncMock(return_value={"score": 0.85})),
-            "SpecificCriteria": AsyncMock(
-                evaluate=AsyncMock(return_value={"score": 0.95})
-            ),
+            "bleu": mock_bleu,
+            "GlobalMetric": mock_global,
+            "SpecificCriteria": mock_specific,
         }
 
         executor = TestExecutor(

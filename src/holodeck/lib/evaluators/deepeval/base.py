@@ -5,13 +5,14 @@ It handles model configuration, test case construction, and result normalization
 """
 
 from abc import abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 from deepeval.test_case import LLMTestCase
 
 from holodeck.lib.evaluators.base import BaseEvaluator, RetryConfig
 from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.evaluators.deepeval.errors import DeepEvalError
+from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
 from holodeck.lib.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -27,6 +28,11 @@ class DeepEvalBaseEvaluator(BaseEvaluator):
 
     Subclasses must implement _create_metric() to return the specific
     DeepEval metric instance.
+
+    Note: DeepEval uses different parameter names than Azure AI/NLP:
+    - input (not query)
+    - actual_output (not response)
+    - expected_output (not ground_truth)
 
     Attributes:
         model_config: Configuration for the evaluation LLM
@@ -47,6 +53,19 @@ class DeepEvalBaseEvaluator(BaseEvaluator):
         ...     actual_output="Python is a programming language."
         ... )
     """
+
+    # Default PARAM_SPEC for DeepEval evaluators - uses DeepEval param names
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset({EvalParam.ACTUAL_OUTPUT}),
+        optional=frozenset(
+            {
+                EvalParam.INPUT,
+                EvalParam.EXPECTED_OUTPUT,
+                EvalParam.CONTEXT,
+                EvalParam.RETRIEVAL_CONTEXT,
+            }
+        ),
+    )
 
     def __init__(
         self,

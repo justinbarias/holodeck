@@ -715,7 +715,9 @@ class TestOllamaIntegration:
                 raise ConnectionError("Temporary Ollama connection issue")
 
             history = ChatHistory()
-            return AgentExecutionResult(tool_calls=[], chat_history=history)
+            return AgentExecutionResult(
+                tool_calls=[], tool_results=[], chat_history=history
+            )
 
         with patch.object(factory, "_invoke_agent_impl", side_effect=flaky_invoke):
             result = await factory.invoke("Test query")

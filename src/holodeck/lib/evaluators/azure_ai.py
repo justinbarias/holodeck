@@ -15,7 +15,7 @@ References:
   https://learn.microsoft.com/azure/ai-foundry/how-to/develop/evaluate-sdk
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from azure.ai.evaluation import AzureOpenAIModelConfiguration
 from azure.ai.evaluation import CoherenceEvaluator as AzureCoherenceEvaluator
@@ -26,6 +26,7 @@ from azure.ai.evaluation import SimilarityEvaluator as AzureSimilarityEvaluator
 from pydantic import BaseModel, Field
 
 from holodeck.lib.evaluators.base import BaseEvaluator, RetryConfig
+from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
 
 
 class ModelConfig(BaseModel):
@@ -175,6 +176,12 @@ class GroundednessEvaluator(AzureAIEvaluator):
         0.95
     """
 
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset({EvalParam.RESPONSE, EvalParam.CONTEXT}),
+        optional=frozenset({EvalParam.QUERY}),
+        uses_context=True,
+    )
+
     async def _evaluate_impl(self, **kwargs: Any) -> dict[str, Any]:
         """Implement groundedness evaluation.
 
@@ -233,6 +240,12 @@ class RelevanceEvaluator(AzureAIEvaluator):
         ... )
     """
 
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset({EvalParam.RESPONSE, EvalParam.QUERY}),
+        optional=frozenset({EvalParam.CONTEXT}),
+        uses_context=True,
+    )
+
     async def _evaluate_impl(self, **kwargs: Any) -> dict[str, Any]:
         """Implement relevance evaluation.
 
@@ -282,6 +295,10 @@ class CoherenceEvaluator(AzureAIEvaluator):
         ... )
     """
 
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset({EvalParam.RESPONSE, EvalParam.QUERY}),
+    )
+
     async def _evaluate_impl(self, **kwargs: Any) -> dict[str, Any]:
         """Implement coherence evaluation.
 
@@ -330,6 +347,10 @@ class FluencyEvaluator(AzureAIEvaluator):
         ...     response="This is a well-written response."
         ... )
     """
+
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset({EvalParam.RESPONSE, EvalParam.QUERY}),
+    )
 
     async def _evaluate_impl(self, **kwargs: Any) -> dict[str, Any]:
         """Implement fluency evaluation.
@@ -382,6 +403,12 @@ class SimilarityEvaluator(AzureAIEvaluator):
         ...     ground_truth="2+2 equals 4."
         ... )
     """
+
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset(
+            {EvalParam.RESPONSE, EvalParam.QUERY, EvalParam.GROUND_TRUTH}
+        ),
+    )
 
     async def _evaluate_impl(self, **kwargs: Any) -> dict[str, Any]:
         """Implement similarity evaluation.

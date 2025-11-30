@@ -850,6 +850,7 @@ class TestEvaluationMetrics:
     @pytest.mark.asyncio
     async def test_evaluation_failure_recorded(self):
         """Test that evaluation failures are recorded in metric results."""
+        from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
         from holodeck.models.agent import Instructions
         from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
         from holodeck.models.llm import LLMProvider, ProviderEnum
@@ -911,7 +912,15 @@ class TestEvaluationMetrics:
         mock_factory.invoke = AsyncMock(return_value=mock_result)
 
         # Mock evaluator that raises exception
-        mock_evaluator = AsyncMock()
+        # Must return proper ParamSpec for get_param_spec() to avoid coroutine issues
+        mock_evaluator = Mock()
+        mock_evaluator.name = "groundedness"
+        mock_evaluator.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset({EvalParam.RESPONSE, EvalParam.CONTEXT}),
+                uses_context=True,
+            )
+        )
         mock_evaluator.evaluate = AsyncMock(
             side_effect=RuntimeError("Evaluator failed")
         )
@@ -1009,6 +1018,7 @@ class TestContextInEvaluation:
     @pytest.mark.asyncio
     async def test_context_passed_to_groundedness_metric(self):
         """Test that file context is passed to groundedness evaluation."""
+        from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
         from holodeck.models.agent import Instructions
         from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
         from holodeck.models.llm import LLMProvider, ProviderEnum
@@ -1083,7 +1093,14 @@ class TestContextInEvaluation:
             evaluation_kwargs.update(kwargs)
             return {"score": 0.85}
 
-        mock_evaluator = AsyncMock()
+        mock_evaluator = Mock()
+        mock_evaluator.name = "groundedness"
+        mock_evaluator.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset({EvalParam.RESPONSE, EvalParam.CONTEXT}),
+                uses_context=True,
+            )
+        )
         mock_evaluator.evaluate = AsyncMock(side_effect=capture_evaluate)
 
         executor = TestExecutor(
@@ -1175,6 +1192,7 @@ class TestReportGeneration:
     @pytest.mark.asyncio
     async def test_report_summary_statistics(self):
         """Test that report summary calculates correct statistics."""
+        from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
         from holodeck.models.agent import Instructions
         from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
         from holodeck.models.llm import LLMProvider, ProviderEnum
@@ -1245,7 +1263,13 @@ class TestReportGeneration:
         mock_factory = Mock(spec=AgentFactory)
         mock_factory.invoke = AsyncMock(return_value=mock_result)
 
-        mock_evaluator = AsyncMock()
+        mock_evaluator = Mock()
+        mock_evaluator.name = "meteor"
+        mock_evaluator.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset({EvalParam.RESPONSE, EvalParam.GROUND_TRUTH}),
+            )
+        )
         mock_evaluator.evaluate = AsyncMock(return_value={"meteor": 0.8})
 
         executor = TestExecutor(
@@ -2949,6 +2973,7 @@ class TestDynamicRetrievalContext:
     @pytest.mark.asyncio
     async def test_manual_retrieval_context_takes_precedence(self):
         """Manual retrieval_context in test case takes precedence over dynamic."""
+        from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
         from holodeck.models.agent import Instructions
         from holodeck.models.evaluation import (
             EvaluationConfig,
@@ -3034,7 +3059,20 @@ class TestDynamicRetrievalContext:
             evaluation_kwargs.update(kwargs)
             return {"faithfulness": 0.9}
 
-        mock_evaluator = AsyncMock()
+        mock_evaluator = Mock()
+        mock_evaluator.name = "faithfulness"
+        mock_evaluator.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset(
+                    {
+                        EvalParam.ACTUAL_OUTPUT,
+                        EvalParam.INPUT,
+                        EvalParam.RETRIEVAL_CONTEXT,
+                    }
+                ),
+                uses_retrieval_context=True,
+            )
+        )
         mock_evaluator.evaluate = AsyncMock(side_effect=capture_evaluate)
 
         executor = TestExecutor(
@@ -3057,6 +3095,7 @@ class TestDynamicRetrievalContext:
     @pytest.mark.asyncio
     async def test_dynamic_retrieval_context_used_when_no_manual(self):
         """Dynamic retrieval_context from tool results used when no manual."""
+        from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
         from holodeck.models.agent import Instructions
         from holodeck.models.evaluation import (
             EvaluationConfig,
@@ -3142,7 +3181,20 @@ class TestDynamicRetrievalContext:
             evaluation_kwargs.update(kwargs)
             return {"faithfulness": 0.9}
 
-        mock_evaluator = AsyncMock()
+        mock_evaluator = Mock()
+        mock_evaluator.name = "faithfulness"
+        mock_evaluator.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset(
+                    {
+                        EvalParam.ACTUAL_OUTPUT,
+                        EvalParam.INPUT,
+                        EvalParam.RETRIEVAL_CONTEXT,
+                    }
+                ),
+                uses_retrieval_context=True,
+            )
+        )
         mock_evaluator.evaluate = AsyncMock(side_effect=capture_evaluate)
 
         executor = TestExecutor(

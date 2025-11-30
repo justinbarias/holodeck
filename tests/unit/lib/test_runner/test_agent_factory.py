@@ -410,9 +410,12 @@ class TestAgentFactoryInvocation:
             expected_tool_calls = [
                 {"name": "search", "arguments": {"query": "Python testing"}}
             ]
+            expected_tool_results: list[dict[str, Any]] = []
 
-            async def mock_extract(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
-                return expected_tool_calls
+            async def mock_extract(
+                *_args: Any, **_kwargs: Any
+            ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+                return expected_tool_calls, expected_tool_results
 
             with mock.patch.object(
                 factory, "_extract_tool_calls_from_thread", side_effect=mock_extract
@@ -457,9 +460,12 @@ class TestAgentFactoryInvocation:
                 {"name": "analyze", "arguments": {"data": [1, 2, 3]}},
                 {"name": "format", "arguments": {"type": "json"}},
             ]
+            expected_tool_results: list[dict[str, Any]] = []
 
-            async def mock_extract(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
-                return expected_tool_calls
+            async def mock_extract(
+                *_args: Any, **_kwargs: Any
+            ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+                return expected_tool_calls, expected_tool_results
 
             with mock.patch.object(
                 factory, "_extract_tool_calls_from_thread", side_effect=mock_extract
@@ -645,7 +651,9 @@ class TestAgentFactoryRetry:
                     raise ConnectionError("Network error")
 
                 history = ChatHistory()
-                return AgentExecutionResult(tool_calls=[], chat_history=history)
+                return AgentExecutionResult(
+                    tool_calls=[], tool_results=[], chat_history=history
+                )
 
             # Patch the internal implementation method
             with mock.patch.object(
@@ -835,9 +843,12 @@ class TestAgentFactoryIntegration:
             expected_tool_calls = [
                 {"name": "search", "arguments": {"query": "integration testing"}}
             ]
+            expected_tool_results: list[dict[str, Any]] = []
 
-            async def mock_extract(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
-                return expected_tool_calls
+            async def mock_extract(
+                *_args: Any, **_kwargs: Any
+            ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+                return expected_tool_calls, expected_tool_results
 
             with mock.patch.object(
                 factory, "_extract_tool_calls_from_thread", side_effect=mock_extract
@@ -888,7 +899,9 @@ class TestAgentFactoryIntegration:
                     raise ConnectionError("Temporary network issue")
 
                 history = ChatHistory()
-                return AgentExecutionResult(tool_calls=[], chat_history=history)
+                return AgentExecutionResult(
+                    tool_calls=[], tool_results=[], chat_history=history
+                )
 
             with mock.patch.object(
                 factory, "_invoke_agent_impl", side_effect=flaky_invoke
@@ -2285,11 +2298,14 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            result = await factory._extract_tool_calls_from_thread(mock_thread)
+            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+                mock_thread
+            )
 
-            assert len(result) == 1
-            assert result[0]["name"] == "vectorstore-search"
-            assert result[0]["arguments"] == {"query": "test"}
+            assert len(tool_calls) == 1
+            assert tool_calls[0]["name"] == "vectorstore-search"
+            assert tool_calls[0]["arguments"] == {"query": "test"}
+            assert tool_results == []  # No FunctionResultContent in this test
 
     @pytest.mark.asyncio
     async def test_extract_tool_calls_with_dict_arguments(self) -> None:
@@ -2330,11 +2346,14 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            result = await factory._extract_tool_calls_from_thread(mock_thread)
+            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+                mock_thread
+            )
 
-            assert len(result) == 1
-            assert result[0]["name"] == "calculate"
-            assert result[0]["arguments"] == {"x": 10, "y": 20}
+            assert len(tool_calls) == 1
+            assert tool_calls[0]["name"] == "calculate"
+            assert tool_calls[0]["arguments"] == {"x": 10, "y": 20}
+            assert tool_results == []
 
     @pytest.mark.asyncio
     async def test_extract_tool_calls_with_invalid_json_arguments(self) -> None:
@@ -2375,11 +2394,14 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            result = await factory._extract_tool_calls_from_thread(mock_thread)
+            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+                mock_thread
+            )
 
-            assert len(result) == 1
-            assert result[0]["name"] == "test-func"
-            assert result[0]["arguments"] == {"raw": "not valid json {"}
+            assert len(tool_calls) == 1
+            assert tool_calls[0]["name"] == "test-func"
+            assert tool_calls[0]["arguments"] == {"raw": "not valid json {"}
+            assert tool_results == []
 
     @pytest.mark.asyncio
     async def test_extract_tool_calls_deduplicates_by_id(self) -> None:
@@ -2426,10 +2448,13 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            result = await factory._extract_tool_calls_from_thread(mock_thread)
+            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+                mock_thread
+            )
 
             # Should only have one result due to deduplication
-            assert len(result) == 1
+            assert len(tool_calls) == 1
+            assert tool_results == []
 
     @pytest.mark.asyncio
     async def test_extract_tool_calls_handles_exception(self) -> None:
@@ -2459,10 +2484,13 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = failing_get_messages
 
-            # Should return empty list, not raise
-            result = await factory._extract_tool_calls_from_thread(mock_thread)
+            # Should return empty lists, not raise
+            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+                mock_thread
+            )
 
-            assert result == []
+            assert tool_calls == []
+            assert tool_results == []
 
     @pytest.mark.asyncio
     async def test_extract_tool_calls_with_none_arguments(self) -> None:
@@ -2502,10 +2530,13 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            result = await factory._extract_tool_calls_from_thread(mock_thread)
+            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+                mock_thread
+            )
 
-            assert len(result) == 1
-            assert result[0]["arguments"] == {}
+            assert len(tool_calls) == 1
+            assert tool_calls[0]["arguments"] == {}
+            assert tool_results == []
 
     @pytest.mark.asyncio
     async def test_extract_tool_calls_uses_call_id_fallback(self) -> None:
@@ -2546,10 +2577,13 @@ class TestToolCallExtraction:
 
             mock_thread.get_messages = mock_get_messages
 
-            result = await factory._extract_tool_calls_from_thread(mock_thread)
+            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+                mock_thread
+            )
 
-            assert len(result) == 1
-            assert result[0]["name"] == "plugin-func"
+            assert len(tool_calls) == 1
+            assert tool_calls[0]["name"] == "plugin-func"
+            assert tool_results == []
 
 
 class TestErrorHandlingBranches:
@@ -3061,10 +3095,13 @@ class TestMiscellaneousCoverage:
 
             mock_thread.get_messages = mock_get_messages
 
-            result = await factory._extract_tool_calls_from_thread(mock_thread)
+            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+                mock_thread
+            )
 
             # Should only have the FunctionCallContent
-            assert len(result) == 1
+            assert len(tool_calls) == 1
+            assert tool_results == []
 
     @pytest.mark.asyncio
     async def test_extract_tool_calls_message_without_items(self) -> None:
@@ -3096,6 +3133,9 @@ class TestMiscellaneousCoverage:
 
             mock_thread.get_messages = mock_get_messages
 
-            result = await factory._extract_tool_calls_from_thread(mock_thread)
+            tool_calls, tool_results = await factory._extract_tool_calls_from_thread(
+                mock_thread
+            )
 
-            assert result == []
+            assert tool_calls == []
+            assert tool_results == []

@@ -4,13 +4,14 @@ This module provides the ContextualPrecisionEvaluator class that wraps DeepEval'
 ContextualPrecisionMetric for evaluating the ranking quality of retrieved chunks.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from deepeval.metrics import ContextualPrecisionMetric
 
 from holodeck.lib.evaluators.base import RetryConfig
 from holodeck.lib.evaluators.deepeval.base import DeepEvalBaseEvaluator
 from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
+from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
 from holodeck.lib.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -44,6 +45,18 @@ class ContextualPrecisionEvaluator(DeepEvalBaseEvaluator):
     Attributes:
         _include_reason: Whether to include reasoning in results.
     """
+
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset(
+            {
+                EvalParam.ACTUAL_OUTPUT,
+                EvalParam.INPUT,
+                EvalParam.EXPECTED_OUTPUT,
+                EvalParam.RETRIEVAL_CONTEXT,
+            }
+        ),
+        uses_retrieval_context=True,
+    )
 
     def __init__(
         self,

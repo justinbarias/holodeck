@@ -55,6 +55,10 @@ from holodeck.lib.file_processor import FileProcessor
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_exception
 from holodeck.lib.test_runner.agent_factory import AgentFactory
+from holodeck.lib.test_runner.eval_kwargs_builder import (
+    EvalKwargsBuilder,
+    build_retrieval_context_from_tools,
+)
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.evaluation import (
@@ -685,39 +689,27 @@ class TestExecutor:
                 evaluator = self.evaluators[metric_name]
                 start_time = time.time()
 
-                # Prepare evaluation inputs
-                eval_kwargs: dict[str, Any] = {
-                    "response": agent_response,
-                }
-
-                # Add optional inputs based on metric type
-                if test_case.input:
-                    eval_kwargs["query"] = test_case.input
-
-                if test_case.ground_truth:
-                    eval_kwargs["ground_truth"] = test_case.ground_truth
-
-                # Combine file contents as context
+                # Prepare evaluation inputs using EvalKwargsBuilder
+                # This handles the parameter name differences between evaluator types:
+                # - Azure AI / NLP: response, query, ground_truth, context
+                # - DeepEval: actual_output, input, expected_output, retrieval_context
                 file_content = self._combine_file_contents(processed_files)
-                if file_content and metric_name in ("groundedness", "relevance"):
-                    eval_kwargs["context"] = file_content
 
-                # Add retrieval_context for RAG metrics
-                # Priority: manual override > dynamic extraction from tool results
-                rag_metric_names = {
-                    "faithfulness",
-                    "contextual_relevancy",
-                    "contextual_precision",
-                    "contextual_recall",
-                }
-                if metric_name in rag_metric_names:
-                    # Use manual retrieval_context if provided, else extract dynamically
-                    if test_case.retrieval_context:
-                        eval_kwargs["retrieval_context"] = test_case.retrieval_context
-                    elif tool_results:
-                        dynamic_context = self._build_retrieval_context(tool_results)
-                        if dynamic_context:
-                            eval_kwargs["retrieval_context"] = dynamic_context
+                # Resolve retrieval_context: manual override > dynamic from tools
+                retrieval_context = test_case.retrieval_context
+                if not retrieval_context and tool_results:
+                    retrieval_context = build_retrieval_context_from_tools(
+                        tool_results, self._get_retrieval_tool_names()
+                    )
+
+                kwargs_builder = EvalKwargsBuilder(
+                    agent_response=agent_response,
+                    input_query=test_case.input,
+                    ground_truth=test_case.ground_truth,
+                    file_content=file_content,
+                    retrieval_context=retrieval_context,
+                )
+                eval_kwargs = kwargs_builder.build_for(evaluator)
 
                 # Run evaluation
                 result = await evaluator.evaluate(**eval_kwargs)
@@ -859,19 +851,15 @@ class TestExecutor:
 
         Returns:
             List of retrieval context strings from retrieval tools only
+
+        Note:
+            This method delegates to build_retrieval_context_from_tools for
+            the actual extraction logic.
         """
         retrieval_tool_names = self._get_retrieval_tool_names()
-        retrieval_context: list[str] = []
-
-        for result in tool_results:
-            tool_name = result.get("name", "")
-            result_content = result.get("result", "")
-
-            # Check if this tool is a retrieval tool
-            if tool_name in retrieval_tool_names and result_content:
-                retrieval_context.append(result_content)
-
-        return retrieval_context
+        return (
+            build_retrieval_context_from_tools(tool_results, retrieval_tool_names) or []
+        )
 
     def _determine_test_passed(
         self,

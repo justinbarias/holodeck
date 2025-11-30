@@ -12,10 +12,11 @@ References:
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field, field_validator
 
+from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
 
@@ -74,15 +75,24 @@ class BaseEvaluator(ABC):
         timeout: Timeout in seconds for evaluation (default: 60s, None for no timeout)
         retry_config: Configuration for retry logic with exponential backoff
         name: Evaluator name (defaults to class name)
+        PARAM_SPEC: Class attribute declaring required/optional parameters
 
     Example:
         >>> class MyEvaluator(BaseEvaluator):
+        ...     PARAM_SPEC = ParamSpec(
+        ...         required=frozenset({EvalParam.RESPONSE, EvalParam.QUERY})
+        ...     )
         ...     async def _evaluate_impl(self, **kwargs):
         ...         return {"score": 0.85, "passed": True}
         >>>
         >>> evaluator = MyEvaluator(timeout=30.0)
         >>> result = await evaluator.evaluate(query="test", response="answer")
     """
+
+    # Default PARAM_SPEC - subclasses should override
+    PARAM_SPEC: ClassVar[ParamSpec] = ParamSpec(
+        required=frozenset({EvalParam.RESPONSE}),
+    )
 
     def __init__(
         self,
@@ -107,6 +117,15 @@ class BaseEvaluator(ABC):
     def name(self) -> str:
         """Return evaluator name (class name by default)."""
         return self.__class__.__name__
+
+    @classmethod
+    def get_param_spec(cls) -> ParamSpec:
+        """Get the parameter specification for this evaluator.
+
+        Returns:
+            ParamSpec declaring required/optional parameters and context flags.
+        """
+        return cls.PARAM_SPEC
 
     @abstractmethod
     async def _evaluate_impl(self, **kwargs: Any) -> dict[str, Any]:
@@ -287,4 +306,4 @@ class BaseEvaluator(ABC):
 
 
 # Export public API
-__all__ = ["BaseEvaluator", "EvaluationError", "RetryConfig"]
+__all__ = ["BaseEvaluator", "EvaluationError", "RetryConfig", "EvalParam", "ParamSpec"]
