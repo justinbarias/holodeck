@@ -38,6 +38,8 @@ from holodeck.lib.evaluators.azure_ai import (
     RelevanceEvaluator,
 )
 from holodeck.lib.evaluators.base import BaseEvaluator
+from holodeck.lib.evaluators.deepeval import GEvalEvaluator
+from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.evaluators.nlp_metrics import (
     BLEUEvaluator,
     METEOREvaluator,
@@ -49,7 +51,8 @@ from holodeck.lib.logging_utils import log_exception
 from holodeck.lib.test_runner.agent_factory import AgentFactory
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
-from holodeck.models.evaluation import EvaluationMetric
+from holodeck.models.evaluation import EvaluationMetric, GEvalMetric
+from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.test_result import (
     MetricResult,
@@ -238,8 +241,39 @@ class TestExecutor:
             force_ingest=self._force_ingest,
         )
 
+    def _build_deepeval_config(
+        self, llm_provider: LLMProvider | None
+    ) -> DeepEvalModelConfig | None:
+        """Convert LLMProvider to DeepEvalModelConfig.
+
+        Args:
+            llm_provider: HoloDeck LLM provider configuration
+
+        Returns:
+            DeepEvalModelConfig instance or None if no provider
+        """
+        if not llm_provider:
+            return None
+
+        # Build config with fields available in LLMProvider
+        # For Azure OpenAI, use model name as deployment name if not specified
+        deployment_name = None
+        if llm_provider.provider == ProviderEnum.AZURE_OPENAI:
+            deployment_name = llm_provider.name  # Use model name as deployment name
+
+        return DeepEvalModelConfig(
+            provider=llm_provider.provider,
+            model_name=llm_provider.name,
+            api_key=llm_provider.api_key,
+            endpoint=llm_provider.endpoint,
+            deployment_name=deployment_name,
+            temperature=0.0,  # Deterministic for evaluation
+        )
+
     def _create_evaluators(self) -> dict[str, BaseEvaluator]:
         """Create evaluator instances from evaluation config.
+
+        Supports both standard EvaluationMetric and GEvalMetric types.
 
         Returns:
             Dictionary mapping metric names to evaluator instances
@@ -249,16 +283,34 @@ class TestExecutor:
         if not self.agent_config.evaluations:
             return evaluators
 
+        # Get default model for all metrics
+        default_model = self.agent_config.evaluations.model
+
         # Create evaluators for configured metrics
         for metric_config in self.agent_config.evaluations.metrics:
-            metric_name = metric_config.metric
+            # Handle GEval custom criteria metrics
+            if isinstance(metric_config, GEvalMetric):
+                llm_model = metric_config.model or default_model
+                deepeval_config = self._build_deepeval_config(llm_model)
 
-            # Azure AI evaluators
-            default_model = (
-                self.agent_config.evaluations.model
-                if self.agent_config.evaluations
-                else None
-            )
+                # Use metric name as the evaluator key
+                evaluators[metric_config.name] = GEvalEvaluator(
+                    name=metric_config.name,
+                    criteria=metric_config.criteria,
+                    evaluation_params=metric_config.evaluation_params,
+                    evaluation_steps=metric_config.evaluation_steps,
+                    strict_mode=metric_config.strict_mode,
+                    model_config=deepeval_config,
+                    threshold=metric_config.threshold or 0.5,
+                )
+                logger.debug(
+                    f"Created GEvalEvaluator: name={metric_config.name}, "
+                    f"criteria_len={len(metric_config.criteria)}"
+                )
+                continue
+
+            # Handle standard EvaluationMetric types
+            metric_name = metric_config.metric
 
             # Get model config (per-metric or default)
             llm_model = metric_config.model or default_model
@@ -557,7 +609,11 @@ class TestExecutor:
 
         # Run each metric
         for metric_config in metrics:
-            metric_name = metric_config.metric
+            # Get metric name - GEvalMetric uses .name, EvaluationMetric uses .metric
+            if isinstance(metric_config, GEvalMetric):
+                metric_name = metric_config.name
+            else:
+                metric_name = metric_config.metric
 
             if metric_name not in self.evaluators:
                 # Metric not configured, skip
@@ -646,14 +702,14 @@ class TestExecutor:
     def _get_metrics_for_test(
         self,
         test_case: TestCaseModel,
-    ) -> list[EvaluationMetric]:
+    ) -> list[EvaluationMetric | GEvalMetric]:
         """Resolve metrics for a test case (per-test override or global).
 
         Args:
             test_case: Test case configuration with optional per-test metrics
 
         Returns:
-            List of metrics to evaluate
+            List of metrics to evaluate (standard or GEval)
 
         Logic:
             - If test_case.evaluations is provided and non-empty, use those
@@ -667,7 +723,7 @@ class TestExecutor:
 
         # Fall back to global metrics
         if self.agent_config.evaluations:
-            return self.agent_config.evaluations.metrics
+            return list(self.agent_config.evaluations.metrics)
         return []
 
     def _combine_file_contents(self, processed_files: list[ProcessedFileInput]) -> str:

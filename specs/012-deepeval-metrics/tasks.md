@@ -64,13 +64,13 @@
 
 ### TestExecutor Integration for User Story 1
 
-- [ ] T049 [US1] Create GEvalMetric model (discriminated union) with criteria, evaluation_steps, strict_mode, evaluation_params fields in src/holodeck/models/evaluation.py
-- [ ] T050 [US1] Update EvaluationConfig.metrics to accept Union[EvaluationMetric, GEvalMetric] with discriminator on metric field in src/holodeck/models/evaluation.py
-- [ ] T051 [P] [US1] Create unit tests for GEvalMetric model validation in tests/unit/models/test_evaluation_deepeval.py
-- [ ] T052 [US1] Add DeepEval imports (GEvalEvaluator, DeepEvalModelConfig) to src/holodeck/lib/test_runner/executor.py
-- [ ] T053 [US1] Add _build_deepeval_config() helper method to convert LLMProvider to DeepEvalModelConfig in src/holodeck/lib/test_runner/executor.py
-- [ ] T054 [US1] Extend _create_evaluators() to handle GEvalMetric instances in src/holodeck/lib/test_runner/executor.py
-- [ ] T055 [P] [US1] Create unit tests for TestExecutor GEval integration in tests/unit/lib/test_runner/test_executor_deepeval.py
+- [x] T049 [US1] Create GEvalMetric model (discriminated union) with criteria, evaluation_steps, strict_mode, evaluation_params fields in src/holodeck/models/evaluation.py
+- [x] T050 [US1] Update EvaluationConfig.metrics to accept Union[EvaluationMetric, GEvalMetric] with discriminator on type field in src/holodeck/models/evaluation.py
+- [x] T051 [P] [US1] Create unit tests for GEvalMetric model validation in tests/unit/models/test_evaluation_deepeval.py
+- [x] T052 [US1] Add DeepEval imports (GEvalEvaluator, DeepEvalModelConfig) to src/holodeck/lib/test_runner/executor.py
+- [x] T053 [US1] Add _build_deepeval_config() helper method to convert LLMProvider to DeepEvalModelConfig in src/holodeck/lib/test_runner/executor.py
+- [x] T054 [US1] Extend _create_evaluators() to handle GEvalMetric instances in src/holodeck/lib/test_runner/executor.py
+- [x] T055 [P] [US1] Create unit tests for TestExecutor GEval integration in tests/unit/lib/test_runner/test_executor_deepeval.py
 
 **Checkpoint**: User Story 1 complete - can evaluate with any LLM provider using G-Eval ✅
 
