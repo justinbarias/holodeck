@@ -223,6 +223,7 @@ class TestExecutorMainFlow:
         # Mock agent execution result
         mock_result = AgentExecutionResult(
             tool_calls=[],
+            tool_results=[],
             chat_history=mock_chat_history,
         )
 
@@ -342,6 +343,7 @@ class TestFileProcessing:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -410,6 +412,7 @@ class TestFileProcessing:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -596,6 +599,7 @@ class TestFileContentInAgent:
             captured_input = agent_input
             mock_result = Mock()
             mock_result.tool_calls = []
+            mock_result.tool_results = []
             mock_chat_history = Mock()
             mock_message = Mock()
             mock_message.role = "assistant"
@@ -667,6 +671,7 @@ class TestChatHistoryHandling:
         mock_factory = Mock(spec=AgentFactory)
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = None  # Empty chat history
         mock_factory.invoke = AsyncMock(return_value=mock_result)
 
@@ -819,6 +824,7 @@ class TestEvaluationMetrics:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -898,6 +904,7 @@ class TestEvaluationMetrics:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1063,6 +1070,7 @@ class TestContextInEvaluation:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1141,6 +1149,7 @@ class TestNoMetricsConfigured:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1230,6 +1239,7 @@ class TestReportGeneration:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1300,6 +1310,7 @@ class TestReportGeneration:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1405,6 +1416,7 @@ class TestPerTestMetricResolution:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1494,6 +1506,7 @@ class TestPerTestMetricResolution:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1624,6 +1637,7 @@ class TestPerTestMetricResolution:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1722,6 +1736,7 @@ class TestPerTestMetricResolution:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1797,6 +1812,7 @@ class TestProgressCallbackIntegration:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1861,6 +1877,7 @@ class TestProgressCallbackIntegration:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1920,6 +1937,7 @@ class TestProgressCallbackIntegration:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -1990,6 +2008,7 @@ class TestProgressCallbackIntegration:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -2056,6 +2075,7 @@ class TestProgressCallbackIntegration:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -2343,6 +2363,7 @@ class TestOnTestStartCallback:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -2613,6 +2634,7 @@ class TestChatHistoryEdgeCases:
         mock_factory = Mock(spec=AgentFactory)
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_chat_history = Mock()
         mock_chat_history.messages = []  # Empty messages list
         mock_result.chat_history = mock_chat_history
@@ -2689,6 +2711,7 @@ class TestUnconfiguredMetrics:
 
         mock_result = Mock()
         mock_result.tool_calls = []
+        mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
 
         mock_factory = Mock(spec=AgentFactory)
@@ -2706,6 +2729,439 @@ class TestUnconfiguredMetrics:
         # Verify test ran but metric was skipped (no metric results)
         assert len(report.results) == 1
         assert len(report.results[0].metric_results) == 0
+
+
+class TestDynamicRetrievalContext:
+    """Tests for dynamic retrieval context extraction from tool results.
+
+    Tests verify that:
+    - retrieval_context is built from vectorstore tool results
+    - retrieval_context is built from MCP tools with is_retrieval=True
+    - Manual retrieval_context takes precedence over dynamic extraction
+    - Empty tool results produce empty retrieval_context
+    """
+
+    def test_get_retrieval_tool_names_with_vectorstore(self):
+        """Vectorstore tools are identified as retrieval tools."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+        from holodeck.models.tool import VectorstoreTool
+
+        vectorstore_tool = VectorstoreTool(
+            name="knowledge_base",
+            description="Search knowledge base",
+            source="data/docs",
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            tools=[vectorstore_tool],
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        retrieval_tools = executor._get_retrieval_tool_names()
+
+        # Vectorstore tools use "vectorstore-{name}" format
+        assert "vectorstore-knowledge_base" in retrieval_tools
+
+    def test_get_retrieval_tool_names_with_mcp_retrieval(self):
+        """MCP tools with is_retrieval=True are identified as retrieval tools."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+        from holodeck.models.tool import CommandType, MCPTool
+
+        mcp_tool = MCPTool(
+            name="doc_search",
+            description="Search documents via MCP",
+            command=CommandType.NPX,
+            args=["@search/mcp-server"],
+            is_retrieval=True,
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            tools=[mcp_tool],
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        retrieval_tools = executor._get_retrieval_tool_names()
+
+        assert "doc_search" in retrieval_tools
+
+    def test_get_retrieval_tool_names_excludes_non_retrieval_mcp(self):
+        """MCP tools without is_retrieval=True are not included."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+        from holodeck.models.tool import CommandType, MCPTool
+
+        mcp_tool = MCPTool(
+            name="filesystem",
+            description="Filesystem operations",
+            command=CommandType.NPX,
+            args=["@filesystem/mcp-server"],
+            is_retrieval=False,  # Not a retrieval tool
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            tools=[mcp_tool],
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        retrieval_tools = executor._get_retrieval_tool_names()
+
+        assert "filesystem" not in retrieval_tools
+        assert len(retrieval_tools) == 0
+
+    def test_build_retrieval_context_filters_by_tool_name(self):
+        """Only results from retrieval tools are included in context."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+        from holodeck.models.tool import VectorstoreTool
+
+        vectorstore_tool = VectorstoreTool(
+            name="knowledge_base",
+            description="Search knowledge base",
+            source="data/docs",
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            tools=[vectorstore_tool],
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        # Mixed tool results - some from retrieval, some not
+        tool_results = [
+            {
+                "name": "vectorstore-knowledge_base",
+                "result": "Retrieved doc: Important information",
+            },
+            {"name": "calculator", "result": "42"},  # Not a retrieval tool
+        ]
+
+        context = executor._build_retrieval_context(tool_results)
+
+        # Only vectorstore result should be included
+        assert len(context) == 1
+        assert "Important information" in context[0]
+
+    def test_build_retrieval_context_empty_results(self):
+        """Empty tool results produce empty retrieval context."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            tools=None,
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+        )
+
+        context = executor._build_retrieval_context([])
+
+        assert context == []
+
+    @pytest.mark.asyncio
+    async def test_manual_retrieval_context_takes_precedence(self):
+        """Manual retrieval_context in test case takes precedence over dynamic."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.evaluation import (
+            EvaluationConfig,
+            RAGMetric,
+            RAGMetricType,
+        )
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+        from holodeck.models.tool import VectorstoreTool
+
+        # Test case with manual retrieval_context
+        test_case = TestCaseModel(
+            name="test_manual_context",
+            input="What is AI?",
+            expected_tools=None,
+            ground_truth=None,
+            files=None,
+            evaluations=None,
+            retrieval_context=["Manual context 1", "Manual context 2"],
+        )
+
+        vectorstore_tool = VectorstoreTool(
+            name="knowledge_base",
+            description="Search knowledge base",
+            source="data/docs",
+        )
+
+        eval_config = EvaluationConfig(
+            model=None,
+            metrics=[
+                RAGMetric(
+                    metric_type=RAGMetricType.FAITHFULNESS,
+                    threshold=0.7,
+                ),
+            ],
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[test_case],
+            evaluations=eval_config,
+            tools=[vectorstore_tool],
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        # Mock agent response with tool results (should be ignored)
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "AI is artificial intelligence."
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = [{"name": "vectorstore-knowledge_base"}]
+        mock_result.tool_results = [
+            {
+                "name": "vectorstore-knowledge_base",
+                "result": "Dynamic context from vectorstore",
+            }
+        ]
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        # Track what gets passed to evaluator
+        evaluation_kwargs: dict = {}
+
+        async def capture_evaluate(**kwargs) -> dict:
+            evaluation_kwargs.update(kwargs)
+            return {"faithfulness": 0.9}
+
+        mock_evaluator = AsyncMock()
+        mock_evaluator.evaluate = AsyncMock(side_effect=capture_evaluate)
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            evaluators={"faithfulness": mock_evaluator},
+        )
+
+        await executor.execute_tests()
+
+        # Manual retrieval_context should be used, not dynamic
+        assert "retrieval_context" in evaluation_kwargs
+        assert evaluation_kwargs["retrieval_context"] == [
+            "Manual context 1",
+            "Manual context 2",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_dynamic_retrieval_context_used_when_no_manual(self):
+        """Dynamic retrieval_context from tool results used when no manual."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.evaluation import (
+            EvaluationConfig,
+            RAGMetric,
+            RAGMetricType,
+        )
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+        from holodeck.models.tool import VectorstoreTool
+
+        # Test case WITHOUT manual retrieval_context
+        test_case = TestCaseModel(
+            name="test_dynamic_context",
+            input="What is AI?",
+            expected_tools=None,
+            ground_truth=None,
+            files=None,
+            evaluations=None,
+            retrieval_context=None,  # No manual context
+        )
+
+        vectorstore_tool = VectorstoreTool(
+            name="knowledge_base",
+            description="Search knowledge base",
+            source="data/docs",
+        )
+
+        eval_config = EvaluationConfig(
+            model=None,
+            metrics=[
+                RAGMetric(
+                    metric_type=RAGMetricType.FAITHFULNESS,
+                    threshold=0.7,
+                ),
+            ],
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[test_case],
+            evaluations=eval_config,
+            tools=[vectorstore_tool],
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        # Mock agent response with tool results
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "AI is artificial intelligence."
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = [{"name": "vectorstore-knowledge_base"}]
+        mock_result.tool_results = [
+            {
+                "name": "vectorstore-knowledge_base",
+                "result": "Dynamic context from vectorstore search",
+            }
+        ]
+        mock_result.chat_history = mock_chat_history
+
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.invoke = AsyncMock(return_value=mock_result)
+
+        # Track what gets passed to evaluator
+        evaluation_kwargs: dict = {}
+
+        async def capture_evaluate(**kwargs) -> dict:
+            evaluation_kwargs.update(kwargs)
+            return {"faithfulness": 0.9}
+
+        mock_evaluator = AsyncMock()
+        mock_evaluator.evaluate = AsyncMock(side_effect=capture_evaluate)
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            evaluators={"faithfulness": mock_evaluator},
+        )
+
+        await executor.execute_tests()
+
+        # Dynamic retrieval_context should be used
+        assert "retrieval_context" in evaluation_kwargs
+        assert len(evaluation_kwargs["retrieval_context"]) == 1
+        assert (
+            "Dynamic context from vectorstore search"
+            in evaluation_kwargs["retrieval_context"][0]
+        )
 
 
 class TestEmptyEvaluationsConfig:

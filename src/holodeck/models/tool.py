@@ -315,6 +315,17 @@ class MCPTool(BaseModel):
     load_prompts: bool = Field(True, description="Auto-discover prompts from server")
     request_timeout: int = Field(60, description="Operation timeout (seconds)")
 
+    # RAG evaluation fields
+    is_retrieval: bool = Field(
+        default=False,
+        description=(
+            "Mark this MCP tool as a retrieval tool for RAG evaluation metrics. "
+            "When True, tool results contribute to retrieval_context for metrics "
+            "like Faithfulness, ContextualRelevancy, ContextualPrecision, and "
+            "ContextualRecall."
+        ),
+    )
+
     @field_validator("url")
     @classmethod
     def validate_url_scheme(cls, v: str | None) -> str | None:

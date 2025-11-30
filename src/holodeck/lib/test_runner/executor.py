@@ -495,6 +495,7 @@ class TestExecutor:
         # Step 3: Invoke agent
         agent_response = None
         tool_calls: list[str] = []
+        tool_results: list[dict[str, Any]] = []
 
         logger.debug(f"Invoking agent for test: {test_case.name}")
         try:
@@ -504,10 +505,11 @@ class TestExecutor:
 
             agent_response = self._extract_response_text(result.chat_history)
             tool_calls = self._extract_tool_names(result.tool_calls)
+            tool_results = result.tool_results
 
             logger.debug(
                 f"Agent invocation completed in {invoke_elapsed:.2f}s, "
-                f"tools_called={len(tool_calls)}"
+                f"tools_called={len(tool_calls)}, tool_results={len(tool_results)}"
             )
         except TimeoutError:
             logger.error(
@@ -532,7 +534,7 @@ class TestExecutor:
         # Step 5: Run evaluations
         logger.debug(f"Running evaluations for test: {test_case.name}")
         metric_results = await self._run_evaluations(
-            test_case, agent_response, processed_files
+            test_case, agent_response, processed_files, tool_results
         )
         logger.debug(
             f"Completed {len(metric_results)} evaluations for test: {test_case.name}"
@@ -635,16 +637,22 @@ class TestExecutor:
         test_case: TestCaseModel,
         agent_response: str | None,
         processed_files: list[ProcessedFileInput],
+        tool_results: list[dict[str, Any]] | None = None,
     ) -> list[MetricResult]:
         """Run evaluation metrics for test case.
 
         Evaluations are run with graceful degradation - if a metric fails,
         the error is recorded but execution continues with other metrics.
 
+        For RAG metrics, retrieval_context is resolved with priority:
+        1. Manual override from test_case.retrieval_context (if provided)
+        2. Dynamic extraction from retrieval tool results
+
         Args:
             test_case: Test case configuration
             agent_response: Agent's response text (can be None if agent failed)
             processed_files: Processed file inputs
+            tool_results: List of tool result dicts with 'name' and 'result' keys
 
         Returns:
             List of metric results
@@ -695,14 +703,21 @@ class TestExecutor:
                     eval_kwargs["context"] = file_content
 
                 # Add retrieval_context for RAG metrics
+                # Priority: manual override > dynamic extraction from tool results
                 rag_metric_names = {
                     "faithfulness",
                     "contextual_relevancy",
                     "contextual_precision",
                     "contextual_recall",
                 }
-                if metric_name in rag_metric_names and test_case.retrieval_context:
-                    eval_kwargs["retrieval_context"] = test_case.retrieval_context
+                if metric_name in rag_metric_names:
+                    # Use manual retrieval_context if provided, else extract dynamically
+                    if test_case.retrieval_context:
+                        eval_kwargs["retrieval_context"] = test_case.retrieval_context
+                    elif tool_results:
+                        dynamic_context = self._build_retrieval_context(tool_results)
+                        if dynamic_context:
+                            eval_kwargs["retrieval_context"] = dynamic_context
 
                 # Run evaluation
                 result = await evaluator.evaluate(**eval_kwargs)
@@ -802,6 +817,61 @@ class TestExecutor:
             if processed.markdown_content:
                 contents.append(processed.markdown_content)
         return "\n\n".join(contents)
+
+    def _get_retrieval_tool_names(self) -> set[str]:
+        """Get names of tools that contribute to retrieval_context for RAG metrics.
+
+        Retrieval tools are:
+        - All vectorstore tools (type='vectorstore')
+        - MCP tools with is_retrieval=True
+
+        Returns:
+            Set of tool names that are retrieval tools
+        """
+        from holodeck.models.tool import MCPTool, VectorstoreTool
+
+        retrieval_tools: set[str] = set()
+
+        if not self.agent_config.tools:
+            return retrieval_tools
+
+        for tool in self.agent_config.tools:
+            if isinstance(tool, VectorstoreTool):
+                # Vectorstore tools include plugin prefix in name
+                retrieval_tools.add(f"vectorstore-{tool.name}")
+            elif isinstance(tool, MCPTool) and tool.is_retrieval:
+                # MCP tools use their configured name
+                retrieval_tools.add(tool.name)
+
+        return retrieval_tools
+
+    def _build_retrieval_context(
+        self,
+        tool_results: list[dict[str, Any]],
+    ) -> list[str]:
+        """Build retrieval_context from retrieval tool results for RAG evaluation.
+
+        Only results from retrieval tools (vectorstore, MCP with is_retrieval=True)
+        are included. Non-retrieval tool results are excluded.
+
+        Args:
+            tool_results: List of tool result dicts with 'name' and 'result' keys
+
+        Returns:
+            List of retrieval context strings from retrieval tools only
+        """
+        retrieval_tool_names = self._get_retrieval_tool_names()
+        retrieval_context: list[str] = []
+
+        for result in tool_results:
+            tool_name = result.get("name", "")
+            result_content = result.get("result", "")
+
+            # Check if this tool is a retrieval tool
+            if tool_name in retrieval_tool_names and result_content:
+                retrieval_context.append(result_content)
+
+        return retrieval_context
 
     def _determine_test_passed(
         self,
