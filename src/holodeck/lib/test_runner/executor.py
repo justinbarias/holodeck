@@ -25,7 +25,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from semantic_kernel.contents import ChatHistory
 
@@ -80,6 +80,32 @@ from holodeck.models.test_result import (
 )
 
 logger = get_logger(__name__)
+
+
+class RAGEvaluatorConstructor(Protocol):
+    """Protocol for RAG evaluator constructor signature.
+
+    Defines the expected constructor interface for all RAG evaluators,
+    enabling type-safe mapping of RAGMetricType to evaluator classes.
+    """
+
+    def __call__(
+        self,
+        model_config: DeepEvalModelConfig | None = None,
+        threshold: float = 0.5,
+        include_reason: bool = True,
+    ) -> BaseEvaluator: ...
+
+
+# Mapping of RAG metric types to their evaluator classes
+# Used to eliminate repetitive if/elif chains in _create_evaluators
+RAG_EVALUATOR_MAP: dict[RAGMetricType, RAGEvaluatorConstructor] = {
+    RAGMetricType.FAITHFULNESS: FaithfulnessEvaluator,
+    RAGMetricType.CONTEXTUAL_RELEVANCY: ContextualRelevancyEvaluator,
+    RAGMetricType.CONTEXTUAL_PRECISION: ContextualPrecisionEvaluator,
+    RAGMetricType.CONTEXTUAL_RECALL: ContextualRecallEvaluator,
+    RAGMetricType.ANSWER_RELEVANCY: AnswerRelevancyEvaluator,
+}
 
 
 def validate_tool_calls(
@@ -333,38 +359,13 @@ class TestExecutor:
 
                 # Map RAGMetricType to evaluator class and create instance
                 metric_name = metric_config.metric_type.value
-                if metric_config.metric_type == RAGMetricType.FAITHFULNESS:
-                    evaluators[metric_name] = FaithfulnessEvaluator(
+                evaluator_class = RAG_EVALUATOR_MAP.get(metric_config.metric_type)
+                if evaluator_class:
+                    evaluators[metric_name] = evaluator_class(
                         model_config=deepeval_config,
                         threshold=metric_config.threshold,
                         include_reason=metric_config.include_reason,
                     )
-                elif metric_config.metric_type == RAGMetricType.CONTEXTUAL_RELEVANCY:
-                    evaluators[metric_name] = ContextualRelevancyEvaluator(
-                        model_config=deepeval_config,
-                        threshold=metric_config.threshold,
-                        include_reason=metric_config.include_reason,
-                    )
-                elif metric_config.metric_type == RAGMetricType.CONTEXTUAL_PRECISION:
-                    evaluators[metric_name] = ContextualPrecisionEvaluator(
-                        model_config=deepeval_config,
-                        threshold=metric_config.threshold,
-                        include_reason=metric_config.include_reason,
-                    )
-                elif metric_config.metric_type == RAGMetricType.CONTEXTUAL_RECALL:
-                    evaluators[metric_name] = ContextualRecallEvaluator(
-                        model_config=deepeval_config,
-                        threshold=metric_config.threshold,
-                        include_reason=metric_config.include_reason,
-                    )
-                elif metric_config.metric_type == RAGMetricType.ANSWER_RELEVANCY:
-                    evaluators[metric_name] = AnswerRelevancyEvaluator(
-                        model_config=deepeval_config,
-                        threshold=metric_config.threshold,
-                        include_reason=metric_config.include_reason,
-                    )
-
-                if metric_name in evaluators:
                     logger.debug(
                         f"Created RAG evaluator: type={metric_name}, "
                         f"threshold={metric_config.threshold}"

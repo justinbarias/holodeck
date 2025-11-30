@@ -162,6 +162,7 @@ def build_retrieval_context_from_tools(
                 context.append(result_content)
             elif isinstance(result_content, list):
                 # Safely convert list items to strings, filtering out empty values
+                item: Any
                 for item in result_content:
                     if item is not None:
                         str_item = str(item)
