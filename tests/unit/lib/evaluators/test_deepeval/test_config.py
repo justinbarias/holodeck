@@ -267,18 +267,19 @@ class TestToDeepEvalModel:
             deployment_name="my-deployment",
             api_key="azure-key",
             api_version="2024-02-15-preview",
-            temperature=0.1,
+            temperature=0.1,  # ignored for Azure - uses 1.0 for reasoning models
         )
 
         config.to_deepeval_model()
 
+        # Azure always uses temperature=1.0 for reasoning model compatibility
         mock_azure_model.assert_called_once_with(
             model_name="gpt-4o",
             deployment_name="my-deployment",
             azure_endpoint="https://test.openai.azure.com/",
-            azure_openai_api_key="azure-key",
             openai_api_version="2024-02-15-preview",
-            temperature=0.1,
+            azure_openai_api_key="azure-key",
+            temperature=1.0,
         )
 
     @patch("deepeval.models.AnthropicModel")
