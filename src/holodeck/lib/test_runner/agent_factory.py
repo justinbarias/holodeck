@@ -238,7 +238,6 @@ class AgentThreadRun:
         Returns:
             AgentExecutionResult with tool_calls, tool_results, and chat_history.
         """
-        response_text = ""
         tool_calls: list[dict[str, Any]] = []
         tool_results: list[dict[str, Any]] = []
         token_usage: TokenUsage | None = None
@@ -252,10 +251,7 @@ class AgentThreadRun:
                 thread=thread,
                 arguments=arguments,
             ):
-                # Extract response content
-                response_text = self._extract_response_content(response)
-
-                # Extract token usage
+                # Extract token usage from first response
                 token_usage = self._extract_token_usage(response)
                 break  # Only process first response
 
@@ -264,9 +260,9 @@ class AgentThreadRun:
                 thread
             )
 
-            # Add agent's response to chat history
-            if response_text:
-                self.chat_history.add_assistant_message(response_text)
+            # Note: Assistant messages are automatically added to self.chat_history
+            # by ChatHistoryAgentThread.on_new_message() during agent.invoke().
+            # The thread shares the same ChatHistory object passed to its constructor.
 
             return AgentExecutionResult(
                 tool_calls=tool_calls,
