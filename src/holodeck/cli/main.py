@@ -4,9 +4,38 @@ This module defines the main CLI entry point and registers all available
 commands (init, etc.). It's the root command group that all subcommands attach to.
 """
 
+from pathlib import Path
+
 import click
+from dotenv import load_dotenv
 
 __version__ = "0.1.0"
+
+
+def _load_dotenv_files() -> None:
+    """Load .env files from current directory and user home.
+
+    Priority (highest to lowest):
+    1. Shell environment variables (never overwritten)
+    2. .env in CWD (project-level config)
+    3. ~/.holodeck/.env (user-level defaults)
+
+    With override=False, the first value set wins. So we load
+    project .env first, then home .env fills any remaining gaps.
+    """
+    # Load project-level .env first (higher priority of .env files)
+    project_env = Path.cwd() / ".env"
+    if project_env.exists():
+        load_dotenv(project_env, override=False)
+
+    # Load user-level .env second (fills gaps, never overrides)
+    user_env = Path.home() / ".holodeck" / ".env"
+    if user_env.exists():
+        load_dotenv(user_env, override=False)
+
+
+# Load environment variables before CLI initialization
+_load_dotenv_files()
 
 
 @click.group(invoke_without_command=True)
