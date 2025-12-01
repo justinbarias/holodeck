@@ -47,6 +47,7 @@ def sample_metric_result() -> MetricResult:
         retry_count=0,
         evaluation_time_ms=1250,
         model_used="gpt-4o-mini",
+        reasoning="The response is well-grounded in the source material.",
     )
 
 
@@ -63,6 +64,7 @@ def sample_metric_result_failed() -> MetricResult:
         retry_count=2,
         evaluation_time_ms=2150,
         model_used="gpt-4o-mini",
+        reasoning="The response failed to address key aspects of the query.",
     )
 
 
@@ -408,6 +410,59 @@ class TestMetricsTable:
         )
         assert "groundedness" in table
         assert "completeness" in table
+
+    def test_metrics_table_includes_reasoning(
+        self, sample_metric_result: MetricResult
+    ) -> None:
+        """Test that reasoning is displayed in the metric details section."""
+        table = _format_metrics_table([sample_metric_result])
+        assert "Metric Details" in table  # Section header
+        assert "well-grounded" in table  # Part of the reasoning text
+
+    def test_metrics_table_reasoning_none(self) -> None:
+        """Test that metric details section handles None reasoning gracefully."""
+        metric = MetricResult(
+            metric_name="relevance",
+            score=0.85,
+            threshold=0.7,
+            passed=True,
+            scale="0-1",
+            error=None,
+            retry_count=0,
+            evaluation_time_ms=500,
+            model_used="gpt-4o",
+            reasoning=None,
+        )
+        table = _format_metrics_table([metric])
+        assert "Metric Details" in table  # Section header still present
+        # Metric name should appear in details section
+        assert "**relevance**" in table
+        # No blockquote reasoning should appear (since reasoning is None)
+        lines = table.split("\n")
+        detail_lines = [line for line in lines if line.startswith(">")]
+        # No reasoning blockquotes when reasoning is None
+        assert len(detail_lines) == 0
+
+    def test_metrics_table_reasoning_full_display(self) -> None:
+        """Test that full reasoning is displayed without truncation."""
+        long_reasoning = "A" * 150  # 150 characters
+        metric = MetricResult(
+            metric_name="coherence",
+            score=0.9,
+            threshold=0.7,
+            passed=True,
+            scale="0-1",
+            error=None,
+            retry_count=0,
+            evaluation_time_ms=800,
+            model_used="gpt-4o",
+            reasoning=long_reasoning,
+        )
+        table = _format_metrics_table([metric])
+        # Full reasoning should be displayed (no truncation in new format)
+        assert "A" * 150 in table
+        # Should be in blockquote format
+        assert "> " + "A" * 150 in table
 
 
 class TestToolUsageSection:

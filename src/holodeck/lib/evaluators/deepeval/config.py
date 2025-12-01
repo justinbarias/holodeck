@@ -11,12 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from holodeck.models.llm import ProviderEnum
 
 if TYPE_CHECKING:
-    from deepeval.models import (
-        AnthropicModel,
-        AzureOpenAIModel,
-        GPTModel,
-        OllamaModel,
-    )
+    from deepeval.models import AnthropicModel, AzureOpenAIModel, GPTModel, OllamaModel
 
 # Type alias for DeepEval model return types
 DeepEvalModel = Union["GPTModel", "AzureOpenAIModel", "AnthropicModel", "OllamaModel"]
@@ -81,7 +76,7 @@ class DeepEvalModelConfig(BaseModel):
         description="API endpoint URL (required for Azure OpenAI)",
     )
     api_version: str | None = Field(
-        default="2024-02-15-preview",
+        default="2025-04-01-preview",
         description="Azure OpenAI API version",
     )
     deployment_name: str | None = Field(
@@ -144,9 +139,9 @@ class DeepEvalModelConfig(BaseModel):
                 model_name=self.model_name,
                 deployment_name=self.deployment_name,
                 azure_endpoint=self.endpoint,
-                azure_openai_api_key=self.api_key,
                 openai_api_version=self.api_version,
-                temperature=self.temperature,
+                azure_openai_api_key=self.api_key,
+                temperature=1.0,  # reasoning models require temperature=1.0
             )
 
         elif self.provider == ProviderEnum.ANTHROPIC:

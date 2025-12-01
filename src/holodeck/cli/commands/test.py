@@ -317,9 +317,10 @@ def _save_report(report: TestReport, output: str, format: str | None) -> None:
         # Generate markdown format using reporter module
         content = generate_markdown_report(report)
 
-    # Write to file
+    # Write to file (overwrites if exists)
     try:
-        output_path.write_text(content)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(content, encoding="utf-8")
         click.echo(f"Report saved to {output}")
     except OSError as e:
         logger.error(f"Failed to write report to {output}: {e}")

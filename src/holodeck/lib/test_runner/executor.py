@@ -280,8 +280,8 @@ class TestExecutor:
         """
         return AgentFactory(
             agent_config=self.agent_config,
-            timeout=self.config.llm_timeout or 60.0,
             force_ingest=self._force_ingest,
+            execution_config=self.config,
         )
 
     def _build_deepeval_config(
@@ -509,7 +509,7 @@ class TestExecutor:
         logger.debug(f"Preparing agent input for test: {test_case.name}")
         agent_input = self._prepare_agent_input(test_case, processed_files)
 
-        # Step 3: Invoke agent
+        # Step 3: Invoke agent with isolated thread run
         agent_response = None
         tool_calls: list[str] = []
         tool_results: list[dict[str, Any]] = []
@@ -517,7 +517,9 @@ class TestExecutor:
         logger.debug(f"Invoking agent for test: {test_case.name}")
         try:
             invoke_start = time.time()
-            result = await self.agent_factory.invoke(agent_input)
+            # Create isolated thread run for this test case
+            thread_run = await self.agent_factory.create_thread_run()
+            result = await thread_run.invoke(agent_input)
             invoke_elapsed = time.time() - invoke_start
 
             agent_response = self._extract_response_text(result.chat_history)
@@ -734,6 +736,8 @@ class TestExecutor:
                 score = result.get(metric_name, result.get("score", 0.0))
                 threshold = metric_config.threshold
                 passed = score >= threshold if threshold else True
+                # Extract reasoning (DeepEval metrics return this, NLP metrics don't)
+                reasoning = result.get("reasoning")
 
                 logger.debug(
                     f"Metric evaluation completed: {metric_name}, "
@@ -756,6 +760,7 @@ class TestExecutor:
                             if metric_config.model and metric_config.model.name
                             else None
                         ),
+                        reasoning=reasoning,
                     )
                 )
 
@@ -778,6 +783,7 @@ class TestExecutor:
                         retry_count=0,
                         evaluation_time_ms=0,
                         model_used=None,
+                        reasoning=None,
                     )
                 )
 

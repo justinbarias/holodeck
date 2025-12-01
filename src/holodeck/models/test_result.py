@@ -58,6 +58,10 @@ class MetricResult(BaseModel):
     model_used: str | None = Field(
         None, description="LLM model used for AI-powered metrics"
     )
+    reasoning: str | None = Field(
+        None,
+        description="LLM-generated explanation for the score (DeepEval metrics only)",
+    )
 
 
 class TestResult(BaseModel):

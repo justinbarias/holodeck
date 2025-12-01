@@ -1762,7 +1762,7 @@ class TestSearchDocuments:
                 self.index += 1
                 return item
 
-        # Mock search result
+        # Mock search result with cosine similarity score (0.0 to 1.0)
         mock_record = MagicMock()
         mock_record.id = "test_id"
         mock_record.source_path = "/test.md"
@@ -1774,7 +1774,7 @@ class TestSearchDocuments:
 
         mock_result = MagicMock()
         mock_result.record = mock_record
-        mock_result.score = 0.9
+        mock_result.score = 0.9  # Cosine similarity score
 
         # Create mock collection
         mock_collection = MagicMock()
@@ -1797,11 +1797,12 @@ class TestSearchDocuments:
         )
         assert len(results) == 1
         assert results[0].content == "Test content"
+        # Score is clamped to [0.0, 1.0] range (cosine similarity)
         assert results[0].score == 0.9
 
     @pytest.mark.asyncio
     async def test_search_documents_sorts_by_score(self, tmp_path: Path) -> None:
-        """Test that _search_documents sorts results by score descending."""
+        """Test that _search_documents sorts results by cosine similarity descending."""
         source_file = tmp_path / "test.md"
         source_file.write_text("# Test")
 
@@ -1815,7 +1816,7 @@ class TestSearchDocuments:
 
         tool = VectorStoreTool(config)
 
-        # Create mock results with unsorted scores
+        # Create mock results with unsorted cosine similarity scores
         class MockAsyncIterator:
             def __init__(self, items: list) -> None:
                 self.items = items
@@ -1831,6 +1832,7 @@ class TestSearchDocuments:
                 self.index += 1
                 return item
 
+        # Cosine similarity scores in range [0.0, 1.0]
         mock_results = []
         for i, (score, content) in enumerate(
             [(0.5, "Low"), (0.9, "High"), (0.7, "Mid")]
@@ -1846,7 +1848,7 @@ class TestSearchDocuments:
 
             mock_result = MagicMock()
             mock_result.record = mock_record
-            mock_result.score = score
+            mock_result.score = score  # Cosine similarity score
             mock_results.append(mock_result)
 
         mock_collection = MagicMock()
@@ -1861,11 +1863,86 @@ class TestSearchDocuments:
 
         results = await tool._search_documents([0.1] * 1536)
 
-        # Results should be sorted by score descending
+        # Results should be sorted by cosine similarity score descending
         assert len(results) == 3
         assert results[0].score == 0.9
         assert results[1].score == 0.7
         assert results[2].score == 0.5
+
+    @pytest.mark.asyncio
+    async def test_search_documents_clamps_scores_to_valid_range(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that _search_documents clamps scores to [0.0, 1.0] range."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+
+        class MockAsyncIterator:
+            def __init__(self, items: list) -> None:
+                self.items = items
+                self.index = 0
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        # Create results with scores outside valid cosine similarity range
+        mock_results = []
+        for i, (raw_score, expected_score, content) in enumerate(
+            [
+                (1.5, 1.0, "Above max"),  # Should clamp to 1.0
+                (-0.5, 0.0, "Below min"),  # Should clamp to 0.0
+                (0.75, 0.75, "In range"),  # Should stay as-is
+            ]
+        ):
+            mock_record = MagicMock()
+            mock_record.id = f"test_{i}"
+            mock_record.source_path = f"/test{i}.md"
+            mock_record.chunk_index = 0
+            mock_record.content = content
+            mock_record.mtime = 1234567890.0
+            mock_record.file_type = ".md"
+            mock_record.file_size_bytes = 100
+
+            mock_result = MagicMock()
+            mock_result.record = mock_record
+            mock_result.score = raw_score
+            mock_results.append((mock_result, expected_score))
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        mock_search_results = MagicMock()
+        mock_search_results.results = MockAsyncIterator([mr for mr, _ in mock_results])
+        mock_collection.search = AsyncMock(return_value=mock_search_results)
+
+        tool._collection = mock_collection
+
+        results = await tool._search_documents([0.1] * 1536)
+
+        # Verify scores are clamped to valid range
+        assert len(results) == 3
+        # Results are sorted by score descending
+        assert results[0].score == 1.0  # Was 1.5, clamped to 1.0
+        assert results[1].score == 0.75  # Unchanged
+        assert results[2].score == 0.0  # Was -0.5, clamped to 0.0
 
     @pytest.mark.asyncio
     async def test_search_documents_raises_if_collection_none(

@@ -21,12 +21,10 @@ from typing import TYPE_CHECKING, Any
 
 from holodeck.lib.file_processor import FileProcessor, SourceFile
 from holodeck.lib.text_chunker import TextChunker
-from holodeck.lib.vector_store import (
-    QueryResult,
-    convert_document_to_query_result,
-)
+from holodeck.lib.vector_store import QueryResult, convert_document_to_query_result
 
 if TYPE_CHECKING:
+    from holodeck.models.config import ExecutionConfig
     from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
 
 logger = logging.getLogger(__name__)
@@ -67,7 +65,10 @@ class VectorStoreTool:
     """
 
     def __init__(
-        self, config: VectorstoreToolConfig, base_dir: str | None = None
+        self,
+        config: VectorstoreToolConfig,
+        base_dir: str | None = None,
+        execution_config: ExecutionConfig | None = None,
     ) -> None:
         """Initialize VectorStoreTool with configuration.
 
@@ -85,9 +86,13 @@ class VectorStoreTool:
             base_dir: Base directory for resolving relative source paths.
                 If None, source paths are resolved relative to current
                 working directory.
+            execution_config: Execution configuration for file processing
+                timeouts and caching. If None, default FileProcessor
+                settings are used.
         """
         self.config = config
         self._base_dir = base_dir
+        self._execution_config = execution_config
 
         # State tracking
         self.is_initialized: bool = False
@@ -247,9 +252,18 @@ class VectorStoreTool:
         )
 
     def _get_file_processor(self) -> FileProcessor:
-        """Get or create FileProcessor instance (lazy initialization)."""
+        """Get or create FileProcessor instance (lazy initialization).
+
+        Uses ExecutionConfig for timeout and cache settings if available,
+        otherwise falls back to FileProcessor defaults.
+        """
         if self._file_processor is None:
-            self._file_processor = FileProcessor()
+            if self._execution_config:
+                self._file_processor = FileProcessor.from_execution_config(
+                    self._execution_config
+                )
+            else:
+                self._file_processor = FileProcessor()
         return self._file_processor
 
     def _resolve_source_path(self) -> Path:
@@ -776,11 +790,13 @@ class VectorStoreTool:
             async for result in search_results.results:
                 # Handle SK result format (may be object with attrs or tuple)
                 record = result.record if hasattr(result, "record") else result[0]
-                score = result.score if hasattr(result, "score") else result[1]
+                raw_score = result.score if hasattr(result, "score") else result[1]
+
+                similarity = max(0.0, min(1.0, raw_score))
 
                 query_result = await convert_document_to_query_result(
                     record,
-                    score=max(0.0, min(1.0, score)),
+                    score=similarity,
                 )
                 results.append(query_result)
 

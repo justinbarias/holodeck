@@ -1226,15 +1226,18 @@ class TestReportSaving:
 
     def test_save_report_oserror_handling(self):
         """Test _save_report handles OSError when writing fails."""
+        from unittest.mock import patch
+
         from holodeck.cli.commands.test import _save_report
 
         report = _create_mock_report("test.yaml")
 
-        # Use an invalid path that will cause OSError
-        invalid_path = "/invalid/path/that/does/not/exist/report.json"
-
-        with pytest.raises(OSError):
-            _save_report(report, invalid_path, "json")
+        # Mock write_text to raise OSError
+        with (
+            patch("pathlib.Path.write_text", side_effect=OSError("Permission denied")),
+            pytest.raises(OSError),
+        ):
+            _save_report(report, "/some/path/report.json", "json")
 
 
 class TestGenerateMarkdownReport:

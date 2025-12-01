@@ -10,8 +10,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentFactoryError
+from holodeck.lib.test_runner.agent_factory import (
+    AgentFactory,
+    AgentFactoryError,
+)
 from holodeck.models.agent import Agent, Instructions
+from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import LLMProvider, ProviderEnum
 
 
@@ -243,20 +247,16 @@ class TestOllamaModelNotFoundError:
         # Create factory (should succeed - lazy validation)
         factory = AgentFactory(agent_config)
 
-        # Mock invoke to raise an error with "model not found" pattern
-        async def mock_invoke_error(*args, **kwargs):  # type: ignore
-            raise Exception("model 'nonexistent-model' not found")
+        # Create thread run and mock _invoke_agent_impl to raise model not found
+        thread_run = await factory.create_thread_run()
 
-        factory.agent.invoke = mock_invoke_error  # type: ignore
-
-        # Mock _invoke_agent_impl to raise model not found error
         async def failing_impl() -> None:
             raise Exception("model 'nonexistent-model' not found")
 
-        with patch.object(factory, "_invoke_agent_impl", side_effect=failing_impl):
+        with patch.object(thread_run, "_invoke_agent_impl", side_effect=failing_impl):
             # Verify invoke raises AgentFactoryError
             with pytest.raises(AgentFactoryError) as exc_info:
-                await factory.invoke("Test query")
+                await thread_run.invoke("Test query")
 
             # Verify error message indicates the problem
             error_message = str(exc_info.value)
@@ -296,8 +296,9 @@ class TestOllamaModelNotFoundError:
                 instructions=Instructions(inline="Test"),
             )
 
-            # Create factory
+            # Create factory and thread run
             factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
 
             # Mock invoke to raise model error
             # Capture error_msg in closure to avoid loop variable binding issue
@@ -310,13 +311,13 @@ class TestOllamaModelNotFoundError:
             failing_side_effect = make_failing_impl(error_msg)
             with (
                 patch.object(
-                    factory,
+                    thread_run,
                     "_invoke_agent_impl",
                     side_effect=failing_side_effect,
                 ),
                 pytest.raises(AgentFactoryError),
             ):
-                await factory.invoke("Test")
+                await thread_run.invoke("Test")
 
 
 class TestOllamaEmbeddingService:
@@ -603,7 +604,9 @@ class TestOllamaIntegration:
         )
 
         # Initialize factory
-        factory = AgentFactory(agent_config, timeout=30.0)
+        factory = AgentFactory(
+            agent_config, execution_config=ExecutionConfig(llm_timeout=30)
+        )
 
         # Verify initialization
         assert factory.agent_config.name == "ollama-integration-test"
@@ -621,8 +624,9 @@ class TestOllamaIntegration:
 
         factory.agent.invoke = mock_invoke  # type: ignore
 
-        # Invoke agent
-        result = await factory.invoke("Hello")
+        # Create thread run and invoke
+        thread_run = await factory.create_thread_run()
+        result = await thread_run.invoke("Hello")
 
         # Verify result
         assert result is not None
@@ -652,7 +656,7 @@ class TestOllamaIntegration:
         # Create factory with custom timeout and retry settings
         factory = AgentFactory(
             agent_config,
-            timeout=45.0,
+            execution_config=ExecutionConfig(llm_timeout=45),
             max_retries=5,
             retry_delay=1.5,
         )
@@ -704,6 +708,7 @@ class TestOllamaIntegration:
 
         # Create factory with retry config
         factory = AgentFactory(agent_config, max_retries=3, retry_delay=0.01)
+        thread_run = await factory.create_thread_run()
 
         # Mock: fail twice, then succeed
         call_count = 0
@@ -719,8 +724,8 @@ class TestOllamaIntegration:
                 tool_calls=[], tool_results=[], chat_history=history
             )
 
-        with patch.object(factory, "_invoke_agent_impl", side_effect=flaky_invoke):
-            result = await factory.invoke("Test query")
+        with patch.object(thread_run, "_invoke_agent_impl", side_effect=flaky_invoke):
+            result = await thread_run.invoke("Test query")
 
             # Verify retry logic worked
             assert result is not None

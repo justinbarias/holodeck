@@ -73,8 +73,8 @@ def generate_markdown_report(report: TestReport) -> str:
     # Final summary
     lines.append("---\n")
     lines.append("## Report Summary\n")
-    status_emoji_pass = "" if report.summary.passed > 0 else ""
-    status_emoji_fail = "L" if report.summary.failed > 0 else ""
+    status_emoji_pass = "✅" if report.summary.passed > 0 else ""
+    status_emoji_fail = "❌" if report.summary.failed > 0 else ""
     lines.append(
         f"{status_emoji_pass} **{report.summary.passed} tests passed** | "
         f"{status_emoji_fail} **{report.summary.failed} tests failed** | "
@@ -118,7 +118,7 @@ def _format_test_section(result: TestResult) -> str:
     lines: list[str] = []
 
     # Test header with status
-    status = " PASSED" if result.passed else "L FAILED"
+    status = "✅ PASSED" if result.passed else "❌ FAILED"
     test_name = result.test_name or "Unnamed Test"
     lines.append(f"### Test: {test_name} {status}\n")
 
@@ -175,7 +175,7 @@ def _format_test_section(result: TestResult) -> str:
     if result.errors:
         lines.append("#### Errors\n")
         for error in result.errors:
-            lines.append(f"- L {error}")
+            lines.append(f"- ❌ {error}")
         lines.append("")
 
     return "\n".join(lines)
@@ -219,9 +219,9 @@ def _format_processed_files(files: list[ProcessedFileInput]) -> str:
         processing_time = (
             f"{file_input.processing_time_ms}ms"
             if file_input.processing_time_ms
-            else ""
+            else ""
         )
-        status = " Success" if not file_input.error else f"L {file_input.error}"
+        status = "✅ Success" if not file_input.error else f"❌ {file_input.error}"
 
         table_row = (
             f"| {file_path} | {file_type} | {format_info} | "
@@ -249,42 +249,66 @@ def _format_processed_files(files: list[ProcessedFileInput]) -> str:
 
 
 def _format_metrics_table(metrics: list[MetricResult]) -> str:
-    """Format metric results as a markdown table.
+    """Format metric results as a compact summary table with detailed subsections.
+
+    Displays a scannable summary table followed by detailed reasoning for each
+    metric in dedicated subsections. This preserves full reasoning without
+    truncation while keeping the summary readable.
 
     Parameters:
         metrics: List of MetricResult objects.
 
     Returns:
-        A formatted markdown table string, or empty string if no metrics.
+        A formatted markdown string with summary table and detail sections.
     """
     if not metrics:
         return ""
 
+    # Compact summary table
     lines = [
-        "| Metric | Score | Threshold | Status | Model | Eval Time | Retries | Error |",
-        "|--------|-------|-----------|--------|-------|-----------|---------|-------|",
+        "| Metric | Score | Threshold | Status | Model | Eval Time |",
+        "|--------|-------|-----------|--------|-------|-----------|",
     ]
 
     for metric in metrics:
         scale = metric.scale or "0-1"
         score_display = f"{metric.score}/{scale.split('-')[1]}"
-        threshold = f"{metric.threshold}" if metric.threshold is not None else ""
-        status = " PASS" if metric.passed else "L FAIL"
-        model = metric.model_used or ""
+        threshold = f"{metric.threshold}" if metric.threshold is not None else "-"
+        status = "✅ PASS" if metric.passed else "❌ FAIL"
+        model = metric.model_used or "-"
         eval_time = (
-            f"{metric.evaluation_time_ms}ms" if metric.evaluation_time_ms else ""
-        )
-        retries = str(metric.retry_count) if metric.retry_count is not None else ""
-        error = (
-            metric.error[:50] + "..."
-            if metric.error and len(metric.error) > 50
-            else (metric.error or "")
+            f"{metric.evaluation_time_ms}ms" if metric.evaluation_time_ms else "-"
         )
 
         lines.append(
-            f"| {metric.metric_name} | {score_display} | {threshold} | {status} | "
-            f"{model} | {eval_time} | {retries} | {error} |"
+            f"| {metric.metric_name} | {score_display} | {threshold} | "
+            f"{status} | {model} | {eval_time} |"
         )
+
+    # Detailed subsections with full reasoning
+    lines.append("")
+    lines.append("##### Metric Details\n")
+
+    for metric in metrics:
+        scale = metric.scale or "0-1"
+        score_display = f"{metric.score}/{scale.split('-')[1]}"
+        status_emoji = "✅" if metric.passed else "❌"
+
+        lines.append(f"**{metric.metric_name}** — {score_display} {status_emoji}")
+
+        if metric.reasoning:
+            # Format reasoning as blockquote, preserving line breaks
+            reasoning_lines = metric.reasoning.strip().split("\n")
+            for reasoning_line in reasoning_lines:
+                lines.append(f"> {reasoning_line}")
+
+        if metric.error:
+            lines.append(f"> ⚠️ **Error:** {metric.error}")
+
+        if metric.retry_count and metric.retry_count > 0:
+            lines.append(f"> *(Retries: {metric.retry_count})*")
+
+        lines.append("")  # Blank line between metrics
 
     return "\n".join(lines)
 
@@ -313,9 +337,9 @@ def _format_tool_usage(result: TestResult) -> str:
 
     if result.tools_matched is not None:
         if result.tools_matched:
-            lines.append("**Match Status:**  Tools matched expected")
+            lines.append("**Match Status:** ✅ Tools matched expected")
         else:
-            lines.append("**Match Status:** L Tools did not match expected")
+            lines.append("**Match Status:** ❌ Tools did not match expected")
             # Show missing tools
             if result.tool_calls and result.expected_tools:
                 called_set = set(result.tool_calls)
