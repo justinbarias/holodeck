@@ -1,50 +1,143 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!-- SYNC IMPACT REPORT
+Version Change: 1.0.0 → 1.0.1 (PATCH - Python target version clarification)
+
+Principles: No changes to core principles - all 5 principles fully aligned with VISION.md and CLAUDE.md
+Modified Sections:
+  - Code Quality & Testing Discipline: Python target confirmed as 3.10+ (explicitly stated in CLAUDE.md)
+
+Added Sections: None
+Removed Sections: None
+
+Templates Updated:
+  ✅ plan-template.md - Constitution Check section references verified (no changes needed)
+  ✅ spec-template.md - No constitution-dependent sections (no changes needed)
+  ✅ tasks-template.md - No constitution-dependent sections (no changes needed)
+  ✅ agent-file-template.md - Not checked (MCP-focused integration doc)
+
+Follow-up TODOs: None - constitution now fully synchronized with VISION.md and CLAUDE.md
+-->
+
+# HoloDeck Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. No-Code-First Agent Definition
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Every agent configuration MUST be defined through declarative YAML files.
+Users SHOULD NOT write Python code to define agents, tools, evaluations, or
+test cases. All agent behavior specification MUST be expressible through
+YAML configuration without custom code implementation.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+**Rationale**: Lowering barriers to entry and enabling non-technical users
+to build production agents. This principle drives the entire HoloDeck design
+and differentiates the platform from code-first frameworks.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. MCP for API Integrations
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+External API integrations MUST use Model Context Protocol (MCP) servers,
+not custom API tool types. When a new API integration is needed, the team
+MUST either (1) use an existing MCP server, (2) create a new MCP server,
+or (3) document why MCP is unsuitable for this specific case.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+**Rationale**: MCP provides standardized, interoperable tool integration.
+Building custom API tools creates maintenance burden and prevents code
+reuse across projects. MCP-first design ensures agents remain portable and
+composable.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Test-First with Multimodal Support
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+All new agent behaviors MUST be validated through test cases BEFORE
+deployment. Test cases MUST support multimodal inputs (images, PDFs,
+Office documents, text, CSV, URLs) and SHOULD validate agent tool
+selection via `expected_tools`. Each test case MUST include either ground
+truth data or expected evaluation scores for validation.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+**Rationale**: Multimodal test support is core to HoloDeck's value
+proposition—agents must handle real-world document-heavy workflows.
+Test-first approach ensures quality and provides regression detection.
+
+### IV. OpenTelemetry-Native Observability
+
+Observability MUST follow OpenTelemetry semantic conventions for
+generative AI (GenAI Semantic Conventions) from day one. Every LLM call,
+tool invocation, and evaluation MUST be automatically instrumented with
+traces, metrics, and logs. Cost tracking and alerting MUST be built-in,
+not bolted-on.
+
+**Rationale**: Observability-as-a-default prevents production surprises
+and enables data-driven optimization. Following GenAI semantic conventions
+ensures compatibility with industry observability platforms (Jaeger,
+Datadog, Honeycomb, LangSmith, Prometheus).
+
+### V. Evaluation Flexibility with Model Overrides
+
+Evaluations MUST support model configuration at three levels: (1) global
+default model for all metrics, (2) per-evaluation-run model override, and
+(3) per-metric model override (e.g., GPT-4o for critical groundedness
+checks, GPT-4o-mini for others). AI-powered metrics MUST follow Azure AI
+Evaluation patterns. NLP metrics (F1, BLEU, ROUGE, METEOR) MUST not
+require LLM calls.
+
+**Rationale**: Teams need cost-quality tradeoffs: critical metrics may
+warrant expensive models while basic metrics can use cheaper alternatives.
+This flexibility enables production agents to optimize for business value,
+not just evaluation perfection.
+
+## Architecture Constraints
+
+HoloDeck MUST maintain three distinct, decoupled engines:
+
+1. **Agent Engine**: LLM interactions, tool execution, memory, vector stores
+2. **Evaluation Framework**: AI-powered metrics + NLP metrics with flexible model selection
+3. **Deployment Engine**: FastAPI conversion, Docker packaging, cloud deployment
+
+Each engine SHOULD be independently testable and evolvable. Cross-engine
+communication MUST use well-defined contracts (not tight coupling).
+
+## Code Quality & Testing Discipline
+
+- **Language Target**: Python 3.10+
+- **Style Guide**: Google Python Style Guide (enforced via Black, Ruff)
+- **Type Checking**: MyPy strict mode (all new code must pass)
+- **Testing Framework**: pytest with markers (`@pytest.mark.unit`,
+  `@pytest.mark.integration`, `@pytest.mark.slow`)
+- **Minimum Coverage**: 80% (measured by pytest-cov)
+- **Security Scanning**: Bandit, Safety, detect-secrets (pre-commit required)
+- **Pre-commit Hooks**: Format, lint, type-check, and security scans MUST
+  pass before commit
+
+All test cases MUST be independently runnable. Integration tests SHOULD
+validate agent contracts and inter-service communication. Unit tests MUST
+cover edge cases explicitly.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+**Amendment Procedure**:
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+1. Proposed amendment MUST justify why current principle(s) are insufficient
+2. Impact assessment MUST cover all five core principles and dependent architecture
+3. Migration path MUST be documented if amendment breaks existing compliance
+4. Approval MUST include verification that templates (spec, plan, tasks,
+   checklist) are updated or explicitly exempted
+
+**Versioning Policy**:
+
+- MAJOR bump: Principle removal or redefinition (backward incompatible)
+- MINOR bump: New principle added or existing principle scope expanded
+- PATCH bump: Clarifications, wording refinements, non-semantic fixes
+
+**Compliance Review**:
+
+- Every feature specification (spec.md) MUST include Constitution Check
+  section (see plan-template.md)
+- Every pull request MUST verify compliance before merge
+- Justified exceptions (Complexity Tracking table) MUST reference specific
+  principles and explain why constraints cannot be met
+
+**Runtime Guidance**:
+Development workflow details (make commands, git workflow, pre-commit
+configuration, etc.) are documented in CLAUDE.md and Makefile—NOT in this
+Constitution. This Constitution establishes _principles_; CLAUDE.md
+operationalizes them.
+
+**Version**: 1.0.1 | **Ratified**: 2025-10-19 | **Last Amended**: 2025-10-19
