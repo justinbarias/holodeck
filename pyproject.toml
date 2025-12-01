@@ -92,6 +92,9 @@ packages = ["src/holodeck"]
 
 [tool.uv]
 prerelease = "allow"  # Allow pre-releases (required for azure-ai-agents via semantic-kernel)
+constraint-dependencies = [
+    "sentry-sdk>=2.0.0,<3.0.0",  # Pin to stable; deepeval pulls alpha 3.0 which is deprecated
+]
 
 [tool.black]
 line-length = 88
