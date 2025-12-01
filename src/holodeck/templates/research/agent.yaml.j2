@@ -72,15 +72,26 @@ tools:
     min_similarity_score: 0.75
     database: chromadb
 
-  # MCP Fetch tool for web content fetching
+  # MCP Web Search tool - sign up for an API key at https://brave.com/search/api/, then generate an API key at https://api-dashboard.search.brave.com/app/keys
   - type: mcp
-    name: web_fetch
-    description: Fetch and analyze web content for current research
+    name: web-search
+    description: Knowledge graph-based persistent memory for conversation context
     command: npx
     args:
       - "-y"
-      - "@modelcontextprotocol/server-fetch"
-    request_timeout: 60
+      - "@brave/brave-search-mcp-server"
+      - "--transport"
+      - "stdio
+    request_timeout: 30
+
+  # MCP Fetch tool for web content fetching
+  - type: mcp
+    name: memory
+    description: Fetch web content from a url
+    command: uvx
+    args:
+      - "mcp-server-fetch"
+    request_timeout: 30
 
 # Evaluation Configuration
 evaluations:
