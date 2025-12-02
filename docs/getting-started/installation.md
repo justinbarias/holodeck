@@ -1,245 +1,158 @@
 # Installation Guide
 
-Get HoloDeck up and running in minutes to start building and testing AI agents.
+Get HoloDeck installed and ready to build AI agents.
 
 ## Prerequisites
 
 - **Python 3.10+** (check with `python --version`)
-- **pip** (usually included with Python)
+- **uv** - The fast Python package installer
 
-## Quick Start
+### Installing uv
 
-### 1. Install HoloDeck CLI
+If you don't have uv installed:
 
 ```bash
-pip install holodeck-ai
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# macOS (Homebrew)
+brew install uv
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-This installs the `holodeck` command-line tool and core dependencies.
+Verify uv is installed:
 
-### Install Vector Store Providers (Optional)
+```bash
+uv --version
+```
 
-If you plan to use semantic search with vector databases, install the providers you need:
+## Install HoloDeck CLI
+
+Install HoloDeck as a global tool using uv:
+
+```bash
+uv tool install holodeck-ai@latest --prerelease allow --python 3.10
+```
+
+This installs the `holodeck` command-line tool globally, available from any directory.
+
+### Install with Vector Store Providers (Optional)
+
+If you plan to use semantic search with vector databases, install with extras:
 
 ```bash
 # Individual providers
-pip install holodeck-ai[postgres]   # PostgreSQL with pgvector
-pip install holodeck-ai[qdrant]     # Qdrant
-pip install holodeck-ai[pinecone]   # Pinecone
-pip install holodeck-ai[chromadb]   # ChromaDB
+uv tool install "holodeck-ai[postgres]@latest" --prerelease allow --python 3.10
+uv tool install "holodeck-ai[qdrant]@latest" --prerelease allow --python 3.10
+uv tool install "holodeck-ai[pinecone]@latest" --prerelease allow --python 3.10
+uv tool install "holodeck-ai[chromadb]@latest" --prerelease allow --python 3.10
 
 # Or install all vector store providers at once
-pip install holodeck-ai[vectorstores]
+uv tool install "holodeck-ai[vectorstores]@latest" --prerelease allow --python 3.10
 ```
 
-Using **uv** (recommended for faster installs):
+## Verify Installation
 
-```bash
-uv add holodeck-ai[vectorstores]
-```
-
-### 2. Verify Installation
+Check that HoloDeck is installed correctly:
 
 ```bash
 holodeck --version
 # Output: holodeck 0.2.0
 ```
 
-Check that the CLI is accessible:
+View available commands:
 
 ```bash
 holodeck --help
 ```
 
-### 3. Set Up API Credentials
+## Set Up LLM Provider
 
-HoloDeck supports OpenAI, Azure OpenAI, and Anthropic. Create a `.env` file in your project:
+HoloDeck supports multiple LLM providers. Ollama is recommended for local development as it requires no API keys and runs entirely on your machine.
+
+### Ollama (Recommended)
+
+Ollama runs LLMs locally on your machine - no API keys required.
+
+**Install Ollama:**
+
+```bash
+# macOS
+brew install ollama
+
+# Linux
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows: Download from https://ollama.com/download
+```
+
+**Start Ollama and pull a model:**
+
+```bash
+# Start the Ollama service
+ollama serve
+
+# Pull a model (in another terminal)
+ollama pull llama3.2
+# Or for a smaller model:
+ollama pull phi3
+```
+
+**Verify Ollama is running:**
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+No environment variables needed - HoloDeck connects to Ollama at `http://localhost:11434` by default.
+
+### Cloud Providers (Optional)
+
+For cloud-based LLMs, set up credentials using environment variables or a `.env` file.
+
+#### Environment Variables
+
+```bash
+# OpenAI
+export OPENAI_API_KEY="sk-..."
+
+# Azure OpenAI
+export AZURE_OPENAI_API_KEY="your-key-here"
+export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
+
+# Anthropic
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+#### `.env` File
+
+Create a `.env` file in your project directory:
 
 ```bash
 # .env (never commit this file!)
-AZURE_OPENAI_API_KEY=your-key-here
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+OPENAI_API_KEY=sk-...
 ```
 
-Or set environment variables:
-
-```bash
-export AZURE_OPENAI_API_KEY="your-key-here"
-export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-```
-
-## Bootstrap Your First Agent
-
-After installation, create your first agent project:
-
-### 1. Create a Project Directory
-
-```bash
-mkdir my-first-agent
-cd my-first-agent
-```
-
-### 2. Create Project Configuration
-
-Initialize a `config.yaml` for your project's LLM provider settings:
-
-```bash
-# Initialize project configuration (creates config.yaml in current directory)
-holodeck config init -p
-```
-
-This creates a `config.yaml` with default settings that you can customize. Edit it to configure your LLM providers:
-
-```yaml
-# config.yaml - Example configuration
-providers:
-  azure_openai:
-    provider: azure_openai
-    name: gpt-4o
-    temperature: 0.3
-    max_tokens: 2048
-    endpoint: ${AZURE_OPENAI_ENDPOINT}
-    api_key: ${AZURE_OPENAI_API_KEY}
-
-execution:
-  llm_timeout: 60
-  file_timeout: 30
-  cache_enabled: true
-  verbose: false
-```
-
-**Tip**: Use `holodeck config init -g` to create a global configuration at `~/.holodeck/config.yaml` that applies to all projects.
-
-### 3. Create Your First Agent
-
-Create `agent.yaml` with a simple agent:
-
-```bash
-cat > agent.yaml << 'EOF'
-name: my-first-agent
-description: A helpful assistant to get you started
-
-model:
-  provider: azure_openai
-  # Model and API key come from config.yaml
-
-instructions:
-  inline: |
-    You are a helpful AI assistant.
-    Be concise, accurate, and friendly.
-
-test_cases:
-  - name: "Simple greeting"
-    input: "Hello! What can you do?"
-    ground_truth: "I can help you with information, answer questions, and provide guidance."
-    evaluations:
-      - f1_score
-
-evaluations:
-  model:
-    provider: azure_openai
-
-  metrics:
-    - metric: f1_score
-      threshold: 0.7
-EOF
-```
-
-### 4. Create `.env` File with Credentials
-
-```bash
-cat > .env << 'EOF'
-# Add to .gitignore - never commit secrets!
-AZURE_OPENAI_API_KEY=your-api-key-here
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-EOF
-```
-
-**⚠️ Important**: Add `.env` to `.gitignore`:
+Add `.env` to `.gitignore`:
 
 ```bash
 echo ".env" >> .gitignore
 echo ".env.local" >> .gitignore
 ```
 
-## Running Your Agent
-
-After bootstrapping your project, test your agent:
-
-### 1. Run Agent Tests
-
-```bash
-# Test the agent and run evaluations
-holodeck test agent.yaml
-```
-
-This command will:
-
-- Load your agent configuration
-- Execute test cases against the agent
-- Run evaluation metrics
-- Display results with pass/fail status
-
-### 2. Interactive Chat Mode
-
-```bash
-# Chat interactively with your agent
-holodeck chat agent.yaml
-```
-
-This starts an interactive session where you can:
-
-- Send messages to your agent
-- See responses in real-time
-- Test agent behavior manually
-
-### 3. Initialize from Templates
-
-For more structured projects, use templates:
-
-```bash
-# Create a new project with a template
-holodeck init
-
-# This prompts you to:
-# 1. Enter project name
-# 2. Select a template (conversational, customer-support, research)
-# 3. Configure project metadata
-# 4. Choose LLM providers
-```
-
-## Verification Checklist
-
-Verify your setup is working:
-
-```bash
-# ✓ Check HoloDeck CLI is installed
-holodeck --version
-# Expected: holodeck version 0.2.0
-
-# ✓ Check help to see available commands
-holodeck --help
-# Should show: test, chat, init, deploy commands
-
-# ✓ Test your agent (from project directory with config.yaml and agent.yaml)
-holodeck test agent.yaml
-# Should load agent and run test cases
-
-# ✓ Try interactive chat
-holodeck chat agent.yaml --input "Hello!"
-# Should get a response from your agent
-```
-
 ## Supported LLM Providers
 
-HoloDeck supports multiple LLM providers. Choose one and set up credentials:
+HoloDeck supports multiple LLM providers:
 
-### Azure OpenAI (Recommended)
+### Ollama (Recommended)
+
+Run LLMs locally with no API keys. Supports Llama, Mistral, Phi, and many more models.
 
 ```bash
-# .env or environment variables
-AZURE_OPENAI_API_KEY=your-key-here
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+# No environment variables needed
+# Default endpoint: http://localhost:11434
 ```
 
 ### OpenAI
@@ -249,10 +162,39 @@ OPENAI_API_KEY=sk-...
 OPENAI_ORG_ID=optional-org-id
 ```
 
+### Azure OpenAI
+
+```bash
+AZURE_OPENAI_API_KEY=your-key-here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+```
+
 ### Anthropic
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
+```
+
+## Upgrading HoloDeck
+
+To upgrade to the latest version:
+
+```bash
+uv tool upgrade holodeck-ai
+```
+
+To reinstall with a specific version:
+
+```bash
+uv tool install holodeck-ai@0.3.0 --prerelease allow --python 3.10 --force
+```
+
+## Uninstalling
+
+To remove HoloDeck:
+
+```bash
+uv tool uninstall holodeck-ai
 ```
 
 ## Troubleshooting
@@ -279,15 +221,19 @@ The CLI isn't in your PATH. Try:
 
 ```bash
 # Reinstall HoloDeck
-pip install --upgrade holodeck-ai
+uv tool install holodeck-ai@latest --prerelease allow --python 3.10 --force
 
-# Try using Python module directly
-python -m holodeck --version
+# Ensure uv tools are in PATH
+# Add to your shell profile (~/.bashrc, ~/.zshrc, etc.):
+export PATH="$HOME/.local/bin:$PATH"
+
+# Then reload your shell
+source ~/.zshrc  # or ~/.bashrc
 ```
 
-### "Error: config.yaml not found"
+### "uv: command not found"
 
-Create a `config.yaml` file in your project directory. See [Bootstrap Your First Agent](#bootstrap-your-first-agent) section above.
+Install uv first. See [Installing uv](#installing-uv) above.
 
 ### "Error: API key not found" or "Invalid credentials"
 
@@ -302,27 +248,11 @@ echo %AZURE_OPENAI_API_KEY%  # Windows
 cat .env
 ```
 
-If using `.env` file, ensure it's in the same directory as `agent.yaml`.
-
-### "Error: Failed to load agent.yaml"
-
-Common issues:
-
-- YAML syntax error (check indentation)
-- File path incorrect
-- Required fields missing (`name`, `model.provider`, `instructions`)
-
-Verify your YAML:
-
-```bash
-# Check YAML syntax
-python -c "import yaml; yaml.safe_load(open('agent.yaml'))"
-```
+If using a `.env` file, ensure it's in your project directory.
 
 ## Next Steps
 
-- ✅ Installation complete!
-- 📖 [Read the Quickstart Guide →](quickstart.md)
-- 📚 [View Agent Configuration Guide →](../guides/agent-configuration.md)
-- 📁 [Explore Example Agents →](../examples/README.md)
-- 🛠️ [Learn Global Configuration →](../guides/global-config.md)
+- [Quickstart Guide](quickstart.md) - Build your first agent in 5 minutes
+- [Agent Configuration Guide](../guides/agent-configuration.md) - Full configuration reference
+- [Example Agents](../examples/README.md) - Browse example agents
+- [Global Configuration](../guides/global-config.md) - Configure defaults

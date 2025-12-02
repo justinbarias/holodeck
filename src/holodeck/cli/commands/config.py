@@ -56,7 +56,7 @@ def init(
         Overwrite existing configuration:
             holodeck config init -g --force
 
-    For more information, see: https://holodeck.ai/docs/config
+    For more information, see: https://useholodeck.ai/docs/config
     """
     # Determine which config to initialize
     if not global_config and not project_config:

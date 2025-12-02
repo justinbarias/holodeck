@@ -39,7 +39,6 @@ coverage.xml
 htmlcov/
 
 # IDEs
-.vscode/
 .idea/
 *.swp
 *.swo

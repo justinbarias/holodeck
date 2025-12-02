@@ -28,12 +28,12 @@
             "module": "holodeck.cli.main",
             "args": [
                 "test",
-                "sample/hitchhikers_agent.yaml",
+                "hitchhikers_agent.yaml",
                 "--verbose"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/sample",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             },
@@ -46,16 +46,15 @@
             "module": "holodeck.cli.main",
             "args": [
                 "chat",
-                "sample/hitchhikers_agent.yaml",
+                "hitchhikers_agent.yaml",
                 "--verbose"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/sample",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
-            },
-            "envFile": "${workspaceFolder}/sample/.env"
+            }
         }
     ]
 }

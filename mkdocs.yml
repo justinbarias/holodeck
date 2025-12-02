@@ -1,6 +1,6 @@
 site_name: HoloDeck Documentation
 site_description: AI Agent Experimentation Platform - Define agents in YAML, no code required
-site_url: https://docs.holodeck.ai/
+site_url: https://docs.useholodeck.ai/
 repo_url: https://github.com/justinbarias/holodeck
 repo_name: justinbarias/holodeck
 edit_uri: edit/main/docs/
@@ -90,6 +90,6 @@ extra:
   version: 0.1.0
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/anthropics/holodeck
+      link: https://github.com/justinbarias/holodeck
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/anthropic

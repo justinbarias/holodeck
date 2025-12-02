@@ -1,0 +1,6 @@
+{
+    "yaml.schemas": {
+        "./schemas/agent.schema.json": ["**/agent.yaml", "agents/**/*.yaml", "**/*agent*.yaml"]
+    },
+    "yaml.validate": true
+}

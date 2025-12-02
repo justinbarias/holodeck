@@ -104,7 +104,7 @@ def init(
 
             holodeck init my-agent --force
 
-    For more information, see: https://holodeck.ai/docs/getting-started
+    For more information, see: https://useholodeck.ai/docs/getting-started
     """
     try:
         # Get current working directory as output directory

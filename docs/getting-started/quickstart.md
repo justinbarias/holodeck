@@ -2,33 +2,9 @@
 
 Get your first AI agent running in 5 minutes using the HoloDeck CLI.
 
-## Before You Start
+## Prerequisites
 
-Ensure you've completed the [Installation Guide](installation.md):
-
-```bash
-pip install holodeck-ai
-holodeck --version  # Should output: holodeck 0.2.0
-
-# Optional: Install vector store providers for semantic search
-pip install holodeck-ai[vectorstores]  # All providers
-# Or individual: holodeck-ai[postgres], holodeck-ai[qdrant], holodeck-ai[pinecone], holodeck-ai[chromadb]
-```
-
-Set up your API credentials (example for Azure OpenAI):
-
-```bash
-export AZURE_OPENAI_API_KEY="your-key-here"
-export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-```
-
-Or create a `.env` file:
-
-```bash
-# .env
-AZURE_OPENAI_API_KEY=your-key-here
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-```
+Complete the [Installation Guide](installation.md) before continuing.
 
 ---
 
@@ -69,6 +45,7 @@ cd my-chatbot
 ```
 
 Open `agent.yaml` and customize:
+
 - Agent name and description
 - Model provider (OpenAI, Azure, Anthropic)
 - Instructions/system prompt
@@ -97,6 +74,7 @@ holodeck chat my-chatbot/agent.yaml --quiet
 ```
 
 **Chat Features:**
+
 - **Animated Spinner**: Shows braille animation during agent execution (even in quiet mode)
 - **Token Tracking**: Displays cumulative token usage across the conversation
 - **Adaptive Status Display**:
@@ -105,6 +83,7 @@ holodeck chat my-chatbot/agent.yaml --quiet
   - **Quiet mode**: No status display (spinner only)
 
 Example verbose output:
+
 ```
 ╭─── Chat Status ─────────────────────────╮
 │ Session Time: 00:05:23                  │
@@ -190,16 +169,7 @@ execution:
   file_timeout: 30
 ```
 
-### Step 3: Create `.env` File
-
-Create `.env` with your credentials:
-
-```bash
-AZURE_OPENAI_API_KEY=your-key-here
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-```
-
-### Step 4: Test Your Agent
+### Step 3: Test Your Agent
 
 ```bash
 # Run agent tests
@@ -244,19 +214,25 @@ holodeck deploy my-project/agent.yaml --port 8000
 The `holodeck chat` command provides real-time feedback during conversation:
 
 **Default Mode (Recommended for Most Users)**
+
 ```bash
 holodeck chat agent.yaml
 ```
+
 Shows inline status after each response:
+
 ```
 Agent: Your response here [3/50 | 1.2s]
 ```
 
 **Verbose Mode (For Detailed Monitoring)**
+
 ```bash
 holodeck chat agent.yaml --verbose
 ```
+
 Displays a rich status panel with token breakdown:
+
 ```
 ╭─── Chat Status ─────────────────────────╮
 │ Session Time: 00:05:23                  │
@@ -269,13 +245,16 @@ Displays a rich status panel with token breakdown:
 ```
 
 **Quiet Mode (For Clean Output)**
+
 ```bash
 holodeck chat agent.yaml --quiet
 ```
+
 Shows only responses and spinner during execution, no status display.
 
 **Monitor Token Usage**
 All chat modes track cumulative token usage across the conversation. This helps you:
+
 - Monitor API costs in real-time
 - Understand token consumption patterns
 - Plan for context window limits
@@ -290,8 +269,8 @@ Never hardcode API keys in config files. Always use environment variables:
 providers:
   azure_openai:
     provider: azure_openai
-    api_key: ${AZURE_OPENAI_API_KEY}      # From environment
-    endpoint: ${AZURE_OPENAI_ENDPOINT}    # From environment
+    api_key: ${AZURE_OPENAI_API_KEY} # From environment
+    endpoint: ${AZURE_OPENAI_ENDPOINT} # From environment
 ```
 
 ### Test Locally Before Deploying
@@ -330,14 +309,7 @@ holodeck test agent2/agent.yaml
 
 ## Troubleshooting
 
-### "holodeck: command not found"
-
-Make sure HoloDeck is installed:
-
-```bash
-pip install --upgrade holodeck-ai
-holodeck --version
-```
+For installation issues, see the [Installation Guide](installation.md#troubleshooting).
 
 ### "Error: config.yaml not found"
 
@@ -367,20 +339,21 @@ python -c "import yaml; yaml.safe_load(open('agent.yaml'))"
 ```
 
 Common issues:
+
 - Incorrect indentation (must use spaces, not tabs)
 - Missing required fields: `name`, `model.provider`, `instructions`
 - Invalid YAML syntax
 
 ## Next Steps
 
-- 📖 [Read Agent Configuration Reference →](../guides/agent-configuration.md)
-- 🔧 [Explore Tool Types →](../guides/tools.md)
-- 📊 [Learn About Evaluations →](../guides/evaluations.md)
-- 💡 [Browse Examples →](../examples/README.md)
-- 🛠️ [Global Configuration Guide →](../guides/global-config.md)
+- [Agent Configuration Reference](../guides/agent-configuration.md)
+- [Explore Tool Types](../guides/tools.md)
+- [Learn About Evaluations](../guides/evaluations.md)
+- [Browse Examples](../examples/README.md)
+- [Global Configuration Guide](../guides/global-config.md)
 
 ## Getting Help
 
-- 🐛 **Report bugs**: [GitHub Issues](https://github.com/anthropics/holodeck/issues)
-- 💬 **Ask questions**: [GitHub Discussions](https://github.com/anthropics/holodeck/discussions)
-- 📚 **Full docs**: [https://docs.holodeck.ai](https://docs.holodeck.ai)
+- **Report bugs**: [GitHub Issues](https://github.com/justinbarias/holodeck/issues)
+- **Ask questions**: [GitHub Discussions](https://github.com/justinbarias/holodeck/discussions)
+- **Full docs**: [https://docs.useholodeck.ai](https://docs.useholodeck.ai)

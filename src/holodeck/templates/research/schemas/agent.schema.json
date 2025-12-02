@@ -1,0 +1,691 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://useholodeck.ai/schemas/agent.schema.json",
+  "title": "HoloDeck Agent Configuration",
+  "description": "Schema for HoloDeck AI agent YAML configuration files",
+  "type": "object",
+  "required": ["name", "model", "instructions"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Agent identifier"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable description"
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Author of the agent"
+    },
+    "model": {
+      "$ref": "#/$defs/LLMProvider"
+    },
+    "instructions": {
+      "$ref": "#/$defs/Instructions"
+    },
+    "response_format": {
+      "oneOf": [{ "type": "object" }, { "type": "string" }, { "type": "null" }],
+      "description": "Response format schema (inline dict, file path, or null)"
+    },
+    "tools": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Tool" },
+      "maxItems": 50,
+      "description": "Agent tools (vectorstore, function, mcp, prompt)"
+    },
+    "evaluations": {
+      "$ref": "#/$defs/EvaluationConfig",
+      "description": "Evaluation configuration with 'model' (optional default LLM) and 'metrics' array"
+    },
+    "test_cases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/TestCase" },
+      "maxItems": 100,
+      "description": "Test scenarios"
+    },
+    "execution": {
+      "$ref": "#/$defs/ExecutionConfig"
+    }
+  },
+  "$defs": {
+    "ProviderEnum": {
+      "type": "string",
+      "enum": ["openai", "azure_openai", "anthropic", "ollama"],
+      "description": "LLM provider type"
+    },
+    "LLMProvider": {
+      "type": "object",
+      "required": ["provider", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "$ref": "#/$defs/ProviderEnum" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Model name or identifier"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 2.0,
+          "default": 0.3,
+          "description": "Sampling temperature"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1000,
+          "description": "Maximum tokens in response"
+        },
+        "top_p": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "description": "Nucleus sampling parameter"
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "API endpoint (required for azure_openai)"
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key for LLM provider"
+        }
+      },
+      "description": "LLM provider configuration"
+    },
+    "Instructions": {
+      "type": "object",
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": ["file"],
+          "properties": {
+            "file": { "type": "string", "minLength": 1 },
+            "inline": { "type": "null" }
+          }
+        },
+        {
+          "required": ["inline"],
+          "properties": {
+            "file": { "type": "null" },
+            "inline": { "type": "string", "minLength": 1 }
+          }
+        }
+      ],
+      "properties": {
+        "file": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "Path to instruction file"
+        },
+        "inline": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "Inline instruction text"
+        }
+      },
+      "description": "System instructions (file OR inline, mutually exclusive)"
+    },
+    "TransportType": {
+      "type": "string",
+      "enum": ["stdio", "sse", "websocket", "http"],
+      "default": "stdio"
+    },
+    "CommandType": {
+      "type": "string",
+      "enum": ["npx", "node", "uvx", "docker"]
+    },
+    "DatabaseConfig": {
+      "type": "object",
+      "required": ["provider"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": [
+            "postgres",
+            "azure-ai-search",
+            "qdrant",
+            "weaviate",
+            "chromadb",
+            "faiss",
+            "azure-cosmos-mongo",
+            "azure-cosmos-nosql",
+            "sql-server",
+            "pinecone",
+            "in-memory"
+          ]
+        },
+        "connection_string": { "type": "string" }
+      },
+      "additionalProperties": true,
+      "description": "Vector database configuration"
+    },
+    "Tool": {
+      "type": "object",
+      "required": ["type", "name", "description"],
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "name", "description", "source"],
+          "properties": {
+            "type": {
+              "const": "vectorstore",
+              "description": "Vector search tool"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool identifier"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool description"
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Path to data file/directory"
+            },
+            "vector_field": {
+              "oneOf": [
+                { "type": "string" },
+                { "type": "array", "items": { "type": "string" } }
+              ],
+              "description": "Field(s) to vectorize"
+            },
+            "meta_fields": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Metadata fields to include"
+            },
+            "chunk_size": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Text chunk size"
+            },
+            "chunk_overlap": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Chunk overlap size"
+            },
+            "embedding_model": {
+              "type": "string",
+              "description": "Custom embedding model"
+            },
+            "embedding_dimensions": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000,
+              "description": "Vector dimensions"
+            },
+            "database": {
+              "oneOf": [
+                { "$ref": "#/$defs/DatabaseConfig" },
+                { "type": "string" }
+              ],
+              "description": "Vector DB config or reference name"
+            },
+            "top_k": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 5,
+              "description": "Number of results to return"
+            },
+            "min_similarity_score": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "description": "Similarity threshold"
+            },
+            "record_path": {
+              "type": "string",
+              "description": "Path to array in JSON"
+            },
+            "record_prefix": {
+              "type": "string",
+              "description": "Record field prefix"
+            },
+            "meta_prefix": {
+              "type": "string",
+              "description": "Metadata field prefix"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "name", "description", "file", "function"],
+          "properties": {
+            "type": {
+              "const": "function",
+              "description": "Python function tool"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool identifier"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool description"
+            },
+            "file": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Python file path"
+            },
+            "function": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Function name"
+            },
+            "parameters": {
+              "type": "object",
+              "additionalProperties": { "type": "object" },
+              "description": "Parameter schema"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "name", "description"],
+          "properties": {
+            "type": {
+              "const": "mcp",
+              "description": "MCP (Model Context Protocol) tool"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool identifier"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool description"
+            },
+            "transport": { "$ref": "#/$defs/TransportType" },
+            "command": { "$ref": "#/$defs/CommandType" },
+            "args": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Command arguments"
+            },
+            "env": {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "description": "Environment variables"
+            },
+            "env_file": { "type": "string", "description": ".env file path" },
+            "encoding": {
+              "type": "string",
+              "default": "utf-8",
+              "description": "Stream encoding"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "Server URL (for HTTP/SSE/WebSocket)"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "description": "HTTP headers"
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Connection timeout (seconds)"
+            },
+            "sse_read_timeout": {
+              "type": "number",
+              "description": "SSE read timeout"
+            },
+            "terminate_on_close": {
+              "type": "boolean",
+              "description": "Terminate on close"
+            },
+            "config": {
+              "type": "object",
+              "description": "Server-specific configuration"
+            },
+            "load_tools": {
+              "type": "boolean",
+              "default": true,
+              "description": "Auto-discover tools"
+            },
+            "load_prompts": {
+              "type": "boolean",
+              "default": true,
+              "description": "Auto-discover prompts"
+            },
+            "request_timeout": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 60,
+              "description": "Operation timeout (seconds)"
+            },
+            "is_retrieval": {
+              "type": "boolean",
+              "default": false,
+              "description": "Mark as retrieval tool for RAG"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "name", "description", "parameters"],
+          "properties": {
+            "type": { "const": "prompt", "description": "Prompt-based tool" },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool identifier"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool description"
+            },
+            "template": {
+              "type": "string",
+              "description": "Inline prompt template"
+            },
+            "file": { "type": "string", "description": "Path to prompt file" },
+            "parameters": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": { "type": "object" },
+              "description": "Parameter definitions"
+            },
+            "model": {
+              "type": "object",
+              "description": "Model config override"
+            }
+          }
+        }
+      ],
+      "description": "Agent tool (discriminated by 'type' field: vectorstore, function, mcp, or prompt)"
+    },
+    "RAGMetricType": {
+      "type": "string",
+      "enum": [
+        "faithfulness",
+        "contextual_relevancy",
+        "contextual_precision",
+        "contextual_recall",
+        "answer_relevancy"
+      ]
+    },
+    "MetricType": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "metric"],
+          "properties": {
+            "type": {
+              "const": "standard",
+              "description": "Standard built-in metric"
+            },
+            "metric": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Metric name (e.g., groundedness)"
+            },
+            "threshold": {
+              "type": "number",
+              "description": "Minimum passing score"
+            },
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether metric is enabled"
+            },
+            "scale": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Score scale (e.g., 5 for 1-5)"
+            },
+            "model": { "$ref": "#/$defs/LLMProvider" },
+            "fail_on_error": {
+              "type": "boolean",
+              "default": false,
+              "description": "Fail test if metric fails"
+            },
+            "retry_on_failure": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3,
+              "description": "Number of retries"
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Timeout in milliseconds"
+            },
+            "custom_prompt": {
+              "type": "string",
+              "description": "Custom evaluation prompt"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "name", "criteria"],
+          "properties": {
+            "type": {
+              "const": "geval",
+              "description": "G-Eval custom criteria metric"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Custom metric identifier"
+            },
+            "criteria": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Natural language evaluation criteria"
+            },
+            "evaluation_steps": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Explicit evaluation steps"
+            },
+            "evaluation_params": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "input",
+                  "actual_output",
+                  "expected_output",
+                  "context",
+                  "retrieval_context"
+                ]
+              },
+              "default": ["actual_output"],
+              "description": "Test case fields to include in evaluation"
+            },
+            "strict_mode": {
+              "type": "boolean",
+              "default": false,
+              "description": "Binary scoring mode (1.0 or 0.0)"
+            },
+            "threshold": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "description": "Minimum passing score (0.0-1.0)"
+            },
+            "model": { "$ref": "#/$defs/LLMProvider" },
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether metric is enabled"
+            },
+            "fail_on_error": {
+              "type": "boolean",
+              "default": false,
+              "description": "Fail test if metric fails"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "metric_type"],
+          "properties": {
+            "type": {
+              "const": "rag",
+              "description": "RAG pipeline evaluation metric"
+            },
+            "metric_type": { "$ref": "#/$defs/RAGMetricType" },
+            "threshold": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.5,
+              "description": "Minimum passing score (0.0-1.0)"
+            },
+            "include_reason": {
+              "type": "boolean",
+              "default": true,
+              "description": "Include reasoning in results"
+            },
+            "model": { "$ref": "#/$defs/LLMProvider" },
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether metric is enabled"
+            },
+            "fail_on_error": {
+              "type": "boolean",
+              "default": false,
+              "description": "Fail test if metric fails"
+            }
+          }
+        }
+      ],
+      "description": "Evaluation metric (discriminated by 'type' field: standard, geval, or rag)"
+    },
+    "EvaluationConfig": {
+      "type": "object",
+      "required": ["metrics"],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/LLMProvider",
+          "description": "Default LLM model for all metrics"
+        },
+        "metrics": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/MetricType" },
+          "minItems": 1,
+          "description": "List of evaluation metrics (standard, geval, or rag). Each metric must have a 'type' field."
+        }
+      },
+      "description": "Evaluation framework configuration with model and metrics"
+    },
+    "FileInput": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "description": "Local file path" },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Remote URL"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["image", "pdf", "text", "excel", "word", "powerpoint", "csv"]
+        },
+        "description": { "type": "string" },
+        "pages": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "sheet": { "type": "string" },
+        "range": {
+          "type": "string",
+          "description": "Excel cell range (e.g., A1:E100)"
+        },
+        "cache": { "type": "boolean" }
+      },
+      "oneOf": [{ "required": ["path"] }, { "required": ["url"] }],
+      "description": "Multimodal file input (path OR url required)"
+    },
+    "TestCase": {
+      "type": "object",
+      "required": ["input"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "Test case identifier" },
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "description": "User query/prompt"
+        },
+        "expected_tools": { "type": "array", "items": { "type": "string" } },
+        "ground_truth": { "type": "string", "description": "Expected output" },
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FileInput" },
+          "maxItems": 10
+        },
+        "retrieval_context": { "type": "array", "items": { "type": "string" } },
+        "evaluations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/MetricType" }
+        }
+      },
+      "description": "Test case with multimodal support"
+    },
+    "ExecutionConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "file_timeout": {
+          "type": "integer",
+          "description": "File processing timeout (seconds)"
+        },
+        "llm_timeout": {
+          "type": "integer",
+          "description": "LLM API timeout (seconds)"
+        },
+        "download_timeout": {
+          "type": "integer",
+          "description": "File download timeout (seconds)"
+        },
+        "cache_enabled": {
+          "type": "boolean",
+          "description": "Enable file caching"
+        },
+        "cache_dir": {
+          "type": "string",
+          "description": "Cache directory path"
+        },
+        "verbose": { "type": "boolean", "description": "Verbose output mode" },
+        "quiet": { "type": "boolean", "description": "Quiet output mode" }
+      },
+      "description": "Test execution configuration"
+    }
+  }
+}
