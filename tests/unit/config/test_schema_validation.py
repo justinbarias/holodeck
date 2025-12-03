@@ -486,3 +486,186 @@ class TestExternalSchemaFileLoading:
             assert result == schema_content
         finally:
             agent_base_dir.reset(token)
+
+    def test_load_schema_file_os_error(self, temp_dir: Path, monkeypatch: Any) -> None:
+        """Test that OSError during file read raises FileNotFoundError."""
+        schema_file = temp_dir / "schema.json"
+        schema_file.write_text('{"type": "object"}')
+
+        # Mock open to raise OSError
+        original_open = open
+
+        def mock_open(*args: Any, **kwargs: Any) -> Any:
+            if "schema.json" in str(args[0]):
+                raise OSError("Permission denied")
+            return original_open(*args, **kwargs)
+
+        monkeypatch.setattr("builtins.open", mock_open)
+
+        with pytest.raises(FileNotFoundError, match="Failed to read schema file"):
+            SchemaValidator.load_schema_from_file("schema.json", base_dir=temp_dir)
+
+
+class TestSchemaStructureValidation:
+    """Tests for _validate_schema_structure error cases."""
+
+    def test_invalid_type_value_rejected(self) -> None:
+        """Test that invalid type values are rejected."""
+        schema = {"type": "invalid_type"}
+
+        with pytest.raises(ValueError, match="Invalid type 'invalid_type'"):
+            SchemaValidator.validate_schema(schema)
+
+    def test_properties_not_object_rejected(self) -> None:
+        """Test that properties must be an object."""
+        schema = {
+            "type": "object",
+            "properties": "not_an_object",
+        }
+
+        with pytest.raises(
+            ValueError, match="'properties' at schema must be an object"
+        ):
+            SchemaValidator.validate_schema(schema)
+
+    def test_required_not_array_rejected(self) -> None:
+        """Test that required must be an array."""
+        schema = {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": "name",  # Should be ["name"]
+        }
+
+        with pytest.raises(ValueError, match="'required' at schema must be an array"):
+            SchemaValidator.validate_schema(schema)
+
+    def test_required_items_not_strings_rejected(self) -> None:
+        """Test that required items must be strings."""
+        schema = {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": [123, "name"],  # 123 is not a string
+        }
+
+        with pytest.raises(
+            ValueError, match="'required' items at schema must be strings"
+        ):
+            SchemaValidator.validate_schema(schema)
+
+    def test_additional_properties_invalid_type_rejected(self) -> None:
+        """Test that additionalProperties must be boolean or object."""
+        schema = {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "additionalProperties": "false",  # String instead of boolean
+        }
+
+        with pytest.raises(
+            ValueError,
+            match="'additionalProperties' at schema must be boolean or object",
+        ):
+            SchemaValidator.validate_schema(schema)
+
+    def test_additional_properties_as_object_accepted(self) -> None:
+        """Test that additionalProperties can be an object schema."""
+        schema = {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "additionalProperties": {"type": "string"},
+        }
+
+        result = SchemaValidator.validate_schema(schema)
+        assert result["additionalProperties"] == {"type": "string"}
+
+    def test_items_invalid_type_rejected(self) -> None:
+        """Test that items must be object or boolean."""
+        schema = {
+            "type": "array",
+            "items": "string",  # Should be {"type": "string"}
+        }
+
+        with pytest.raises(
+            ValueError, match="'items' at schema must be object or boolean"
+        ):
+            SchemaValidator.validate_schema(schema)
+
+    def test_items_as_boolean_accepted(self) -> None:
+        """Test that items can be a boolean."""
+        schema = {
+            "type": "array",
+            "items": True,
+        }
+
+        result = SchemaValidator.validate_schema(schema)
+        assert result["items"] is True
+
+    def test_enum_not_array_rejected(self) -> None:
+        """Test that enum must be an array."""
+        schema = {
+            "type": "string",
+            "enum": "active",  # Should be ["active"]
+        }
+
+        with pytest.raises(ValueError, match="'enum' at schema must be an array"):
+            SchemaValidator.validate_schema(schema)
+
+    def test_minimum_not_number_rejected(self) -> None:
+        """Test that minimum must be a number."""
+        schema = {
+            "type": "integer",
+            "minimum": "0",  # String instead of number
+        }
+
+        with pytest.raises(ValueError, match="'minimum' at schema must be a number"):
+            SchemaValidator.validate_schema(schema)
+
+    def test_maximum_not_number_rejected(self) -> None:
+        """Test that maximum must be a number."""
+        schema = {
+            "type": "integer",
+            "maximum": "100",  # String instead of number
+        }
+
+        with pytest.raises(ValueError, match="'maximum' at schema must be a number"):
+            SchemaValidator.validate_schema(schema)
+
+
+class TestAllowedKeywordsValidation:
+    """Tests for _check_allowed_keywords edge cases."""
+
+    def test_invalid_schema_type_rejected(self) -> None:
+        """Test that invalid schema types are rejected."""
+
+        # Create a custom object that's not a valid JSON type
+        class CustomObject:
+            pass
+
+        # We need to test _check_allowed_keywords directly since validate_schema
+        # only accepts dict or str
+        with pytest.raises(ValueError, match="must be object or boolean"):
+            SchemaValidator._check_allowed_keywords(CustomObject(), "test")
+
+    def test_boolean_schema_accepted(self) -> None:
+        """Test that boolean schemas are accepted (valid in JSON Schema)."""
+        # Boolean schemas are valid - True means "accept anything",
+        # False means "reject all". Tests non-dict path in _check_allowed_keywords
+        SchemaValidator._check_allowed_keywords(True, "test")
+        SchemaValidator._check_allowed_keywords(False, "test")
+
+    def test_none_schema_accepted(self) -> None:
+        """Test that None is accepted as a valid schema value."""
+        SchemaValidator._check_allowed_keywords(None, "test")
+
+    def test_generic_exception_handling(self) -> None:
+        """Test that generic exceptions during validation are wrapped."""
+
+        # Create a schema that will cause an unexpected error
+        # by having a property that raises an exception when accessed
+        class BadDict(dict):  # type: ignore[type-arg]
+            def items(self) -> Any:
+                raise RuntimeError("Unexpected error")
+
+        schema = {"type": "object", "properties": BadDict()}
+
+        with pytest.raises(ValueError, match="Invalid schema schema"):
+            SchemaValidator.validate_schema(schema)
