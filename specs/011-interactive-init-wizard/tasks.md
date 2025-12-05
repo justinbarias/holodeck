@@ -22,64 +22,58 @@
 **Purpose**: Add new dependency and create base project structure for wizard feature
 
 - [ ] T001 Add `inquirerpy>=0.3.4,<0.4.0` dependency to pyproject.toml
-- [ ] T002 [P] Create test fixture file for MCP registry mock response in tests/fixtures/mcp_registry_response.json
-- [ ] T003 [P] Create empty module files: src/holodeck/models/wizard_config.py, src/holodeck/lib/mcp_registry.py, src/holodeck/cli/utils/wizard.py
+- [ ] T002 [P] Create empty module files: src/holodeck/models/wizard_config.py, src/holodeck/cli/utils/wizard.py
+- [ ] T003 [P] Create test fixture file for wizard defaults in tests/fixtures/wizard_defaults.py
 
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: Core models and MCP registry client that ALL user stories depend on
+**Purpose**: Core models that ALL user stories depend on
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
 ### Models (Shared by All Stories)
 
-- [ ] T004 [P] Create WizardStep enum, WizardState model, and WizardResult model in src/holodeck/models/wizard_config.py per data-model.md
-- [ ] T005 [P] Create LLMProviderChoice model with LLM_PROVIDER_CHOICES list in src/holodeck/models/wizard_config.py
-- [ ] T006 [P] Create VectorStoreChoice model with VECTOR_STORE_CHOICES list in src/holodeck/models/wizard_config.py
-- [ ] T007 Extend ProjectInitInput model with llm_provider, vector_store, mcp_servers fields in src/holodeck/models/project_config.py
-
-### MCP Registry Client
-
-- [ ] T008 [P] Create MCPRegistryError exception hierarchy (MCPRegistryError, MCPRegistryNetworkError, MCPRegistryTimeoutError, MCPRegistryResponseError) in src/holodeck/lib/mcp_registry.py
-- [ ] T009 [P] Create MCPPackage and MCPServerInfo models in src/holodeck/lib/mcp_registry.py per data-model.md
-- [ ] T010 [P] Create MCPRegistryMetadata and MCPRegistryResponse models in src/holodeck/lib/mcp_registry.py
-- [ ] T011 [P] Create MCPServerChoice model and DEFAULT_MCP_SERVERS constant in src/holodeck/lib/mcp_registry.py
-- [ ] T012 Implement MCPRegistryClient class with __init__, list_servers, get_server_choices methods in src/holodeck/lib/mcp_registry.py per contracts/mcp-registry-client.md
+- [ ] T004 [P] Create WizardStep enum (AGENT_NAME, LLM_PROVIDER, VECTOR_STORE, EVALS, MCP_SERVERS, COMPLETE), WizardState model, and WizardResult model in src/holodeck/models/wizard_config.py per data-model.md
+- [ ] T005 [P] Create LLMProviderChoice model with LLM_PROVIDER_CHOICES list (ollama default with gpt-oss:20b, openai, azure_openai, anthropic) in src/holodeck/models/wizard_config.py
+- [ ] T006 [P] Create VectorStoreChoice model with VECTOR_STORE_CHOICES list (chromadb default with http://localhost:8000, redis, in-memory) in src/holodeck/models/wizard_config.py
+- [ ] T007 [P] Create EvalChoice model with EVAL_CHOICES list (rag-faithfulness, rag-answer_relevancy default, rag-context_precision, rag-context_recall) in src/holodeck/models/wizard_config.py
+- [ ] T008 [P] Create MCPServerChoice model with MCP_SERVER_CHOICES list (brave-search, memory, sequential-thinking default, filesystem, github, postgres) in src/holodeck/models/wizard_config.py
+- [ ] T009 Extend ProjectInitInput model with agent_name, llm_provider, vector_store, evals, mcp_servers fields in src/holodeck/models/project_config.py
 
 ### Unit Tests for Foundation
 
-- [ ] T013 [P] Create unit tests for WizardState, WizardResult, LLMProviderChoice, VectorStoreChoice in tests/unit/test_wizard_config.py
-- [ ] T014 [P] Create unit tests for MCPRegistryClient with mocked requests in tests/unit/test_mcp_registry.py
+- [ ] T010 [P] Create unit tests for WizardState, WizardResult, LLMProviderChoice, VectorStoreChoice, EvalChoice, MCPServerChoice in tests/unit/test_wizard_config.py
 
-**Checkpoint**: Foundation ready - MCP registry client and all models tested. User story implementation can now begin.
+**Checkpoint**: Foundation ready - all models tested. User story implementation can now begin.
 
 ---
 
 ## Phase 3: User Story 1 - Quick Start with Defaults (Priority: P1) MVP
 
-**Goal**: User can run `holodeck init` and press Enter at each prompt to create a project with all defaults (Ollama, ChromaDB, 3 default MCP servers)
+**Goal**: User can run `holodeck init`, enter agent name, and press Enter at each prompt to create a project with all defaults (Ollama gpt-oss:20b, ChromaDB http://localhost:8000, default evals, default MCP servers)
 
-**Independent Test**: Run `holodeck init test-project`, press Enter at all prompts, verify agent.yaml contains defaults
+**Independent Test**: Run `holodeck init`, enter agent name, press Enter at all prompts, verify agent.yaml contains defaults
 
 ### Implementation for User Story 1
 
-- [ ] T015 Create is_interactive() function in src/holodeck/cli/utils/wizard.py that checks sys.stdin.isatty() and sys.stdout.isatty()
-- [ ] T016 [P] [US1] Create _prompt_llm_provider() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
-- [ ] T017 [P] [US1] Create _prompt_vectorstore() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
-- [ ] T018 [P] [US1] Create _prompt_mcp_servers() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
-- [ ] T019 [US1] Create _fetch_mcp_servers() function that uses MCPRegistryClient.get_server_choices() in src/holodeck/cli/utils/wizard.py
-- [ ] T020 [US1] Implement run_wizard() public function orchestrating all prompts in src/holodeck/cli/utils/wizard.py per contracts/wizard-module.md
-- [ ] T021 [US1] Create WizardCancelledError exception in src/holodeck/cli/utils/wizard.py
-- [ ] T022 [US1] Update ProjectInitializer.initialize() to use llm_provider, vector_store, mcp_servers from ProjectInitInput in src/holodeck/cli/utils/project_init.py
-- [ ] T023 [US1] Update agent.yaml.j2 template to include wizard selection variables in src/holodeck/templates/conversational/agent.yaml.j2
-- [ ] T024 [US1] Update init command to call run_wizard() when interactive, pass result to ProjectInitInput in src/holodeck/cli/commands/init.py
+- [ ] T011 Create is_interactive() function in src/holodeck/cli/utils/wizard.py that checks sys.stdin.isatty() and sys.stdout.isatty()
+- [ ] T012 [P] [US1] Create _prompt_agent_name() internal function using InquirerPy text with validation in src/holodeck/cli/utils/wizard.py
+- [ ] T013 [P] [US1] Create _prompt_llm_provider() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
+- [ ] T014 [P] [US1] Create _prompt_vectorstore() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
+- [ ] T015 [P] [US1] Create _prompt_evals() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
+- [ ] T016 [P] [US1] Create _prompt_mcp_servers() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
+- [ ] T017 [US1] Implement run_wizard() public function orchestrating all prompts in src/holodeck/cli/utils/wizard.py per contracts/wizard-module.md
+- [ ] T018 [US1] Create WizardCancelledError exception in src/holodeck/cli/utils/wizard.py
+- [ ] T019 [US1] Update ProjectInitializer.initialize() to use agent_name, llm_provider, vector_store, evals, mcp_servers from ProjectInitInput in src/holodeck/cli/utils/project_init.py
+- [ ] T020 [US1] Update agent.yaml.j2 template to include wizard selection variables in src/holodeck/templates/conversational/agent.yaml.j2
+- [ ] T021 [US1] Update init command to call run_wizard() when interactive, pass result to ProjectInitInput in src/holodeck/cli/commands/init.py
 
 ### Unit Tests for User Story 1
 
-- [ ] T025 [P] [US1] Create unit tests for is_interactive(), _prompt_llm_provider, _prompt_vectorstore, _prompt_mcp_servers with mocked InquirerPy in tests/unit/test_wizard.py
-- [ ] T026 [P] [US1] Create unit test for run_wizard() with all prompts mocked in tests/unit/test_wizard.py
+- [ ] T022 [P] [US1] Create unit tests for is_interactive(), _prompt_agent_name, _prompt_llm_provider, _prompt_vectorstore, _prompt_evals, _prompt_mcp_servers with mocked InquirerPy in tests/unit/test_wizard.py
+- [ ] T023 [P] [US1] Create unit test for run_wizard() with all prompts mocked in tests/unit/test_wizard.py
 
 **Checkpoint**: User Story 1 complete - users can run wizard with defaults and get a working project.
 
@@ -89,21 +83,21 @@
 
 **Goal**: User can select OpenAI, Azure OpenAI, or Anthropic and get provider-specific config stubs in generated files
 
-**Independent Test**: Run `holodeck init test-openai`, select OpenAI, verify agent.yaml has OpenAI settings and OPENAI_API_KEY reference
+**Independent Test**: Run `holodeck init`, select OpenAI, verify agent.yaml has OpenAI settings and OPENAI_API_KEY reference
 
 ### Implementation for User Story 2
 
-- [ ] T027 [US2] Add provider-specific configuration generation logic to ProjectInitializer for OpenAI (api_key_env_var, model defaults) in src/holodeck/cli/utils/project_init.py
-- [ ] T028 [US2] Add provider-specific configuration generation logic to ProjectInitializer for Azure OpenAI (endpoint placeholder, deployment name) in src/holodeck/cli/utils/project_init.py
-- [ ] T029 [US2] Add provider-specific configuration generation logic to ProjectInitializer for Anthropic (api_key_env_var, model defaults) in src/holodeck/cli/utils/project_init.py
-- [ ] T030 [US2] Update agent.yaml.j2 template with conditional sections for each LLM provider in src/holodeck/templates/conversational/agent.yaml.j2
-- [ ] T031 [US2] Update .env.example template with provider-specific environment variable stubs in src/holodeck/templates/conversational/.env.example.j2
+- [ ] T024 [US2] Add provider-specific configuration generation logic to ProjectInitializer for OpenAI (api_key_env_var, model defaults) in src/holodeck/cli/utils/project_init.py
+- [ ] T025 [US2] Add provider-specific configuration generation logic to ProjectInitializer for Azure OpenAI (endpoint placeholder, deployment name) in src/holodeck/cli/utils/project_init.py
+- [ ] T026 [US2] Add provider-specific configuration generation logic to ProjectInitializer for Anthropic (api_key_env_var, model defaults) in src/holodeck/cli/utils/project_init.py
+- [ ] T027 [US2] Update agent.yaml.j2 template with conditional sections for each LLM provider in src/holodeck/templates/conversational/agent.yaml.j2
+- [ ] T028 [US2] Update .env.example template with provider-specific environment variable stubs in src/holodeck/templates/conversational/.env.example.j2
 
 ### Unit Tests for User Story 2
 
-- [ ] T032 [P] [US2] Create unit tests for OpenAI provider config generation in tests/unit/test_project_init.py
-- [ ] T033 [P] [US2] Create unit tests for Azure OpenAI provider config generation in tests/unit/test_project_init.py
-- [ ] T034 [P] [US2] Create unit tests for Anthropic provider config generation in tests/unit/test_project_init.py
+- [ ] T029 [P] [US2] Create unit tests for OpenAI provider config generation in tests/unit/test_project_init.py
+- [ ] T030 [P] [US2] Create unit tests for Azure OpenAI provider config generation in tests/unit/test_project_init.py
+- [ ] T031 [P] [US2] Create unit tests for Anthropic provider config generation in tests/unit/test_project_init.py
 
 **Checkpoint**: User Story 2 complete - users can select any LLM provider and get correct configuration.
 
@@ -113,100 +107,121 @@
 
 **Goal**: User can select Redis or In-Memory and get appropriate config stubs, including warning for ephemeral storage
 
-**Independent Test**: Run `holodeck init test-redis`, select Redis, verify agent.yaml has Redis connection settings
+**Independent Test**: Run `holodeck init`, select Redis, verify agent.yaml has Redis connection settings
 
 ### Implementation for User Story 3
 
-- [ ] T035 [US3] Add vector store-specific configuration generation for Redis (connection_string env var, redis provider) in src/holodeck/cli/utils/project_init.py
-- [ ] T036 [US3] Add vector store-specific configuration generation for In-Memory (ephemeral warning comment) in src/holodeck/cli/utils/project_init.py
-- [ ] T037 [US3] Update agent.yaml.j2 template with conditional sections for each vector store in src/holodeck/templates/conversational/agent.yaml.j2
-- [ ] T038 [US3] Add warning display when In-Memory is selected in _prompt_vectorstore() in src/holodeck/cli/utils/wizard.py
+- [ ] T032 [US3] Add vector store-specific configuration generation for Redis (connection_string env var, redis provider) in src/holodeck/cli/utils/project_init.py
+- [ ] T033 [US3] Add vector store-specific configuration generation for In-Memory (ephemeral warning comment) in src/holodeck/cli/utils/project_init.py
+- [ ] T034 [US3] Update agent.yaml.j2 template with conditional sections for each vector store in src/holodeck/templates/conversational/agent.yaml.j2
+- [ ] T035 [US3] Add warning display when In-Memory is selected in _prompt_vectorstore() in src/holodeck/cli/utils/wizard.py
 
 ### Unit Tests for User Story 3
 
-- [ ] T039 [P] [US3] Create unit tests for Redis vectorstore config generation in tests/unit/test_project_init.py
-- [ ] T040 [P] [US3] Create unit tests for In-Memory vectorstore config generation in tests/unit/test_project_init.py
-- [ ] T041 [P] [US3] Create unit test for In-Memory warning display in tests/unit/test_wizard.py
+- [ ] T036 [P] [US3] Create unit tests for Redis vectorstore config generation in tests/unit/test_project_init.py
+- [ ] T037 [P] [US3] Create unit tests for In-Memory vectorstore config generation in tests/unit/test_project_init.py
+- [ ] T038 [P] [US3] Create unit test for In-Memory warning display in tests/unit/test_wizard.py
 
 **Checkpoint**: User Story 3 complete - users can select any vector store and get correct configuration.
 
 ---
 
-## Phase 6: User Story 4 - MCP Server Selection from Registry (Priority: P2)
+## Phase 6: User Story 4 - Evaluation Metrics Selection (Priority: P2)
 
-**Goal**: User sees list of MCP servers from registry with descriptions, can multi-select, defaults are pre-selected
+**Goal**: User sees list of evaluation metrics, can multi-select, with rag-faithfulness and rag-answer_relevancy pre-selected
 
-**Independent Test**: Run `holodeck init test-mcp`, modify default MCP selection (add GitHub, remove memory), verify agent.yaml reflects changes
+**Independent Test**: Run `holodeck init`, modify default eval selection (add rag-context_precision), verify agent.yaml reflects changes
 
 ### Implementation for User Story 4
 
-- [ ] T042 [US4] Add MCP server configuration generation to ProjectInitializer for selected servers in src/holodeck/cli/utils/project_init.py
-- [ ] T043 [US4] Update agent.yaml.j2 template with MCP tools section using selected servers in src/holodeck/templates/conversational/agent.yaml.j2
-- [ ] T044 [US4] Generate MCP tool configuration stubs for each selected server (command, args for npm packages) in src/holodeck/cli/utils/project_init.py
+- [ ] T039 [US4] Add eval configuration generation to ProjectInitializer for selected metrics in src/holodeck/cli/utils/project_init.py
+- [ ] T040 [US4] Update agent.yaml.j2 template with evaluations section using selected evals in src/holodeck/templates/conversational/agent.yaml.j2
+- [ ] T041 [US4] Generate eval configuration stubs for each selected metric in src/holodeck/cli/utils/project_init.py
 
 ### Unit Tests for User Story 4
 
-- [ ] T045 [P] [US4] Create unit tests for MCP server config generation in tests/unit/test_project_init.py
-- [ ] T046 [P] [US4] Create integration test for MCP registry fetch with mock server in tests/integration/test_init_wizard.py
+- [ ] T042 [P] [US4] Create unit tests for eval config generation in tests/unit/test_project_init.py
+- [ ] T043 [P] [US4] Create unit tests for eval prompt with defaults in tests/unit/test_wizard.py
 
-**Checkpoint**: User Story 4 complete - users can select MCP servers and get proper tool configuration.
+**Checkpoint**: User Story 4 complete - users can select evals and get proper configuration.
 
 ---
 
-## Phase 7: User Story 5 - Non-Interactive Mode (Priority: P3)
+## Phase 7: User Story 5 - MCP Server Selection (Priority: P2)
 
-**Goal**: User can run init with --llm, --vectorstore, --mcp, --non-interactive flags for CI/CD usage
+**Goal**: User sees list of MCP servers with descriptions, can multi-select, with brave-search, memory, sequential-thinking pre-selected
 
-**Independent Test**: Run `holodeck init test-ci --llm openai --vectorstore redis --mcp filesystem,github --non-interactive`, verify no prompts and correct config
+**Independent Test**: Run `holodeck init`, modify default MCP selection (add filesystem, remove memory), verify agent.yaml reflects changes
 
 ### Implementation for User Story 5
 
-- [ ] T047 [US5] Add --llm option with click.Choice validator to init command in src/holodeck/cli/commands/init.py
-- [ ] T048 [US5] Add --vectorstore option with click.Choice validator to init command in src/holodeck/cli/commands/init.py
-- [ ] T049 [US5] Add --mcp option (comma-separated string) to init command in src/holodeck/cli/commands/init.py
-- [ ] T050 [US5] Add --non-interactive flag to init command in src/holodeck/cli/commands/init.py
-- [ ] T051 [US5] Implement _parse_mcp_arg() helper to parse comma-separated MCP servers in src/holodeck/cli/commands/init.py
-- [ ] T052 [US5] Add logic to skip wizard when non-interactive or flags provided in src/holodeck/cli/commands/init.py
-- [ ] T053 [US5] Add validation error messages for invalid --llm, --vectorstore values in src/holodeck/cli/commands/init.py
-- [ ] T054 [US5] Add warning messages for invalid MCP server names in --mcp (skip invalid, continue) in src/holodeck/cli/commands/init.py
-- [ ] T055 [US5] Add TTY detection fallback: use defaults when not interactive and no flags in src/holodeck/cli/commands/init.py
+- [ ] T044 [US5] Add MCP server configuration generation to ProjectInitializer for selected servers in src/holodeck/cli/utils/project_init.py
+- [ ] T045 [US5] Update agent.yaml.j2 template with MCP tools section using selected servers in src/holodeck/templates/conversational/agent.yaml.j2
+- [ ] T046 [US5] Generate MCP tool configuration stubs for each selected server (command, args for npm packages) in src/holodeck/cli/utils/project_init.py
 
 ### Unit Tests for User Story 5
 
-- [ ] T056 [P] [US5] Create unit tests for _parse_mcp_arg() helper in tests/unit/test_init_command.py
-- [ ] T057 [P] [US5] Create integration test for non-interactive mode with all flags in tests/integration/test_init_wizard.py
-- [ ] T058 [P] [US5] Create integration test for invalid flag error messages in tests/integration/test_init_wizard.py
+- [ ] T047 [P] [US5] Create unit tests for MCP server config generation in tests/unit/test_project_init.py
+- [ ] T048 [P] [US5] Create integration test for MCP selection flow in tests/integration/test_init_wizard.py
 
-**Checkpoint**: User Story 5 complete - full non-interactive mode support for CI/CD.
+**Checkpoint**: User Story 5 complete - users can select MCP servers and get proper tool configuration.
 
 ---
 
-## Phase 8: Edge Cases & Error Handling
+## Phase 8: User Story 6 - Non-Interactive Mode (Priority: P3)
+
+**Goal**: User can run init with --name, --llm, --vectorstore, --evals, --mcp, --non-interactive flags for CI/CD usage
+
+**Independent Test**: Run `holodeck init --name test-agent --llm openai --vectorstore redis --evals rag-faithfulness --mcp filesystem,brave-search --non-interactive`, verify no prompts and correct config
+
+### Implementation for User Story 6
+
+- [ ] T049 [US6] Add --name option (required for non-interactive) to init command in src/holodeck/cli/commands/init.py
+- [ ] T050 [US6] Add --llm option with click.Choice validator to init command in src/holodeck/cli/commands/init.py
+- [ ] T051 [US6] Add --vectorstore option with click.Choice validator to init command in src/holodeck/cli/commands/init.py
+- [ ] T052 [US6] Add --evals option (comma-separated string) to init command in src/holodeck/cli/commands/init.py
+- [ ] T053 [US6] Add --mcp option (comma-separated string) to init command in src/holodeck/cli/commands/init.py
+- [ ] T054 [US6] Add --non-interactive flag to init command in src/holodeck/cli/commands/init.py
+- [ ] T055 [US6] Implement _parse_comma_arg() helper to parse comma-separated values in src/holodeck/cli/commands/init.py
+- [ ] T056 [US6] Add logic to skip wizard when non-interactive or flags provided in src/holodeck/cli/commands/init.py
+- [ ] T057 [US6] Add validation error messages for invalid flag values in src/holodeck/cli/commands/init.py
+- [ ] T058 [US6] Add warning messages for invalid evals/MCP server names (skip invalid, continue) in src/holodeck/cli/commands/init.py
+- [ ] T059 [US6] Add TTY detection fallback: use defaults when not interactive and no flags in src/holodeck/cli/commands/init.py
+
+### Unit Tests for User Story 6
+
+- [ ] T060 [P] [US6] Create unit tests for _parse_comma_arg() helper in tests/unit/test_init_command.py
+- [ ] T061 [P] [US6] Create integration test for non-interactive mode with all flags in tests/integration/test_init_wizard.py
+- [ ] T062 [P] [US6] Create integration test for invalid flag error messages in tests/integration/test_init_wizard.py
+
+**Checkpoint**: User Story 6 complete - full non-interactive mode support for CI/CD.
+
+---
+
+## Phase 9: Edge Cases & Error Handling
 
 **Purpose**: Handle edge cases defined in spec.md
 
-- [ ] T059 [P] Implement Ctrl+C cancellation handling with clean exit (no partial files) in src/holodeck/cli/commands/init.py
-- [ ] T060 [P] Implement MCP registry network error handling with clear message per FR-014 in src/holodeck/cli/commands/init.py
-- [ ] T061 [P] Implement TTY detection fallback to non-interactive with defaults per FR-013 in src/holodeck/cli/commands/init.py
-- [ ] T062 [P] Update output format to include LLM Provider, Vector Store, MCP Servers in success message in src/holodeck/cli/commands/init.py
-- [ ] T063 Create integration test for Ctrl+C cancellation (verify no partial files) in tests/integration/test_init_wizard.py
-- [ ] T064 Create integration test for MCP registry network error in tests/integration/test_init_wizard.py
+- [ ] T063 [P] Implement Ctrl+C cancellation handling with clean exit (no partial files) in src/holodeck/cli/commands/init.py
+- [ ] T064 [P] Implement TTY detection fallback to non-interactive with defaults per FR-015 in src/holodeck/cli/commands/init.py
+- [ ] T065 [P] Update output format to include Agent Name, LLM Provider, Vector Store, Evals, MCP Servers in success message in src/holodeck/cli/commands/init.py
+- [ ] T066 Create integration test for Ctrl+C cancellation (verify no partial files) in tests/integration/test_init_wizard.py
 
 ---
 
-## Phase 9: Polish & Cross-Cutting Concerns
+## Phase 10: Polish & Cross-Cutting Concerns
 
 **Purpose**: Final cleanup and template updates for other project templates
 
-- [ ] T065 [P] Update research template agent.yaml.j2 with wizard selection variables in src/holodeck/templates/research/agent.yaml.j2
-- [ ] T066 [P] Update customer-support template agent.yaml.j2 with wizard selection variables in src/holodeck/templates/customer-support/agent.yaml.j2
-- [ ] T067 [P] Update .env.example templates for research and customer-support templates
-- [ ] T068 Run `make format` to format all new code
-- [ ] T069 Run `make lint` and fix any linting issues
-- [ ] T070 Run `make type-check` and fix any type errors
-- [ ] T071 Run `make security` and fix any security issues
-- [ ] T072 Run `make test-coverage` and ensure 80%+ coverage on new files
-- [ ] T073 Validate quickstart.md scenarios work end-to-end
+- [ ] T067 [P] Update research template agent.yaml.j2 with wizard selection variables in src/holodeck/templates/research/agent.yaml.j2
+- [ ] T068 [P] Update customer-support template agent.yaml.j2 with wizard selection variables in src/holodeck/templates/customer-support/agent.yaml.j2
+- [ ] T069 [P] Update .env.example templates for research and customer-support templates
+- [ ] T070 Run `make format` to format all new code
+- [ ] T071 Run `make lint` and fix any linting issues
+- [ ] T072 Run `make type-check` and fix any type errors
+- [ ] T073 Run `make security` and fix any security issues
+- [ ] T074 Run `make test-coverage` and ensure 80%+ coverage on new files
+- [ ] T075 Validate quickstart.md scenarios work end-to-end
 
 ---
 
@@ -216,14 +231,15 @@
 
 - **Setup (Phase 1)**: No dependencies - can start immediately
 - **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
-- **User Stories (Phases 3-7)**: All depend on Foundational phase completion
+- **User Stories (Phases 3-8)**: All depend on Foundational phase completion
   - US1 (Phase 3): Foundation only
   - US2 (Phase 4): Foundation only (parallel with US1)
   - US3 (Phase 5): Foundation only (parallel with US1, US2)
   - US4 (Phase 6): Foundation only (parallel with US1, US2, US3)
-  - US5 (Phase 7): Depends on US1 (needs run_wizard to exist)
-- **Edge Cases (Phase 8)**: Depends on US1, US5 complete
-- **Polish (Phase 9)**: Depends on all user stories complete
+  - US5 (Phase 7): Foundation only (parallel with US1, US2, US3, US4)
+  - US6 (Phase 8): Depends on US1 (needs run_wizard to exist)
+- **Edge Cases (Phase 9)**: Depends on US1, US6 complete
+- **Polish (Phase 10)**: Depends on all user stories complete
 
 ### User Story Dependencies
 
@@ -231,7 +247,8 @@
 - **User Story 2 (P1)**: Can start after Phase 2 - No dependencies on other stories
 - **User Story 3 (P2)**: Can start after Phase 2 - No dependencies on other stories
 - **User Story 4 (P2)**: Can start after Phase 2 - No dependencies on other stories
-- **User Story 5 (P3)**: Depends on US1 (run_wizard function must exist)
+- **User Story 5 (P2)**: Can start after Phase 2 - No dependencies on other stories
+- **User Story 6 (P3)**: Depends on US1 (run_wizard function must exist)
 
 ### Within Each User Story
 
@@ -244,17 +261,16 @@
 ### Parallel Opportunities
 
 - T002, T003 can run in parallel (Setup phase)
-- T004, T005, T006 can run in parallel (Foundation models)
-- T008, T009, T010, T011 can run in parallel (MCP registry models)
-- T013, T014 can run in parallel (Foundation tests)
-- T016, T017, T018 can run in parallel (US1 prompt functions)
-- T025, T026 can run in parallel (US1 unit tests)
-- T032, T033, T034 can run in parallel (US2 tests)
-- T039, T040, T041 can run in parallel (US3 tests)
-- T045, T046 can run in parallel (US4 tests)
-- T056, T057, T058 can run in parallel (US5 tests)
-- US1, US2, US3, US4 can be developed in parallel (different files)
-- T065, T066, T067 can run in parallel (template updates)
+- T004, T005, T006, T007, T008 can run in parallel (Foundation models)
+- T012, T013, T014, T015, T016 can run in parallel (US1 prompt functions)
+- T022, T023 can run in parallel (US1 unit tests)
+- T029, T030, T031 can run in parallel (US2 tests)
+- T036, T037, T038 can run in parallel (US3 tests)
+- T042, T043 can run in parallel (US4 tests)
+- T047, T048 can run in parallel (US5 tests)
+- T060, T061, T062 can run in parallel (US6 tests)
+- US1, US2, US3, US4, US5 can be developed in parallel (different files)
+- T067, T068, T069 can run in parallel (template updates)
 
 ---
 
@@ -262,8 +278,10 @@
 
 ```bash
 # Launch all prompt functions together (different functions, same file but no conflicts):
+Task: "_prompt_agent_name() in src/holodeck/cli/utils/wizard.py"
 Task: "_prompt_llm_provider() in src/holodeck/cli/utils/wizard.py"
 Task: "_prompt_vectorstore() in src/holodeck/cli/utils/wizard.py"
+Task: "_prompt_evals() in src/holodeck/cli/utils/wizard.py"
 Task: "_prompt_mcp_servers() in src/holodeck/cli/utils/wizard.py"
 
 # Then implement orchestrating function:
@@ -280,9 +298,9 @@ Task: "tests/unit/test_wizard.py (all test functions)"
 ### MVP First (User Story 1 Only)
 
 1. Complete Phase 1: Setup (T001-T003)
-2. Complete Phase 2: Foundational (T004-T014)
-3. Complete Phase 3: User Story 1 (T015-T026)
-4. **STOP and VALIDATE**: Run `holodeck init test-mvp` and press Enter at all prompts
+2. Complete Phase 2: Foundational (T004-T010)
+3. Complete Phase 3: User Story 1 (T011-T023)
+4. **STOP and VALIDATE**: Run `holodeck init` and enter agent name, press Enter at all prompts
 5. Deploy/demo if ready - users can create projects with defaults!
 
 ### Incremental Delivery
@@ -291,9 +309,10 @@ Task: "tests/unit/test_wizard.py (all test functions)"
 2. Add User Story 1 → Test independently → MVP ready!
 3. Add User Story 2 → Test independently → Custom LLM providers work
 4. Add User Story 3 → Test independently → Custom vector stores work
-5. Add User Story 4 → Test independently → MCP server selection works
-6. Add User Story 5 → Test independently → CI/CD support ready
-7. Complete Edge Cases + Polish → Production ready
+5. Add User Story 4 → Test independently → Custom evals work
+6. Add User Story 5 → Test independently → MCP server selection works
+7. Add User Story 6 → Test independently → CI/CD support ready
+8. Complete Edge Cases + Polish → Production ready
 
 ### Parallel Team Strategy
 
@@ -301,9 +320,9 @@ With multiple developers:
 
 1. Team completes Setup + Foundational together
 2. Once Foundational is done:
-   - Developer A: User Story 1 + User Story 5 (dependent)
-   - Developer B: User Story 2
-   - Developer C: User Story 3 + User Story 4
+   - Developer A: User Story 1 + User Story 6 (dependent)
+   - Developer B: User Story 2 + User Story 3
+   - Developer C: User Story 4 + User Story 5
 3. Stories complete and integrate independently
 
 ---

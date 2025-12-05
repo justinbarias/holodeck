@@ -5,72 +5,26 @@
 
 ## Research Tasks
 
-### 1. MCP Registry API Integration
+### 1. Predefined Configuration Options
 
-**Context**: Need to fetch list of available MCP servers from official registry for user selection.
+**Context**: The wizard presents users with predefined options for LLM providers, vector stores, evals, and MCP servers without requiring external API calls.
 
-**Decision**: Use official MCP Registry API at `https://registry.modelcontextprotocol.io/v0/servers`
+**Decision**: Use hardcoded lists of options with sensible defaults
 
 **Rationale**:
-- Official registry endorsed by Model Context Protocol maintainers
-- RESTful API with JSON responses, easy to integrate
-- No authentication required for read operations
-- Supports search and pagination
+- No network dependency - wizard works offline
+- Faster user experience - no API latency
+- Simpler implementation - no error handling for network failures
+- Consistent experience - options don't change unexpectedly
 
-**API Specification**:
+**Default Configurations**:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/v0/servers` | GET | List all registered MCP servers |
-| `/v0/servers?search={query}` | GET | Search servers by keyword |
-| `/v0/servers?limit={n}` | GET | Limit results (max 100) |
-
-**Response Structure**:
-```json
-{
-  "servers": [
-    {
-      "server": {
-        "name": "io.github.user/server-name",
-        "description": "Server description",
-        "version": "1.0.0",
-        "packages": [
-          {
-            "registryType": "npm",
-            "identifier": "@scope/package-name",
-            "transport": {"type": "stdio"}
-          }
-        ]
-      },
-      "_meta": {
-        "io.modelcontextprotocol.registry/official": {
-          "status": "active",
-          "publishedAt": "2025-09-16T16:43:44.243Z"
-        }
-      }
-    }
-  ],
-  "metadata": {
-    "count": 1,
-    "nextCursor": "cursor_string"
-  }
-}
-```
-
-**Default MCP Servers** (from spec clarifications):
-1. `@modelcontextprotocol/server-filesystem` - File system access
-2. `@modelcontextprotocol/server-memory` - Key-value memory storage
-3. `@modelcontextprotocol/server-sequential-thinking` - Structured reasoning
-
-**Error Handling**: Per spec FR-014, if registry is unreachable, display clear error and exit.
-
-**Alternatives Considered**:
-- Hardcoded server list: Rejected because it would become stale and wouldn't reflect new servers
-- GitHub API for server repos: Rejected because it's not the authoritative source
-
-**Sources**:
-- [MCP Registry GitHub](https://github.com/modelcontextprotocol/registry)
-- [Nordic APIs - MCP Registry API Guide](https://nordicapis.com/getting-started-with-the-official-mcp-registry-api/)
+| Category | Default | Other Options |
+|----------|---------|---------------|
+| LLM Provider | Ollama (gpt-oss:20b) | OpenAI, Azure OpenAI, Anthropic |
+| Vector Store | ChromaDB (http://localhost:8000) | Redis, In-Memory |
+| Evals | rag-faithfulness, rag-answer_relevancy | rag-context_precision, rag-context_recall |
+| MCP Servers | brave-search[web-search], memory, sequential-thinking | filesystem, github, postgres |
 
 ---
 
@@ -84,8 +38,9 @@
 1. Built on prompt_toolkit (cross-platform, including Windows)
 2. Native `checkbox` prompt for multi-select with pre-selection support
 3. Native `select` prompt for single-selection
-4. Active maintenance and good documentation
-5. No Click conflicts - works alongside Click decorators
+4. Native `text` prompt for agent name input with validation
+5. Active maintenance and good documentation
+6. No Click conflicts - works alongside Click decorators
 
 **Installation**: `inquirerpy` (already follows project dependency patterns)
 
@@ -93,37 +48,57 @@
 
 | Feature | InquirerPy Support | Usage |
 |---------|-------------------|-------|
+| Text input | `inquirer.text()` | Agent name |
 | Single-select | `inquirer.select()` | LLM provider, Vector store |
-| Multi-select | `inquirer.checkbox()` | MCP servers |
-| Pre-selection | `Choice(value, enabled=True)` | Default MCP servers |
-| Descriptions | `Choice(value, name="Display")` | Show server descriptions |
+| Multi-select | `inquirer.checkbox()` | Evals, MCP servers |
+| Pre-selection | `Choice(value, enabled=True)` | Default evals, MCP servers |
+| Descriptions | `Choice(value, name="Display")` | Show option descriptions |
 | Validation | `validate=lambda r: len(r) >= 1` | Ensure selections made |
 
 **Example Integration**:
 ```python
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
+from InquirerPy.validator import EmptyInputValidator
+
+# Text input for agent name
+agent_name = inquirer.text(
+    message="Enter agent name:",
+    validate=EmptyInputValidator("Agent name cannot be empty"),
+).execute()
 
 # Single-select for LLM provider
 provider = inquirer.select(
     message="Select LLM provider:",
     choices=[
-        Choice("ollama", name="Ollama (default, local)"),
-        Choice("openai", name="OpenAI"),
-        Choice("azure_openai", name="Azure OpenAI"),
-        Choice("anthropic", name="Anthropic Claude"),
+        Choice("ollama", name="Ollama (default, gpt-oss:20b) - Local LLM inference"),
+        Choice("openai", name="OpenAI - GPT-4, GPT-3.5-turbo"),
+        Choice("azure_openai", name="Azure OpenAI - Azure-hosted models"),
+        Choice("anthropic", name="Anthropic Claude - Claude 3.5, Claude 3"),
     ],
     default="ollama",
+).execute()
+
+# Multi-select for evals
+evals = inquirer.checkbox(
+    message="Select evaluation metrics (space to toggle, enter to confirm):",
+    choices=[
+        Choice("rag-faithfulness", name="RAG Faithfulness", enabled=True),
+        Choice("rag-answer_relevancy", name="RAG Answer Relevancy", enabled=True),
+        Choice("rag-context_precision", name="RAG Context Precision"),
+        Choice("rag-context_recall", name="RAG Context Recall"),
+    ],
 ).execute()
 
 # Multi-select for MCP servers
 servers = inquirer.checkbox(
     message="Select MCP servers (space to toggle, enter to confirm):",
     choices=[
-        Choice("filesystem", name="Filesystem", enabled=True),
-        Choice("memory", name="Memory", enabled=True),
-        Choice("sequential-thinking", name="Sequential Thinking", enabled=True),
-        Choice("github", name="GitHub"),
+        Choice("brave-search", name="Brave Search - Web search capabilities", enabled=True),
+        Choice("memory", name="Memory - Key-value storage", enabled=True),
+        Choice("sequential-thinking", name="Sequential Thinking - Structured reasoning", enabled=True),
+        Choice("filesystem", name="Filesystem - File system access"),
+        Choice("github", name="GitHub - Repository access"),
     ],
 ).execute()
 ```
@@ -138,13 +113,14 @@ servers = inquirer.checkbox(
 - [InquirerPy PyPI](https://pypi.org/project/inquirerpy/)
 - [InquirerPy Checkbox Docs](https://inquirerpy.readthedocs.io/en/latest/pages/prompts/checkbox.html)
 - [InquirerPy Select Docs](https://inquirerpy.readthedocs.io/en/latest/pages/prompts/list.html)
+- [InquirerPy Text Docs](https://inquirerpy.readthedocs.io/en/latest/pages/prompts/input.html)
 - [Click Prompts Documentation](https://click.palletsprojects.com/en/stable/prompts/)
 
 ---
 
 ### 3. Terminal Interactivity Detection
 
-**Context**: Need to detect when terminal doesn't support interactive prompts (per FR-013).
+**Context**: Need to detect when terminal doesn't support interactive prompts (per FR-015).
 
 **Decision**: Use `sys.stdin.isatty()` for detection, fall back to defaults
 
@@ -175,9 +151,9 @@ def is_interactive() -> bool:
 
 ### 4. Non-Interactive Mode CLI Design
 
-**Context**: Need CLI flags for scripted/CI usage (FR-007).
+**Context**: Need CLI flags for scripted/CI usage (FR-009).
 
-**Decision**: Add flags `--llm`, `--vectorstore`, `--mcp`, and `--non-interactive`
+**Decision**: Add flags `--name`, `--llm`, `--vectorstore`, `--evals`, `--mcp`, and `--non-interactive`
 
 **Rationale**:
 - Follows existing CLI patterns in holodeck
@@ -188,14 +164,17 @@ def is_interactive() -> bool:
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
+| `--name` | String | None | Agent name (required in non-interactive) |
 | `--llm` | Choice | ollama | LLM provider selection |
 | `--vectorstore` | Choice | chromadb | Vector store selection |
-| `--mcp` | String (comma-sep) | filesystem,memory,sequential-thinking | MCP servers |
+| `--evals` | String (comma-sep) | rag-faithfulness,rag-answer_relevancy | Evaluation metrics |
+| `--mcp` | String (comma-sep) | brave-search,memory,sequential-thinking | MCP servers |
 | `--non-interactive` | Flag | False | Skip all prompts, use defaults/flags |
 
 **Validation**:
 - Invalid `--llm` or `--vectorstore` values: Error with valid options listed
-- Invalid `--mcp` server names: Warning + skip invalid, continue with valid
+- Invalid `--evals` or `--mcp` values: Warning + skip invalid, continue with valid
+- Missing `--name` in non-interactive: Error requiring name
 
 **Alternatives Considered**:
 - JSON config file input: Over-engineering for this use case
@@ -205,7 +184,7 @@ def is_interactive() -> bool:
 
 ### 5. Clean Cancellation (Ctrl+C) Handling
 
-**Context**: Per FR-010, no partial files should remain if user cancels mid-wizard.
+**Context**: Per FR-012, no partial files should remain if user cancels mid-wizard.
 
 **Decision**: Wrap wizard in try/except with cleanup, use existing `ProjectInitializer` cleanup pattern
 
@@ -238,7 +217,29 @@ except KeyboardInterrupt:
 
 ---
 
-### 6. Existing Codebase Integration Points
+### 6. Evaluation Metrics Configuration
+
+**Context**: Users need to select which evaluation metrics to enable for their agent.
+
+**Decision**: Provide predefined list of RAG-focused evaluation metrics
+
+**Available Metrics**:
+
+| Metric | Description | Default |
+|--------|-------------|---------|
+| `rag-faithfulness` | Measures if response is grounded in retrieved context | Yes |
+| `rag-answer_relevancy` | Measures if response answers the question | Yes |
+| `rag-context_precision` | Measures precision of retrieved context | No |
+| `rag-context_recall` | Measures recall of retrieved context | No |
+
+**Rationale**:
+- RAG metrics are most relevant for agent evaluation
+- Faithfulness and relevancy are the core quality indicators
+- Additional metrics available for advanced users
+
+---
+
+### 7. Existing Codebase Integration Points
 
 **Context**: Understanding where wizard logic should integrate.
 
@@ -252,17 +253,17 @@ except KeyboardInterrupt:
 **Integration Points**:
 1. **`src/holodeck/cli/commands/init.py`**: Add wizard invocation before `ProjectInitializer`
 2. **`src/holodeck/cli/utils/wizard.py`** (new): Wizard logic and prompt definitions
-3. **`src/holodeck/lib/mcp_registry.py`** (new): MCP registry API client
-4. **`src/holodeck/models/wizard_config.py`** (new): Wizard state and result models
+3. **`src/holodeck/models/wizard_config.py`** (new): Wizard state and result models
 
 **Existing Models to Extend**:
 - `LLMProvider` / `ProviderEnum` in `models/llm.py` - already has all 4 providers
 - `DatabaseConfig` in `models/tool.py` - has chromadb, redis, in-memory
+- `EvaluationConfig` in `models/evaluation.py` - has metrics configuration
 - `MCPTool` in `models/tool.py` - MCP server configuration
 
 **Template Updates Required**:
 - Update `agent.yaml.j2` templates to accept wizard selections
-- Add placeholder variables for LLM config, vectorstore, MCP tools
+- Add placeholder variables for agent name, LLM config, vectorstore, evals, MCP tools
 
 ---
 
@@ -270,11 +271,12 @@ except KeyboardInterrupt:
 
 | Area | Decision | Key Dependency |
 |------|----------|----------------|
-| MCP Server List | Official Registry API | `requests` (existing) |
+| Configuration Options | Predefined hardcoded lists | None |
 | Interactive Prompts | InquirerPy | New dependency |
 | TTY Detection | `sys.stdin.isatty()` | Standard library |
-| CLI Flags | `--llm`, `--vectorstore`, `--mcp`, `--non-interactive` | Click (existing) |
+| CLI Flags | `--name`, `--llm`, `--vectorstore`, `--evals`, `--mcp`, `--non-interactive` | Click (existing) |
 | Cancellation | Prompt-first, then file creation | Existing cleanup patterns |
+| Evals | Predefined RAG metrics list | Existing evaluation models |
 
 ## New Dependencies
 
