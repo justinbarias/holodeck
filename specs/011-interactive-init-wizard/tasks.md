@@ -21,9 +21,9 @@
 
 **Purpose**: Add new dependency and create base project structure for wizard feature
 
-- [ ] T001 Add `inquirerpy>=0.3.4,<0.4.0` dependency to pyproject.toml
-- [ ] T002 [P] Create empty module files: src/holodeck/models/wizard_config.py, src/holodeck/cli/utils/wizard.py
-- [ ] T003 [P] Create test fixture file for wizard defaults in tests/fixtures/wizard_defaults.py
+- [x] T001 Add `inquirerpy>=0.3.4,<0.4.0` dependency to pyproject.toml
+- [x] T002 [P] Create empty module files: src/holodeck/models/wizard_config.py, src/holodeck/cli/utils/wizard.py
+- [x] T003 [P] Create test fixture file for wizard defaults in tests/fixtures/wizard_defaults.py
 
 ---
 
@@ -35,16 +35,16 @@
 
 ### Models (Shared by All Stories)
 
-- [ ] T004 [P] Create WizardStep enum (AGENT_NAME, LLM_PROVIDER, VECTOR_STORE, EVALS, MCP_SERVERS, COMPLETE), WizardState model, and WizardResult model in src/holodeck/models/wizard_config.py per data-model.md
-- [ ] T005 [P] Create LLMProviderChoice model with LLM_PROVIDER_CHOICES list (ollama default with gpt-oss:20b, openai, azure_openai, anthropic) in src/holodeck/models/wizard_config.py
-- [ ] T006 [P] Create VectorStoreChoice model with VECTOR_STORE_CHOICES list (chromadb default with http://localhost:8000, redis, in-memory) in src/holodeck/models/wizard_config.py
-- [ ] T007 [P] Create EvalChoice model with EVAL_CHOICES list (rag-faithfulness, rag-answer_relevancy default, rag-context_precision, rag-context_recall) in src/holodeck/models/wizard_config.py
-- [ ] T008 [P] Create MCPServerChoice model with MCP_SERVER_CHOICES list (brave-search, memory, sequential-thinking default, filesystem, github, postgres) in src/holodeck/models/wizard_config.py
-- [ ] T009 Extend ProjectInitInput model with agent_name, llm_provider, vector_store, evals, mcp_servers fields in src/holodeck/models/project_config.py
+- [x] T004 [P] Create WizardStep enum (AGENT_NAME, LLM_PROVIDER, VECTOR_STORE, EVALS, MCP_SERVERS, COMPLETE), WizardState model, and WizardResult model in src/holodeck/models/wizard_config.py per data-model.md
+- [x] T005 [P] Create LLMProviderChoice model with LLM_PROVIDER_CHOICES list (ollama default with gpt-oss:20b, openai, azure_openai, anthropic) in src/holodeck/models/wizard_config.py
+- [x] T006 [P] Create VectorStoreChoice model with VECTOR_STORE_CHOICES list (chromadb default with http://localhost:8000, redis, in-memory) in src/holodeck/models/wizard_config.py
+- [x] T007 [P] Create EvalChoice model with EVAL_CHOICES list (rag-faithfulness, rag-answer_relevancy default, rag-context_precision, rag-context_recall) in src/holodeck/models/wizard_config.py
+- [x] T008 [P] Create MCPServerChoice model with MCP_SERVER_CHOICES list (brave-search, memory, sequential-thinking default, filesystem, github, postgres) in src/holodeck/models/wizard_config.py
+- [x] T009 Extend ProjectInitInput model with agent_name, llm_provider, vector_store, evals, mcp_servers fields in src/holodeck/models/project_config.py
 
 ### Unit Tests for Foundation
 
-- [ ] T010 [P] Create unit tests for WizardState, WizardResult, LLMProviderChoice, VectorStoreChoice, EvalChoice, MCPServerChoice in tests/unit/test_wizard_config.py
+- [x] T010 [P] Create unit tests for WizardState, WizardResult, LLMProviderChoice, VectorStoreChoice, EvalChoice, MCPServerChoice in tests/unit/test_wizard_config.py
 
 **Checkpoint**: Foundation ready - all models tested. User story implementation can now begin.
 
