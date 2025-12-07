@@ -9,8 +9,8 @@ description: {{ description | tojson }}
 
 # Model Configuration - Lower temperature for analytical consistency
 model:
-  provider: ollama
-  name: llama3.2:latest
+  provider: {{ llm_provider }}
+  name: {{ llm_model }}
   temperature: 0.3
   max_tokens: 8192
 
@@ -70,34 +70,31 @@ tools:
     chunk_size: 256
     chunk_overlap: 64
     min_similarity_score: 0.75
-    database: chromadb
+    database: {{ vector_store }}
+{% if mcp_servers %}
 
-  # MCP Web Search tool - sign up for an API key at https://brave.com/search/api/, then generate an API key at https://api-dashboard.search.brave.com/app/keys
+  # MCP Servers (from wizard selection)
+{% for server in mcp_servers %}
+  # {{ server.display_name }} - {{ server.description }}
   - type: mcp
-    name: web_search
-    description: Knowledge graph-based persistent memory for conversation context
-    command: npx
+    name: {{ server.name }}
+    description: {{ server.description }}
+    command: {{ server.command }}
     args:
       - "-y"
-      - "@brave/brave-search-mcp-server"
-      - "--transport"
-      - "stdio"
+      - "{{ server.package }}"
     request_timeout: 30
+{% endfor %}
+{% endif %}
 
-  # MCP Fetch tool for web content fetching
-  - type: mcp
-    name: memory
-    description: Fetch web content from a url
-    command: uvx
-    args:
-      - "mcp-server-fetch"
-    request_timeout: 30
+# Note: Vector store '{{ vector_store }}' selected for vectorstore tools above.
+# See docs: https://useholodeck.ai/docs/tools/vectorstore
 
 # Evaluation Configuration
 evaluations:
   model:
-    provider: ollama
-    name: llama3.2:latest
+    provider: {{ llm_provider }}
+    name: {{ llm_model }}
     temperature: 0.0
   metrics:
     - type: geval
@@ -111,9 +108,25 @@ evaluations:
       evaluation_params:
         - actual_output
       threshold: 0.7
+{% for eval in evals %}
+{% if eval == "rag-faithfulness" %}
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.7
+{% elif eval == "rag-answer_relevancy" %}
     - type: rag
       metric_type: answer_relevancy
       threshold: 0.7
+{% elif eval == "rag-context_precision" %}
+    - type: rag
+      metric_type: context_precision
+      threshold: 0.7
+{% elif eval == "rag-context_recall" %}
+    - type: rag
+      metric_type: context_recall
+      threshold: 0.7
+{% endif %}
+{% endfor %}
     - type: standard
       metric: groundedness
       threshold: 0.9
@@ -129,15 +142,18 @@ test_cases:
       - type: standard
         metric: groundedness
         threshold: 0.9
+{% for eval in evals %}
+{% if eval == "rag-answer_relevancy" %}
       - type: rag
         metric_type: answer_relevancy
         threshold: 0.7
+{% endif %}
+{% endfor %}
 
   - name: "Synthesis of findings"
     input: "Compare approaches to language model optimization"
     expected_tools:
       - search_papers
-      - web_fetch
     ground_truth: "Should identify key papers and synthesize comparison insights"
     evaluations:
       - type: geval
@@ -159,12 +175,15 @@ test_cases:
     input: "What are the current gaps in multimodal AI research?"
     expected_tools:
       - search_papers
-      - web_fetch
     ground_truth: "Should identify underexplored areas and suggest research directions"
     evaluations:
+{% for eval in evals %}
+{% if eval == "rag-answer_relevancy" %}
       - type: rag
         metric_type: answer_relevancy
         threshold: 0.7
+{% endif %}
+{% endfor %}
 
   - name: "Citation analysis"
     input: "Who are the key researchers in zero-shot learning?"

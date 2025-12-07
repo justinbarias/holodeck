@@ -58,22 +58,22 @@
 
 ### Implementation for User Story 1
 
-- [ ] T011 Create is_interactive() function in src/holodeck/cli/utils/wizard.py that checks sys.stdin.isatty() and sys.stdout.isatty()
-- [ ] T012 [P] [US1] Create _prompt_agent_name() internal function using InquirerPy text with validation in src/holodeck/cli/utils/wizard.py
-- [ ] T013 [P] [US1] Create _prompt_llm_provider() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
-- [ ] T014 [P] [US1] Create _prompt_vectorstore() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
-- [ ] T015 [P] [US1] Create _prompt_evals() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
-- [ ] T016 [P] [US1] Create _prompt_mcp_servers() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
-- [ ] T017 [US1] Implement run_wizard() public function orchestrating all prompts in src/holodeck/cli/utils/wizard.py per contracts/wizard-module.md
-- [ ] T018 [US1] Create WizardCancelledError exception in src/holodeck/cli/utils/wizard.py
-- [ ] T019 [US1] Update ProjectInitializer.initialize() to use agent_name, llm_provider, vector_store, evals, mcp_servers from ProjectInitInput in src/holodeck/cli/utils/project_init.py
-- [ ] T020 [US1] Update agent.yaml.j2 template to include wizard selection variables in src/holodeck/templates/conversational/agent.yaml.j2
-- [ ] T021 [US1] Update init command to call run_wizard() when interactive, pass result to ProjectInitInput in src/holodeck/cli/commands/init.py
+- [x] T011 Create is_interactive() function in src/holodeck/cli/utils/wizard.py that checks sys.stdin.isatty() and sys.stdout.isatty()
+- [x] T012 [P] [US1] Create _prompt_agent_name() internal function using InquirerPy text with validation in src/holodeck/cli/utils/wizard.py
+- [x] T013 [P] [US1] Create _prompt_llm_provider() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
+- [x] T014 [P] [US1] Create _prompt_vectorstore() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
+- [x] T015 [P] [US1] Create _prompt_evals() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
+- [x] T016 [P] [US1] Create _prompt_mcp_servers() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
+- [x] T017 [US1] Implement run_wizard() public function orchestrating all prompts in src/holodeck/cli/utils/wizard.py per contracts/wizard-module.md
+- [x] T018 [US1] Create WizardCancelledError exception in src/holodeck/cli/utils/wizard.py
+- [x] T019 [US1] Update ProjectInitializer.initialize() to use agent_name, llm_provider, vector_store, evals, mcp_servers from ProjectInitInput in src/holodeck/cli/utils/project_init.py
+- [x] T020 [US1] Update agent.yaml.j2 template to include wizard selection variables in src/holodeck/templates/conversational/agent.yaml.j2
+- [x] T021 [US1] Update init command to call run_wizard() when interactive, pass result to ProjectInitInput in src/holodeck/cli/commands/init.py
 
 ### Unit Tests for User Story 1
 
-- [ ] T022 [P] [US1] Create unit tests for is_interactive(), _prompt_agent_name, _prompt_llm_provider, _prompt_vectorstore, _prompt_evals, _prompt_mcp_servers with mocked InquirerPy in tests/unit/test_wizard.py
-- [ ] T023 [P] [US1] Create unit test for run_wizard() with all prompts mocked in tests/unit/test_wizard.py
+- [x] T022 [P] [US1] Create unit tests for is_interactive(), _prompt_agent_name, _prompt_llm_provider, _prompt_vectorstore, _prompt_evals, _prompt_mcp_servers with mocked InquirerPy in tests/unit/test_wizard.py
+- [x] T023 [P] [US1] Create unit test for run_wizard() with all prompts mocked in tests/unit/test_wizard.py
 
 **Checkpoint**: User Story 1 complete - users can run wizard with defaults and get a working project.
 
@@ -114,7 +114,7 @@
 - [ ] T032 [US3] Add vector store-specific configuration generation for Redis (connection_string env var, redis provider) in src/holodeck/cli/utils/project_init.py
 - [ ] T033 [US3] Add vector store-specific configuration generation for In-Memory (ephemeral warning comment) in src/holodeck/cli/utils/project_init.py
 - [ ] T034 [US3] Update agent.yaml.j2 template with conditional sections for each vector store in src/holodeck/templates/conversational/agent.yaml.j2
-- [ ] T035 [US3] Add warning display when In-Memory is selected in _prompt_vectorstore() in src/holodeck/cli/utils/wizard.py
+- [x] T035 [US3] Add warning display when In-Memory is selected in _prompt_vectorstore() in src/holodeck/cli/utils/wizard.py
 
 ### Unit Tests for User Story 3
 
@@ -176,17 +176,17 @@
 
 ### Implementation for User Story 6
 
-- [ ] T049 [US6] Add --name option (required for non-interactive) to init command in src/holodeck/cli/commands/init.py
-- [ ] T050 [US6] Add --llm option with click.Choice validator to init command in src/holodeck/cli/commands/init.py
-- [ ] T051 [US6] Add --vectorstore option with click.Choice validator to init command in src/holodeck/cli/commands/init.py
-- [ ] T052 [US6] Add --evals option (comma-separated string) to init command in src/holodeck/cli/commands/init.py
-- [ ] T053 [US6] Add --mcp option (comma-separated string) to init command in src/holodeck/cli/commands/init.py
-- [ ] T054 [US6] Add --non-interactive flag to init command in src/holodeck/cli/commands/init.py
-- [ ] T055 [US6] Implement _parse_comma_arg() helper to parse comma-separated values in src/holodeck/cli/commands/init.py
-- [ ] T056 [US6] Add logic to skip wizard when non-interactive or flags provided in src/holodeck/cli/commands/init.py
-- [ ] T057 [US6] Add validation error messages for invalid flag values in src/holodeck/cli/commands/init.py
-- [ ] T058 [US6] Add warning messages for invalid evals/MCP server names (skip invalid, continue) in src/holodeck/cli/commands/init.py
-- [ ] T059 [US6] Add TTY detection fallback: use defaults when not interactive and no flags in src/holodeck/cli/commands/init.py
+- [x] T049 [US6] Add --name option (required for non-interactive) to init command in src/holodeck/cli/commands/init.py
+- [x] T050 [US6] Add --llm option with click.Choice validator to init command in src/holodeck/cli/commands/init.py
+- [x] T051 [US6] Add --vectorstore option with click.Choice validator to init command in src/holodeck/cli/commands/init.py
+- [x] T052 [US6] Add --evals option (comma-separated string) to init command in src/holodeck/cli/commands/init.py
+- [x] T053 [US6] Add --mcp option (comma-separated string) to init command in src/holodeck/cli/commands/init.py
+- [x] T054 [US6] Add --non-interactive flag to init command in src/holodeck/cli/commands/init.py
+- [x] T055 [US6] Implement _parse_comma_arg() helper to parse comma-separated values in src/holodeck/cli/commands/init.py
+- [x] T056 [US6] Add logic to skip wizard when non-interactive or flags provided in src/holodeck/cli/commands/init.py
+- [x] T057 [US6] Add validation error messages for invalid flag values in src/holodeck/cli/commands/init.py
+- [x] T058 [US6] Add warning messages for invalid evals/MCP server names (skip invalid, continue) in src/holodeck/cli/commands/init.py
+- [x] T059 [US6] Add TTY detection fallback: use defaults when not interactive and no flags in src/holodeck/cli/commands/init.py
 
 ### Unit Tests for User Story 6
 
@@ -202,9 +202,9 @@
 
 **Purpose**: Handle edge cases defined in spec.md
 
-- [ ] T063 [P] Implement Ctrl+C cancellation handling with clean exit (no partial files) in src/holodeck/cli/commands/init.py
-- [ ] T064 [P] Implement TTY detection fallback to non-interactive with defaults per FR-015 in src/holodeck/cli/commands/init.py
-- [ ] T065 [P] Update output format to include Agent Name, LLM Provider, Vector Store, Evals, MCP Servers in success message in src/holodeck/cli/commands/init.py
+- [x] T063 [P] Implement Ctrl+C cancellation handling with clean exit (no partial files) in src/holodeck/cli/commands/init.py
+- [x] T064 [P] Implement TTY detection fallback to non-interactive with defaults per FR-015 in src/holodeck/cli/commands/init.py
+- [x] T065 [P] Update output format to include Agent Name, LLM Provider, Vector Store, Evals, MCP Servers in success message in src/holodeck/cli/commands/init.py
 - [ ] T066 Create integration test for Ctrl+C cancellation (verify no partial files) in tests/integration/test_init_wizard.py
 
 ---
@@ -213,13 +213,13 @@
 
 **Purpose**: Final cleanup and template updates for other project templates
 
-- [ ] T067 [P] Update research template agent.yaml.j2 with wizard selection variables in src/holodeck/templates/research/agent.yaml.j2
-- [ ] T068 [P] Update customer-support template agent.yaml.j2 with wizard selection variables in src/holodeck/templates/customer-support/agent.yaml.j2
+- [x] T067 [P] Update research template agent.yaml.j2 with wizard selection variables in src/holodeck/templates/research/agent.yaml.j2
+- [x] T068 [P] Update customer-support template agent.yaml.j2 with wizard selection variables in src/holodeck/templates/customer-support/agent.yaml.j2
 - [ ] T069 [P] Update .env.example templates for research and customer-support templates
-- [ ] T070 Run `make format` to format all new code
-- [ ] T071 Run `make lint` and fix any linting issues
-- [ ] T072 Run `make type-check` and fix any type errors
-- [ ] T073 Run `make security` and fix any security issues
+- [x] T070 Run `make format` to format all new code
+- [x] T071 Run `make lint` and fix any linting issues
+- [x] T072 Run `make type-check` and fix any type errors
+- [x] T073 Run `make security` and fix any security issues
 - [ ] T074 Run `make test-coverage` and ensure 80%+ coverage on new files
 - [ ] T075 Validate quickstart.md scenarios work end-to-end
 
