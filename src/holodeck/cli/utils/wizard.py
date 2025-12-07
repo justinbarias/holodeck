@@ -15,6 +15,8 @@ from holodeck.models.wizard_config import (
     LLM_PROVIDER_CHOICES,
     MCP_SERVER_CHOICES,
     VECTOR_STORE_CHOICES,
+    LLMProviderChoice,
+    ProviderConfig,
     WizardResult,
     get_default_evals,
     get_default_mcp_servers,
@@ -127,6 +129,120 @@ def _prompt_llm_provider(default: str = "ollama") -> str:
     ).execute()
 
     return result
+
+
+def _get_provider_choice(provider: str) -> LLMProviderChoice | None:
+    """Get the LLMProviderChoice for a given provider value.
+
+    Args:
+        provider: The provider identifier (e.g., 'azure_openai').
+
+    Returns:
+        The matching LLMProviderChoice or None if not found.
+    """
+    for choice in LLM_PROVIDER_CHOICES:
+        if choice.value == provider:
+            return choice
+    return None
+
+
+def _prompt_endpoint(provider_choice: LLMProviderChoice) -> str:
+    """Display endpoint URL input prompt for providers that require it.
+
+    Prompts the user to enter an API endpoint URL. If the user presses
+    Enter without input, returns an environment variable placeholder.
+
+    Args:
+        provider_choice: The LLM provider choice with endpoint_env_var.
+
+    Returns:
+        The endpoint URL or environment variable placeholder.
+
+    Raises:
+        KeyboardInterrupt: If user cancels with Ctrl+C.
+    """
+    env_var = provider_choice.endpoint_env_var or "ENDPOINT_URL"
+    default_placeholder = f"${{{env_var}}}"
+
+    result: str = inquirer.text(
+        message=f"Enter {provider_choice.display_name} endpoint URL "
+        f"(press Enter for {default_placeholder}):",
+        default="",
+    ).execute()
+
+    # If empty, return placeholder
+    if not result.strip():
+        return default_placeholder
+
+    return result.strip()
+
+
+def _prompt_deployment_name(provider_choice: LLMProviderChoice) -> str:
+    """Display deployment name input prompt for Azure OpenAI.
+
+    Prompts the user to enter a deployment name. If the user presses
+    Enter without input, returns the default model name.
+
+    Args:
+        provider_choice: The LLM provider choice with default_model.
+
+    Returns:
+        The deployment name or default model name.
+
+    Raises:
+        KeyboardInterrupt: If user cancels with Ctrl+C.
+    """
+    default_name = provider_choice.default_model
+
+    result: str = inquirer.text(
+        message=f"Enter deployment name (press Enter for {default_name}):",
+        default="",
+    ).execute()
+
+    # If empty, return default model name
+    if not result.strip():
+        return default_name
+
+    return result.strip()
+
+
+def _prompt_provider_config(provider: str) -> ProviderConfig | None:
+    """Prompt for provider-specific configuration based on selected provider.
+
+    For providers that require additional configuration (like Azure OpenAI),
+    this function prompts for endpoint URL and deployment name. For other
+    providers, returns None.
+
+    Args:
+        provider: The selected LLM provider identifier.
+
+    Returns:
+        ProviderConfig with collected settings, or None for providers
+        that don't require additional configuration.
+
+    Raises:
+        KeyboardInterrupt: If user cancels with Ctrl+C.
+    """
+    provider_choice = _get_provider_choice(provider)
+    if not provider_choice:
+        return None
+
+    # Only prompt for providers that require endpoint
+    if not provider_choice.requires_endpoint:
+        return None
+
+    # Prompt for endpoint
+    endpoint = _prompt_endpoint(provider_choice)
+
+    # For Azure OpenAI, also prompt for deployment name
+    deployment_name = None
+    if provider == "azure_openai":
+        deployment_name = _prompt_deployment_name(provider_choice)
+
+    return ProviderConfig(
+        endpoint=endpoint,
+        deployment_name=deployment_name,
+    )
 
 
 def _prompt_vectorstore(default: str = "chromadb") -> str:
@@ -248,29 +364,34 @@ def _prompt_mcp_servers(defaults: list[str] | None = None) -> list[str]:
 def run_wizard(
     skip_agent_name: bool = False,
     skip_llm: bool = False,
+    skip_provider_config: bool = False,
     skip_vectorstore: bool = False,
     skip_evals: bool = False,
     skip_mcp: bool = False,
     agent_name_default: str | None = None,
     llm_default: str = "ollama",
+    provider_config_default: ProviderConfig | None = None,
     vectorstore_default: str = "chromadb",
     evals_defaults: list[str] | None = None,
     mcp_defaults: list[str] | None = None,
 ) -> WizardResult:
     """Run interactive configuration wizard.
 
-    Prompts user for agent name, LLM provider, vector store,
-    evaluation metrics, and MCP server selections. Skips prompts
-    for values provided via CLI flags (when skip_* is True).
+    Prompts user for agent name, LLM provider, provider-specific config,
+    vector store, evaluation metrics, and MCP server selections. Skips
+    prompts for values provided via CLI flags (when skip_* is True).
 
     Args:
         skip_agent_name: Skip agent name prompt (use agent_name_default).
         skip_llm: Skip LLM prompt (use llm_default).
+        skip_provider_config: Skip provider config prompts
+            (use provider_config_default).
         skip_vectorstore: Skip vectorstore prompt (use vectorstore_default).
         skip_evals: Skip evals prompt (use evals_defaults).
         skip_mcp: Skip MCP prompt (use mcp_defaults).
         agent_name_default: Default agent name value.
         llm_default: Default LLM provider value (default: "ollama").
+        provider_config_default: Default provider config (endpoint, deployment name).
         vectorstore_default: Default vector store value (default: "chromadb").
         evals_defaults: Default evaluation metrics list.
         mcp_defaults: Default MCP server list.
@@ -294,6 +415,12 @@ def run_wizard(
         else:
             llm_provider = _prompt_llm_provider(default=llm_default)
 
+        # Step 2b: Provider-specific configuration (e.g., Azure endpoint)
+        if skip_provider_config:
+            provider_config = provider_config_default
+        else:
+            provider_config = _prompt_provider_config(llm_provider)
+
         # Step 3: Vector store
         if skip_vectorstore:
             vector_store = vectorstore_default
@@ -316,6 +443,7 @@ def run_wizard(
         return WizardResult(
             agent_name=agent_name,
             llm_provider=llm_provider,
+            provider_config=provider_config,
             vector_store=vector_store,
             evals=evals,
             mcp_servers=mcp_servers,

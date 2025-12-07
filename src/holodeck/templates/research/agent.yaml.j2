@@ -11,6 +11,12 @@ description: {{ description | tojson }}
 model:
   provider: {{ llm_provider }}
   name: {{ llm_model }}
+{% if llm_provider == "azure_openai" %}
+  # Azure OpenAI specific configuration
+  endpoint: {{ llm_endpoint }}
+  deployment_name: {{ llm_deployment_name }}
+  api_version: "2024-02-15-preview"
+{% endif %}
   temperature: 0.3
   max_tokens: 8192
 

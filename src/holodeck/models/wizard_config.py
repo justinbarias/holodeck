@@ -108,6 +108,30 @@ VALID_MCP_SERVERS = frozenset(
 AGENT_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 
 
+class ProviderConfig(BaseModel):
+    """Provider-specific configuration collected from wizard prompts.
+
+    This model holds provider-specific settings like endpoint URLs and
+    deployment names that are collected via follow-up prompts after
+    selecting certain LLM providers (e.g., Azure OpenAI).
+
+    Attributes:
+        endpoint: The API endpoint URL (for Azure OpenAI)
+        deployment_name: The deployment/model name (for Azure OpenAI)
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    endpoint: str | None = Field(
+        default=None,
+        description="API endpoint URL (e.g., https://resource.openai.azure.com/)",
+    )
+    deployment_name: str | None = Field(
+        default=None,
+        description="Deployment name for Azure OpenAI",
+    )
+
+
 class WizardResult(BaseModel):
     """Final validated result from the wizard.
 
@@ -117,6 +141,7 @@ class WizardResult(BaseModel):
     Attributes:
         agent_name: Validated agent name (alphanumeric, hyphens, underscores)
         llm_provider: Selected LLM provider
+        provider_config: Provider-specific configuration (endpoint, deployment name)
         vector_store: Selected vector store
         evals: List of selected evaluation metrics (can be empty)
         mcp_servers: List of selected MCP servers (can be empty)
@@ -131,6 +156,10 @@ class WizardResult(BaseModel):
     llm_provider: str = Field(
         ...,
         description="Selected LLM provider",
+    )
+    provider_config: ProviderConfig | None = Field(
+        default=None,
+        description="Provider-specific configuration (endpoint, deployment name)",
     )
     vector_store: str = Field(
         ...,
@@ -269,6 +298,7 @@ class LLMProviderChoice(BaseModel):
         requires_api_key: Whether an API key is required
         api_key_env_var: Environment variable name for the API key
         requires_endpoint: Whether a custom endpoint is needed (Azure)
+        endpoint_env_var: Environment variable name for endpoint (Azure)
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -286,6 +316,9 @@ class LLMProviderChoice(BaseModel):
     )
     requires_endpoint: bool = Field(
         default=False, description="Whether custom endpoint is needed"
+    )
+    endpoint_env_var: str | None = Field(
+        default=None, description="Environment variable for endpoint URL"
     )
 
 
@@ -320,6 +353,7 @@ LLM_PROVIDER_CHOICES: list[LLMProviderChoice] = [
         requires_api_key=True,
         api_key_env_var="AZURE_OPENAI_API_KEY",
         requires_endpoint=True,
+        endpoint_env_var="AZURE_OPENAI_ENDPOINT",
     ),
     LLMProviderChoice(
         value="anthropic",

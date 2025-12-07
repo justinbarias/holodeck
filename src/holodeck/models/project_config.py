@@ -11,6 +11,7 @@ from holodeck.models.wizard_config import (
     VALID_LLM_PROVIDERS,
     VALID_MCP_SERVERS,
     VALID_VECTOR_STORES,
+    ProviderConfig,
     get_default_evals,
     get_default_mcp_servers,
 )
@@ -31,6 +32,7 @@ class ProjectInitInput(BaseModel):
         overwrite: Whether to overwrite existing project
         agent_name: Name of the agent to create (from wizard)
         llm_provider: Selected LLM provider (from wizard)
+        provider_config: Provider-specific configuration (endpoint, deployment name)
         vector_store: Selected vector store (from wizard)
         evals: List of selected evaluation metrics (from wizard)
         mcp_servers: List of selected MCP servers (from wizard)
@@ -53,6 +55,10 @@ class ProjectInitInput(BaseModel):
     llm_provider: str = Field(
         default="ollama",
         description="Selected LLM provider",
+    )
+    provider_config: ProviderConfig | None = Field(
+        default=None,
+        description="Provider-specific configuration (endpoint, deployment name)",
     )
     vector_store: str = Field(
         default="chromadb",

@@ -22,6 +22,7 @@ from holodeck.models.wizard_config import (
     VALID_LLM_PROVIDERS,
     VALID_MCP_SERVERS,
     VALID_VECTOR_STORES,
+    ProviderConfig,
     WizardResult,
     get_default_evals,
     get_default_mcp_servers,
@@ -245,9 +246,21 @@ def init(
         # Determine if we should run wizard
         if non_interactive or not is_interactive():
             # Non-interactive mode: use defaults or flag values
+            selected_llm = llm or "ollama"
+
+            # Create provider config for providers that require endpoint
+            provider_config = None
+            if selected_llm == "azure_openai":
+                # Use env var placeholders for Azure OpenAI
+                provider_config = ProviderConfig(
+                    endpoint="${AZURE_OPENAI_ENDPOINT}",
+                    deployment_name="gpt-4o",
+                )
+
             wizard_result = WizardResult(
                 agent_name=agent_name or project_name,
-                llm_provider=llm or "ollama",
+                llm_provider=selected_llm,
+                provider_config=provider_config,
                 vector_store=vectorstore or "chromadb",
                 evals=evals_list if evals_list else get_default_evals(),
                 mcp_servers=mcp_list if mcp_list else get_default_mcp_servers(),
@@ -277,6 +290,7 @@ def init(
             overwrite=force,
             agent_name=wizard_result.agent_name,
             llm_provider=wizard_result.llm_provider,
+            provider_config=wizard_result.provider_config,
             vector_store=wizard_result.vector_store,
             evals=wizard_result.evals,
             mcp_servers=wizard_result.mcp_servers,

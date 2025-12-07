@@ -82,6 +82,36 @@ def get_vectorstore_endpoint(store: str) -> str | None:
     return None
 
 
+def get_provider_api_key_env_var(provider: str) -> str | None:
+    """Get the API key environment variable name for an LLM provider.
+
+    Args:
+        provider: LLM provider identifier (e.g., 'openai', 'azure_openai').
+
+    Returns:
+        Environment variable name for API key, or None if not required.
+    """
+    for choice in LLM_PROVIDER_CHOICES:
+        if choice.value == provider:
+            return choice.api_key_env_var
+    return None
+
+
+def get_provider_endpoint_env_var(provider: str) -> str | None:
+    """Get the endpoint environment variable name for an LLM provider.
+
+    Args:
+        provider: LLM provider identifier (e.g., 'azure_openai').
+
+    Returns:
+        Environment variable name for endpoint, or None if not required.
+    """
+    for choice in LLM_PROVIDER_CHOICES:
+        if choice.value == provider:
+            return choice.endpoint_env_var
+    return None
+
+
 class ProjectInitializer:
     """Handles project initialization logic.
 
@@ -252,6 +282,26 @@ class ProjectInitializer:
             project_dir.mkdir(parents=True, exist_ok=False)
             files_created.append(str(project_dir))
 
+            # Prepare provider-specific config
+            provider_config = input_data.provider_config
+            endpoint_env_var = get_provider_endpoint_env_var(input_data.llm_provider)
+
+            # Determine endpoint value
+            llm_endpoint = None
+            if provider_config and provider_config.endpoint:
+                llm_endpoint = provider_config.endpoint
+            elif endpoint_env_var:
+                # Use environment variable placeholder as default
+                llm_endpoint = f"${{{endpoint_env_var}}}"
+
+            # Determine deployment name
+            llm_deployment_name = None
+            if provider_config and provider_config.deployment_name:
+                llm_deployment_name = provider_config.deployment_name
+            elif input_data.llm_provider == "azure_openai":
+                # Use model name as default deployment name for Azure
+                llm_deployment_name = get_model_for_provider(input_data.llm_provider)
+
             # Prepare template variables
             template_vars = {
                 "project_name": project_name,
@@ -261,6 +311,11 @@ class ProjectInitializer:
                 "agent_name": input_data.agent_name,
                 "llm_provider": input_data.llm_provider,
                 "llm_model": get_model_for_provider(input_data.llm_provider),
+                "llm_endpoint": llm_endpoint,
+                "llm_deployment_name": llm_deployment_name,
+                "llm_api_key_env_var": get_provider_api_key_env_var(
+                    input_data.llm_provider
+                ),
                 "vector_store": input_data.vector_store,
                 "vector_store_endpoint": get_vectorstore_endpoint(
                     input_data.vector_store
