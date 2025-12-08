@@ -11,11 +11,13 @@ description: {{ description | tojson }}
 model:
   provider: {{ llm_provider }}
   name: {{ llm_model }}
-{% if llm_provider == "azure_openai" %}
-  # Azure OpenAI specific configuration
+{% if llm_provider == "openai" %}
+  api_key: ${OPENAI_API_KEY}
+{% elif llm_provider == "azure_openai" %}
   endpoint: {{ llm_endpoint }}
-  deployment_name: {{ llm_deployment_name }}
-  api_version: "2024-02-15-preview"
+  api_key: ${AZURE_OPENAI_API_KEY}
+{% elif llm_provider == "anthropic" %}
+  api_key: ${ANTHROPIC_API_KEY}
 {% endif %}
   temperature: 0.5
   max_tokens: 4096
@@ -88,6 +90,14 @@ evaluations:
   model:
     provider: {{ llm_provider }}
     name: {{ llm_model }}
+{% if llm_provider == "openai" %}
+    api_key: ${OPENAI_API_KEY}
+{% elif llm_provider == "azure_openai" %}
+    endpoint: {{ llm_endpoint }}
+    api_key: ${AZURE_OPENAI_API_KEY}
+{% elif llm_provider == "anthropic" %}
+    api_key: ${ANTHROPIC_API_KEY}
+{% endif %}
     temperature: 0.0
   metrics:
     - type: geval
@@ -134,80 +144,27 @@ test_cases:
     expected_tools:
       - search_kb
     ground_truth: "Should provide password reset instructions"
-    evaluations:
-{% for eval in evals %}
-{% if eval == "rag-answer_relevancy" %}
-      - type: rag
-        metric_type: answer_relevancy
-        threshold: 0.7
-{% endif %}
-{% endfor %}
-      - type: standard
-        metric: groundedness
-        threshold: 0.85
 
   - name: "Account issue acknowledgment"
     input: "I was charged twice for my order"
     expected_tools:
       - search_kb
     ground_truth: "Should acknowledge issue and offer to escalate"
-    evaluations:
-{% for eval in evals %}
-{% if eval == "rag-answer_relevancy" %}
-      - type: rag
-        metric_type: answer_relevancy
-        threshold: 0.7
-{% endif %}
-{% endfor %}
-      - type: geval
-        name: Coherence
-        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
-        evaluation_steps:
-          - "Evaluate whether the response uses clear and direct language."
-          - "Check if the explanation avoids jargon or explains it when used."
-          - "Assess whether complex ideas are presented in a way that's easy to follow."
-          - "Identify any vague or confusing parts that reduce understanding."
-        evaluation_params:
-          - actual_output
-        threshold: 0.7
 
   - name: "Knowledge base search"
     input: "How do I update my billing information?"
     expected_tools:
       - search_kb
     ground_truth: "Should find and provide billing update instructions"
-    evaluations:
-      - type: standard
-        metric: groundedness
-        threshold: 0.85
 
   - name: "Issue requiring escalation"
     input: "I need to dispute a charge from last month"
     expected_tools:
       - search_kb
     ground_truth: "Should search KB and offer human escalation"
-    evaluations:
-{% for eval in evals %}
-{% if eval == "rag-answer_relevancy" %}
-      - type: rag
-        metric_type: answer_relevancy
-        threshold: 0.7
-{% endif %}
-{% endfor %}
 
   - name: "Troubleshooting flow"
     input: "I can't log into my account"
     expected_tools:
       - search_kb
     ground_truth: "Should provide troubleshooting steps and offer escalation if needed"
-    evaluations:
-{% for eval in evals %}
-{% if eval == "rag-answer_relevancy" %}
-      - type: rag
-        metric_type: answer_relevancy
-        threshold: 0.7
-{% endif %}
-{% endfor %}
-      - type: standard
-        metric: groundedness
-        threshold: 0.85

@@ -111,13 +111,12 @@ AGENT_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 class ProviderConfig(BaseModel):
     """Provider-specific configuration collected from wizard prompts.
 
-    This model holds provider-specific settings like endpoint URLs and
-    deployment names that are collected via follow-up prompts after
-    selecting certain LLM providers (e.g., Azure OpenAI).
+    This model holds provider-specific settings like endpoint URLs
+    that are collected via follow-up prompts after selecting certain
+    LLM providers (e.g., Azure OpenAI).
 
     Attributes:
         endpoint: The API endpoint URL (for Azure OpenAI)
-        deployment_name: The deployment/model name (for Azure OpenAI)
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -125,10 +124,6 @@ class ProviderConfig(BaseModel):
     endpoint: str | None = Field(
         default=None,
         description="API endpoint URL (e.g., https://resource.openai.azure.com/)",
-    )
-    deployment_name: str | None = Field(
-        default=None,
-        description="Deployment name for Azure OpenAI",
     )
 
 

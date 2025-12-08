@@ -177,41 +177,11 @@ def _prompt_endpoint(provider_choice: LLMProviderChoice) -> str:
     return result.strip()
 
 
-def _prompt_deployment_name(provider_choice: LLMProviderChoice) -> str:
-    """Display deployment name input prompt for Azure OpenAI.
-
-    Prompts the user to enter a deployment name. If the user presses
-    Enter without input, returns the default model name.
-
-    Args:
-        provider_choice: The LLM provider choice with default_model.
-
-    Returns:
-        The deployment name or default model name.
-
-    Raises:
-        KeyboardInterrupt: If user cancels with Ctrl+C.
-    """
-    default_name = provider_choice.default_model
-
-    result: str = inquirer.text(
-        message=f"Enter deployment name (press Enter for {default_name}):",
-        default="",
-    ).execute()
-
-    # If empty, return default model name
-    if not result.strip():
-        return default_name
-
-    return result.strip()
-
-
 def _prompt_provider_config(provider: str) -> ProviderConfig | None:
     """Prompt for provider-specific configuration based on selected provider.
 
     For providers that require additional configuration (like Azure OpenAI),
-    this function prompts for endpoint URL and deployment name. For other
-    providers, returns None.
+    this function prompts for endpoint URL. For other providers, returns None.
 
     Args:
         provider: The selected LLM provider identifier.
@@ -234,14 +204,8 @@ def _prompt_provider_config(provider: str) -> ProviderConfig | None:
     # Prompt for endpoint
     endpoint = _prompt_endpoint(provider_choice)
 
-    # For Azure OpenAI, also prompt for deployment name
-    deployment_name = None
-    if provider == "azure_openai":
-        deployment_name = _prompt_deployment_name(provider_choice)
-
     return ProviderConfig(
         endpoint=endpoint,
-        deployment_name=deployment_name,
     )
 
 

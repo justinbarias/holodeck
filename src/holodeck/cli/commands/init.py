@@ -254,7 +254,6 @@ def init(
                 # Use env var placeholders for Azure OpenAI
                 provider_config = ProviderConfig(
                     endpoint="${AZURE_OPENAI_ENDPOINT}",
-                    deployment_name="gpt-4o",
                 )
 
             wizard_result = WizardResult(

@@ -11,11 +11,13 @@ description: {{ description | tojson }}
 model:
   provider: {{ llm_provider }}
   name: {{ llm_model }}
-{% if llm_provider == "azure_openai" %}
-  # Azure OpenAI specific configuration
+{% if llm_provider == "openai" %}
+  api_key: ${OPENAI_API_KEY}
+{% elif llm_provider == "azure_openai" %}
   endpoint: {{ llm_endpoint }}
-  deployment_name: {{ llm_deployment_name }}
-  api_version: "2024-02-15-preview"
+  api_key: ${AZURE_OPENAI_API_KEY}
+{% elif llm_provider == "anthropic" %}
+  api_key: ${ANTHROPIC_API_KEY}
 {% endif %}
   temperature: 0.7
   max_tokens: 4096
@@ -70,6 +72,14 @@ evaluations:
   model:
     provider: {{ llm_provider }}
     name: {{ llm_model }}
+{% if llm_provider == "openai" %}
+    api_key: ${OPENAI_API_KEY}
+{% elif llm_provider == "azure_openai" %}
+    endpoint: {{ llm_endpoint }}
+    api_key: ${AZURE_OPENAI_API_KEY}
+{% elif llm_provider == "anthropic" %}
+    api_key: ${ANTHROPIC_API_KEY}
+{% endif %}
     temperature: 0.0
   metrics:
     - type: geval
@@ -109,18 +119,6 @@ test_cases:
     input: "Hello, how are you?"
     expected_tools: []
     ground_truth: "Should respond politely and offer assistance"
-    evaluations:
-      - type: geval
-        name: Coherence
-        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
-        evaluation_steps:
-          - "Evaluate whether the response uses clear and direct language."
-          - "Check if the explanation avoids jargon or explains it when used."
-          - "Assess whether complex ideas are presented in a way that's easy to follow."
-          - "Identify any vague or confusing parts that reduce understanding."
-        evaluation_params:
-          - actual_output
-        threshold: 0.7
 
   - name: "Multi-turn conversation"
     input: "Can you help me learn Python?"
@@ -131,39 +129,8 @@ test_cases:
       []
 {% endif %}
     ground_truth: "Should provide helpful Python learning resources and tips"
-    evaluations:
-      - type: geval
-        name: Coherence
-        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
-        evaluation_steps:
-          - "Evaluate whether the response uses clear and direct language."
-          - "Check if the explanation avoids jargon or explains it when used."
-          - "Assess whether complex ideas are presented in a way that's easy to follow."
-          - "Identify any vague or confusing parts that reduce understanding."
-        evaluation_params:
-          - actual_output
-        threshold: 0.7
-{% for eval in evals %}
-{% if eval == "rag-answer_relevancy" %}
-      - type: rag
-        metric_type: answer_relevancy
-        threshold: 0.7
-{% endif %}
-{% endfor %}
 
   - name: "Handling unknown queries"
     input: "Can you help me with quantum physics?"
     expected_tools: []
     ground_truth: "Should acknowledge the topic and offer to help or clarify limitations"
-    evaluations:
-      - type: geval
-        name: Coherence
-        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
-        evaluation_steps:
-          - "Evaluate whether the response uses clear and direct language."
-          - "Check if the explanation avoids jargon or explains it when used."
-          - "Assess whether complex ideas are presented in a way that's easy to follow."
-          - "Identify any vague or confusing parts that reduce understanding."
-        evaluation_params:
-          - actual_output
-        threshold: 0.7

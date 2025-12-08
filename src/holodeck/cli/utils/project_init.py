@@ -294,14 +294,6 @@ class ProjectInitializer:
                 # Use environment variable placeholder as default
                 llm_endpoint = f"${{{endpoint_env_var}}}"
 
-            # Determine deployment name
-            llm_deployment_name = None
-            if provider_config and provider_config.deployment_name:
-                llm_deployment_name = provider_config.deployment_name
-            elif input_data.llm_provider == "azure_openai":
-                # Use model name as default deployment name for Azure
-                llm_deployment_name = get_model_for_provider(input_data.llm_provider)
-
             # Prepare template variables
             template_vars = {
                 "project_name": project_name,
@@ -312,7 +304,6 @@ class ProjectInitializer:
                 "llm_provider": input_data.llm_provider,
                 "llm_model": get_model_for_provider(input_data.llm_provider),
                 "llm_endpoint": llm_endpoint,
-                "llm_deployment_name": llm_deployment_name,
                 "llm_api_key_env_var": get_provider_api_key_env_var(
                     input_data.llm_provider
                 ),
