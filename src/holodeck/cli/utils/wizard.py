@@ -392,14 +392,18 @@ def run_wizard(
             vector_store = _prompt_vectorstore(default=vectorstore_default)
 
         # Step 4: Evaluation metrics
-        if skip_evals and evals_defaults is not None:
-            evals = evals_defaults
+        if skip_evals:
+            evals = (
+                evals_defaults if evals_defaults is not None else get_default_evals()
+            )
         else:
             evals = _prompt_evals(defaults=evals_defaults)
 
         # Step 5: MCP servers
-        if skip_mcp and mcp_defaults is not None:
-            mcp_servers = mcp_defaults
+        if skip_mcp:
+            mcp_servers = (
+                mcp_defaults if mcp_defaults is not None else get_default_mcp_servers()
+            )
         else:
             mcp_servers = _prompt_mcp_servers(defaults=mcp_defaults)
 
