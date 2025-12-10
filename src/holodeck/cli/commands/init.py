@@ -70,7 +70,12 @@ def _parse_comma_arg(value: str | None) -> list[str]:
 
 
 @click.command(name="init")
-@click.argument("project_name")
+@click.option(
+    "--name",
+    "project_name",
+    default=None,
+    help="Agent/project name (required in non-interactive mode)",
+)
 @click.option(
     "--template",
     default="conversational",
@@ -92,12 +97,6 @@ def _parse_comma_arg(value: str | None) -> list[str]:
     "--force",
     is_flag=True,
     help="Overwrite existing project directory without prompting",
-)
-@click.option(
-    "--name",
-    "agent_name",
-    default=None,
-    help="Agent name (skips interactive prompt)",
 )
 @click.option(
     "--llm",
@@ -129,12 +128,11 @@ def _parse_comma_arg(value: str | None) -> list[str]:
     help="Skip all interactive prompts (use defaults or flag values)",
 )
 def init(
-    project_name: str,
+    project_name: str | None,
     template: str,
     description: str | None,
     author: str | None,
     force: bool,
-    agent_name: str | None,
     llm: str | None,
     vectorstore: str | None,
     evals_arg: str | None,
@@ -167,31 +165,31 @@ def init(
 
     NON-INTERACTIVE MODE:
 
-        Use --non-interactive to skip prompts and use defaults or flags:
+        Use --non-interactive with --name to skip prompts and use defaults:
 
-            holodeck init my-agent --non-interactive
+            holodeck init --name my-agent --non-interactive
 
         Or override specific values:
 
-            holodeck init my-agent --llm openai --vectorstore qdrant
+            holodeck init --name my-agent --llm openai --vectorstore qdrant
 
     EXAMPLES:
 
         Basic project with interactive wizard:
 
-            holodeck init my-chatbot
+            holodeck init
 
         Quick setup with defaults (no prompts):
 
-            holodeck init my-agent --non-interactive
+            holodeck init --name my-agent --non-interactive
 
         Custom LLM and vector store:
 
-            holodeck init my-agent --llm openai --vectorstore qdrant
+            holodeck init --name my-agent --llm openai --vectorstore qdrant
 
         Full customization without prompts:
 
-            holodeck init my-agent --name my-agent --llm anthropic \\
+            holodeck init --name my-agent --llm anthropic \\
                 --vectorstore chromadb --evals rag-faithfulness,rag-answer_relevancy \\
                 --mcp brave-search,memory --non-interactive
 
@@ -200,20 +198,6 @@ def init(
     try:
         # Get current working directory as output directory
         output_dir = Path.cwd()
-
-        # Check if project directory already exists (unless force)
-        project_dir = output_dir / project_name
-        if project_dir.exists() and not force:
-            # Prompt user for confirmation
-            if click.confirm(
-                f"Project directory '{project_name}' already exists. "
-                "Do you want to overwrite it?",
-                default=False,
-            ):
-                force = True
-            else:
-                click.echo("Initialization cancelled.")
-                return
 
         # Parse comma-separated arguments
         evals_list = _parse_comma_arg(evals_arg)
@@ -245,7 +229,15 @@ def init(
 
         # Determine if we should run wizard
         if non_interactive or not is_interactive():
-            # Non-interactive mode: use defaults or flag values
+            # Non-interactive mode: --name is required
+            if not project_name:
+                click.secho(
+                    "Error: --name is required in non-interactive mode",
+                    fg="red",
+                )
+                raise click.Abort()
+
+            # Use defaults or flag values
             selected_llm = llm or "ollama"
 
             # Create provider config for providers that require endpoint
@@ -257,7 +249,7 @@ def init(
                 )
 
             wizard_result = WizardResult(
-                agent_name=agent_name or project_name,
+                agent_name=project_name,
                 llm_provider=selected_llm,
                 provider_config=provider_config,
                 vector_store=vectorstore or "chromadb",
@@ -267,21 +259,38 @@ def init(
         else:
             # Interactive mode: run wizard
             wizard_result = run_wizard(
-                skip_agent_name=agent_name is not None,
+                skip_agent_name=project_name is not None,
                 skip_llm=llm is not None,
                 skip_vectorstore=vectorstore is not None,
                 skip_evals=evals_arg is not None,
                 skip_mcp=mcp_arg is not None,
-                agent_name_default=agent_name or project_name,
+                agent_name_default=project_name,
                 llm_default=llm or "ollama",
                 vectorstore_default=vectorstore or "chromadb",
                 evals_defaults=evals_list if evals_list else None,
                 mcp_defaults=mcp_list if mcp_list else None,
             )
 
+        # Use agent_name from wizard result as project name
+        final_project_name = wizard_result.agent_name
+
+        # Check if project directory already exists (unless force)
+        project_dir = output_dir / final_project_name
+        if project_dir.exists() and not force:
+            # Prompt user for confirmation
+            if click.confirm(
+                f"Project directory '{final_project_name}' already exists. "
+                "Do you want to overwrite it?",
+                default=False,
+            ):
+                force = True
+            else:
+                click.echo("Initialization cancelled.")
+                return
+
         # Create project initialization input
         init_input = ProjectInitInput(
-            project_name=project_name,
+            project_name=final_project_name,
             template=template,
             description=description,
             author=author,

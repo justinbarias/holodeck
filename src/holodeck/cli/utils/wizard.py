@@ -9,8 +9,8 @@ import sys
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 
+from holodeck.lib.validation import validate_agent_name as _validate_agent_name
 from holodeck.models.wizard_config import (
-    AGENT_NAME_PATTERN,
     EVAL_CHOICES,
     LLM_PROVIDER_CHOICES,
     MCP_SERVER_CHOICES,
@@ -66,7 +66,7 @@ def _prompt_agent_name(default: str | None = None) -> str:
     from InquirerPy.validator import ValidationError as InquirerValidationError
 
     def validate_name(name: str) -> bool:
-        """Validate agent name format.
+        """Validate agent name format using shared validator.
 
         Args:
             name: The name to validate.
@@ -77,18 +77,11 @@ def _prompt_agent_name(default: str | None = None) -> str:
         Raises:
             InquirerValidationError: If validation fails.
         """
-        if not name:
-            raise InquirerValidationError(message="Agent name cannot be empty")
-        if len(name) > 64:
-            raise InquirerValidationError(
-                message="Agent name must be 64 characters or less"
-            )
-        if not AGENT_NAME_PATTERN.match(name):
-            raise InquirerValidationError(
-                message="Agent name must start with a letter and contain only "
-                "alphanumeric characters, hyphens, and underscores"
-            )
-        return True
+        try:
+            _validate_agent_name(name)
+            return True
+        except ValueError as e:
+            raise InquirerValidationError(message=str(e)) from e
 
     result: str = inquirer.text(
         message="Enter agent name:",

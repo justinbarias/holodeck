@@ -8,11 +8,12 @@ Vector store choices are a curated subset of holodeck.models.tool.DatabaseConfig
 providers optimized for the wizard experience.
 """
 
-import re
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from holodeck.lib.validation import AGENT_NAME_PATTERN  # noqa: F401 - re-exported
+from holodeck.lib.validation import validate_agent_name as _validate_agent_name
 from holodeck.models.llm import ProviderEnum
 
 
@@ -104,9 +105,6 @@ VALID_MCP_SERVERS = frozenset(
     ]
 )
 
-# Regex pattern for valid agent names
-AGENT_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
-
 
 class ProviderConfig(BaseModel):
     """Provider-specific configuration collected from wizard prompts.
@@ -172,7 +170,7 @@ class WizardResult(BaseModel):
     @field_validator("agent_name")
     @classmethod
     def validate_agent_name(cls, v: str) -> str:
-        """Validate agent name format.
+        """Validate agent name format using shared validator.
 
         Args:
             v: The agent name to validate
@@ -183,16 +181,7 @@ class WizardResult(BaseModel):
         Raises:
             ValueError: If agent name is invalid
         """
-        if not v:
-            raise ValueError("Agent name cannot be empty")
-        if len(v) > 64:
-            raise ValueError("Agent name must be 64 characters or less")
-        if not AGENT_NAME_PATTERN.match(v):
-            raise ValueError(
-                "Agent name must start with a letter and contain only "
-                "alphanumeric characters, hyphens, and underscores"
-            )
-        return v
+        return _validate_agent_name(v)
 
     @field_validator("llm_provider")
     @classmethod

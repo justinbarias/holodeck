@@ -6,6 +6,7 @@ including user input validation and result tracking.
 
 from pydantic import BaseModel, Field, field_validator
 
+from holodeck.lib.validation import validate_agent_name as _validate_agent_name
 from holodeck.models.wizard_config import (
     VALID_EVALS,
     VALID_LLM_PROVIDERS,
@@ -163,7 +164,7 @@ class ProjectInitInput(BaseModel):
     @field_validator("agent_name")
     @classmethod
     def validate_agent_name(cls, v: str) -> str:
-        """Validate agent name format.
+        """Validate agent name format using shared validator.
 
         Args:
             v: The agent name to validate
@@ -174,19 +175,7 @@ class ProjectInitInput(BaseModel):
         Raises:
             ValueError: If agent name is invalid
         """
-        if not v:
-            raise ValueError("Agent name cannot be empty")
-        if len(v) > 64:
-            raise ValueError("Agent name must be 64 characters or less")
-        if v[0].isdigit():
-            raise ValueError("Agent name cannot start with a digit")
-        if not all(c.isalnum() or c in "-_" for c in v):
-            msg = (
-                "Agent name can only contain alphanumeric characters, "
-                "hyphens, and underscores"
-            )
-            raise ValueError(msg)
-        return v
+        return _validate_agent_name(v)
 
     @field_validator("llm_provider")
     @classmethod
