@@ -509,13 +509,13 @@ MCP_SERVER_CHOICES: list[MCPServerChoice] = [
         display_name="Brave Search",
         description="Web search using Brave Search API",
         is_default=True,
-        package_identifier="@anthropic/mcp-server-brave-search",
+        package_identifier="@brave/brave-search-mcp-server",
         command="npx",
     ),
     MCPServerChoice(
         value="memory",
         display_name="Memory",
-        description="Persistent memory for conversation context",
+        description="Persistent memory using local knowledge graph",
         is_default=True,
         package_identifier="@modelcontextprotocol/server-memory",
         command="npx",
@@ -523,7 +523,7 @@ MCP_SERVER_CHOICES: list[MCPServerChoice] = [
     MCPServerChoice(
         value="sequential-thinking",
         display_name="Sequential Thinking",
-        description="Step-by-step reasoning capabilities",
+        description="Dynamic problem-solving through structured thinking",
         is_default=True,
         package_identifier="@modelcontextprotocol/server-sequential-thinking",
         command="npx",
@@ -548,9 +548,9 @@ MCP_SERVER_CHOICES: list[MCPServerChoice] = [
     MCPServerChoice(
         value="postgres",
         display_name="PostgreSQL",
-        description="Query and manage PostgreSQL databases",
+        description="Query PostgreSQL databases (read-only)",
         is_default=False,
-        package_identifier="@modelcontextprotocol/server-postgres",
+        package_identifier="@zeddotdev/postgres-context-server",
         command="npx",
     ),
 ]
