@@ -29,7 +29,15 @@ class TestInitValidation:
 
         # Run holodeck init command
         result = subprocess.run(
-            [sys.executable, "-m", "holodeck.cli.main", "init", project_name],
+            [
+                sys.executable,
+                "-m",
+                "holodeck.cli.main",
+                "init",
+                "--name",
+                project_name,
+                "--non-interactive",
+            ],
             cwd=temp_dir,
             capture_output=True,
             text=True,
@@ -65,7 +73,15 @@ class TestInitValidation:
         project_name = "test-agent"
 
         result = subprocess.run(
-            [sys.executable, "-m", "holodeck.cli.main", "init", project_name],
+            [
+                sys.executable,
+                "-m",
+                "holodeck.cli.main",
+                "init",
+                "--name",
+                project_name,
+                "--non-interactive",
+            ],
             cwd=temp_dir,
             capture_output=True,
             text=True,
@@ -93,7 +109,15 @@ class TestInitValidation:
         project_name = "test-agent"
 
         result = subprocess.run(
-            [sys.executable, "-m", "holodeck.cli.main", "init", project_name],
+            [
+                sys.executable,
+                "-m",
+                "holodeck.cli.main",
+                "init",
+                "--name",
+                project_name,
+                "--non-interactive",
+            ],
             cwd=temp_dir,
             capture_output=True,
             text=True,
@@ -133,9 +157,11 @@ class TestInitValidation:
                 "-m",
                 "holodeck.cli.main",
                 "init",
+                "--name",
                 "test-agent",
                 "--template",
                 "invalid-template",
+                "--non-interactive",
             ],
             cwd=temp_dir,
             capture_output=True,
@@ -170,9 +196,11 @@ class TestInitValidation:
                 "-m",
                 "holodeck.cli.main",
                 "init",
+                "--name",
                 project_name,
                 "--template",
                 "nonexistent-template",
+                "--non-interactive",
             ],
             cwd=temp_dir,
             capture_output=True,
@@ -198,7 +226,15 @@ class TestInitValidation:
         project_name = "test-agent"
 
         result = subprocess.run(
-            [sys.executable, "-m", "holodeck.cli.main", "init", project_name],
+            [
+                sys.executable,
+                "-m",
+                "holodeck.cli.main",
+                "init",
+                "--name",
+                project_name,
+                "--non-interactive",
+            ],
             cwd=temp_dir,
             capture_output=True,
             text=True,
@@ -226,7 +262,15 @@ class TestInitValidation:
         """
         # Create first project
         result1 = subprocess.run(
-            [sys.executable, "-m", "holodeck.cli.main", "init", "agent-1"],
+            [
+                sys.executable,
+                "-m",
+                "holodeck.cli.main",
+                "init",
+                "--name",
+                "agent-1",
+                "--non-interactive",
+            ],
             cwd=temp_dir,
             capture_output=True,
             text=True,
@@ -235,7 +279,15 @@ class TestInitValidation:
 
         # Create second project immediately after
         result2 = subprocess.run(
-            [sys.executable, "-m", "holodeck.cli.main", "init", "agent-2"],
+            [
+                sys.executable,
+                "-m",
+                "holodeck.cli.main",
+                "init",
+                "--name",
+                "agent-2",
+                "--non-interactive",
+            ],
             cwd=temp_dir,
             capture_output=True,
             text=True,

@@ -212,7 +212,16 @@ def init_project(
         Returns:
             Tuple of (project_directory, subprocess_result)
         """
-        args = [sys.executable, "-m", "holodeck.cli.main", "init", project_name]
+        # Use --name and --non-interactive for CLI tests
+        args = [
+            sys.executable,
+            "-m",
+            "holodeck.cli.main",
+            "init",
+            "--name",
+            project_name,
+            "--non-interactive",
+        ]
 
         if template:
             args.extend(["--template", template])
@@ -278,9 +287,11 @@ def template_project_module(
             "-m",
             "holodeck.cli.main",
             "init",
+            "--name",
             project_name,
             "--template",
             template,
+            "--non-interactive",
         ],
         cwd=temp_dir,
         capture_output=True,
