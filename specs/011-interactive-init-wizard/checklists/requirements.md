@@ -32,7 +32,8 @@
 ## Notes
 
 - All items pass validation. Specification is ready for `/speckit.clarify` or `/speckit.plan`.
-- The spec includes 5 user stories covering the main flows: defaults, LLM selection, vector store selection, MCP server selection, and non-interactive mode.
-- 12 functional requirements cover all acceptance scenarios.
+- The spec includes 6 user stories covering the main flows: quick start with defaults, LLM provider selection, vector store selection, evaluation metrics selection, MCP server selection, and non-interactive mode.
+- 15 functional requirements cover all acceptance scenarios.
 - 7 measurable success criteria are technology-agnostic and user-focused.
 - Assumptions and Out of Scope sections clearly bound the feature.
+- MCP registry lookup removed in favor of predefined server list (simpler, offline-capable).

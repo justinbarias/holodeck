@@ -12,18 +12,39 @@ Complete the [Installation Guide](installation.md) before continuing.
 
 ### Step 1: Initialize a New Agent Project
 
-Use the `holodeck init` command to create a new project with templates:
+Use the `holodeck init` command to create a new project with an interactive wizard:
 
 ```bash
-# Create a basic conversational agent
-holodeck init my-chatbot
+# Start the interactive wizard
+holodeck init
+```
 
-# Or choose a different template
-holodeck init research-agent --template research
-holodeck init support-bot --template customer-support
+The wizard guides you through configuration:
 
-# With metadata
-holodeck init my-agent --description "My AI agent" --author "Your Name"
+```
+? Enter agent name: my-chatbot
+? Select LLM provider: Ollama (Local, gpt-oss:20b)
+? Select vector store: ChromaDB (Local, http://localhost:8000)
+? Select evaluation metrics: rag-faithfulness, rag-answer_relevancy
+? Select MCP servers: Brave Search, Memory, Sequential Thinking
+```
+
+You can also pre-fill options and skip prompts:
+
+```bash
+# Pre-select template
+holodeck init --template research
+
+# Pre-select LLM provider
+holodeck init --name my-agent --llm openai
+
+# Non-interactive mode (uses defaults or specified flags)
+holodeck init --name my-agent --non-interactive
+
+# Full customization without prompts
+holodeck init --name my-agent --llm anthropic \
+    --vectorstore chromadb --evals rag-faithfulness,rag-answer_relevancy \
+    --mcp brave-search,memory --non-interactive
 ```
 
 This creates a complete project structure:
@@ -185,8 +206,11 @@ holodeck chat agent.yaml
 # Show all available commands
 holodeck --help
 
-# Create new project from template
-holodeck init my-project
+# Create new project with interactive wizard
+holodeck init
+
+# Create new project (non-interactive)
+holodeck init --name my-project --non-interactive
 
 # Test your agent and run evaluations
 holodeck test my-project/agent.yaml

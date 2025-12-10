@@ -10,7 +10,8 @@
       "Bash(cat:*)",
       "Bash(python -m pytest:*)",
       "Bash(mkdir:*)",
-      "Bash(source .venv/bin/activate)"
+      "Bash(source .venv/bin/activate)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

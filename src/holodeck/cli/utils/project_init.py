@@ -18,6 +18,98 @@ from holodeck.cli.exceptions import InitError, ValidationError
 from holodeck.lib.template_engine import TemplateRenderer
 from holodeck.models.project_config import ProjectInitInput, ProjectInitResult
 from holodeck.models.template_manifest import TemplateManifest
+from holodeck.models.wizard_config import (
+    LLM_PROVIDER_CHOICES,
+    MCP_SERVER_CHOICES,
+    VECTOR_STORE_CHOICES,
+)
+
+
+def get_model_for_provider(provider: str) -> str:
+    """Get the default model for an LLM provider.
+
+    Args:
+        provider: LLM provider identifier (e.g., 'ollama', 'openai').
+
+    Returns:
+        Default model name for the provider.
+    """
+    for choice in LLM_PROVIDER_CHOICES:
+        if choice.value == provider:
+            return choice.default_model
+    return "gpt-oss:20b"  # Fallback to Ollama default
+
+
+def get_mcp_server_config(server_id: str) -> dict[str, str]:
+    """Get configuration for an MCP server.
+
+    Args:
+        server_id: MCP server identifier (e.g., 'brave-search', 'memory').
+
+    Returns:
+        Dictionary with server configuration (name, package, command).
+    """
+    for server in MCP_SERVER_CHOICES:
+        if server.value == server_id:
+            return {
+                "name": server.value,
+                "display_name": server.display_name,
+                "description": server.description,
+                "package": server.package_identifier,
+                "command": server.command,
+            }
+    return {
+        "name": server_id,
+        "display_name": server_id,
+        "description": "",
+        "package": server_id,
+        "command": "npx",
+    }
+
+
+def get_vectorstore_endpoint(store: str) -> str | None:
+    """Get the default endpoint for a vector store.
+
+    Args:
+        store: Vector store identifier (e.g., 'chromadb', 'qdrant').
+
+    Returns:
+        Default endpoint URL or None if not applicable.
+    """
+    for choice in VECTOR_STORE_CHOICES:
+        if choice.value == store:
+            return choice.default_endpoint
+    return None
+
+
+def get_provider_api_key_env_var(provider: str) -> str | None:
+    """Get the API key environment variable name for an LLM provider.
+
+    Args:
+        provider: LLM provider identifier (e.g., 'openai', 'azure_openai').
+
+    Returns:
+        Environment variable name for API key, or None if not required.
+    """
+    for choice in LLM_PROVIDER_CHOICES:
+        if choice.value == provider:
+            return choice.api_key_env_var
+    return None
+
+
+def get_provider_endpoint_env_var(provider: str) -> str | None:
+    """Get the endpoint environment variable name for an LLM provider.
+
+    Args:
+        provider: LLM provider identifier (e.g., 'azure_openai').
+
+    Returns:
+        Environment variable name for endpoint, or None if not required.
+    """
+    for choice in LLM_PROVIDER_CHOICES:
+        if choice.value == provider:
+            return choice.endpoint_env_var
+    return None
 
 
 class ProjectInitializer:
@@ -190,11 +282,39 @@ class ProjectInitializer:
             project_dir.mkdir(parents=True, exist_ok=False)
             files_created.append(str(project_dir))
 
+            # Prepare provider-specific config
+            provider_config = input_data.provider_config
+            endpoint_env_var = get_provider_endpoint_env_var(input_data.llm_provider)
+
+            # Determine endpoint value
+            llm_endpoint = None
+            if provider_config and provider_config.endpoint:
+                llm_endpoint = provider_config.endpoint
+            elif endpoint_env_var:
+                # Use environment variable placeholder as default
+                llm_endpoint = f"${{{endpoint_env_var}}}"
+
             # Prepare template variables
             template_vars = {
                 "project_name": project_name,
                 "description": input_data.description or "TODO: Add agent description",
                 "author": input_data.author or "",
+                # Wizard configuration fields
+                "agent_name": input_data.agent_name,
+                "llm_provider": input_data.llm_provider,
+                "llm_model": get_model_for_provider(input_data.llm_provider),
+                "llm_endpoint": llm_endpoint,
+                "llm_api_key_env_var": get_provider_api_key_env_var(
+                    input_data.llm_provider
+                ),
+                "vector_store": input_data.vector_store,
+                "vector_store_endpoint": get_vectorstore_endpoint(
+                    input_data.vector_store
+                ),
+                "evals": input_data.evals,
+                "mcp_servers": [
+                    get_mcp_server_config(s) for s in input_data.mcp_servers
+                ],
             }
 
             # Add template-specific defaults from manifest

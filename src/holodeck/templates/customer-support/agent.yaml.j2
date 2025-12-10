@@ -9,8 +9,16 @@ description: {{ description | tojson }}
 
 # Model Configuration - Balanced for friendly support
 model:
-  provider: ollama
-  name: llama3.2:latest
+  provider: {{ llm_provider }}
+  name: {{ llm_model }}
+{% if llm_provider == "openai" %}
+  api_key: ${OPENAI_API_KEY}
+{% elif llm_provider == "azure_openai" %}
+  endpoint: {{ llm_endpoint }}
+  api_key: ${AZURE_OPENAI_API_KEY}
+{% elif llm_provider == "anthropic" %}
+  api_key: ${ANTHROPIC_API_KEY}
+{% endif %}
   temperature: 0.5
   max_tokens: 4096
 
@@ -57,26 +65,39 @@ tools:
     chunk_size: 512
     chunk_overlap: 64
     min_similarity_score: 0.7
-    database: chromadb
+    database: {{ vector_store }}
+{% if mcp_servers %}
 
-  # MCP Slack integration for support workflows
+  # MCP Servers (from wizard selection)
+{% for server in mcp_servers %}
+  # {{ server.display_name }} - {{ server.description }}
   - type: mcp
-    name: slack_integration
-    description: Channel management and messaging for support workflows
-    command: npx
+    name: {{ server.name }}
+    description: {{ server.description }}
+    command: {{ server.command }}
     args:
       - "-y"
-      - "@modelcontextprotocol/server-slack"
-    env:
-      SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN}"
-      SLACK_TEAM_ID: "${SLACK_TEAM_ID}"
+      - "{{ server.package }}"
     request_timeout: 30
+{% endfor %}
+{% endif %}
+
+# Note: Vector store '{{ vector_store }}' selected for vectorstore tools above.
+# See docs: https://useholodeck.ai/docs/tools/vectorstore
 
 # Evaluation Configuration
 evaluations:
   model:
-    provider: ollama
-    name: llama3.2:latest
+    provider: {{ llm_provider }}
+    name: {{ llm_model }}
+{% if llm_provider == "openai" %}
+    api_key: ${OPENAI_API_KEY}
+{% elif llm_provider == "azure_openai" %}
+    endpoint: {{ llm_endpoint }}
+    api_key: ${AZURE_OPENAI_API_KEY}
+{% elif llm_provider == "anthropic" %}
+    api_key: ${ANTHROPIC_API_KEY}
+{% endif %}
     temperature: 0.0
   metrics:
     - type: geval
@@ -90,9 +111,25 @@ evaluations:
       evaluation_params:
         - actual_output
       threshold: 0.7
+{% for eval in evals %}
+{% if eval == "rag-faithfulness" %}
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.7
+{% elif eval == "rag-answer_relevancy" %}
     - type: rag
       metric_type: answer_relevancy
       threshold: 0.7
+{% elif eval == "rag-context_precision" %}
+    - type: rag
+      metric_type: context_precision
+      threshold: 0.7
+{% elif eval == "rag-context_recall" %}
+    - type: rag
+      metric_type: context_recall
+      threshold: 0.7
+{% endif %}
+{% endfor %}
     - type: standard
       metric: groundedness
       threshold: 0.85
@@ -107,65 +144,27 @@ test_cases:
     expected_tools:
       - search_kb
     ground_truth: "Should provide password reset instructions"
-    evaluations:
-      - type: rag
-        metric_type: answer_relevancy
-        threshold: 0.7
-      - type: standard
-        metric: groundedness
-        threshold: 0.85
 
   - name: "Account issue acknowledgment"
     input: "I was charged twice for my order"
     expected_tools:
       - search_kb
-    ground_truth: "Should acknowledge issue and offer to escalate via Slack"
-    evaluations:
-      - type: rag
-        metric_type: answer_relevancy
-        threshold: 0.7
-      - type: geval
-        name: Coherence
-        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
-        evaluation_steps:
-          - "Evaluate whether the response uses clear and direct language."
-          - "Check if the explanation avoids jargon or explains it when used."
-          - "Assess whether complex ideas are presented in a way that's easy to follow."
-          - "Identify any vague or confusing parts that reduce understanding."
-        evaluation_params:
-          - actual_output
-        threshold: 0.7
+    ground_truth: "Should acknowledge issue and offer to escalate"
 
   - name: "Knowledge base search"
     input: "How do I update my billing information?"
     expected_tools:
       - search_kb
     ground_truth: "Should find and provide billing update instructions"
-    evaluations:
-      - type: standard
-        metric: groundedness
-        threshold: 0.85
 
   - name: "Issue requiring escalation"
     input: "I need to dispute a charge from last month"
     expected_tools:
       - search_kb
-      - slack_integration
-    ground_truth: "Should search KB and offer human escalation via Slack"
-    evaluations:
-      - type: rag
-        metric_type: answer_relevancy
-        threshold: 0.7
+    ground_truth: "Should search KB and offer human escalation"
 
   - name: "Troubleshooting flow"
     input: "I can't log into my account"
     expected_tools:
       - search_kb
     ground_truth: "Should provide troubleshooting steps and offer escalation if needed"
-    evaluations:
-      - type: rag
-        metric_type: answer_relevancy
-        threshold: 0.7
-      - type: standard
-        metric: groundedness
-        threshold: 0.85

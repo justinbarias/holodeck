@@ -5,18 +5,18 @@
 
 ## Summary
 
-Enhance the `holodeck init` command with an interactive wizard that guides users through configuration choices for LLM provider (Ollama default, OpenAI, Azure OpenAI, Anthropic), vector store (ChromaDB default, Redis, In-Memory), and MCP servers (fetched from official MCP registry with filesystem, memory, sequential-thinking pre-selected). The wizard supports both interactive and non-interactive modes with clean cancellation handling.
+Enhance the `holodeck init` command with an interactive wizard that guides users through configuration choices for agent name, LLM provider (Ollama with gpt-oss:20b default, OpenAI, Azure OpenAI, Anthropic), vector store (ChromaDB at http://localhost:8000 default, Redis, In-Memory), evaluation metrics (rag-faithfulness, rag-answer_relevancy default), and MCP servers (brave-search[web-search], memory, sequential-thinking default). The wizard supports both interactive and non-interactive modes with clean cancellation handling.
 
 ## Technical Context
 
 **Language/Version**: Python 3.10+
-**Primary Dependencies**: Click (CLI framework), Pydantic (validation), PyYAML, requests (MCP registry API)
+**Primary Dependencies**: Click (CLI framework), Pydantic (validation), PyYAML, InquirerPy (interactive prompts)
 **Storage**: N/A (generates YAML configuration files)
 **Testing**: pytest with unit/integration markers, pytest-mock for mocking
 **Target Platform**: Linux/macOS/Windows terminal environments
 **Project Type**: single - CLI extension to existing holodeck package
 **Performance Goals**: Interactive wizard completion <60s with defaults, non-interactive <5s
-**Constraints**: MCP registry requires network connectivity; terminal must support stdin for interactive mode
+**Constraints**: Terminal must support stdin for interactive mode
 **Scale/Scope**: CLI enhancement affecting `src/holodeck/cli/commands/init.py` and supporting modules
 
 ## Constitution Check
@@ -32,7 +32,7 @@ Enhance the `holodeck init` command with an interactive wizard that guides users
 ### II. MCP for API Integrations
 **Status**: COMPLIANT
 - MCP servers are first-class citizens in the wizard
-- Uses official MCP registry API to list available servers
+- Uses predefined list of common MCP servers
 - Generated configuration uses standard MCP tool definitions
 
 ### III. Test-First with Multimodal Support
@@ -46,14 +46,14 @@ Enhance the `holodeck init` command with an interactive wizard that guides users
 - Generated projects will include observability configuration stubs
 
 ### V. Evaluation Flexibility with Model Overrides
-**Status**: NOT APPLICABLE
-- Init wizard does not perform evaluations
+**Status**: COMPLIANT
+- Wizard includes eval selection step with sensible defaults
 - Generated evaluation configuration will support model overrides
 
 ### Architecture Constraints
 **Status**: COMPLIANT
 - Extends CLI layer only (not Agent Engine, Evaluation Framework, or Deployment Engine)
-- Uses well-defined configuration models (`LLMProvider`, `DatabaseConfig`, `MCPTool`)
+- Uses well-defined configuration models (`LLMProvider`, `DatabaseConfig`, `MCPTool`, `EvalConfig`)
 
 ### Code Quality & Testing Discipline
 **Status**: TO BE VALIDATED
@@ -89,23 +89,21 @@ src/holodeck/
 ├── models/
 │   ├── llm.py                # Existing LLM provider models
 │   ├── tool.py               # Existing tool models (MCP, vectorstore)
+│   ├── evaluation.py         # Existing evaluation models
 │   └── wizard_config.py      # NEW: Wizard selection models
-├── lib/
-│   └── mcp_registry.py       # NEW: MCP registry client
 └── templates/                # Existing templates (may need updates)
 
 tests/
 ├── unit/
 │   ├── test_wizard.py        # NEW: Wizard unit tests
-│   ├── test_mcp_registry.py  # NEW: Registry client tests
 │   └── test_wizard_config.py # NEW: Config model tests
 ├── integration/
 │   └── test_init_wizard.py   # NEW: End-to-end wizard tests
 └── fixtures/
-    └── mcp_registry_response.json  # NEW: Mock registry data
+    └── wizard_defaults.py    # NEW: Default values for testing
 ```
 
-**Structure Decision**: Extending single-project CLI structure. New modules added to cli/utils/ for wizard logic and lib/ for MCP registry client. Models added to models/ following existing patterns.
+**Structure Decision**: Extending single-project CLI structure. New modules added to cli/utils/ for wizard logic. Models added to models/ following existing patterns. No external registry client needed.
 
 ## Complexity Tracking
 

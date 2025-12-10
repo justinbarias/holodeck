@@ -39,6 +39,10 @@ files:
     path: agent.yaml
     template: true
     required: true
+  .env.example:
+    path: .env.example
+    template: true
+    required: true
   instructions/system-prompt.md:
     path: instructions/system-prompt.md
     template: true

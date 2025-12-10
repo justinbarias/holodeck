@@ -24,8 +24,8 @@
 └─────────────────────┘      └─────────────────────┘
 
 ┌─────────────────────┐      ┌─────────────────────┐
-│ MCPServerInfo       │◀─────│ MCPRegistryResponse │
-│  (registry data)    │      │  (API response)     │
+│ EvalChoice          │      │ MCPServerChoice     │
+│  (wizard option)    │      │  (wizard option)    │
 └─────────────────────┘      └─────────────────────┘
 ```
 
@@ -43,8 +43,10 @@ from pydantic import BaseModel, Field
 
 class WizardStep(str, Enum):
     """Current step in the wizard flow."""
+    AGENT_NAME = "agent_name"
     LLM_PROVIDER = "llm_provider"
     VECTOR_STORE = "vector_store"
+    EVALS = "evals"
     MCP_SERVERS = "mcp_servers"
     COMPLETE = "complete"
 
@@ -55,8 +57,12 @@ class WizardState(BaseModel):
     progresses through the wizard flow.
     """
     current_step: WizardStep = Field(
-        default=WizardStep.LLM_PROVIDER,
+        default=WizardStep.AGENT_NAME,
         description="Current wizard step"
+    )
+    agent_name: str | None = Field(
+        default=None,
+        description="Agent name entered by user"
     )
     llm_provider: str | None = Field(
         default=None,
@@ -65,6 +71,10 @@ class WizardState(BaseModel):
     vector_store: str | None = Field(
         default=None,
         description="Selected vector store"
+    )
+    evals: list[str] = Field(
+        default_factory=list,
+        description="Selected evaluation metrics"
     )
     mcp_servers: list[str] = Field(
         default_factory=list,
@@ -78,10 +88,10 @@ class WizardState(BaseModel):
 
 **State Transitions**:
 ```
-LLM_PROVIDER → (selection) → VECTOR_STORE → (selection) → MCP_SERVERS → (selection) → COMPLETE
-     ↓                            ↓                            ↓
-  (cancel)                     (cancel)                     (cancel)
-     ↓                            ↓                            ↓
+AGENT_NAME → (input) → LLM_PROVIDER → (selection) → VECTOR_STORE → (selection) → EVALS → (selection) → MCP_SERVERS → (selection) → COMPLETE
+     ↓                      ↓                            ↓                          ↓                        ↓
+  (cancel)               (cancel)                     (cancel)                   (cancel)                 (cancel)
+     ↓                      ↓                            ↓                          ↓                        ↓
 [is_cancelled=True, abort without file creation]
 ```
 
@@ -102,6 +112,10 @@ class WizardResult(BaseModel):
     All fields are required after wizard completion.
     Validated before passing to ProjectInitializer.
     """
+    agent_name: str = Field(
+        ...,
+        description="Agent name (alphanumeric, hyphens, underscores)"
+    )
     llm_provider: str = Field(
         ...,
         description="Selected LLM provider: ollama, openai, azure_openai, anthropic"
@@ -110,29 +124,49 @@ class WizardResult(BaseModel):
         ...,
         description="Selected vector store: chromadb, redis, in-memory"
     )
+    evals: list[str] = Field(
+        ...,
+        description="Selected evaluation metrics"
+    )
     mcp_servers: list[str] = Field(
         ...,
-        description="Selected MCP server package identifiers"
+        description="Selected MCP server identifiers"
     )
 
     @model_validator(mode="after")
     def validate_selections(self) -> "WizardResult":
         """Validate all selections are from allowed values."""
+        import re
+
         valid_providers = {"ollama", "openai", "azure_openai", "anthropic"}
         valid_stores = {"chromadb", "redis", "in-memory"}
+        valid_evals = {"rag-faithfulness", "rag-answer_relevancy", "rag-context_precision", "rag-context_recall"}
+        valid_mcp = {"brave-search", "memory", "sequential-thinking", "filesystem", "github", "postgres"}
+
+        # Validate agent name format
+        if not re.match(r"^[a-zA-Z0-9_-]+$", self.agent_name):
+            raise ValueError(f"Invalid agent name: {self.agent_name}. Use alphanumeric, hyphens, underscores only.")
 
         if self.llm_provider not in valid_providers:
             raise ValueError(f"Invalid LLM provider: {self.llm_provider}")
         if self.vector_store not in valid_stores:
             raise ValueError(f"Invalid vector store: {self.vector_store}")
+        for eval_metric in self.evals:
+            if eval_metric not in valid_evals:
+                raise ValueError(f"Invalid eval metric: {eval_metric}")
+        for mcp_server in self.mcp_servers:
+            if mcp_server not in valid_mcp:
+                raise ValueError(f"Invalid MCP server: {mcp_server}")
 
         return self
 ```
 
 **Validation Rules**:
+- `agent_name`: Alphanumeric, hyphens, underscores only
 - `llm_provider`: Must be one of: ollama, openai, azure_openai, anthropic
 - `vector_store`: Must be one of: chromadb, redis, in-memory
-- `mcp_servers`: List can be empty (user deselected all)
+- `evals`: Must be from allowed eval metrics
+- `mcp_servers`: Must be from allowed MCP servers (list can be empty)
 
 ---
 
@@ -155,6 +189,7 @@ class LLMProviderChoice(BaseModel):
     display_name: str = Field(..., description="Human-readable name")
     description: str = Field(..., description="Brief capability description")
     is_default: bool = Field(default=False, description="Whether this is the default selection")
+    default_model: str = Field(..., description="Default model for this provider")
     requires_api_key: bool = Field(default=True, description="Whether API key is needed")
     api_key_env_var: str | None = Field(default=None, description="Environment variable for API key")
     requires_endpoint: bool = Field(default=False, description="Whether endpoint URL is needed")
@@ -166,13 +201,15 @@ LLM_PROVIDER_CHOICES = [
         display_name="Ollama (local)",
         description="Local LLM inference, no API key required",
         is_default=True,
+        default_model="gpt-oss:20b",
         requires_api_key=False,
-        requires_endpoint=False,  # Defaults to localhost
+        requires_endpoint=False,
     ),
     LLMProviderChoice(
         value="openai",
         display_name="OpenAI",
         description="GPT-4, GPT-3.5-turbo via OpenAI API",
+        default_model="gpt-4o",
         requires_api_key=True,
         api_key_env_var="OPENAI_API_KEY",
     ),
@@ -180,6 +217,7 @@ LLM_PROVIDER_CHOICES = [
         value="azure_openai",
         display_name="Azure OpenAI",
         description="OpenAI models via Azure deployment",
+        default_model="gpt-4o",
         requires_api_key=True,
         api_key_env_var="AZURE_OPENAI_API_KEY",
         requires_endpoint=True,
@@ -188,6 +226,7 @@ LLM_PROVIDER_CHOICES = [
         value="anthropic",
         display_name="Anthropic Claude",
         description="Claude 3.5, Claude 3 via Anthropic API",
+        default_model="claude-3-5-sonnet-20241022",
         requires_api_key=True,
         api_key_env_var="ANTHROPIC_API_KEY",
     ),
@@ -215,6 +254,7 @@ class VectorStoreChoice(BaseModel):
     display_name: str = Field(..., description="Human-readable name")
     description: str = Field(..., description="Brief capability description")
     is_default: bool = Field(default=False, description="Whether this is the default selection")
+    default_endpoint: str | None = Field(default=None, description="Default connection endpoint")
     persistence: str = Field(..., description="Data persistence model")
     connection_required: bool = Field(default=False, description="Whether connection string needed")
 
@@ -225,6 +265,7 @@ VECTOR_STORE_CHOICES = [
         display_name="ChromaDB (default)",
         description="Embedded vector database with local persistence",
         is_default=True,
+        default_endpoint="http://localhost:8000",
         persistence="local file",
         connection_required=False,
     ),
@@ -232,6 +273,7 @@ VECTOR_STORE_CHOICES = [
         value="redis",
         display_name="Redis",
         description="Production-grade vector store with Redis Stack",
+        default_endpoint="redis://localhost:6379",
         persistence="remote server",
         connection_required=True,
     ),
@@ -239,6 +281,7 @@ VECTOR_STORE_CHOICES = [
         value="in-memory",
         display_name="In-Memory",
         description="Ephemeral storage for development/testing",
+        default_endpoint=None,
         persistence="none (lost on restart)",
         connection_required=False,
     ),
@@ -249,80 +292,127 @@ VECTOR_STORE_CHOICES = [
 
 ---
 
-### 5. MCPServerInfo
+### 5. EvalChoice
 
-**Purpose**: Represents an MCP server fetched from the registry.
+**Purpose**: Defines a selectable evaluation metric option for the wizard.
 
-**Location**: `src/holodeck/lib/mcp_registry.py`
+**Location**: `src/holodeck/models/wizard_config.py`
 
 ```python
 from pydantic import BaseModel, Field
 
-class MCPPackage(BaseModel):
-    """Package installation details for an MCP server."""
-    registry_type: str = Field(..., alias="registryType", description="Package registry: npm, pypi")
-    identifier: str = Field(..., description="Package name/identifier")
-    transport_type: str = Field(default="stdio", description="Transport: stdio, sse, http")
+class EvalChoice(BaseModel):
+    """Evaluation metric option for wizard selection.
 
-class MCPServerInfo(BaseModel):
-    """MCP server information from registry.
-
-    Parsed from official MCP registry API response.
+    Provides display information for each supported evaluation metric.
     """
-    name: str = Field(..., description="Fully qualified server name")
-    description: str = Field(default="", description="Server description")
-    version: str = Field(default="", description="Latest version")
-    packages: list[MCPPackage] = Field(default_factory=list, description="Installation packages")
-    is_official: bool = Field(default=False, description="Whether maintained by MCP team")
-    is_default: bool = Field(default=False, description="Whether pre-selected in wizard")
+    value: str = Field(..., description="Eval metric identifier for config")
+    display_name: str = Field(..., description="Human-readable name")
+    description: str = Field(..., description="What this metric measures")
+    is_default: bool = Field(default=False, description="Whether pre-selected by default")
+    metric_type: str = Field(default="ai", description="Type of metric: ai or nlp")
 
-    @property
-    def short_name(self) -> str:
-        """Extract short name from fully qualified name."""
-        # "io.github.user/server-name" → "server-name"
-        return self.name.split("/")[-1] if "/" in self.name else self.name
-
-    @property
-    def primary_package(self) -> MCPPackage | None:
-        """Get primary package for installation."""
-        return self.packages[0] if self.packages else None
-
-# Default servers (pre-selected)
-DEFAULT_MCP_SERVERS = [
-    "@modelcontextprotocol/server-filesystem",
-    "@modelcontextprotocol/server-memory",
-    "@modelcontextprotocol/server-sequential-thinking",
+# Predefined choices
+EVAL_CHOICES = [
+    EvalChoice(
+        value="rag-faithfulness",
+        display_name="RAG Faithfulness",
+        description="Measures if response is grounded in retrieved context",
+        is_default=True,
+        metric_type="ai",
+    ),
+    EvalChoice(
+        value="rag-answer_relevancy",
+        display_name="RAG Answer Relevancy",
+        description="Measures if response answers the question",
+        is_default=True,
+        metric_type="ai",
+    ),
+    EvalChoice(
+        value="rag-context_precision",
+        display_name="RAG Context Precision",
+        description="Measures precision of retrieved context",
+        is_default=False,
+        metric_type="ai",
+    ),
+    EvalChoice(
+        value="rag-context_recall",
+        display_name="RAG Context Recall",
+        description="Measures recall of retrieved context",
+        is_default=False,
+        metric_type="ai",
+    ),
 ]
 ```
 
 ---
 
-### 6. MCPRegistryResponse
+### 6. MCPServerChoice
 
-**Purpose**: Represents the full API response from MCP registry.
+**Purpose**: Defines a selectable MCP server option for the wizard.
 
-**Location**: `src/holodeck/lib/mcp_registry.py`
+**Location**: `src/holodeck/models/wizard_config.py`
 
 ```python
 from pydantic import BaseModel, Field
 
-class MCPRegistryMetadata(BaseModel):
-    """Pagination metadata from registry response."""
-    count: int = Field(default=0, description="Number of results")
-    next_cursor: str | None = Field(default=None, alias="nextCursor", description="Cursor for next page")
+class MCPServerChoice(BaseModel):
+    """MCP server option for wizard selection.
 
-class MCPRegistryResponse(BaseModel):
-    """Full response from MCP registry API.
-
-    Handles pagination and provides iteration support.
+    Provides display information and package details for each MCP server.
     """
-    servers: list[MCPServerInfo] = Field(default_factory=list, description="List of servers")
-    metadata: MCPRegistryMetadata = Field(default_factory=MCPRegistryMetadata)
+    value: str = Field(..., description="Short name for config")
+    display_name: str = Field(..., description="Human-readable name")
+    description: str = Field(..., description="Brief capability description")
+    is_default: bool = Field(default=False, description="Whether pre-selected by default")
+    package_identifier: str = Field(..., description="NPM package identifier")
+    command: str = Field(default="npx", description="Command to run the server")
 
-    @property
-    def has_more(self) -> bool:
-        """Check if more pages available."""
-        return self.metadata.next_cursor is not None
+# Predefined choices
+MCP_SERVER_CHOICES = [
+    MCPServerChoice(
+        value="brave-search",
+        display_name="Brave Search",
+        description="Web search capabilities",
+        is_default=True,
+        package_identifier="@anthropic/mcp-server-brave-search",
+    ),
+    MCPServerChoice(
+        value="memory",
+        display_name="Memory",
+        description="Key-value memory storage",
+        is_default=True,
+        package_identifier="@modelcontextprotocol/server-memory",
+    ),
+    MCPServerChoice(
+        value="sequential-thinking",
+        display_name="Sequential Thinking",
+        description="Structured reasoning chains",
+        is_default=True,
+        package_identifier="@modelcontextprotocol/server-sequential-thinking",
+    ),
+    MCPServerChoice(
+        value="filesystem",
+        display_name="Filesystem",
+        description="File system access",
+        is_default=False,
+        package_identifier="@modelcontextprotocol/server-filesystem",
+    ),
+    MCPServerChoice(
+        value="github",
+        display_name="GitHub",
+        description="GitHub repository access",
+        is_default=False,
+        package_identifier="@modelcontextprotocol/server-github",
+    ),
+    MCPServerChoice(
+        value="postgres",
+        display_name="PostgreSQL",
+        description="PostgreSQL database access",
+        is_default=False,
+        package_identifier="@modelcontextprotocol/server-postgres",
+    ),
+]
 ```
 
 ---
@@ -341,6 +431,10 @@ class ProjectInitInput(BaseModel):
     # ... existing fields ...
 
     # New wizard-related fields
+    agent_name: str = Field(
+        default="my-agent",
+        description="Agent name from wizard input"
+    )
     llm_provider: str = Field(
         default="ollama",
         description="LLM provider from wizard selection"
@@ -349,11 +443,18 @@ class ProjectInitInput(BaseModel):
         default="chromadb",
         description="Vector store from wizard selection"
     )
+    evals: list[str] = Field(
+        default_factory=lambda: [
+            "rag-faithfulness",
+            "rag-answer_relevancy",
+        ],
+        description="Evaluation metrics from wizard selection"
+    )
     mcp_servers: list[str] = Field(
         default_factory=lambda: [
-            "@modelcontextprotocol/server-filesystem",
-            "@modelcontextprotocol/server-memory",
-            "@modelcontextprotocol/server-sequential-thinking",
+            "brave-search",
+            "memory",
+            "sequential-thinking",
         ],
         description="MCP servers from wizard selection"
     )
@@ -367,16 +468,16 @@ class ProjectInitInput(BaseModel):
 |------|-----|-------------|-------------|
 | WizardState | WizardResult | Transforms to | Final state becomes result |
 | WizardResult | ProjectInitInput | Merged into | Wizard selections added to init input |
-| MCPRegistryResponse | MCPServerInfo | Contains many | API response contains server list |
-| MCPServerInfo | MCPPackage | Contains many | Each server has installation packages |
 
 ## Validation Summary
 
 | Entity | Validation Rule | Error Behavior |
 |--------|----------------|----------------|
+| WizardResult | Agent name format (alphanumeric, -, _) | Raise ValueError |
 | WizardResult | Provider in allowed set | Raise ValueError |
 | WizardResult | Vector store in allowed set | Raise ValueError |
-| MCPServerInfo | Has at least one package | Log warning, skip display |
+| WizardResult | Evals in allowed set | Raise ValueError |
+| WizardResult | MCP servers in allowed set | Raise ValueError |
 | ProjectInitInput | Template exists | Raise ValidationError |
 
 ## State Diagram
@@ -387,22 +488,36 @@ class ProjectInitInput(BaseModel):
     ▼
 ┌─────────────────────────────┐
 │  WizardState                │
+│  step = AGENT_NAME          │
+│  agent_name = None          │
+└─────────────────────────────┘
+    │ User enters name
+    ▼
+┌─────────────────────────────┐
+│  WizardState                │
 │  step = LLM_PROVIDER        │
-│  llm_provider = None        │
+│  agent_name = "my-agent"    │
 └─────────────────────────────┘
     │ User selects provider
     ▼
 ┌─────────────────────────────┐
 │  WizardState                │
 │  step = VECTOR_STORE        │
-│  llm_provider = "openai"    │
+│  llm_provider = "ollama"    │
 └─────────────────────────────┘
     │ User selects store
     ▼
 ┌─────────────────────────────┐
 │  WizardState                │
-│  step = MCP_SERVERS         │
+│  step = EVALS               │
 │  vector_store = "chromadb"  │
+└─────────────────────────────┘
+    │ User selects evals
+    ▼
+┌─────────────────────────────┐
+│  WizardState                │
+│  step = MCP_SERVERS         │
+│  evals = [...]              │
 └─────────────────────────────┘
     │ User selects servers
     ▼

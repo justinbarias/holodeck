@@ -9,8 +9,16 @@ description: {{ description | tojson }}
 
 # Model Configuration
 model:
-  provider: ollama
-  name: llama3.2:latest
+  provider: {{ llm_provider }}
+  name: {{ llm_model }}
+{% if llm_provider == "openai" %}
+  api_key: ${OPENAI_API_KEY}
+{% elif llm_provider == "azure_openai" %}
+  endpoint: {{ llm_endpoint }}
+  api_key: ${AZURE_OPENAI_API_KEY}
+{% elif llm_provider == "anthropic" %}
+  api_key: ${ANTHROPIC_API_KEY}
+{% endif %}
   temperature: 0.7
   max_tokens: 4096
 
@@ -38,21 +46,40 @@ instructions:
 
 # Tools Configuration
 tools:
-  # MCP Memory tool for persistent conversation context
+{% if mcp_servers %}
+{% for server in mcp_servers %}
+  # {{ server.display_name }} - {{ server.description }}
   - type: mcp
-    name: memory
-    description: Knowledge graph-based persistent memory for conversation context
-    command: npx
+    name: {{ server.name }}
+    description: {{ server.description }}
+    command: {{ server.command }}
     args:
       - "-y"
-      - "@modelcontextprotocol/server-memory"
+      - "{{ server.package }}"
     request_timeout: 30
+{% endfor %}
+{% else %}
+  # No MCP servers configured - add tools as needed
+  []
+{% endif %}
+
+# Note: Vector store '{{ vector_store }}' selected
+# Configure vectorstore tools in the tools section above as needed.
+# See docs: https://useholodeck.ai/docs/tools/vectorstore
 
 # Evaluation Configuration
 evaluations:
   model:
-    provider: ollama
-    name: llama3.2:latest
+    provider: {{ llm_provider }}
+    name: {{ llm_model }}
+{% if llm_provider == "openai" %}
+    api_key: ${OPENAI_API_KEY}
+{% elif llm_provider == "azure_openai" %}
+    endpoint: {{ llm_endpoint }}
+    api_key: ${AZURE_OPENAI_API_KEY}
+{% elif llm_provider == "anthropic" %}
+    api_key: ${ANTHROPIC_API_KEY}
+{% endif %}
     temperature: 0.0
   metrics:
     - type: geval
@@ -66,9 +93,25 @@ evaluations:
       evaluation_params:
         - actual_output
       threshold: 0.7
+{% for eval in evals %}
+{% if eval == "rag-faithfulness" %}
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.7
+{% elif eval == "rag-answer_relevancy" %}
     - type: rag
       metric_type: answer_relevancy
       threshold: 0.7
+{% elif eval == "rag-context_precision" %}
+    - type: rag
+      metric_type: context_precision
+      threshold: 0.7
+{% elif eval == "rag-context_recall" %}
+    - type: rag
+      metric_type: context_recall
+      threshold: 0.7
+{% endif %}
+{% endfor %}
 
 # Test Cases
 test_cases:
@@ -76,53 +119,18 @@ test_cases:
     input: "Hello, how are you?"
     expected_tools: []
     ground_truth: "Should respond politely and offer assistance"
-    evaluations:
-      - type: geval
-        name: Coherence
-        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
-        evaluation_steps:
-          - "Evaluate whether the response uses clear and direct language."
-          - "Check if the explanation avoids jargon or explains it when used."
-          - "Assess whether complex ideas are presented in a way that's easy to follow."
-          - "Identify any vague or confusing parts that reduce understanding."
-        evaluation_params:
-          - actual_output
-        threshold: 0.7
 
   - name: "Multi-turn conversation"
     input: "Can you help me learn Python?"
     expected_tools:
+{% if "memory" in mcp_servers | map(attribute='name') | list %}
       - memory
+{% else %}
+      []
+{% endif %}
     ground_truth: "Should provide helpful Python learning resources and tips"
-    evaluations:
-      - type: geval
-        name: Coherence
-        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
-        evaluation_steps:
-          - "Evaluate whether the response uses clear and direct language."
-          - "Check if the explanation avoids jargon or explains it when used."
-          - "Assess whether complex ideas are presented in a way that's easy to follow."
-          - "Identify any vague or confusing parts that reduce understanding."
-        evaluation_params:
-          - actual_output
-        threshold: 0.7
-      - type: rag
-        metric_type: answer_relevancy
-        threshold: 0.7
 
   - name: "Handling unknown queries"
     input: "Can you help me with quantum physics?"
     expected_tools: []
     ground_truth: "Should acknowledge the topic and offer to help or clarify limitations"
-    evaluations:
-      - type: geval
-        name: Coherence
-        criteria: "Evaluate whether the response is clear, well-structured, and easy to understand."
-        evaluation_steps:
-          - "Evaluate whether the response uses clear and direct language."
-          - "Check if the explanation avoids jargon or explains it when used."
-          - "Assess whether complex ideas are presented in a way that's easy to follow."
-          - "Identify any vague or confusing parts that reduce understanding."
-        evaluation_params:
-          - actual_output
-        threshold: 0.7

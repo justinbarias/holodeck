@@ -6,6 +6,17 @@ including user input validation and result tracking.
 
 from pydantic import BaseModel, Field, field_validator
 
+from holodeck.lib.validation import validate_agent_name as _validate_agent_name
+from holodeck.models.wizard_config import (
+    VALID_EVALS,
+    VALID_LLM_PROVIDERS,
+    VALID_MCP_SERVERS,
+    VALID_VECTOR_STORES,
+    ProviderConfig,
+    get_default_evals,
+    get_default_mcp_servers,
+)
+
 
 class ProjectInitInput(BaseModel):
     """User-provided input for project initialization.
@@ -20,6 +31,12 @@ class ProjectInitInput(BaseModel):
         author: Optional creator name
         output_dir: Target directory (currently CWD, but model allows future extension)
         overwrite: Whether to overwrite existing project
+        agent_name: Name of the agent to create (from wizard)
+        llm_provider: Selected LLM provider (from wizard)
+        provider_config: Provider-specific configuration (endpoint, deployment name)
+        vector_store: Selected vector store (from wizard)
+        evals: List of selected evaluation metrics (from wizard)
+        mcp_servers: List of selected MCP servers (from wizard)
     """
 
     project_name: str = Field(..., description="Name of the project to create")
@@ -30,6 +47,32 @@ class ProjectInitInput(BaseModel):
     author: str | None = Field(None, description="Optional creator name")
     output_dir: str = Field(".", description="Target directory for project creation")
     overwrite: bool = Field(False, description="Whether to overwrite existing project")
+
+    # Wizard configuration fields
+    agent_name: str = Field(
+        default="my-agent",
+        description="Name of the agent (alphanumeric, hyphens, underscores)",
+    )
+    llm_provider: str = Field(
+        default="ollama",
+        description="Selected LLM provider",
+    )
+    provider_config: ProviderConfig | None = Field(
+        default=None,
+        description="Provider-specific configuration (endpoint, deployment name)",
+    )
+    vector_store: str = Field(
+        default="chromadb",
+        description="Selected vector store",
+    )
+    evals: list[str] = Field(
+        default_factory=get_default_evals,
+        description="List of selected evaluation metrics",
+    )
+    mcp_servers: list[str] = Field(
+        default_factory=get_default_mcp_servers,
+        description="List of selected MCP servers",
+    )
 
     @field_validator("project_name")
     @classmethod
@@ -116,6 +159,105 @@ class ProjectInitInput(BaseModel):
         """
         if v is not None and len(v) > 256:
             raise ValueError("Author name must be 256 characters or less")
+        return v
+
+    @field_validator("agent_name")
+    @classmethod
+    def validate_agent_name(cls, v: str) -> str:
+        """Validate agent name format using shared validator.
+
+        Args:
+            v: The agent name to validate
+
+        Returns:
+            The validated agent name
+
+        Raises:
+            ValueError: If agent name is invalid
+        """
+        return _validate_agent_name(v)
+
+    @field_validator("llm_provider")
+    @classmethod
+    def validate_llm_provider(cls, v: str) -> str:
+        """Validate LLM provider choice.
+
+        Args:
+            v: The LLM provider to validate
+
+        Returns:
+            The validated LLM provider
+
+        Raises:
+            ValueError: If LLM provider is not recognized
+        """
+        if v not in VALID_LLM_PROVIDERS:
+            valid = ", ".join(sorted(VALID_LLM_PROVIDERS))
+            raise ValueError(f"Invalid LLM provider: {v}. Valid options: {valid}")
+        return v
+
+    @field_validator("vector_store")
+    @classmethod
+    def validate_vector_store(cls, v: str) -> str:
+        """Validate vector store choice.
+
+        Args:
+            v: The vector store to validate
+
+        Returns:
+            The validated vector store
+
+        Raises:
+            ValueError: If vector store is not recognized
+        """
+        if v not in VALID_VECTOR_STORES:
+            valid = ", ".join(sorted(VALID_VECTOR_STORES))
+            raise ValueError(f"Invalid vector store: {v}. Valid options: {valid}")
+        return v
+
+    @field_validator("evals")
+    @classmethod
+    def validate_evals(cls, v: list[str]) -> list[str]:
+        """Validate evaluation metrics choices.
+
+        Args:
+            v: The list of evaluation metrics to validate
+
+        Returns:
+            The validated list of evaluation metrics
+
+        Raises:
+            ValueError: If any eval metric is not recognized
+        """
+        invalid = [e for e in v if e not in VALID_EVALS]
+        if invalid:
+            valid = ", ".join(sorted(VALID_EVALS))
+            raise ValueError(
+                f"Invalid evaluation metric(s): {', '.join(invalid)}. "
+                f"Valid options: {valid}"
+            )
+        return v
+
+    @field_validator("mcp_servers")
+    @classmethod
+    def validate_mcp_servers(cls, v: list[str]) -> list[str]:
+        """Validate MCP server choices.
+
+        Args:
+            v: The list of MCP servers to validate
+
+        Returns:
+            The validated list of MCP servers
+
+        Raises:
+            ValueError: If any MCP server is not recognized
+        """
+        invalid = [s for s in v if s not in VALID_MCP_SERVERS]
+        if invalid:
+            valid = ", ".join(sorted(VALID_MCP_SERVERS))
+            raise ValueError(
+                f"Invalid MCP server(s): {', '.join(invalid)}. Valid options: {valid}"
+            )
         return v
 
 

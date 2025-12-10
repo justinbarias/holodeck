@@ -39,7 +39,9 @@ class TestInitCommandBasic:
     def test_init_command_creates_project(self):
         """Test init command creates a new project directory."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-test-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-test-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             assert Path("my-test-project").exists()
 
@@ -49,9 +51,11 @@ class TestInitCommandBasic:
             result = self.runner.invoke(
                 init,
                 [
+                    "--name",
                     "my-project",
                     "--description",
                     "My test agent description",
+                    "--non-interactive",
                 ],
             )
             assert result.exit_code == 0
@@ -60,7 +64,9 @@ class TestInitCommandBasic:
     def test_init_command_success_message(self):
         """Test init command displays success message."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             assert "Project initialized successfully" in result.output
             assert "my-project" in result.output
@@ -68,14 +74,18 @@ class TestInitCommandBasic:
     def test_init_command_shows_project_location(self):
         """Test init command shows project location in output."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             assert "Location:" in result.output or "project" in result.output.lower()
 
     def test_init_command_shows_next_steps(self):
         """Test init command shows next steps in output."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             assert "Next steps:" in result.output
             assert "cd " in result.output or "Edit" in result.output
@@ -83,14 +93,18 @@ class TestInitCommandBasic:
     def test_init_command_shows_template_used(self):
         """Test init command displays which template was used."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             assert "Template:" in result.output
 
     def test_init_command_shows_duration(self):
         """Test init command displays duration in output."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             assert "Time:" in result.output or "s" in result.output
 
@@ -113,7 +127,9 @@ class TestInitCommandBasic:
         mock_initializer_class.return_value = mock_initializer
 
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["test-project"])
+            result = self.runner.invoke(
+                init, ["--name", "test-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             assert mock_initializer.initialize.called
 
@@ -135,7 +151,14 @@ class TestInitCommandTemplates:
         """Test init command with conversational template."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
             result = self.runner.invoke(
-                init, ["my-project", "--template", "conversational"]
+                init,
+                [
+                    "--name",
+                    "my-project",
+                    "--template",
+                    "conversational",
+                    "--non-interactive",
+                ],
             )
             assert result.exit_code == 0
             assert "conversational" in result.output.lower()
@@ -143,7 +166,10 @@ class TestInitCommandTemplates:
     def test_init_command_with_research_template(self):
         """Test init command with research template."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project", "--template", "research"])
+            result = self.runner.invoke(
+                init,
+                ["--name", "my-project", "--template", "research", "--non-interactive"],
+            )
             assert result.exit_code == 0
             assert Path("my-project").exists()
 
@@ -151,7 +177,14 @@ class TestInitCommandTemplates:
         """Test init command with customer-support template."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
             result = self.runner.invoke(
-                init, ["my-project", "--template", "customer-support"]
+                init,
+                [
+                    "--name",
+                    "my-project",
+                    "--template",
+                    "customer-support",
+                    "--non-interactive",
+                ],
             )
             assert result.exit_code == 0
             assert Path("my-project").exists()
@@ -159,7 +192,9 @@ class TestInitCommandTemplates:
     def test_init_command_default_template_is_conversational(self):
         """Test init command defaults to conversational template."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             # Default is conversational
             assert "conversational" in result.output.lower()
@@ -182,12 +217,15 @@ class TestInitCommandExistingDirectory:
         """Test init command prompts user when directory exists."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
             # Create first project
-            result1 = self.runner.invoke(init, ["my-project"])
+            result1 = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result1.exit_code == 0
 
             # Try to create again without force - should prompt
+            # Note: Using --name without --non-interactive to allow prompt
             result2 = self.runner.invoke(
-                init, ["my-project"], input="n\n"
+                init, ["--name", "my-project"], input="n\n"
             )  # Answer no to overwrite
             # When user declines, the command returns 0 but shows cancelled message
             assert (
@@ -200,7 +238,9 @@ class TestInitCommandExistingDirectory:
         """Test init command confirms and overwrites when user agrees."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
             # Create first project
-            result1 = self.runner.invoke(init, ["my-project"])
+            result1 = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result1.exit_code == 0
 
             # Create marker file to verify overwrite happens
@@ -209,7 +249,7 @@ class TestInitCommandExistingDirectory:
             assert marker_path.exists()
 
             # Try to create again and confirm overwrite
-            result2 = self.runner.invoke(init, ["my-project"], input="y\n")
+            result2 = self.runner.invoke(init, ["--name", "my-project"], input="y\n")
             # Should succeed and overwrite
             assert result2.exit_code == 0
             # Marker file should be gone after overwrite
@@ -220,7 +260,9 @@ class TestInitCommandExistingDirectory:
         """Test init command with --force flag overwrites directory."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
             # Create first project
-            result1 = self.runner.invoke(init, ["my-project"])
+            result1 = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result1.exit_code == 0
 
             # Create marker file
@@ -229,7 +271,9 @@ class TestInitCommandExistingDirectory:
             assert marker_path.exists()
 
             # Create again with force
-            result2 = self.runner.invoke(init, ["my-project", "--force"])
+            result2 = self.runner.invoke(
+                init, ["--name", "my-project", "--force", "--non-interactive"]
+            )
             assert result2.exit_code == 0
             # Marker file should be gone
             assert not marker_path.exists()
@@ -238,11 +282,13 @@ class TestInitCommandExistingDirectory:
         """Test init command is cancelled when user declines overwrite."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
             # Create first project
-            result1 = self.runner.invoke(init, ["my-project"])
+            result1 = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result1.exit_code == 0
 
             # Try to create again without force - decline overwrite
-            result2 = self.runner.invoke(init, ["my-project"], input="n\n")
+            result2 = self.runner.invoke(init, ["--name", "my-project"], input="n\n")
             # When user declines, command shows cancelled message
             assert "cancelled" in result2.output.lower()
 
@@ -272,7 +318,9 @@ class TestInitCommandErrorHandling:
         mock_initializer_class.return_value = mock_initializer
 
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code != 0
             assert "Error:" in result.output
 
@@ -286,7 +334,9 @@ class TestInitCommandErrorHandling:
         mock_initializer_class.return_value = mock_initializer
 
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code != 0
             assert "Error:" in result.output
 
@@ -300,7 +350,9 @@ class TestInitCommandErrorHandling:
         mock_initializer_class.return_value = mock_initializer
 
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code != 0
             assert "Unexpected error" in result.output
 
@@ -314,7 +366,9 @@ class TestInitCommandErrorHandling:
         mock_initializer_class.return_value = mock_initializer
 
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code != 0
             assert "cancelled by user" in result.output.lower()
 
@@ -332,7 +386,9 @@ class TestInitCommandErrorHandling:
         mock_initializer_class.return_value = mock_initializer
 
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code != 0
             assert "initialization failed" in result.output.lower()
             assert "Error:" in result.output
@@ -357,11 +413,13 @@ class TestInitCommandIntegration:
             result = self.runner.invoke(
                 init,
                 [
+                    "--name",
                     "my-agent",
                     "--template",
                     "research",
                     "--description",
                     "A research assistant",
+                    "--non-interactive",
                 ],
             )
             assert result.exit_code == 0
@@ -369,14 +427,13 @@ class TestInitCommandIntegration:
             assert "Project initialized successfully" in result.output
 
     def test_init_command_project_name_is_required(self):
-        """Test init command requires project name."""
+        """Test init command requires project name in non-interactive mode."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, [])
+            result = self.runner.invoke(init, ["--non-interactive"])
             assert result.exit_code != 0
-            # Click should show missing argument error
+            # Should show error about missing --name in non-interactive mode
             assert (
-                "missing" in result.output.lower()
-                or "argument" in result.output.lower()
+                "required" in result.output.lower() or "name" in result.output.lower()
             )
 
     def test_init_command_with_special_chars_in_description(self):
@@ -385,9 +442,11 @@ class TestInitCommandIntegration:
             result = self.runner.invoke(
                 init,
                 [
+                    "--name",
                     "my-project",
                     "--description",
                     "Agent for Q&A, with features like: search, filter",
+                    "--non-interactive",
                 ],
             )
             assert result.exit_code == 0
@@ -410,7 +469,9 @@ class TestInitCommandOutput:
     def test_init_command_output_has_blank_lines(self):
         """Test init command output has proper formatting with blank lines."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             # Output should have multiple lines with proper spacing
             lines = result.output.strip().split("\n")
@@ -419,7 +480,9 @@ class TestInitCommandOutput:
     def test_init_command_success_message_is_bold_green(self):
         """Test init command success message formatting."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             # Check that output contains success indicator (✓ or "success")
             assert "success" in result.output.lower() or "✓" in result.output
@@ -427,7 +490,9 @@ class TestInitCommandOutput:
     def test_init_command_lists_next_steps(self):
         """Test init command lists all next steps."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project"])
+            result = self.runner.invoke(
+                init, ["--name", "my-project", "--non-interactive"]
+            )
             assert result.exit_code == 0
             output_lower = result.output.lower()
             # Check for step indicators
@@ -439,10 +504,10 @@ class TestInitCommandOutput:
         """Test init command error message formatting."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
             # Create first project
-            self.runner.invoke(init, ["my-project"])
+            self.runner.invoke(init, ["--name", "my-project", "--non-interactive"])
 
             # Try again without force - should show cancellation message
-            result = self.runner.invoke(init, ["my-project"], input="n\n")
+            result = self.runner.invoke(init, ["--name", "my-project"], input="n\n")
             # Check for cancellation message
             assert "cancelled" in result.output.lower()
 
@@ -463,28 +528,37 @@ class TestInitCommandEdgeCases:
     def test_init_command_with_hyphenated_name(self):
         """Test init command with hyphenated project name."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-awesome-agent"])
+            result = self.runner.invoke(
+                init, ["--name", "my-awesome-agent", "--non-interactive"]
+            )
             assert result.exit_code == 0
             assert Path("my-awesome-agent").exists()
 
     def test_init_command_with_underscored_name(self):
         """Test init command with underscored project name."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my_awesome_agent"])
+            result = self.runner.invoke(
+                init, ["--name", "my_awesome_agent", "--non-interactive"]
+            )
             assert result.exit_code == 0
             assert Path("my_awesome_agent").exists()
 
     def test_init_command_with_numbers_in_name(self):
         """Test init command with numbers in project name."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["agent-v2-test"])
+            result = self.runner.invoke(
+                init, ["--name", "agent-v2-test", "--non-interactive"]
+            )
             assert result.exit_code == 0
             assert Path("agent-v2-test").exists()
 
     def test_init_command_with_empty_description(self):
         """Test init command with empty description."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(init, ["my-project", "--description", ""])
+            result = self.runner.invoke(
+                init,
+                ["--name", "my-project", "--description", "", "--non-interactive"],
+            )
             assert result.exit_code == 0
             assert Path("my-project").exists()
 
@@ -493,7 +567,14 @@ class TestInitCommandEdgeCases:
         long_desc = "A" * 500
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
             result = self.runner.invoke(
-                init, ["my-project", "--description", long_desc]
+                init,
+                [
+                    "--name",
+                    "my-project",
+                    "--description",
+                    long_desc,
+                    "--non-interactive",
+                ],
             )
             assert result.exit_code == 0
             assert Path("my-project").exists()
