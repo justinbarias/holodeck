@@ -44,8 +44,8 @@ def mcp() -> None:
 @click.option(
     "--limit",
     default=25,
-    type=int,
-    help="Maximum number of results to return (default: 25)",
+    type=click.IntRange(min=1, max=100),
+    help="Maximum number of results to return (1-100, default: 25)",
 )
 @click.option(
     "--json",

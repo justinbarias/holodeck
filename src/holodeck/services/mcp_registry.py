@@ -4,7 +4,6 @@ This module provides the MCPRegistryClient for interacting with the
 official MCP Registry at https://registry.modelcontextprotocol.io.
 """
 
-import contextlib
 import logging
 from urllib.parse import quote
 
@@ -248,8 +247,12 @@ class MCPRegistryClient:
 
         if not response.ok:
             detail = None
-            with contextlib.suppress(Exception):
-                detail = response.json().get("message")
+            try:
+                error_body = response.json()
+                detail = error_body.get("message") or error_body.get("error")
+            except (ValueError, KeyError):
+                # JSON parsing failed or no error message field
+                detail = response.text[:200] if response.text else None
             raise RegistryAPIError(url, response.status_code, detail)
 
         return response
@@ -380,6 +383,10 @@ def registry_to_mcp_tool(
     env: dict[str, str] | None = None
     if pkg.environment_variables:
         env = {ev.name: f"${{{ev.name}}}" for ev in pkg.environment_variables}
+
+    # Validate server name before extracting short name
+    if not server.name:
+        raise ValueError("Server name is required")
 
     # Extract short name for display
     short_name = server.name.split("/")[-1] if "/" in server.name else server.name
