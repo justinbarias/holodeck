@@ -13,6 +13,7 @@ from holodeck.cli.utils.wizard import (
     _prompt_evals,
     _prompt_llm_provider,
     _prompt_mcp_servers,
+    _prompt_template,
     _prompt_vectorstore,
     is_interactive,
     run_wizard,
@@ -23,6 +24,7 @@ from holodeck.models.wizard_config import (
     MCP_SERVER_CHOICES,
     VECTOR_STORE_CHOICES,
     WizardResult,
+    get_template_choices,
 )
 
 
@@ -121,6 +123,59 @@ class TestPromptAgentName:
 
         with pytest.raises(KeyboardInterrupt):
             _prompt_agent_name()
+
+
+class TestPromptTemplate:
+    """Tests for the _prompt_template() function."""
+
+    @patch("holodeck.cli.utils.wizard.inquirer")
+    def test_prompt_template_returns_value(self, mock_inquirer: MagicMock) -> None:
+        """Test returns the selected template."""
+        mock_select = MagicMock()
+        mock_select.execute.return_value = "research"
+        mock_inquirer.select.return_value = mock_select
+
+        result = _prompt_template()
+
+        assert result == "research"
+        mock_inquirer.select.assert_called_once()
+
+    @patch("holodeck.cli.utils.wizard.inquirer")
+    def test_prompt_template_with_default(self, mock_inquirer: MagicMock) -> None:
+        """Test uses default value when provided."""
+        mock_select = MagicMock()
+        mock_select.execute.return_value = "customer-support"
+        mock_inquirer.select.return_value = mock_select
+
+        result = _prompt_template(default="customer-support")
+
+        assert result == "customer-support"
+        call_kwargs = mock_inquirer.select.call_args[1]
+        assert call_kwargs["default"] == "customer-support"
+
+    @patch("holodeck.cli.utils.wizard.inquirer")
+    def test_prompt_template_has_all_choices(self, mock_inquirer: MagicMock) -> None:
+        """Test includes all template choices."""
+        mock_select = MagicMock()
+        mock_select.execute.return_value = "conversational"
+        mock_inquirer.select.return_value = mock_select
+
+        _prompt_template()
+
+        call_kwargs = mock_inquirer.select.call_args[1]
+        choices = call_kwargs["choices"]
+        template_choices = get_template_choices()
+        assert len(choices) == len(template_choices)
+
+    @patch("holodeck.cli.utils.wizard.inquirer")
+    def test_prompt_template_keyboard_interrupt(self, mock_inquirer: MagicMock) -> None:
+        """Test raises KeyboardInterrupt when user cancels."""
+        mock_select = MagicMock()
+        mock_select.execute.side_effect = KeyboardInterrupt()
+        mock_inquirer.select.return_value = mock_select
+
+        with pytest.raises(KeyboardInterrupt):
+            _prompt_template()
 
 
 class TestPromptLLMProvider:
@@ -304,10 +359,12 @@ class TestRunWizard:
     @patch("holodeck.cli.utils.wizard._prompt_evals")
     @patch("holodeck.cli.utils.wizard._prompt_vectorstore")
     @patch("holodeck.cli.utils.wizard._prompt_llm_provider")
+    @patch("holodeck.cli.utils.wizard._prompt_template")
     @patch("holodeck.cli.utils.wizard._prompt_agent_name")
     def test_run_wizard_returns_result(
         self,
         mock_agent_name: MagicMock,
+        mock_template: MagicMock,
         mock_llm: MagicMock,
         mock_vectorstore: MagicMock,
         mock_evals: MagicMock,
@@ -315,6 +372,7 @@ class TestRunWizard:
     ) -> None:
         """Test run_wizard returns WizardResult with all values."""
         mock_agent_name.return_value = "test-agent"
+        mock_template.return_value = "research"
         mock_llm.return_value = "openai"
         mock_vectorstore.return_value = "qdrant"
         mock_evals.return_value = ["rag-faithfulness"]
@@ -324,6 +382,7 @@ class TestRunWizard:
 
         assert isinstance(result, WizardResult)
         assert result.agent_name == "test-agent"
+        assert result.template == "research"
         assert result.llm_provider == "openai"
         assert result.vector_store == "qdrant"
         assert result.evals == ["rag-faithfulness"]
@@ -333,16 +392,19 @@ class TestRunWizard:
     @patch("holodeck.cli.utils.wizard._prompt_evals")
     @patch("holodeck.cli.utils.wizard._prompt_vectorstore")
     @patch("holodeck.cli.utils.wizard._prompt_llm_provider")
+    @patch("holodeck.cli.utils.wizard._prompt_template")
     @patch("holodeck.cli.utils.wizard._prompt_agent_name")
     def test_run_wizard_skips_agent_name(
         self,
         mock_agent_name: MagicMock,
+        mock_template: MagicMock,
         mock_llm: MagicMock,
         mock_vectorstore: MagicMock,
         mock_evals: MagicMock,
         mock_mcp: MagicMock,
     ) -> None:
         """Test run_wizard skips agent name when skip_agent_name=True."""
+        mock_template.return_value = "conversational"
         mock_llm.return_value = "ollama"
         mock_vectorstore.return_value = "chromadb"
         mock_evals.return_value = []
@@ -357,10 +419,39 @@ class TestRunWizard:
     @patch("holodeck.cli.utils.wizard._prompt_evals")
     @patch("holodeck.cli.utils.wizard._prompt_vectorstore")
     @patch("holodeck.cli.utils.wizard._prompt_llm_provider")
+    @patch("holodeck.cli.utils.wizard._prompt_template")
+    @patch("holodeck.cli.utils.wizard._prompt_agent_name")
+    def test_run_wizard_skips_template(
+        self,
+        mock_agent_name: MagicMock,
+        mock_template: MagicMock,
+        mock_llm: MagicMock,
+        mock_vectorstore: MagicMock,
+        mock_evals: MagicMock,
+        mock_mcp: MagicMock,
+    ) -> None:
+        """Test run_wizard skips template when skip_template=True."""
+        mock_agent_name.return_value = "test-agent"
+        mock_llm.return_value = "ollama"
+        mock_vectorstore.return_value = "chromadb"
+        mock_evals.return_value = []
+        mock_mcp.return_value = []
+
+        result = run_wizard(skip_template=True, template_default="research")
+
+        mock_template.assert_not_called()
+        assert result.template == "research"
+
+    @patch("holodeck.cli.utils.wizard._prompt_mcp_servers")
+    @patch("holodeck.cli.utils.wizard._prompt_evals")
+    @patch("holodeck.cli.utils.wizard._prompt_vectorstore")
+    @patch("holodeck.cli.utils.wizard._prompt_llm_provider")
+    @patch("holodeck.cli.utils.wizard._prompt_template")
     @patch("holodeck.cli.utils.wizard._prompt_agent_name")
     def test_run_wizard_skips_llm(
         self,
         mock_agent_name: MagicMock,
+        mock_template: MagicMock,
         mock_llm: MagicMock,
         mock_vectorstore: MagicMock,
         mock_evals: MagicMock,
@@ -368,6 +459,7 @@ class TestRunWizard:
     ) -> None:
         """Test run_wizard skips LLM when skip_llm=True."""
         mock_agent_name.return_value = "test-agent"
+        mock_template.return_value = "conversational"
         mock_vectorstore.return_value = "chromadb"
         mock_evals.return_value = []
         mock_mcp.return_value = []
@@ -381,10 +473,12 @@ class TestRunWizard:
     @patch("holodeck.cli.utils.wizard._prompt_evals")
     @patch("holodeck.cli.utils.wizard._prompt_vectorstore")
     @patch("holodeck.cli.utils.wizard._prompt_llm_provider")
+    @patch("holodeck.cli.utils.wizard._prompt_template")
     @patch("holodeck.cli.utils.wizard._prompt_agent_name")
     def test_run_wizard_skips_all(
         self,
         mock_agent_name: MagicMock,
+        mock_template: MagicMock,
         mock_llm: MagicMock,
         mock_vectorstore: MagicMock,
         mock_evals: MagicMock,
@@ -393,11 +487,13 @@ class TestRunWizard:
         """Test run_wizard skips all prompts when all skip flags are True."""
         result = run_wizard(
             skip_agent_name=True,
+            skip_template=True,
             skip_llm=True,
             skip_vectorstore=True,
             skip_evals=True,
             skip_mcp=True,
             agent_name_default="skip-agent",
+            template_default="customer-support",
             llm_default="openai",
             vectorstore_default="qdrant",
             evals_defaults=["rag-faithfulness"],
@@ -405,12 +501,14 @@ class TestRunWizard:
         )
 
         mock_agent_name.assert_not_called()
+        mock_template.assert_not_called()
         mock_llm.assert_not_called()
         mock_vectorstore.assert_not_called()
         mock_evals.assert_not_called()
         mock_mcp.assert_not_called()
 
         assert result.agent_name == "skip-agent"
+        assert result.template == "customer-support"
         assert result.llm_provider == "openai"
         assert result.vector_store == "qdrant"
         assert result.evals == ["rag-faithfulness"]

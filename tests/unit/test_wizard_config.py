@@ -19,6 +19,7 @@ from holodeck.models.wizard_config import (
     EvalChoice,
     LLMProviderChoice,
     MCPServerChoice,
+    TemplateChoice,
     VectorStoreChoice,
     WizardResult,
     WizardState,
@@ -27,6 +28,7 @@ from holodeck.models.wizard_config import (
     get_default_llm_provider,
     get_default_mcp_servers,
     get_default_vector_store,
+    get_template_choices,
 )
 
 
@@ -36,6 +38,7 @@ class TestWizardStep:
     def test_enum_values(self) -> None:
         """Test that enum has all expected values."""
         assert WizardStep.AGENT_NAME.value == "agent_name"
+        assert WizardStep.TEMPLATE.value == "template"
         assert WizardStep.LLM_PROVIDER.value == "llm_provider"
         assert WizardStep.VECTOR_STORE.value == "vector_store"
         assert WizardStep.EVALS.value == "evals"
@@ -43,8 +46,8 @@ class TestWizardStep:
         assert WizardStep.COMPLETE.value == "complete"
 
     def test_enum_count(self) -> None:
-        """Test that enum has exactly 6 steps."""
-        assert len(WizardStep) == 6
+        """Test that enum has exactly 7 steps."""
+        assert len(WizardStep) == 7
 
     def test_string_representation(self) -> None:
         """Test that enum values can be used as strings."""
@@ -536,3 +539,105 @@ class TestValidSets:
             )
             == VALID_MCP_SERVERS
         )
+
+
+class TestTemplateChoice:
+    """Tests for TemplateChoice model."""
+
+    def test_model_creation(self) -> None:
+        """Test creating a valid TemplateChoice."""
+        choice = TemplateChoice(
+            value="test-template",
+            display_name="Test Template",
+            description="A test template for testing",
+        )
+        assert choice.value == "test-template"
+        assert choice.display_name == "Test Template"
+        assert choice.description == "A test template for testing"
+
+    def test_model_creation_with_empty_description(self) -> None:
+        """Test creating TemplateChoice with empty description (default)."""
+        choice = TemplateChoice(
+            value="minimal",
+            display_name="Minimal Template",
+        )
+        assert choice.value == "minimal"
+        assert choice.display_name == "Minimal Template"
+        assert choice.description == ""
+
+    def test_model_is_frozen(self) -> None:
+        """Test that TemplateChoice is immutable."""
+        choice = TemplateChoice(
+            value="test",
+            display_name="Test",
+        )
+        with pytest.raises(ValidationError):
+            choice.value = "new-value"
+
+
+class TestGetTemplateChoices:
+    """Tests for get_template_choices() helper function."""
+
+    def test_returns_list_of_template_choices(self) -> None:
+        """Test get_template_choices returns list of TemplateChoice objects."""
+        choices = get_template_choices()
+        assert isinstance(choices, list)
+        assert len(choices) >= 3  # At least 3 built-in templates
+        for choice in choices:
+            assert isinstance(choice, TemplateChoice)
+
+    def test_includes_known_templates(self) -> None:
+        """Test that known templates are included."""
+        choices = get_template_choices()
+        values = {c.value for c in choices}
+        assert "conversational" in values
+        assert "research" in values
+        assert "customer-support" in values
+
+
+class TestWizardResultTemplateField:
+    """Tests for template field in WizardResult."""
+
+    def test_template_default_value(self) -> None:
+        """Test WizardResult uses 'conversational' as default template."""
+        result = WizardResult(
+            agent_name="test-agent",
+            llm_provider="ollama",
+            vector_store="chromadb",
+        )
+        assert result.template == "conversational"
+
+    def test_template_custom_value(self) -> None:
+        """Test WizardResult accepts custom template value."""
+        result = WizardResult(
+            agent_name="test-agent",
+            template="research",
+            llm_provider="ollama",
+            vector_store="chromadb",
+        )
+        assert result.template == "research"
+
+    @pytest.mark.parametrize(
+        "template",
+        ["conversational", "research", "customer-support"],
+    )
+    def test_valid_templates(self, template: str) -> None:
+        """Test that all valid templates are accepted."""
+        result = WizardResult(
+            agent_name="test-agent",
+            template=template,
+            llm_provider="ollama",
+            vector_store="chromadb",
+        )
+        assert result.template == template
+
+    def test_invalid_template(self) -> None:
+        """Test that invalid template raises ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            WizardResult(
+                agent_name="test-agent",
+                template="invalid-template",
+                llm_provider="ollama",
+                vector_store="chromadb",
+            )
+        assert "invalid template" in str(exc_info.value).lower()

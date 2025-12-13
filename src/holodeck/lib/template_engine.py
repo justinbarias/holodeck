@@ -221,3 +221,39 @@ class TemplateRenderer:
                     templates.append(template_dir.name)
 
         return sorted(templates)
+
+    @staticmethod
+    def get_available_templates() -> list[dict[str, str]]:
+        """Get available templates with metadata.
+
+        Discovers templates from the templates/ directory and extracts
+        metadata (name, display_name, description) from their manifest.yaml files.
+
+        Returns:
+            List of dicts with 'value', 'display_name', 'description' keys.
+            Returns empty list if templates directory doesn't exist.
+        """
+        templates_dir = Path(__file__).parent.parent / "templates"
+
+        if not templates_dir.exists():
+            return []
+
+        templates: list[dict[str, str]] = []
+        for template_dir in sorted(templates_dir.iterdir()):
+            if template_dir.is_dir() and not template_dir.name.startswith("_"):
+                manifest_path = template_dir / "manifest.yaml"
+                if manifest_path.exists():
+                    with open(manifest_path) as f:
+                        data = yaml.safe_load(f)
+                    if data and isinstance(data, dict):
+                        templates.append(
+                            {
+                                "value": str(data.get("name", template_dir.name)),
+                                "display_name": str(
+                                    data.get("display_name", template_dir.name)
+                                ),
+                                "description": str(data.get("description", "")),
+                            }
+                        )
+
+        return templates

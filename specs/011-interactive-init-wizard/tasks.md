@@ -8,11 +8,13 @@
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
 ## Format: `[ID] [P?] [Story] Description`
+
 - **[P]**: Can run in parallel (different files, no dependencies)
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
 - Include exact file paths in descriptions
 
 ## Path Conventions
+
 - **Single project**: `src/holodeck/`, `tests/` at repository root (per CLAUDE.md)
 
 ---
@@ -35,11 +37,13 @@
 
 ### Models (Shared by All Stories)
 
-- [x] T004 [P] Create WizardStep enum (AGENT_NAME, LLM_PROVIDER, VECTOR_STORE, EVALS, MCP_SERVERS, COMPLETE), WizardState model, and WizardResult model in src/holodeck/models/wizard_config.py per data-model.md
+- [x] T004 [P] Create WizardStep enum (AGENT_NAME, TEMPLATE, LLM_PROVIDER, VECTOR_STORE, EVALS, MCP_SERVERS, COMPLETE), WizardState model, and WizardResult model in src/holodeck/models/wizard_config.py per data-model.md
 - [x] T005 [P] Create LLMProviderChoice model with LLM_PROVIDER_CHOICES list (ollama default with gpt-oss:20b, openai, azure_openai, anthropic) in src/holodeck/models/wizard_config.py
-- [x] T006 [P] Create VectorStoreChoice model with VECTOR_STORE_CHOICES list (chromadb default with http://localhost:8000, redis, in-memory) in src/holodeck/models/wizard_config.py
+- [x] T006 [P] Create VectorStoreChoice model with VECTOR_STORE_CHOICES list (chromadb default with http://localhost:8000, ChromaDb, in-memory) in src/holodeck/models/wizard_config.py
 - [x] T007 [P] Create EvalChoice model with EVAL_CHOICES list (rag-faithfulness, rag-answer_relevancy default, rag-context_precision, rag-context_recall) in src/holodeck/models/wizard_config.py
 - [x] T008 [P] Create MCPServerChoice model with MCP_SERVER_CHOICES list (brave-search, memory, sequential-thinking default, filesystem, github, postgres) in src/holodeck/models/wizard_config.py
+- [x] T008a [P] Create TemplateChoice model with get_template_choices() helper that dynamically loads templates from manifest files in src/holodeck/models/wizard_config.py
+- [x] T008b [P] Add get_available_templates() method to TemplateRenderer that returns template metadata (value, display_name, description) in src/holodeck/lib/template_engine.py
 - [x] T009 Extend ProjectInitInput model with agent_name, llm_provider, vector_store, evals, mcp_servers fields in src/holodeck/models/project_config.py
 
 ### Unit Tests for Foundation
@@ -59,11 +63,12 @@
 ### Implementation for User Story 1
 
 - [x] T011 Create is_interactive() function in src/holodeck/cli/utils/wizard.py that checks sys.stdin.isatty() and sys.stdout.isatty()
-- [x] T012 [P] [US1] Create _prompt_agent_name() internal function using InquirerPy text with validation in src/holodeck/cli/utils/wizard.py
-- [x] T013 [P] [US1] Create _prompt_llm_provider() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
-- [x] T014 [P] [US1] Create _prompt_vectorstore() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
-- [x] T015 [P] [US1] Create _prompt_evals() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
-- [x] T016 [P] [US1] Create _prompt_mcp_servers() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
+- [x] T012 [P] [US1] Create \_prompt_agent_name() internal function using InquirerPy text with validation in src/holodeck/cli/utils/wizard.py
+- [x] T012a [P] [US1] Create \_prompt_template() internal function using InquirerPy select with dynamic template loading in src/holodeck/cli/utils/wizard.py
+- [x] T013 [P] [US1] Create \_prompt_llm_provider() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
+- [x] T014 [P] [US1] Create \_prompt_vectorstore() internal function using InquirerPy select in src/holodeck/cli/utils/wizard.py
+- [x] T015 [P] [US1] Create \_prompt_evals() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
+- [x] T016 [P] [US1] Create \_prompt_mcp_servers() internal function using InquirerPy checkbox in src/holodeck/cli/utils/wizard.py
 - [x] T017 [US1] Implement run_wizard() public function orchestrating all prompts in src/holodeck/cli/utils/wizard.py per contracts/wizard-module.md
 - [x] T018 [US1] Create WizardCancelledError exception in src/holodeck/cli/utils/wizard.py
 - [x] T019 [US1] Update ProjectInitializer.initialize() to use agent_name, llm_provider, vector_store, evals, mcp_servers from ProjectInitInput in src/holodeck/cli/utils/project_init.py
@@ -72,7 +77,7 @@
 
 ### Unit Tests for User Story 1
 
-- [x] T022 [P] [US1] Create unit tests for is_interactive(), _prompt_agent_name, _prompt_llm_provider, _prompt_vectorstore, _prompt_evals, _prompt_mcp_servers with mocked InquirerPy in tests/unit/test_wizard.py
+- [x] T022 [P] [US1] Create unit tests for is_interactive(), \_prompt_agent_name, \_prompt_llm_provider, \_prompt_vectorstore, \_prompt_evals, \_prompt_mcp_servers with mocked InquirerPy in tests/unit/test_wizard.py
 - [x] T023 [P] [US1] Create unit test for run_wizard() with all prompts mocked in tests/unit/test_wizard.py
 
 **Checkpoint**: User Story 1 complete - users can run wizard with defaults and get a working project.
@@ -105,20 +110,20 @@
 
 ## Phase 5: User Story 3 - Custom Vector Store Selection (Priority: P2)
 
-**Goal**: User can select Redis or In-Memory and get appropriate config stubs, including warning for ephemeral storage
+**Goal**: User can select ChromaDb or In-Memory and get appropriate config stubs, including warning for ephemeral storage
 
-**Independent Test**: Run `holodeck init`, select Redis, verify agent.yaml has Redis connection settings
+**Independent Test**: Run `holodeck init`, select ChromaDb, verify agent.yaml has ChromaDb connection settings
 
 ### Implementation for User Story 3
 
-- [ ] T032 [US3] Add vector store-specific configuration generation for Redis (connection_string env var, redis provider) in src/holodeck/cli/utils/project_init.py
+- [ ] T032 [US3] Add vector store-specific configuration generation for ChromaDb (connection_string env var, ChromaDb provider) in src/holodeck/cli/utils/project_init.py
 - [ ] T033 [US3] Add vector store-specific configuration generation for In-Memory (ephemeral warning comment) in src/holodeck/cli/utils/project_init.py
 - [ ] T034 [US3] Update agent.yaml.j2 template with conditional sections for each vector store in src/holodeck/templates/conversational/agent.yaml.j2
-- [x] T035 [US3] Add warning display when In-Memory is selected in _prompt_vectorstore() in src/holodeck/cli/utils/wizard.py
+- [x] T035 [US3] Add warning display when In-Memory is selected in \_prompt_vectorstore() in src/holodeck/cli/utils/wizard.py
 
 ### Unit Tests for User Story 3
 
-- [ ] T036 [P] [US3] Create unit tests for Redis vectorstore config generation in tests/unit/test_project_init.py
+- [ ] T036 [P] [US3] Create unit tests for ChromaDb vectorstore config generation in tests/unit/test_project_init.py
 - [ ] T037 [P] [US3] Create unit tests for In-Memory vectorstore config generation in tests/unit/test_project_init.py
 - [ ] T038 [P] [US3] Create unit test for In-Memory warning display in tests/unit/test_wizard.py
 
@@ -172,7 +177,7 @@
 
 **Goal**: User can run init with --name, --llm, --vectorstore, --evals, --mcp, --non-interactive flags for CI/CD usage
 
-**Independent Test**: Run `holodeck init --name test-agent --llm openai --vectorstore redis --evals rag-faithfulness --mcp filesystem,brave-search --non-interactive`, verify no prompts and correct config
+**Independent Test**: Run `holodeck init --name test-agent --llm openai --vectorstore ChromaDb --evals rag-faithfulness --mcp filesystem,brave-search --non-interactive`, verify no prompts and correct config
 
 ### Implementation for User Story 6
 
@@ -182,7 +187,7 @@
 - [x] T052 [US6] Add --evals option (comma-separated string) to init command in src/holodeck/cli/commands/init.py
 - [x] T053 [US6] Add --mcp option (comma-separated string) to init command in src/holodeck/cli/commands/init.py
 - [x] T054 [US6] Add --non-interactive flag to init command in src/holodeck/cli/commands/init.py
-- [x] T055 [US6] Implement _parse_comma_arg() helper to parse comma-separated values in src/holodeck/cli/commands/init.py
+- [x] T055 [US6] Implement \_parse_comma_arg() helper to parse comma-separated values in src/holodeck/cli/commands/init.py
 - [x] T056 [US6] Add logic to skip wizard when non-interactive or flags provided in src/holodeck/cli/commands/init.py
 - [x] T057 [US6] Add validation error messages for invalid flag values in src/holodeck/cli/commands/init.py
 - [x] T058 [US6] Add warning messages for invalid evals/MCP server names (skip invalid, continue) in src/holodeck/cli/commands/init.py
@@ -190,7 +195,7 @@
 
 ### Unit Tests for User Story 6
 
-- [ ] T060 [P] [US6] Create unit tests for _parse_comma_arg() helper in tests/unit/test_init_command.py
+- [ ] T060 [P] [US6] Create unit tests for \_parse_comma_arg() helper in tests/unit/test_init_command.py
 - [ ] T061 [P] [US6] Create integration test for non-interactive mode with all flags in tests/integration/test_init_wizard.py
 - [ ] T062 [P] [US6] Create integration test for invalid flag error messages in tests/integration/test_init_wizard.py
 
