@@ -885,3 +885,83 @@ def add_mcp_server_to_global(
 
     # Save updated config
     return save_global_config(global_config, global_path)
+
+
+def get_mcp_servers_from_agent(agent_path: Path) -> list[MCPTool]:
+    """Get all MCP servers from agent.yaml tools list.
+
+    Loads the agent configuration and filters tools to return only
+    those with type='mcp'.
+
+    Args:
+        agent_path: Path to agent.yaml file
+
+    Returns:
+        List of MCPTool objects from agent config (empty list if no MCP tools)
+
+    Raises:
+        FileNotFoundError: If agent file doesn't exist
+        ConfigError: If agent config is invalid YAML
+    """
+    loader = ConfigLoader()
+
+    # Load agent config (raises FileNotFoundError if missing)
+    try:
+        agent_config = loader.parse_yaml(str(agent_path))
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            str(agent_path),
+            f"Agent file not found: {agent_path}",
+        ) from e
+
+    if agent_config is None:
+        return []
+
+    tools = agent_config.get("tools", [])
+    if not tools:
+        return []
+
+    # Filter and convert MCP tools
+    mcp_servers: list[MCPTool] = []
+    for tool in tools:
+        if not isinstance(tool, dict):
+            continue
+        if tool.get("type") != "mcp":
+            continue
+
+        try:
+            mcp_tool = MCPTool(**tool)
+            mcp_servers.append(mcp_tool)
+        except Exception as e:
+            logger.warning(
+                f"Failed to parse MCP tool '{tool.get('name', 'unknown')}': {e}"
+            )
+            continue
+
+    return mcp_servers
+
+
+def get_mcp_servers_from_global(global_path: Path | None = None) -> list[MCPTool]:
+    """Get all MCP servers from global config.
+
+    Loads the global configuration from ~/.holodeck/config.yaml and returns
+    the mcp_servers list.
+
+    Args:
+        global_path: Optional path to global config (default: ~/.holodeck/config.yaml)
+
+    Returns:
+        List of MCPTool objects from global config (empty list if no config or servers)
+    """
+    loader = ConfigLoader()
+
+    # Load global config (returns None if not found)
+    global_config = loader.load_global_config()
+
+    if global_config is None:
+        return []
+
+    if global_config.mcp_servers is None:
+        return []
+
+    return global_config.mcp_servers
