@@ -695,9 +695,9 @@ def remove(
         raise SystemExit(1) from e
 
     except FileNotFoundError as e:
-        click.secho(f"Error: {e.message}", fg="red", err=True)
+        click.secho(f"Error: {e}", fg="red", err=True)
         raise SystemExit(1) from e
 
     except ConfigError as e:
-        click.secho(f"Error: {e.message}", fg="red", err=True)
+        click.secho(f"Error: {e}", fg="red", err=True)
         raise SystemExit(1) from e

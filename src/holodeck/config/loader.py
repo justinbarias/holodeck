@@ -988,29 +988,26 @@ def remove_mcp_server_from_global(
     if global_path.exists():
         # Load from custom path
         raw_config = loader.parse_yaml(str(global_path))
-        if raw_config is None or "mcp_servers" not in raw_config:
+        if raw_config is None:
             raise ServerNotFoundError(server_name, "global configuration")
 
-        mcp_servers_raw = raw_config.get("mcp_servers", [])
-        if not mcp_servers_raw:
-            raise ServerNotFoundError(server_name, "global configuration")
-
-        # Parse MCP servers
-        mcp_servers: list[MCPTool] = []
-        for server_data in mcp_servers_raw:
-            if server_data.get("type") == "mcp":
-                mcp_servers.append(MCPTool(**server_data))
-
-        if not mcp_servers:
-            raise ServerNotFoundError(server_name, "global configuration")
+        # Filter MCP servers directly from raw data
+        mcp_servers_raw = [
+            s for s in raw_config.get("mcp_servers", []) if s.get("type") == "mcp"
+        ]
 
         # Find and remove the server by name
-        original_len = len(mcp_servers)
-        mcp_servers = [server for server in mcp_servers if server.name != server_name]
+        original_len = len(mcp_servers_raw)
+        mcp_servers_raw = [s for s in mcp_servers_raw if s.get("name") != server_name]
 
         # Check if anything was removed
-        if len(mcp_servers) == original_len:
+        if len(mcp_servers_raw) == original_len:
             raise ServerNotFoundError(server_name, "global configuration")
+
+        # Parse to Pydantic models only when needed
+        mcp_servers = (
+            [MCPTool(**s) for s in mcp_servers_raw] if mcp_servers_raw else None
+        )
 
         # Create GlobalConfig with updated mcp_servers
         global_config = GlobalConfig(
@@ -1018,7 +1015,7 @@ def remove_mcp_server_from_global(
             vectorstores=raw_config.get("vectorstores"),
             execution=raw_config.get("execution"),
             deployment=raw_config.get("deployment"),
-            mcp_servers=mcp_servers if mcp_servers else None,
+            mcp_servers=mcp_servers,
         )
     else:
         # No config file exists
