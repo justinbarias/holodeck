@@ -5,7 +5,110 @@ for searching, listing, adding, and removing MCP servers from the
 official MCP Registry.
 """
 
+import json
+
 import click
+
+from holodeck.lib.errors import RegistryAPIError, RegistryConnectionError
+from holodeck.models.registry import RegistryServer, SearchResult
+from holodeck.services.mcp_registry import MCPRegistryClient
+
+# --- Helper Functions for Search Command ---
+
+
+def _truncate(text: str, max_len: int) -> str:
+    """Truncate text with ellipsis if too long.
+
+    Args:
+        text: The text to truncate.
+        max_len: Maximum length including ellipsis.
+
+    Returns:
+        Truncated text with ellipsis if exceeded max_len.
+    """
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
+
+
+def _get_transports(server: RegistryServer) -> str:
+    """Get comma-separated transport types from server packages.
+
+    Args:
+        server: Registry server with package information.
+
+    Returns:
+        Comma-separated transport types, or "stdio" if none found.
+    """
+    transports: set[str] = set()
+    for pkg in server.packages:
+        transports.add(pkg.transport.type)
+    return ", ".join(sorted(transports)) or "stdio"
+
+
+def _get_transport_list(server: RegistryServer) -> list[str]:
+    """Get list of transport types for JSON output.
+
+    Args:
+        server: Registry server with package information.
+
+    Returns:
+        Sorted list of transport types, or ["stdio"] if none found.
+    """
+    transports: set[str] = set()
+    for pkg in server.packages:
+        transports.add(pkg.transport.type)
+    return sorted(transports) if transports else ["stdio"]
+
+
+# --- Output Formatters for Search Command ---
+
+
+def _output_table(result: SearchResult) -> None:
+    """Format search results as a table.
+
+    Args:
+        result: Search result from the MCP registry.
+    """
+    if not result.servers:
+        click.echo("No servers found.")
+        return
+
+    # Calculate column widths based on content
+    name_width = min(45, max(len(s.name) for s in result.servers))
+    desc_width = 40
+
+    # Header
+    click.echo(f"{'NAME':<{name_width}}  {'DESCRIPTION':<{desc_width}}  TRANSPORT")
+    click.echo("-" * (name_width + desc_width + 15))
+
+    # Rows
+    for server in result.servers:
+        name = _truncate(server.name, name_width)
+        desc = _truncate(server.description, desc_width)
+        transports = _get_transports(server)
+        click.echo(f"{name:<{name_width}}  {desc:<{desc_width}}  {transports}")
+
+
+def _output_json(result: SearchResult) -> None:
+    """Format search results as JSON.
+
+    Args:
+        result: Search result from the MCP registry.
+    """
+    output = {
+        "servers": [
+            {
+                "name": s.name,
+                "description": s.description,
+                "transports": _get_transport_list(s),
+            }
+            for s in result.servers
+        ],
+        "total_count": result.total_count,
+        "has_more": result.next_cursor is not None,
+    }
+    click.echo(json.dumps(output, indent=2))
 
 
 @click.group(name="mcp")
@@ -71,8 +174,26 @@ def search(query: str | None, limit: int, as_json: bool) -> None:
         Get results as JSON:
             holodeck mcp search --json
     """
-    # TODO: Implement in Phase 3 (T008-T013)
-    click.echo("mcp search: Not yet implemented")
+    try:
+        client = MCPRegistryClient()
+        result = client.search(query=query, limit=limit)
+
+        if as_json:
+            _output_json(result)
+        else:
+            _output_table(result)
+
+        # Show pagination hint if more results available
+        if result.next_cursor and not as_json:
+            click.echo(f"\n{result.total_count} total results. More available.")
+
+    except RegistryConnectionError as e:
+        click.secho(f"Error: Registry unavailable - {e}", fg="red", err=True)
+        raise SystemExit(1) from e
+    except RegistryAPIError as e:
+        msg = f"Error: Registry service error - {e}"
+        click.secho(msg, fg="red", err=True)
+        raise SystemExit(1) from e
 
 
 @mcp.command(name="list")

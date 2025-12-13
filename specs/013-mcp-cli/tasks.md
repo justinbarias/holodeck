@@ -53,21 +53,21 @@
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Implement `holodeck mcp search` command in src/holodeck/cli/commands/mcp.py with QUERY argument
-- [ ] T009 [US1] Add --limit and --json options to search command in src/holodeck/cli/commands/mcp.py
-- [ ] T010 [US1] Implement table output formatter for search results in src/holodeck/cli/commands/mcp.py
-- [ ] T011 [US1] Implement JSON output formatter for search results in src/holodeck/cli/commands/mcp.py
-- [ ] T012 [US1] Add error handling for network timeout, API errors, and empty results in search command
-- [ ] T013 [US1] Add pagination support (next_cursor handling) to search command
+- [x] T008 [US1] Implement `holodeck mcp search` command in src/holodeck/cli/commands/mcp.py with QUERY argument
+- [x] T009 [US1] Add --limit and --json options to search command in src/holodeck/cli/commands/mcp.py
+- [x] T010 [US1] Implement table output formatter for search results in src/holodeck/cli/commands/mcp.py
+- [x] T011 [US1] Implement JSON output formatter for search results in src/holodeck/cli/commands/mcp.py
+- [x] T012 [US1] Add error handling for network timeout, API errors, and empty results in search command
+- [x] T013 [US1] Add pagination support (next_cursor handling) to search command
 
 ### Tests for User Story 1
 
-- [ ] T013a [US1] [P] Add unit tests for search command basic functionality in tests/unit/cli/commands/test_mcp_search.py
-- [ ] T013b [US1] [P] Add unit tests for --limit and --json options in tests/unit/cli/commands/test_mcp_search.py
-- [ ] T013c [US1] [P] Add unit tests for table output formatter in tests/unit/cli/commands/test_mcp_search.py
-- [ ] T013d [US1] [P] Add unit tests for JSON output formatter in tests/unit/cli/commands/test_mcp_search.py
-- [ ] T013e [US1] [P] Add unit tests for error handling (network timeout, API errors, empty results) in tests/unit/cli/commands/test_mcp_search.py
-- [ ] T013f [US1] [P] Add unit tests for pagination support (next_cursor handling) in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013a [US1] [P] Add unit tests for search command basic functionality in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013b [US1] [P] Add unit tests for --limit and --json options in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013c [US1] [P] Add unit tests for table output formatter in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013d [US1] [P] Add unit tests for JSON output formatter in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013e [US1] [P] Add unit tests for error handling (network timeout, API errors, empty results) in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013f [US1] [P] Add unit tests for pagination support (next_cursor handling) in tests/unit/cli/commands/test_mcp_search.py
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and tested - users can search the MCP registry
 
