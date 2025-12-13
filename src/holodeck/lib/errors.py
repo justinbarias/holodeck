@@ -334,16 +334,24 @@ class DuplicateServerError(HoloDeckError):
 
         if registry_name and registry_name == existing_registry_name:
             # Exact duplicate (same registry server)
-            message = f"Server '{registry_name}' is already configured."
+            message = (
+                f"Server '{registry_name}' is already configured. "
+                f"Use --version to install a different version, "
+                f"or remove the existing server first."
+            )
         elif existing_registry_name:
             # Name conflict between different registry servers
             message = (
-                f"A server named '{server_name}' is already configured "
-                f"(from {existing_registry_name}). "
+                f"A server named '{server_name}' already exists "
+                f"(from '{existing_registry_name}'). "
                 f"Use --name to specify a different name."
             )
         else:
             # Manual server with same name
-            message = f"A server named '{server_name}' is already configured."
+            message = (
+                f"A server named '{server_name}' already exists. "
+                f"Use --name to specify a different name, "
+                f"or remove the existing server first."
+            )
 
         super().__init__(message)

@@ -28,6 +28,10 @@ from holodeck.models.tool import CommandType, MCPTool, TransportType
 
 logger = logging.getLogger(__name__)
 
+# Supported package registry types for stdio transport
+# Maps to command types: npm -> npx, pypi -> uvx, docker/oci -> docker
+SUPPORTED_REGISTRY_TYPES: frozenset[str] = frozenset({"npm", "pypi", "docker", "oci"})
+
 
 class MCPRegistryClient:
     """Client for MCP Registry API.
@@ -371,11 +375,12 @@ def find_stdio_package(server: RegistryServer) -> RegistryServerPackage | None:
         First stdio-compatible package with supported registry type,
         or any stdio package as fallback, or None if none found
     """
-    supported_types = {"npm", "pypi", "docker", "oci"}
-
     # First pass: find stdio package with supported registry type
     for pkg in server.packages:
-        if pkg.transport.type == "stdio" and pkg.registry_type in supported_types:
+        if (
+            pkg.transport.type == "stdio"
+            and pkg.registry_type in SUPPORTED_REGISTRY_TYPES
+        ):
             return pkg
 
     # Fallback: any stdio package (will fail later with unsupported type error)
@@ -437,10 +442,9 @@ def registry_to_mcp_tool(
 
     # Validate that we have a supported registry type for stdio transport
     if transport == TransportType.STDIO and command is None:
-        supported_types = ", ".join(command_map.keys())
         raise ValueError(
             f"Unsupported registry type '{pkg.registry_type}' for stdio transport. "
-            f"Supported types: {supported_types}"
+            f"Supported types: {', '.join(sorted(SUPPORTED_REGISTRY_TYPES))}"
         )
 
     # Build args based on registry type

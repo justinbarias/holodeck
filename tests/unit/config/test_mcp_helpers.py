@@ -155,7 +155,7 @@ class TestCheckMcpDuplicate:
         with pytest.raises(DuplicateServerError) as exc_info:
             _check_mcp_duplicate(existing_tools, sample_mcp_tool)
 
-        assert "already configured" in str(exc_info.value)
+        assert "already exists" in str(exc_info.value)
         assert "--name" in str(exc_info.value)
 
     def test_allows_different_names(self, sample_mcp_tool: MCPTool) -> None:

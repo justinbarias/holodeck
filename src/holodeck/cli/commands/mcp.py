@@ -21,6 +21,7 @@ from holodeck.lib.errors import (
 )
 from holodeck.models.registry import RegistryServer, SearchResult
 from holodeck.services.mcp_registry import (
+    SUPPORTED_REGISTRY_TYPES,
     MCPRegistryClient,
     find_stdio_package,
     registry_to_mcp_tool,
@@ -412,12 +413,11 @@ def add(
             raise SystemExit(1)
 
         # 3. Validate registry type is supported
-        supported_types = {"npm", "pypi", "docker", "oci"}
-        if stdio_pkg.registry_type not in supported_types:
+        if stdio_pkg.registry_type not in SUPPORTED_REGISTRY_TYPES:
             click.secho(
                 f"Error: Server uses unsupported package type "
                 f"'{stdio_pkg.registry_type}'.\n"
-                "Supported types: npm, pypi, docker.",
+                f"Supported types: {', '.join(sorted(SUPPORTED_REGISTRY_TYPES))}.",
                 fg="red",
                 err=True,
             )
