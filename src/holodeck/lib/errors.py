@@ -217,3 +217,87 @@ class OllamaModelNotFoundError(AgentFactoryError):
             f"List available models: ollama list"
         )
         super().__init__(message)
+
+
+# MCP Registry Exceptions
+
+
+class RegistryConnectionError(HoloDeckError):
+    """Exception raised when connection to MCP registry fails.
+
+    Raised for network timeouts, DNS failures, and connection refused errors.
+
+    Attributes:
+        url: The registry URL that failed
+        message: Human-readable error message with resolution guidance
+    """
+
+    def __init__(self, url: str, original_error: Exception | None = None) -> None:
+        """Initialize RegistryConnectionError with URL and optional cause.
+
+        Args:
+            url: The registry URL that failed to connect
+            original_error: The underlying exception that caused the failure
+        """
+        self.url = url
+        message = (
+            f"Failed to connect to MCP registry at {url}.\n"
+            f"Check your network connection and try again."
+        )
+        if original_error:
+            message += f"\nOriginal error: {original_error}"
+        super().__init__(message)
+
+
+class RegistryAPIError(HoloDeckError):
+    """Exception raised when MCP registry returns an error response.
+
+    Raised for HTTP error status codes from the registry API.
+
+    Attributes:
+        url: The registry URL that returned the error
+        status_code: HTTP status code returned
+        message: Human-readable error message
+    """
+
+    def __init__(self, url: str, status_code: int, detail: str | None = None) -> None:
+        """Initialize RegistryAPIError with response details.
+
+        Args:
+            url: The registry URL that returned the error
+            status_code: HTTP status code
+            detail: Optional error detail from response body
+        """
+        self.url = url
+        self.status_code = status_code
+
+        if status_code == 429:
+            message = "Rate limited by MCP registry. Please wait and try again."
+        elif status_code >= 500:
+            message = "MCP registry service error. Try again later."
+        else:
+            message = f"MCP registry error (HTTP {status_code})"
+
+        if detail:
+            message += f": {detail}"
+
+        super().__init__(message)
+
+
+class ServerNotFoundError(HoloDeckError):
+    """Exception raised when requested MCP server is not found in registry.
+
+    Attributes:
+        server_name: The server name that was not found
+        message: Human-readable error message
+    """
+
+    def __init__(self, server_name: str) -> None:
+        """Initialize ServerNotFoundError with server name.
+
+        Args:
+            server_name: The name of the server that was not found
+        """
+        self.server_name = server_name
+        message = f"Server '{server_name}' not found in MCP registry."
+        super().__init__(message)

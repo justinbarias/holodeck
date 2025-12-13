@@ -62,6 +62,7 @@ class ConfigManager:
             vectorstores={"postgres": default_vectorstore},
             execution=default_execution,
             deployment=default_deployment,
+            mcp_servers=None,
         )
 
     @staticmethod
