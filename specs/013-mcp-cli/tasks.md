@@ -25,6 +25,7 @@
 
 - [ ] T001 [P] Create RegistryServer and related Pydantic models in src/holodeck/models/registry.py
 - [ ] T002 [P] Add mcp_servers field to GlobalConfig model in src/holodeck/models/config.py
+- [ ] T002a [P] Add registry_name field to MCPTool model in src/holodeck/models/tool.py for duplicate detection
 - [ ] T003 [P] Create custom exceptions (RegistryConnectionError, RegistryAPIError, ServerNotFoundError) in src/holodeck/lib/errors.py
 
 ---
@@ -75,8 +76,8 @@
 - [ ] T015 [US2] Implement add_mcp_server_to_global() helper function in src/holodeck/config/loader.py
 - [ ] T016 [US2] Implement save_global_config() function in src/holodeck/config/loader.py (creates ~/.holodeck/ if needed)
 - [ ] T017 [US2] Implement `holodeck mcp add` command in src/holodeck/cli/commands/mcp.py with SERVER argument
-- [ ] T018 [US2] Add --agent, -g/--global, --version, --transport options to add command
-- [ ] T019 [US2] Implement duplicate detection logic in add command (check if server already exists)
+- [ ] T018 [US2] Add --agent, -g/--global, --version, --transport, --name options to add command
+- [ ] T019 [US2] Implement duplicate detection logic in add command using registry_name for registry servers, name for manual servers, with short-name conflict warnings
 - [ ] T020 [US2] Display required environment variables after successful add
 - [ ] T021 [US2] Add error handling for no agent.yaml found, registry errors, and file write errors
 
@@ -192,6 +193,7 @@ Developer D: T028-T032 (US4 Remove)
 # Launch all setup tasks together:
 Task: "Create RegistryServer models in src/holodeck/models/registry.py"
 Task: "Add mcp_servers field to GlobalConfig in src/holodeck/models/config.py"
+Task: "Add registry_name field to MCPTool in src/holodeck/models/tool.py"
 Task: "Create registry exceptions in src/holodeck/lib/errors.py"
 ```
 
@@ -224,6 +226,7 @@ Task: "Create registry exceptions in src/holodeck/lib/errors.py"
 |------|--------|---------|
 | src/holodeck/models/registry.py | NEW | Setup |
 | src/holodeck/models/config.py | MODIFY | Setup |
+| src/holodeck/models/tool.py | MODIFY | Setup (add registry_name field) |
 | src/holodeck/lib/errors.py | MODIFY | Setup |
 | src/holodeck/services/mcp_registry.py | NEW | Foundational, US1 |
 | src/holodeck/cli/commands/mcp.py | NEW | US1, US2, US3, US4 |

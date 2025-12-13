@@ -75,14 +75,16 @@ mcp_servers: list[MCPTool] | None = Field(
 
 This extends the existing model without breaking compatibility - the field is optional with `None` default.
 
-### MCPTool (Existing - Reference)
+### MCPTool (Existing - MODIFY)
 
 Already defined in `src/holodeck/models/tool.py`. Used for storing server configurations.
+
+**Modification Required**: Add `registry_name` field to store the full reverse-DNS identifier from the registry. This enables proper duplicate detection and conflict warnings.
 
 ```python
 # Key fields for MCP CLI context:
 class MCPTool(BaseModel):
-    name: str
+    name: str  # Short display name (e.g., "filesystem")
     description: str
     type: Literal["mcp"] = "mcp"
     transport: TransportType = TransportType.STDIO
@@ -91,7 +93,23 @@ class MCPTool(BaseModel):
     env: dict[str, str] | None = None
     url: str | None = None  # For HTTP/SSE
     # ... other fields
+
+    # NEW field for registry tracking:
+    registry_name: str | None = Field(
+        None,
+        description=(
+            "Full reverse-DNS name from registry (e.g., 'io.github.user/server'). "
+            "Used for duplicate detection and origin tracking. "
+            "None for manually configured servers."
+        ),
+    )
 ```
+
+**Why this approach:**
+- `name` remains the user-facing identifier for agent config references
+- `registry_name` stores the canonical identifier for duplicate detection
+- Servers added manually (not from registry) have `registry_name=None`
+- Enables detection and warning when two servers share the same short name
 
 ## Relationships
 
@@ -146,8 +164,11 @@ def registry_to_mcp_tool(server: RegistryServer, package: RegistryServerPackage)
     # Extract env vars
     env = {ev.name: f"${{{ev.name}}}" for ev in package.environment_variables}
 
+    # Extract short name for display, store full name for duplicate detection
+    short_name = server.name.split("/")[-1] if "/" in server.name else server.name
+
     return MCPTool(
-        name=server.name.split("/")[-1],  # Use short name
+        name=short_name,  # User-facing display name
         description=server.description,
         type="mcp",
         transport=transport_map.get(package.transport.type, TransportType.STDIO),
@@ -155,6 +176,7 @@ def registry_to_mcp_tool(server: RegistryServer, package: RegistryServerPackage)
         args=args,
         env=env if env else None,
         url=package.transport.url,  # For HTTP-based transports
+        registry_name=server.name,  # Full reverse-DNS name for duplicate detection
     )
 ```
 
@@ -168,12 +190,36 @@ def registry_to_mcp_tool(server: RegistryServer, package: RegistryServerPackage)
 ### Global Config
 - `version` must be "1.0" (for now)
 - `mcp_servers` must contain valid MCPTool objects
-- No duplicate server names within the list
+- No duplicate servers within the list (see duplicate detection rules below)
 
 ### Agent Config Integration
 - MCP servers in global config merge with agent tools
 - Agent-level MCP tools with same name override global
-- Duplicate detection uses `name` field
+- Override matching uses `name` field (short name)
+
+### Duplicate Detection Rules
+
+Duplicate detection uses a tiered approach:
+
+1. **Registry-to-Registry**: Compare `registry_name` fields
+   - `io.github.alice/filesystem` != `io.github.bob/filesystem` (different servers, OK)
+   - `io.github.alice/filesystem` == `io.github.alice/filesystem` (same server, DUPLICATE)
+
+2. **Manual-to-Manual**: Compare `name` fields (no registry_name)
+   - Two manually-added servers with same `name` are duplicates
+
+3. **Registry-to-Manual**: Compare `name` fields with warning
+   - Registry server with `name=filesystem` and manual server with `name=filesystem`
+   - Treated as override (manual takes precedence) but warn user
+
+**Short Name Conflict Warning**: When adding a registry server, if another registry server with the same short `name` (but different `registry_name`) already exists, display a warning:
+```
+⚠️  Warning: Server 'filesystem' (io.github.bob/filesystem) has the same
+    short name as existing server (io.github.alice/filesystem).
+    Consider using --name to specify a unique name.
+```
+
+**Implementation**: The `holodeck mcp add` command should accept an optional `--name` flag to override the short name when conflicts occur.
 
 ## State Transitions
 
