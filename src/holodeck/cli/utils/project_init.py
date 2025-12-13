@@ -40,6 +40,21 @@ def get_model_for_provider(provider: str) -> str:
     return "gpt-oss:20b"  # Fallback to Ollama default
 
 
+def _sanitize_tool_name(name: str) -> str:
+    """Sanitize a name to be a valid tool name.
+
+    Tool names must match pattern ^[0-9A-Za-z_]+$.
+    Replaces hyphens and dots with underscores.
+
+    Args:
+        name: Raw name string.
+
+    Returns:
+        Sanitized name with only alphanumeric and underscores.
+    """
+    return name.replace("-", "_").replace(".", "_")
+
+
 def get_mcp_server_config(server_id: str) -> dict[str, str]:
     """Get configuration for an MCP server.
 
@@ -52,14 +67,14 @@ def get_mcp_server_config(server_id: str) -> dict[str, str]:
     for server in MCP_SERVER_CHOICES:
         if server.value == server_id:
             return {
-                "name": server.value,
+                "name": _sanitize_tool_name(server.value),
                 "display_name": server.display_name,
                 "description": server.description,
                 "package": server.package_identifier,
                 "command": server.command,
             }
     return {
-        "name": server_id,
+        "name": _sanitize_tool_name(server_id),
         "display_name": server_id,
         "description": "",
         "package": server_id,

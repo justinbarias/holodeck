@@ -16,12 +16,12 @@ class TestMCPToolValidConfig:
     def test_stdio_minimal_config(self) -> None:
         """Minimal stdio config with required fields only."""
         config = MCPTool(
-            name="test-tool",
+            name="test_tool",
             description="Test MCP tool",
             command=CommandType.NPX,
             args=["-y", "@modelcontextprotocol/server-test"],
         )
-        assert config.name == "test-tool"
+        assert config.name == "test_tool"
         assert config.transport == TransportType.STDIO
         assert config.command == CommandType.NPX
 
@@ -57,7 +57,7 @@ class TestMCPToolValidConfig:
     def test_stdio_docker_command(self) -> None:
         """Stdio config with docker command."""
         config = MCPTool(
-            name="docker-tool",
+            name="docker_tool",
             description="Docker MCP tool",
             command=CommandType.DOCKER,
             args=["run", "-i", "--rm", "my-mcp-server:latest"],
@@ -67,7 +67,7 @@ class TestMCPToolValidConfig:
     def test_sse_config(self) -> None:
         """Valid SSE transport config."""
         config = MCPTool(
-            name="remote-tool",
+            name="remote_tool",
             description="Remote SSE tool",
             transport=TransportType.SSE,
             url="https://example.com/mcp/sse",
@@ -82,7 +82,7 @@ class TestMCPToolValidConfig:
     def test_websocket_config(self) -> None:
         """Valid WebSocket transport config."""
         config = MCPTool(
-            name="ws-tool",
+            name="ws_tool",
             description="WebSocket MCP tool",
             transport=TransportType.WEBSOCKET,
             url="wss://example.com/mcp/ws",
@@ -93,7 +93,7 @@ class TestMCPToolValidConfig:
     def test_http_config(self) -> None:
         """Valid HTTP transport config."""
         config = MCPTool(
-            name="http-tool",
+            name="http_tool",
             description="HTTP MCP tool",
             transport=TransportType.HTTP,
             url="https://example.com/mcp/stream",
@@ -105,7 +105,7 @@ class TestMCPToolValidConfig:
     def test_localhost_http_allowed(self) -> None:
         """HTTP URLs for localhost can use http:// scheme."""
         config = MCPTool(
-            name="local-tool",
+            name="local_tool",
             description="Local HTTP tool",
             transport=TransportType.HTTP,
             url="http://localhost:8080/mcp",
@@ -115,7 +115,7 @@ class TestMCPToolValidConfig:
     def test_localhost_127_allowed(self) -> None:
         """HTTP URLs for 127.0.0.1 can use http:// scheme."""
         config = MCPTool(
-            name="local-tool",
+            name="local_tool",
             description="Local HTTP tool",
             transport=TransportType.HTTP,
             url="http://127.0.0.1:8080/mcp",
