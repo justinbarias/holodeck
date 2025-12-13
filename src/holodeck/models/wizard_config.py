@@ -239,7 +239,8 @@ class WizardResult(BaseModel):
         """
         from holodeck.lib.template_engine import TemplateRenderer
 
-        available = TemplateRenderer.list_available_templates()
+        templates = TemplateRenderer.get_available_templates()
+        available = [t["value"] for t in templates]
         if v not in available:
             valid = ", ".join(sorted(available))
             raise ValueError(f"Invalid template: {v}. Valid options: {valid}")
