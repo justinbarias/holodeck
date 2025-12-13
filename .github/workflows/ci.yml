@@ -56,7 +56,7 @@ jobs:
           # Run tests in parallel with explicit worker count for GitHub Actions
           # GitHub runners have 2 cores, using env.PYTEST_XDIST_WORKERS
           # Note: Coverage data is combined automatically by pytest-cov
-          uv run pytest --cov --cov-report=xml -n ${{ env.PYTEST_XDIST_WORKERS }}
+          uv run pytest --cov --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -n ${{ env.PYTEST_XDIST_WORKERS }}
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
@@ -64,6 +64,12 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
           slug: justinbarias/holodeck
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Security scan
         run: |
