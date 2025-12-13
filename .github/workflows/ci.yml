@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: self-hosted  # 2 CPU cores (can upgrade to ubuntu-latest-4-cores or ubuntu-latest-8-cores)
+    runs-on: self-hosted # 2 CPU cores (can upgrade to ubuntu-latest-4-cores or ubuntu-latest-8-cores)
     permissions:
       contents: read
       id-token: write
@@ -16,12 +16,12 @@ jobs:
       matrix:
         python-version: ["3.10"]
     env:
-      PYTEST_XDIST_WORKERS: 8  # Match runner CPU count for optimal performance
+      PYTEST_XDIST_WORKERS: 8 # Match runner CPU count for optimal performance
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history and tags for dynamic versioning
+          fetch-depth: 0 # Fetch all history and tags for dynamic versioning
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -63,6 +63,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml
+          slug: justinbarias/holodeck
 
       - name: Security scan
         run: |
