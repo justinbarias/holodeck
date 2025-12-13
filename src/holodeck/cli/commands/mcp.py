@@ -16,6 +16,8 @@ from holodeck.config.loader import (
     add_mcp_server_to_global,
     get_mcp_servers_from_agent,
     get_mcp_servers_from_global,
+    remove_mcp_server_from_agent,
+    remove_mcp_server_from_global,
 )
 from holodeck.lib.errors import (
     ConfigError,
@@ -677,5 +679,25 @@ def remove(
         Remove from global config:
             holodeck mcp remove github -g
     """
-    # TODO: Implement in Phase 6 (T028-T032)
-    click.echo("mcp remove: Not yet implemented")
+    try:
+        if global_remove:
+            remove_mcp_server_from_global(server)
+            target_display = "~/.holodeck/config.yaml"
+        else:
+            agent_path = Path(agent_file)
+            remove_mcp_server_from_agent(agent_path, server)
+            target_display = agent_file
+
+        click.secho(f"Removed '{server}' from {target_display}", fg="green")
+
+    except ServerNotFoundError as e:
+        click.secho(f"Error: {e}", fg="red", err=True)
+        raise SystemExit(1) from e
+
+    except FileNotFoundError as e:
+        click.secho(f"Error: {e.message}", fg="red", err=True)
+        raise SystemExit(1) from e
+
+    except ConfigError as e:
+        click.secho(f"Error: {e.message}", fg="red", err=True)
+        raise SystemExit(1) from e

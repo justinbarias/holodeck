@@ -16,9 +16,12 @@ from holodeck.config.loader import (
     add_mcp_server_to_global,
     get_mcp_servers_from_agent,
     get_mcp_servers_from_global,
+    remove_mcp_server_from_agent,
+    remove_mcp_server_from_global,
     save_global_config,
 )
-from holodeck.lib.errors import DuplicateServerError
+from holodeck.lib.errors import DuplicateServerError, ServerNotFoundError
+from holodeck.lib.errors import FileNotFoundError as HoloDeckFileNotFoundError
 from holodeck.models.config import GlobalConfig
 from holodeck.models.tool import CommandType, MCPTool, TransportType
 
@@ -511,3 +514,230 @@ class TestGetMcpServersFromGlobal:
         assert len(result) == 2
         assert result[0].name == "filesystem"
         assert result[1].name == "github"
+
+
+@pytest.mark.unit
+class TestRemoveMcpServerFromAgent:
+    """Tests for remove_mcp_server_from_agent() function (T032a)."""
+
+    def test_removes_server_by_name(
+        self, temp_dir: Path, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test successful removal of MCP server by name."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai"},
+            "instructions": {"inline": "Test"},
+            "tools": [
+                sample_mcp_tool.model_dump(mode="json"),
+            ],
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        remove_mcp_server_from_agent(agent_path, "filesystem")
+
+        updated_config = yaml.safe_load(agent_path.read_text())
+        assert len(updated_config["tools"]) == 0
+
+    def test_preserves_other_tools(
+        self, temp_dir: Path, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that other tools are preserved after removal."""
+        agent_path = temp_dir / "agent.yaml"
+        other_tool = MCPTool(
+            name="github",
+            description="GitHub server",
+            type="mcp",
+            transport=TransportType.STDIO,
+            command=CommandType.NPX,
+            args=["-y", "@mcp/server-github@1.0.0"],
+        )
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai"},
+            "instructions": {"inline": "Test"},
+            "tools": [
+                sample_mcp_tool.model_dump(mode="json"),
+                other_tool.model_dump(mode="json"),
+                {"name": "vectorstore", "type": "vectorstore", "provider": "local"},
+            ],
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        remove_mcp_server_from_agent(agent_path, "filesystem")
+
+        updated_config = yaml.safe_load(agent_path.read_text())
+        assert len(updated_config["tools"]) == 2
+        assert updated_config["tools"][0]["name"] == "github"
+        assert updated_config["tools"][1]["name"] == "vectorstore"
+
+    def test_raises_on_missing_file(self, temp_dir: Path) -> None:
+        """Test HoloDeckFileNotFoundError for missing agent.yaml."""
+        agent_path = temp_dir / "nonexistent.yaml"
+
+        with pytest.raises(HoloDeckFileNotFoundError):
+            remove_mcp_server_from_agent(agent_path, "filesystem")
+
+    def test_raises_on_server_not_found(
+        self, temp_dir: Path, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test ServerNotFoundError when server doesn't exist."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai"},
+            "instructions": {"inline": "Test"},
+            "tools": [sample_mcp_tool.model_dump(mode="json")],
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        with pytest.raises(ServerNotFoundError) as exc_info:
+            remove_mcp_server_from_agent(agent_path, "nonexistent")
+
+        assert "nonexistent" in str(exc_info.value)
+
+    def test_raises_on_empty_tools_list(self, temp_dir: Path) -> None:
+        """Test ServerNotFoundError when tools list is empty."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai"},
+            "instructions": {"inline": "Test"},
+            "tools": [],
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        with pytest.raises(ServerNotFoundError):
+            remove_mcp_server_from_agent(agent_path, "filesystem")
+
+    def test_raises_on_no_tools_key(self, temp_dir: Path) -> None:
+        """Test ServerNotFoundError when no tools key exists."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai"},
+            "instructions": {"inline": "Test"},
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        with pytest.raises(ServerNotFoundError):
+            remove_mcp_server_from_agent(agent_path, "filesystem")
+
+
+@pytest.mark.unit
+class TestRemoveMcpServerFromGlobal:
+    """Tests for remove_mcp_server_from_global() function (T032b)."""
+
+    def test_removes_server_by_name(
+        self, temp_dir: Path, monkeypatch: Any, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test successful removal of MCP server from global config."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        config_path = holodeck_dir / "config.yaml"
+
+        config = {
+            "mcp_servers": [sample_mcp_tool.model_dump(mode="json")],
+        }
+        config_path.write_text(yaml.dump(config))
+
+        result_path = remove_mcp_server_from_global("filesystem")
+
+        assert result_path == config_path
+        updated_config = yaml.safe_load(config_path.read_text())
+        assert len(updated_config.get("mcp_servers", [])) == 0
+
+    def test_preserves_other_servers(
+        self, temp_dir: Path, monkeypatch: Any, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that other servers are preserved after removal."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        config_path = holodeck_dir / "config.yaml"
+
+        other_tool = MCPTool(
+            name="github",
+            description="GitHub server",
+            type="mcp",
+            transport=TransportType.STDIO,
+            command=CommandType.NPX,
+            args=["-y", "@mcp/server-github@1.0.0"],
+        )
+        config = {
+            "mcp_servers": [
+                sample_mcp_tool.model_dump(mode="json"),
+                other_tool.model_dump(mode="json"),
+            ],
+        }
+        config_path.write_text(yaml.dump(config))
+
+        remove_mcp_server_from_global("filesystem")
+
+        updated_config = yaml.safe_load(config_path.read_text())
+        assert len(updated_config["mcp_servers"]) == 1
+        assert updated_config["mcp_servers"][0]["name"] == "github"
+
+    def test_raises_when_no_global_config(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test ServerNotFoundError when no global config exists."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        # Don't create the .holodeck directory
+
+        with pytest.raises(ServerNotFoundError) as exc_info:
+            remove_mcp_server_from_global("filesystem")
+
+        assert "global configuration" in str(exc_info.value)
+
+    def test_raises_on_server_not_found(
+        self, temp_dir: Path, monkeypatch: Any, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test ServerNotFoundError when server doesn't exist."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        config_path = holodeck_dir / "config.yaml"
+
+        config = {
+            "mcp_servers": [sample_mcp_tool.model_dump(mode="json")],
+        }
+        config_path.write_text(yaml.dump(config))
+
+        with pytest.raises(ServerNotFoundError) as exc_info:
+            remove_mcp_server_from_global("nonexistent")
+
+        assert "nonexistent" in str(exc_info.value)
+
+    def test_raises_when_mcp_servers_empty(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test ServerNotFoundError when mcp_servers list is empty."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        config_path = holodeck_dir / "config.yaml"
+
+        config = {"mcp_servers": []}
+        config_path.write_text(yaml.dump(config))
+
+        with pytest.raises(ServerNotFoundError):
+            remove_mcp_server_from_global("filesystem")
+
+    def test_custom_global_path(self, temp_dir: Path, sample_mcp_tool: MCPTool) -> None:
+        """Test removal with custom global path."""
+        custom_path = temp_dir / "custom" / "config.yaml"
+        custom_path.parent.mkdir(parents=True)
+
+        config = {
+            "mcp_servers": [sample_mcp_tool.model_dump(mode="json")],
+        }
+        custom_path.write_text(yaml.dump(config))
+
+        result_path = remove_mcp_server_from_global("filesystem", custom_path)
+
+        assert result_path == custom_path
+        updated_config = yaml.safe_load(custom_path.read_text())
+        assert len(updated_config.get("mcp_servers", [])) == 0

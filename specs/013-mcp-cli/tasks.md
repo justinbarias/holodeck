@@ -140,19 +140,19 @@
 
 ### Implementation for User Story 4
 
-- [ ] T028 [US4] Implement remove_mcp_server_from_agent() helper function in src/holodeck/config/loader.py
-- [ ] T029 [US4] Implement remove_mcp_server_from_global() helper function in src/holodeck/config/loader.py
-- [ ] T030 [US4] Implement `holodeck mcp remove` command in src/holodeck/cli/commands/mcp.py with SERVER argument
-- [ ] T031 [US4] Add --agent, -g/--global options to remove command
-- [ ] T032 [US4] Add error handling for server not found and file write errors
+- [x] T028 [US4] Implement remove_mcp_server_from_agent() helper function in src/holodeck/config/loader.py
+- [x] T029 [US4] Implement remove_mcp_server_from_global() helper function in src/holodeck/config/loader.py
+- [x] T030 [US4] Implement `holodeck mcp remove` command in src/holodeck/cli/commands/mcp.py with SERVER argument
+- [x] T031 [US4] Add --agent, -g/--global options to remove command
+- [x] T032 [US4] Add error handling for server not found and file write errors
 
 ### Tests for User Story 4
 
-- [ ] T032a [US4] [P] Add unit tests for remove_mcp_server_from_agent() helper in tests/unit/config/test_mcp_helpers.py
-- [ ] T032b [US4] [P] Add unit tests for remove_mcp_server_from_global() helper in tests/unit/config/test_mcp_helpers.py
-- [ ] T032c [US4] [P] Add unit tests for remove command basic functionality in tests/unit/cli/commands/test_mcp_remove.py
-- [ ] T032d [US4] [P] Add unit tests for --agent, --global options in tests/unit/cli/commands/test_mcp_remove.py
-- [ ] T032e [US4] [P] Add unit tests for error handling (server not found, file write errors) in tests/unit/cli/commands/test_mcp_remove.py
+- [x] T032a [US4] [P] Add unit tests for remove_mcp_server_from_agent() helper in tests/unit/config/test_mcp_helpers.py
+- [x] T032b [US4] [P] Add unit tests for remove_mcp_server_from_global() helper in tests/unit/config/test_mcp_helpers.py
+- [x] T032c [US4] [P] Add unit tests for remove command basic functionality in tests/unit/cli/commands/test_mcp_remove.py
+- [x] T032d [US4] [P] Add unit tests for --agent, --global options in tests/unit/cli/commands/test_mcp_remove.py
+- [x] T032e [US4] [P] Add unit tests for error handling (server not found, file write errors) in tests/unit/cli/commands/test_mcp_remove.py
 
 **Checkpoint**: All user stories should now be independently functional and tested
 
