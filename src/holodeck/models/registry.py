@@ -20,7 +20,7 @@ class EnvVarConfig(BaseModel):
     for configuration (e.g., API keys, credentials).
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     name: str = Field(..., description="Environment variable name")
     description: str | None = Field(None, description="Description of the variable")
@@ -34,13 +34,14 @@ class TransportConfig(BaseModel):
     SSE (server-sent events), or streamable HTTP transports.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     type: Literal["stdio", "sse", "streamable-http"] = Field(
-        ..., description="Transport protocol type"
+        default="stdio", description="Transport protocol type"
     )
     url: str | None = Field(
-        None, description="Server URL for HTTP-based transports (sse, streamable-http)"
+        default=None,
+        description="Server URL for HTTP-based transports (sse, streamable-http)",
     )
 
 
@@ -51,18 +52,25 @@ class RegistryServerPackage(BaseModel):
     manager, package identifier, and required environment variables.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     registry_type: Literal["npm", "pypi", "docker", "oci", "nuget", "mcpb"] = Field(
-        ..., description="Package registry type (npm, pypi, docker, etc.)"
+        default="npm",
+        validation_alias="registryType",
+        description="Package registry type (npm, pypi, docker, etc.)",
     )
     identifier: str = Field(
         ..., description="Package identifier (e.g., '@modelcontextprotocol/server-fs')"
     )
     version: str | None = Field(None, description="Package version")
-    transport: TransportConfig = Field(..., description="Transport configuration")
+    transport: TransportConfig = Field(
+        default_factory=lambda: TransportConfig(type="stdio"),
+        description="Transport configuration",
+    )
     environment_variables: list[EnvVarConfig] = Field(
-        default_factory=list, description="Required environment variables"
+        default_factory=list,
+        validation_alias="environmentVariables",
+        description="Required environment variables",
     )
 
 
@@ -72,11 +80,11 @@ class RepositoryInfo(BaseModel):
     Links to the source code repository where the MCP server is maintained.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
-    url: str = Field(..., description="Repository URL")
+    url: str = Field(default="", description="Repository URL")
     source: str | None = Field(
-        None, description="Repository host (github, gitlab, etc.)"
+        default=None, description="Repository host (github, gitlab, etc.)"
     )
 
 
@@ -87,18 +95,26 @@ class RegistryServerMeta(BaseModel):
     publication history in the registry.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     status: Literal["active", "deprecated", "deleted"] = Field(
         default="active", description="Server status in registry"
     )
     published_at: datetime | None = Field(
-        None, description="When the server was first published"
+        default=None,
+        validation_alias="publishedAt",
+        description="When the server was first published",
     )
     updated_at: datetime | None = Field(
-        None, description="When the server was last updated"
+        default=None,
+        validation_alias="updatedAt",
+        description="When the server was last updated",
     )
-    is_latest: bool = Field(False, description="Whether this is the latest version")
+    is_latest: bool = Field(
+        default=False,
+        validation_alias="isLatest",
+        description="Whether this is the latest version",
+    )
 
 
 class RegistryServer(BaseModel):
@@ -108,19 +124,25 @@ class RegistryServer(BaseModel):
     Contains all metadata needed to discover, display, and install a server.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     name: str = Field(
         ...,
         description="Server name in reverse-DNS format (e.g., 'io.github.user/server')",
     )
-    description: str = Field(..., description="Human-readable server description")
+    description: str = Field(
+        default="", description="Human-readable server description"
+    )
     title: str | None = Field(None, description="Display title for the server")
-    version: str = Field(..., description="Server version")
+    version: str = Field(default="", description="Server version")
     repository: RepositoryInfo | None = Field(
         None, description="Source repository information"
     )
-    website_url: str | None = Field(None, description="Project website URL")
+    website_url: str | None = Field(
+        default=None,
+        validation_alias="websiteUrl",
+        description="Project website URL",
+    )
     packages: list[RegistryServerPackage] = Field(
         default_factory=list, description="Available package distributions"
     )
@@ -136,12 +158,18 @@ class SearchResult(BaseModel):
     and pagination information for fetching additional results.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     servers: list[RegistryServer] = Field(
         default_factory=list, description="List of matching servers"
     )
     next_cursor: str | None = Field(
-        None, description="Pagination cursor for next page of results"
+        default=None,
+        validation_alias="nextCursor",
+        description="Pagination cursor for next page of results",
     )
-    total_count: int = Field(0, description="Total number of matching servers")
+    total_count: int = Field(
+        default=0,
+        validation_alias="totalCount",
+        description="Total number of matching servers",
+    )

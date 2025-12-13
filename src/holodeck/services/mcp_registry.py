@@ -18,13 +18,10 @@ from holodeck.lib.errors import (
     ServerNotFoundError,
 )
 from holodeck.models.registry import (
-    EnvVarConfig,
     RegistryServer,
     RegistryServerMeta,
     RegistryServerPackage,
-    RepositoryInfo,
     SearchResult,
-    TransportConfig,
 )
 from holodeck.models.tool import CommandType, MCPTool, TransportType
 
@@ -62,6 +59,33 @@ class MCPRegistryClient:
         self.timeout = timeout
         self._session = requests.Session()
 
+    def __enter__(self) -> "MCPRegistryClient":
+        """Enter context manager."""
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: object,
+    ) -> None:
+        """Exit context manager and close session."""
+        self.close()
+
+    def close(self) -> None:
+        """Close the underlying HTTP session.
+
+        Should be called when done with the client to release resources.
+        Alternatively, use the client as a context manager.
+
+        Example:
+            >>> with MCPRegistryClient() as client:
+            ...     result = client.search("filesystem")
+            # Session automatically closed
+        """
+        if hasattr(self, "_session") and self._session is not None:
+            self._session.close()
+
     def search(
         self,
         query: str | None = None,
@@ -82,6 +106,7 @@ class MCPRegistryClient:
             RegistryConnectionError: Network/timeout issues
             RegistryAPIError: API returned error status
         """
+        logger.debug("Searching MCP registry: query=%s, limit=%d", query, limit)
         url = f"{self.base_url}/v0.1/servers"
         params: dict[str, str | int] = {"limit": limit}
 
@@ -101,11 +126,13 @@ class MCPRegistryClient:
             servers.append(self._parse_server(server_data, meta_data))
 
         metadata = data.get("metadata", {})
-        return SearchResult(
+        result = SearchResult(
             servers=servers,
             next_cursor=metadata.get("nextCursor"),
             total_count=metadata.get("count", len(servers)),
         )
+        logger.debug("Search returned %d servers", len(result.servers))
+        return result
 
     def get_server(
         self,
@@ -125,6 +152,7 @@ class MCPRegistryClient:
             ServerNotFoundError: Server doesn't exist
             RegistryConnectionError: Network/timeout issues
         """
+        logger.debug("Fetching server: name=%s, version=%s", name, version)
         # URL-encode the server name (contains '/' in reverse-DNS format)
         encoded_name = quote(name, safe="")
         url = f"{self.base_url}/v0.1/servers/{encoded_name}/versions/{version}"
@@ -133,12 +161,15 @@ class MCPRegistryClient:
             response = self._request("GET", url)
         except RegistryAPIError as e:
             if e.status_code == 404:
+                logger.debug("Server not found: %s", name)
                 raise ServerNotFoundError(name) from e
             raise
 
         data = response.json()
         server_data = data.get("server", data)
-        return self._parse_server(server_data, data.get("_meta"))
+        server = self._parse_server(server_data, data.get("_meta"))
+        logger.debug("Retrieved server: %s v%s", server.name, server.version)
+        return server
 
     def list_versions(self, name: str) -> list[str]:
         """List available versions for a server.
@@ -153,6 +184,7 @@ class MCPRegistryClient:
             ServerNotFoundError: Server doesn't exist
             RegistryConnectionError: Network/timeout issues
         """
+        logger.debug("Listing versions for server: %s", name)
         # URL-encode the server name (contains '/' in reverse-DNS format)
         encoded_name = quote(name, safe="")
         url = f"{self.base_url}/v0.1/servers/{encoded_name}/versions"
@@ -161,6 +193,7 @@ class MCPRegistryClient:
             response = self._request("GET", url)
         except RegistryAPIError as e:
             if e.status_code == 404:
+                logger.debug("Server not found: %s", name)
                 raise ServerNotFoundError(name) from e
             raise
 
@@ -172,6 +205,7 @@ class MCPRegistryClient:
             version_str = server_data.get("version")
             if version_str:
                 versions.append(version_str)
+        logger.debug("Found %d versions for %s", len(versions), name)
         return versions
 
     def _request(
@@ -227,102 +261,47 @@ class MCPRegistryClient:
     ) -> RegistryServer:
         """Parse server data from API response to RegistryServer model.
 
+        Uses Pydantic's model_validate for type-safe parsing with camelCase
+        alias support.
+
         Args:
-            server_data: Server data dictionary
+            server_data: Server data dictionary from API response
             meta_data: Optional metadata dictionary
 
         Returns:
             RegistryServer instance
+
+        Raises:
+            ValidationError: If required fields are missing or invalid
         """
-        from typing import Any, cast
+        from pydantic import ValidationError
 
-        # Cast to Any for dynamic access since API response structure is known
-        data = cast(dict[str, Any], server_data)
-
-        # Parse packages with camelCase to snake_case conversion
-        packages: list[RegistryServerPackage] = []
-        raw_packages = data.get("packages", [])
-        if isinstance(raw_packages, list):
-            for pkg in raw_packages:
-                if not isinstance(pkg, dict):
-                    continue
-                transport_data = pkg.get("transport", {})
-                if not isinstance(transport_data, dict):
-                    transport_data = {}
-
-                env_vars: list[EnvVarConfig] = []
-                raw_env_vars = pkg.get("environmentVariables", [])
-                if isinstance(raw_env_vars, list):
-                    for ev in raw_env_vars:
-                        if isinstance(ev, dict):
-                            desc = ev.get("description")
-                            env_vars.append(
-                                EnvVarConfig(
-                                    name=str(ev.get("name", "")),
-                                    description=str(desc) if desc else None,
-                                    required=bool(ev.get("required", True)),
-                                )
-                            )
-
-                registry_type = str(pkg.get("registryType", "npm"))
-                transport_type = str(transport_data.get("type", "stdio"))
-                transport_url = transport_data.get("url")
-                pkg_version = pkg.get("version")
-
-                packages.append(
-                    RegistryServerPackage(
-                        registry_type=registry_type,  # type: ignore[arg-type]
-                        identifier=str(pkg.get("identifier", "")),
-                        version=str(pkg_version) if pkg_version else None,
-                        transport=TransportConfig(
-                            type=transport_type,  # type: ignore[arg-type]
-                            url=str(transport_url) if transport_url else None,
-                        ),
-                        environment_variables=env_vars,
-                    )
-                )
-
-        # Parse repository
-        repo: RepositoryInfo | None = None
-        repo_data = data.get("repository")
-        if isinstance(repo_data, dict):
-            source = repo_data.get("source")
-            repo = RepositoryInfo(
-                url=str(repo_data.get("url", "")),
-                source=str(source) if source else None,
-            )
-
-        # Parse metadata
+        # Parse metadata from the nested registry format
         meta: RegistryServerMeta | None = None
         if meta_data:
-            meta_dict = cast(dict[str, Any], meta_data)
-            registry_meta = meta_dict.get(
-                "io.modelcontextprotocol.registry/official", {}
-            )
+            registry_meta = meta_data.get("io.modelcontextprotocol.registry/official")
             if isinstance(registry_meta, dict):
-                status = registry_meta.get("status", "active")
-                published = registry_meta.get("publishedAt")
-                updated = registry_meta.get("updatedAt")
-                meta = RegistryServerMeta(
-                    status=str(status) if status else "active",  # type: ignore[arg-type]
-                    published_at=published,
-                    updated_at=updated,
-                    is_latest=bool(registry_meta.get("isLatest", False)),
-                )
+                try:
+                    meta = RegistryServerMeta.model_validate(registry_meta)
+                except ValidationError:
+                    logger.debug("Failed to parse server metadata, using defaults")
+                    meta = None
 
-        title = data.get("title")
-        website = data.get("websiteUrl")
+        # Build the server data with parsed metadata
+        parsed_data = dict(server_data)
+        if meta:
+            parsed_data["meta"] = meta
 
-        return RegistryServer(
-            name=str(data.get("name", "")),
-            description=str(data.get("description", "")),
-            title=str(title) if title else None,
-            version=str(data.get("version", "")),
-            repository=repo,
-            website_url=str(website) if website else None,
-            packages=packages,
-            meta=meta,
-        )
+        try:
+            return RegistryServer.model_validate(parsed_data)
+        except ValidationError as e:
+            # Log validation errors for debugging
+            logger.warning(
+                "Failed to validate server data for '%s': %s",
+                server_data.get("name", "unknown"),
+                e,
+            )
+            raise
 
 
 def registry_to_mcp_tool(
