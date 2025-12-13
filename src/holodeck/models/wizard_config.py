@@ -24,6 +24,7 @@ class WizardStep(str, Enum):
     """
 
     AGENT_NAME = "agent_name"
+    TEMPLATE = "template"
     LLM_PROVIDER = "llm_provider"
     VECTOR_STORE = "vector_store"
     EVALS = "evals"
@@ -106,6 +107,40 @@ VALID_MCP_SERVERS = frozenset(
 )
 
 
+class TemplateChoice(BaseModel):
+    """Template option for the wizard.
+
+    This model represents a single project template choice displayed
+    in the wizard selection prompt.
+
+    Attributes:
+        value: Template identifier (e.g., 'conversational', 'research')
+        display_name: Human-readable name shown in the prompt
+        description: Help text explaining the template purpose
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    value: str = Field(..., description="Template identifier")
+    display_name: str = Field(..., description="Human-readable name")
+    description: str = Field(default="", description="Help text for the template")
+
+
+def get_template_choices() -> list[TemplateChoice]:
+    """Get available template choices from manifest files.
+
+    Dynamically loads template metadata from manifest.yaml files
+    in the templates directory.
+
+    Returns:
+        List of TemplateChoice objects for available templates.
+    """
+    from holodeck.lib.template_engine import TemplateRenderer
+
+    templates = TemplateRenderer.get_available_templates()
+    return [TemplateChoice(**t) for t in templates]
+
+
 class ProviderConfig(BaseModel):
     """Provider-specific configuration collected from wizard prompts.
 
@@ -133,6 +168,7 @@ class WizardResult(BaseModel):
 
     Attributes:
         agent_name: Validated agent name (alphanumeric, hyphens, underscores)
+        template: Selected project template
         llm_provider: Selected LLM provider
         provider_config: Provider-specific configuration (endpoint, deployment name)
         vector_store: Selected vector store
@@ -145,6 +181,10 @@ class WizardResult(BaseModel):
     agent_name: str = Field(
         ...,
         description="Agent name (alphanumeric, hyphens, underscores)",
+    )
+    template: str = Field(
+        default="conversational",
+        description="Selected project template",
     )
     llm_provider: str = Field(
         ...,
@@ -182,6 +222,29 @@ class WizardResult(BaseModel):
             ValueError: If agent name is invalid
         """
         return _validate_agent_name(v)
+
+    @field_validator("template")
+    @classmethod
+    def validate_template(cls, v: str) -> str:
+        """Validate template is available.
+
+        Args:
+            v: The template name to validate
+
+        Returns:
+            The validated template name
+
+        Raises:
+            ValueError: If template is not recognized
+        """
+        from holodeck.lib.template_engine import TemplateRenderer
+
+        templates = TemplateRenderer.get_available_templates()
+        available = [t["value"] for t in templates]
+        if v not in available:
+            valid = ", ".join(sorted(available))
+            raise ValueError(f"Invalid template: {v}. Valid options: {valid}")
+        return v
 
     @field_validator("llm_provider")
     @classmethod

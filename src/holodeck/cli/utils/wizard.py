@@ -20,6 +20,7 @@ from holodeck.models.wizard_config import (
     WizardResult,
     get_default_evals,
     get_default_mcp_servers,
+    get_template_choices,
 )
 
 
@@ -87,6 +88,39 @@ def _prompt_agent_name(default: str | None = None) -> str:
         message="Enter agent name:",
         default=default or "",
         validate=validate_name,
+    ).execute()
+
+    return result
+
+
+def _prompt_template(default: str = "conversational") -> str:
+    """Display template selection prompt.
+
+    Shows a list of available project templates with descriptions.
+    The user can select one template using arrow keys and Enter.
+
+    Args:
+        default: Pre-selected template value (default: "conversational").
+
+    Returns:
+        The value of the selected template.
+
+    Raises:
+        KeyboardInterrupt: If user cancels with Ctrl+C.
+    """
+    template_choices = get_template_choices()
+    choices = [
+        Choice(
+            value=choice.value,
+            name=f"{choice.display_name} - {choice.description}",
+        )
+        for choice in template_choices
+    ]
+
+    result: str = inquirer.select(
+        message="Select agent template:",
+        choices=choices,
+        default=default,
     ).execute()
 
     return result
@@ -320,12 +354,14 @@ def _prompt_mcp_servers(defaults: list[str] | None = None) -> list[str]:
 
 def run_wizard(
     skip_agent_name: bool = False,
+    skip_template: bool = False,
     skip_llm: bool = False,
     skip_provider_config: bool = False,
     skip_vectorstore: bool = False,
     skip_evals: bool = False,
     skip_mcp: bool = False,
     agent_name_default: str | None = None,
+    template_default: str = "conversational",
     llm_default: str = "ollama",
     provider_config_default: ProviderConfig | None = None,
     vectorstore_default: str = "chromadb",
@@ -334,12 +370,13 @@ def run_wizard(
 ) -> WizardResult:
     """Run interactive configuration wizard.
 
-    Prompts user for agent name, LLM provider, provider-specific config,
+    Prompts user for agent name, template, LLM provider, provider-specific config,
     vector store, evaluation metrics, and MCP server selections. Skips
     prompts for values provided via CLI flags (when skip_* is True).
 
     Args:
         skip_agent_name: Skip agent name prompt (use agent_name_default).
+        skip_template: Skip template prompt (use template_default).
         skip_llm: Skip LLM prompt (use llm_default).
         skip_provider_config: Skip provider config prompts
             (use provider_config_default).
@@ -347,6 +384,7 @@ def run_wizard(
         skip_evals: Skip evals prompt (use evals_defaults).
         skip_mcp: Skip MCP prompt (use mcp_defaults).
         agent_name_default: Default agent name value.
+        template_default: Default template value (default: "conversational").
         llm_default: Default LLM provider value (default: "ollama").
         provider_config_default: Default provider config (endpoint, deployment name).
         vectorstore_default: Default vector store value (default: "chromadb").
@@ -366,25 +404,31 @@ def run_wizard(
         else:
             agent_name = _prompt_agent_name(default=agent_name_default)
 
-        # Step 2: LLM provider
+        # Step 2: Template selection
+        if skip_template:
+            template = template_default
+        else:
+            template = _prompt_template(default=template_default)
+
+        # Step 3: LLM provider
         if skip_llm:
             llm_provider = llm_default
         else:
             llm_provider = _prompt_llm_provider(default=llm_default)
 
-        # Step 2b: Provider-specific configuration (e.g., Azure endpoint)
+        # Step 3b: Provider-specific configuration (e.g., Azure endpoint)
         if skip_provider_config:
             provider_config = provider_config_default
         else:
             provider_config = _prompt_provider_config(llm_provider)
 
-        # Step 3: Vector store
+        # Step 4: Vector store
         if skip_vectorstore:
             vector_store = vectorstore_default
         else:
             vector_store = _prompt_vectorstore(default=vectorstore_default)
 
-        # Step 4: Evaluation metrics
+        # Step 5: Evaluation metrics
         if skip_evals:
             evals = (
                 evals_defaults if evals_defaults is not None else get_default_evals()
@@ -392,7 +436,7 @@ def run_wizard(
         else:
             evals = _prompt_evals(defaults=evals_defaults)
 
-        # Step 5: MCP servers
+        # Step 6: MCP servers
         if skip_mcp:
             mcp_servers = (
                 mcp_defaults if mcp_defaults is not None else get_default_mcp_servers()
@@ -403,6 +447,7 @@ def run_wizard(
         # Create and validate result
         return WizardResult(
             agent_name=agent_name,
+            template=template,
             llm_provider=llm_provider,
             provider_config=provider_config,
             vector_store=vector_store,

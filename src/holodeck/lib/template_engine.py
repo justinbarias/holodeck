@@ -197,6 +197,32 @@ class TemplateRenderer:
         return rendered
 
     @staticmethod
+    def _discover_template_dirs() -> list[Path]:
+        """Discover valid template directories.
+
+        Internal helper that finds all template directories containing
+        a manifest.yaml file.
+
+        Returns:
+            Sorted list of Path objects for valid template directories.
+        """
+        templates_dir = Path(__file__).parent.parent / "templates"
+
+        if not templates_dir.exists():
+            return []
+
+        template_dirs = []
+        for template_dir in sorted(templates_dir.iterdir()):
+            if (
+                template_dir.is_dir()
+                and not template_dir.name.startswith("_")
+                and (template_dir / "manifest.yaml").exists()
+            ):
+                template_dirs.append(template_dir)
+
+        return template_dirs
+
+    @staticmethod
     def list_available_templates() -> list[str]:
         """List all available built-in templates.
 
@@ -206,18 +232,34 @@ class TemplateRenderer:
             List of template names (e.g., ['conversational', 'research',
             'customer-support'])
         """
-        templates_dir = Path(__file__).parent.parent / "templates"
+        return [d.name for d in TemplateRenderer._discover_template_dirs()]
 
-        if not templates_dir.exists():
-            return []
+    @staticmethod
+    def get_available_templates() -> list[dict[str, str]]:
+        """Get available templates with metadata.
 
-        # List all directories that have a manifest.yaml (valid templates)
-        templates = []
-        for template_dir in templates_dir.iterdir():
-            if template_dir.is_dir() and not template_dir.name.startswith("_"):
-                # Check if it has manifest.yaml
-                manifest = template_dir / "manifest.yaml"
-                if manifest.exists():
-                    templates.append(template_dir.name)
+        Discovers templates from the templates/ directory and extracts
+        metadata (name, display_name, description) from their manifest.yaml files.
 
-        return sorted(templates)
+        Returns:
+            List of dicts with 'value', 'display_name', 'description' keys.
+            Returns empty list if templates directory doesn't exist.
+        """
+        templates: list[dict[str, str]] = []
+
+        for template_dir in TemplateRenderer._discover_template_dirs():
+            manifest_path = template_dir / "manifest.yaml"
+            with open(manifest_path) as f:
+                data = yaml.safe_load(f)
+            if data and isinstance(data, dict):
+                templates.append(
+                    {
+                        "value": str(data.get("name", template_dir.name)),
+                        "display_name": str(
+                            data.get("display_name", template_dir.name)
+                        ),
+                        "description": str(data.get("description", "")),
+                    }
+                )
+
+        return templates

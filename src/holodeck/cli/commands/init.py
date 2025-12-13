@@ -250,6 +250,7 @@ def init(
 
             wizard_result = WizardResult(
                 agent_name=project_name,
+                template=template,
                 llm_provider=selected_llm,
                 provider_config=provider_config,
                 vector_store=vectorstore or "chromadb",
@@ -258,13 +259,16 @@ def init(
             )
         else:
             # Interactive mode: run wizard
+            # Skip template prompt if --template was provided (not default)
             wizard_result = run_wizard(
                 skip_agent_name=project_name is not None,
+                skip_template=template != "conversational",
                 skip_llm=llm is not None,
                 skip_vectorstore=vectorstore is not None,
                 skip_evals=evals_arg is not None,
                 skip_mcp=mcp_arg is not None,
                 agent_name_default=project_name,
+                template_default=template,
                 llm_default=llm or "ollama",
                 vectorstore_default=vectorstore or "chromadb",
                 evals_defaults=evals_list if evals_list else None,
@@ -291,7 +295,7 @@ def init(
         # Create project initialization input
         init_input = ProjectInitInput(
             project_name=final_project_name,
-            template=template,
+            template=wizard_result.template,
             description=description,
             author=author,
             output_dir=str(output_dir),
@@ -320,6 +324,7 @@ def init(
             click.echo()
             click.echo("Configuration:")
             click.echo(f"  Agent Name: {wizard_result.agent_name}")
+            click.echo(f"  Template: {wizard_result.template}")
             click.echo(f"  LLM Provider: {wizard_result.llm_provider}")
             click.echo(f"  Vector Store: {wizard_result.vector_store}")
             click.echo(f"  Evals: {', '.join(wizard_result.evals) or 'none'}")
