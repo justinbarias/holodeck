@@ -6,12 +6,25 @@ official MCP Registry.
 """
 
 import json
+from pathlib import Path
 
 import click
 
-from holodeck.lib.errors import RegistryAPIError, RegistryConnectionError
+from holodeck.config.loader import add_mcp_server_to_agent, add_mcp_server_to_global
+from holodeck.lib.errors import (
+    ConfigError,
+    DuplicateServerError,
+    FileNotFoundError,
+    RegistryAPIError,
+    RegistryConnectionError,
+    ServerNotFoundError,
+)
 from holodeck.models.registry import RegistryServer, SearchResult
-from holodeck.services.mcp_registry import MCPRegistryClient
+from holodeck.services.mcp_registry import (
+    MCPRegistryClient,
+    find_stdio_package,
+    registry_to_mcp_tool,
+)
 
 # --- Helper Functions for Search Command ---
 
@@ -312,8 +325,85 @@ def add(
         Add specific version:
             holodeck mcp add io.github.example/server --version 1.2.0
     """
-    # TODO: Implement in Phase 4 (T014-T021)
-    click.echo("mcp add: Not yet implemented")
+    try:
+        # 1. Fetch server from registry
+        client = MCPRegistryClient()
+        registry_server = client.get_server(server, server_version)
+
+        # 2. Find STDIO package (HoloDeck only supports stdio transport)
+        stdio_pkg = find_stdio_package(registry_server)
+        if stdio_pkg is None:
+            available = {p.transport.type for p in registry_server.packages}
+            click.secho(
+                f"Error: Server '{server}' does not support stdio transport.\n"
+                f"Available transports: {', '.join(sorted(available))}\n"
+                "HoloDeck currently only supports stdio transport.",
+                fg="red",
+                err=True,
+            )
+            raise SystemExit(1)
+
+        # 3. Validate registry type is supported
+        supported_types = {"npm", "pypi", "docker", "oci"}
+        if stdio_pkg.registry_type not in supported_types:
+            click.secho(
+                f"Error: Server uses unsupported package type "
+                f"'{stdio_pkg.registry_type}'.\n"
+                "Supported types: npm, pypi, docker.",
+                fg="red",
+                err=True,
+            )
+            raise SystemExit(1)
+
+        # 4. Convert to MCPTool (pass specific package)
+        mcp_tool = registry_to_mcp_tool(registry_server, package=stdio_pkg)
+
+        # 5. Apply custom name if provided
+        if custom_name:
+            mcp_tool = mcp_tool.model_copy(update={"name": custom_name})
+
+        # 6. Add to config (agent or global)
+        if global_install:
+            add_mcp_server_to_global(mcp_tool)
+            target_display = "~/.holodeck/config.yaml"
+        else:
+            agent_path = Path(agent_file)
+            add_mcp_server_to_agent(agent_path, mcp_tool)
+            target_display = agent_file
+
+        # 7. Success message
+        click.secho(f"Added '{mcp_tool.name}' to {target_display}", fg="green")
+
+        # 8. Display required environment variables
+        env_vars = stdio_pkg.environment_variables
+        if env_vars:
+            click.echo("\nRequired environment variables:")
+            for ev in env_vars:
+                required_marker = " (required)" if ev.required else " (optional)"
+                desc = f" - {ev.description}" if ev.description else ""
+                click.echo(f"  {ev.name}{required_marker}{desc}")
+            click.echo("\nSet these in your .env file or shell environment.")
+
+    except RegistryConnectionError as e:
+        click.secho(f"Error: Registry unavailable - {e}", fg="red", err=True)
+        raise SystemExit(1) from e
+    except RegistryAPIError as e:
+        click.secho(f"Error: Registry error - {e}", fg="red", err=True)
+        raise SystemExit(1) from e
+    except ServerNotFoundError as e:
+        click.secho(
+            f"Error: Server '{server}' not found in registry", fg="red", err=True
+        )
+        raise SystemExit(1) from e
+    except DuplicateServerError as e:
+        click.secho(f"Error: {e}", fg="red", err=True)
+        raise SystemExit(1) from e
+    except FileNotFoundError as e:
+        click.secho(f"Error: {e.message}", fg="red", err=True)
+        raise SystemExit(1) from e
+    except ConfigError as e:
+        click.secho(f"Error: {e.message}", fg="red", err=True)
+        raise SystemExit(1) from e
 
 
 @mcp.command(name="remove")

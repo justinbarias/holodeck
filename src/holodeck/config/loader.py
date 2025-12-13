@@ -14,10 +14,10 @@ from pydantic import ValidationError as PydanticValidationError
 
 from holodeck.config.env_loader import substitute_env_vars
 from holodeck.config.validator import flatten_pydantic_errors
-from holodeck.lib.errors import ConfigError, FileNotFoundError
+from holodeck.lib.errors import ConfigError, DuplicateServerError, FileNotFoundError
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig, GlobalConfig, VectorstoreConfig
-from holodeck.models.tool import DatabaseConfig
+from holodeck.models.tool import DatabaseConfig, MCPTool
 
 logger = logging.getLogger(__name__)
 
@@ -665,3 +665,217 @@ class ConfigLoader:
         first_key = next(iter(vectorstores.keys()))
         vectorstore = vectorstores[first_key]
         return _convert_vectorstore_to_database_config(vectorstore).model_dump()
+
+
+# --- MCP Server Helper Functions ---
+
+
+def save_global_config(
+    config: GlobalConfig,
+    path: Path | None = None,
+) -> Path:
+    """Save GlobalConfig to ~/.holodeck/config.yaml.
+
+    Creates the ~/.holodeck/ directory if it doesn't exist.
+    Preserves existing fields when updating.
+
+    Args:
+        config: GlobalConfig instance to save
+        path: Optional custom path (defaults to ~/.holodeck/config.yaml)
+
+    Returns:
+        Path where the configuration was saved
+
+    Raises:
+        ConfigError: If file write fails
+    """
+    if path is None:
+        path = Path.home() / ".holodeck" / "config.yaml"
+
+    try:
+        # Create parent directory if needed
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Convert to YAML-safe dict (exclude_unset to keep clean output)
+        config_dict = config.model_dump(exclude_unset=True, mode="json")
+
+        # Write YAML with readable formatting
+        yaml_content = yaml.dump(
+            config_dict,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
+
+        path.write_text(yaml_content, encoding="utf-8")
+        logger.debug(f"Saved global configuration to {path}")
+        return path
+
+    except OSError as e:
+        raise ConfigError(
+            "global_config_write",
+            f"Failed to write global configuration to {path}: {e}",
+        ) from e
+
+
+def _check_mcp_duplicate(
+    tools: list[dict[str, Any]],
+    new_tool: MCPTool,
+) -> None:
+    """Check for duplicate MCP servers in tools list.
+
+    Raises DuplicateServerError if:
+    1. Same registry_name (exact duplicate from registry)
+    2. Same name with no registry_name (manual duplicate)
+    3. Same name with different registry_name (conflict warning via exception)
+
+    Args:
+        tools: List of existing tool configurations
+        new_tool: The MCPTool being added
+
+    Raises:
+        DuplicateServerError: If duplicate or conflict detected
+    """
+    for tool in tools:
+        if tool.get("type") != "mcp":
+            continue
+
+        existing_name = tool.get("name")
+        existing_registry_name = tool.get("registry_name")
+
+        # Case 1: Exact registry duplicate
+        if (
+            new_tool.registry_name
+            and existing_registry_name
+            and new_tool.registry_name == existing_registry_name
+        ):
+            raise DuplicateServerError(
+                server_name=new_tool.name,
+                registry_name=new_tool.registry_name,
+                existing_registry_name=existing_registry_name,
+            )
+
+        # Case 2: Name conflict (same name, different or no registry)
+        if existing_name == new_tool.name:
+            raise DuplicateServerError(
+                server_name=new_tool.name,
+                registry_name=new_tool.registry_name,
+                existing_registry_name=existing_registry_name,
+            )
+
+
+def add_mcp_server_to_agent(
+    agent_path: Path,
+    mcp_tool: MCPTool,
+) -> None:
+    """Add an MCP server to agent.yaml tools list.
+
+    Loads the agent configuration, appends the MCP tool, and saves.
+    Checks for duplicate servers before adding.
+
+    Args:
+        agent_path: Path to agent.yaml file
+        mcp_tool: MCPTool configuration to add
+
+    Raises:
+        FileNotFoundError: If agent.yaml doesn't exist
+        DuplicateServerError: If server already configured
+        ConfigError: If YAML parsing or writing fails
+    """
+    loader = ConfigLoader()
+
+    # Load existing agent config
+    try:
+        agent_config = loader.parse_yaml(str(agent_path))
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            str(agent_path),
+            "No agent.yaml found. Use --agent to specify a file "
+            "or -g for global install.",
+        ) from e
+
+    if agent_config is None:
+        agent_config = {}
+
+    # Initialize tools list if missing
+    if "tools" not in agent_config:
+        agent_config["tools"] = []
+
+    # Check for duplicates
+    _check_mcp_duplicate(agent_config["tools"], mcp_tool)
+
+    # Convert MCPTool to dict for YAML
+    tool_dict = mcp_tool.model_dump(exclude_unset=True, mode="json")
+
+    # Append to tools list
+    agent_config["tools"].append(tool_dict)
+
+    # Write back to YAML
+    try:
+        yaml_content = yaml.dump(
+            agent_config,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
+        agent_path.write_text(yaml_content, encoding="utf-8")
+        logger.debug(f"Added MCP server '{mcp_tool.name}' to {agent_path}")
+
+    except OSError as e:
+        raise ConfigError(
+            "agent_config_write",
+            f"Failed to write agent configuration to {agent_path}: {e}",
+        ) from e
+
+
+def add_mcp_server_to_global(
+    mcp_tool: MCPTool,
+    global_path: Path | None = None,
+) -> Path:
+    """Add an MCP server to global config mcp_servers list.
+
+    Loads or creates global configuration, adds the MCP server to
+    the mcp_servers list, and saves.
+
+    Args:
+        mcp_tool: MCPTool configuration to add
+        global_path: Optional custom path (defaults to ~/.holodeck/config.yaml)
+
+    Returns:
+        Path where the configuration was saved
+
+    Raises:
+        DuplicateServerError: If server already configured
+        ConfigError: If YAML parsing or writing fails
+    """
+    if global_path is None:
+        global_path = Path.home() / ".holodeck" / "config.yaml"
+
+    # Load existing global config or create new one
+    loader = ConfigLoader()
+    global_config = loader.load_global_config()
+
+    if global_config is None:
+        global_config = GlobalConfig(
+            providers=None,
+            vectorstores=None,
+            execution=None,
+            deployment=None,
+            mcp_servers=None,
+        )
+
+    # Initialize mcp_servers list if None
+    if global_config.mcp_servers is None:
+        global_config.mcp_servers = []
+
+    # Convert existing mcp_servers to dicts for duplicate check
+    existing_tools = [t.model_dump(mode="json") for t in global_config.mcp_servers]
+
+    # Check for duplicates
+    _check_mcp_duplicate(existing_tools, mcp_tool)
+
+    # Add new server
+    global_config.mcp_servers.append(mcp_tool)
+
+    # Save updated config
+    return save_global_config(global_config, global_path)

@@ -307,6 +307,34 @@ class MCPRegistryClient:
             raise
 
 
+def find_stdio_package(server: RegistryServer) -> RegistryServerPackage | None:
+    """Find a package that supports stdio transport.
+
+    Prioritizes supported registry types (npm, pypi, docker, oci) when
+    multiple stdio packages are available.
+
+    Args:
+        server: Registry server with packages
+
+    Returns:
+        First stdio-compatible package with supported registry type,
+        or any stdio package as fallback, or None if none found
+    """
+    supported_types = {"npm", "pypi", "docker", "oci"}
+
+    # First pass: find stdio package with supported registry type
+    for pkg in server.packages:
+        if pkg.transport.type == "stdio" and pkg.registry_type in supported_types:
+            return pkg
+
+    # Fallback: any stdio package (will fail later with unsupported type error)
+    for pkg in server.packages:
+        if pkg.transport.type == "stdio":
+            return pkg
+
+    return None
+
+
 def registry_to_mcp_tool(
     server: RegistryServer,
     package: RegistryServerPackage | None = None,

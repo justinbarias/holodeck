@@ -301,3 +301,49 @@ class ServerNotFoundError(HoloDeckError):
         self.server_name = server_name
         message = f"Server '{server_name}' not found in MCP registry."
         super().__init__(message)
+
+
+class DuplicateServerError(HoloDeckError):
+    """Exception raised when attempting to add an MCP server that already exists.
+
+    Raised when a server with the same registry_name (for registry servers) or
+    name (for manual servers) is already configured.
+
+    Attributes:
+        server_name: The short name of the server being added
+        registry_name: The full registry name of the server being added
+        existing_registry_name: The registry name of the existing server
+    """
+
+    def __init__(
+        self,
+        server_name: str,
+        registry_name: str | None = None,
+        existing_registry_name: str | None = None,
+    ) -> None:
+        """Initialize DuplicateServerError with server details.
+
+        Args:
+            server_name: The short name of the server being added
+            registry_name: The full registry name of the server being added
+            existing_registry_name: The registry name of the existing server
+        """
+        self.server_name = server_name
+        self.registry_name = registry_name
+        self.existing_registry_name = existing_registry_name
+
+        if registry_name and registry_name == existing_registry_name:
+            # Exact duplicate (same registry server)
+            message = f"Server '{registry_name}' is already configured."
+        elif existing_registry_name:
+            # Name conflict between different registry servers
+            message = (
+                f"A server named '{server_name}' is already configured "
+                f"(from {existing_registry_name}). "
+                f"Use --name to specify a different name."
+            )
+        else:
+            # Manual server with same name
+            message = f"A server named '{server_name}' is already configured."
+
+        super().__init__(message)
