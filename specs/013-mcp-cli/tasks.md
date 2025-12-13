@@ -73,7 +73,7 @@
 
 ---
 
-## Phase 4: User Story 2 - Add MCP Server to Agent (Priority: P1)
+## Phase 4: User Story 2 - Add MCP Server to Agent (Priority: P1) ✅
 
 **Goal**: Enable developers to add MCP servers to their agent configuration
 
@@ -81,24 +81,24 @@
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Implement add_mcp_server_to_agent() helper function in src/holodeck/config/loader.py
-- [ ] T015 [US2] Implement add_mcp_server_to_global() helper function in src/holodeck/config/loader.py
-- [ ] T016 [US2] Implement save_global_config() function in src/holodeck/config/loader.py (creates ~/.holodeck/ if needed)
-- [ ] T017 [US2] Implement `holodeck mcp add` command in src/holodeck/cli/commands/mcp.py with SERVER argument
-- [ ] T018 [US2] Add --agent, -g/--global, --version, --transport, --name options to add command
-- [ ] T019 [US2] Implement duplicate detection logic in add command using registry_name for registry servers, name for manual servers, with short-name conflict warnings
-- [ ] T020 [US2] Display required environment variables after successful add
-- [ ] T021 [US2] Add error handling for no agent.yaml found, registry errors, and file write errors
+- [x] T014 [US2] Implement add_mcp_server_to_agent() helper function in src/holodeck/config/loader.py
+- [x] T015 [US2] Implement add_mcp_server_to_global() helper function in src/holodeck/config/loader.py
+- [x] T016 [US2] Implement save_global_config() function in src/holodeck/config/loader.py (creates ~/.holodeck/ if needed)
+- [x] T017 [US2] Implement `holodeck mcp add` command in src/holodeck/cli/commands/mcp.py with SERVER argument
+- [x] T018 [US2] Add --agent, -g/--global, --version, --transport, --name options to add command
+- [x] T019 [US2] Implement duplicate detection logic in add command using registry_name for registry servers, name for manual servers, with short-name conflict warnings
+- [x] T020 [US2] Display required environment variables after successful add
+- [x] T021 [US2] Add error handling for no agent.yaml found, registry errors, and file write errors
 
 ### Tests for User Story 2
 
-- [ ] T021a [US2] [P] Add unit tests for add_mcp_server_to_agent() helper in tests/unit/config/test_mcp_helpers.py
-- [ ] T021b [US2] [P] Add unit tests for add_mcp_server_to_global() helper in tests/unit/config/test_mcp_helpers.py
-- [ ] T021c [US2] [P] Add unit tests for save_global_config() in tests/unit/config/test_mcp_helpers.py
-- [ ] T021d [US2] [P] Add unit tests for add command basic functionality in tests/unit/cli/commands/test_mcp_add.py
-- [ ] T021e [US2] [P] Add unit tests for --agent, --global, --version, --transport, --name options in tests/unit/cli/commands/test_mcp_add.py
-- [ ] T021f [US2] [P] Add unit tests for duplicate detection logic in tests/unit/cli/commands/test_mcp_add.py
-- [ ] T021g [US2] [P] Add unit tests for error handling (no agent.yaml, registry errors, file write errors) in tests/unit/cli/commands/test_mcp_add.py
+- [x] T021a [US2] [P] Add unit tests for add_mcp_server_to_agent() helper in tests/unit/config/test_mcp_helpers.py
+- [x] T021b [US2] [P] Add unit tests for add_mcp_server_to_global() helper in tests/unit/config/test_mcp_helpers.py
+- [x] T021c [US2] [P] Add unit tests for save_global_config() in tests/unit/config/test_mcp_helpers.py
+- [x] T021d [US2] [P] Add unit tests for add command basic functionality in tests/unit/cli/commands/test_mcp_add.py
+- [x] T021e [US2] [P] Add unit tests for --agent, --global, --version, --transport, --name options in tests/unit/cli/commands/test_mcp_add.py
+- [x] T021f [US2] [P] Add unit tests for duplicate detection logic in tests/unit/cli/commands/test_mcp_add.py
+- [x] T021g [US2] [P] Add unit tests for error handling (no agent.yaml, registry errors, file write errors) in tests/unit/cli/commands/test_mcp_add.py
 
 **Checkpoint**: At this point, User Stories 1 AND 2 work and are tested - users can search and add MCP servers
 
