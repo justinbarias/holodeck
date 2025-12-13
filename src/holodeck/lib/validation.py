@@ -16,6 +16,13 @@ CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]")
 AGENT_NAME_MAX_LENGTH = 64
 AGENT_NAME_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 
+# Tool name validation pattern (alphanumeric and underscores only)
+TOOL_NAME_PATTERN = re.compile(r"^[0-9A-Za-z_]+$")
+# Pattern to match any character that's not alphanumeric or underscore
+INVALID_TOOL_NAME_CHARS = re.compile(r"[^0-9A-Za-z_]")
+# Pattern to collapse multiple consecutive underscores
+MULTIPLE_UNDERSCORES = re.compile(r"_+")
+
 
 def validate_agent_name(name: str) -> str:
     """Validate agent name format.
@@ -90,3 +97,61 @@ def sanitize_tool_output(output: str, max_length: int = 5_000) -> str:
         cleaned = cleaned[:max_length] + "... (output truncated)"
 
     return cleaned
+
+
+def sanitize_tool_name(name: str) -> str:
+    """Sanitize a string to be a valid tool name.
+
+    Tool names must match pattern ^[0-9A-Za-z_]+$ (alphanumeric and underscores).
+    This function:
+    1. Replaces all invalid characters with underscores
+    2. Collapses multiple consecutive underscores into one
+    3. Strips leading/trailing underscores
+    4. Validates the result matches the required pattern
+
+    Args:
+        name: Raw name string to sanitize.
+
+    Returns:
+        Sanitized name containing only alphanumeric characters and underscores.
+
+    Raises:
+        ValueError: If the input is empty or results in an empty/invalid name.
+
+    Examples:
+        >>> sanitize_tool_name("server-filesystem")
+        'server_filesystem'
+        >>> sanitize_tool_name("foo--bar")
+        'foo_bar'
+        >>> sanitize_tool_name("my.tool.name")
+        'my_tool_name'
+        >>> sanitize_tool_name("  spaces  ")
+        'spaces'
+    """
+    if not name:
+        raise ValueError("Tool name cannot be empty")
+
+    # Replace all invalid characters with underscores
+    sanitized = INVALID_TOOL_NAME_CHARS.sub("_", name)
+
+    # Collapse multiple consecutive underscores into one
+    sanitized = MULTIPLE_UNDERSCORES.sub("_", sanitized)
+
+    # Strip leading/trailing underscores
+    sanitized = sanitized.strip("_")
+
+    # Validate result is not empty
+    if not sanitized:
+        raise ValueError(
+            f"Tool name '{name}' contains no valid characters. "
+            "Names must contain at least one alphanumeric character."
+        )
+
+    # Final validation against pattern
+    if not TOOL_NAME_PATTERN.match(sanitized):
+        raise ValueError(
+            f"Sanitized tool name '{sanitized}' does not match required pattern. "
+            "Names must contain only alphanumeric characters and underscores."
+        )
+
+    return sanitized

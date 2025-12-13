@@ -696,9 +696,9 @@ def save_global_config(
         # Create parent directory if needed
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Convert to YAML-safe dict (exclude None values for clean output)
+        # Convert to YAML-safe dict (exclude defaults/None for clean output)
         config_dict = config.model_dump(
-            exclude_unset=True, exclude_none=True, mode="json"
+            exclude_unset=True, exclude_defaults=True, exclude_none=True, mode="json"
         )
 
         # Write YAML with readable formatting
@@ -806,8 +806,10 @@ def add_mcp_server_to_agent(
     # Check for duplicates
     _check_mcp_duplicate(agent_config["tools"], mcp_tool)
 
-    # Convert MCPTool to dict for YAML (exclude None values for clean output)
-    tool_dict = mcp_tool.model_dump(exclude_unset=True, exclude_none=True, mode="json")
+    # Convert MCPTool to dict for YAML (exclude defaults/None for clean output)
+    tool_dict = mcp_tool.model_dump(
+        exclude_unset=True, exclude_defaults=True, exclude_none=True, mode="json"
+    )
 
     # Append to tools list
     agent_config["tools"].append(tool_dict)

@@ -62,7 +62,7 @@ def sample_registry_server() -> RegistryServer:
 def sample_mcp_tool() -> MCPTool:
     """Create a sample MCPTool for testing."""
     return MCPTool(
-        name="server-filesystem",
+        name="server_filesystem",
         description="Read and explore files on filesystem",
         type="mcp",
         transport=TransportType.STDIO,
@@ -74,11 +74,13 @@ def sample_mcp_tool() -> MCPTool:
 
 @pytest.fixture
 def mock_registry_client(sample_registry_server: RegistryServer):
-    """Mock MCPRegistryClient for testing."""
+    """Mock MCPRegistryClient for testing with context manager support."""
     with patch("holodeck.cli.commands.mcp.MCPRegistryClient") as mock_class:
         mock_instance = MagicMock()
         mock_instance.get_server.return_value = sample_registry_server
-        mock_class.return_value = mock_instance
+        # Configure as context manager
+        mock_class.return_value.__enter__ = MagicMock(return_value=mock_instance)
+        mock_class.return_value.__exit__ = MagicMock(return_value=False)
         yield mock_class, mock_instance
 
 
@@ -235,7 +237,7 @@ class TestAddOptions:
             [
                 "io.github.modelcontextprotocol/server-filesystem",
                 "--name",
-                "my-fs",
+                "my_fs",
             ],
         )
 
@@ -243,7 +245,7 @@ class TestAddOptions:
         # Verify custom name was applied
         call_args = mock_add_to_agent.call_args
         mcp_tool = call_args[0][1]
-        assert mcp_tool.name == "my-fs"
+        assert mcp_tool.name == "my_fs"
 
 
 @pytest.mark.unit
@@ -286,7 +288,8 @@ class TestAddErrorHandling:
             mock_instance.get_server.side_effect = ServerNotFoundError(
                 "nonexistent/server"
             )
-            mock_class.return_value = mock_instance
+            mock_class.return_value.__enter__ = MagicMock(return_value=mock_instance)
+            mock_class.return_value.__exit__ = MagicMock(return_value=False)
 
             result = cli_runner.invoke(
                 add,
@@ -306,7 +309,8 @@ class TestAddErrorHandling:
             mock_instance.get_server.side_effect = RegistryConnectionError(
                 "https://registry.modelcontextprotocol.io"
             )
-            mock_class.return_value = mock_instance
+            mock_class.return_value.__enter__ = MagicMock(return_value=mock_instance)
+            mock_class.return_value.__exit__ = MagicMock(return_value=False)
 
             result = cli_runner.invoke(
                 add,
@@ -328,7 +332,8 @@ class TestAddErrorHandling:
                 500,
                 "Internal Server Error",
             )
-            mock_class.return_value = mock_instance
+            mock_class.return_value.__enter__ = MagicMock(return_value=mock_instance)
+            mock_class.return_value.__exit__ = MagicMock(return_value=False)
 
             result = cli_runner.invoke(
                 add,
@@ -360,7 +365,8 @@ class TestAddErrorHandling:
                     )
                 ],
             )
-            mock_class.return_value = mock_instance
+            mock_class.return_value.__enter__ = MagicMock(return_value=mock_instance)
+            mock_class.return_value.__exit__ = MagicMock(return_value=False)
 
             result = cli_runner.invoke(
                 add,

@@ -256,17 +256,17 @@ def search(query: str | None, limit: int, as_json: bool) -> None:
             holodeck mcp search --json
     """
     try:
-        client = MCPRegistryClient()
-        result = client.search(query=query, limit=limit)
+        with MCPRegistryClient() as client:
+            result = client.search(query=query, limit=limit)
 
-        if as_json:
-            _output_json(result)
-        else:
-            _output_table(result)
+            if as_json:
+                _output_json(result)
+            else:
+                _output_table(result)
 
-        # Show pagination hint if more results available
-        if result.next_cursor and not as_json:
-            click.echo(f"\n{result.total_count} total results. More available.")
+            # Show pagination hint if more results available
+            if result.next_cursor and not as_json:
+                click.echo(f"\n{result.total_count} total results. More available.")
 
     except RegistryConnectionError as e:
         click.secho(f"Error: Registry unavailable - {e}", fg="red", err=True)
@@ -395,8 +395,8 @@ def add(
     """
     try:
         # 1. Fetch server from registry
-        client = MCPRegistryClient()
-        registry_server = client.get_server(server, server_version)
+        with MCPRegistryClient() as client:
+            registry_server = client.get_server(server, server_version)
 
         # 2. Find STDIO package (HoloDeck only supports stdio transport)
         stdio_pkg = find_stdio_package(registry_server)

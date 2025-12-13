@@ -16,6 +16,7 @@ from holodeck.lib.errors import (
     RegistryConnectionError,
     ServerNotFoundError,
 )
+from holodeck.lib.validation import sanitize_tool_name
 from holodeck.models.registry import (
     RegistryServer,
     RegistryServerMeta,
@@ -466,10 +467,11 @@ def registry_to_mcp_tool(
     if not server.name:
         raise ValueError("Server name is required")
 
-    # Extract short name for display, sanitize to valid tool name
-    # (replace hyphens/dots with underscores, alphanumeric and underscores only)
+    # Extract short name from reverse-DNS format (e.g., "io.github.user/server-name")
     raw_name = server.name.split("/")[-1] if "/" in server.name else server.name
-    short_name = raw_name.replace("-", "_").replace(".", "_")
+
+    # Sanitize to valid tool name (alphanumeric and underscores only)
+    short_name = sanitize_tool_name(raw_name)
 
     return MCPTool(
         name=short_name,

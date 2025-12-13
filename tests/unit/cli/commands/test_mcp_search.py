@@ -57,10 +57,12 @@ def sample_search_result(sample_server: RegistryServer) -> SearchResult:
 
 @pytest.fixture
 def mock_registry_client():
-    """Mock MCPRegistryClient for testing."""
+    """Mock MCPRegistryClient for testing with context manager support."""
     with patch("holodeck.cli.commands.mcp.MCPRegistryClient") as mock_class:
         mock_instance = MagicMock()
-        mock_class.return_value = mock_instance
+        # Configure as context manager
+        mock_class.return_value.__enter__ = MagicMock(return_value=mock_instance)
+        mock_class.return_value.__exit__ = MagicMock(return_value=False)
         yield mock_class, mock_instance
 
 
