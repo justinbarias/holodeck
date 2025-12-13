@@ -13,7 +13,10 @@ coverage:
 ignore:
   - "tests"
   - ".*/__init__\\.py"
-
+codecov:
+  notify:
+    wait_for_ci: false
+  require_ci_to_pass: false
 comment:
   layout: "reach,diff,flags,tree"
   behavior: default

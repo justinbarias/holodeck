@@ -14,6 +14,8 @@ from holodeck.config.loader import (
     _check_mcp_duplicate,
     add_mcp_server_to_agent,
     add_mcp_server_to_global,
+    get_mcp_servers_from_agent,
+    get_mcp_servers_from_global,
     save_global_config,
 )
 from holodeck.lib.errors import DuplicateServerError
@@ -339,3 +341,173 @@ class TestAddMcpServerToGlobal:
 
         with pytest.raises(DuplicateServerError):
             add_mcp_server_to_global(sample_mcp_tool, config_path)
+
+
+class TestGetMcpServersFromAgent:
+    """Tests for get_mcp_servers_from_agent() function."""
+
+    def test_returns_mcp_tools_from_agent(
+        self, temp_dir: Path, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that MCP tools are returned from agent config."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai"},
+            "instructions": {"inline": "Test"},
+            "tools": [sample_mcp_tool.model_dump(mode="json")],
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        result = get_mcp_servers_from_agent(agent_path)
+
+        assert len(result) == 1
+        assert result[0].name == "filesystem"
+        assert (
+            result[0].registry_name
+            == "io.github.modelcontextprotocol/server-filesystem"
+        )
+
+    def test_filters_non_mcp_tools(
+        self, temp_dir: Path, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that non-MCP tools are filtered out."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai"},
+            "instructions": {"inline": "Test"},
+            "tools": [
+                {"name": "vectorstore_tool", "type": "vectorstore"},
+                sample_mcp_tool.model_dump(mode="json"),
+                {"name": "function_tool", "type": "function", "function": "test_func"},
+            ],
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        result = get_mcp_servers_from_agent(agent_path)
+
+        assert len(result) == 1
+        assert result[0].name == "filesystem"
+
+    def test_returns_empty_for_no_tools(self, temp_dir: Path) -> None:
+        """Test that empty list is returned when no tools configured."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai"},
+            "instructions": {"inline": "Test"},
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        result = get_mcp_servers_from_agent(agent_path)
+
+        assert result == []
+
+    def test_returns_empty_for_empty_tools_list(self, temp_dir: Path) -> None:
+        """Test that empty list is returned for empty tools list."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai"},
+            "instructions": {"inline": "Test"},
+            "tools": [],
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        result = get_mcp_servers_from_agent(agent_path)
+
+        assert result == []
+
+    def test_raises_on_missing_file(self, temp_dir: Path) -> None:
+        """Test that FileNotFoundError is raised for missing agent file."""
+        from holodeck.lib.errors import FileNotFoundError
+
+        agent_path = temp_dir / "nonexistent.yaml"
+
+        with pytest.raises(FileNotFoundError):
+            get_mcp_servers_from_agent(agent_path)
+
+
+class TestGetMcpServersFromGlobal:
+    """Tests for get_mcp_servers_from_global() function."""
+
+    def test_returns_mcp_tools_from_global(
+        self, temp_dir: Path, monkeypatch: Any, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that MCP tools are returned from global config."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        config_path = holodeck_dir / "config.yaml"
+
+        config = {
+            "mcp_servers": [sample_mcp_tool.model_dump(mode="json")],
+        }
+        config_path.write_text(yaml.dump(config))
+
+        result = get_mcp_servers_from_global()
+
+        assert len(result) == 1
+        assert result[0].name == "filesystem"
+
+    def test_returns_empty_when_no_global_config(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test that empty list is returned when no global config exists."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+
+        result = get_mcp_servers_from_global()
+
+        assert result == []
+
+    def test_returns_empty_when_no_mcp_servers(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test that empty list is returned when mcp_servers is null."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        config_path = holodeck_dir / "config.yaml"
+
+        config = {"providers": {"openai": {"provider": "openai", "name": "gpt-4o"}}}
+        config_path.write_text(yaml.dump(config))
+
+        result = get_mcp_servers_from_global()
+
+        assert result == []
+
+    def test_returns_multiple_servers(self, temp_dir: Path, monkeypatch: Any) -> None:
+        """Test that multiple servers are returned."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        config_path = holodeck_dir / "config.yaml"
+
+        config = {
+            "mcp_servers": [
+                {
+                    "name": "filesystem",
+                    "description": "Filesystem server",
+                    "type": "mcp",
+                    "transport": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "@mcp/server-filesystem@1.0.0"],
+                },
+                {
+                    "name": "github",
+                    "description": "GitHub server",
+                    "type": "mcp",
+                    "transport": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "@mcp/server-github@2.0.0"],
+                },
+            ],
+        }
+        config_path.write_text(yaml.dump(config))
+
+        result = get_mcp_servers_from_global()
+
+        assert len(result) == 2
+        assert result[0].name == "filesystem"
+        assert result[1].name == "github"

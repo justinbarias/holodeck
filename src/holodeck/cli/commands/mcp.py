@@ -6,11 +6,17 @@ official MCP Registry.
 """
 
 import json
+import re
 from pathlib import Path
 
 import click
 
-from holodeck.config.loader import add_mcp_server_to_agent, add_mcp_server_to_global
+from holodeck.config.loader import (
+    add_mcp_server_to_agent,
+    add_mcp_server_to_global,
+    get_mcp_servers_from_agent,
+    get_mcp_servers_from_global,
+)
 from holodeck.lib.errors import (
     ConfigError,
     DuplicateServerError,
@@ -20,6 +26,7 @@ from holodeck.lib.errors import (
     ServerNotFoundError,
 )
 from holodeck.models.registry import RegistryServer, SearchResult
+from holodeck.models.tool import MCPTool
 from holodeck.services.mcp_registry import (
     SUPPORTED_REGISTRY_TYPES,
     MCPRegistryClient,
@@ -193,6 +200,122 @@ def _output_json(result: SearchResult) -> None:
     click.echo(json.dumps(output, indent=2))
 
 
+# --- Helper Functions for List Command ---
+
+# Regex to extract version from package specifier (e.g., @package@1.0.0 -> 1.0.0)
+VERSION_PATTERN = re.compile(r"@(\d+\.\d+(?:\.\d+)?(?:-[\w.]+)?(?:\+[\w.]+)?)$")
+
+
+def _extract_version_from_args(mcp_tool: MCPTool) -> str:
+    """Extract version from MCP tool args.
+
+    Parses the args list to find version specifiers like:
+    - @modelcontextprotocol/server-filesystem@1.0.0 -> 1.0.0
+    - package-name@2.3.4-beta -> 2.3.4-beta
+
+    Args:
+        mcp_tool: MCPTool instance
+
+    Returns:
+        Version string or "-" if not found
+    """
+    if not mcp_tool.args:
+        return "-"
+
+    for arg in mcp_tool.args:
+        match = VERSION_PATTERN.search(arg)
+        if match:
+            return match.group(1)
+
+    return "-"
+
+
+def _list_output_table(servers: list[tuple[MCPTool, str]], show_source: bool) -> None:
+    """Format installed servers list as a table.
+
+    Args:
+        servers: List of (MCPTool, source) tuples where source is "agent" or "global"
+        show_source: Whether to show SOURCE column (for --all mode)
+    """
+    if not servers:
+        click.echo(
+            "No MCP servers configured. "
+            "Use 'holodeck mcp search' to find available servers."
+        )
+        return
+
+    # Calculate column widths based on content
+    name_width = min(25, max(len(s[0].name) for s in servers))
+    version_width = 12
+    transport_width = 10
+    desc_width = 40 if not show_source else 30
+
+    # Header
+    header = (
+        f"{'NAME':<{name_width}}  {'VERSION':<{version_width}}  "
+        f"{'TRANSPORT':<{transport_width}}  {'DESCRIPTION':<{desc_width}}"
+    )
+    if show_source:
+        header += "  SOURCE"
+    click.echo(header)
+
+    # Separator
+    sep_width = name_width + version_width + transport_width + desc_width + 8
+    if show_source:
+        sep_width += 8
+    click.echo("-" * sep_width)
+
+    # Rows
+    for mcp_tool, source in servers:
+        name = _truncate(mcp_tool.name, name_width)
+        version = _extract_version_from_args(mcp_tool)
+        transport = mcp_tool.transport.value if mcp_tool.transport else "stdio"
+        desc = _truncate(mcp_tool.description, desc_width)
+
+        row = (
+            f"{name:<{name_width}}  {version:<{version_width}}  "
+            f"{transport:<{transport_width}}  {desc:<{desc_width}}"
+        )
+        if show_source:
+            row += f"  {source}"
+        click.echo(row)
+
+
+def _list_output_json(servers: list[tuple[MCPTool, str]], show_source: bool) -> None:
+    """Format installed servers list as JSON.
+
+    Args:
+        servers: List of (MCPTool, source) tuples
+        show_source: Whether to include source field
+    """
+    output_servers = []
+    for mcp_tool, source in servers:
+        server_dict: dict[str, object] = {
+            "name": mcp_tool.name,
+            "description": mcp_tool.description,
+            "version": _extract_version_from_args(mcp_tool),
+            "transport": mcp_tool.transport.value if mcp_tool.transport else "stdio",
+        }
+
+        # Include additional fields if present
+        if mcp_tool.command:
+            server_dict["command"] = mcp_tool.command.value
+        if mcp_tool.args:
+            server_dict["args"] = mcp_tool.args
+        if mcp_tool.registry_name:
+            server_dict["registry_name"] = mcp_tool.registry_name
+        if show_source:
+            server_dict["source"] = source
+
+        output_servers.append(server_dict)
+
+    output = {
+        "servers": output_servers,
+        "total_count": len(output_servers),
+    }
+    click.echo(json.dumps(output, indent=2))
+
+
 @click.group(name="mcp")
 def mcp() -> None:
     """Manage MCP (Model Context Protocol) servers.
@@ -328,8 +451,51 @@ def list_cmd(
         List all servers with source labels:
             holodeck mcp list --all
     """
-    # TODO: Implement in Phase 5 (T022-T027)
-    click.echo("mcp list: Not yet implemented")
+    servers: list[tuple[MCPTool, str]] = []
+
+    try:
+        if show_all:
+            # Show both agent and global servers
+            agent_path = Path(agent_file)
+            if agent_path.exists():
+                agent_servers = get_mcp_servers_from_agent(agent_path)
+                servers.extend((s, "agent") for s in agent_servers)
+
+            global_servers = get_mcp_servers_from_global()
+            servers.extend((s, "global") for s in global_servers)
+
+        elif global_only:
+            # Show only global servers
+            global_servers = get_mcp_servers_from_global()
+            servers.extend((s, "global") for s in global_servers)
+
+        else:
+            # Default: show agent servers
+            agent_path = Path(agent_file)
+            agent_servers = get_mcp_servers_from_agent(agent_path)
+            servers.extend((s, "agent") for s in agent_servers)
+
+        # Output results
+        if as_json:
+            _list_output_json(servers, show_source=show_all)
+        else:
+            _list_output_table(servers, show_source=show_all)
+
+    except FileNotFoundError as e:
+        if show_all:
+            # For --all, continue with global servers if agent not found
+            global_servers = get_mcp_servers_from_global()
+            servers = [(s, "global") for s in global_servers]
+            if as_json:
+                _list_output_json(servers, show_source=True)
+            else:
+                _list_output_table(servers, show_source=True)
+        else:
+            click.secho(f"Error: {e.message}", fg="red", err=True)
+            raise SystemExit(1) from e
+    except ConfigError as e:
+        click.secho(f"Error: {e.message}", fg="red", err=True)
+        raise SystemExit(1) from e
 
 
 @mcp.command(name="add")
