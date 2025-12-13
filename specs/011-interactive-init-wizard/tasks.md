@@ -41,7 +41,7 @@
 - [x] T005 [P] Create LLMProviderChoice model with LLM_PROVIDER_CHOICES list (ollama default with gpt-oss:20b, openai, azure_openai, anthropic) in src/holodeck/models/wizard_config.py
 - [x] T006 [P] Create VectorStoreChoice model with VECTOR_STORE_CHOICES list (chromadb default with http://localhost:8000, ChromaDb, in-memory) in src/holodeck/models/wizard_config.py
 - [x] T007 [P] Create EvalChoice model with EVAL_CHOICES list (rag-faithfulness, rag-answer_relevancy default, rag-context_precision, rag-context_recall) in src/holodeck/models/wizard_config.py
-- [x] T008 [P] Create MCPServerChoice model with MCP_SERVER_CHOICES list (brave-search, memory, sequential-thinking default, filesystem, github, postgres) in src/holodeck/models/wizard_config.py
+- [x] T008 [P] Create MCPServerChoice model with MCP_SERVER_CHOICES list (brave-search, memory, sequentialthinking default, filesystem, github, postgres) in src/holodeck/models/wizard_config.py
 - [x] T008a [P] Create TemplateChoice model with get_template_choices() helper that dynamically loads templates from manifest files in src/holodeck/models/wizard_config.py
 - [x] T008b [P] Add get_available_templates() method to TemplateRenderer that returns template metadata (value, display_name, description) in src/holodeck/lib/template_engine.py
 - [x] T009 Extend ProjectInitInput model with agent_name, llm_provider, vector_store, evals, mcp_servers fields in src/holodeck/models/project_config.py
@@ -154,7 +154,7 @@
 
 ## Phase 7: User Story 5 - MCP Server Selection (Priority: P2)
 
-**Goal**: User sees list of MCP servers with descriptions, can multi-select, with brave-search, memory, sequential-thinking pre-selected
+**Goal**: User sees list of MCP servers with descriptions, can multi-select, with brave-search, memory, sequentialthinking pre-selected
 
 **Independent Test**: Run `holodeck init`, modify default MCP selection (add filesystem, remove memory), verify agent.yaml reflects changes
 

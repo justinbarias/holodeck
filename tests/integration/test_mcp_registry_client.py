@@ -14,6 +14,7 @@ from holodeck.models.registry import (
     RegistryServer,
     RegistryServerPackage,
     SearchResult,
+    ServerVersion,
 )
 from holodeck.services.mcp_registry import (
     MCPRegistryClient,
@@ -40,6 +41,13 @@ class TestMCPRegistryClientSearch:
         assert server.name
         assert server.description is not None
         assert server.version
+
+        # Verify aggregation populated versions
+        assert hasattr(server, "versions")
+        assert len(server.versions) >= 1
+        for v in server.versions:
+            assert isinstance(v, ServerVersion)
+            assert v.version
 
     def test_search_with_query_filters_results(self) -> None:
         """Test searching with a query filters servers by name."""
@@ -89,6 +97,23 @@ class TestMCPRegistryClientSearch:
                 second_names = {s.name for s in second_page.servers}
                 # Pages should be different
                 assert first_names != second_names or len(second_page.servers) == 0
+
+    def test_search_aggregates_versions_by_name(self) -> None:
+        """Test that search results aggregate versions by server name."""
+        client = MCPRegistryClient()
+        result = client.search(limit=50)
+
+        # Each server name should appear only once (aggregated)
+        names = [s.name for s in result.servers]
+        assert len(names) == len(set(names)), "Duplicate server names found"
+
+        # All servers should have versions populated
+        for server in result.servers:
+            assert len(server.versions) >= 1
+            # Each version should have required fields
+            for version in server.versions:
+                assert isinstance(version, ServerVersion)
+                assert version.version  # Version string should be non-empty
 
 
 @pytest.mark.integration

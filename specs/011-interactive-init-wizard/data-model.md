@@ -87,6 +87,7 @@ class WizardState(BaseModel):
 ```
 
 **State Transitions**:
+
 ```
 AGENT_NAME → (input) → LLM_PROVIDER → (selection) → VECTOR_STORE → (selection) → EVALS → (selection) → MCP_SERVERS → (selection) → COMPLETE
      ↓                      ↓                            ↓                          ↓                        ↓
@@ -141,7 +142,7 @@ class WizardResult(BaseModel):
         valid_providers = {"ollama", "openai", "azure_openai", "anthropic"}
         valid_stores = {"chromadb", "redis", "in-memory"}
         valid_evals = {"rag-faithfulness", "rag-answer_relevancy", "rag-context_precision", "rag-context_recall"}
-        valid_mcp = {"brave-search", "memory", "sequential-thinking", "filesystem", "github", "postgres"}
+        valid_mcp = {"brave-search", "memory", "sequentialthinking", "filesystem", "github", "postgres"}
 
         # Validate agent name format
         if not re.match(r"^[a-zA-Z0-9_-]+$", self.agent_name):
@@ -162,6 +163,7 @@ class WizardResult(BaseModel):
 ```
 
 **Validation Rules**:
+
 - `agent_name`: Alphanumeric, hyphens, underscores only
 - `llm_provider`: Must be one of: ollama, openai, azure_openai, anthropic
 - `vector_store`: Must be one of: chromadb, redis, in-memory
@@ -385,11 +387,11 @@ MCP_SERVER_CHOICES = [
         package_identifier="@modelcontextprotocol/server-memory",
     ),
     MCPServerChoice(
-        value="sequential-thinking",
+        value="sequentialthinking",
         display_name="Sequential Thinking",
         description="Structured reasoning chains",
         is_default=True,
-        package_identifier="@modelcontextprotocol/server-sequential-thinking",
+        package_identifier="@modelcontextprotocol/server-sequentialthinking",
     ),
     MCPServerChoice(
         value="filesystem",
@@ -454,7 +456,7 @@ class ProjectInitInput(BaseModel):
         default_factory=lambda: [
             "brave-search",
             "memory",
-            "sequential-thinking",
+            "sequentialthinking",
         ],
         description="MCP servers from wizard selection"
     )
@@ -464,21 +466,21 @@ class ProjectInitInput(BaseModel):
 
 ## Relationships
 
-| From | To | Relationship | Description |
-|------|-----|-------------|-------------|
-| WizardState | WizardResult | Transforms to | Final state becomes result |
-| WizardResult | ProjectInitInput | Merged into | Wizard selections added to init input |
+| From         | To               | Relationship  | Description                           |
+| ------------ | ---------------- | ------------- | ------------------------------------- |
+| WizardState  | WizardResult     | Transforms to | Final state becomes result            |
+| WizardResult | ProjectInitInput | Merged into   | Wizard selections added to init input |
 
 ## Validation Summary
 
-| Entity | Validation Rule | Error Behavior |
-|--------|----------------|----------------|
-| WizardResult | Agent name format (alphanumeric, -, _) | Raise ValueError |
-| WizardResult | Provider in allowed set | Raise ValueError |
-| WizardResult | Vector store in allowed set | Raise ValueError |
-| WizardResult | Evals in allowed set | Raise ValueError |
-| WizardResult | MCP servers in allowed set | Raise ValueError |
-| ProjectInitInput | Template exists | Raise ValidationError |
+| Entity           | Validation Rule                         | Error Behavior        |
+| ---------------- | --------------------------------------- | --------------------- |
+| WizardResult     | Agent name format (alphanumeric, -, \_) | Raise ValueError      |
+| WizardResult     | Provider in allowed set                 | Raise ValueError      |
+| WizardResult     | Vector store in allowed set             | Raise ValueError      |
+| WizardResult     | Evals in allowed set                    | Raise ValueError      |
+| WizardResult     | MCP servers in allowed set              | Raise ValueError      |
+| ProjectInitInput | Template exists                         | Raise ValidationError |
 
 ## State Diagram
 

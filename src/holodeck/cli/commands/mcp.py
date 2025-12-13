@@ -77,6 +77,26 @@ def _get_transport_list(server: RegistryServer) -> list[str]:
 # --- Output Formatters for Search Command ---
 
 
+def _get_version_display(server: RegistryServer) -> str:
+    """Get version display string for table output.
+
+    Shows single version if only one, or latest version with count for multiple.
+
+    Args:
+        server: Registry server with versions.
+
+    Returns:
+        Version display string (e.g., "1.0.0" or "1.0.0 (+2)").
+    """
+    if server.versions:
+        latest = server.versions[0].version or server.version or "-"
+        if len(server.versions) == 1:
+            return latest
+        # Show latest version with additional count
+        return f"{latest} (+{len(server.versions) - 1})"
+    return server.version or "-"
+
+
 def _output_table(result: SearchResult) -> None:
     """Format search results as a table.
 
@@ -88,19 +108,66 @@ def _output_table(result: SearchResult) -> None:
         return
 
     # Calculate column widths based on content
-    name_width = min(45, max(len(s.name) for s in result.servers))
-    desc_width = 40
+    name_width = min(40, max(len(s.name) for s in result.servers))
+    version_width = 12
+    desc_width = 35
 
     # Header
-    click.echo(f"{'NAME':<{name_width}}  {'DESCRIPTION':<{desc_width}}  TRANSPORT")
-    click.echo("-" * (name_width + desc_width + 15))
+    click.echo(
+        f"{'NAME':<{name_width}}  {'VERSION':<{version_width}}  "
+        f"{'DESCRIPTION':<{desc_width}}  TRANSPORT"
+    )
+    click.echo("-" * (name_width + version_width + desc_width + 18))
 
     # Rows
     for server in result.servers:
         name = _truncate(server.name, name_width)
+        version = _get_version_display(server)
         desc = _truncate(server.description, desc_width)
         transports = _get_transports(server)
-        click.echo(f"{name:<{name_width}}  {desc:<{desc_width}}  {transports}")
+        click.echo(
+            f"{name:<{name_width}}  {version:<{version_width}}  "
+            f"{desc:<{desc_width}}  {transports}"
+        )
+
+
+def _format_version_for_json(server: RegistryServer) -> list[dict[str, object]]:
+    """Format version details for JSON output.
+
+    Args:
+        server: Registry server with versions.
+
+    Returns:
+        List of version detail dictionaries.
+    """
+    if not server.versions:
+        # Fallback if versions not populated
+        return [{"version": server.version}]
+
+    versions_output: list[dict[str, object]] = []
+    for v in server.versions:
+        version_info: dict[str, object] = {
+            "version": v.version,
+            "packages": [
+                {
+                    "registry_type": p.registry_type,
+                    "identifier": p.identifier,
+                    "version": p.version,
+                    "transport": p.transport.type,
+                }
+                for p in v.packages
+            ],
+        }
+        # Add metadata if available
+        if v.meta:
+            version_info["published_at"] = (
+                v.meta.published_at.isoformat() if v.meta.published_at else None
+            )
+            version_info["is_latest"] = v.meta.is_latest
+            version_info["status"] = v.meta.status
+        versions_output.append(version_info)
+
+    return versions_output
 
 
 def _output_json(result: SearchResult) -> None:
@@ -115,6 +182,7 @@ def _output_json(result: SearchResult) -> None:
                 "name": s.name,
                 "description": s.description,
                 "transports": _get_transport_list(s),
+                "versions": _format_version_for_json(s),
             }
             for s in result.servers
         ],

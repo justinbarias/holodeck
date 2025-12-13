@@ -16,6 +16,7 @@ holodeck init
 ```
 
 This launches the wizard with five prompts:
+
 1. **Agent Name** - Enter a name for your agent
 2. **LLM Provider** - Select your preferred language model provider
 3. **Vector Store** - Choose where to store embeddings
@@ -31,11 +32,12 @@ holodeck init --name my-agent --non-interactive
 ```
 
 Creates a project with all defaults:
+
 - **Agent Name**: my-agent
 - **LLM**: Ollama (gpt-oss:20b)
 - **Vector Store**: ChromaDB (http://localhost:8000)
 - **Evals**: rag-faithfulness, rag-answer_relevancy
-- **MCP Servers**: brave-search[web-search], memory, sequential-thinking
+- **MCP Servers**: brave-search[web-search], memory, sequentialthinking
 
 ## Customizing via CLI Flags
 
@@ -63,38 +65,40 @@ holodeck init --name my-agent --llm anthropic --vectorstore chromadb --mcp files
 
 ## LLM Provider Options
 
-| Provider | Flag Value | Default Model | Description | API Key Required |
-|----------|------------|---------------|-------------|------------------|
-| Ollama | `ollama` | gpt-oss:20b | Local inference, no cloud dependency | No |
-| OpenAI | `openai` | gpt-4o | GPT-4, GPT-3.5-turbo | Yes (`OPENAI_API_KEY`) |
-| Azure OpenAI | `azure_openai` | gpt-4o | Azure-hosted OpenAI models | Yes (`AZURE_OPENAI_API_KEY`) |
-| Anthropic | `anthropic` | claude-3-5-sonnet | Claude 3.5, Claude 3 | Yes (`ANTHROPIC_API_KEY`) |
+| Provider     | Flag Value     | Default Model     | Description                          | API Key Required             |
+| ------------ | -------------- | ----------------- | ------------------------------------ | ---------------------------- |
+| Ollama       | `ollama`       | gpt-oss:20b       | Local inference, no cloud dependency | No                           |
+| OpenAI       | `openai`       | gpt-4o            | GPT-4, GPT-3.5-turbo                 | Yes (`OPENAI_API_KEY`)       |
+| Azure OpenAI | `azure_openai` | gpt-4o            | Azure-hosted OpenAI models           | Yes (`AZURE_OPENAI_API_KEY`) |
+| Anthropic    | `anthropic`    | claude-3-5-sonnet | Claude 3.5, Claude 3                 | Yes (`ANTHROPIC_API_KEY`)    |
 
 ## Vector Store Options
 
-| Store | Flag Value | Default Endpoint | Description | Best For |
-|-------|------------|------------------|-------------|----------|
-| ChromaDB | `chromadb` | http://localhost:8000 | Embedded database with local persistence | Development, single-user |
-| Redis | `redis` | redis://localhost:6379 | Production-grade with Redis Stack | Production, multi-instance |
-| In-Memory | `in-memory` | N/A | Ephemeral, no persistence | Testing, prototyping |
+| Store     | Flag Value  | Default Endpoint       | Description                              | Best For                   |
+| --------- | ----------- | ---------------------- | ---------------------------------------- | -------------------------- |
+| ChromaDB  | `chromadb`  | http://localhost:8000  | Embedded database with local persistence | Development, single-user   |
+| Redis     | `redis`     | redis://localhost:6379 | Production-grade with Redis Stack        | Production, multi-instance |
+| In-Memory | `in-memory` | N/A                    | Ephemeral, no persistence                | Testing, prototyping       |
 
 ## Evaluation Metrics Options
 
-| Metric | Flag Value | Description | Default |
-|--------|------------|-------------|---------|
-| RAG Faithfulness | `rag-faithfulness` | Measures if response is grounded in context | Yes |
-| RAG Answer Relevancy | `rag-answer_relevancy` | Measures if response answers the question | Yes |
-| RAG Context Precision | `rag-context_precision` | Measures precision of retrieved context | No |
-| RAG Context Recall | `rag-context_recall` | Measures recall of retrieved context | No |
+| Metric                | Flag Value              | Description                                 | Default |
+| --------------------- | ----------------------- | ------------------------------------------- | ------- |
+| RAG Faithfulness      | `rag-faithfulness`      | Measures if response is grounded in context | Yes     |
+| RAG Answer Relevancy  | `rag-answer_relevancy`  | Measures if response answers the question   | Yes     |
+| RAG Context Precision | `rag-context_precision` | Measures precision of retrieved context     | No      |
+| RAG Context Recall    | `rag-context_recall`    | Measures recall of retrieved context        | No      |
 
 ## MCP Server Options
 
 Default pre-selected servers:
+
 - `brave-search` - Web search capabilities (brave-search[web-search])
 - `memory` - Key-value memory storage (@modelcontextprotocol/server-memory)
-- `sequential-thinking` - Structured reasoning (@modelcontextprotocol/server-sequential-thinking)
+- `sequentialthinking` - Structured reasoning (@modelcontextprotocol/server-sequentialthinking)
 
 Additional available servers:
+
 - `filesystem` - Access local files (@modelcontextprotocol/server-filesystem)
 - `github` - Repository access
 - `postgres` - PostgreSQL database access
@@ -130,7 +134,7 @@ name: my-agent
 description: "Your agent description here"
 
 model:
-  provider: ollama  # From --llm or wizard selection
+  provider: ollama # From --llm or wizard selection
   name: gpt-oss:20b
   temperature: 0.7
 
@@ -154,10 +158,10 @@ tools:
     command: npx
     args: ["@modelcontextprotocol/server-memory"]
 
-  - name: sequential-thinking
+  - name: sequentialthinking
     type: mcp
     command: npx
-    args: ["@modelcontextprotocol/server-sequential-thinking"]
+    args: ["@modelcontextprotocol/server-sequentialthinking"]
 
 evaluations:
   metrics:
@@ -230,7 +234,7 @@ holodeck init \
   --name research-agent \
   --llm anthropic \
   --evals rag-faithfulness,rag-answer_relevancy,rag-context_precision,rag-context_recall \
-  --mcp brave-search,memory,sequential-thinking
+  --mcp brave-search,memory,sequentialthinking
 ```
 
 ## Troubleshooting
@@ -246,6 +250,7 @@ holodeck init --name my-agent --force
 ### Terminal doesn't support interactive prompts
 
 The wizard automatically falls back to non-interactive mode when:
+
 - Running in a non-TTY environment (pipes, CI)
 - `--non-interactive` flag is set
 

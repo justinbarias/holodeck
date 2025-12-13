@@ -21,6 +21,7 @@ from holodeck.models.registry import (
     RegistryServerMeta,
     RegistryServerPackage,
     SearchResult,
+    ServerVersion,
 )
 from holodeck.models.tool import CommandType, MCPTool, TransportType
 
@@ -124,13 +125,16 @@ class MCPRegistryClient:
             meta_data = item.get("_meta")
             servers.append(self._parse_server(server_data, meta_data))
 
+        # Aggregate servers by name (each version comes as separate entry)
+        servers = self._aggregate_by_name(servers)
+
         metadata = data.get("metadata", {})
         result = SearchResult(
             servers=servers,
             next_cursor=metadata.get("nextCursor"),
             total_count=metadata.get("count", len(servers)),
         )
-        logger.debug("Search returned %d servers", len(result.servers))
+        logger.debug("Search returned %d unique servers", len(result.servers))
         return result
 
     def get_server(
@@ -306,6 +310,52 @@ class MCPRegistryClient:
             )
             raise
 
+    def _aggregate_by_name(self, servers: list[RegistryServer]) -> list[RegistryServer]:
+        """Aggregate servers by name, collecting versions into a list.
+
+        The MCP registry returns each version of a server as a separate entry.
+        This method groups them by name and creates a single entry per server
+        with all versions in the `versions` field.
+
+        Args:
+            servers: List of servers (potentially multiple entries per server name)
+
+        Returns:
+            List of servers with one entry per unique name, versions aggregated
+        """
+        from collections import defaultdict
+
+        # Group servers by name
+        grouped: dict[str, list[RegistryServer]] = defaultdict(list)
+        for server in servers:
+            grouped[server.name].append(server)
+
+        # Create aggregated list
+        aggregated: list[RegistryServer] = []
+        for server_entries in grouped.values():
+            # Use first entry as base (typically the latest version)
+            base = server_entries[0]
+
+            # Build versions list from all entries
+            versions = [
+                ServerVersion(
+                    version=s.version,
+                    packages=s.packages,
+                    meta=s.meta,
+                )
+                for s in server_entries
+            ]
+
+            # Create aggregated server with versions
+            aggregated.append(base.model_copy(update={"versions": versions}))
+
+        logger.debug(
+            "Aggregated %d server entries into %d unique servers",
+            len(servers),
+            len(aggregated),
+        )
+        return aggregated
+
 
 def find_stdio_package(server: RegistryServer) -> RegistryServerPackage | None:
     """Find a package that supports stdio transport.
@@ -416,8 +466,10 @@ def registry_to_mcp_tool(
     if not server.name:
         raise ValueError("Server name is required")
 
-    # Extract short name for display
-    short_name = server.name.split("/")[-1] if "/" in server.name else server.name
+    # Extract short name for display, sanitize to valid tool name
+    # (replace hyphens/dots with underscores, alphanumeric and underscores only)
+    raw_name = server.name.split("/")[-1] if "/" in server.name else server.name
+    short_name = raw_name.replace("-", "_").replace(".", "_")
 
     return MCPTool(
         name=short_name,

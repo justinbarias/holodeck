@@ -10,12 +10,12 @@
 ### Session 2025-11-29
 
 - Q: What is the order of wizard prompts? → A: Agent Name → LLM Provider → Vector Store → Evals → MCP Servers
-- Q: What are the default MCP servers? → A: brave-search[web-search], @modelcontextprotocol/server-memory, @modelcontextprotocol/server-sequential-thinking
+- Q: What are the default MCP servers? → A: brave-search[web-search], @modelcontextprotocol/server-memory, @modelcontextprotocol/server-sequentialthinking
 - Q: What are the default evals? → A: rag-faithfulness, rag-answer_relevancy
 - Q: What is the default LLM provider and model? → A: Ollama with gpt-oss:20b model
 - Q: What is the default vector store? → A: ChromaDB at http://localhost:8000
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Quick Start with Defaults (Priority: P1)
 
@@ -84,7 +84,7 @@ A user wants to configure which evaluation metrics their agent will use for test
 
 ### User Story 5 - MCP Server Selection (Priority: P2)
 
-A user wants to configure which MCP (Model Context Protocol) servers their agent can use. They see a list of available MCP servers with descriptions and can select multiple servers, with three pre-selected by default (brave-search[web-search], memory, sequential-thinking).
+A user wants to configure which MCP (Model Context Protocol) servers their agent can use. They see a list of available MCP servers with descriptions and can select multiple servers, with three pre-selected by default (brave-search[web-search], memory, sequentialthinking).
 
 **Why this priority**: MCP servers extend agent capabilities significantly. Providing a curated list with smart defaults enables powerful functionality while allowing customization.
 
@@ -92,8 +92,8 @@ A user wants to configure which MCP (Model Context Protocol) servers their agent
 
 **Acceptance Scenarios**:
 
-1. **Given** a user runs `holodeck init`, **When** they reach the MCP server prompt, **Then** they see a multi-select list with brave-search[web-search], memory, and sequential-thinking pre-selected.
-2. **Given** a user deselects the memory server and adds filesystem server, **When** the selection is confirmed, **Then** the generated configuration includes only brave-search[web-search], sequential-thinking, and filesystem MCP servers.
+1. **Given** a user runs `holodeck init`, **When** they reach the MCP server prompt, **Then** they see a multi-select list with brave-search[web-search], memory, and sequentialthinking pre-selected.
+2. **Given** a user deselects the memory server and adds filesystem server, **When** the selection is confirmed, **Then** the generated configuration includes only brave-search[web-search], sequentialthinking, and filesystem MCP servers.
 3. **Given** a user views the MCP server list, **When** they examine each option, **Then** each server displays its name and a brief description of its capabilities.
 4. **Given** a user completes MCP selection, **When** the configuration is generated, **Then** each selected MCP server has proper configuration stubs in the agent.yaml file.
 
@@ -121,7 +121,7 @@ A user wants to run the init command in a CI/CD pipeline or automated script whe
 - How does the system handle when a user's terminal doesn't support interactive prompts? Falls back to non-interactive mode with defaults.
 - What happens if the target directory already contains HoloDeck configuration files? Prompts user to confirm overwrite or exit.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -130,7 +130,7 @@ A user wants to run the init command in a CI/CD pipeline or automated script whe
 - **FR-003**: System MUST display an interactive prompt for LLM provider selection with Ollama (gpt-oss:20b) as the default option.
 - **FR-004**: System MUST display an interactive prompt for vector store selection with ChromaDB (http://localhost:8000) as the default option.
 - **FR-005**: System MUST display a multi-select prompt for evals with rag-faithfulness and rag-answer_relevancy pre-selected by default.
-- **FR-006**: System MUST display a multi-select prompt for MCP server selection with brave-search[web-search], memory, and sequential-thinking pre-selected by default.
+- **FR-006**: System MUST display a multi-select prompt for MCP server selection with brave-search[web-search], memory, and sequentialthinking pre-selected by default.
 - **FR-007**: System MUST clearly indicate default selections in each prompt using visual highlighting or markers.
 - **FR-008**: System MUST generate configuration files reflecting all user selections upon completion.
 - **FR-009**: System MUST support a non-interactive mode via command-line flags for automated/scripted usage.
@@ -150,7 +150,7 @@ A user wants to run the init command in a CI/CD pipeline or automated script whe
 - **MCP Server Configuration**: Represents selected MCP servers with package references and initialization settings.
 - **Init Wizard State**: Tracks user progress through the wizard and accumulated selections.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
@@ -166,7 +166,7 @@ A user wants to run the init command in a CI/CD pipeline or automated script whe
 
 - Users have a terminal that supports basic input (stdin) for interactive mode; color/styling is optional enhancement.
 - MCP servers are from a predefined list (no registry lookup required).
-- Default MCP servers are: brave-search[web-search], @modelcontextprotocol/server-memory, @modelcontextprotocol/server-sequential-thinking.
+- Default MCP servers are: brave-search[web-search], @modelcontextprotocol/server-memory, @modelcontextprotocol/server-sequentialthinking.
 - Default evals are: rag-faithfulness, rag-answer_relevancy.
 - Default LLM provider is Ollama with gpt-oss:20b model.
 - Default vector store is ChromaDB at http://localhost:8000.

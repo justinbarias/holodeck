@@ -8,7 +8,7 @@ the interactive initialization wizard functionality.
 DEFAULT_LLM_PROVIDER = "ollama"
 DEFAULT_VECTOR_STORE = "chromadb"
 DEFAULT_EVALS = ["rag-faithfulness", "rag-answer_relevancy"]
-DEFAULT_MCP_SERVERS = ["brave-search", "memory", "sequential-thinking"]
+DEFAULT_MCP_SERVERS = ["brave-search", "memory", "sequentialthinking"]
 DEFAULT_AGENT_NAME = "my-agent"
 
 # Valid LLM providers
@@ -29,7 +29,7 @@ VALID_EVALS = [
 VALID_MCP_SERVERS = [
     "brave-search",
     "memory",
-    "sequential-thinking",
+    "sequentialthinking",
     "filesystem",
     "github",
     "postgres",
