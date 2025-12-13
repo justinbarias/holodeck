@@ -320,7 +320,7 @@ def _prompt_mcp_servers(defaults: list[str] | None = None) -> list[str]:
 
     Shows a checkbox list of available MCP servers with descriptions.
     The user can toggle selections with space and confirm with Enter.
-    Default servers (brave-search, memory, sequential-thinking) are pre-selected.
+    Default servers (brave-search, memory, sequentialthinking) are pre-selected.
 
     Args:
         defaults: Server identifiers to pre-select. If None, uses

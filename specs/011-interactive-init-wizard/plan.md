@@ -5,7 +5,7 @@
 
 ## Summary
 
-Enhance the `holodeck init` command with an interactive wizard that guides users through configuration choices for agent name, LLM provider (Ollama with gpt-oss:20b default, OpenAI, Azure OpenAI, Anthropic), vector store (ChromaDB at http://localhost:8000 default, Redis, In-Memory), evaluation metrics (rag-faithfulness, rag-answer_relevancy default), and MCP servers (brave-search[web-search], memory, sequential-thinking default). The wizard supports both interactive and non-interactive modes with clean cancellation handling.
+Enhance the `holodeck init` command with an interactive wizard that guides users through configuration choices for agent name, LLM provider (Ollama with gpt-oss:20b default, OpenAI, Azure OpenAI, Anthropic), vector store (ChromaDB at http://localhost:8000 default, Redis, In-Memory), evaluation metrics (rag-faithfulness, rag-answer_relevancy default), and MCP servers (brave-search[web-search], memory, sequentialthinking default). The wizard supports both interactive and non-interactive modes with clean cancellation handling.
 
 ## Technical Context
 
@@ -21,42 +21,56 @@ Enhance the `holodeck init` command with an interactive wizard that guides users
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ### I. No-Code-First Agent Definition
+
 **Status**: COMPLIANT
+
 - Users configure agents via interactive YAML wizard prompts
 - All selections translate directly to YAML configuration values
 - No Python code required from users
 
 ### II. MCP for API Integrations
+
 **Status**: COMPLIANT
+
 - MCP servers are first-class citizens in the wizard
 - Uses predefined list of common MCP servers
 - Generated configuration uses standard MCP tool definitions
 
 ### III. Test-First with Multimodal Support
+
 **Status**: COMPLIANT (not directly applicable)
+
 - This feature focuses on project scaffolding, not agent testing
 - Generated test cases in scaffolded projects will support multimodal inputs
 
 ### IV. OpenTelemetry-Native Observability
+
 **Status**: NOT APPLICABLE
+
 - Init wizard is a CLI scaffolding tool, not runtime agent code
 - Generated projects will include observability configuration stubs
 
 ### V. Evaluation Flexibility with Model Overrides
+
 **Status**: COMPLIANT
+
 - Wizard includes eval selection step with sensible defaults
 - Generated evaluation configuration will support model overrides
 
 ### Architecture Constraints
+
 **Status**: COMPLIANT
+
 - Extends CLI layer only (not Agent Engine, Evaluation Framework, or Deployment Engine)
 - Uses well-defined configuration models (`LLMProvider`, `DatabaseConfig`, `MCPTool`, `EvalConfig`)
 
 ### Code Quality & Testing Discipline
+
 **Status**: TO BE VALIDATED
+
 - Will follow Google Python Style Guide
 - Will include comprehensive unit and integration tests
 - Will maintain 80%+ coverage on new code
@@ -107,8 +121,8 @@ tests/
 
 ## Complexity Tracking
 
-*No Constitution violations requiring justification*
+_No Constitution violations requiring justification_
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| N/A | - | - |
+| --------- | ---------- | ------------------------------------ |
+| N/A       | -          | -                                    |

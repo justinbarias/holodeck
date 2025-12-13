@@ -62,7 +62,11 @@ class Tool(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(..., description="Tool identifier, unique within agent")
+    name: str = Field(
+        ...,
+        pattern=r"^[0-9A-Za-z_]+$",
+        description="Tool identifier (alphanumeric and underscores only)",
+    )
     description: str = Field(..., description="Human-readable tool description")
     type: str = Field(
         ..., description="Tool type: vectorstore, function, mcp, or prompt"
@@ -131,7 +135,7 @@ class VectorstoreTool(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(..., description="Tool identifier")
+    name: str = Field(..., pattern=r"^[0-9A-Za-z_]+$", description="Tool identifier")
     description: str = Field(..., description="Tool description")
     type: Literal["vectorstore"] = Field(default="vectorstore", description="Tool type")
     source: str = Field(..., description="Path to data file or directory")
@@ -238,7 +242,7 @@ class FunctionTool(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(..., description="Tool identifier")
+    name: str = Field(..., pattern=r"^[0-9A-Za-z_]+$", description="Tool identifier")
     description: str = Field(..., description="Tool description")
     type: Literal["function"] = Field(default="function", description="Tool type")
     file: str = Field(..., description="Path to Python file")
@@ -280,7 +284,7 @@ class MCPTool(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Required fields
-    name: str = Field(..., description="Tool identifier")
+    name: str = Field(..., pattern=r"^[0-9A-Za-z_]+$", description="Tool identifier")
     description: str = Field(..., description="Tool description")
     type: Literal["mcp"] = Field(default="mcp", description="Tool type")
 
@@ -389,7 +393,7 @@ class PromptTool(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(..., description="Tool identifier")
+    name: str = Field(..., pattern=r"^[0-9A-Za-z_]+$", description="Tool identifier")
     description: str = Field(..., description="Tool description")
     type: Literal["prompt"] = Field(default="prompt", description="Tool type")
     template: str | None = Field(None, description="Inline prompt template")

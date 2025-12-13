@@ -83,6 +83,7 @@ def _prompt_agent_name(default: str | None = None) -> str:
 ```
 
 **Prompt Display**:
+
 ```
 ? Enter agent name: my-agent
 ```
@@ -107,6 +108,7 @@ def _prompt_llm_provider(default: str = "ollama") -> str:
 ```
 
 **Prompt Display**:
+
 ```
 ? Select LLM provider: (Use arrow keys)
 > Ollama (local) - Local LLM inference, gpt-oss:20b
@@ -133,6 +135,7 @@ def _prompt_vectorstore(default: str = "chromadb") -> str:
 ```
 
 **Prompt Display**:
+
 ```
 ? Select vector store: (Use arrow keys)
 > ChromaDB (default) - Embedded vector database, http://localhost:8000
@@ -141,6 +144,7 @@ def _prompt_vectorstore(default: str = "chromadb") -> str:
 ```
 
 **Note**: When "In-Memory" is selected, display warning:
+
 ```
 Note: In-memory storage is ephemeral. Data will be lost on restart.
 ```
@@ -165,6 +169,7 @@ def _prompt_evals(
 ```
 
 **Prompt Display**:
+
 ```
 ? Select evaluation metrics (space to toggle, enter to confirm):
   [X] RAG Faithfulness - Measures if response is grounded in context
@@ -193,6 +198,7 @@ def _prompt_mcp_servers(
 ```
 
 **Prompt Display**:
+
 ```
 ? Select MCP servers (space to toggle, enter to confirm):
   [X] Brave Search - Web search capabilities
@@ -260,7 +266,7 @@ def init(
                 llm_provider=llm or "ollama",
                 vector_store=vectorstore or "chromadb",
                 evals=_parse_comma_arg(evals) if evals else ["rag-faithfulness", "rag-answer_relevancy"],
-                mcp_servers=_parse_comma_arg(mcp) if mcp else ["brave-search", "memory", "sequential-thinking"],
+                mcp_servers=_parse_comma_arg(mcp) if mcp else ["brave-search", "memory", "sequentialthinking"],
             )
         else:
             wizard_result = run_wizard(
@@ -358,7 +364,7 @@ def _prompt_evals(
 def _prompt_mcp_servers(
     defaults: list[str] | None = None,
 ) -> list[str]:
-    defaults = defaults or ["brave-search", "memory", "sequential-thinking"]
+    defaults = defaults or ["brave-search", "memory", "sequentialthinking"]
 
     choices = [
         Choice(
@@ -435,19 +441,21 @@ def _prompt_mcp_servers(
 │ LLM Provider: ollama (gpt-oss:20b)                         │
 │ Vector Store: chromadb (http://localhost:8000)             │
 │ Evals: rag-faithfulness, rag-answer_relevancy              │
-│ MCP Servers: brave-search, memory, sequential-thinking     │
+│ MCP Servers: brave-search, memory, sequentialthinking     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Testing Requirements
 
 1. **Unit Tests** (`tests/unit/test_wizard.py`):
+
    - Test each prompt function with mocked InquirerPy
    - Test `is_interactive()` under different conditions
    - Test `WizardResult` validation
    - Test agent name validation
 
 2. **Integration Tests** (`tests/integration/test_init_wizard.py`):
+
    - Test full wizard flow with subprocess
    - Test non-interactive mode with flags
    - Test Ctrl+C cancellation handling

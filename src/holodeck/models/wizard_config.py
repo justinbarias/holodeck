@@ -99,7 +99,7 @@ VALID_MCP_SERVERS = frozenset(
     [
         "brave-search",
         "memory",
-        "sequential-thinking",
+        "sequentialthinking",
         "filesystem",
         "github",
         "postgres",
@@ -584,7 +584,7 @@ MCP_SERVER_CHOICES: list[MCPServerChoice] = [
         command="npx",
     ),
     MCPServerChoice(
-        value="sequential-thinking",
+        value="sequentialthinking",
         display_name="Sequential Thinking",
         description="Dynamic problem-solving through structured thinking",
         is_default=True,

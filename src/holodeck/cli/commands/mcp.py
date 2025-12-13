@@ -5,7 +5,192 @@ for searching, listing, adding, and removing MCP servers from the
 official MCP Registry.
 """
 
+import json
+from pathlib import Path
+
 import click
+
+from holodeck.config.loader import add_mcp_server_to_agent, add_mcp_server_to_global
+from holodeck.lib.errors import (
+    ConfigError,
+    DuplicateServerError,
+    FileNotFoundError,
+    RegistryAPIError,
+    RegistryConnectionError,
+    ServerNotFoundError,
+)
+from holodeck.models.registry import RegistryServer, SearchResult
+from holodeck.services.mcp_registry import (
+    SUPPORTED_REGISTRY_TYPES,
+    MCPRegistryClient,
+    find_stdio_package,
+    registry_to_mcp_tool,
+)
+
+# --- Helper Functions for Search Command ---
+
+
+def _truncate(text: str, max_len: int) -> str:
+    """Truncate text with ellipsis if too long.
+
+    Args:
+        text: The text to truncate.
+        max_len: Maximum length including ellipsis.
+
+    Returns:
+        Truncated text with ellipsis if exceeded max_len.
+    """
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
+
+
+def _get_transports(server: RegistryServer) -> str:
+    """Get comma-separated transport types from server packages.
+
+    Args:
+        server: Registry server with package information.
+
+    Returns:
+        Comma-separated transport types, or "stdio" if none found.
+    """
+    transports: set[str] = set()
+    for pkg in server.packages:
+        transports.add(pkg.transport.type)
+    return ", ".join(sorted(transports)) or "stdio"
+
+
+def _get_transport_list(server: RegistryServer) -> list[str]:
+    """Get list of transport types for JSON output.
+
+    Args:
+        server: Registry server with package information.
+
+    Returns:
+        Sorted list of transport types, or ["stdio"] if none found.
+    """
+    transports: set[str] = set()
+    for pkg in server.packages:
+        transports.add(pkg.transport.type)
+    return sorted(transports) if transports else ["stdio"]
+
+
+# --- Output Formatters for Search Command ---
+
+
+def _get_version_display(server: RegistryServer) -> str:
+    """Get version display string for table output.
+
+    Shows single version if only one, or latest version with count for multiple.
+
+    Args:
+        server: Registry server with versions.
+
+    Returns:
+        Version display string (e.g., "1.0.0" or "1.0.0 (+2)").
+    """
+    if server.versions:
+        latest = server.versions[0].version or server.version or "-"
+        if len(server.versions) == 1:
+            return latest
+        # Show latest version with additional count
+        return f"{latest} (+{len(server.versions) - 1})"
+    return server.version or "-"
+
+
+def _output_table(result: SearchResult) -> None:
+    """Format search results as a table.
+
+    Args:
+        result: Search result from the MCP registry.
+    """
+    if not result.servers:
+        click.echo("No servers found.")
+        return
+
+    # Calculate column widths based on content
+    name_width = min(40, max(len(s.name) for s in result.servers))
+    version_width = 12
+    desc_width = 35
+
+    # Header
+    click.echo(
+        f"{'NAME':<{name_width}}  {'VERSION':<{version_width}}  "
+        f"{'DESCRIPTION':<{desc_width}}  TRANSPORT"
+    )
+    click.echo("-" * (name_width + version_width + desc_width + 18))
+
+    # Rows
+    for server in result.servers:
+        name = _truncate(server.name, name_width)
+        version = _get_version_display(server)
+        desc = _truncate(server.description, desc_width)
+        transports = _get_transports(server)
+        click.echo(
+            f"{name:<{name_width}}  {version:<{version_width}}  "
+            f"{desc:<{desc_width}}  {transports}"
+        )
+
+
+def _format_version_for_json(server: RegistryServer) -> list[dict[str, object]]:
+    """Format version details for JSON output.
+
+    Args:
+        server: Registry server with versions.
+
+    Returns:
+        List of version detail dictionaries.
+    """
+    if not server.versions:
+        # Fallback if versions not populated
+        return [{"version": server.version}]
+
+    versions_output: list[dict[str, object]] = []
+    for v in server.versions:
+        version_info: dict[str, object] = {
+            "version": v.version,
+            "packages": [
+                {
+                    "registry_type": p.registry_type,
+                    "identifier": p.identifier,
+                    "version": p.version,
+                    "transport": p.transport.type,
+                }
+                for p in v.packages
+            ],
+        }
+        # Add metadata if available
+        if v.meta:
+            version_info["published_at"] = (
+                v.meta.published_at.isoformat() if v.meta.published_at else None
+            )
+            version_info["is_latest"] = v.meta.is_latest
+            version_info["status"] = v.meta.status
+        versions_output.append(version_info)
+
+    return versions_output
+
+
+def _output_json(result: SearchResult) -> None:
+    """Format search results as JSON.
+
+    Args:
+        result: Search result from the MCP registry.
+    """
+    output = {
+        "servers": [
+            {
+                "name": s.name,
+                "description": s.description,
+                "transports": _get_transport_list(s),
+                "versions": _format_version_for_json(s),
+            }
+            for s in result.servers
+        ],
+        "total_count": result.total_count,
+        "has_more": result.next_cursor is not None,
+    }
+    click.echo(json.dumps(output, indent=2))
 
 
 @click.group(name="mcp")
@@ -71,8 +256,26 @@ def search(query: str | None, limit: int, as_json: bool) -> None:
         Get results as JSON:
             holodeck mcp search --json
     """
-    # TODO: Implement in Phase 3 (T008-T013)
-    click.echo("mcp search: Not yet implemented")
+    try:
+        with MCPRegistryClient() as client:
+            result = client.search(query=query, limit=limit)
+
+            if as_json:
+                _output_json(result)
+            else:
+                _output_table(result)
+
+            # Show pagination hint if more results available
+            if result.next_cursor and not as_json:
+                click.echo(f"\n{result.total_count} total results. More available.")
+
+    except RegistryConnectionError as e:
+        click.secho(f"Error: Registry unavailable - {e}", fg="red", err=True)
+        raise SystemExit(1) from e
+    except RegistryAPIError as e:
+        msg = f"Error: Registry service error - {e}"
+        click.secho(msg, fg="red", err=True)
+        raise SystemExit(1) from e
 
 
 @mcp.command(name="list")
@@ -191,8 +394,84 @@ def add(
         Add specific version:
             holodeck mcp add io.github.example/server --version 1.2.0
     """
-    # TODO: Implement in Phase 4 (T014-T021)
-    click.echo("mcp add: Not yet implemented")
+    try:
+        # 1. Fetch server from registry
+        with MCPRegistryClient() as client:
+            registry_server = client.get_server(server, server_version)
+
+        # 2. Find STDIO package (HoloDeck only supports stdio transport)
+        stdio_pkg = find_stdio_package(registry_server)
+        if stdio_pkg is None:
+            available = {p.transport.type for p in registry_server.packages}
+            click.secho(
+                f"Error: Server '{server}' does not support stdio transport.\n"
+                f"Available transports: {', '.join(sorted(available))}\n"
+                "HoloDeck currently only supports stdio transport.",
+                fg="red",
+                err=True,
+            )
+            raise SystemExit(1)
+
+        # 3. Validate registry type is supported
+        if stdio_pkg.registry_type not in SUPPORTED_REGISTRY_TYPES:
+            click.secho(
+                f"Error: Server uses unsupported package type "
+                f"'{stdio_pkg.registry_type}'.\n"
+                f"Supported types: {', '.join(sorted(SUPPORTED_REGISTRY_TYPES))}.",
+                fg="red",
+                err=True,
+            )
+            raise SystemExit(1)
+
+        # 4. Convert to MCPTool (pass specific package)
+        mcp_tool = registry_to_mcp_tool(registry_server, package=stdio_pkg)
+
+        # 5. Apply custom name if provided
+        if custom_name:
+            mcp_tool = mcp_tool.model_copy(update={"name": custom_name})
+
+        # 6. Add to config (agent or global)
+        if global_install:
+            add_mcp_server_to_global(mcp_tool)
+            target_display = "~/.holodeck/config.yaml"
+        else:
+            agent_path = Path(agent_file)
+            add_mcp_server_to_agent(agent_path, mcp_tool)
+            target_display = agent_file
+
+        # 7. Success message
+        click.secho(f"Added '{mcp_tool.name}' to {target_display}", fg="green")
+
+        # 8. Display required environment variables
+        env_vars = stdio_pkg.environment_variables
+        if env_vars:
+            click.echo("\nRequired environment variables:")
+            for ev in env_vars:
+                required_marker = " (required)" if ev.required else " (optional)"
+                desc = f" - {ev.description}" if ev.description else ""
+                click.echo(f"  {ev.name}{required_marker}{desc}")
+            click.echo("\nSet these in your .env file or shell environment.")
+
+    except RegistryConnectionError as e:
+        click.secho(f"Error: Registry unavailable - {e}", fg="red", err=True)
+        raise SystemExit(1) from e
+    except RegistryAPIError as e:
+        click.secho(f"Error: Registry error - {e}", fg="red", err=True)
+        raise SystemExit(1) from e
+    except ServerNotFoundError as e:
+        click.secho(
+            f"Error: Server '{server}' not found in registry", fg="red", err=True
+        )
+        raise SystemExit(1) from e
+    except DuplicateServerError as e:
+        click.secho(f"Error: {e}", fg="red", err=True)
+        raise SystemExit(1) from e
+    except FileNotFoundError as e:
+        click.secho(f"Error: {e.message}", fg="red", err=True)
+        raise SystemExit(1) from e
+    except ConfigError as e:
+        click.secho(f"Error: {e.message}", fg="red", err=True)
+        raise SystemExit(1) from e
 
 
 @mcp.command(name="remove")

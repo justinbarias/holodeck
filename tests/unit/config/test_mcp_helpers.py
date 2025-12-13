@@ -1,0 +1,341 @@
+"""Unit tests for MCP server helper functions (T021a-c).
+
+Tests for add_mcp_server_to_agent(), add_mcp_server_to_global(),
+save_global_config(), and duplicate detection logic.
+"""
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+
+from holodeck.config.loader import (
+    _check_mcp_duplicate,
+    add_mcp_server_to_agent,
+    add_mcp_server_to_global,
+    save_global_config,
+)
+from holodeck.lib.errors import DuplicateServerError
+from holodeck.models.config import GlobalConfig
+from holodeck.models.tool import CommandType, MCPTool, TransportType
+
+
+@pytest.fixture
+def sample_mcp_tool() -> MCPTool:
+    """Create a sample MCPTool for testing."""
+    return MCPTool(
+        name="filesystem",
+        description="Read and explore files",
+        type="mcp",
+        transport=TransportType.STDIO,
+        command=CommandType.NPX,
+        args=["-y", "@modelcontextprotocol/server-filesystem@1.0.0"],
+        registry_name="io.github.modelcontextprotocol/server-filesystem",
+    )
+
+
+@pytest.fixture
+def sample_agent_yaml() -> dict[str, Any]:
+    """Create a sample agent configuration."""
+    return {
+        "name": "test-agent",
+        "model": {"provider": "openai", "name": "gpt-4o"},
+        "instructions": {"inline": "You are a helpful assistant."},
+        "tools": [],
+    }
+
+
+class TestSaveGlobalConfig:
+    """Tests for save_global_config() function."""
+
+    def test_creates_directory_if_not_exists(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """Test that save_global_config creates ~/.holodeck/ if needed."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        config_path = temp_dir / ".holodeck" / "config.yaml"
+
+        config = GlobalConfig(
+            providers=None,
+            vectorstores=None,
+            execution=None,
+            deployment=None,
+            mcp_servers=None,
+        )
+        result_path = save_global_config(config, config_path)
+
+        assert result_path == config_path
+        assert config_path.exists()
+        assert config_path.parent.exists()
+
+    def test_saves_valid_yaml(self, temp_dir: Path) -> None:
+        """Test that saved config is valid YAML."""
+        config_path = temp_dir / "config.yaml"
+        config = GlobalConfig(
+            providers=None,
+            vectorstores=None,
+            execution=None,
+            deployment=None,
+            mcp_servers=[
+                MCPTool(
+                    name="test",
+                    description="Test server",
+                    type="mcp",
+                    transport=TransportType.STDIO,
+                    command=CommandType.NPX,
+                    args=["-y", "test-package"],
+                )
+            ],
+        )
+
+        save_global_config(config, config_path)
+
+        # Verify YAML is valid and parseable
+        content = yaml.safe_load(config_path.read_text())
+        assert "mcp_servers" in content
+        assert len(content["mcp_servers"]) == 1
+        assert content["mcp_servers"][0]["name"] == "test"
+
+    def test_preserves_existing_fields(self, temp_dir: Path) -> None:
+        """Test that existing config fields are preserved."""
+        config_path = temp_dir / "config.yaml"
+        config = GlobalConfig(
+            providers={"openai": {"provider": "openai", "name": "gpt-4o"}},
+            vectorstores=None,
+            execution=None,
+            deployment=None,
+            mcp_servers=[
+                MCPTool(
+                    name="test",
+                    description="Test server",
+                    type="mcp",
+                    transport=TransportType.STDIO,
+                    command=CommandType.NPX,
+                    args=["-y", "test-package"],
+                )
+            ],
+        )
+
+        save_global_config(config, config_path)
+
+        content = yaml.safe_load(config_path.read_text())
+        assert "providers" in content
+        assert "mcp_servers" in content
+
+
+class TestCheckMcpDuplicate:
+    """Tests for _check_mcp_duplicate() helper function."""
+
+    def test_detects_exact_registry_duplicate(self, sample_mcp_tool: MCPTool) -> None:
+        """Test that exact registry_name match is detected as duplicate."""
+        existing_tools = [
+            {
+                "name": "filesystem",
+                "type": "mcp",
+                "registry_name": "io.github.modelcontextprotocol/server-filesystem",
+            }
+        ]
+
+        with pytest.raises(DuplicateServerError) as exc_info:
+            _check_mcp_duplicate(existing_tools, sample_mcp_tool)
+
+        assert "already configured" in str(exc_info.value)
+
+    def test_detects_name_conflict(self, sample_mcp_tool: MCPTool) -> None:
+        """Test that same name with different registry is detected."""
+        existing_tools = [
+            {
+                "name": "filesystem",
+                "type": "mcp",
+                "registry_name": "io.github.other/filesystem",
+            }
+        ]
+
+        with pytest.raises(DuplicateServerError) as exc_info:
+            _check_mcp_duplicate(existing_tools, sample_mcp_tool)
+
+        assert "already exists" in str(exc_info.value)
+        assert "--name" in str(exc_info.value)
+
+    def test_allows_different_names(self, sample_mcp_tool: MCPTool) -> None:
+        """Test that different names are allowed."""
+        existing_tools = [
+            {
+                "name": "github",
+                "type": "mcp",
+                "registry_name": "io.github.other/github",
+            }
+        ]
+
+        # Should not raise
+        _check_mcp_duplicate(existing_tools, sample_mcp_tool)
+
+    def test_ignores_non_mcp_tools(self, sample_mcp_tool: MCPTool) -> None:
+        """Test that non-MCP tools are ignored in duplicate check."""
+        existing_tools = [
+            {
+                "name": "filesystem",
+                "type": "vectorstore",
+            }
+        ]
+
+        # Should not raise even though name matches
+        _check_mcp_duplicate(existing_tools, sample_mcp_tool)
+
+
+class TestAddMcpServerToAgent:
+    """Tests for add_mcp_server_to_agent() function."""
+
+    def test_creates_tools_list_if_missing(
+        self, temp_dir: Path, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that tools list is created if missing from agent config."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "Test instructions"},
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        add_mcp_server_to_agent(agent_path, sample_mcp_tool)
+
+        updated_config = yaml.safe_load(agent_path.read_text())
+        assert "tools" in updated_config
+        assert len(updated_config["tools"]) == 1
+        assert updated_config["tools"][0]["name"] == "filesystem"
+
+    def test_appends_to_existing_tools(
+        self, temp_dir: Path, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that new tool is appended to existing tools list."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "Test instructions"},
+            "tools": [
+                {"name": "existing", "type": "function", "function": "test_func"}
+            ],
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        add_mcp_server_to_agent(agent_path, sample_mcp_tool)
+
+        updated_config = yaml.safe_load(agent_path.read_text())
+        assert len(updated_config["tools"]) == 2
+        assert updated_config["tools"][1]["name"] == "filesystem"
+
+    def test_raises_on_missing_file(
+        self, temp_dir: Path, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that FileNotFoundError is raised for missing agent.yaml."""
+        from holodeck.lib.errors import FileNotFoundError
+
+        agent_path = temp_dir / "nonexistent.yaml"
+
+        with pytest.raises(FileNotFoundError) as exc_info:
+            add_mcp_server_to_agent(agent_path, sample_mcp_tool)
+
+        assert "agent.yaml" in str(exc_info.value) or "No agent" in str(exc_info.value)
+
+    def test_raises_on_duplicate(
+        self, temp_dir: Path, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that DuplicateServerError is raised for duplicate servers."""
+        agent_path = temp_dir / "agent.yaml"
+        agent_config = {
+            "name": "test-agent",
+            "model": {"provider": "openai"},
+            "instructions": {"inline": "Test"},
+            "tools": [
+                {
+                    "name": "filesystem",
+                    "type": "mcp",
+                    "registry_name": "io.github.modelcontextprotocol/server-filesystem",
+                }
+            ],
+        }
+        agent_path.write_text(yaml.dump(agent_config))
+
+        with pytest.raises(DuplicateServerError):
+            add_mcp_server_to_agent(agent_path, sample_mcp_tool)
+
+
+class TestAddMcpServerToGlobal:
+    """Tests for add_mcp_server_to_global() function."""
+
+    def test_creates_config_if_not_exists(
+        self, temp_dir: Path, monkeypatch: Any, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that global config is created if it doesn't exist."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        config_path = temp_dir / ".holodeck" / "config.yaml"
+
+        result_path = add_mcp_server_to_global(sample_mcp_tool, config_path)
+
+        assert result_path == config_path
+        assert config_path.exists()
+
+        content = yaml.safe_load(config_path.read_text())
+        assert "mcp_servers" in content
+        assert len(content["mcp_servers"]) == 1
+
+    def test_appends_to_existing_servers(
+        self, temp_dir: Path, monkeypatch: Any, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that new server is appended to existing mcp_servers."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        config_path = holodeck_dir / "config.yaml"
+
+        # Create initial config with one server
+        initial_config = {
+            "mcp_servers": [
+                {
+                    "name": "github",
+                    "description": "GitHub API",
+                    "type": "mcp",
+                    "transport": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "github-server"],
+                    "registry_name": "io.github.other/github",
+                }
+            ]
+        }
+        config_path.write_text(yaml.dump(initial_config))
+
+        add_mcp_server_to_global(sample_mcp_tool, config_path)
+
+        content = yaml.safe_load(config_path.read_text())
+        assert len(content["mcp_servers"]) == 2
+
+    def test_raises_on_duplicate(
+        self, temp_dir: Path, monkeypatch: Any, sample_mcp_tool: MCPTool
+    ) -> None:
+        """Test that DuplicateServerError is raised for duplicate servers."""
+        monkeypatch.setenv("HOME", str(temp_dir))
+        holodeck_dir = temp_dir / ".holodeck"
+        holodeck_dir.mkdir()
+        config_path = holodeck_dir / "config.yaml"
+
+        # Create initial config with the same server
+        initial_config = {
+            "mcp_servers": [
+                {
+                    "name": "filesystem",
+                    "description": "Filesystem",
+                    "type": "mcp",
+                    "transport": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "fs-server"],
+                    "registry_name": "io.github.modelcontextprotocol/server-filesystem",
+                }
+            ]
+        }
+        config_path.write_text(yaml.dump(initial_config))
+
+        with pytest.raises(DuplicateServerError):
+            add_mcp_server_to_global(sample_mcp_tool, config_path)

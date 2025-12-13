@@ -16,6 +16,7 @@ import yaml
 
 from holodeck.cli.exceptions import InitError, ValidationError
 from holodeck.lib.template_engine import TemplateRenderer
+from holodeck.lib.validation import sanitize_tool_name
 from holodeck.models.project_config import ProjectInitInput, ProjectInitResult
 from holodeck.models.template_manifest import TemplateManifest
 from holodeck.models.wizard_config import (
@@ -52,14 +53,14 @@ def get_mcp_server_config(server_id: str) -> dict[str, str]:
     for server in MCP_SERVER_CHOICES:
         if server.value == server_id:
             return {
-                "name": server.value,
+                "name": sanitize_tool_name(server.value),
                 "display_name": server.display_name,
                 "description": server.description,
                 "package": server.package_identifier,
                 "command": server.command,
             }
     return {
-        "name": server_id,
+        "name": sanitize_tool_name(server_id),
         "display_name": server_id,
         "description": "",
         "package": server_id,

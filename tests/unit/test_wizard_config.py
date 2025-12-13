@@ -279,7 +279,7 @@ class TestWizardResult:
         all_servers = [
             "brave-search",
             "memory",
-            "sequential-thinking",
+            "sequentialthinking",
             "filesystem",
             "github",
             "postgres",
@@ -457,7 +457,7 @@ class TestMCPServerChoice:
         defaults = [c for c in MCP_SERVER_CHOICES if c.is_default]
         assert len(defaults) == 3
         default_values = {c.value for c in defaults}
-        assert default_values == {"brave-search", "memory", "sequential-thinking"}
+        assert default_values == {"brave-search", "memory", "sequentialthinking"}
 
     def test_all_choices_are_valid(self) -> None:
         """Test that all choices have valid values."""
@@ -493,7 +493,7 @@ class TestHelperFunctions:
         assert len(defaults) == 3
         assert "brave-search" in defaults
         assert "memory" in defaults
-        assert "sequential-thinking" in defaults
+        assert "sequentialthinking" in defaults
 
 
 class TestValidSets:
@@ -531,7 +531,7 @@ class TestValidSets:
                 [
                     "brave-search",
                     "memory",
-                    "sequential-thinking",
+                    "sequentialthinking",
                     "filesystem",
                     "github",
                     "postgres",

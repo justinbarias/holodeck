@@ -3,7 +3,7 @@
 **Input**: Design documents from `/specs/013-mcp-cli/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
-**Tests**: Not explicitly requested in the feature specification, so test tasks are not included.
+**Tests**: Test tasks are included within each phase to ensure incremental validation.
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
@@ -19,27 +19,27 @@
 
 ---
 
-## Phase 1: Setup (Shared Infrastructure)
+## Phase 1: Setup (Shared Infrastructure) ✅
 
 **Purpose**: Project initialization and data models for registry API
 
-- [ ] T001 [P] Create RegistryServer and related Pydantic models in src/holodeck/models/registry.py
-- [ ] T002 [P] Add mcp_servers field to GlobalConfig model in src/holodeck/models/config.py
-- [ ] T002a [P] Add registry_name field to MCPTool model in src/holodeck/models/tool.py for duplicate detection
-- [ ] T003 [P] Create custom exceptions (RegistryConnectionError, RegistryAPIError, ServerNotFoundError) in src/holodeck/lib/errors.py
+- [x] T001 [P] Create RegistryServer and related Pydantic models in src/holodeck/models/registry.py
+- [x] T002 [P] Add mcp_servers field to GlobalConfig model in src/holodeck/models/config.py
+- [x] T002a [P] Add registry_name field to MCPTool model in src/holodeck/models/tool.py for duplicate detection
+- [x] T003 [P] Create custom exceptions (RegistryConnectionError, RegistryAPIError, ServerNotFoundError) in src/holodeck/lib/errors.py
 
 ---
 
-## Phase 2: Foundational (Blocking Prerequisites)
+## Phase 2: Foundational (Blocking Prerequisites) ✅
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Implement MCPRegistryClient class in src/holodeck/services/mcp_registry.py with search(), get_server(), list_versions() methods
-- [ ] T005 Implement registry_to_mcp_tool() transformation function in src/holodeck/services/mcp_registry.py
-- [ ] T006 Create mcp command group skeleton in src/holodeck/cli/commands/mcp.py with Click group and help text
-- [ ] T007 Register mcp command group in src/holodeck/cli/main.py
+- [x] T004 Implement MCPRegistryClient class in src/holodeck/services/mcp_registry.py with search(), get_server(), list_versions() methods
+- [x] T005 Implement registry_to_mcp_tool() transformation function in src/holodeck/services/mcp_registry.py
+- [x] T006 Create mcp command group skeleton in src/holodeck/cli/commands/mcp.py with Click group and help text
+- [x] T007 Register mcp command group in src/holodeck/cli/main.py
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -53,14 +53,23 @@
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Implement `holodeck mcp search` command in src/holodeck/cli/commands/mcp.py with QUERY argument
-- [ ] T009 [US1] Add --limit and --json options to search command in src/holodeck/cli/commands/mcp.py
-- [ ] T010 [US1] Implement table output formatter for search results in src/holodeck/cli/commands/mcp.py
-- [ ] T011 [US1] Implement JSON output formatter for search results in src/holodeck/cli/commands/mcp.py
-- [ ] T012 [US1] Add error handling for network timeout, API errors, and empty results in search command
-- [ ] T013 [US1] Add pagination support (next_cursor handling) to search command
+- [x] T008 [US1] Implement `holodeck mcp search` command in src/holodeck/cli/commands/mcp.py with QUERY argument
+- [x] T009 [US1] Add --limit and --json options to search command in src/holodeck/cli/commands/mcp.py
+- [x] T010 [US1] Implement table output formatter for search results in src/holodeck/cli/commands/mcp.py
+- [x] T011 [US1] Implement JSON output formatter for search results in src/holodeck/cli/commands/mcp.py
+- [x] T012 [US1] Add error handling for network timeout, API errors, and empty results in search command
+- [x] T013 [US1] Add pagination support (next_cursor handling) to search command
 
-**Checkpoint**: At this point, User Story 1 should be fully functional - users can search the MCP registry
+### Tests for User Story 1
+
+- [x] T013a [US1] [P] Add unit tests for search command basic functionality in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013b [US1] [P] Add unit tests for --limit and --json options in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013c [US1] [P] Add unit tests for table output formatter in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013d [US1] [P] Add unit tests for JSON output formatter in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013e [US1] [P] Add unit tests for error handling (network timeout, API errors, empty results) in tests/unit/cli/commands/test_mcp_search.py
+- [x] T013f [US1] [P] Add unit tests for pagination support (next_cursor handling) in tests/unit/cli/commands/test_mcp_search.py
+
+**Checkpoint**: At this point, User Story 1 should be fully functional and tested - users can search the MCP registry
 
 ---
 
@@ -81,7 +90,17 @@
 - [ ] T020 [US2] Display required environment variables after successful add
 - [ ] T021 [US2] Add error handling for no agent.yaml found, registry errors, and file write errors
 
-**Checkpoint**: At this point, User Stories 1 AND 2 work - users can search and add MCP servers
+### Tests for User Story 2
+
+- [ ] T021a [US2] [P] Add unit tests for add_mcp_server_to_agent() helper in tests/unit/config/test_mcp_helpers.py
+- [ ] T021b [US2] [P] Add unit tests for add_mcp_server_to_global() helper in tests/unit/config/test_mcp_helpers.py
+- [ ] T021c [US2] [P] Add unit tests for save_global_config() in tests/unit/config/test_mcp_helpers.py
+- [ ] T021d [US2] [P] Add unit tests for add command basic functionality in tests/unit/cli/commands/test_mcp_add.py
+- [ ] T021e [US2] [P] Add unit tests for --agent, --global, --version, --transport, --name options in tests/unit/cli/commands/test_mcp_add.py
+- [ ] T021f [US2] [P] Add unit tests for duplicate detection logic in tests/unit/cli/commands/test_mcp_add.py
+- [ ] T021g [US2] [P] Add unit tests for error handling (no agent.yaml, registry errors, file write errors) in tests/unit/cli/commands/test_mcp_add.py
+
+**Checkpoint**: At this point, User Stories 1 AND 2 work and are tested - users can search and add MCP servers
 
 ---
 
@@ -100,7 +119,16 @@
 - [ ] T026 [US3] Implement table output with SOURCE column showing agent/global origin
 - [ ] T027 [US3] Add empty state message "No MCP servers configured. Use 'holodeck mcp search' to find available servers."
 
-**Checkpoint**: At this point, User Stories 1, 2, AND 3 work - users can search, add, and list servers
+### Tests for User Story 3
+
+- [ ] T027a [US3] [P] Add unit tests for get_mcp_servers_from_agent() helper in tests/unit/config/test_mcp_helpers.py
+- [ ] T027b [US3] [P] Add unit tests for get_mcp_servers_from_global() helper in tests/unit/config/test_mcp_helpers.py
+- [ ] T027c [US3] [P] Add unit tests for list command basic functionality in tests/unit/cli/commands/test_mcp_list.py
+- [ ] T027d [US3] [P] Add unit tests for --agent, --global, --all, --json options in tests/unit/cli/commands/test_mcp_list.py
+- [ ] T027e [US3] [P] Add unit tests for table output with SOURCE column in tests/unit/cli/commands/test_mcp_list.py
+- [ ] T027f [US3] [P] Add unit tests for empty state message in tests/unit/cli/commands/test_mcp_list.py
+
+**Checkpoint**: At this point, User Stories 1, 2, AND 3 work and are tested - users can search, add, and list servers
 
 ---
 
@@ -118,7 +146,15 @@
 - [ ] T031 [US4] Add --agent, -g/--global options to remove command
 - [ ] T032 [US4] Add error handling for server not found and file write errors
 
-**Checkpoint**: All user stories should now be independently functional
+### Tests for User Story 4
+
+- [ ] T032a [US4] [P] Add unit tests for remove_mcp_server_from_agent() helper in tests/unit/config/test_mcp_helpers.py
+- [ ] T032b [US4] [P] Add unit tests for remove_mcp_server_from_global() helper in tests/unit/config/test_mcp_helpers.py
+- [ ] T032c [US4] [P] Add unit tests for remove command basic functionality in tests/unit/cli/commands/test_mcp_remove.py
+- [ ] T032d [US4] [P] Add unit tests for --agent, --global options in tests/unit/cli/commands/test_mcp_remove.py
+- [ ] T032e [US4] [P] Add unit tests for error handling (server not found, file write errors) in tests/unit/cli/commands/test_mcp_remove.py
+
+**Checkpoint**: All user stories should now be independently functional and tested
 
 ---
 
@@ -126,21 +162,44 @@
 
 **Purpose**: Integrate global MCP servers into agent config loading
 
+### Implementation for Config Merge
+
 - [ ] T033 Implement _merge_mcp_servers() method in src/holodeck/config/loader.py
 - [ ] T034 Extend merge_configs() to call _merge_mcp_servers() for global MCP server merging
 - [ ] T035 Add merge precedence logic (agent-level MCP tools override global with same name)
+
+### Tests for Config Merge
+
+- [ ] T035a [P] Add unit tests for _merge_mcp_servers() method in tests/unit/config/test_config_merge.py
+- [ ] T035b [P] Add unit tests for merge_configs() with MCP server merging in tests/unit/config/test_config_merge.py
+- [ ] T035c [P] Add unit tests for merge precedence logic (agent overrides global) in tests/unit/config/test_config_merge.py
+
+**Checkpoint**: Config merge integration complete and tested - global MCP servers merge into agent config at runtime
 
 ---
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-**Purpose**: Improvements that affect multiple user stories
+**Purpose**: Integration tests, foundational unit tests, and final validation
 
-- [ ] T036 [P] Add unit tests for MCPRegistryClient in tests/unit/services/test_mcp_registry.py
-- [ ] T037 [P] Add unit tests for mcp CLI commands in tests/unit/cli/commands/test_mcp.py
-- [ ] T038 [P] Add integration tests for MCP CLI workflows in tests/integration/cli/test_mcp_integration.py
-- [ ] T039 Run quickstart.md validation - verify all documented commands work
-- [ ] T040 Run code quality checks (make format, make lint, make type-check, make security)
+### Foundational Tests (Registry Client)
+
+- [ ] T036 [P] Add unit tests for MCPRegistryClient.search() in tests/unit/services/test_mcp_registry.py
+- [ ] T036a [P] Add unit tests for MCPRegistryClient.get_server() in tests/unit/services/test_mcp_registry.py
+- [ ] T036b [P] Add unit tests for MCPRegistryClient.list_versions() in tests/unit/services/test_mcp_registry.py
+- [ ] T036c [P] Add unit tests for registry_to_mcp_tool() transformation in tests/unit/services/test_mcp_registry.py
+
+### Integration Tests
+
+- [ ] T037 [P] Add integration test for search → add workflow in tests/integration/cli/test_mcp_integration.py
+- [ ] T037a [P] Add integration test for add → list → remove workflow in tests/integration/cli/test_mcp_integration.py
+- [ ] T037b [P] Add integration test for global vs agent config interactions in tests/integration/cli/test_mcp_integration.py
+- [ ] T037c [P] Add integration test for config merge with global MCP servers in tests/integration/cli/test_mcp_integration.py
+
+### Final Validation
+
+- [ ] T038 Run quickstart.md validation - verify all documented commands work
+- [ ] T039 Run code quality checks (make format, make lint, make type-check, make security)
 
 ---
 
@@ -177,13 +236,15 @@
 **Phase 3-6 (User Stories)**: After Phase 2 completes, all user stories can start in parallel:
 ```bash
 # Team can split work:
-Developer A: T008-T013 (US1 Search)
-Developer B: T014-T021 (US2 Add)
-Developer C: T022-T027 (US3 List)
-Developer D: T028-T032 (US4 Remove)
+Developer A: T008-T013f (US1 Search + tests)
+Developer B: T014-T021g (US2 Add + tests)
+Developer C: T022-T027f (US3 List + tests)
+Developer D: T028-T032e (US4 Remove + tests)
 ```
 
-**Phase 8 (Polish)**: T036, T037, T038 can run in parallel (different test files)
+**Phase 7 (Config Merge)**: T033-T035c can run in parallel with user stories
+
+**Phase 8 (Polish)**: T036-T036c, T037-T037c can run in parallel (different test files)
 
 ---
 
@@ -205,9 +266,9 @@ Task: "Create registry exceptions in src/holodeck/lib/errors.py"
 
 1. Complete Phase 1: Setup (T001-T003)
 2. Complete Phase 2: Foundational (T004-T007)
-3. Complete Phase 3: User Story 1 - Search (T008-T013)
-4. Complete Phase 4: User Story 2 - Add (T014-T021)
-5. **STOP and VALIDATE**: Test search and add workflows
+3. Complete Phase 3: User Story 1 - Search (T008-T013f, including tests)
+4. Complete Phase 4: User Story 2 - Add (T014-T021g, including tests)
+5. **STOP and VALIDATE**: Run all tests, verify search and add workflows
 6. Deploy/demo if ready - users can discover and add servers
 
 ### Incremental Delivery

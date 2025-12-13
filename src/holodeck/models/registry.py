@@ -117,6 +117,24 @@ class RegistryServerMeta(BaseModel):
     )
 
 
+class ServerVersion(BaseModel):
+    """Version-specific information for an MCP server.
+
+    Contains the version string along with packages and metadata
+    specific to that version. Used in aggregated search results.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    version: str = Field(..., description="Version string (e.g., '1.0.0')")
+    packages: list[RegistryServerPackage] = Field(
+        default_factory=list, description="Package distributions for this version"
+    )
+    meta: RegistryServerMeta | None = Field(
+        None, description="Registry metadata for this version"
+    )
+
+
 class RegistryServer(BaseModel):
     """Complete MCP server representation from registry.
 
@@ -148,6 +166,10 @@ class RegistryServer(BaseModel):
     )
     meta: RegistryServerMeta | None = Field(
         None, description="Registry metadata (status, timestamps)"
+    )
+    versions: list["ServerVersion"] = Field(
+        default_factory=list,
+        description="All available versions (populated in aggregated search results)",
     )
 
 
