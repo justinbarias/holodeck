@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from holodeck.models.llm import LLMProvider
+from holodeck.models.tool import MCPTool
 
 
 class VectorstoreConfig(BaseModel):
@@ -113,4 +114,8 @@ class GlobalConfig(BaseModel):
     )
     deployment: DeploymentConfig | None = Field(
         None, description="Deployment configuration"
+    )
+    mcp_servers: list[MCPTool] | None = Field(
+        None,
+        description="Global MCP server configurations that apply to all agents",
     )

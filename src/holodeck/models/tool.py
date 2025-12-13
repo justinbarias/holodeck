@@ -325,6 +325,14 @@ class MCPTool(BaseModel):
             "ContextualRecall."
         ),
     )
+    registry_name: str | None = Field(
+        None,
+        description=(
+            "Full reverse-DNS name from MCP registry (e.g., 'io.github.user/server'). "
+            "Used for duplicate detection and origin tracking. "
+            "None for manually configured MCP servers."
+        ),
+    )
 
     @field_validator("url")
     @classmethod
