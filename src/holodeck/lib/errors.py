@@ -285,21 +285,31 @@ class RegistryAPIError(HoloDeckError):
 
 
 class ServerNotFoundError(HoloDeckError):
-    """Exception raised when requested MCP server is not found in registry.
+    """Exception raised when requested MCP server is not found.
+
+    Can be raised in two contexts:
+    1. Server not found in MCP registry (during search/add)
+    2. Server not found in local configuration (during remove)
 
     Attributes:
         server_name: The server name that was not found
+        location: Optional location context (e.g., "agent.yaml", "global configuration")
         message: Human-readable error message
     """
 
-    def __init__(self, server_name: str) -> None:
+    def __init__(self, server_name: str, location: str | None = None) -> None:
         """Initialize ServerNotFoundError with server name.
 
         Args:
             server_name: The name of the server that was not found
+            location: Optional location where server was expected
         """
         self.server_name = server_name
-        message = f"Server '{server_name}' not found in MCP registry."
+        self.location = location
+        if location:
+            message = f"Server '{server_name}' not found in {location}."
+        else:
+            message = f"Server '{server_name}' not found in MCP registry."
         super().__init__(message)
 
 

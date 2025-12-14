@@ -14,7 +14,12 @@ from pydantic import ValidationError as PydanticValidationError
 
 from holodeck.config.env_loader import substitute_env_vars
 from holodeck.config.validator import flatten_pydantic_errors
-from holodeck.lib.errors import ConfigError, DuplicateServerError, FileNotFoundError
+from holodeck.lib.errors import (
+    ConfigError,
+    DuplicateServerError,
+    FileNotFoundError,
+    ServerNotFoundError,
+)
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig, GlobalConfig, VectorstoreConfig
 from holodeck.models.tool import DatabaseConfig, MCPTool
@@ -882,6 +887,139 @@ def add_mcp_server_to_global(
 
     # Add new server
     global_config.mcp_servers.append(mcp_tool)
+
+    # Save updated config
+    return save_global_config(global_config, global_path)
+
+
+def remove_mcp_server_from_agent(
+    agent_path: Path,
+    server_name: str,
+) -> None:
+    """Remove an MCP server from agent.yaml tools list.
+
+    Loads the agent configuration, finds and removes the MCP tool
+    by name, and saves the updated configuration.
+
+    Args:
+        agent_path: Path to agent.yaml file
+        server_name: Name of the MCP server to remove
+
+    Raises:
+        FileNotFoundError: If agent.yaml doesn't exist
+        ServerNotFoundError: If server not found in configuration
+        ConfigError: If YAML parsing or writing fails
+    """
+    loader = ConfigLoader()
+
+    # Load existing agent config
+    try:
+        agent_config = loader.parse_yaml(str(agent_path))
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            str(agent_path),
+            f"Agent file not found: {agent_path}",
+        ) from e
+
+    if agent_config is None:
+        agent_config = {}
+
+    # Get tools list (empty if missing)
+    tools = agent_config.get("tools", [])
+
+    # Find and remove the MCP server by name
+    original_len = len(tools)
+    tools = [
+        tool
+        for tool in tools
+        if not (tool.get("type") == "mcp" and tool.get("name") == server_name)
+    ]
+
+    # Check if anything was removed
+    if len(tools) == original_len:
+        raise ServerNotFoundError(server_name, str(agent_path))
+
+    # Update tools list
+    agent_config["tools"] = tools
+
+    # Write back to YAML
+    try:
+        yaml_content = yaml.dump(
+            agent_config,
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
+        agent_path.write_text(yaml_content, encoding="utf-8")
+        logger.debug(f"Removed MCP server '{server_name}' from {agent_path}")
+
+    except OSError as e:
+        raise ConfigError(
+            "agent_config_write",
+            f"Failed to write agent configuration to {agent_path}: {e}",
+        ) from e
+
+
+def remove_mcp_server_from_global(
+    server_name: str,
+    global_path: Path | None = None,
+) -> Path:
+    """Remove an MCP server from global config mcp_servers list.
+
+    Loads the global configuration, finds and removes the MCP server
+    by name, and saves the updated configuration.
+
+    Args:
+        server_name: Name of the MCP server to remove
+        global_path: Optional custom path (defaults to ~/.holodeck/config.yaml)
+
+    Returns:
+        Path where the configuration was saved
+
+    Raises:
+        ServerNotFoundError: If server not found in configuration
+        ConfigError: If YAML parsing or writing fails
+    """
+    if global_path is None:
+        global_path = Path.home() / ".holodeck" / "config.yaml"
+
+    # Load existing global config from the specified path
+    loader = ConfigLoader()
+    if global_path.exists():
+        # Load from custom path
+        raw_config = loader.parse_yaml(str(global_path))
+        if raw_config is None:
+            raise ServerNotFoundError(server_name, "global configuration")
+
+        # Filter MCP servers directly from raw data
+        mcp_servers_raw = [
+            s for s in raw_config.get("mcp_servers", []) if s.get("type") == "mcp"
+        ]
+
+        # Find and remove the server by name
+        original_len = len(mcp_servers_raw)
+        mcp_servers_raw = [s for s in mcp_servers_raw if s.get("name") != server_name]
+
+        # Check if anything was removed
+        if len(mcp_servers_raw) == original_len:
+            raise ServerNotFoundError(server_name, "global configuration")
+
+        # Parse to Pydantic models only when needed
+        mcp_servers = (
+            [MCPTool(**s) for s in mcp_servers_raw] if mcp_servers_raw else None
+        )
+
+        # Create GlobalConfig with updated mcp_servers
+        global_config = GlobalConfig(
+            providers=raw_config.get("providers"),
+            vectorstores=raw_config.get("vectorstores"),
+            execution=raw_config.get("execution"),
+            deployment=raw_config.get("deployment"),
+            mcp_servers=mcp_servers,
+        )
+    else:
+        # No config file exists
+        raise ServerNotFoundError(server_name, "global configuration")
 
     # Save updated config
     return save_global_config(global_config, global_path)

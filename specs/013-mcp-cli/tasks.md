@@ -104,7 +104,7 @@
 
 ---
 
-## Phase 5: User Story 3 - List Installed MCP Servers (Priority: P2)
+## Phase 5: User Story 3 - List Installed MCP Servers (Priority: P2) ✅
 
 **Goal**: Enable developers to view all MCP servers configured in agent and/or global config
 
@@ -112,21 +112,21 @@
 
 ### Implementation for User Story 3
 
-- [ ] T022 [US3] Implement get_mcp_servers_from_agent() helper function in src/holodeck/config/loader.py
-- [ ] T023 [US3] Implement get_mcp_servers_from_global() helper function in src/holodeck/config/loader.py
-- [ ] T024 [US3] Implement `holodeck mcp list` command in src/holodeck/cli/commands/mcp.py
-- [ ] T025 [US3] Add --agent, -g/--global, --all, --json options to list command
-- [ ] T026 [US3] Implement table output with SOURCE column showing agent/global origin
-- [ ] T027 [US3] Add empty state message "No MCP servers configured. Use 'holodeck mcp search' to find available servers."
+- [x] T022 [US3] Implement get_mcp_servers_from_agent() helper function in src/holodeck/config/loader.py
+- [x] T023 [US3] Implement get_mcp_servers_from_global() helper function in src/holodeck/config/loader.py
+- [x] T024 [US3] Implement `holodeck mcp list` command in src/holodeck/cli/commands/mcp.py
+- [x] T025 [US3] Add --agent, -g/--global, --all, --json options to list command
+- [x] T026 [US3] Implement table output with SOURCE column showing agent/global origin
+- [x] T027 [US3] Add empty state message "No MCP servers configured. Use 'holodeck mcp search' to find available servers."
 
 ### Tests for User Story 3
 
-- [ ] T027a [US3] [P] Add unit tests for get_mcp_servers_from_agent() helper in tests/unit/config/test_mcp_helpers.py
-- [ ] T027b [US3] [P] Add unit tests for get_mcp_servers_from_global() helper in tests/unit/config/test_mcp_helpers.py
-- [ ] T027c [US3] [P] Add unit tests for list command basic functionality in tests/unit/cli/commands/test_mcp_list.py
-- [ ] T027d [US3] [P] Add unit tests for --agent, --global, --all, --json options in tests/unit/cli/commands/test_mcp_list.py
-- [ ] T027e [US3] [P] Add unit tests for table output with SOURCE column in tests/unit/cli/commands/test_mcp_list.py
-- [ ] T027f [US3] [P] Add unit tests for empty state message in tests/unit/cli/commands/test_mcp_list.py
+- [x] T027a [US3] [P] Add unit tests for get_mcp_servers_from_agent() helper in tests/unit/config/test_mcp_helpers.py
+- [x] T027b [US3] [P] Add unit tests for get_mcp_servers_from_global() helper in tests/unit/config/test_mcp_helpers.py
+- [x] T027c [US3] [P] Add unit tests for list command basic functionality in tests/unit/cli/commands/test_mcp_list.py
+- [x] T027d [US3] [P] Add unit tests for --agent, --global, --all, --json options in tests/unit/cli/commands/test_mcp_list.py
+- [x] T027e [US3] [P] Add unit tests for table output with SOURCE column in tests/unit/cli/commands/test_mcp_list.py
+- [x] T027f [US3] [P] Add unit tests for empty state message in tests/unit/cli/commands/test_mcp_list.py
 
 **Checkpoint**: At this point, User Stories 1, 2, AND 3 work and are tested - users can search, add, and list servers
 
@@ -140,19 +140,19 @@
 
 ### Implementation for User Story 4
 
-- [ ] T028 [US4] Implement remove_mcp_server_from_agent() helper function in src/holodeck/config/loader.py
-- [ ] T029 [US4] Implement remove_mcp_server_from_global() helper function in src/holodeck/config/loader.py
-- [ ] T030 [US4] Implement `holodeck mcp remove` command in src/holodeck/cli/commands/mcp.py with SERVER argument
-- [ ] T031 [US4] Add --agent, -g/--global options to remove command
-- [ ] T032 [US4] Add error handling for server not found and file write errors
+- [x] T028 [US4] Implement remove_mcp_server_from_agent() helper function in src/holodeck/config/loader.py
+- [x] T029 [US4] Implement remove_mcp_server_from_global() helper function in src/holodeck/config/loader.py
+- [x] T030 [US4] Implement `holodeck mcp remove` command in src/holodeck/cli/commands/mcp.py with SERVER argument
+- [x] T031 [US4] Add --agent, -g/--global options to remove command
+- [x] T032 [US4] Add error handling for server not found and file write errors
 
 ### Tests for User Story 4
 
-- [ ] T032a [US4] [P] Add unit tests for remove_mcp_server_from_agent() helper in tests/unit/config/test_mcp_helpers.py
-- [ ] T032b [US4] [P] Add unit tests for remove_mcp_server_from_global() helper in tests/unit/config/test_mcp_helpers.py
-- [ ] T032c [US4] [P] Add unit tests for remove command basic functionality in tests/unit/cli/commands/test_mcp_remove.py
-- [ ] T032d [US4] [P] Add unit tests for --agent, --global options in tests/unit/cli/commands/test_mcp_remove.py
-- [ ] T032e [US4] [P] Add unit tests for error handling (server not found, file write errors) in tests/unit/cli/commands/test_mcp_remove.py
+- [x] T032a [US4] [P] Add unit tests for remove_mcp_server_from_agent() helper in tests/unit/config/test_mcp_helpers.py
+- [x] T032b [US4] [P] Add unit tests for remove_mcp_server_from_global() helper in tests/unit/config/test_mcp_helpers.py
+- [x] T032c [US4] [P] Add unit tests for remove command basic functionality in tests/unit/cli/commands/test_mcp_remove.py
+- [x] T032d [US4] [P] Add unit tests for --agent, --global options in tests/unit/cli/commands/test_mcp_remove.py
+- [x] T032e [US4] [P] Add unit tests for error handling (server not found, file write errors) in tests/unit/cli/commands/test_mcp_remove.py
 
 **Checkpoint**: All user stories should now be independently functional and tested
 
