@@ -12,6 +12,7 @@ import yaml
 from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
 from holodeck.models.config import ExecutionConfig, GlobalConfig
+from holodeck.models.tool import CommandType, MCPTool, TransportType
 
 
 class TestUserLevelConfigDiscovery:
@@ -1413,3 +1414,267 @@ class TestEnvValueParsing:
             "file_timeout", {"HOLODECK_FILE_TIMEOUT": "not_a_number"}
         )
         assert result is None
+
+
+# --- MCP Server Config Merge Tests (T035a-c) ---
+
+
+def _create_mcp_server(name: str, description: str) -> MCPTool:
+    """Helper to create a sample MCP server for testing."""
+    return MCPTool(
+        name=name,
+        description=description,
+        type="mcp",
+        transport=TransportType.STDIO,
+        command=CommandType.NPX,
+        args=["-y", f"@modelcontextprotocol/server-{name}@1.0.0"],
+        registry_name=f"io.github.modelcontextprotocol/server-{name}",
+    )
+
+
+class TestMergeMcpServers:
+    """Tests for _merge_mcp_servers() method."""
+
+    def test_merge_mcp_servers_empty_tools(self) -> None:
+        """Test merging when agent has no tools."""
+        loader = ConfigLoader()
+        tools: list[dict[str, Any]] = []
+        global_servers = [
+            _create_mcp_server("filesystem", "Read and explore files"),
+            _create_mcp_server("github", "Interact with GitHub"),
+        ]
+
+        loader._merge_mcp_servers(tools, global_servers)
+
+        assert len(tools) == 2
+        assert tools[0]["name"] == "filesystem"
+        assert tools[1]["name"] == "github"
+
+    def test_merge_mcp_servers_no_overlap(self) -> None:
+        """Test merging when agent has different tools (no name conflict)."""
+        loader = ConfigLoader()
+        tools: list[dict[str, Any]] = [
+            {"name": "vectorstore_tool", "type": "vectorstore"},
+            {"name": "custom_function", "type": "function"},
+        ]
+        global_servers = [_create_mcp_server("filesystem", "Read files")]
+
+        loader._merge_mcp_servers(tools, global_servers)
+
+        assert len(tools) == 3
+        assert tools[0]["name"] == "vectorstore_tool"
+        assert tools[1]["name"] == "custom_function"
+        assert tools[2]["name"] == "filesystem"
+
+    def test_merge_mcp_servers_with_overlap(self) -> None:
+        """Test that agent tools override global with same name."""
+        loader = ConfigLoader()
+        # Agent has a tool named "filesystem" (different config)
+        tools: list[dict[str, Any]] = [
+            {
+                "name": "filesystem",
+                "type": "mcp",
+                "description": "Agent-level filesystem (takes precedence)",
+                "transport": "stdio",
+                "command": "uvx",  # Different from global
+                "args": ["custom-filesystem"],
+            }
+        ]
+        global_servers = [_create_mcp_server("filesystem", "Global filesystem")]
+
+        loader._merge_mcp_servers(tools, global_servers)
+
+        # Should NOT add global filesystem (agent takes precedence)
+        assert len(tools) == 1
+        assert tools[0]["name"] == "filesystem"
+        assert tools[0]["command"] == "uvx"  # Agent's config preserved
+        assert tools[0]["description"] == "Agent-level filesystem (takes precedence)"
+
+    def test_merge_mcp_servers_partial_overlap(self) -> None:
+        """Test partial overlap - some names conflict, some don't."""
+        loader = ConfigLoader()
+        # Agent has "filesystem" but not "github"
+        tools: list[dict[str, Any]] = [
+            {
+                "name": "filesystem",
+                "type": "mcp",
+                "description": "Agent filesystem",
+                "transport": "stdio",
+                "command": "uvx",
+                "args": ["agent-fs"],
+            }
+        ]
+        global_servers = [
+            _create_mcp_server("filesystem", "Global filesystem"),
+            _create_mcp_server("github", "Global GitHub"),
+        ]
+
+        loader._merge_mcp_servers(tools, global_servers)
+
+        # Should have agent's filesystem + global's github
+        assert len(tools) == 2
+        assert tools[0]["name"] == "filesystem"
+        assert tools[0]["command"] == "uvx"  # Agent's config
+        assert tools[1]["name"] == "github"
+        assert tools[1]["command"] == "npx"  # Global's config
+
+    def test_merge_mcp_servers_non_mcp_overlap(self) -> None:
+        """Test that non-MCP tools with same name also block global MCP."""
+        loader = ConfigLoader()
+        # Agent has a vectorstore tool named "filesystem"
+        tools: list[dict[str, Any]] = [
+            {"name": "filesystem", "type": "vectorstore", "database": None}
+        ]
+        global_servers = [_create_mcp_server("filesystem", "Global filesystem")]
+
+        loader._merge_mcp_servers(tools, global_servers)
+
+        # Should NOT add global MCP (name conflict with non-MCP tool)
+        assert len(tools) == 1
+        assert tools[0]["type"] == "vectorstore"
+
+
+class TestMergeConfigsWithMcpServers:
+    """Tests for merge_configs() with MCP server merging."""
+
+    def test_merge_configs_with_mcp_servers(self) -> None:
+        """Test full merge_configs() integration with MCP servers."""
+        loader = ConfigLoader()
+        agent_config: dict[str, Any] = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "You are helpful."},
+            "tools": [],
+        }
+        global_config = GlobalConfig(
+            providers=None,
+            vectorstores=None,
+            execution=None,
+            deployment=None,
+            mcp_servers=[_create_mcp_server("filesystem", "Read files")],
+        )
+
+        result = loader.merge_configs(agent_config, global_config)
+
+        assert "tools" in result
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["name"] == "filesystem"
+
+    def test_merge_configs_no_global_mcp_servers(self) -> None:
+        """Test merge_configs() when global config has no MCP servers."""
+        loader = ConfigLoader()
+        agent_config: dict[str, Any] = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "You are helpful."},
+            "tools": [{"name": "my_tool", "type": "function"}],
+        }
+        global_config = GlobalConfig(
+            providers=None,
+            vectorstores=None,
+            execution=None,
+            deployment=None,
+            mcp_servers=None,
+        )
+
+        result = loader.merge_configs(agent_config, global_config)
+
+        # Agent tools unchanged
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["name"] == "my_tool"
+
+    def test_merge_configs_agent_precedence(self) -> None:
+        """Test that agent config takes precedence over global."""
+        loader = ConfigLoader()
+        agent_config: dict[str, Any] = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "You are helpful."},
+            "tools": [
+                {
+                    "name": "filesystem",
+                    "type": "mcp",
+                    "description": "Agent's custom filesystem",
+                    "transport": "stdio",
+                    "command": "docker",
+                    "args": ["run", "my-fs-image"],
+                }
+            ],
+        }
+        global_config = GlobalConfig(
+            providers=None,
+            vectorstores=None,
+            execution=None,
+            deployment=None,
+            mcp_servers=[_create_mcp_server("filesystem", "Global filesystem")],
+        )
+
+        result = loader.merge_configs(agent_config, global_config)
+
+        # Agent's filesystem preserved, global's skipped
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["name"] == "filesystem"
+        assert result["tools"][0]["command"] == "docker"
+        assert result["tools"][0]["description"] == "Agent's custom filesystem"
+
+    def test_merge_configs_no_tools_section(self) -> None:
+        """Test merge_configs() when agent has no tools section."""
+        loader = ConfigLoader()
+        agent_config: dict[str, Any] = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "You are helpful."},
+            # No tools section
+        }
+        global_config = GlobalConfig(
+            providers=None,
+            vectorstores=None,
+            execution=None,
+            deployment=None,
+            mcp_servers=[_create_mcp_server("filesystem", "Read files")],
+        )
+
+        result = loader.merge_configs(agent_config, global_config)
+
+        # Tools section created with global MCP servers
+        assert "tools" in result
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["name"] == "filesystem"
+
+    def test_merge_configs_empty_global_mcp_servers(self) -> None:
+        """Test merge_configs() with empty mcp_servers list."""
+        loader = ConfigLoader()
+        agent_config: dict[str, Any] = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "You are helpful."},
+            "tools": [{"name": "my_tool", "type": "function"}],
+        }
+        global_config = GlobalConfig(
+            providers=None,
+            vectorstores=None,
+            execution=None,
+            deployment=None,
+            mcp_servers=[],  # Empty list
+        )
+
+        result = loader.merge_configs(agent_config, global_config)
+
+        # Agent tools unchanged
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["name"] == "my_tool"
+
+    def test_merge_configs_no_global_config(self) -> None:
+        """Test merge_configs() with no global config."""
+        loader = ConfigLoader()
+        agent_config: dict[str, Any] = {
+            "name": "test-agent",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "You are helpful."},
+            "tools": [{"name": "my_tool", "type": "function"}],
+        }
+
+        result = loader.merge_configs(agent_config, None)
+
+        # Agent config returned as-is
+        assert result == agent_config

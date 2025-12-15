@@ -158,21 +158,21 @@
 
 ---
 
-## Phase 7: Config Merge Integration
+## Phase 7: Config Merge Integration ✅
 
 **Purpose**: Integrate global MCP servers into agent config loading
 
 ### Implementation for Config Merge
 
-- [ ] T033 Implement _merge_mcp_servers() method in src/holodeck/config/loader.py
-- [ ] T034 Extend merge_configs() to call _merge_mcp_servers() for global MCP server merging
-- [ ] T035 Add merge precedence logic (agent-level MCP tools override global with same name)
+- [x] T033 Implement _merge_mcp_servers() method in src/holodeck/config/loader.py
+- [x] T034 Extend merge_configs() to call _merge_mcp_servers() for global MCP server merging
+- [x] T035 Add merge precedence logic (agent-level MCP tools override global with same name)
 
 ### Tests for Config Merge
 
-- [ ] T035a [P] Add unit tests for _merge_mcp_servers() method in tests/unit/config/test_config_merge.py
-- [ ] T035b [P] Add unit tests for merge_configs() with MCP server merging in tests/unit/config/test_config_merge.py
-- [ ] T035c [P] Add unit tests for merge precedence logic (agent overrides global) in tests/unit/config/test_config_merge.py
+- [x] T035a [P] Add unit tests for _merge_mcp_servers() method in tests/unit/config/test_config_merge.py
+- [x] T035b [P] Add unit tests for merge_configs() with MCP server merging in tests/unit/config/test_config_merge.py
+- [x] T035c [P] Add unit tests for merge precedence logic (agent overrides global) in tests/unit/config/test_config_merge.py
 
 **Checkpoint**: Config merge integration complete and tested - global MCP servers merge into agent config at runtime
 
