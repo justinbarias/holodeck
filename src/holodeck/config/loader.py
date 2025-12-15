@@ -427,6 +427,16 @@ class ConfigLoader:
                 agent_config["tools"], global_config.vectorstores
             )
 
+        # Merge global MCP servers into agent tools
+        if global_config.mcp_servers and len(global_config.mcp_servers) > 0:
+            # Initialize tools list if missing or invalid
+            tools_missing = "tools" not in agent_config
+            tools_invalid = not isinstance(agent_config.get("tools"), list)
+            if tools_missing or tools_invalid:
+                agent_config["tools"] = []
+
+            self._merge_mcp_servers(agent_config["tools"], global_config.mcp_servers)
+
         return agent_config
 
     def _resolve_vectorstore_references(
@@ -478,6 +488,45 @@ class ConfigLoader:
                     f"Resolved vectorstore reference '{database}' "
                     f"to provider '{database_config.provider}'"
                 )
+
+    def _merge_mcp_servers(
+        self,
+        tools: list[Any],
+        global_mcp_servers: list[MCPTool],
+    ) -> None:
+        """Merge global MCP servers into agent tools list.
+
+        Agent-level MCP tools with the same name take precedence over global ones.
+        Global MCP servers are appended to the tools list only if no agent-level
+        tool has the same name.
+
+        Args:
+            tools: Agent's tools list (modified in-place)
+            global_mcp_servers: Global MCP servers from GlobalConfig
+        """
+        # Build set of existing tool names (all tools, not just MCP)
+        existing_names: set[str] = set()
+        for tool in tools:
+            if isinstance(tool, dict) and "name" in tool:
+                existing_names.add(tool["name"])
+
+        # Append global MCP servers that don't conflict with existing tools
+        for mcp_server in global_mcp_servers:
+            if mcp_server.name in existing_names:
+                logger.debug(
+                    f"Skipping global MCP server '{mcp_server.name}' - "
+                    f"agent has tool with same name (agent takes precedence)"
+                )
+                continue
+
+            # Convert MCPTool to dict for YAML compatibility
+            tool_dict = mcp_server.model_dump(
+                exclude_unset=True, exclude_none=True, mode="json"
+            )
+            tools.append(tool_dict)
+            logger.debug(
+                f"Merged global MCP server '{mcp_server.name}' into agent tools"
+            )
 
     @staticmethod
     def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
