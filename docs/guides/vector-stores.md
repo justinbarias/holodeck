@@ -656,8 +656,8 @@ docker compose up -d
 # 2. Verify ChromaDB is running
 curl http://localhost:8000/api/v2/heartbeat
 
-# 3. Run the agent
-holodeck test agent.yaml
+# 3. Run the agent (uses agent.yaml by default)
+holodeck test
 ```
 
 ---

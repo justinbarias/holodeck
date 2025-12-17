@@ -92,6 +92,11 @@ After installation, use from terminal:
 
 ```bash
 holodeck init --template conversational --name my-agent
+
+# Run tests (defaults to agent.yaml in current directory)
+holodeck test
+
+# Or specify explicit path
 holodeck test agent.yaml
 ```
 

@@ -533,6 +533,10 @@ AZURE_OPENAI_ENDPOINT=...
 ### Running an Agent
 
 ```bash
+# Uses agent.yaml in current directory by default
+holodeck test
+
+# Or specify explicit path
 holodeck test agent.yaml
 ```
 
@@ -621,7 +625,7 @@ AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/
 EOF
 
 # 4. Run agent (config and env automatically loaded)
-holodeck test agent.yaml
+holodeck test
 ```
 
 ## Next Steps
