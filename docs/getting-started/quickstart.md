@@ -229,7 +229,27 @@ holodeck chat my-project/agent.yaml --max-messages 100
 
 # Deploy as API
 holodeck deploy my-project/agent.yaml --port 8000
+
+# --- MCP Server Management ---
+
+# Search for MCP servers in the registry
+holodeck mcp search filesystem
+
+# List installed MCP servers
+holodeck mcp list
+holodeck mcp list --all  # Show both agent and global servers
+
+# Add an MCP server to your agent
+holodeck mcp add io.github.modelcontextprotocol/server-filesystem
+
+# Add an MCP server globally (available to all agents)
+holodeck mcp add io.github.modelcontextprotocol/server-memory -g
+
+# Remove an MCP server
+holodeck mcp remove filesystem
 ```
+
+For detailed MCP CLI usage, see the [MCP CLI Guide](../guides/mcp-cli.md).
 
 ## Tips & Tricks
 
