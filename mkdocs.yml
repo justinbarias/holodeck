@@ -37,6 +37,7 @@ nav:
     - Agent Configuration: guides/agent-configuration.md
     - LLM Providers: guides/llm-providers.md
     - Tools: guides/tools.md
+    - MCP CLI: guides/mcp-cli.md
     - Vector Stores: guides/vector-stores.md
     - Evaluations: guides/evaluations.md
     - Global Configuration: guides/global-config.md
