@@ -480,11 +480,11 @@ tools[0].source → /home/user/data/knowledge_base/
    ```bash
    # Wrong:
    TEMPLATE_DIR=/path/to/templates
-   holodeck test agent.yaml
+   holodeck test
 
    # Right:
    export TEMPLATE_DIR=/path/to/templates
-   holodeck test agent.yaml
+   holodeck test
    ```
 
 3. Or use absolute path instead:

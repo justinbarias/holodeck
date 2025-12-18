@@ -80,18 +80,18 @@ Open `agent.yaml` and customize:
 Start an interactive chat session with your agent:
 
 ```bash
-# Basic chat (from parent directory)
+# From the project directory (uses agent.yaml by default)
+cd my-chatbot
+holodeck chat
+
+# Or specify an explicit path
 holodeck chat my-chatbot/agent.yaml
 
-# Or cd into the project directory first
-cd my-chatbot
-holodeck chat agent.yaml
-
 # Verbose mode with detailed status panel
-holodeck chat my-chatbot/agent.yaml --verbose
+holodeck chat --verbose
 
 # Quiet mode (no logging, but spinner still shows)
-holodeck chat my-chatbot/agent.yaml --quiet
+holodeck chat --quiet
 ```
 
 **Chat Features:**
@@ -120,7 +120,11 @@ Agent: Your response here
 #### Run Tests
 
 ```bash
-# Run all tests (from parent directory)
+# From the project directory (uses agent.yaml by default)
+cd my-chatbot
+holodeck test
+
+# Or specify an explicit path
 holodeck test my-chatbot/agent.yaml
 
 # Deploy locally
@@ -193,11 +197,11 @@ execution:
 ### Step 3: Test Your Agent
 
 ```bash
-# Run agent tests
-holodeck test agent.yaml
+# Run agent tests (uses agent.yaml by default)
+holodeck test
 
-# Chat interactively
-holodeck chat agent.yaml
+# Chat interactively (uses agent.yaml by default)
+holodeck chat
 ```
 
 ## Common Commands
@@ -212,20 +216,27 @@ holodeck init
 # Create new project (non-interactive)
 holodeck init --name my-project --non-interactive
 
-# Test your agent and run evaluations
+# Test your agent (uses agent.yaml by default)
+cd my-project
+holodeck test
+
+# Or test with explicit path
 holodeck test my-project/agent.yaml
 
-# Interactive chat with your agent
+# Interactive chat (uses agent.yaml by default)
+holodeck chat
+
+# Or chat with explicit path
 holodeck chat my-project/agent.yaml
 
 # Chat with verbose output (detailed status panel)
-holodeck chat my-project/agent.yaml --verbose
+holodeck chat --verbose
 
 # Chat with quiet mode (no logging, spinner only)
-holodeck chat my-project/agent.yaml --quiet
+holodeck chat --quiet
 
 # Chat with custom max messages limit
-holodeck chat my-project/agent.yaml --max-messages 100
+holodeck chat --max-messages 100
 
 # Deploy as API
 holodeck deploy my-project/agent.yaml --port 8000
@@ -260,7 +271,8 @@ The `holodeck chat` command provides real-time feedback during conversation:
 **Default Mode (Recommended for Most Users)**
 
 ```bash
-holodeck chat agent.yaml
+# Uses agent.yaml in current directory
+holodeck chat
 ```
 
 Shows inline status after each response:
@@ -272,7 +284,7 @@ Agent: Your response here [3/50 | 1.2s]
 **Verbose Mode (For Detailed Monitoring)**
 
 ```bash
-holodeck chat agent.yaml --verbose
+holodeck chat --verbose
 ```
 
 Displays a rich status panel with token breakdown:
@@ -291,7 +303,7 @@ Displays a rich status panel with token breakdown:
 **Quiet Mode (For Clean Output)**
 
 ```bash
-holodeck chat agent.yaml --quiet
+holodeck chat --quiet
 ```
 
 Shows only responses and spinner during execution, no status display.
@@ -320,14 +332,17 @@ providers:
 ### Test Locally Before Deploying
 
 ```bash
-# Run tests first
-holodeck test my-project/agent.yaml
+# Navigate to project directory
+cd my-project
+
+# Run tests first (uses agent.yaml by default)
+holodeck test
 
 # Then try interactive chat
-holodeck chat my-project/agent.yaml
+holodeck chat
 
 # Finally deploy if tests pass
-holodeck deploy my-project/agent.yaml --port 8000
+holodeck deploy agent.yaml --port 8000
 ```
 
 ### Organize Multiple Agents
@@ -347,6 +362,11 @@ my-project/
 Test each agent:
 
 ```bash
+# Test from each agent directory
+cd agent1 && holodeck test
+cd ../agent2 && holodeck test
+
+# Or specify paths explicitly
 holodeck test agent1/agent.yaml
 holodeck test agent2/agent.yaml
 ```

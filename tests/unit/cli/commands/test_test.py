@@ -97,13 +97,47 @@ def _setup_test_mocks(num_test_cases: int = 0):
 class TestCLIArgumentParsing:
     """Tests for T067: CLI command argument parsing."""
 
-    def test_agent_config_positional_argument_required(self):
-        """AGENT_CONFIG positional argument is required."""
+    def test_agent_config_defaults_to_agent_yaml(self):
+        """AGENT_CONFIG defaults to agent.yaml when not provided."""
         runner = CliRunner()
-        result = runner.invoke(test, [])
 
-        assert result.exit_code != 0
-        assert "Missing argument" in result.output or "AGENT_CONFIG" in result.output
+        with runner.isolated_filesystem():
+            # Create agent.yaml in current directory
+            Path("agent.yaml").write_text("")
+
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
+                mock_loader_class.return_value = mock_loader
+
+                mock_instance = MagicMock()
+                mock_instance.execute_tests = AsyncMock(
+                    return_value=_create_mock_report("agent.yaml")
+                )
+                mock_instance.shutdown = AsyncMock()
+                mock_executor.return_value = mock_instance
+
+                # Invoke without agent_config argument
+                runner.invoke(test, [])
+
+                # Should use agent.yaml as default
+                mock_loader.load_agent_yaml.assert_called_once_with("agent.yaml")
+
+    def test_agent_config_error_when_default_not_found(self):
+        """Error when agent.yaml doesn't exist and no argument provided."""
+        runner = CliRunner()
+
+        with runner.isolated_filesystem():
+            # Don't create agent.yaml - it should fail
+            result = runner.invoke(test, [])
+
+            assert result.exit_code != 0
+            # Click's Path(exists=True) will report the file doesn't exist
+            assert "agent.yaml" in result.output or "does not exist" in result.output
 
     def test_agent_config_argument_accepted(self):
         """AGENT_CONFIG positional argument is accepted."""

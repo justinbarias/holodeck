@@ -60,7 +60,7 @@ class ChatSpinnerThread(threading.Thread):
 
 
 @click.command()
-@click.argument("agent_config", type=click.Path(exists=True))
+@click.argument("agent_config", type=click.Path(exists=True), default="agent.yaml")
 @click.option(
     "--verbose",
     "-v",
