@@ -545,6 +545,15 @@ def create_structured_record_class(
     if dimensions <= 0 or dimensions > 10000:
         raise ValueError(f"Invalid dimensions: {dimensions}")
 
+    # Validate metadata field names are valid Python identifiers
+    if metadata_field_names:
+        for field_name in metadata_field_names:
+            if not field_name.isidentifier():
+                raise ValueError(
+                    f"Invalid field name: '{field_name}' "
+                    "(must be valid Python identifier)"
+                )
+
     # Build the field definitions for the dataclass
     # Fixed fields: id (key), content (full-text), embedding (vector),
     # source_file (indexed). Dynamic metadata fields added based on config.
@@ -581,15 +590,20 @@ def create_structured_record_class(
             default=""
         )
 
-    # For dynamic metadata fields, we need to add them as class attributes
-    # Since Python dataclasses don't easily support dynamic field addition at
-    # runtime, we use __init__ modification to accept **kwargs for metadata.
+    # For dynamic metadata fields, we need to extend the dataclass at runtime.
+    # We use a dedicated __metadata_config__ namespace for configuration and
+    # register fields in __annotations__ for better type introspection.
     if metadata_field_names:
-        # Store the metadata field names as a class attribute for reference
-        # Using direct assignment since ruff B010 converts setattr() anyway
-        DynamicStructuredRecord._metadata_field_names = metadata_field_names  # type: ignore[attr-defined]
+        # Store metadata config in a dedicated namespace (explicit and introspectable)
+        DynamicStructuredRecord.__metadata_config__ = {  # type: ignore[attr-defined]
+            "field_names": metadata_field_names
+        }
 
-        # Create a modified __init__ that accepts metadata fields
+        # Register the metadata fields in __annotations__ for introspection
+        for field_name in metadata_field_names:
+            DynamicStructuredRecord.__annotations__[field_name] = str
+
+        # Override __init__ to accept metadata fields as keyword arguments
         original_init = DynamicStructuredRecord.__init__
 
         def new_init(
@@ -600,9 +614,17 @@ def create_structured_record_class(
             source_file: str = "",
             **kwargs: Any,
         ) -> None:
-            original_init(self, id, content, embedding, source_file)
+            # Call original with keyword args (not positional) for dataclass compat
+            original_init(
+                self,
+                id=id,
+                content=content,
+                embedding=embedding,
+                source_file=source_file,
+            )
             # Store metadata fields as instance attributes
-            for field_name in metadata_field_names:
+            config = DynamicStructuredRecord.__metadata_config__  # type: ignore[attr-defined]
+            for field_name in config["field_names"]:
                 setattr(self, field_name, kwargs.get(field_name, ""))
 
         DynamicStructuredRecord.__init__ = new_init  # type: ignore[method-assign]

@@ -245,3 +245,47 @@ class TestCreateStructuredRecordClass:
             metadata_field_names=None,
         )
         assert record_class is not None
+
+    def test_factory_invalid_field_name_starts_with_digit(self) -> None:
+        """Test that factory rejects field names starting with a digit."""
+        with pytest.raises(ValueError, match="Invalid field name.*123category"):
+            create_structured_record_class(
+                metadata_field_names=["123category"],
+            )
+
+    def test_factory_invalid_field_name_with_hyphen(self) -> None:
+        """Test that factory rejects field names containing hyphens."""
+        with pytest.raises(ValueError, match="Invalid field name.*price-usd"):
+            create_structured_record_class(
+                metadata_field_names=["price-usd"],
+            )
+
+    def test_factory_invalid_field_name_with_space(self) -> None:
+        """Test that factory rejects field names containing spaces."""
+        with pytest.raises(ValueError, match="Invalid field name.*my field"):
+            create_structured_record_class(
+                metadata_field_names=["my field"],
+            )
+
+    def test_factory_metadata_config_stored(self) -> None:
+        """Test that __metadata_config__ stores field names."""
+        record_class = create_structured_record_class(
+            metadata_field_names=["title", "category"],
+        )
+        assert hasattr(record_class, "__metadata_config__")
+        assert record_class.__metadata_config__["field_names"] == ["title", "category"]
+
+    def test_factory_metadata_fields_in_annotations(self) -> None:
+        """Test that metadata fields are registered in __annotations__."""
+        record_class = create_structured_record_class(
+            metadata_field_names=["title", "category"],
+        )
+        assert "title" in record_class.__annotations__
+        assert "category" in record_class.__annotations__
+        assert record_class.__annotations__["title"] is str
+        assert record_class.__annotations__["category"] is str
+
+    def test_factory_no_metadata_config_when_no_fields(self) -> None:
+        """Test that __metadata_config__ is not set when no metadata fields."""
+        record_class = create_structured_record_class()
+        assert not hasattr(record_class, "__metadata_config__")
