@@ -173,6 +173,43 @@ class VectorstoreTool(BaseModel):
     record_prefix: str | None = Field(None, description="Record field prefix")
     meta_prefix: str | None = Field(None, description="Metadata field prefix")
 
+    # Structured data fields
+    id_field: str | None = Field(
+        None,
+        description=(
+            "Unique record identifier field (required for structured data mode). "
+            "Must be set when vector_field is specified."
+        ),
+    )
+    field_separator: str = Field(
+        default="\n",
+        description=(
+            "Separator for concatenating multiple vector_fields (default: newline). "
+            "Used when vector_field is a list."
+        ),
+    )
+    delimiter: str | None = Field(
+        None,
+        description=(
+            "CSV delimiter character (auto-detect if None). "
+            "Only applicable for CSV files."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_structured_config(self) -> "VectorstoreTool":
+        """Validate structured data configuration.
+
+        When vector_field is set (structured data mode), id_field becomes required
+        to enable record identification for upserts and deduplication.
+        """
+        if self.vector_field is not None and self.id_field is None:
+            raise ValueError(
+                "id_field is required when vector_field is specified "
+                "(structured data mode)"
+            )
+        return self
+
     @field_validator("source")
     @classmethod
     def validate_source(cls, v: str) -> str:

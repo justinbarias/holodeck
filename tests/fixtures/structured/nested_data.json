@@ -1,0 +1,9 @@
+{
+  "metadata": {"version": "1.0"},
+  "data": {
+    "items": [
+      {"id": "N001", "title": "Nested Item 1", "details": {"description": "First nested item"}},
+      {"id": "N002", "title": "Nested Item 2", "details": {"description": "Second nested item"}}
+    ]
+  }
+}

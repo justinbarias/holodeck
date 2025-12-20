@@ -365,3 +365,37 @@ class DuplicateServerError(HoloDeckError):
             )
 
         super().__init__(message)
+
+
+class RecordPathError(HoloDeckError):
+    """Exception raised when navigating a record path in JSON structure fails.
+
+    Raised when a configured record_path cannot be resolved in the source data.
+    Provides helpful information about available keys at the point of failure.
+
+    Attributes:
+        path: The record_path that failed to navigate
+        available_keys: List of available keys at the failure point
+        message: Detailed error message describing the failure
+    """
+
+    def __init__(
+        self,
+        path: str,
+        available_keys: list[str],
+        message: str,
+    ) -> None:
+        """Initialize RecordPathError with navigation details.
+
+        Args:
+            path: The record_path that failed (e.g., "data.items")
+            available_keys: Keys available at the point of failure
+            message: Detailed description of what went wrong
+        """
+        self.path = path
+        self.available_keys = available_keys
+        self.message = message
+        super().__init__(
+            f"Failed to navigate path '{path}': {message}. "
+            f"Available keys: {available_keys}"
+        )
