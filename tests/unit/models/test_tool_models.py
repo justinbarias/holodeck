@@ -160,13 +160,14 @@ class TestVectorstoreTool:
         assert tool.embedding_model == "text-embedding-ada-002"
 
     def test_vectorstore_vector_field_optional(self) -> None:
-        """Test that vector_field is optional."""
+        """Test that vector_field is optional (but requires id_field when set)."""
         tool = VectorstoreTool(
             name="test",
             description="Test",
             type="vectorstore",
             source="data.txt",
             vector_field="content",
+            id_field="id",  # Required when vector_field is set
         )
         assert tool.vector_field == "content"
 
@@ -178,6 +179,7 @@ class TestVectorstoreTool:
             type="vectorstore",
             source="data.txt",
             vector_field=["title", "content"],
+            id_field="id",  # Required when vector_field is set
         )
         assert tool.vector_field == ["title", "content"]
 
@@ -1014,3 +1016,156 @@ class TestVectorstoreToolExtended:
         assert tool.embedding_model == "text-embedding-3-large"
         assert tool.top_k == 20
         assert tool.min_similarity_score == 0.7
+
+
+class TestVectorstoreToolStructuredData:
+    """Tests for VectorstoreTool structured data configuration.
+
+    Tests the structured data mode fields: id_field, field_separator, delimiter.
+    These tests should FAIL initially (TDD RED phase) until T010-T011 are implemented.
+    """
+
+    def test_id_field_optional_when_no_vector_field(self) -> None:
+        """Test that id_field is optional when vector_field is not set."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.txt",
+        )
+        assert tool.id_field is None
+
+    def test_id_field_required_when_vector_field_set(self) -> None:
+        """Test that id_field is required when vector_field is set (structured mode)."""
+        with pytest.raises(ValidationError) as exc_info:
+            VectorstoreTool(
+                name="test",
+                description="Test",
+                type="vectorstore",
+                source="data.csv",
+                vector_field="description",
+            )
+        assert "id_field" in str(exc_info.value).lower()
+
+    def test_id_field_required_when_vector_field_is_list(self) -> None:
+        """Test that id_field is required when vector_field is a list."""
+        with pytest.raises(ValidationError) as exc_info:
+            VectorstoreTool(
+                name="test",
+                description="Test",
+                type="vectorstore",
+                source="data.json",
+                vector_field=["title", "description"],
+            )
+        assert "id_field" in str(exc_info.value).lower()
+
+    def test_structured_data_valid_with_id_field(self) -> None:
+        """Test valid structured data configuration with id_field."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.csv",
+            vector_field="description",
+            id_field="product_id",
+        )
+        assert tool.vector_field == "description"
+        assert tool.id_field == "product_id"
+
+    def test_field_separator_default_newline(self) -> None:
+        """Test that field_separator defaults to newline."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.csv",
+            vector_field="description",
+            id_field="id",
+        )
+        assert tool.field_separator == "\n"
+
+    def test_field_separator_custom(self) -> None:
+        """Test custom field_separator value."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.csv",
+            vector_field=["title", "description"],
+            id_field="id",
+            field_separator="\n\n",
+        )
+        assert tool.field_separator == "\n\n"
+
+    def test_delimiter_optional_none_for_auto_detect(self) -> None:
+        """Test that delimiter is optional and None means auto-detect."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.csv",
+            vector_field="description",
+            id_field="id",
+        )
+        assert tool.delimiter is None
+
+    def test_delimiter_explicit_value(self) -> None:
+        """Test explicit delimiter value for CSV."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.csv",
+            vector_field="description",
+            id_field="id",
+            delimiter=";",
+        )
+        assert tool.delimiter == ";"
+
+    def test_structured_data_with_meta_fields(self) -> None:
+        """Test structured data configuration with meta_fields."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.csv",
+            vector_field="description",
+            id_field="id",
+            meta_fields=["title", "category", "price"],
+        )
+        assert tool.meta_fields == ["title", "category", "price"]
+
+    def test_structured_data_with_record_path(self) -> None:
+        """Test structured data configuration with record_path for nested JSON."""
+        tool = VectorstoreTool(
+            name="test",
+            description="Test",
+            type="vectorstore",
+            source="data.json",
+            vector_field="description",
+            id_field="id",
+            record_path="data.items",
+        )
+        assert tool.record_path == "data.items"
+
+    def test_full_structured_data_configuration(self) -> None:
+        """Test complete structured data configuration with all fields."""
+        tool = VectorstoreTool(
+            name="product_search",
+            description="Search product catalog",
+            type="vectorstore",
+            source="products.csv",
+            vector_field=["title", "description"],
+            id_field="product_id",
+            field_separator="\n\n",
+            delimiter=",",
+            meta_fields=["category", "price"],
+            top_k=10,
+            min_similarity_score=0.7,
+        )
+        assert tool.name == "product_search"
+        assert tool.vector_field == ["title", "description"]
+        assert tool.id_field == "product_id"
+        assert tool.field_separator == "\n\n"
+        assert tool.delimiter == ","
+        assert tool.meta_fields == ["category", "price"]

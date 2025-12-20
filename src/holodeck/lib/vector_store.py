@@ -503,6 +503,113 @@ def create_document_record_class(dimensions: int = 1536) -> type[Any]:
     return cast(type[Any], DynamicDocumentRecord)
 
 
+def create_structured_record_class(
+    dimensions: int = 1536,
+    metadata_field_names: list[str] | None = None,
+    collection_name: str = "structured_records",
+) -> type[Any]:
+    """Create a StructuredRecord class for structured data with dynamic metadata.
+
+    This factory creates a new StructuredRecord dataclass compatible with
+    Semantic Kernel vector stores. Unlike DocumentRecord which is for
+    unstructured documents, this is designed for structured data
+    (CSV, JSON, JSONL) with user-defined metadata fields.
+
+    Args:
+        dimensions: Embedding vector dimensions (default: 1536)
+        metadata_field_names: List of metadata field names to include
+        collection_name: Vector store collection name
+
+    Returns:
+        StructuredRecord class configured for the specified dimensions
+
+    Raises:
+        ValueError: If dimensions is invalid (<=0 or >10000)
+
+    Example:
+        >>> RecordClass = create_structured_record_class(
+        ...     dimensions=768,
+        ...     metadata_field_names=["title", "category", "price"],
+        ...     collection_name="products",
+        ... )
+        >>> record = RecordClass(
+        ...     id="P001",
+        ...     content="Product description",
+        ...     embedding=[...],
+        ...     source_file="products.csv",
+        ...     title="Widget Pro",
+        ...     category="Electronics",
+        ...     price="99.99",
+        ... )
+    """
+    if dimensions <= 0 or dimensions > 10000:
+        raise ValueError(f"Invalid dimensions: {dimensions}")
+
+    # Build the field definitions for the dataclass
+    # Fixed fields: id (key), content (full-text), embedding (vector),
+    # source_file (indexed). Dynamic metadata fields added based on config.
+
+    @vectorstoremodel(collection_name=collection_name)
+    @dataclass
+    class DynamicStructuredRecord:  # type: ignore[misc]
+        """Vector store record for structured data with embeddings.
+
+        Each record represents a row/document from structured data
+        (CSV, JSON, JSONL). Compatible with all Semantic Kernel vector
+        store backends.
+
+        Attributes:
+            id: Unique identifier from the source data's id_field (key)
+            content: Concatenated vector field content (full-text indexed)
+            embedding: Vector embedding
+            source_file: Original source file path (indexed for filtering)
+        """
+
+        id: Annotated[str, VectorStoreField("key")] = field(default="")
+        content: Annotated[str, VectorStoreField("data", is_full_text_indexed=True)] = (
+            field(default="")
+        )
+        embedding: Annotated[
+            list[float] | None,
+            VectorStoreField(
+                "vector",
+                dimensions=dimensions,
+                distance_function=DistanceFunction.COSINE_SIMILARITY,
+            ),
+        ] = field(default=None)
+        source_file: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(
+            default=""
+        )
+
+    # For dynamic metadata fields, we need to add them as class attributes
+    # Since Python dataclasses don't easily support dynamic field addition at
+    # runtime, we use __init__ modification to accept **kwargs for metadata.
+    if metadata_field_names:
+        # Store the metadata field names as a class attribute for reference
+        # Using direct assignment since ruff B010 converts setattr() anyway
+        DynamicStructuredRecord._metadata_field_names = metadata_field_names  # type: ignore[attr-defined]
+
+        # Create a modified __init__ that accepts metadata fields
+        original_init = DynamicStructuredRecord.__init__
+
+        def new_init(
+            self: Any,
+            id: str = "",
+            content: str = "",
+            embedding: list[float] | None = None,
+            source_file: str = "",
+            **kwargs: Any,
+        ) -> None:
+            original_init(self, id, content, embedding, source_file)
+            # Store metadata fields as instance attributes
+            for field_name in metadata_field_names:
+                setattr(self, field_name, kwargs.get(field_name, ""))
+
+        DynamicStructuredRecord.__init__ = new_init  # type: ignore[method-assign]
+
+    return cast(type[Any], DynamicStructuredRecord)
+
+
 # Keep original DocumentRecord for backward compatibility (1536 dimensions)
 DocumentRecord = create_document_record_class(1536)
 
@@ -525,6 +632,34 @@ class QueryResult:
     score: float
     source_path: str
     chunk_index: int
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate score is in valid range."""
+        if not (0.0 <= self.score <= 1.0):
+            raise ValueError(f"Score must be between 0.0 and 1.0, got {self.score}")
+
+
+@dataclass
+class StructuredQueryResult:
+    """Search result from structured data vector store query.
+
+    Represents a single match returned from semantic search over structured data
+    (CSV, JSON, JSONL files). Unlike QueryResult which uses chunk_index, this uses
+    the original record ID from the source data.
+
+    Attributes:
+        id: Original record identifier from the id_field in source data
+        content: Concatenated vector field content that was embedded
+        score: Relevance/similarity score (0.0-1.0, higher is better)
+        source_file: Original source file path (e.g., "products.csv")
+        metadata: Dictionary of metadata field values from the source record
+    """
+
+    id: str
+    content: str
+    score: float
+    source_file: str
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

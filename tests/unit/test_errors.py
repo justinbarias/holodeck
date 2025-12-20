@@ -4,6 +4,7 @@ from holodeck.lib.errors import (
     ConfigError,
     FileNotFoundError,
     HoloDeckError,
+    RecordPathError,
     ValidationError,
 )
 
@@ -138,3 +139,91 @@ class TestFileNotFoundError:
         error_str = str(error)
         assert path in error_str
         assert "relative" in error_str.lower() or "agent.yaml" in error_str
+
+
+class TestRecordPathError:
+    """Tests for RecordPathError exception.
+
+    Tests the structured data record path navigation error.
+    These tests should FAIL initially (TDD RED phase) until T012 is implemented.
+    """
+
+    def test_record_path_error_is_holodeck_error(self) -> None:
+        """Test that RecordPathError is a HoloDeckError subclass."""
+        error = RecordPathError(
+            path="data.items",
+            available_keys=["metadata", "results"],
+            message="Key 'data' not found",
+        )
+        assert isinstance(error, HoloDeckError)
+
+    def test_record_path_error_stores_path(self) -> None:
+        """Test that RecordPathError stores the path attribute."""
+        error = RecordPathError(
+            path="response.data.items",
+            available_keys=["status", "message"],
+            message="Key 'response' not found",
+        )
+        assert error.path == "response.data.items"
+
+    def test_record_path_error_stores_available_keys(self) -> None:
+        """Test that RecordPathError stores available_keys attribute."""
+        available = ["metadata", "results", "pagination"]
+        error = RecordPathError(
+            path="data.items",
+            available_keys=available,
+            message="Key 'data' not found",
+        )
+        assert error.available_keys == available
+
+    def test_record_path_error_stores_message(self) -> None:
+        """Test that RecordPathError stores the message attribute."""
+        msg = "Key 'items' not found at path level 2"
+        error = RecordPathError(
+            path="data.items",
+            available_keys=["data"],
+            message=msg,
+        )
+        assert error.message == msg
+
+    def test_record_path_error_includes_path_in_str(self) -> None:
+        """Test that RecordPathError string includes the path."""
+        path = "data.nested.items"
+        error = RecordPathError(
+            path=path,
+            available_keys=["other"],
+            message="Navigation failed",
+        )
+        assert path in str(error)
+
+    def test_record_path_error_includes_available_keys_in_str(self) -> None:
+        """Test that RecordPathError string includes available keys."""
+        available = ["key1", "key2", "key3"]
+        error = RecordPathError(
+            path="data.missing",
+            available_keys=available,
+            message="Key not found",
+        )
+        error_str = str(error)
+        # Check that at least some keys are included in the error message
+        assert "key1" in error_str or str(available) in error_str
+
+    def test_record_path_error_with_empty_available_keys(self) -> None:
+        """Test RecordPathError with empty available_keys list."""
+        error = RecordPathError(
+            path="data",
+            available_keys=[],
+            message="Object is empty",
+        )
+        assert error.available_keys == []
+        assert "data" in str(error)
+
+    def test_record_path_error_with_array_indexing(self) -> None:
+        """Test RecordPathError with array index in path."""
+        error = RecordPathError(
+            path="data.items[5]",
+            available_keys=["items"],
+            message="Array index 5 out of bounds (length: 3)",
+        )
+        assert "items[5]" in str(error) or "[5]" in str(error)
+        assert error.path == "data.items[5]"

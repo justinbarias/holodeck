@@ -1,0 +1,4 @@
+[
+  {"faq_id": "FAQ001", "question": "How do I reset my password?", "answer": "Go to Settings > Security > Reset Password", "category": "Account"},
+  {"faq_id": "FAQ002", "question": "What payment methods are accepted?", "answer": "We accept credit cards, PayPal, and bank transfers", "category": "Billing"}
+]

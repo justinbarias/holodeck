@@ -174,6 +174,101 @@ holodeck deploy agent.yaml --cloud gcp --region us-central1
 
 ---
 
+## 🛠️ Development
+
+### Prerequisites
+
+- Python 3.10 or higher
+- Git
+- UV (package manager)
+
+### Getting Started
+
+```bash
+# Clone the repository
+git clone https://github.com/justinbarias/holodeck.git
+cd holodeck
+
+# Initialize development environment
+make init
+
+# Activate virtual environment
+source .venv/bin/activate
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run unit tests only
+make test-unit
+
+# Run integration tests only
+make test-integration
+
+# Run tests with coverage report
+make test-coverage
+
+# Run failed tests only
+make test-failed
+
+# Run tests in parallel
+make test-parallel
+```
+
+### Code Quality
+
+```bash
+# Format code with Black + Ruff
+make format
+
+# Check formatting (CI-safe)
+make format-check
+
+# Run linting
+make lint
+
+# Auto-fix linting issues
+make lint-fix
+
+# Type checking with MyPy
+make type-check
+
+# Security scanning
+make security
+
+# Run complete CI pipeline locally
+make ci
+```
+
+### Pre-commit Hooks
+
+```bash
+# Install pre-commit hooks
+make install-hooks
+
+# Run hooks on all files
+make pre-commit
+```
+
+### Code Style
+
+HoloDeck follows the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) with:
+
+- **Formatting:** Black (88 character line length)
+- **Linting:** Ruff (comprehensive rule set)
+- **Type Checking:** MyPy (strict mode)
+- **Security:** Bandit, Safety, detect-secrets
+- **Target:** Python 3.10+
+
+### Full Contributing Guide
+
+For detailed development instructions, commit message format, PR workflow, and troubleshooting, see [**docs/contributing.md**](docs/contributing.md).
+
+---
+
 ## 📖 Core Concepts
 
 ### Agent Definition
