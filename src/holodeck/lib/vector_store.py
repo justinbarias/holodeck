@@ -34,6 +34,7 @@ from pydantic.dataclasses import dataclass
 # to avoid import errors when optional dependencies are not installed.
 from semantic_kernel.data.vector import (
     DistanceFunction,
+    VectorStoreCollectionDefinition,
     VectorStoreField,
     vectorstoremodel,
 )
@@ -507,13 +508,16 @@ def create_structured_record_class(
     dimensions: int = 1536,
     metadata_field_names: list[str] | None = None,
     collection_name: str = "structured_records",
-) -> type[Any]:
-    """Create a StructuredRecord class for structured data with dynamic metadata.
+) -> tuple[type[Any], VectorStoreCollectionDefinition]:
+    """Create a StructuredRecord class and definition for structured data.
 
-    This factory creates a new StructuredRecord dataclass compatible with
-    Semantic Kernel vector stores. Unlike DocumentRecord which is for
-    unstructured documents, this is designed for structured data
-    (CSV, JSON, JSONL) with user-defined metadata fields.
+    This factory creates a new StructuredRecord dataclass AND a matching
+    VectorStoreCollectionDefinition. Both are needed for proper persistence
+    of dynamic metadata fields to Semantic Kernel vector stores.
+
+    Unlike DocumentRecord which is for unstructured documents, this is
+    designed for structured data (CSV, JSON, JSONL) with user-defined
+    metadata fields.
 
     Args:
         dimensions: Embedding vector dimensions (default: 1536)
@@ -521,13 +525,14 @@ def create_structured_record_class(
         collection_name: Vector store collection name
 
     Returns:
-        StructuredRecord class configured for the specified dimensions
+        Tuple of (record_class, definition) for collection creation
 
     Raises:
         ValueError: If dimensions is invalid (<=0 or >10000)
+        ValueError: If metadata field name is not a valid Python identifier
 
     Example:
-        >>> RecordClass = create_structured_record_class(
+        >>> RecordClass, definition = create_structured_record_class(
         ...     dimensions=768,
         ...     metadata_field_names=["title", "category", "price"],
         ...     collection_name="products",
@@ -554,13 +559,10 @@ def create_structured_record_class(
                     "(must be valid Python identifier)"
                 )
 
-    # Build the field definitions for the dataclass
-    # Fixed fields: id (key), content (full-text), embedding (vector),
-    # source_file (indexed). Dynamic metadata fields added based on config.
-
-    @vectorstoremodel(collection_name=collection_name)
+    # 1. Create simple dataclass WITHOUT @vectorstoremodel decorator
+    # The definition is built separately and passed explicitly to collections
     @dataclass
-    class DynamicStructuredRecord:  # type: ignore[misc]
+    class DynamicStructuredRecord:
         """Vector store record for structured data with embeddings.
 
         Each record represents a row/document from structured data
@@ -574,26 +576,33 @@ def create_structured_record_class(
             source_file: Original source file path (indexed for filtering)
         """
 
-        id: Annotated[str, VectorStoreField("key")] = field(default="")
-        content: Annotated[str, VectorStoreField("data", is_full_text_indexed=True)] = (
-            field(default="")
-        )
-        embedding: Annotated[
-            list[float] | None,
-            VectorStoreField(
-                "vector",
-                dimensions=dimensions,
-                distance_function=DistanceFunction.COSINE_SIMILARITY,
-            ),
-        ] = field(default=None)
-        source_file: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(
-            default=""
-        )
+        id: str = ""
+        content: str = ""
+        embedding: list[float] | None = None
+        source_file: str = ""
 
-    # For dynamic metadata fields, we need to extend the dataclass at runtime.
-    # We use a dedicated __metadata_config__ namespace for configuration and
-    # register fields in __annotations__ for better type introspection.
+    # 2. Build VectorStoreField list programmatically
+    fields: list[VectorStoreField] = [
+        VectorStoreField("key", name="id", type="str"),
+        VectorStoreField("data", name="content", type="str", is_full_text_indexed=True),
+        VectorStoreField(
+            "vector",
+            name="embedding",
+            type="float",
+            dimensions=dimensions,
+            distance_function=DistanceFunction.COSINE_SIMILARITY,
+        ),
+        VectorStoreField("data", name="source_file", type="str", is_indexed=True),
+    ]
+
+    # 3. Add dynamic metadata fields to BOTH class and definition
     if metadata_field_names:
+        # Add fields to the definition
+        for field_name in metadata_field_names:
+            fields.append(
+                VectorStoreField("data", name=field_name, type="str", is_indexed=True)
+            )
+
         # Store metadata config in a dedicated namespace (explicit and introspectable)
         DynamicStructuredRecord.__metadata_config__ = {  # type: ignore[attr-defined]
             "field_names": metadata_field_names
@@ -624,12 +633,20 @@ def create_structured_record_class(
             )
             # Store metadata fields as instance attributes
             config = DynamicStructuredRecord.__metadata_config__  # type: ignore[attr-defined]
-            for field_name in config["field_names"]:
-                setattr(self, field_name, kwargs.get(field_name, ""))
+            for fname in config["field_names"]:
+                setattr(self, fname, kwargs.get(fname, ""))
 
         DynamicStructuredRecord.__init__ = new_init  # type: ignore[method-assign]
 
-    return cast(type[Any], DynamicStructuredRecord)
+    # 4. Build the VectorStoreCollectionDefinition
+    # Note: We don't need to_dict/from_dict for individual records -
+    # SK will use the field definitions directly for serialization
+    definition = VectorStoreCollectionDefinition(
+        collection_name=collection_name,
+        fields=fields,
+    )
+
+    return cast(type[Any], DynamicStructuredRecord), definition
 
 
 # Keep original DocumentRecord for backward compatibility (1536 dimensions)
@@ -774,6 +791,8 @@ def get_collection_class(provider: str) -> type[Any]:
 def get_collection_factory(
     provider: str,
     dimensions: int = 1536,
+    record_class: type[Any] | None = None,
+    definition: VectorStoreCollectionDefinition | None = None,
     **connection_kwargs: Any,
 ) -> Callable[[], Any]:
     """Get a vector store collection factory for the specified provider.
@@ -797,6 +816,10 @@ def get_collection_factory(
 
         dimensions: Embedding vector dimensions (default: 1536).
             Must be between 1 and 10000.
+
+        definition: Optional VectorStoreCollectionDefinition for structured
+            data with dynamic metadata fields. When provided, this definition
+            is passed to the collection constructor for proper field handling.
 
         **connection_kwargs: Provider-specific connection parameters.
 
@@ -887,8 +910,9 @@ def get_collection_factory(
             f"Supported providers: {', '.join(sorted(supported_providers))}"
         )
 
-    # Create DocumentRecord class for these dimensions
-    record_class = create_document_record_class(dimensions)
+    # Use provided record_class or create default DocumentRecord
+    if record_class is None:
+        record_class = create_document_record_class(dimensions)
 
     # Pre-process provider-specific kwargs to avoid mutating original dict in factory
     # Each provider may need connection_string parsed into specific parameters
@@ -956,6 +980,11 @@ def get_collection_factory(
         # Lazy import at factory call time
         collection_class = get_collection_class(provider)
 
+        # Build base kwargs with optional definition for structured data
+        base_kwargs: dict[str, Any] = {"record_type": record_class}
+        if definition is not None:
+            base_kwargs["definition"] = definition
+
         # ChromaDB requires special handling for connection_string
         if provider == "chromadb":
             # Create the appropriate client
@@ -967,21 +996,21 @@ def get_collection_factory(
 
             # Pass the pre-configured client to ChromaCollection
             return collection_class[str, record_class](
-                record_type=record_class,
                 client=client,
+                **base_kwargs,
             )
 
         # Qdrant - pass parsed parameters directly to QdrantCollection
         if provider == "qdrant":
             return collection_class[str, record_class](
-                record_type=record_class,
+                **base_kwargs,
                 **qdrant_params,
             )
 
         # Pinecone - pass parsed parameters to PineconeCollection
         if provider == "pinecone":
             return collection_class[str, record_class](
-                record_type=record_class,
+                **base_kwargs,
                 **pinecone_params,
                 **pinecone_extra_kwargs,
             )
@@ -990,7 +1019,7 @@ def get_collection_factory(
         if provider == "postgres":
             # PostgresCollection accepts settings or individual connection params
             # We pass connection_string which PostgresSettings will parse
-            kwargs_for_postgres: dict[str, Any] = {"record_type": record_class}
+            kwargs_for_postgres: dict[str, Any] = base_kwargs.copy()
             conn_str = postgres_params.get("connection_string")
             if conn_str:
                 # Create PostgresSettings with connection_string
@@ -1008,7 +1037,7 @@ def get_collection_factory(
 
         # Default handling for other providers
         return collection_class[str, record_class](
-            record_type=record_class,
+            **base_kwargs,
             **connection_kwargs,
         )
 

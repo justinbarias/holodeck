@@ -1,16 +1,251 @@
-{
-  "papers": [
-    {
-      "id": "paper_001",
-      "title": "Sample Research Paper",
-      "authors": ["John Doe", "Jane Smith"],
-      "year": 2024,
-      "abstract": "This is a sample research paper abstract. Replace with your actual research papers.",
-      "url": "https://arxiv.org/example",
-      "keywords": ["machine learning", "research"]
-    }
-  ],
-  "version": "1.0",
-  "last_updated": "2024-01-01",
-  "instructions": "Replace this sample data with your actual research papers. Each paper should include: id, title, authors, year, abstract, url (optional), and keywords for search."
-}
+[
+  {
+    "id": "paper_001",
+    "title": "Algorithms for Quantum Computation: Discrete Logarithms and Factoring",
+    "authors": [
+      "Peter W. Shor"
+    ],
+    "year": 1994,
+    "abstract": "A computer is generally considered to be a universal computational device; i.e., it is believed able to simulate any physical computational device with a cost in computation time of at most a polynomial factor. This paper considers factoring integers and finding discrete logarithms, two problems which are generally thought to be hard on a classical computer and have been used as the basis of several proposed cryptosystems. Efficient randomized algorithms are given for these two problems on a hypothetical quantum computer.",
+    "url": "https://arxiv.org/abs/quant-ph/9508027",
+    "keywords": [
+      "quantum computing",
+      "Shor's algorithm",
+      "factoring",
+      "discrete logarithm",
+      "RSA",
+      "cryptography"
+    ]
+  },
+  {
+    "id": "paper_002",
+    "title": "Quantum Cryptography: Public Key Distribution and Coin Tossing",
+    "authors": [
+      "Charles H. Bennett",
+      "Gilles Brassard"
+    ],
+    "year": 1984,
+    "abstract": "When elementary quantum systems, such as polarized photons, are used to transmit digital information, the uncertainty principle gives rise to novel cryptographic phenomena unachievable with traditional transmission media. This paper describes a method for public key distribution using quantum communication that is provably secure against eavesdropping.",
+    "url": "https://arxiv.org/abs/2003.06557",
+    "keywords": [
+      "quantum cryptography",
+      "quantum key distribution",
+      "BB84",
+      "public key",
+      "information security"
+    ]
+  },
+  {
+    "id": "paper_003",
+    "title": "Post-Quantum Cryptography",
+    "authors": [
+      "Daniel J. Bernstein",
+      "Johannes Buchmann",
+      "Erik Dahmen"
+    ],
+    "year": 2009,
+    "abstract": "This comprehensive survey introduces the reader to the next generation of cryptographic algorithms, designed to resist attacks by both classical and quantum computers. Topics covered include lattice-based cryptography, code-based cryptography, hash-based signatures, and multivariate cryptography.",
+    "url": "https://link.springer.com/book/10.1007/978-3-540-88702-7",
+    "keywords": [
+      "post-quantum cryptography",
+      "lattice-based",
+      "code-based",
+      "hash-based signatures",
+      "quantum resistance"
+    ]
+  },
+  {
+    "id": "paper_004",
+    "title": "CRYSTALS-Kyber: A CCA-Secure Module-Lattice-Based KEM",
+    "authors": [
+      "Joppe Bos",
+      "Léo Ducas",
+      "Eike Kiltz",
+      "Tancrède Lepoint",
+      "Vadim Lyubashevsky",
+      "John M. Schanck",
+      "Peter Schwabe",
+      "Gregor Seiler",
+      "Damien Stehlé"
+    ],
+    "year": 2018,
+    "abstract": "We introduce Kyber, a portfolio of post-quantum cryptographic primitives built around a key-encapsulation mechanism (KEM). Our construction is based on the hardness of the Module Learning with Errors (MLWE) problem and is designed to be secure against attacks by quantum computers. Kyber was selected by NIST for standardization as ML-KEM.",
+    "url": "https://eprint.iacr.org/2017/634",
+    "keywords": [
+      "CRYSTALS-Kyber",
+      "lattice cryptography",
+      "key encapsulation",
+      "NIST PQC",
+      "module-LWE",
+      "post-quantum"
+    ]
+  },
+  {
+    "id": "paper_005",
+    "title": "CRYSTALS-Dilithium: A Lattice-Based Digital Signature Scheme",
+    "authors": [
+      "Léo Ducas",
+      "Eike Kiltz",
+      "Tancrède Lepoint",
+      "Vadim Lyubashevsky",
+      "Peter Schwabe",
+      "Gregor Seiler",
+      "Damien Stehlé"
+    ],
+    "year": 2018,
+    "abstract": "Dilithium is a digital signature scheme that is strongly secure under chosen message attacks based on the hardness of lattice problems over module lattices. It was designed for the NIST Post-Quantum Cryptography standardization project and has been selected as ML-DSA for standardization.",
+    "url": "https://eprint.iacr.org/2017/633",
+    "keywords": [
+      "CRYSTALS-Dilithium",
+      "digital signatures",
+      "lattice cryptography",
+      "NIST PQC",
+      "post-quantum",
+      "ML-DSA"
+    ]
+  },
+  {
+    "id": "paper_006",
+    "title": "Quantum Computing: Progress and Prospects",
+    "authors": [
+      "National Academies of Sciences, Engineering, and Medicine"
+    ],
+    "year": 2019,
+    "abstract": "This report assesses the current state of quantum computing and identifies the technical challenges that must be overcome to develop a practical quantum computer capable of breaking current cryptographic systems. It examines the timeline for cryptographically relevant quantum computers and the urgency of transitioning to post-quantum cryptography.",
+    "url": "https://nap.nationalacademies.org/catalog/25196",
+    "keywords": [
+      "quantum computing",
+      "cryptographic threat",
+      "CRQC",
+      "migration timeline",
+      "quantum readiness"
+    ]
+  },
+  {
+    "id": "paper_007",
+    "title": "Grover's Algorithm and Its Application to Cryptanalysis",
+    "authors": [
+      "Lov K. Grover"
+    ],
+    "year": 1996,
+    "abstract": "This paper describes a quantum mechanical algorithm for searching an unsorted database of N entries in O(√N) time. When applied to cryptographic systems, Grover's algorithm effectively halves the security level of symmetric key algorithms like AES, requiring a doubling of key sizes to maintain equivalent security against quantum attacks.",
+    "url": "https://arxiv.org/abs/quant-ph/9605043",
+    "keywords": [
+      "Grover's algorithm",
+      "quantum search",
+      "symmetric cryptography",
+      "AES",
+      "key size",
+      "quadratic speedup"
+    ]
+  },
+  {
+    "id": "paper_008",
+    "title": "SPHINCS+: Stateless Hash-Based Signatures",
+    "authors": [
+      "Daniel J. Bernstein",
+      "Andreas Hülsing",
+      "Stefan Kölbl",
+      "Ruben Niederhagen",
+      "Joost Rijneveld",
+      "Peter Schwabe"
+    ],
+    "year": 2019,
+    "abstract": "SPHINCS+ is a stateless hash-based signature scheme designed to provide post-quantum security based solely on the security of hash functions. Selected by NIST as SLH-DSA, it offers a conservative approach to quantum-resistant signatures with well-understood security assumptions.",
+    "url": "https://sphincs.org/",
+    "keywords": [
+      "SPHINCS+",
+      "hash-based signatures",
+      "stateless",
+      "post-quantum",
+      "NIST PQC",
+      "SLH-DSA"
+    ]
+  },
+  {
+    "id": "paper_009",
+    "title": "Quantum Threat Timeline Report",
+    "authors": [
+      "Global Risk Institute"
+    ],
+    "year": 2023,
+    "abstract": "Annual survey of quantum computing experts assessing the likelihood and timeline for the development of cryptographically relevant quantum computers. The report analyzes expert opinions on when quantum computers will be capable of breaking RSA-2048 and similar public-key cryptosystems.",
+    "url": "https://globalriskinstitute.org/publication/quantum-threat-timeline-report-2023/",
+    "keywords": [
+      "quantum threat",
+      "timeline",
+      "risk assessment",
+      "RSA",
+      "expert survey",
+      "Y2Q"
+    ]
+  },
+  {
+    "id": "paper_010",
+    "title": "Harvest Now, Decrypt Later: The Threat of Store-Now-Decrypt-Later Attacks",
+    "authors": [
+      "Michele Mosca",
+      "Marco Piani"
+    ],
+    "year": 2021,
+    "abstract": "This paper analyzes the 'harvest now, decrypt later' threat where adversaries collect encrypted data today with the intention of decrypting it once sufficiently powerful quantum computers become available. The analysis emphasizes the urgency of migrating to quantum-resistant cryptography for data with long-term confidentiality requirements.",
+    "url": "https://eprint.iacr.org/2021/1318",
+    "keywords": [
+      "harvest now decrypt later",
+      "SNDL",
+      "data confidentiality",
+      "migration urgency",
+      "quantum threat",
+      "long-term security"
+    ]
+  },
+  {
+    "id": "paper_011",
+    "title": "Status Report on the Third Round of the NIST Post-Quantum Cryptography Standardization Process",
+    "authors": [
+      "Dustin Moody",
+      "Gorjan Alagic",
+      "Daniel C. Apon",
+      "David A. Cooper",
+      "Quynh H. Dang",
+      "John M. Kelsey",
+      "Yi-Kai Liu",
+      "Carl A. Miller",
+      "Rene C. Peralta",
+      "Ray A. Perlner",
+      "Angela Y. Robinson",
+      "Daniel C. Smith-Tone",
+      "Jacob Alperin-Sheriff"
+    ],
+    "year": 2022,
+    "abstract": "This report describes the evaluation and selection process for the NIST Post-Quantum Cryptography standardization project. It announces the selection of CRYSTALS-Kyber for key encapsulation and CRYSTALS-Dilithium, FALCON, and SPHINCS+ for digital signatures as algorithms to be standardized.",
+    "url": "https://nvlpubs.nist.gov/nistpubs/ir/2022/NIST.IR.8413-upd1.pdf",
+    "keywords": [
+      "NIST",
+      "post-quantum cryptography",
+      "standardization",
+      "Kyber",
+      "Dilithium",
+      "FALCON",
+      "SPHINCS+"
+    ]
+  },
+  {
+    "id": "paper_012",
+    "title": "Quantum-Safe Cryptography: Securing Today's Data for Tomorrow",
+    "authors": [
+      "European Union Agency for Cybersecurity (ENISA)"
+    ],
+    "year": 2021,
+    "abstract": "This report provides guidance on the transition to quantum-safe cryptography for organizations and governments. It covers the quantum threat landscape, post-quantum cryptographic solutions, migration strategies, and recommendations for achieving crypto-agility.",
+    "url": "https://www.enisa.europa.eu/publications/post-quantum-cryptography-current-state-and-quantum-mitigation",
+    "keywords": [
+      "quantum-safe",
+      "migration strategy",
+      "crypto-agility",
+      "ENISA",
+      "policy",
+      "risk management"
+    ]
+  }
+]

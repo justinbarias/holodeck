@@ -46,12 +46,12 @@
             "module": "holodeck.cli.main",
             "args": [
                 "chat",
-                "hitchhikers_agent.yaml",
+                "agent.yaml",
                 "--verbose"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}/sample",
+            "cwd": "${workspaceFolder}/sample/research-agent",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }

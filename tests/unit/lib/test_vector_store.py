@@ -9,7 +9,8 @@ import sys
 from unittest.mock import MagicMock
 
 # Save original modules before mocking (these will be restored after import)
-_saved_modules = {}
+_saved_modules: dict[str, object] = {}
+_mocked_modules: set[str] = set()
 
 # Mock semantic_kernel modules ONLY during initial import
 # We'll restore them after the holodeck.lib.vector_store import completes
@@ -26,25 +27,31 @@ for module_name in [
         _saved_modules[module_name] = sys.modules[module_name]
     else:
         sys.modules[module_name] = MagicMock()
+        _mocked_modules.add(module_name)
 
-# Set up mock attributes
+# Only set up mock attributes if we created the mocks
+# This prevents polluting real modules that may already be imported
 # mypy: ignore - these are intentional mocks for testing
-mock_memory = sys.modules["semantic_kernel.connectors.memory"]
-mock_memory.AzureAISearchCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.ChromaCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.CosmosMongoCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.CosmosNoSqlCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.FaissCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.InMemoryCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.PineconeCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.PostgresCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.QdrantCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.SqlServerCollection = MagicMock()  # type: ignore[assignment]
-mock_memory.WeaviateCollection = MagicMock()  # type: ignore[assignment]
+if "semantic_kernel.connectors.memory" in _mocked_modules:
+    mock_memory = sys.modules["semantic_kernel.connectors.memory"]
+    mock_memory.AzureAISearchCollection = MagicMock()  # type: ignore[assignment]
+    mock_memory.ChromaCollection = MagicMock()  # type: ignore[assignment]
+    mock_memory.CosmosMongoCollection = MagicMock()  # type: ignore[assignment]
+    mock_memory.CosmosNoSqlCollection = MagicMock()  # type: ignore[assignment]
+    mock_memory.FaissCollection = MagicMock()  # type: ignore[assignment]
+    mock_memory.InMemoryCollection = MagicMock()  # type: ignore[assignment]
+    mock_memory.PineconeCollection = MagicMock()  # type: ignore[assignment]
+    mock_memory.PostgresCollection = MagicMock()  # type: ignore[assignment]
+    mock_memory.QdrantCollection = MagicMock()  # type: ignore[assignment]
+    mock_memory.SqlServerCollection = MagicMock()  # type: ignore[assignment]
+    mock_memory.WeaviateCollection = MagicMock()  # type: ignore[assignment]
 
-mock_vector = sys.modules["semantic_kernel.data.vector"]
-mock_vector.VectorStoreField = MagicMock()  # type: ignore[assignment]
-mock_vector.vectorstoremodel = lambda **kwargs: lambda cls: cls  # type: ignore[assignment]
+if "semantic_kernel.data.vector" in _mocked_modules:
+    mock_vector = sys.modules["semantic_kernel.data.vector"]
+    mock_vector.VectorStoreField = MagicMock()  # type: ignore[assignment]
+    mock_vector.VectorStoreCollectionDefinition = MagicMock()  # type: ignore[assignment]
+    mock_vector.DistanceFunction = MagicMock()  # type: ignore[assignment]
+    mock_vector.vectorstoremodel = lambda **kwargs: lambda cls: cls  # type: ignore[assignment]
 
 # Now import from holodeck.lib.vector_store
 import pytest  # noqa: E402
@@ -63,7 +70,7 @@ from holodeck.lib.vector_store import (  # noqa: E402
 )
 
 # Restore original modules after import to avoid polluting other tests
-# Keep the mocked versions only for this module's tests
+# This is critical for parallel test execution with pytest-xdist
 for module_name in [
     "semantic_kernel",
     "semantic_kernel.connectors",
@@ -75,7 +82,10 @@ for module_name in [
 ]:
     if module_name in _saved_modules:
         sys.modules[module_name] = _saved_modules[module_name]
-    # Note: We keep the mocks in sys.modules for this module's execution
+    else:
+        # Remove mocks that weren't originally present so other tests
+        # can import the real modules
+        sys.modules.pop(module_name, None)
 
 
 class TestDocumentRecord:
@@ -500,10 +510,21 @@ class TestConvertDocumentToQueryResult:
 
     @pytest.mark.asyncio
     async def test_convert_returns_query_result(self) -> None:
-        """Test that conversion returns QueryResult instance."""
+        """Test that conversion returns QueryResult instance.
+
+        Note: We check class name instead of isinstance() because module reloading
+        during parallel test execution can cause class identity mismatches.
+        """
         doc = DocumentRecord(content="test", source_path="/test", chunk_index=0)
         result = await convert_document_to_query_result(doc, score=0.5)
-        assert isinstance(result, QueryResult)
+        # Check class name to handle module reloading during parallel tests
+        assert type(result).__name__ == "QueryResult"
+        # Verify it has expected QueryResult attributes
+        assert hasattr(result, "content")
+        assert hasattr(result, "score")
+        assert hasattr(result, "source_path")
+        assert hasattr(result, "chunk_index")
+        assert hasattr(result, "metadata")
 
     @pytest.mark.asyncio
     async def test_convert_with_empty_metadata_fields(self) -> None:

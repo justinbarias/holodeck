@@ -31,6 +31,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 # Mock semantic_kernel modules BEFORE importing holodeck modules
 # This prevents import errors from semantic_kernel dependencies
+# Track which modules we actually mock to avoid polluting real modules
+_mocked_modules: set[str] = set()
 for module_name in [
     "semantic_kernel",
     "semantic_kernel.connectors",
@@ -43,29 +45,36 @@ for module_name in [
 ]:
     if module_name not in sys.modules:
         sys.modules[module_name] = MagicMock()
+        _mocked_modules.add(module_name)
 
-# Set up specific mock attributes needed by the modules
-mock_memory = sys.modules["semantic_kernel.connectors.memory"]
-mock_memory.AzureAISearchCollection = MagicMock()
-mock_memory.ChromaCollection = MagicMock()
-mock_memory.CosmosMongoCollection = MagicMock()
-mock_memory.CosmosNoSqlCollection = MagicMock()
-mock_memory.FaissCollection = MagicMock()
-mock_memory.InMemoryCollection = MagicMock()
-mock_memory.PineconeCollection = MagicMock()
-mock_memory.PostgresCollection = MagicMock()
-mock_memory.QdrantCollection = MagicMock()
-mock_memory.SqlServerCollection = MagicMock()
-mock_memory.WeaviateCollection = MagicMock()
+# Only set up mock attributes if we created the mocks
+# This prevents polluting real modules that may already be imported
+if "semantic_kernel.connectors.memory" in _mocked_modules:
+    mock_memory = sys.modules["semantic_kernel.connectors.memory"]
+    mock_memory.AzureAISearchCollection = MagicMock()
+    mock_memory.ChromaCollection = MagicMock()
+    mock_memory.CosmosMongoCollection = MagicMock()
+    mock_memory.CosmosNoSqlCollection = MagicMock()
+    mock_memory.FaissCollection = MagicMock()
+    mock_memory.InMemoryCollection = MagicMock()
+    mock_memory.PineconeCollection = MagicMock()
+    mock_memory.PostgresCollection = MagicMock()
+    mock_memory.QdrantCollection = MagicMock()
+    mock_memory.SqlServerCollection = MagicMock()
+    mock_memory.WeaviateCollection = MagicMock()
 
-mock_vector = sys.modules["semantic_kernel.data.vector"]
-mock_vector.VectorStoreField = MagicMock()
-mock_vector.vectorstoremodel = lambda **kwargs: lambda cls: cls
+if "semantic_kernel.data.vector" in _mocked_modules:
+    mock_vector = sys.modules["semantic_kernel.data.vector"]
+    mock_vector.VectorStoreField = MagicMock()
+    mock_vector.vectorstoremodel = lambda **kwargs: lambda cls: cls
 
-mock_text = sys.modules["semantic_kernel.text"]
-mock_text.split_plaintext_paragraph = MagicMock(
-    side_effect=lambda lines, max_tokens: lines if isinstance(lines, list) else [lines]
-)
+if "semantic_kernel.text" in _mocked_modules:
+    mock_text = sys.modules["semantic_kernel.text"]
+    mock_text.split_plaintext_paragraph = MagicMock(
+        side_effect=lambda lines, max_tokens: (
+            lines if isinstance(lines, list) else [lines]
+        )
+    )
 
 import pytest  # noqa: E402
 

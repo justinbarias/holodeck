@@ -52,7 +52,7 @@
 
 ---
 
-## Phase 3: User Story 1 - Semantic Search Over Structured Data with Field Mapping (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - Semantic Search Over Structured Data with Field Mapping (Priority: P1) ✅ MVP
 
 **Goal**: Enable semantic search over CSV/JSON data sources with explicit field mapping (vector_field, metadata_fields, id_field)
 
@@ -60,33 +60,33 @@
 
 ### Tests for User Story 1 (Write FIRST - must FAIL)
 
-- [ ] T015 [P] [US1] Unit test for detect_file_type() function in tests/unit/test_structured_loader.py
-- [ ] T016 [P] [US1] Unit test for detect_csv_delimiter() function in tests/unit/test_structured_loader.py
-- [ ] T017 [P] [US1] Unit test for validate_schema() method in tests/unit/test_structured_loader.py
-- [ ] T018 [P] [US1] Unit test for load_csv_records() generator in tests/unit/test_structured_loader.py
-- [ ] T019 [P] [US1] Unit test for load_json_records() function in tests/unit/test_structured_loader.py
-- [ ] T020 [P] [US1] Unit test for load_jsonl_records() generator in tests/unit/test_structured_loader.py
-- [ ] T021 [P] [US1] Unit test for iter_records() method in tests/unit/test_structured_loader.py
-- [ ] T022 [P] [US1] Unit test for iter_batches() method in tests/unit/test_structured_loader.py
-- [ ] T023 [P] [US1] Integration test for structured vectorstore CSV ingestion and search in tests/integration/test_structured_vectorstore.py
-- [ ] T024 [P] [US1] Integration test for structured vectorstore JSON ingestion and search in tests/integration/test_structured_vectorstore.py
+- [x] T015 [P] [US1] Unit test for detect_file_type() function in tests/unit/test_structured_loader.py
+- [x] T016 [P] [US1] Unit test for detect_csv_delimiter() function in tests/unit/test_structured_loader.py
+- [x] T017 [P] [US1] Unit test for validate_schema() method in tests/unit/test_structured_loader.py
+- [x] T018 [P] [US1] Unit test for load_csv_records() generator in tests/unit/test_structured_loader.py
+- [x] T019 [P] [US1] Unit test for load_json_records() function in tests/unit/test_structured_loader.py
+- [x] T020 [P] [US1] Unit test for load_jsonl_records() generator in tests/unit/test_structured_loader.py
+- [x] T021 [P] [US1] Unit test for iter_records() method in tests/unit/test_structured_loader.py
+- [x] T022 [P] [US1] Unit test for iter_batches() method in tests/unit/test_structured_loader.py
+- [x] T023 [P] [US1] Integration test for structured vectorstore CSV ingestion and search in tests/integration/test_structured_vectorstore.py
+- [x] T024 [P] [US1] Integration test for structured vectorstore JSON ingestion and search in tests/integration/test_structured_vectorstore.py
 
 ### Implementation for User Story 1 (Make tests PASS)
 
-- [ ] T025 [US1] Create StructuredDataLoader class skeleton in src/holodeck/lib/structured_loader.py
-- [ ] T026 [US1] Implement detect_file_type() function (CSV, JSON, JSONL detection) in src/holodeck/lib/structured_loader.py
-- [ ] T027 [US1] Implement detect_csv_delimiter() function with csv.Sniffer in src/holodeck/lib/structured_loader.py
-- [ ] T028 [US1] Implement validate_schema() method to validate fields against source schema in src/holodeck/lib/structured_loader.py
-- [ ] T029 [US1] Implement load_csv_records() generator for streaming CSV records in src/holodeck/lib/structured_loader.py
-- [ ] T030 [US1] Implement load_json_records() function for JSON array files in src/holodeck/lib/structured_loader.py
-- [ ] T031 [US1] Implement load_jsonl_records() generator for JSONL files in src/holodeck/lib/structured_loader.py
-- [ ] T032 [US1] Implement iter_records() method combining loaders with field extraction in src/holodeck/lib/structured_loader.py
-- [ ] T033 [US1] Implement iter_batches() method for batch processing in src/holodeck/lib/structured_loader.py
-- [ ] T034 [US1] Add structured data mode detection (check vector_field presence) in src/holodeck/tools/vectorstore_tool.py
-- [ ] T035 [US1] Integrate StructuredDataLoader into vectorstore tool execution for ingestion in src/holodeck/tools/vectorstore_tool.py
-- [ ] T036 [US1] Wire create_structured_record_class() into vectorstore tool for record generation in src/holodeck/tools/vectorstore_tool.py
-- [ ] T037 [US1] Add embedding generation for structured records using existing embedding infrastructure in src/holodeck/tools/vectorstore_tool.py
-- [ ] T038 [US1] Implement search result conversion to StructuredQueryResult in src/holodeck/tools/vectorstore_tool.py
+- [x] T025 [US1] Create StructuredDataLoader class skeleton in src/holodeck/lib/structured_loader.py
+- [x] T026 [US1] Implement detect_file_type() function (CSV, JSON, JSONL detection) in src/holodeck/lib/structured_loader.py
+- [x] T027 [US1] Implement detect_csv_delimiter() function with csv.Sniffer in src/holodeck/lib/structured_loader.py
+- [x] T028 [US1] Implement validate_schema() method to validate fields against source schema in src/holodeck/lib/structured_loader.py
+- [x] T029 [US1] Implement load_csv_records() generator for streaming CSV records in src/holodeck/lib/structured_loader.py
+- [x] T030 [US1] Implement load_json_records() function for JSON array files in src/holodeck/lib/structured_loader.py
+- [x] T031 [US1] Implement load_jsonl_records() generator for JSONL files in src/holodeck/lib/structured_loader.py
+- [x] T032 [US1] Implement iter_records() method combining loaders with field extraction in src/holodeck/lib/structured_loader.py
+- [x] T033 [US1] Implement iter_batches() method for batch processing in src/holodeck/lib/structured_loader.py
+- [x] T034 [US1] Add structured data mode detection (check vector_field presence) in src/holodeck/tools/vectorstore_tool.py
+- [x] T035 [US1] Integrate StructuredDataLoader into vectorstore tool execution for ingestion in src/holodeck/tools/vectorstore_tool.py
+- [x] T036 [US1] Wire create_structured_record_class() into vectorstore tool for record generation in src/holodeck/tools/vectorstore_tool.py
+- [x] T037 [US1] Add embedding generation for structured records using existing embedding infrastructure in src/holodeck/tools/vectorstore_tool.py
+- [x] T038 [US1] Implement search result conversion to StructuredQueryResult in src/holodeck/tools/vectorstore_tool.py
 
 **Checkpoint**: User Story 1 complete - all US1 tests pass - semantic search over CSV/JSON with single vector_field works
 
