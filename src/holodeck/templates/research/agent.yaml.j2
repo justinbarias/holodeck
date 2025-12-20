@@ -68,17 +68,25 @@ instructions:
 
 # Tools Configuration
 tools:
-  # Vectorstore for research paper search
+  # Vectorstore for research paper search (structured data)
   - type: vectorstore
     name: search_papers
     description: Search research papers and documents for relevant passages
-    source: data/
+    source: data/papers_index.json
+    id_field: id                         # Unique identifier field
+    vector_field:                        # Fields to embed for semantic search
+      - abstract
+    meta_fields:                         # Metadata returned in search results
+      - title
+      - authors
+      - year
+      - url
+    field_separator: "\n\n"              # Separator when joining vector fields
     embedding_model: nomic-embed-text:latest
     top_k: 5
-    chunk_size: 256
-    chunk_overlap: 64
-    min_similarity_score: 0.75
-    database: {{ vector_store }}
+    min_similarity_score: 0.25
+    database:
+      provider: {{ vector_store }}
 {% if mcp_servers %}
 
   # MCP Servers (from wizard selection)
