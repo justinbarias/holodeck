@@ -1,7 +1,8 @@
-"""VectorStoreTool for semantic search over unstructured documents.
+"""VectorStoreTool for semantic search over documents and structured data.
 
 This module provides the VectorStoreTool class that enables agents to perform
-semantic search over files and directories containing unstructured text data.
+semantic search over files and directories containing text data or structured
+data (CSV, JSON, JSONL files with field mapping).
 
 Features:
 - Automatic file discovery (single files or directories)
@@ -10,6 +11,7 @@ Features:
 - Embedding generation via Semantic Kernel
 - Vector storage in Redis or in-memory
 - Modification time tracking for incremental ingestion
+- Structured data ingestion with field mapping (vector_field, meta_fields, id_field)
 """
 
 from __future__ import annotations
@@ -21,7 +23,11 @@ from typing import TYPE_CHECKING, Any
 
 from holodeck.lib.file_processor import FileProcessor, SourceFile
 from holodeck.lib.text_chunker import TextChunker
-from holodeck.lib.vector_store import QueryResult, convert_document_to_query_result
+from holodeck.lib.vector_store import (
+    QueryResult,
+    StructuredQueryResult,
+    convert_document_to_query_result,
+)
 
 if TYPE_CHECKING:
     from holodeck.models.config import ExecutionConfig
@@ -136,6 +142,17 @@ class VectorStoreTool:
         self._embedding_service = service
         logger.debug(f"Embedding service set for tool: {self.config.name}")
 
+    def _is_structured_mode(self) -> bool:
+        """Check if tool is configured for structured data mode.
+
+        Structured mode is enabled when vector_field is specified, indicating
+        the source is a structured data file (CSV, JSON, JSONL) with field mapping.
+
+        Returns:
+            True if structured data mode is enabled.
+        """
+        return self.config.vector_field is not None
+
     def _resolve_dimensions(self, provider: str) -> int:
         """Resolve embedding dimensions from config or auto-detect.
 
@@ -171,7 +188,9 @@ class VectorStoreTool:
         )
         return dimensions
 
-    def _setup_collection(self, provider_type: str) -> None:
+    def _setup_collection(
+        self, provider_type: str, record_class: type[Any] | None = None
+    ) -> None:
         """Set up the collection instance based on database configuration.
 
         Uses config.database to determine the vector store provider.
@@ -183,6 +202,8 @@ class VectorStoreTool:
 
         Args:
             provider_type: LLM provider type for dimension resolution
+            record_class: Optional custom record class for the collection.
+                If None, uses DocumentRecord for unstructured documents.
         """
         # Resolve dimensions before creating collection
         if self._embedding_dimensions is None:
@@ -220,6 +241,7 @@ class VectorStoreTool:
             factory = get_collection_factory(
                 provider=self._provider,
                 dimensions=self._embedding_dimensions,
+                record_class=record_class,
                 **connection_kwargs,
             )
             self._collection = factory()
@@ -238,7 +260,9 @@ class VectorStoreTool:
                 from holodeck.lib.vector_store import get_collection_factory
 
                 factory = get_collection_factory(
-                    provider="in-memory", dimensions=self._embedding_dimensions
+                    provider="in-memory",
+                    dimensions=self._embedding_dimensions,
+                    record_class=record_class,
                 )
                 self._collection = factory()
                 logger.info("Using in-memory vector storage (fallback)")
@@ -622,6 +646,122 @@ class VectorStoreTool:
 
         return deleted_count
 
+    async def _initialize_structured(self, provider_type: str) -> None:
+        """Initialize for structured data mode (CSV, JSON, JSONL).
+
+        Loads structured data using StructuredDataLoader, generates embeddings
+        for vector fields, and stores records with metadata in the vector store.
+
+        Args:
+            provider_type: LLM provider for dimension auto-detection.
+
+        Raises:
+            ConfigError: If configured fields don't exist in source data.
+            FileNotFoundError: If source file doesn't exist.
+        """
+        from holodeck.lib.structured_loader import StructuredDataLoader
+        from holodeck.lib.vector_store import create_structured_record_class
+
+        source_path = self._resolve_source_path()
+
+        # Validate source exists
+        if not source_path.exists():
+            from holodeck.config.context import agent_base_dir
+
+            effective_base_dir = self._base_dir or agent_base_dir.get()
+            raise FileNotFoundError(
+                f"Source path does not exist: {source_path} "
+                f"(configured source: {self.config.source}, "
+                f"base_dir: {effective_base_dir})"
+            )
+
+        # Normalize vector_field to list
+        vector_field = self.config.vector_field
+        if isinstance(vector_field, str):
+            vector_fields = [vector_field]
+        else:
+            vector_fields = list(vector_field) if vector_field else []
+
+        # Create loader
+        loader = StructuredDataLoader(
+            source_path=str(source_path),
+            id_field=self.config.id_field or "",
+            vector_fields=vector_fields,
+            metadata_fields=self.config.meta_fields,
+            field_separator=self.config.field_separator,
+            delimiter=self.config.delimiter,
+        )
+
+        # Validate schema before ingestion (raises ConfigError if fields missing)
+        loader.validate_schema()
+
+        # Resolve dimensions before creating record class
+        if self._embedding_dimensions is None:
+            self._embedding_dimensions = self._resolve_dimensions(provider_type)
+
+        # Create structured record class with metadata fields
+        record_class = create_structured_record_class(
+            dimensions=self._embedding_dimensions,
+            metadata_field_names=self.config.meta_fields,
+            collection_name=self.config.name,
+        )
+
+        # Set up collection with structured record class
+        self._setup_collection(provider_type, record_class=record_class)
+
+        # Ingest records
+        await self._ingest_structured_records(loader, str(source_path), record_class)
+
+        self.is_initialized = True
+        self.last_ingest_time = datetime.now()
+
+        logger.info(
+            f"VectorStoreTool initialized (structured mode): "
+            f"source={source_path}, {self.document_count} records indexed"
+        )
+
+    async def _ingest_structured_records(
+        self, loader: Any, source_path: str, record_class: type[Any]
+    ) -> None:
+        """Ingest structured records with embeddings.
+
+        Args:
+            loader: StructuredDataLoader instance.
+            source_path: Path to source file for record metadata.
+            record_class: Structured record class for creating records.
+        """
+        total_records = 0
+
+        for batch in loader.iter_batches():
+            # Extract content for embedding
+            contents = [r["content"] for r in batch]
+
+            # Generate embeddings for batch
+            embeddings = await self._embed_chunks(contents)
+
+            # Create records
+            records: list[Any] = []
+            for record_data, embedding in zip(batch, embeddings, strict=False):
+                record = record_class(
+                    id=record_data["id"],
+                    content=record_data["content"],
+                    embedding=embedding,
+                    source_file=source_path,
+                    **record_data["metadata"],
+                )
+                records.append(record)
+
+            # Upsert batch to collection
+            async with self._collection as collection:
+                if not await collection.collection_exists():
+                    await collection.ensure_collection_exists()
+                await collection.upsert(records)
+
+            total_records += len(records)
+            logger.debug(f"Ingested batch of {len(records)} structured records")
+
+        self.document_count = total_records
+
     async def initialize(
         self, force_ingest: bool = False, provider_type: str | None = None
     ) -> None:
@@ -631,6 +771,9 @@ class VectorStoreTool:
         generates embeddings, and stores them in the vector database.
         Source path is resolved relative to base_dir if set.
 
+        For structured data mode (when vector_field is configured), loads
+        structured data from CSV/JSON/JSONL files with field mapping.
+
         Args:
             force_ingest: If True, re-ingest all files regardless of modification time.
             provider_type: LLM provider for dimension auto-detection
@@ -639,6 +782,7 @@ class VectorStoreTool:
         Raises:
             FileNotFoundError: If the source path doesn't exist.
             RuntimeError: If no supported files are found in source.
+            ConfigError: If configured fields don't exist in source (structured mode).
         """
         # Default to openai if not specified
         if provider_type is None:
@@ -646,6 +790,11 @@ class VectorStoreTool:
             logger.debug(
                 f"Defaulting to '{provider_type}' for dimension auto-detection"
             )
+
+        # Branch to structured mode if vector_field is configured
+        if self._is_structured_mode():
+            await self._initialize_structured(provider_type)
+            return
 
         source_path = self._resolve_source_path()
 
@@ -743,20 +892,37 @@ class VectorStoreTool:
         query_embeddings = await self._embed_chunks([query])
         query_embedding = query_embeddings[0]
 
-        # Perform search (simplified in-memory implementation)
-        results = await self._search_documents(query_embedding)
+        # Branch to structured search if in structured mode
+        if self._is_structured_mode():
+            structured_results = await self._search_structured(query_embedding)
+
+            # Apply min_similarity_score filter
+            if self.config.min_similarity_score is not None:
+                structured_results = [
+                    r
+                    for r in structured_results
+                    if r.score >= self.config.min_similarity_score
+                ]
+
+            # Apply top_k limit
+            structured_results = structured_results[: self.config.top_k]
+
+            return self._format_structured_results(structured_results, query)
+
+        # Unstructured mode: search document chunks
+        doc_results = await self._search_documents(query_embedding)
 
         # Apply min_similarity_score filter
         if self.config.min_similarity_score is not None:
-            results = [
-                r for r in results if r.score >= self.config.min_similarity_score
+            doc_results = [
+                r for r in doc_results if r.score >= self.config.min_similarity_score
             ]
 
         # Apply top_k limit (T037)
-        results = results[: self.config.top_k]
+        doc_results = doc_results[: self.config.top_k]
 
         # Format results (T034)
-        return self._format_results(results, query)
+        return self._format_results(doc_results, query)
 
     async def _search_documents(
         self, query_embedding: list[float]
@@ -834,6 +1000,87 @@ class VectorStoreTool:
                 f"[{rank}] Score: {result.score:.2f} | Source: {result.source_path}"
             )
             lines.append(result.content)
+            lines.append("")
+
+        return "\n".join(lines).rstrip()
+
+    async def _search_structured(
+        self, query_embedding: list[float]
+    ) -> list[StructuredQueryResult]:
+        """Search structured records and return typed results.
+
+        Args:
+            query_embedding: Query embedding vector.
+
+        Returns:
+            List of StructuredQueryResults sorted by descending score.
+
+        Raises:
+            RuntimeError: If collection is not initialized.
+        """
+        if self._collection is None:
+            raise RuntimeError("Collection not initialized")
+
+        results: list[StructuredQueryResult] = []
+
+        async with self._collection as collection:
+            search_results = await collection.search(
+                vector=query_embedding,
+                top=self.config.top_k or 5,
+            )
+
+            async for result in search_results.results:
+                # Handle SK result format
+                record = result.record if hasattr(result, "record") else result[0]
+                raw_score = result.score if hasattr(result, "score") else result[1]
+
+                similarity = max(0.0, min(1.0, raw_score))
+
+                # Extract metadata fields from record
+                metadata: dict[str, Any] = {}
+                if self.config.meta_fields:
+                    for field in self.config.meta_fields:
+                        if hasattr(record, field):
+                            metadata[field] = getattr(record, field)
+
+                results.append(
+                    StructuredQueryResult(
+                        id=record.id,
+                        content=record.content,
+                        score=similarity,
+                        source_file=record.source_file,
+                        metadata=metadata,
+                    )
+                )
+
+        # Sort by score descending
+        results.sort(key=lambda r: r.score, reverse=True)
+        return results
+
+    @staticmethod
+    def _format_structured_results(
+        results: list[StructuredQueryResult], query: str
+    ) -> str:
+        """Format structured search results for agent consumption.
+
+        Args:
+            results: List of StructuredQueryResults to format.
+            query: Original search query (for context in empty results).
+
+        Returns:
+            Formatted string with results including ID, scores, content, and metadata.
+        """
+        if not results:
+            return f"No relevant results found for query: {query}"
+
+        lines = [f"Found {len(results)} result(s):", ""]
+
+        for rank, result in enumerate(results, start=1):
+            lines.append(f"[{rank}] ID: {result.id} | Score: {result.score:.2f}")
+            lines.append(f"Content: {result.content}")
+            if result.metadata:
+                meta_str = ", ".join(f"{k}: {v}" for k, v in result.metadata.items())
+                lines.append(f"Metadata: {meta_str}")
             lines.append("")
 
         return "\n".join(lines).rstrip()

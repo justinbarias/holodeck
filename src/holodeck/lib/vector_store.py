@@ -774,6 +774,7 @@ def get_collection_class(provider: str) -> type[Any]:
 def get_collection_factory(
     provider: str,
     dimensions: int = 1536,
+    record_class: type[Any] | None = None,
     **connection_kwargs: Any,
 ) -> Callable[[], Any]:
     """Get a vector store collection factory for the specified provider.
@@ -887,8 +888,9 @@ def get_collection_factory(
             f"Supported providers: {', '.join(sorted(supported_providers))}"
         )
 
-    # Create DocumentRecord class for these dimensions
-    record_class = create_document_record_class(dimensions)
+    # Use provided record_class or create default DocumentRecord
+    if record_class is None:
+        record_class = create_document_record_class(dimensions)
 
     # Pre-process provider-specific kwargs to avoid mutating original dict in factory
     # Each provider may need connection_string parsed into specific parameters
