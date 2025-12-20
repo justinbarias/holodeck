@@ -49,6 +49,8 @@ if "semantic_kernel.connectors.memory" in _mocked_modules:
 if "semantic_kernel.data.vector" in _mocked_modules:
     mock_vector = sys.modules["semantic_kernel.data.vector"]
     mock_vector.VectorStoreField = MagicMock()  # type: ignore[assignment]
+    mock_vector.VectorStoreCollectionDefinition = MagicMock()  # type: ignore[assignment]
+    mock_vector.DistanceFunction = MagicMock()  # type: ignore[assignment]
     mock_vector.vectorstoremodel = lambda **kwargs: lambda cls: cls  # type: ignore[assignment]
 
 # Now import from holodeck.lib.vector_store
@@ -508,10 +510,21 @@ class TestConvertDocumentToQueryResult:
 
     @pytest.mark.asyncio
     async def test_convert_returns_query_result(self) -> None:
-        """Test that conversion returns QueryResult instance."""
+        """Test that conversion returns QueryResult instance.
+
+        Note: We check class name instead of isinstance() because module reloading
+        during parallel test execution can cause class identity mismatches.
+        """
         doc = DocumentRecord(content="test", source_path="/test", chunk_index=0)
         result = await convert_document_to_query_result(doc, score=0.5)
-        assert isinstance(result, QueryResult)
+        # Check class name to handle module reloading during parallel tests
+        assert type(result).__name__ == "QueryResult"
+        # Verify it has expected QueryResult attributes
+        assert hasattr(result, "content")
+        assert hasattr(result, "score")
+        assert hasattr(result, "source_path")
+        assert hasattr(result, "chunk_index")
+        assert hasattr(result, "metadata")
 
     @pytest.mark.asyncio
     async def test_convert_with_empty_metadata_fields(self) -> None:

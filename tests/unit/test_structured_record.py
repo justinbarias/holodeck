@@ -4,9 +4,19 @@ Tests for StructuredQueryResult dataclass and create_structured_record_class() f
 These tests should FAIL initially (TDD RED phase) until T013-T014 are implemented.
 """
 
+import importlib
+import sys
 from typing import Any
 
 import pytest
+
+# Force reload of holodeck.lib.vector_store to ensure we get real SK imports
+# This is needed because test_vector_store.py uses module-level mocking that
+# can pollute the module cache when tests run in certain orders.
+if "holodeck.lib.vector_store" in sys.modules:
+    importlib.reload(sys.modules["holodeck.lib.vector_store"])
+
+from semantic_kernel.data.vector import VectorStoreCollectionDefinition
 
 from holodeck.lib.vector_store import (
     StructuredQueryResult,
@@ -113,23 +123,27 @@ class TestCreateStructuredRecordClass:
     """Tests for create_structured_record_class() factory function.
 
     Tests the dynamic record class generation for Semantic Kernel vector stores.
+    The factory returns a tuple of (record_class, definition).
     """
 
-    def test_factory_creates_class(self) -> None:
-        """Test that factory creates a class type."""
-        record_class = create_structured_record_class()
+    def test_factory_creates_class_and_definition(self) -> None:
+        """Test that factory creates a class type and definition."""
+        record_class, definition = create_structured_record_class()
         assert isinstance(record_class, type)
+        assert isinstance(definition, VectorStoreCollectionDefinition)
 
     def test_factory_default_dimensions(self) -> None:
         """Test that factory uses default 1536 dimensions."""
-        record_class = create_structured_record_class()
+        record_class, definition = create_structured_record_class()
         # The class should be created successfully with default dimensions
         assert record_class is not None
+        assert definition is not None
 
     def test_factory_custom_dimensions(self) -> None:
         """Test that factory accepts custom dimensions."""
-        record_class = create_structured_record_class(dimensions=768)
+        record_class, definition = create_structured_record_class(dimensions=768)
         assert record_class is not None
+        assert definition is not None
 
     def test_factory_invalid_dimensions_zero(self) -> None:
         """Test that factory rejects zero dimensions."""
@@ -148,21 +162,23 @@ class TestCreateStructuredRecordClass:
 
     def test_factory_with_metadata_fields(self) -> None:
         """Test factory with metadata field names."""
-        record_class = create_structured_record_class(
+        record_class, definition = create_structured_record_class(
             metadata_field_names=["title", "category", "price"],
         )
         assert record_class is not None
+        assert definition is not None
 
     def test_factory_with_custom_collection_name(self) -> None:
         """Test factory with custom collection name."""
-        record_class = create_structured_record_class(
+        record_class, definition = create_structured_record_class(
             collection_name="products_collection",
         )
         assert record_class is not None
+        assert definition.collection_name == "products_collection"
 
     def test_generated_class_has_id_field(self) -> None:
         """Test that generated class has id field."""
-        record_class = create_structured_record_class()
+        record_class, _ = create_structured_record_class()
         # Create an instance and check id field exists
         instance = record_class(
             id="test-id",
@@ -174,7 +190,7 @@ class TestCreateStructuredRecordClass:
 
     def test_generated_class_has_content_field(self) -> None:
         """Test that generated class has content field."""
-        record_class = create_structured_record_class()
+        record_class, _ = create_structured_record_class()
         instance = record_class(
             id="test-id",
             content="test content text",
@@ -185,7 +201,7 @@ class TestCreateStructuredRecordClass:
 
     def test_generated_class_has_embedding_field(self) -> None:
         """Test that generated class has embedding field."""
-        record_class = create_structured_record_class(dimensions=3)
+        record_class, _ = create_structured_record_class(dimensions=3)
         instance = record_class(
             id="test-id",
             content="test",
@@ -196,7 +212,7 @@ class TestCreateStructuredRecordClass:
 
     def test_generated_class_has_source_file_field(self) -> None:
         """Test that generated class has source_file field."""
-        record_class = create_structured_record_class()
+        record_class, _ = create_structured_record_class()
         instance = record_class(
             id="test-id",
             content="test",
@@ -207,7 +223,7 @@ class TestCreateStructuredRecordClass:
 
     def test_generated_class_with_dynamic_metadata(self) -> None:
         """Test that generated class includes dynamic metadata fields."""
-        record_class = create_structured_record_class(
+        record_class, _ = create_structured_record_class(
             metadata_field_names=["title", "category"],
         )
         instance = record_class(
@@ -223,7 +239,7 @@ class TestCreateStructuredRecordClass:
 
     def test_generated_class_embedding_accepts_none(self) -> None:
         """Test that embedding field can be None."""
-        record_class = create_structured_record_class()
+        record_class, _ = create_structured_record_class()
         instance = record_class(
             id="test-id",
             content="test",
@@ -234,17 +250,19 @@ class TestCreateStructuredRecordClass:
 
     def test_factory_empty_metadata_fields(self) -> None:
         """Test factory with empty metadata field list."""
-        record_class = create_structured_record_class(
+        record_class, definition = create_structured_record_class(
             metadata_field_names=[],
         )
         assert record_class is not None
+        assert definition is not None
 
     def test_factory_none_metadata_fields(self) -> None:
         """Test factory with None metadata fields (default)."""
-        record_class = create_structured_record_class(
+        record_class, definition = create_structured_record_class(
             metadata_field_names=None,
         )
         assert record_class is not None
+        assert definition is not None
 
     def test_factory_invalid_field_name_starts_with_digit(self) -> None:
         """Test that factory rejects field names starting with a digit."""
@@ -269,7 +287,7 @@ class TestCreateStructuredRecordClass:
 
     def test_factory_metadata_config_stored(self) -> None:
         """Test that __metadata_config__ stores field names."""
-        record_class = create_structured_record_class(
+        record_class, _ = create_structured_record_class(
             metadata_field_names=["title", "category"],
         )
         assert hasattr(record_class, "__metadata_config__")
@@ -277,7 +295,7 @@ class TestCreateStructuredRecordClass:
 
     def test_factory_metadata_fields_in_annotations(self) -> None:
         """Test that metadata fields are registered in __annotations__."""
-        record_class = create_structured_record_class(
+        record_class, _ = create_structured_record_class(
             metadata_field_names=["title", "category"],
         )
         assert "title" in record_class.__annotations__
@@ -287,5 +305,32 @@ class TestCreateStructuredRecordClass:
 
     def test_factory_no_metadata_config_when_no_fields(self) -> None:
         """Test that __metadata_config__ is not set when no metadata fields."""
-        record_class = create_structured_record_class()
+        record_class, _ = create_structured_record_class()
         assert not hasattr(record_class, "__metadata_config__")
+
+    def test_metadata_fields_in_definition(self) -> None:
+        """Test that metadata fields are included in the definition."""
+        record_class, definition = create_structured_record_class(
+            metadata_field_names=["title", "category"],
+        )
+        field_names = [f.name for f in definition.fields]
+        # Core fields
+        assert "id" in field_names
+        assert "content" in field_names
+        assert "embedding" in field_names
+        assert "source_file" in field_names
+        # Dynamic metadata fields
+        assert "title" in field_names
+        assert "category" in field_names
+
+    def test_definition_has_correct_field_count(self) -> None:
+        """Test that definition has correct number of fields."""
+        # Without metadata: 4 fields (id, content, embedding, source_file)
+        _, definition_no_meta = create_structured_record_class()
+        assert len(definition_no_meta.fields) == 4
+
+        # With 2 metadata fields: 6 fields total
+        _, definition_with_meta = create_structured_record_class(
+            metadata_field_names=["title", "category"],
+        )
+        assert len(definition_with_meta.fields) == 6

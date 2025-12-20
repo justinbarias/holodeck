@@ -189,7 +189,10 @@ class VectorStoreTool:
         return dimensions
 
     def _setup_collection(
-        self, provider_type: str, record_class: type[Any] | None = None
+        self,
+        provider_type: str,
+        record_class: type[Any] | None = None,
+        definition: Any | None = None,
     ) -> None:
         """Set up the collection instance based on database configuration.
 
@@ -204,6 +207,8 @@ class VectorStoreTool:
             provider_type: LLM provider type for dimension resolution
             record_class: Optional custom record class for the collection.
                 If None, uses DocumentRecord for unstructured documents.
+            definition: Optional VectorStoreCollectionDefinition for structured
+                data with dynamic metadata fields.
         """
         # Resolve dimensions before creating collection
         if self._embedding_dimensions is None:
@@ -242,6 +247,7 @@ class VectorStoreTool:
                 provider=self._provider,
                 dimensions=self._embedding_dimensions,
                 record_class=record_class,
+                definition=definition,
                 **connection_kwargs,
             )
             self._collection = factory()
@@ -263,6 +269,7 @@ class VectorStoreTool:
                     provider="in-memory",
                     dimensions=self._embedding_dimensions,
                     record_class=record_class,
+                    definition=definition,
                 )
                 self._collection = factory()
                 logger.info("Using in-memory vector storage (fallback)")
@@ -699,15 +706,17 @@ class VectorStoreTool:
         if self._embedding_dimensions is None:
             self._embedding_dimensions = self._resolve_dimensions(provider_type)
 
-        # Create structured record class with metadata fields
-        record_class = create_structured_record_class(
+        # Create structured record class and definition with metadata fields
+        record_class, definition = create_structured_record_class(
             dimensions=self._embedding_dimensions,
             metadata_field_names=self.config.meta_fields,
             collection_name=self.config.name,
         )
 
-        # Set up collection with structured record class
-        self._setup_collection(provider_type, record_class=record_class)
+        # Set up collection with structured record class and definition
+        self._setup_collection(
+            provider_type, record_class=record_class, definition=definition
+        )
 
         # Ingest records
         await self._ingest_structured_records(loader, str(source_path), record_class)
