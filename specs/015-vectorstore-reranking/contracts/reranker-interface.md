@@ -86,6 +86,19 @@ class BaseReranker(ABC):
 
 **Location**: `src/holodeck/lib/rerankers/base.py`
 
+### Error Handling Behavior
+
+The `recoverable` attribute determines how `VectorStoreTool` handles reranker errors:
+
+| Error Class | `recoverable` | Behavior |
+|-------------|---------------|----------|
+| `RerankerAuthError` | `False` | **Fail fast** - raise error to caller |
+| `RerankerConnectionError` | `True` | **Fallback** - return original vector search results |
+| `RerankerRateLimitError` | `True` | **Fallback** - return original vector search results |
+| `RerankerError` (base) | `False` (default) | **Fail fast** - unless explicitly set recoverable |
+
+**Rationale**: Authentication and configuration errors (non-recoverable) should fail fast to surface problems early. Transient errors (network, rate limits) should gracefully degrade to vector search results to maintain service availability.
+
 ```python
 class RerankerError(Exception):
     """Base exception for reranker errors.
@@ -93,7 +106,9 @@ class RerankerError(Exception):
     Attributes:
         message: Human-readable error description
         provider: Reranker provider that raised the error
-        recoverable: Whether the error is transient and may succeed on retry
+        recoverable: Whether the error is transient and may succeed on retry.
+                     When True, VectorStoreTool falls back to vector search results.
+                     When False, VectorStoreTool raises the error to fail fast.
     """
 
     def __init__(
@@ -113,6 +128,8 @@ class RerankerAuthError(RerankerError):
 
     Raised when API key is invalid or lacks permissions.
     Not recoverable without configuration change.
+
+    Behavior: Fail fast (raise to caller)
     """
 
     def __init__(self, message: str, provider: str) -> None:
@@ -122,8 +139,10 @@ class RerankerAuthError(RerankerError):
 class RerankerConnectionError(RerankerError):
     """Network or connection error.
 
-    Raised when reranker service is unreachable.
+    Raised when reranker service is unreachable or request times out.
     May be recoverable on retry.
+
+    Behavior: Fallback to vector search results
     """
 
     def __init__(self, message: str, provider: str) -> None:
@@ -135,6 +154,8 @@ class RerankerRateLimitError(RerankerError):
 
     Raised when API rate limit is exceeded.
     Recoverable after backoff period.
+
+    Behavior: Fallback to vector search results
     """
 
     def __init__(self, message: str, provider: str, retry_after: float | None = None) -> None:

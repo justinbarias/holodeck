@@ -87,6 +87,20 @@ A user wants to control the reranking behavior to balance between quality and pe
 - **FR-004**: System MUST support vLLM as a reranker provider with configurable endpoint URL and model name
 - **FR-005**: System MUST provide a `rerank_top_n` parameter to control how many candidates are sent to the reranker
 - **FR-006**: System MUST fall back to original vector search results when reranking fails (graceful degradation)
+
+**Error Handling Decision Matrix** (for FR-006):
+
+| Error Type | Error Class | Behavior | Rationale |
+|------------|-------------|----------|-----------|
+| Network errors | `RerankerConnectionError` | Fallback to vector results | Transient, service may recover |
+| Timeouts | `RerankerConnectionError` | Fallback to vector results | Transient, may succeed on retry |
+| Rate limits | `RerankerRateLimitError` | Fallback to vector results | Transient, will recover after backoff |
+| Authentication errors | `RerankerAuthError` | **Fail fast** (raise error) | Configuration error, won't self-heal |
+| Invalid model name | `RerankerError` | **Fail fast** (raise error) | Configuration error, won't self-heal |
+| Invalid API response | `RerankerError` | Fallback to vector results | May be transient server issue |
+
+**Implementation Note**: Errors with `recoverable=True` trigger fallback behavior. Errors with `recoverable=False` (authentication, invalid configuration) fail fast to surface configuration problems early rather than silently degrading.
+
 - **FR-007**: System MUST validate reranker configuration at startup/configuration load time
 - **FR-008**: System MUST apply `min_similarity_score` filtering before sending candidates to the reranker
 - **FR-009**: System MUST maintain backward compatibility - existing vectorstore configurations without reranking must work unchanged

@@ -53,9 +53,15 @@ Extends the existing `VectorstoreTool` model with reranking configuration.
 | reranker | `RerankerConfig \| None` | `None` | Reranker provider configuration |
 
 **Validation Rules**:
+
+*Pydantic Model Validation* (at configuration load time in `tool.py`):
 - If `rerank=True` and `reranker=None`, raise `ValidationError` with message: "reranker configuration required when rerank is enabled"
 - If `rerank_top_n` is provided, must be >= 1 and <= 1000
+
+*Tool Initialization Validation* (at runtime in `vectorstore_tool.py`):
 - If `rerank_top_n < top_k`, emit warning log: "rerank_top_n is less than top_k, reranking may not improve results"
+
+**Implementation Note**: The `rerank_top_n < top_k` check is performed during `VectorStoreTool` initialization, not in the Pydantic model, because it requires comparing two fields that may have runtime-computed defaults (`rerank_top_n` defaults to `top_k * 3` when not specified).
 
 ---
 
