@@ -14,12 +14,10 @@ HoloDeck is an open-source experimentation platform that enables teams to create
 
 - **🎯 No-Code Agent Definition** - Define agents using simple YAML configuration
 - **🧪 Hypothesis-Driven Testing** - Test agent behaviors against structured test cases
-- **📊 Integrated Evaluations** - Built-in AI and NLP metrics (Groundedness, Relevance, F1, BLEU, ROUGE)
-- **🔌 Plugin Ecosystem** - Extend agents with tools, APIs, and custom functions
-- **💾 RAG Support** - Native vector database integration for grounding data
-- **🚀 One-Click Deployment** - Deploy agents as production-ready FastAPI endpoints
-- **🔒 Enterprise-Ready** - Authentication, rate limiting, monitoring, and logging built-in
-- **☁️ Cloud-Native** - Deploy to Azure, AWS, or GCP with single command
+- **📊 Integrated Evaluations** - DeepEval LLM-as-judge metrics (GEval, RAG) plus NLP metrics (F1, BLEU, ROUGE)
+- **🔌 Tool Ecosystem** - Extend agents with MCP servers and vector store search
+- **💾 RAG Support** - Native vector database integration (ChromaDB, Qdrant, PostgreSQL, Pinecone)
+- **🤖 Open-Source First** - Designed to work with Ollama for local, free inference
 
 ---
 
@@ -33,24 +31,42 @@ pip install holodeck-ai
 
 ### Create Your First Agent
 
-```bash
-# Initialize a new agent workspace
-holodeck init customer-support --template conversational
+Use the interactive wizard to create a new agent:
 
-cd customer-support
+```bash
+# Start the interactive wizard
+holodeck init
+```
+
+The wizard guides you through configuration:
+
+```
+? Enter agent name: research-agent
+? Select LLM provider: Ollama (Local, llama3.2:latest)
+? Select vector store: ChromaDB (Local, http://localhost:8000)
+? Select evaluation metrics: rag-faithfulness, rag-answer_relevancy
+? Select MCP servers: Brave Search, Memory, Sequential Thinking
+```
+
+You can also use command-line options:
+
+```bash
+# Pre-select template
+holodeck init --template research
+
+# Non-interactive mode with defaults
+holodeck init --name my-agent --llm ollama --non-interactive
 ```
 
 This creates:
 
 ```
-customer-support/
+research-agent/
 ├── agent.yaml              # Agent configuration
 ├── instructions/
 │   └── system-prompt.md   # Agent instructions
 ├── data/                  # Grounding data (optional)
-├── tools/                 # Custom tools/plugins
-└── tests/
-    └── test-cases.yaml    # Test scenarios
+└── tools/                 # Tool configuration
 ```
 
 ### Define Your Agent
@@ -58,56 +74,71 @@ customer-support/
 Edit `agent.yaml`:
 
 ```yaml
-name: "customer-support-agent"
-description: "Handles customer inquiries with empathy and accuracy"
+name: "research-agent"
+description: "Research assistant that finds and synthesizes information"
 
 model:
-  provider: openai
-  name: gpt-4o-mini
-  temperature: 0.7
+  provider: ollama
+  name: llama3.2:latest
+  temperature: 0.3
 
 instructions:
   file: instructions/system-prompt.md
 
 tools:
-  - name: search_knowledge_base
+  # Vector store for semantic search
+  - name: search_papers
     type: vectorstore
-    source: data/faqs.md
-    description: "Search customer FAQ database"
+    source: data/papers_index.json
+    description: "Search research papers and documents"
+    database:
+      provider: chromadb
+      connection_string: http://localhost:8000
 
-  - name: check_order_status
-    type: function
-    file: tools/orders.py
-    description: "Retrieve order status by order ID"
+  # MCP server for web search
+  - name: brave_search
+    type: mcp
+    description: "Search the web using Brave Search"
+    command: npx
+    args: ["-y", "@brave/brave-search-mcp-server"]
 
 evaluations:
-  - metric: groundedness
-    threshold: 4.0
-  - metric: relevance
-    threshold: 4.0
-  - metric: response_time
-    max_ms: 2000
+  model:
+    provider: ollama
+    name: llama3.2:latest
+  metrics:
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.8
+    - type: rag
+      metric_type: answer_relevancy
+      threshold: 0.7
+    - type: geval
+      name: "Coherence"
+      criteria: "Evaluate whether the response is clear and well-structured."
+      threshold: 0.7
 
 test_cases:
-  - input: "What are your business hours?"
-    expected_tools: ["search_knowledge_base"]
+  - input: "Find recent papers on machine learning"
+    expected_tools: ["search_papers"]
 
-  - input: "Where is my order #12345?"
-    expected_tools: ["check_order_status"]
-    ground_truth: "Your order is in transit"
+  - input: "What are the latest trends in AI research?"
+    expected_tools: ["brave_search"]
+    ground_truth: "Should summarize current AI research trends"
 ```
 
 ### Test Your Agent
 
 ```bash
-# Run test cases with evaluations
-holodeck test agent.yaml
+# Run test cases with evaluations (uses agent.yaml by default)
+cd research-agent
+holodeck test
 
-# Interactive testing
-holodeck chat agent.yaml
+# Interactive chat session
+holodeck chat
 
-# Test sample hitchhikers agent with environment variables
-source .venv/bin/activate && (cd sample && set -a && source .env && set +a && holodeck test hitchhikers_agent.yaml)
+# With verbose output
+holodeck chat --verbose
 ```
 
 **Output:**
@@ -115,61 +146,19 @@ source .venv/bin/activate && (cd sample && set -a && source .env && set +a && ho
 ```
 🧪 Running HoloDeck Tests...
 
-✅ Test 1/2: What are your business hours?
-   Groundedness: 4.2/5.0 ✓
-   Relevance: 4.5/5.0 ✓
-   Response Time: 1,234ms ✓
-   Tools Used: [search_knowledge_base] ✓
+✅ Test 1/2: Find recent papers on machine learning
+   Faithfulness: 0.92 (threshold: 0.8) ✓
+   Answer Relevancy: 0.88 (threshold: 0.7) ✓
+   Coherence: 0.85 (threshold: 0.7) ✓
+   Tools Used: [search_papers] ✓
 
-✅ Test 2/2: Where is my order #12345?
-   Groundedness: 4.8/5.0 ✓
-   Relevance: 4.7/5.0 ✓
-   F1 Score: 0.89 ✓
-   Response Time: 987ms ✓
+✅ Test 2/2: What are the latest trends in AI research?
+   Faithfulness: 0.89 (threshold: 0.8) ✓
+   Answer Relevancy: 0.91 (threshold: 0.7) ✓
+   Coherence: 0.87 (threshold: 0.7) ✓
+   Tools Used: [brave_search] ✓
 
 📊 Overall Results: 2/2 passed (100%)
-```
-
-### Deploy as API
-
-```bash
-# Deploy locally
-holodeck deploy agent.yaml --port 8000
-
-# Agent is now live at http://localhost:8000
-```
-
-**API Endpoints:**
-
-```bash
-# Chat with agent
-curl -X POST http://localhost:8000/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "message": "What are your business hours?",
-    "session_id": "user-123"
-  }'
-
-# Streaming response
-curl -X POST http://localhost:8000/v1/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Tell me about your products"}'
-
-# Health check
-curl http://localhost:8000/health
-```
-
-### Deploy to Cloud
-
-```bash
-# Deploy to Azure Container Apps
-holodeck deploy agent.yaml --cloud azure --region westus2
-
-# Deploy to AWS Lambda
-holodeck deploy agent.yaml --cloud aws --region us-east-1
-
-# Deploy to Cloud Run (GCP)
-holodeck deploy agent.yaml --cloud gcp --region us-central1
 ```
 
 ---
@@ -278,139 +267,96 @@ Agents are defined using declarative YAML configuration:
 ```yaml
 name: "research-agent"
 model:
-  provider: openai
-  name: gpt-4o
+  provider: ollama
+  name: llama3.2:latest
+  temperature: 0.3
 instructions: |
   You are a research assistant that helps users find
   accurate information from trusted sources.
 tools:
-  - search_web
-  - search_papers
-  - summarize_document
+  - type: vectorstore
+    name: search_papers
+  - type: mcp
+    name: brave_search
 ```
 
-### Tools & Plugins
+### Tools
 
-Extend agent capabilities with a rich ecosystem of tools and plugins:
+Extend agent capabilities with vector search and MCP tools:
 
-#### 1. Vector Search Tools
+#### Vector Store Tools
+
+Enable semantic search over your documents and data:
 
 ```yaml
 tools:
   - name: search_docs
     type: vectorstore
-    provider: redis
-    connection: "localhost:6379"
+    description: "Search knowledge base for relevant information"
     source: data/documents/
-    embedding_model: text-embedding-3-small
+    embedding_model: nomic-embed-text:latest
+    database:
+      provider: chromadb
+      connection_string: http://localhost:8000
 ```
 
-#### 2. Custom Function Tools
+**Supported Vector Stores:**
 
-```yaml
-tools:
-  - name: calculate_shipping
-    type: function
-    file: tools/shipping.py
-    function: calculate_cost
-    description: "Calculate shipping cost based on weight and destination"
-    parameters:
-      weight:
-        type: float
-        description: "Package weight in kg"
-      destination:
-        type: string
-        description: "Destination country code"
-```
+- **ChromaDB** - Lightweight, Python-native (recommended for development)
+- **PostgreSQL pgvector** - Production-grade with SQL capabilities
+- **Qdrant** - High-performance vector database
+- **Pinecone** - Serverless managed cloud
 
-#### 3. MCP (Model Context Protocol) Tools
+#### MCP (Model Context Protocol) Tools
 
 HoloDeck supports the Model Context Protocol for standardized tool integration:
 
 ```yaml
 tools:
-  - name: filesystem_tools
+  - name: brave_search
     type: mcp
-    server: "@modelcontextprotocol/server-filesystem"
-    config:
-      allowed_directories: ["/workspace/data"]
+    description: "Search the web using Brave Search"
+    command: npx
+    args: ["-y", "@brave/brave-search-mcp", "${BRAVE_API_KEY}"]
 
-  - name: github_tools
+  - name: filesystem
     type: mcp
-    server: "@modelcontextprotocol/server-github"
-    config:
-      token: "${GITHUB_TOKEN}"
-      repositories: ["owner/repo"]
+    description: "Read and write files"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem"]
 
-  - name: postgres_tools
+  - name: memory
     type: mcp
-    server: "@modelcontextprotocol/server-postgres"
-    config:
-      connection_string: "${DATABASE_URL}"
+    description: "Persistent memory for conversations"
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-memory"]
 ```
 
-#### 4. Prompt-Based Tools (Semantic Functions)
+**MCP Server Management:**
 
-Define AI-powered tools using natural language prompts:
+```bash
+# Search for MCP servers
+holodeck mcp search filesystem
 
-```yaml
-tools:
-  - name: summarize_text
-    type: prompt
-    description: "Summarize long text into key points"
-    template: |
-      Summarize the following text into 3-5 bullet points:
+# Add an MCP server to your agent
+holodeck mcp add io.github.modelcontextprotocol/server-filesystem
 
-      {{$input}}
-
-      Focus on the main ideas and key takeaways.
-    parameters:
-      input:
-        type: string
-        description: "Text to summarize"
-    model:
-      provider: openai
-      name: gpt-4o-mini
-      temperature: 0.3
-```
-
-#### 5. Plugin Packages
-
-Install pre-built plugin packages from the HoloDeck registry:
-
-```yaml
-plugins:
-  - package: "@holodeck/plugins-web"
-    tools:
-      - web_search
-      - web_scrape
-      - html_to_markdown
-
-  - package: "@holodeck/plugins-data"
-    tools:
-      - csv_query
-      - excel_read
-      - json_transform
-
-  - package: "@holodeck/plugins-communication"
-    tools:
-      - send_email
-      - send_slack
-      - create_jira_ticket
+# List installed servers
+holodeck mcp list
 ```
 
 ### Evaluations
 
-Built-in evaluation metrics with configurable AI models:
+Built-in evaluation metrics powered by DeepEval with support for local models:
 
-**AI-Powered Metrics:**
+**DeepEval Metrics (Recommended):**
 
-- **Groundedness** - Is the response grounded in provided context?
-- **Relevance** - Is the response relevant to the user's query?
-- **Coherence** - Is the response logically coherent?
-- **Safety** - Does the response avoid harmful content?
+- **GEval** - Custom criteria evaluation using chain-of-thought prompting
+- **RAG Faithfulness** - Detect hallucinations by comparing response to retrieved context
+- **RAG Answer Relevancy** - Measure how well responses address the user's question
+- **RAG Context Precision** - Evaluate retrieval ranking quality
 
-**NLP Metrics:**
+**NLP Metrics (Standard):**
 
 - **F1 Score** - Precision and recall balance
 - **BLEU** - Translation/generation quality
@@ -421,26 +367,31 @@ Built-in evaluation metrics with configurable AI models:
 
 ```yaml
 evaluations:
-  default_model:
-    provider: openai
-    name: gpt-4o-mini
+  model:
+    provider: ollama
+    name: llama3.2:latest
     temperature: 0.0
 
   metrics:
-    - metric: groundedness
-      threshold: 4.0
-      model:
-        provider: openai
-        name: gpt-4o # Use more powerful model for critical metrics
-        temperature: 0.0
+    # DeepEval GEval - custom criteria
+    - type: geval
+      name: "Coherence"
+      criteria: "Evaluate whether the response is clear and well-structured."
+      threshold: 0.7
 
-    - metric: relevance
-      threshold: 4.0
-      # Uses default_model
+    # DeepEval RAG metrics
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.8
 
-    - metric: f1_score
-      threshold: 0.85
-      # NLP metric, doesn't use AI model
+    - type: rag
+      metric_type: answer_relevancy
+      threshold: 0.7
+
+    # NLP metrics (no LLM required)
+    - type: standard
+      metric: f1_score
+      threshold: 0.7
 ```
 
 ### Test Cases
@@ -451,17 +402,19 @@ Define structured test scenarios with support for multimodal inputs:
 
 ```yaml
 test_cases:
-  - name: "Basic FAQ handling"
-    input: "What is your return policy?"
-    expected_tools: ["search_knowledge_base"]
+  - name: "Research query"
+    input: "Find papers on machine learning optimization"
+    expected_tools: ["search_papers"]
 
-  - name: "Order status check"
-    input: "Where is order #12345?"
-    ground_truth: "Your order shipped on Jan 15 and arrives Jan 18"
-    expected_tools: ["check_order_status"]
+  - name: "Web search"
+    input: "What are the latest AI trends?"
+    ground_truth: "Summary of current AI research trends"
+    expected_tools: ["brave_search"]
     evaluations:
-      - f1_score
-      - bleu
+      - type: rag
+        metric_type: faithfulness
+      - type: standard
+        metric: f1_score
 ```
 
 #### Multimodal Test Cases with Files
@@ -470,264 +423,26 @@ test_cases:
 
 ```yaml
 test_cases:
-  - name: "Product image analysis"
-    input: "What product is shown in this image?"
+  - name: "Image analysis"
+    input: "Describe what is shown in this image"
     files:
-      - path: tests/fixtures/product-photo.jpg
+      - path: tests/fixtures/diagram.jpg
         type: image
-        description: "Product photograph"
-    ground_truth: "The image shows a MacBook Pro laptop"
+        description: "Architecture diagram"
+    ground_truth: "The image shows a system architecture diagram"
 ```
 
 **PDF Document Input:**
 
 ```yaml
 test_cases:
-  - name: "Contract analysis"
-    input: "Summarize the key terms in this contract"
+  - name: "Document analysis"
+    input: "Summarize the key points in this document"
     files:
-      - path: tests/fixtures/contract.pdf
+      - path: tests/fixtures/report.pdf
         type: pdf
-        description: "Service agreement contract"
-    expected_tools: ["summarize_document"]
-```
-
-**Multiple Files (Mixed Media):**
-
-```yaml
-test_cases:
-  - name: "Insurance claim processing"
-    input: "Process this insurance claim with supporting documents"
-    files:
-      - path: tests/fixtures/claim-form.pdf
-        type: pdf
-        description: "Claim form"
-      - path: tests/fixtures/damage-photo1.jpg
-        type: image
-        description: "Damage photo 1"
-      - path: tests/fixtures/damage-photo2.jpg
-        type: image
-        description: "Damage photo 2"
-    expected_tools: ["claim_processor", "image_analyzer"]
-```
-
----
-
-## 🔄 Experiments & Multi-Agent Orchestration
-
-Group related agents and coordinate their execution using `experiment.yaml`. Experiments enable hypothesis testing, multi-agent workflows, and comparative agent evaluation.
-
-### Single-Agent Experiments
-
-Run multiple agent variants in a single experiment for A/B testing:
-
-```yaml
-name: "customer-support-experiment"
-description: "A/B test different customer support agent configurations"
-
-agents:
-  - name: "support-basic"
-    path: agents/support-basic/agent.yaml
-    description: "Basic support agent with FAQ search"
-
-  - name: "support-advanced"
-    path: agents/support-advanced/agent.yaml
-    description: "Advanced support agent with order lookup and ticket creation"
-
-test_cases:
-  - name: "Basic FAQ handling"
-    input: "What is your return policy?"
-    expected_tools: ["search_knowledge_base"]
-
-evaluations:
-  - metric: groundedness
-    threshold: 4.0
-  - metric: relevance
-    threshold: 4.0
-```
-
-**Run the experiment:**
-
-```bash
-# Run all agents in the experiment against all test cases
-holodeck experiment run experiment.yaml
-
-# Compare results across all agents
-holodeck experiment results experiment.yaml --compare
-
-# Generate report
-holodeck experiment report experiment.yaml --format html
-```
-
-### Multi-Agent Orchestration
-
-Coordinate multiple agents working together using orchestration patterns from the [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/user-guide/workflows/orchestrations/overview).
-
-#### Supported Orchestration Patterns
-
-**1. Sequential Pattern** - Agents execute one after another
-
-```yaml
-name: "document-processing-experiment"
-description: "Sequential multi-agent document processing workflow"
-
-orchestration:
-  pattern: sequential
-  agents:
-    - name: "document-parser"
-      path: agents/document-parser/agent.yaml
-      description: "Extract text and structure from documents"
-
-    - name: "entity-extractor"
-      path: agents/entity-extractor/agent.yaml
-      description: "Extract named entities and relationships"
-
-    - name: "summarizer"
-      path: agents/summarizer/agent.yaml
-      description: "Generate summary of extracted information"
-```
-
-**2. Concurrent (Parallel) Pattern** - Agents execute simultaneously
-
-```yaml
-name: "multi-aspect-analysis-experiment"
-description: "Parallel analysis of different document aspects"
-
-orchestration:
-  pattern: concurrent
-  agents:
-    - name: "sentiment-analyzer"
-      path: agents/sentiment/agent.yaml
-      description: "Analyze sentiment and tone"
-
-    - name: "keyword-extractor"
-      path: agents/keywords/agent.yaml
-      description: "Extract key topics and themes"
-
-    - name: "compliance-checker"
-      path: agents/compliance/agent.yaml
-      description: "Check for regulatory compliance issues"
-
-  aggregation:
-    strategy: merge
-    output_format: json
-```
-
-**3. Handoff Pattern** - Route to specialized agents based on task type
-
-```yaml
-name: "customer-service-system-experiment"
-description: "Handoff-based customer service routing"
-
-orchestration:
-  pattern: handoff
-
-  router:
-    name: "service-router"
-    path: agents/service-router/agent.yaml
-    description: "Analyzes inquiries and routes to specialists"
-
-  specialists:
-    - name: "billing-specialist"
-      path: agents/billing-specialist/agent.yaml
-      description: "Handles billing and payment inquiries"
-
-    - name: "technical-support"
-      path: agents/technical-support/agent.yaml
-      description: "Handles technical issues"
-```
-
-**4. Group Chat Pattern** - Multiple agents collaborate in discussion
-
-```yaml
-name: "research-team-experiment"
-description: "Group chat for collaborative research analysis"
-
-orchestration:
-  pattern: group_chat
-
-  participants:
-    - name: "literature-reviewer"
-      path: agents/literature-reviewer/agent.yaml
-      role: "Finds and summarizes relevant research papers"
-
-    - name: "data-analyst"
-      path: agents/data-analyst/agent.yaml
-      role: "Analyzes datasets and validates findings"
-
-  chat_config:
-    max_rounds: 10
-    termination_condition: "consensus_reached"
-    moderator: "literature-reviewer"
-```
-
----
-
-## 📊 Competitive Analysis
-
-HoloDeck fills a critical gap: **the only open-source, self-hosted platform designed specifically for building, testing, and orchestrating AI agents through pure YAML configuration.** Built for software engineers with native CI/CD integration.
-
-### vs. **LangSmith** (LangChain Team)
-
-| Aspect                  | HoloDeck                                                                                     | LangSmith                              |
-| ----------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------- |
-| **Deployment Model**    | Self-hosted (open-source)                                                                    | **SaaS only** (cloud-dependent)        |
-| **CI/CD Integration**   | **Native CLI** - integrates in any CI/CD pipeline (GitHub Actions, GitLab CI, Jenkins, etc.) | API-based, requires cloud connectivity |
-| **Agent Definition**    | Pure YAML (no code)                                                                          | Python code + LangChain SDK            |
-| **Primary Focus**       | Agent experimentation & deployment                                                           | Production observability & tracing     |
-| **Agent Orchestration** | Multi-agent patterns (sequential, concurrent, handoff)                                       | Not designed for multi-agent workflows |
-| **Use Case**            | Build agents fast, test hypotheses, deploy locally                                           | Monitor & debug production LLM apps    |
-| **Vendor Lock-in**      | None (MIT open-source)                                                                       | Complete (SaaS dependency)             |
-
----
-
-### vs. **MLflow GenAI** (Databricks)
-
-| Aspect                      | HoloDeck                                                                 | MLflow GenAI                                                 |
-| --------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| **CI/CD Integration**       | **CLI-native** - single commands for test, validate, deploy in pipelines | Python SDK + REST API, requires infrastructure setup         |
-| **Infrastructure**          | Lightweight, portable                                                    | **Heavy infrastructure** (ML tracking, Databricks-dependent) |
-| **Agent Support**           | Purpose-built for agents                                                 | Not designed for agents; focuses on model evaluation         |
-| **Focus**                   | Build and deploy agents                                                  | ML experiment tracking and model comparison                  |
-| **Multi-Agent**             | Native orchestration patterns                                            | Single model/variant comparison focus                        |
-| **Complexity**              | Minimal (YAML)                                                           | High (ML engineering mindset required)                       |
-
----
-
-### vs. **Microsoft PromptFlow**
-
-| Aspect                  | HoloDeck                                                                          | PromptFlow                                                  |
-| ----------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| **CI/CD Integration**   | **CLI-first design** - test, validate, deploy via shell commands in any CI system | Python SDK + Azure-centric tooling, requires infrastructure |
-| **Scope**               | **Full agent lifecycle** (build, test, deploy agents)                             | **Individual tools & functions only** (not agent-level)     |
-| **Design Target**       | Multi-agent workflows & orchestration                                             | Single tool/AI function development                         |
-| **Configuration**       | Pure YAML (100% no-code)                                                          | Visual flow graphs + low-code Python                        |
-| **Agent Orchestration** | Native multi-agent patterns (sequential, concurrent, handoff, group chat)         | Not designed for multi-agent orchestration                  |
-| **Self-Hosted**         | ✅ Full support                                                                   | ⚠️ Limited (designed for Azure)                             |
-
----
-
-### Why HoloDeck is Unique
-
-**HoloDeck solves a problem none of these platforms address:**
-
-```
-┌──────────────────────────────────────────────────────────┐
-│  The Agent Development Gap                               │
-├──────────────────────────────────────────────────────────┤
-│                                                          │
-│  LangSmith    → Production observability (SaaS-only)    │
-│  MLflow       → Model tracking (heavy infrastructure)    │
-│  PromptFlow   → Function/tool development (not agents)  │
-│                                                          │
-│  ❌ None support multi-agent orchestration              │
-│  ❌ None enable pure no-code agent definition            │
-│  ❌ None designed for CI/CD pipeline integration        │
-│  ❌ None combine testing + evaluation + deployment      │
-│                                                          │
-│  ✅ HoloDeck fills ALL these gaps                       │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
+        description: "Research report"
+    expected_tools: ["search_papers"]
 ```
 
 ---
@@ -743,50 +458,43 @@ HoloDeck fills a critical gap: **the only open-source, self-hosted platform desi
         ▼                  ▼                  ▼
 ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
 │   Agent      │  │  Evaluation  │  │  Deployment  │
-│   Engine     │  │  Framework   │  │  Engine      │
+│   Engine     │  │  Framework   │  │  (Planned)   │
 └──────────────┘  └──────────────┘  └──────────────┘
         │                  │                  │
-        ├─ LLM Providers   ├─ AI Metrics     ├─ FastAPI
-        ├─ Tool System     ├─ NLP Metrics    ├─ Docker
-        ├─ Memory          ├─ Custom Evals   ├─ Cloud Deploy
-        └─ Vector Stores   └─ Reporting      └─ Monitoring
+        ├─ LLM Providers   ├─ DeepEval       ├─ FastAPI
+        ├─ MCP Tools       ├─ NLP Metrics    ├─ Docker
+        ├─ Vectorstore     ├─ Custom GEval   ├─ Cloud Deploy
+        └─ Memory          └─ Reporting      └─ Monitoring
 ```
 
 ---
 
 ## 🎯 Use Cases
 
+### Research Assistant
+
+```bash
+holodeck init research --template research
+# Pre-configured with: Paper search, MCP web search, RAG evaluations
+```
+
 ### Customer Support Agent
 
 ```bash
 holodeck init support --template customer-support
-# Pre-configured with: FAQ search, ticket creation, sentiment analysis
+# Pre-configured with: FAQ vectorstore, structured issue data
 ```
 
-### Research Assistant
+### Conversational Agent
 
 ```bash
-holodeck init research --template research-assistant
-# Pre-configured with: Web search, paper search, summarization
-```
-
-### Code Assistant
-
-```bash
-holodeck init coder --template code-assistant
-# Pre-configured with: Code search, documentation lookup, testing
-```
-
-### Sales Agent
-
-```bash
-holodeck init sales --template sales-agent
-# Pre-configured with: Product search, CRM integration, lead qualification
+holodeck init chatbot --template conversational
+# Pre-configured with: Simple Q&A, FAQ vectorstore
 ```
 
 ---
 
-## 📊 Monitoring & Observability
+## 📊 Monitoring & Observability (Planned)
 
 HoloDeck provides comprehensive observability with native **OpenTelemetry** support and **Semantic Conventions for Generative AI**.
 
@@ -890,9 +598,9 @@ observability:
 
 ## 🗺️ Roadmap
 
-- [ ] **v0.1** - Core agent engine + CLI
-- [ ] **v0.2** - Evaluation framework
-- [ ] **v0.3** - API deployment
+- [x] **v0.1** - Core agent engine + CLI
+- [x] **v0.2** - Evaluation framework (DeepEval, NLP), Tools (MCP, Vectorstore)
+- [ ] **v0.3** - API deployment, OpenTelemetry observability
 - [ ] **v0.4** - Web UI (no-code editor)
 - [ ] **v0.5** - Multi-agent orchestration
 - [ ] **v0.6** - Enterprise features (SSO, audit logs, RBAC)
@@ -902,10 +610,16 @@ observability:
 
 ## 📚 Documentation
 
-- **[Full Documentation](https://holodeck.dev/docs)**
-- **[API Reference](https://holodeck.dev/api)**
-- **[Examples](https://github.com/holodeck/holodeck/tree/main/examples)**
-- **[Tutorials](https://holodeck.dev/tutorials)**
+- **[Quickstart Guide](docs/getting-started/quickstart.md)** - Get your first agent running
+- **[Installation](docs/getting-started/installation.md)** - Installation and setup
+- **[Agent Configuration](docs/guides/agent-configuration.md)** - Configure your agents
+- **[Tools Guide](docs/guides/tools.md)** - Vectorstore and MCP tools
+- **[Evaluations Guide](docs/guides/evaluations.md)** - DeepEval and NLP metrics
+- **[Global Configuration](docs/guides/global-config.md)** - Shared settings
+- **[Vector Stores](docs/guides/vector-stores.md)** - Set up vector databases
+- **[MCP CLI](docs/guides/mcp-cli.md)** - Manage MCP servers
+- **[LLM Providers](docs/guides/llm-providers.md)** - Configure LLM providers
+- **[Contributing](docs/contributing.md)** - Development guide
 
 ---
 
@@ -919,24 +633,29 @@ MIT License - see [LICENSE](LICENSE) for details
 
 Built with:
 
-- [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Agent framework, Vector Store abstractions
-- [FastAPI](https://fastapi.tiangolo.com/) - API deployment
-- [Azure AI Evaluation](https://github.com/Azure/azure-sdk-for-python/tree/azure-ai-evaluation_1.11.2/sdk/evaluation/azure-ai-evaluation) - Evaluation metrics
-- [Redis](https://redis.io/) - Vector storage
+- [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Agent framework
+- [DeepEval](https://github.com/confident-ai/deepeval) - LLM evaluation framework
+- [FastAPI](https://fastapi.tiangolo.com/) - API deployment (planned)
+- [ChromaDB](https://www.trychroma.com/) - Vector database
+- [Qdrant](https://qdrant.tech/) - Vector database
+- [PostgreSQL pgvector](https://github.com/pgvector/pgvector) - Vector database
+- [Pinecone](https://www.pinecone.io/) - Vector database
+
+Development tools:
+
+- [spec-kit](https://github.com/spec-kit/spec-kit) - Spec-driven development
+- [Claude Code](https://claude.ai/code) - AI-assisted development
 
 Inspired by:
 
 - Microsoft PromptFlow
 - OpenAI Evals
-- LlamaIndex
 
 ---
 
 ## 💬 Community
 
-- **Discord**: [Join our community](https://discord.gg/holodeck)
-- **Twitter**: [@holodeckdev](https://twitter.com/holodeckdev)
-- **GitHub Discussions**: [Ask questions](https://github.com/holodeck/holodeck/discussions)
+- **GitHub Discussions**: [Ask questions](https://github.com/justinbarias/holodeck/discussions)
 
 ---
 
@@ -945,8 +664,7 @@ Inspired by:
 </p>
 
 <p align="center">
-  <a href="https://holodeck.dev">Website</a> •
-  <a href="https://holodeck.dev/docs">Docs</a> •
-  <a href="https://github.com/holodeck/holodeck/examples">Examples</a> •
-  <a href="https://discord.gg/holodeck">Discord</a>
+  <a href="https://useholodeck.ai/">Website</a> •
+  <a href="https://docs.useholodeck.ai/">Docs</a> •
+  <a href="https://github.com/justinbarias/holodeck-samples">Examples</a> •
 </p>
