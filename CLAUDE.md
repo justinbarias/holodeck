@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Core Value Proposition:** No-code agent definition. Users define agents, tools, evaluations, and deployments entirely through YAML files.
 
 **Current Status:** Early development (v0.1 in progress)
+
 - CLI and configuration infrastructure: **Complete**
 - Agent execution engine: **Complete**
 - Evaluation framework: **Complete**
@@ -16,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Deployment engine: **Planned**
 
 **Technology Stack:**
+
 - **Language:** Python 3.10+
 - **Package Manager:** UV (fast, modern replacement for pip/Poetry)
 - **Framework:** Microsoft Semantic Kernel (agent framework)
@@ -186,6 +188,7 @@ make update-deps              # Update all dependencies
 ### Environment Configuration
 
 HoloDeck loads environment variables from (priority order):
+
 1. Shell environment variables (highest priority)
 2. `.env` in current directory (project-level)
 3. `~/.holodeck/.env` (user-level defaults)
@@ -229,6 +232,7 @@ make pre-commit         # Run hooks on all files
 Follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
 
 **Enforced by Tooling:**
+
 - **Formatting:** Black (88 character line length)
 - **Linting:** Ruff (comprehensive rule set)
 - **Type Checking:** MyPy (strict mode)
@@ -340,11 +344,13 @@ def test_load_missing_config():
 ```
 
 **Test Markers:**
+
 - `@pytest.mark.unit`: Unit tests (fast, isolated)
 - `@pytest.mark.integration`: Integration tests (cross-component)
 - `@pytest.mark.slow`: Slow-running tests
 
 **Test Structure (AAA Pattern):**
+
 1. **Arrange:** Set up test data and preconditions
 2. **Act:** Execute the code under test
 3. **Assert:** Verify the expected outcome
@@ -406,37 +412,37 @@ async def run_test_cases(agent, test_cases: list[str]) -> list[str]:
 ## Agent Configuration Schema
 
 ```yaml
-name: string                         # Required: Agent identifier
-description: string                  # Optional: Human-readable description
+name: string # Required: Agent identifier
+description: string # Optional: Human-readable description
 
-model:                               # Required: LLM provider configuration
+model: # Required: LLM provider configuration
   provider: openai | azure_openai | anthropic | ollama
-  name: string                       # Model name (e.g., "gpt-4o")
-  temperature: float                 # 0.0 to 2.0 (default: 0.7)
-  max_tokens: int                    # Max output tokens
+  name: string # Model name (e.g., "gpt-4o")
+  temperature: float # 0.0 to 2.0 (default: 0.7)
+  max_tokens: int # Max output tokens
 
-instructions:                        # Required: System instructions
-  file: path                         # Path to instruction file
+instructions: # Required: System instructions
+  file: path # Path to instruction file
   # OR
-  inline: string                     # Inline instruction text
+  inline: string # Inline instruction text
 
-tools:                               # Optional: List of tools
+tools: # Optional: List of tools
   - name: string
     type: vectorstore | function | mcp | prompt
     # Type-specific configuration...
 
-evaluations:                         # Optional: Evaluation configuration
-  default_model: {...}               # Global model for all metrics
+evaluations: # Optional: Evaluation configuration
+  default_model: { ... } # Global model for all metrics
   metrics:
     - metric: groundedness | relevance | f1_score | bleu | geval
       threshold: float
-      model: {...}                   # Per-metric model override
+      model: { ... } # Per-metric model override
 
-test_cases:                          # Optional: Test scenarios
+test_cases: # Optional: Test scenarios
   - input: string
     ground_truth: string
     expected_tools: [string]
-    files: [...]                     # Multimodal file inputs
+    files: [...] # Multimodal file inputs
 ```
 
 ## Workflow
@@ -450,9 +456,11 @@ This project uses **spec-kit** for feature development:
 5. **Plan todo list** - Read all files in `specs/<spec_name>/`:
    - spec.md, plan.md, tasks.md, data-model.md
    - research.md, quickstart.md (if exist)
-   - contracts/*.md (if any)
+   - contracts/\*.md (if any)
 6. **Implement** - Follow the todo list
 7. **Run code quality checks** after each task:
+
+When planning for tasks or implementing any feature, always extract context from the relevant spec-kit files in `specs/`.
 
 ```bash
 make format             # Format with Black + Ruff
@@ -467,6 +475,7 @@ Always `source .venv/bin/activate` before running Python commands.
 ## Git Commit Guidelines
 
 When generating commit messages:
+
 - **Do NOT attribute Claude Code** in commit messages
 - Do NOT include "Generated with Claude Code" or similar attributions
 - Write clean, conventional commit messages focused on the changes
@@ -493,6 +502,7 @@ When generating commit messages:
 5. **DON'T catch broad exceptions** without re-raising
 6. **DON'T commit** without running tests
 7. **DON'T use mutable default arguments**:
+
    ```python
    # BAD
    def my_func(items: list = []): pass
@@ -501,6 +511,7 @@ When generating commit messages:
    def my_func(items: list | None = None):
        items = items or []
    ```
+
 8. **DON'T skip docstrings** - all public functions need them
 
 ## Key Design Constraints
@@ -526,3 +537,9 @@ When generating commit messages:
 - [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
 
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
+
+## Active Technologies
+- N/A (uses existing vector store infrastructure) (015-vectorstore-reranking)
+
+## Recent Changes
+- 015-vectorstore-reranking: Added Python 3.10+
