@@ -537,9 +537,3 @@ When generating commit messages:
 - [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
 
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
-
-## Active Technologies
-- N/A (uses existing vector store infrastructure) (015-vectorstore-reranking)
-
-## Recent Changes
-- 015-vectorstore-reranking: Added Python 3.10+
