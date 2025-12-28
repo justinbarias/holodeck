@@ -1,0 +1,17 @@
+# CODEOWNERS - Defines code ownership for automatic PR review requests
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+*                         @justinbarias
+
+# Core source code
+/src/holodeck/            @justinbarias
+/src/holodeck/cli/        @justinbarias
+/src/holodeck/lib/        @justinbarias
+
+# Documentation and specifications
+/docs/                    @justinbarias
+/specs/                   @justinbarias
+
+# CI/CD and GitHub configuration
+/.github/                 @justinbarias

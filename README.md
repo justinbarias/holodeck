@@ -635,6 +635,7 @@ Built with:
 
 - [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Agent framework
 - [DeepEval](https://github.com/confident-ai/deepeval) - LLM evaluation framework
+- [markitdown](https://github.com/microsoft/markitdown) - Document cracking into markdown for LLMs
 - [FastAPI](https://fastapi.tiangolo.com/) - API deployment (planned)
 - [ChromaDB](https://www.trychroma.com/) - Vector database
 - [Qdrant](https://qdrant.tech/) - Vector database
@@ -648,8 +649,8 @@ Development tools:
 
 Inspired by:
 
-- Microsoft PromptFlow
-- OpenAI Evals
+- Pytorch, Keras - Deep learning frameworks
+- Promptflow - by its simplicity in defining semantic functions
 
 ---
 
