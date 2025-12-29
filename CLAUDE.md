@@ -453,7 +453,7 @@ This project uses **spec-kit** for feature development:
 2. **Clarify:** `/speckit.clarify`
 3. **Plan:** `/speckit.plan`
 4. **Create tasks:** `/speckit.tasks`
-5. **Plan todo list** - Read all files in `specs/<spec_name>/`:
+5. **Run plan mode to create a todo list** - Read all files in `specs/<spec_name>/`:
    - spec.md, plan.md, tasks.md, data-model.md
    - research.md, quickstart.md (if exist)
    - contracts/\*.md (if any)

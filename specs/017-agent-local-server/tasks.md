@@ -19,10 +19,10 @@
 
 **Purpose**: Project initialization and serve module structure
 
-- [ ] T001 Add FastAPI, Uvicorn, ag-ui-protocol, python-ulid dependencies to pyproject.toml
-- [ ] T002 Create serve module structure: src/holodeck/serve/__init__.py
-- [ ] T003 [P] Create protocols submodule: src/holodeck/serve/protocols/__init__.py
-- [ ] T004 [P] Create test directory structure: tests/unit/serve/, tests/integration/serve/, tests/contract/serve/
+- [x] T001 Add FastAPI, Uvicorn, ag-ui-protocol, python-ulid dependencies to pyproject.toml
+- [x] T002 Create serve module structure: src/holodeck/serve/__init__.py
+- [x] T003 [P] Create protocols submodule: src/holodeck/serve/protocols/__init__.py
+- [x] T004 [P] Create test directory structure: tests/unit/serve/, tests/integration/serve/, tests/contract/serve/
 
 ---
 

@@ -32,6 +32,18 @@ wheels = [
 ]
 
 [[package]]
+name = "ag-ui-protocol"
+version = "0.1.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/67/bb/5a5ec893eea5805fb9a3db76a9888c3429710dfb6f24bbb37568f2cf7320/ag_ui_protocol-0.1.10.tar.gz", hash = "sha256:3213991c6b2eb24bb1a8c362ee270c16705a07a4c5962267a083d0959ed894f4", size = 6945, upload-time = "2025-11-06T15:17:17.068Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8f/78/eb55fabaab41abc53f52c0918a9a8c0f747807e5306273f51120fd695957/ag_ui_protocol-0.1.10-py3-none-any.whl", hash = "sha256:c81e6981f30aabdf97a7ee312bfd4df0cd38e718d9fc10019c7d438128b93ab5", size = 7889, upload-time = "2025-11-06T15:17:15.325Z" },
+]
+
+[[package]]
 name = "aiofiles"
 version = "25.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -223,6 +235,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/61/62/06741b579156360248d1ec624842ad0edf697050bbaf7c3e46394e106ad1/aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7", size = 25007, upload-time = "2025-07-03T22:54:43.528Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/76/641ae371508676492379f16e2fa48f4e2c11741bd63c48be4b12a6b09cba/aiosignal-1.4.0-py3-none-any.whl", hash = "sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e", size = 7490, upload-time = "2025-07-03T22:54:42.156Z" },
+]
+
+[[package]]
+name = "annotated-doc"
+version = "0.0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/ba/046ceea27344560984e26a590f90bc7f4a75b06701f653222458922b558c/annotated_doc-0.0.4.tar.gz", hash = "sha256:fbcda96e87e9c92ad167c2e53839e57503ecfda18804ea28102353485033faa4", size = 7288, upload-time = "2025-11-10T22:07:42.062Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1e/d3/26bf1008eb3d2daa8ef4cacc7f3bfdc11818d111f7e2d0201bc6e3b49d45/annotated_doc-0.0.4-py3-none-any.whl", hash = "sha256:571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320", size = 5303, upload-time = "2025-11-10T22:07:40.673Z" },
 ]
 
 [[package]]
@@ -1475,6 +1496,21 @@ wheels = [
 ]
 
 [[package]]
+name = "fastapi"
+version = "0.128.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/52/08/8c8508db6c7b9aae8f7175046af41baad690771c9bcde676419965e338c7/fastapi-0.128.0.tar.gz", hash = "sha256:1cc179e1cef10a6be60ffe429f79b829dce99d8de32d7acb7e6c8dfdf7f2645a", size = 365682, upload-time = "2025-12-27T15:21:13.714Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5c/05/5cbb59154b093548acd0f4c7c474a118eda06da25aa75c616b72d8fcd92a/fastapi-0.128.0-py3-none-any.whl", hash = "sha256:aebd93f9716ee3b4f4fcfe13ffb7cf308d99c9f3ab5622d8877441072561582d", size = 103094, upload-time = "2025-12-27T15:21:12.154Z" },
+]
+
+[[package]]
 name = "filelock"
 version = "3.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1851,6 +1887,7 @@ name = "holodeck-ai"
 source = { editable = "." }
 dependencies = [
     { name = "absl-py" },
+    { name = "ag-ui-protocol" },
     { name = "aiofiles" },
     { name = "anthropic" },
     { name = "azure-ai-evaluation" },
@@ -1858,6 +1895,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "deepeval" },
     { name = "evaluate" },
+    { name = "fastapi" },
     { name = "inquirerpy" },
     { name = "jinja2" },
     { name = "jsonschema" },
@@ -1878,6 +1916,7 @@ dependencies = [
     { name = "semantic-kernel" },
     { name = "twine" },
     { name = "urllib3" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
@@ -1928,6 +1967,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "absl-py", specifier = ">=2.3.1,<3.0.0" },
+    { name = "ag-ui-protocol", specifier = ">=0.1.10,<1.0.0" },
     { name = "aiofiles", specifier = ">=25.1.0,<26.0.0" },
     { name = "anthropic", specifier = ">=0.72.0,<0.73.0" },
     { name = "azure-ai-evaluation", specifier = ">=1.13.0,<2.0.0" },
@@ -1940,6 +1980,7 @@ requires-dist = [
     { name = "deepeval", specifier = ">=3.0.0,<4.0.0" },
     { name = "detect-secrets", marker = "extra == 'dev'", specifier = ">=1.4.0" },
     { name = "evaluate", specifier = ">=0.4.6,<0.5.0" },
+    { name = "fastapi", specifier = ">=0.115.0,<1.0.0" },
     { name = "inquirerpy", specifier = ">=0.3.4,<0.4.0" },
     { name = "jinja2", specifier = ">=3.0.0,<4.0.0" },
     { name = "jsonschema", specifier = ">=4.0.0,<5.0.0" },
@@ -1978,6 +2019,7 @@ requires-dist = [
     { name = "twine", specifier = ">=6.2.0,<7.0.0" },
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.12" },
     { name = "urllib3", specifier = ">=2.5.0,<3.0.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0,<1.0.0" },
 ]
 provides-extras = ["chromadb", "dev", "pinecone", "postgres", "qdrant", "vectorstores"]
 
