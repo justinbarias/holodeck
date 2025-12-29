@@ -1,0 +1,445 @@
+openapi: 3.1.0
+info:
+  title: HoloDeck Agent Server API
+  description: |
+    REST API for interacting with HoloDeck agents.
+
+    This API is exposed when running `holodeck serve --protocol rest`.
+    For AG-UI protocol, use the AG-UI SDK client instead.
+  version: 0.1.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+tags:
+  - name: Chat
+    description: Agent conversation endpoints
+  - name: Sessions
+    description: Session management endpoints
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /agent/{agent_name}/chat:
+    post:
+      operationId: chatSync
+      summary: Send a message to the agent (synchronous)
+      description: |
+        Sends a message to the agent and waits for the complete response.
+        If no session_id is provided, a new session is created.
+        If an invalid or expired session_id is provided, a new session is created automatically.
+
+        **Multimodal Support**: Files can be included via:
+        - JSON body with base64-encoded files in the `files` array
+        - Multipart form-data with binary file uploads
+
+        Files are automatically processed (OCR for images, text extraction for PDFs/Office docs)
+        before being sent to the agent.
+      tags:
+        - Chat
+      parameters:
+        - name: agent_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the agent (from agent.yaml)
+          example: customer-support
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChatRequestMultipart'
+      responses:
+        '200':
+          description: Successful response from agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Agent not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '503':
+          description: Agent not ready
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /agent/{agent_name}/chat/stream:
+    post:
+      operationId: chatStream
+      summary: Send a message to the agent (streaming)
+      description: |
+        Sends a message to the agent and streams the response using Server-Sent Events (SSE).
+        The stream includes text chunks, tool call events, and completion events.
+        Supports multimodal inputs via JSON (base64) or multipart form-data.
+      tags:
+        - Chat
+      parameters:
+        - name: agent_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the agent (from agent.yaml)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChatRequestMultipart'
+      responses:
+        '200':
+          description: Streaming response from agent
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Server-Sent Events stream with the following event types:
+                  - `message_start`: Start of agent response
+                  - `message_delta`: Text chunk
+                  - `message_end`: End of agent response
+                  - `tool_call`: Tool invocation event
+                  - `error`: Error event
+        '400':
+          description: Invalid request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Agent not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /sessions/{session_id}:
+    delete:
+      operationId: deleteSession
+      summary: Delete a session
+      description: |
+        Deletes a session and its conversation history.
+        Returns 204 even if the session doesn't exist (idempotent).
+      tags:
+        - Sessions
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+          description: Session ID (ULID format)
+      responses:
+        '204':
+          description: Session deleted successfully
+        '400':
+          description: Invalid session ID format
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Check server health
+      description: Returns overall server health status
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Server is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /health/agent:
+    get:
+      operationId: agentHealthCheck
+      summary: Check agent health
+      description: Returns health status of the loaded agent
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Agent health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /ready:
+    get:
+      operationId: readinessCheck
+      summary: Check server readiness
+      description: |
+        Returns 200 if server is ready to accept requests.
+        Used by load balancers and container orchestrators.
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Server is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                    example: true
+        '503':
+          description: Server is not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                    example: false
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: User message to send to the agent
+          example: "What is your return policy?"
+        session_id:
+          type: string
+          pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+          description: |
+            Optional session ID (ULID format) to continue a conversation.
+            If not provided, a new session is created.
+          example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        files:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/FileContent'
+          description: |
+            Optional array of files to include with the message.
+            Files are processed (OCR, text extraction) before being sent to the agent.
+
+    ChatRequestMultipart:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: User message to send to the agent
+        session_id:
+          type: string
+          pattern: ^[0-9A-HJKMNP-TV-Z]{26}$
+          description: Optional session ID to continue a conversation
+        files:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: binary
+          description: |
+            Binary file uploads. Each file is processed (OCR, text extraction)
+            before being sent to the agent. Maximum 50MB per file, 100MB total.
+
+    FileContent:
+      type: object
+      required:
+        - content
+        - mime_type
+      properties:
+        content:
+          type: string
+          format: byte
+          description: Base64-encoded file content
+          example: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        mime_type:
+          type: string
+          description: MIME type of the file
+          enum:
+            - image/png
+            - image/jpeg
+            - image/gif
+            - image/webp
+            - application/pdf
+            - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+            - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            - application/vnd.openxmlformats-officedocument.presentationml.presentation
+            - text/plain
+            - text/csv
+            - text/markdown
+          example: "image/png"
+        filename:
+          type: string
+          description: Original filename (optional)
+          example: "screenshot.png"
+
+    ChatResponse:
+      type: object
+      required:
+        - message_id
+        - content
+        - session_id
+        - execution_time_ms
+      properties:
+        message_id:
+          type: string
+          description: Unique message identifier (ULID)
+          example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        content:
+          type: string
+          description: Agent's response text
+          example: "Our return policy allows returns within 30 days of purchase."
+        session_id:
+          type: string
+          description: Session ID for this conversation
+          example: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        tool_calls:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolCallInfo'
+          description: Tools invoked during response generation
+        tokens_used:
+          $ref: '#/components/schemas/TokenUsage'
+        execution_time_ms:
+          type: integer
+          description: Request processing time in milliseconds
+          example: 1250
+
+    ToolCallInfo:
+      type: object
+      required:
+        - name
+        - status
+      properties:
+        name:
+          type: string
+          description: Name of the tool invoked
+          example: "search_knowledge_base"
+        arguments:
+          type: object
+          additionalProperties: true
+          description: Arguments passed to the tool
+          example:
+            query: "return policy"
+        status:
+          type: string
+          enum: [success, error]
+          description: Tool execution status
+          example: "success"
+
+    TokenUsage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+          description: Tokens in the prompt
+          example: 150
+        completion_tokens:
+          type: integer
+          description: Tokens in the completion
+          example: 75
+        total_tokens:
+          type: integer
+          description: Total tokens used
+          example: 225
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          description: Overall health status
+          example: "healthy"
+        agent_name:
+          type: string
+          description: Name of the loaded agent
+          example: "customer-support"
+        agent_ready:
+          type: boolean
+          description: Whether agent is ready to accept requests
+          example: true
+        active_sessions:
+          type: integer
+          description: Number of active sessions
+          example: 5
+        uptime_seconds:
+          type: number
+          format: float
+          description: Server uptime in seconds
+          example: 3600.5
+
+    ProblemDetail:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI reference identifying the problem type
+          example: "https://holodeck.dev/errors/invalid-request"
+        title:
+          type: string
+          description: Short, human-readable summary
+          example: "Invalid Request"
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        detail:
+          type: string
+          description: Human-readable explanation
+          example: "The 'message' field is required and cannot be empty"
+        instance:
+          type: string
+          format: uri
+          description: URI reference for this specific occurrence
+          example: "/agent/support/chat"
