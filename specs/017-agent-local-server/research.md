@@ -11,57 +11,403 @@ This research addresses the technical decisions required to implement a local ag
 
 ## 1. AG-UI Protocol Integration
 
-### Decision: Use `ag-ui-protocol` Python SDK
+### 1.1 Protocol Overview
+
+The **Agent User Interaction Protocol (AG-UI)** is a lightweight, event-driven framework for seamless communication between frontend applications and AI agents. Key design principles:
+
+- **Transport Agnostic**: Supports SSE, WebSockets, webhooks, and other mechanisms
+- **Bidirectional**: Enables collaborative human-AI workflows
+- **Minimal Opinions**: Requires only 16 standardized event types
+- **Middleware Layer**: Events need only be AG-UI-compatible, enabling flexibility
+
+**Core Abstraction**:
+```
+run(input: RunAgentInput) -> Observable<BaseEvent>
+```
+
+### 1.2 Decision: Use `ag-ui-protocol` Python SDK
 
 **Rationale**: The official `ag-ui-protocol` package (v0.1.10) provides:
-- Strongly-typed Pydantic models for all 16 event types
-- Built-in `EventEncoder` for Server-Sent Events (SSE) streaming
+- Strongly-typed Pydantic models for all 16+ event types
+- Built-in `EventEncoder` for SSE streaming with content negotiation
 - Format negotiation based on HTTP Accept headers
+- Two transport options: HTTP SSE (text) and HTTP Binary Protocol (high-performance)
 - Full Python 3.9+ compatibility (HoloDeck requires 3.10+)
 
 **Alternatives Considered**:
 1. **Implement protocol from scratch** - Rejected: Unnecessary duplication, higher maintenance burden
 2. **Use raw JSON SSE** - Rejected: Loses type safety and format negotiation benefits
 
-### Key AG-UI Events to Implement
+### 1.3 Complete Event Type Reference
 
-Based on sample analysis, the minimum viable event set for HoloDeck:
+AG-UI organizes events into distinct categories:
 
-| Event Type | Purpose | HoloDeck Mapping |
-|------------|---------|------------------|
-| `RunStartedEvent` | Signals workflow start | Session initialization |
-| `RunFinishedEvent` | Signals workflow completion | Session end |
-| `TextMessageStartEvent` | Opens message stream | Response start |
-| `TextMessageContentEvent` | Streams text chunks | Agent response chunks |
-| `TextMessageEndEvent` | Closes message stream | Response complete |
-| `ToolCallStartEvent` | Tool invocation start | Tool execution start |
-| `ToolCallArgsEvent` | Tool arguments | Tool parameters |
-| `ToolCallEndEvent` | Tool invocation complete | Tool execution end |
-| `StateSnapshotEvent` | Session state sync | Session metadata |
+#### Lifecycle Events
 
-### Sample Implementation Pattern
+| Event Type | Fields | Purpose |
+|------------|--------|---------|
+| `RunStartedEvent` | `thread_id`, `run_id`, `parent_run_id?`, `input?` | Initiates execution |
+| `RunFinishedEvent` | `thread_id`, `run_id`, `result?` | Signals successful completion |
+| `RunErrorEvent` | `message`, `code?` | Indicates failure |
+| `StepStartedEvent` | `step_name` | Brackets discrete work unit start |
+| `StepFinishedEvent` | `step_name` | Brackets discrete work unit end |
 
-From `agentic_chat.py`:
+#### Text Message Events (Start-Content-End Pattern)
+
+| Event Type | Fields | Purpose |
+|------------|--------|---------|
+| `TextMessageStartEvent` | `message_id`, `role` | Opens message stream |
+| `TextMessageContentEvent` | `message_id`, `delta` | Streams incremental text chunks |
+| `TextMessageEndEvent` | `message_id` | Closes message stream |
+| `TextMessageChunkEvent` | (convenience) | Auto-expands to Start→Content→End |
+
+#### Tool Call Events
+
+| Event Type | Fields | Purpose |
+|------------|--------|---------|
+| `ToolCallStartEvent` | `tool_call_id`, `tool_call_name`, `parent_message_id?` | Initiates tool execution |
+| `ToolCallArgsEvent` | `tool_call_id`, `delta` | Streams argument JSON fragments |
+| `ToolCallEndEvent` | `tool_call_id` | Completes argument transmission |
+| `ToolCallResultEvent` | `tool_call_id`, `content` | Delivers tool output |
+
+#### State Management Events (Snapshot-Delta Pattern)
+
+| Event Type | Fields | Purpose |
+|------------|--------|---------|
+| `StateSnapshotEvent` | `snapshot` | Complete state baseline |
+| `StateDeltaEvent` | `delta` | RFC 6902 JSON Patch operations |
+| `MessagesSnapshotEvent` | `messages` | Full conversation history |
+
+#### Special Events
+
+| Event Type | Fields | Purpose |
+|------------|--------|---------|
+| `CustomEvent` | `name`, `value` | Application-defined events |
+| `RawEvent` | `event`, `source?` | Wraps external system events |
+| `ActivitySnapshotEvent` | `message_id`, `activity_type`, `content` | Frontend-only UI updates |
+| `ActivityDeltaEvent` | `delta` | Incremental activity patches |
+
+### 1.4 RunAgentInput Structure
+
+The input to every AG-UI agent run:
+
 ```python
-from ag_ui.core import (
-    RunAgentInput, EventType, RunStartedEvent, RunFinishedEvent,
-    TextMessageStartEvent, TextMessageContentEvent, TextMessageEndEvent,
+class RunAgentInput(BaseModel):
+    """Input parameters for agent execution."""
+    thread_id: str           # Conversation thread identifier
+    run_id: str              # Unique run execution identifier
+    messages: list[Message]  # Conversation history
+    tools: list[Tool] | None # Available tools (frontend-defined)
+    context: dict | None     # Optional contextual data
+```
+
+**Key Insight**: Tools are frontend-defined and passed to the agent during execution. This enables:
+- Frontend control over available capabilities
+- Dynamic tool addition/removal based on context
+- Security via application-controlled sensitive operations
+
+### 1.5 Message Types
+
+AG-UI supports multiple participant roles:
+
+```python
+# User message (supports multimodal)
+UserMessage(
+    id="msg-123",
+    role="user",
+    content="What's in this image?",  # Can be str or list[InputContent]
 )
-from ag_ui.encoder import EventEncoder
 
-async def event_generator():
-    yield RunStartedEvent(thread_id=thread_id, run_id=run_id)
-    yield TextMessageStartEvent(message_id=msg_id, role="assistant")
-    for chunk in agent_response:
-        yield TextMessageContentEvent(message_id=msg_id, delta=chunk)
-    yield TextMessageEndEvent(message_id=msg_id)
-    yield RunFinishedEvent(thread_id=thread_id, run_id=run_id)
+# Assistant message (may include tool calls)
+AssistantMessage(
+    id="msg-124",
+    role="assistant",
+    content="I'll analyze that for you.",
+    tool_calls=[ToolCall(...)]  # Optional
+)
 
-return StreamingResponse(
-    EventEncoder(accept_header).encode_events(event_generator()),
-    media_type=EventEncoder(accept_header).content_type
+# Tool result message
+ToolMessage(
+    id="msg-125",
+    role="tool",
+    tool_call_id="tc-123",
+    content="Tool execution result"
+)
+
+# System instruction
+SystemMessage(
+    id="msg-001",
+    role="system",
+    content="You are a helpful assistant."
 )
 ```
+
+### 1.6 State Management
+
+AG-UI provides efficient bidirectional state synchronization:
+
+**State Snapshots** - Complete state representations:
+```python
+yield StateSnapshotEvent(
+    type=EventType.STATE_SNAPSHOT,
+    snapshot={"steps": [...], "status": "in_progress"}
+)
+```
+
+**State Deltas** - Incremental updates via JSON Patch (RFC 6902):
+```python
+import jsonpatch
+
+previous_state = {"count": 1}
+current_state = {"count": 2}
+patch = jsonpatch.make_patch(previous_state, current_state)
+
+yield StateDeltaEvent(
+    type=EventType.STATE_DELTA,
+    delta=patch.patch  # [{"op": "replace", "path": "/count", "value": 2}]
+)
+```
+
+**Best Practices**:
+- Deploy snapshots at run start and after error recovery
+- Use deltas for incremental changes (bandwidth efficient)
+- Apply patches atomically with error fallback to snapshot
+
+### 1.7 Serialization and EventEncoder
+
+The `EventEncoder` handles format negotiation based on HTTP Accept headers:
+
+```python
+from ag_ui.encoder import EventEncoder
+
+# Create encoder from Accept header
+accept_header = request.headers.get("accept")
+encoder = EventEncoder(accept=accept_header)
+
+# Encode events for streaming
+async def event_generator():
+    yield encoder.encode(RunStartedEvent(...))
+    yield encoder.encode(TextMessageContentEvent(...))
+    yield encoder.encode(RunFinishedEvent(...))
+
+# Return streaming response
+return StreamingResponse(
+    event_generator(),
+    media_type=encoder.get_content_type()
+)
+```
+
+**Transport Options**:
+- `text/event-stream`: SSE text format (default, debugging friendly)
+- `application/octet-stream`: Binary protocol (high performance)
+
+### 1.8 Implementation Patterns from Examples
+
+#### Pattern 1: Agentic Chat (Text Streaming)
+
+```python
+async def agentic_chat_endpoint(input_data: RunAgentInput, request: Request):
+    encoder = EventEncoder(accept=request.headers.get("accept"))
+
+    async def event_generator():
+        # 1. Emit run started
+        yield encoder.encode(RunStartedEvent(
+            type=EventType.RUN_STARTED,
+            thread_id=input_data.thread_id,
+            run_id=input_data.run_id
+        ))
+
+        # 2. Stream text response
+        message_id = str(uuid.uuid4())
+        yield encoder.encode(TextMessageStartEvent(
+            type=EventType.TEXT_MESSAGE_START,
+            message_id=message_id,
+            role="assistant"
+        ))
+
+        # Stream chunks from agent
+        async for chunk in agent.execute(input_data.messages):
+            yield encoder.encode(TextMessageContentEvent(
+                type=EventType.TEXT_MESSAGE_CONTENT,
+                message_id=message_id,
+                delta=chunk
+            ))
+
+        yield encoder.encode(TextMessageEndEvent(
+            type=EventType.TEXT_MESSAGE_END,
+            message_id=message_id
+        ))
+
+        # 3. Emit run finished
+        yield encoder.encode(RunFinishedEvent(
+            type=EventType.RUN_FINISHED,
+            thread_id=input_data.thread_id,
+            run_id=input_data.run_id
+        ))
+
+    return StreamingResponse(event_generator(), media_type=encoder.get_content_type())
+```
+
+#### Pattern 2: Tool Calls with Incremental Arguments
+
+```python
+async def send_tool_call_events():
+    tool_call_id = str(uuid.uuid4())
+    tool_call_name = "search_knowledge_base"
+    args = {"query": "return policy", "limit": 10}
+
+    # 1. Start tool call
+    yield ToolCallStartEvent(
+        type=EventType.TOOL_CALL_START,
+        tool_call_id=tool_call_id,
+        tool_call_name=tool_call_name
+    )
+
+    # 2. Stream arguments (can be chunked for large args)
+    yield ToolCallArgsEvent(
+        type=EventType.TOOL_CALL_ARGS,
+        tool_call_id=tool_call_id,
+        delta=json.dumps(args)
+    )
+
+    # 3. End tool call
+    yield ToolCallEndEvent(
+        type=EventType.TOOL_CALL_END,
+        tool_call_id=tool_call_id
+    )
+```
+
+#### Pattern 3: Generative UI with State Updates
+
+```python
+async def generative_ui_endpoint(input_data: RunAgentInput, request: Request):
+    encoder = EventEncoder(accept=request.headers.get("accept"))
+
+    async def event_generator():
+        yield encoder.encode(RunStartedEvent(...))
+
+        # Initial state snapshot
+        state = {"steps": [{"name": f"Step {i}", "status": "pending"} for i in range(5)]}
+        yield encoder.encode(StateSnapshotEvent(
+            type=EventType.STATE_SNAPSHOT,
+            snapshot=state
+        ))
+
+        # Update steps progressively
+        previous_state = copy.deepcopy(state)
+        for i, step in enumerate(state["steps"]):
+            step["status"] = "completed"
+            patch = jsonpatch.make_patch(previous_state, state)
+            yield encoder.encode(StateDeltaEvent(
+                type=EventType.STATE_DELTA,
+                delta=patch.patch
+            ))
+            previous_state = copy.deepcopy(state)
+            await asyncio.sleep(0.5)
+
+        yield encoder.encode(RunFinishedEvent(...))
+
+    return StreamingResponse(event_generator(), media_type=encoder.get_content_type())
+```
+
+#### Pattern 4: Backend Tool Rendering (Messages Snapshot)
+
+```python
+async def send_backend_tool_call_events(messages: list):
+    tool_call_id = str(uuid.uuid4())
+
+    # Create assistant message with tool call
+    new_message = AssistantMessage(
+        id=str(uuid.uuid4()),
+        role="assistant",
+        tool_calls=[
+            ToolCall(
+                id=tool_call_id,
+                type="function",
+                function={
+                    "name": "get_weather",
+                    "arguments": json.dumps({"city": "San Francisco"})
+                }
+            )
+        ]
+    )
+
+    # Create tool result message
+    result_message = ToolMessage(
+        id=str(uuid.uuid4()),
+        role="tool",
+        content=json.dumps({"temperature": "72F", "conditions": "sunny"}),
+        tool_call_id=tool_call_id
+    )
+
+    # Emit complete messages snapshot
+    all_messages = list(messages) + [new_message, result_message]
+    yield MessagesSnapshotEvent(
+        type=EventType.MESSAGES_SNAPSHOT,
+        messages=all_messages
+    )
+```
+
+#### Pattern 5: Custom Events (Predictive State)
+
+```python
+async def predictive_state_events():
+    # Emit custom event for frontend state prediction
+    yield CustomEvent(
+        type=EventType.CUSTOM,
+        name="PredictState",
+        value=[
+            {
+                "state_key": "document",
+                "tool": "write_document",
+                "tool_argument": "content"
+            }
+        ]
+    )
+
+    # Then emit tool call that will update predicted state
+    yield ToolCallStartEvent(...)
+```
+
+### 1.9 HoloDeck Integration Mapping
+
+| AG-UI Concept | HoloDeck Component | Implementation |
+|--------------|-------------------|----------------|
+| `RunAgentInput` | `ChatRequest` + session | Map session_id to thread_id, generate run_id |
+| `messages` | `ChatSession.history` | Convert to AG-UI message format |
+| `tools` | Agent tools from YAML | Expose via AG-UI tool definitions |
+| Text streaming | `AgentExecutor.execute_turn()` | Wrap response stream in AG-UI events |
+| Tool calls | Semantic Kernel tools | Map SK tool invocations to AG-UI events |
+| State | Session metadata | Expose session state via StateSnapshotEvent |
+
+### 1.10 Middleware Considerations
+
+AG-UI middleware can transform, filter, and augment event streams:
+
+```python
+# Example: Logging middleware
+class LoggingMiddleware:
+    def process(self, event: BaseEvent) -> BaseEvent:
+        logger.info(f"Event: {event.type}")
+        return event
+
+# Example: Tool filtering
+class ToolFilterMiddleware:
+    def __init__(self, allowed_tools: list[str]):
+        self.allowed_tools = allowed_tools
+
+    def process(self, event: BaseEvent) -> BaseEvent | None:
+        if event.type == EventType.TOOL_CALL_START:
+            if event.tool_call_name not in self.allowed_tools:
+                return None  # Block this tool
+        return event
+```
+
+**HoloDeck Application**: Use middleware for:
+- Debug logging of all events
+- Rate limiting event emission
+- Filtering sensitive tool calls
+- Adding observability metadata
 
 ---
 
@@ -399,6 +745,8 @@ src/holodeck/
 | Topic | Decision | Key Dependency |
 |-------|----------|----------------|
 | AG-UI SDK | `ag-ui-protocol>=0.1.10` | PyPI package |
+| AG-UI Events | 16+ event types in 5 categories | See Section 1.3 |
+| AG-UI Patterns | Start-Content-End, Snapshot-Delta | See Section 1.8 |
 | Web Framework | FastAPI + Uvicorn | `fastapi`, `uvicorn` |
 | Multimodal Input | Base64 JSON + multipart form-data | Existing FileProcessor |
 | Session Storage | In-memory with 30-min TTL | None (stdlib) |
@@ -406,3 +754,14 @@ src/holodeck/
 | Logging | Structured metadata + debug mode | Existing logging |
 | Protocol Pattern | Adapter for AG-UI and REST | Custom code |
 | CORS | Configurable, default `*` | FastAPI middleware |
+
+## Key AG-UI Implementation References
+
+| Pattern | Example File | HoloDeck Use Case |
+|---------|-------------|-------------------|
+| Agentic Chat | `agentic_chat.py` | Basic agent responses |
+| Tool Calls | `human_in_the_loop.py` | HoloDeck tool execution |
+| State Updates | `agentic_generative_ui.py` | Session metadata sync |
+| Backend Tools | `backend_tool_rendering.py` | Server-side tool results |
+| Custom Events | `predictive_state_updates.py` | Extended functionality |
+| Shared State | `shared_state.py` | Complex state snapshots |
