@@ -65,12 +65,6 @@ jobs:
           files: ./coverage.xml
           slug: justinbarias/holodeck
 
-      - name: Upload test results to Codecov
-        if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@v1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-
       - name: Security scan
         run: |
           uv run bandit -r src/
