@@ -454,9 +454,13 @@ This project uses **spec-kit** for feature development:
 3. **Plan:** `/speckit.plan`
 4. **Create tasks:** `/speckit.tasks`
 5. **Run plan mode to create a todo list** - Read all files in `specs/<spec_name>/`:
+
    - spec.md, plan.md, tasks.md, data-model.md
    - research.md, quickstart.md (if exist)
    - contracts/\*.md (if any)
+
+   After planning, _ALWAYS provide the plan file path_ to the user for review. If you can, open it in the editor for them.
+
 6. **Implement** - Follow the todo list
 7. **Run code quality checks** after each task:
 
