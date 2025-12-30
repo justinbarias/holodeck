@@ -342,10 +342,9 @@ class TestAgentServerLifecycle:
 class TestAgentServerIntegration:
     """Integration tests for AgentServer."""
 
-    def test_full_lifecycle(self, mock_agent_config: MagicMock) -> None:
+    @pytest.mark.asyncio
+    async def test_full_lifecycle(self, mock_agent_config: MagicMock) -> None:
         """Test complete server lifecycle with health checks."""
-        import asyncio
-
         server = AgentServer(agent_config=mock_agent_config)
 
         # Initially not ready
@@ -364,7 +363,7 @@ class TestAgentServerIntegration:
         assert response.json()["status"] == "healthy"
 
         # Start server
-        asyncio.get_event_loop().run_until_complete(server.start())
+        await server.start()
         assert server.state == ServerState.RUNNING
         assert server.uptime_seconds > 0
 
@@ -373,7 +372,7 @@ class TestAgentServerIntegration:
         assert response.json()["status"] == "healthy"
 
         # Stop server
-        asyncio.get_event_loop().run_until_complete(server.stop())
+        await server.stop()
         assert server.state == ServerState.STOPPED
         assert not server.is_ready
 
