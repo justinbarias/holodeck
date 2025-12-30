@@ -205,6 +205,26 @@ class TestChatResponse:
         assert response.tool_calls == []
         assert response.tokens_used is None
 
+    def test_chat_response_invalid_message_id_raises(self) -> None:
+        """Test ChatResponse rejects invalid message_id ULID."""
+        with pytest.raises(ValidationError, match="message_id must be valid ULID"):
+            ChatResponse(
+                message_id="not-a-valid-ulid",
+                content="Hello!",
+                session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                execution_time_ms=100,
+            )
+
+    def test_chat_response_invalid_session_id_raises(self) -> None:
+        """Test ChatResponse rejects invalid session_id ULID."""
+        with pytest.raises(ValidationError, match="session_id must be valid ULID"):
+            ChatResponse(
+                message_id="01ARZ3NDEKTSV4RRFFQ69G5FAW",
+                content="Hello!",
+                session_id="invalid-session-id",
+                execution_time_ms=100,
+            )
+
 
 class TestToolCallInfo:
     """Tests for ToolCallInfo model."""

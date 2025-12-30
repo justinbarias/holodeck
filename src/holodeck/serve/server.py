@@ -42,7 +42,7 @@ class AgentServer:
         self,
         agent_config: Agent,
         protocol: ProtocolType = ProtocolType.AG_UI,
-        host: str = "0.0.0.0",  # noqa: S104
+        host: str = "127.0.0.1",
         port: int = 8000,
         cors_origins: list[str] | None = None,
         debug: bool = False,
@@ -52,7 +52,8 @@ class AgentServer:
         Args:
             agent_config: The agent configuration to serve.
             protocol: The protocol to use (default: AG-UI).
-            host: The hostname to bind to (default: 0.0.0.0).
+            host: The hostname to bind to (default: 127.0.0.1 for security).
+                  Use 0.0.0.0 to expose to all network interfaces.
             port: The port to listen on (default: 8000).
             cors_origins: List of allowed CORS origins (default: ["*"]).
             debug: Enable debug logging (default: False).
@@ -63,6 +64,13 @@ class AgentServer:
         self.port = port
         self.cors_origins = cors_origins or ["*"]
         self.debug = debug
+
+        # Warn if binding to all interfaces
+        if host == "0.0.0.0":  # noqa: S104
+            logger.warning(
+                "Server binding to 0.0.0.0 exposes it to all network interfaces. "
+                "Use 127.0.0.1 for local-only access."
+            )
 
         self.sessions = SessionStore()
         self.state = ServerState.INITIALIZING
@@ -108,6 +116,14 @@ class AgentServer:
         )
 
         # Add custom middleware
+        # Middleware order matters: Starlette executes in reverse order of addition.
+        # Request flow:  Logging -> ErrorHandling -> CORS -> Handler
+        # Response flow: Handler -> CORS -> ErrorHandling -> Logging
+        #
+        # This order ensures:
+        # 1. LoggingMiddleware logs all requests/responses including error responses
+        # 2. ErrorHandlingMiddleware catches handler exceptions and returns RFC 7807
+        # 3. CORS headers are added to all responses including errors
         app.add_middleware(ErrorHandlingMiddleware, debug=self.debug)
         app.add_middleware(LoggingMiddleware, debug=self.debug)
 
@@ -163,13 +179,17 @@ class AgentServer:
         """Start the server and begin accepting requests.
 
         This method should be called after create_app() to transition
-        the server to the RUNNING state.
+        the server to the RUNNING state. Also starts the background
+        session cleanup task.
         """
         if self._app is None:
             self.create_app()
 
         self._start_time = datetime.now(timezone.utc)
         self.state = ServerState.RUNNING
+
+        # Start automatic session cleanup
+        await self.sessions.start_cleanup_task()
 
         logger.info(
             f"Agent server started at http://{self.host}:{self.port} "
@@ -180,9 +200,12 @@ class AgentServer:
         """Stop the server gracefully.
 
         Transitions through SHUTTING_DOWN to STOPPED state,
-        cleaning up any active sessions.
+        stopping the cleanup task and clearing all sessions.
         """
         self.state = ServerState.SHUTTING_DOWN
+
+        # Stop cleanup task
+        await self.sessions.stop_cleanup_task()
 
         # Cleanup sessions
         session_count = self.sessions.active_count

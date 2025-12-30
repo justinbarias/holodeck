@@ -6,14 +6,20 @@ Sessions maintain conversation context across multiple requests.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from ulid import ULID
 
+from holodeck.lib.logging_config import get_logger
+
 if TYPE_CHECKING:
     from holodeck.chat.executor import AgentExecutor
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -43,20 +49,33 @@ class SessionStore:
 
     Manages conversation sessions for the Agent Local Server.
     Sessions expire after a configurable TTL period of inactivity.
+    Includes optional automatic background cleanup and max session limits.
 
     Attributes:
         sessions: Dictionary mapping session IDs to ServerSession objects.
         ttl_seconds: Time-to-live for sessions in seconds (default: 30 minutes).
+        max_sessions: Maximum number of sessions allowed (default: 1000).
+        cleanup_interval_seconds: Interval for automatic cleanup (default: 300).
     """
 
-    def __init__(self, ttl_seconds: int = 1800) -> None:
+    def __init__(
+        self,
+        ttl_seconds: int = 1800,
+        max_sessions: int = 1000,
+        cleanup_interval_seconds: int = 300,
+    ) -> None:
         """Initialize session store.
 
         Args:
             ttl_seconds: Session timeout in seconds. Default is 1800 (30 minutes).
+            max_sessions: Maximum sessions before rejecting new ones. Default is 1000.
+            cleanup_interval_seconds: Interval for auto-cleanup. Default is 300 (5 min).
         """
         self.sessions: dict[str, ServerSession] = {}
         self.ttl_seconds = ttl_seconds
+        self.max_sessions = max_sessions
+        self.cleanup_interval_seconds = cleanup_interval_seconds
+        self._cleanup_task: asyncio.Task[None] | None = None
 
     @property
     def active_count(self) -> int:
@@ -90,7 +109,15 @@ class SessionStore:
 
         Returns:
             The newly created ServerSession.
+
+        Raises:
+            RuntimeError: If max_sessions limit is reached.
         """
+        if len(self.sessions) >= self.max_sessions:
+            raise RuntimeError(
+                f"Maximum session limit ({self.max_sessions}) reached. "
+                "Try again later or increase max_sessions."
+            )
         session = ServerSession(agent_executor=agent_executor)
         self.sessions[session.session_id] = session
         return session
@@ -143,3 +170,42 @@ class SessionStore:
             del self.sessions[session_id]
 
         return len(expired_ids)
+
+    async def start_cleanup_task(self) -> None:
+        """Start the background cleanup task.
+
+        This should be called when the server starts to enable
+        automatic cleanup of expired sessions.
+        """
+        if self._cleanup_task is None or self._cleanup_task.done():
+            self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+            logger.info(
+                f"Started session cleanup task (interval: "
+                f"{self.cleanup_interval_seconds}s, TTL: {self.ttl_seconds}s)"
+            )
+
+    async def stop_cleanup_task(self) -> None:
+        """Stop the background cleanup task.
+
+        This should be called when the server stops to cleanly
+        terminate the background task.
+        """
+        if self._cleanup_task is not None and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._cleanup_task
+            logger.info("Stopped session cleanup task")
+        self._cleanup_task = None
+
+    async def _cleanup_loop(self) -> None:
+        """Background loop that periodically cleans up expired sessions."""
+        while True:
+            try:
+                await asyncio.sleep(self.cleanup_interval_seconds)
+                count = self.cleanup_expired()
+                if count > 0:
+                    logger.info(f"Cleaned up {count} expired session(s)")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in session cleanup: {e}")

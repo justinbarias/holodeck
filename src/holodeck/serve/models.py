@@ -160,6 +160,26 @@ class ChatResponse(BaseModel):
     )
     execution_time_ms: int = Field(..., description="Request latency in milliseconds")
 
+    @field_validator("message_id")
+    @classmethod
+    def valid_message_id_ulid(cls, v: str) -> str:
+        """Validate message_id is valid ULID format."""
+        try:
+            ULID.from_str(v)
+        except (ValueError, TypeError):
+            raise ValueError("message_id must be valid ULID") from None
+        return v
+
+    @field_validator("session_id")
+    @classmethod
+    def valid_session_id_ulid(cls, v: str) -> str:
+        """Validate session_id is valid ULID format."""
+        try:
+            ULID.from_str(v)
+        except (ValueError, TypeError):
+            raise ValueError("session_id must be valid ULID") from None
+        return v
+
 
 class HealthResponse(BaseModel):
     """Response for health check endpoints.

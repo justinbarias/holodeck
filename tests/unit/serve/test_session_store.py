@@ -8,6 +8,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+import pytest
+
 from holodeck.serve.session_store import ServerSession, SessionStore
 
 
@@ -236,3 +238,104 @@ class TestSessionStore:
         assert len(all_sessions) == 2
         assert session1 in all_sessions
         assert session2 in all_sessions
+
+    def test_session_store_max_sessions_default(self) -> None:
+        """Test SessionStore has default max_sessions of 1000."""
+        store = SessionStore()
+        assert store.max_sessions == 1000
+
+    def test_session_store_custom_max_sessions(self) -> None:
+        """Test SessionStore with custom max_sessions."""
+        store = SessionStore(max_sessions=5)
+        assert store.max_sessions == 5
+
+    def test_session_store_create_rejects_when_at_max(self) -> None:
+        """Test SessionStore.create() raises when max_sessions reached."""
+        store = SessionStore(max_sessions=2)
+        mock_executor = MagicMock()
+
+        store.create(mock_executor)
+        store.create(mock_executor)
+
+        with pytest.raises(RuntimeError, match="Maximum session limit"):
+            store.create(mock_executor)
+
+    def test_session_store_cleanup_interval_default(self) -> None:
+        """Test SessionStore has default cleanup_interval of 300 seconds."""
+        store = SessionStore()
+        assert store.cleanup_interval_seconds == 300
+
+    def test_session_store_cleanup_task_initially_none(self) -> None:
+        """Test SessionStore._cleanup_task is None initially."""
+        store = SessionStore()
+        assert store._cleanup_task is None
+
+
+class TestSessionStoreCleanupTask:
+    """Tests for SessionStore cleanup task."""
+
+    @pytest.mark.asyncio
+    async def test_start_cleanup_task(self) -> None:
+        """Test start_cleanup_task creates a background task."""
+        store = SessionStore(cleanup_interval_seconds=1)
+
+        await store.start_cleanup_task()
+
+        assert store._cleanup_task is not None
+        assert not store._cleanup_task.done()
+
+        # Cleanup
+        await store.stop_cleanup_task()
+
+    @pytest.mark.asyncio
+    async def test_stop_cleanup_task(self) -> None:
+        """Test stop_cleanup_task cancels the background task."""
+        store = SessionStore(cleanup_interval_seconds=1)
+
+        await store.start_cleanup_task()
+        await store.stop_cleanup_task()
+
+        assert store._cleanup_task is None
+
+    @pytest.mark.asyncio
+    async def test_stop_cleanup_task_when_not_started(self) -> None:
+        """Test stop_cleanup_task handles case when no task exists."""
+        store = SessionStore()
+
+        # Should not raise
+        await store.stop_cleanup_task()
+
+        assert store._cleanup_task is None
+
+    @pytest.mark.asyncio
+    async def test_cleanup_loop_removes_expired_sessions(self) -> None:
+        """Test cleanup loop removes expired sessions."""
+
+        store = SessionStore(ttl_seconds=0, cleanup_interval_seconds=0)
+        mock_executor = MagicMock()
+
+        # Create a session that will be immediately expired
+        store.create(mock_executor)
+        assert store.active_count == 1
+
+        # Run cleanup once manually
+        store.cleanup_expired()
+
+        assert store.active_count == 0
+
+    @pytest.mark.asyncio
+    async def test_start_cleanup_task_idempotent(self) -> None:
+        """Test calling start_cleanup_task twice uses same task."""
+        store = SessionStore(cleanup_interval_seconds=1)
+
+        await store.start_cleanup_task()
+        first_task = store._cleanup_task
+
+        await store.start_cleanup_task()
+        second_task = store._cleanup_task
+
+        # Should be same task since it's still running
+        assert first_task is second_task
+
+        # Cleanup
+        await store.stop_cleanup_task()

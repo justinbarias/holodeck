@@ -21,7 +21,7 @@ class Protocol(ABC):
     """
 
     @abstractmethod
-    async def handle_request(
+    def handle_request(
         self,
         request: Any,
         session: ServerSession,
@@ -35,9 +35,7 @@ class Protocol(ABC):
         Yields:
             Response chunks as bytes for streaming to the client.
         """
-        # Abstract method - implementation required in subclasses
-        # Using yield to make this a proper async generator
-        yield b""  # pragma: no cover
+        ...
 
     @property
     @abstractmethod
@@ -47,7 +45,7 @@ class Protocol(ABC):
         Returns:
             Protocol identifier string (e.g., 'ag-ui', 'rest').
         """
-        raise NotImplementedError
+        ...
 
     @property
     @abstractmethod
@@ -57,4 +55,4 @@ class Protocol(ABC):
         Returns:
             MIME type string for response Content-Type header.
         """
-        raise NotImplementedError
+        ...
