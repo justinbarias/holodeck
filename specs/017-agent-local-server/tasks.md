@@ -19,10 +19,10 @@
 
 **Purpose**: Project initialization and serve module structure
 
-- [ ] T001 Add FastAPI, Uvicorn, ag-ui-protocol, python-ulid dependencies to pyproject.toml
-- [ ] T002 Create serve module structure: src/holodeck/serve/__init__.py
-- [ ] T003 [P] Create protocols submodule: src/holodeck/serve/protocols/__init__.py
-- [ ] T004 [P] Create test directory structure: tests/unit/serve/, tests/integration/serve/, tests/contract/serve/
+- [x] T001 Add FastAPI, Uvicorn, ag-ui-protocol, python-ulid dependencies to pyproject.toml
+- [x] T002 Create serve module structure: src/holodeck/serve/__init__.py
+- [x] T003 [P] Create protocols submodule: src/holodeck/serve/protocols/__init__.py
+- [x] T004 [P] Create test directory structure: tests/unit/serve/, tests/integration/serve/, tests/contract/serve/
 
 ---
 
@@ -36,19 +36,19 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T005 [P] Unit tests for Pydantic models (ChatRequest, ChatResponse, FileContent validation) in tests/unit/serve/test_models.py
-- [ ] T006 [P] Unit tests for SessionStore (create, get, delete, touch, cleanup_expired) in tests/unit/serve/test_session_store.py
-- [ ] T007 [P] Unit tests for ServerSession dataclass in tests/unit/serve/test_session_store.py
+- [x] T005 [P] Unit tests for Pydantic models (ChatRequest, ChatResponse, FileContent validation) in tests/unit/serve/test_models.py
+- [x] T006 [P] Unit tests for SessionStore (create, get, delete, touch, cleanup_expired) in tests/unit/serve/test_session_store.py
+- [x] T007 [P] Unit tests for ServerSession dataclass in tests/unit/serve/test_session_store.py
 
 ### Implementation for Foundational
 
-- [ ] T008 Implement Pydantic models (ProtocolType, FileContent, ChatRequest, ChatResponse, ToolCallInfo, TokenUsage, HealthResponse, ProblemDetail) in src/holodeck/serve/models.py
-- [ ] T009 [P] Implement ServerSession dataclass with session_id, agent_executor, timestamps, message_count in src/holodeck/serve/session_store.py
-- [ ] T010 Implement SessionStore class with get, create, delete, touch, cleanup_expired methods in src/holodeck/serve/session_store.py
-- [ ] T011 [P] Implement Protocol ABC with abstract methods for request handling in src/holodeck/serve/protocols/base.py
-- [ ] T012 [P] Implement logging middleware for request metadata capture in src/holodeck/serve/middleware.py
-- [ ] T013 [P] Implement error handling middleware with RFC 7807 ProblemDetail responses in src/holodeck/serve/middleware.py
-- [ ] T014 Create AgentServer class skeleton with FastAPI app factory in src/holodeck/serve/server.py
+- [x] T008 Implement Pydantic models (ProtocolType, FileContent, ChatRequest, ChatResponse, ToolCallInfo, TokenUsage, HealthResponse, ProblemDetail) in src/holodeck/serve/models.py
+- [x] T009 [P] Implement ServerSession dataclass with session_id, agent_executor, timestamps, message_count in src/holodeck/serve/session_store.py
+- [x] T010 Implement SessionStore class with get, create, delete, touch, cleanup_expired methods in src/holodeck/serve/session_store.py
+- [x] T011 [P] Implement Protocol ABC with abstract methods for request handling in src/holodeck/serve/protocols/base.py
+- [x] T012 [P] Implement logging middleware for request metadata capture in src/holodeck/serve/middleware.py
+- [x] T013 [P] Implement error handling middleware with RFC 7807 ProblemDetail responses in src/holodeck/serve/middleware.py
+- [x] T014 Create AgentServer class skeleton with FastAPI app factory in src/holodeck/serve/server.py
 
 **Checkpoint**: Foundation ready - all foundational tests pass - user story implementation can now begin
 
