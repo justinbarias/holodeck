@@ -66,7 +66,7 @@ class AgentServer:
         self.debug = debug
 
         # Warn if binding to all interfaces
-        if host == "0.0.0.0":  # noqa: S104
+        if host == "0.0.0.0":  # noqa: S104  # nosec B104
             logger.warning(
                 "Server binding to 0.0.0.0 exposes it to all network interfaces. "
                 "Use 127.0.0.1 for local-only access."
