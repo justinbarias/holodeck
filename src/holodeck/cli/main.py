@@ -48,6 +48,7 @@ def main(ctx: click.Context) -> None:
         init   Initialize a new agent project
         test   Run agent test cases
         chat   Interactive chat session with an agent
+        serve  Start an HTTP server exposing an agent
 
     Initialize and manage AI agent projects with YAML configuration.
     """
@@ -61,6 +62,7 @@ from holodeck.cli.commands.chat import chat  # noqa: E402, F401
 from holodeck.cli.commands.config import config  # noqa: E402, F401
 from holodeck.cli.commands.init import init  # noqa: E402, F401
 from holodeck.cli.commands.mcp import mcp  # noqa: E402, F401
+from holodeck.cli.commands.serve import serve  # noqa: E402, F401
 from holodeck.cli.commands.test import test  # noqa: E402, F401
 
 # Register commands
@@ -69,6 +71,7 @@ main.add_command(test)
 main.add_command(chat)
 main.add_command(config)
 main.add_command(mcp)
+main.add_command(serve)
 
 
 if __name__ == "__main__":

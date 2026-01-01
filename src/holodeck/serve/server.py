@@ -9,8 +9,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from holodeck.lib.logging_config import get_logger
 from holodeck.serve.middleware import ErrorHandlingMiddleware, LoggingMiddleware
@@ -130,6 +131,10 @@ class AgentServer:
         # Register health endpoints
         self._register_health_endpoints(app)
 
+        # Register protocol-specific endpoints
+        if self.protocol == ProtocolType.AG_UI:
+            self._register_agui_endpoints(app)
+
         # Store reference
         self._app = app
         self.state = ServerState.READY
@@ -174,6 +179,65 @@ class AgentServer:
         async def ready() -> dict[str, bool]:
             """Readiness check endpoint for orchestrators."""
             return {"ready": self.is_ready}
+
+    def _register_agui_endpoints(self, app: FastAPI) -> None:
+        """Register AG-UI protocol endpoints.
+
+        Args:
+            app: The FastAPI application.
+        """
+        from ag_ui.core.events import RunAgentInput
+
+        from holodeck.chat.executor import AgentExecutor
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        @app.post("/awp", tags=["AG-UI"])
+        async def agui_endpoint(
+            request: Request,
+        ) -> StreamingResponse:
+            """AG-UI protocol endpoint for agent interaction.
+
+            Accepts RunAgentInput and streams AG-UI events back to the client.
+            """
+            from fastapi import HTTPException
+            from pydantic import ValidationError
+
+            # Parse request body manually to avoid FastAPI schema issues
+            try:
+                body = await request.json()
+                input_data = RunAgentInput(**body)
+            except ValidationError as e:
+                raise HTTPException(status_code=422, detail=e.errors()) from e
+
+            # Get session by thread_id or create new one
+            session_id = input_data.thread_id
+            session = self.sessions.get(session_id)
+
+            if session is None:
+                # Create new executor for this session
+                executor = AgentExecutor(self.agent_config)
+                session = self.sessions.create(executor)
+                # Save original auto-generated session_id before overriding
+                original_session_id = session.session_id
+                # Override session_id to match AG-UI thread_id for correlation
+                session.session_id = session_id
+                self.sessions.sessions[session_id] = session
+                # Remove the original auto-generated key
+                del self.sessions.sessions[original_session_id]
+
+            # Touch session to update last activity
+            self.sessions.touch(session_id)
+            session.message_count += 1
+
+            # Create protocol with accept header for format negotiation
+            accept_header = request.headers.get("accept")
+            protocol = AGUIProtocol(accept_header=accept_header)
+
+            # Stream response
+            return StreamingResponse(
+                protocol.handle_request(input_data, session),
+                media_type=protocol.content_type,
+            )
 
     async def start(self) -> None:
         """Start the server and begin accepting requests.
