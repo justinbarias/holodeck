@@ -483,7 +483,7 @@ class TestExtractMessageDictFormat:
             },
         ]
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger="holodeck.serve.protocols.agui"):
             message = extract_message_from_input(input_data)
 
         # Only text types and strings should be included
@@ -492,6 +492,36 @@ class TestExtractMessageDictFormat:
         # Warning should be logged for non-text content
         assert "Skipping non-text content part" in caplog.text
         assert "image" in caplog.text
+
+    def test_extract_message_raises_on_only_non_text_content(self, caplog) -> None:
+        """Test that ValueError is raised when content has no text parts."""
+        import logging
+        from unittest.mock import MagicMock
+
+        import pytest
+
+        from holodeck.serve.protocols.agui import extract_message_from_input
+
+        input_data = MagicMock()
+        input_data.messages = [
+            {
+                "id": "msg-1",
+                "role": "user",
+                "content": [
+                    {"type": "image", "url": "http://example.com/image.png"},
+                    {"type": "audio", "url": "http://example.com/audio.mp3"},
+                ],
+            },
+        ]
+
+        with (
+            caplog.at_level(logging.WARNING, logger="holodeck.serve.protocols.agui"),
+            pytest.raises(ValueError, match="No text content found"),
+        ):
+            extract_message_from_input(input_data)
+
+        # Warnings should still be logged for skipped content
+        assert "Skipping non-text content part" in caplog.text
 
     def test_extract_message_skips_non_user_dict_messages(self) -> None:
         """Test that non-user dict messages are skipped."""

@@ -130,9 +130,13 @@ class SessionStore:
         if session_id is not None and session_id in self.sessions:
             raise ValueError(f"Session with ID '{session_id}' already exists")
 
-        session = ServerSession(agent_executor=agent_executor)
+        # Pass session_id directly to constructor to avoid mutation
         if session_id is not None:
-            session.session_id = session_id
+            session = ServerSession(
+                agent_executor=agent_executor, session_id=session_id
+            )
+        else:
+            session = ServerSession(agent_executor=agent_executor)
 
         self.sessions[session.session_id] = session
         return session

@@ -90,6 +90,13 @@ def extract_message_from_input(input_data: RunAgentInput) -> str:
                             )
                     elif isinstance(part, str):
                         text_parts.append(part)
+
+                # Validate that we have at least some text content
+                if not text_parts:
+                    raise ValueError(
+                        "No text content found in user message. "
+                        "Message contained only non-text content parts."
+                    )
                 return " ".join(text_parts)
 
     raise ValueError("No user messages found in input")
