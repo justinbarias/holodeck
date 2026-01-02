@@ -381,3 +381,384 @@ class TestAGUIProtocolProperties:
 
         protocol = AGUIProtocol()
         assert protocol.content_type == "text/event-stream"
+
+    def test_protocol_with_accept_header(self) -> None:
+        """Test protocol initialization with accept header."""
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        protocol = AGUIProtocol(accept_header="text/event-stream")
+        assert protocol._accept_header == "text/event-stream"
+
+
+# =============================================================================
+# Additional coverage tests for message extraction edge cases
+# =============================================================================
+
+
+class TestExtractMessageDictFormat:
+    """Tests for extract_message_from_input with dict message format.
+
+    At runtime, JSON deserialization may produce dicts instead of Message objects.
+    These tests cover lines 65-67 in agui.py.
+    """
+
+    def test_extract_message_from_dict_messages(self) -> None:
+        """Test extracting message when messages are dicts (runtime JSON)."""
+        from unittest.mock import MagicMock
+
+        from holodeck.serve.protocols.agui import extract_message_from_input
+
+        # Simulate runtime JSON deserialization where messages are dicts
+        input_data = MagicMock()
+        input_data.messages = [
+            {"id": "msg-1", "role": "system", "content": "You are helpful"},
+            {"id": "msg-2", "role": "user", "content": "Hello from dict"},
+        ]
+
+        message = extract_message_from_input(input_data)
+        assert message == "Hello from dict"
+
+    def test_extract_message_from_dict_with_list_content(self) -> None:
+        """Test extracting message from dict with list content parts.
+
+        Covers lines 76-84 where content is a list of content parts.
+        """
+        from unittest.mock import MagicMock
+
+        from holodeck.serve.protocols.agui import extract_message_from_input
+
+        input_data = MagicMock()
+        input_data.messages = [
+            {
+                "id": "msg-1",
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Hello"},
+                    {"type": "text", "text": " World"},
+                ],
+            },
+        ]
+
+        message = extract_message_from_input(input_data)
+        assert message == "Hello  World"
+
+    def test_extract_message_from_dict_with_string_content_parts(self) -> None:
+        """Test extracting message from dict with string content parts.
+
+        Covers lines 83-84 where content parts are strings.
+        """
+        from unittest.mock import MagicMock
+
+        from holodeck.serve.protocols.agui import extract_message_from_input
+
+        input_data = MagicMock()
+        input_data.messages = [
+            {
+                "id": "msg-1",
+                "role": "user",
+                "content": ["Part 1", "Part 2", "Part 3"],
+            },
+        ]
+
+        message = extract_message_from_input(input_data)
+        assert message == "Part 1 Part 2 Part 3"
+
+    def test_extract_message_from_dict_with_mixed_content_parts(self, caplog) -> None:
+        """Test extracting message from dict with mixed content parts."""
+        import logging
+        from unittest.mock import MagicMock
+
+        from holodeck.serve.protocols.agui import extract_message_from_input
+
+        input_data = MagicMock()
+        input_data.messages = [
+            {
+                "id": "msg-1",
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "From dict"},
+                    "From string",
+                    {"type": "image", "url": "http://example.com/image.png"},
+                ],
+            },
+        ]
+
+        with caplog.at_level(logging.WARNING):
+            message = extract_message_from_input(input_data)
+
+        # Only text types and strings should be included
+        assert "From dict" in message
+        assert "From string" in message
+        # Warning should be logged for non-text content
+        assert "Skipping non-text content part" in caplog.text
+        assert "image" in caplog.text
+
+    def test_extract_message_skips_non_user_dict_messages(self) -> None:
+        """Test that non-user dict messages are skipped."""
+        from unittest.mock import MagicMock
+
+        from holodeck.serve.protocols.agui import extract_message_from_input
+
+        input_data = MagicMock()
+        input_data.messages = [
+            {"id": "msg-1", "role": "assistant", "content": "I am assistant"},
+            {"id": "msg-2", "role": "system", "content": "System message"},
+            {"id": "msg-3", "role": "user", "content": "User message"},
+        ]
+
+        message = extract_message_from_input(input_data)
+        assert message == "User message"
+
+    def test_extract_message_from_message_object_with_list_content(self) -> None:
+        """Test extracting message from Message object with list content.
+
+        Tests the getattr path (lines 69-70) with list content.
+        """
+        from unittest.mock import MagicMock
+
+        from holodeck.serve.protocols.agui import extract_message_from_input
+
+        # Simulate a Message object with list content
+        mock_message = MagicMock()
+        mock_message.role = "user"
+        mock_message.content = [
+            {"type": "text", "text": "Hello from object"},
+            "Plain string part",
+        ]
+
+        input_data = MagicMock()
+        input_data.messages = [mock_message]
+
+        message = extract_message_from_input(input_data)
+        assert "Hello from object" in message
+        assert "Plain string part" in message
+
+
+# =============================================================================
+# Tests for AGUIEventStream binary encoding (lines 158-159)
+# =============================================================================
+
+
+class TestAGUIEventStreamBinaryFormat:
+    """Tests for AGUIEventStream with binary format negotiation."""
+
+    def test_event_stream_with_binary_accept_header(self) -> None:
+        """Test event stream initialization with binary accept header."""
+        from holodeck.serve.protocols.agui import AGUIEventStream
+
+        # Initialize with binary format accept header
+        stream = AGUIEventStream(accept_header="application/octet-stream")
+        # Content type should reflect the format
+        assert stream.encoder is not None
+
+    def test_event_stream_returns_bytes(self) -> None:
+        """Test that encode always returns bytes."""
+        from holodeck.serve.protocols.agui import (
+            AGUIEventStream,
+            create_run_started_event,
+        )
+
+        stream = AGUIEventStream()
+        event = create_run_started_event("thread-1", "run-1")
+        encoded = stream.encode(event)
+
+        # Result should be bytes
+        assert isinstance(encoded, bytes)
+
+
+# =============================================================================
+# Tests for AGUIProtocol.handle_request
+# =============================================================================
+
+
+class TestAGUIProtocolHandleRequest:
+    """Tests for AGUIProtocol.handle_request method."""
+
+    @pytest.mark.asyncio
+    async def test_handle_request_success(self) -> None:
+        """Test handle_request returns proper event sequence on success."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ag_ui.core.events import RunAgentInput
+        from ag_ui.core.types import UserMessage
+
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        # Create input
+        input_data = RunAgentInput(
+            thread_id="thread-123",
+            run_id="run-456",
+            messages=[
+                UserMessage(id="msg-1", role="user", content="Hello"),
+            ],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        # Mock session
+        mock_response = MagicMock()
+        mock_response.content = "Hello! How can I help?"
+        mock_response.tool_executions = []
+
+        mock_executor = MagicMock()
+        mock_executor.execute_turn = AsyncMock(return_value=mock_response)
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.agent_executor = mock_executor
+
+        # Create protocol and handle request
+        protocol = AGUIProtocol()
+        events = []
+        async for event_bytes in protocol.handle_request(input_data, mock_session):
+            events.append(event_bytes)
+
+        # Should have multiple events: RunStarted, TextMessageStart,
+        # TextMessageContent, TextMessageEnd, RunFinished
+        assert len(events) >= 5
+
+        # Verify events contain expected content
+        all_content = b"".join(events).decode("utf-8")
+        assert "RUN_STARTED" in all_content or "run_started" in all_content.lower()
+        assert "RUN_FINISHED" in all_content or "run_finished" in all_content.lower()
+
+    @pytest.mark.asyncio
+    async def test_handle_request_with_tool_executions(self) -> None:
+        """Test handle_request includes tool call events."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ag_ui.core.events import RunAgentInput
+        from ag_ui.core.types import UserMessage
+
+        from holodeck.models.tool_execution import ToolExecution, ToolStatus
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        # Create input
+        input_data = RunAgentInput(
+            thread_id="thread-123",
+            run_id="run-456",
+            messages=[
+                UserMessage(id="msg-1", role="user", content="Search for info"),
+            ],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        # Mock response with tool execution
+        tool_exec = ToolExecution(
+            tool_name="search",
+            parameters={"query": "test"},
+            status=ToolStatus.SUCCESS,
+        )
+
+        mock_response = MagicMock()
+        mock_response.content = "Here are the results"
+        mock_response.tool_executions = [tool_exec]
+
+        mock_executor = MagicMock()
+        mock_executor.execute_turn = AsyncMock(return_value=mock_response)
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.agent_executor = mock_executor
+
+        # Create protocol and handle request
+        protocol = AGUIProtocol()
+        events = []
+        async for event_bytes in protocol.handle_request(input_data, mock_session):
+            events.append(event_bytes)
+
+        # Verify tool call events are present
+        all_content = b"".join(events).decode("utf-8")
+        assert "TOOL_CALL" in all_content or "tool_call" in all_content.lower()
+
+    @pytest.mark.asyncio
+    async def test_handle_request_error(self) -> None:
+        """Test handle_request emits error event on failure."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ag_ui.core.events import RunAgentInput
+        from ag_ui.core.types import UserMessage
+
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        # Create input
+        input_data = RunAgentInput(
+            thread_id="thread-123",
+            run_id="run-456",
+            messages=[
+                UserMessage(id="msg-1", role="user", content="Hello"),
+            ],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        # Mock executor that raises an error
+        mock_executor = MagicMock()
+        mock_executor.execute_turn = AsyncMock(
+            side_effect=RuntimeError("Agent execution failed")
+        )
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.agent_executor = mock_executor
+
+        # Create protocol and handle request
+        protocol = AGUIProtocol()
+        events = []
+        async for event_bytes in protocol.handle_request(input_data, mock_session):
+            events.append(event_bytes)
+
+        # Should contain error event
+        all_content = b"".join(events).decode("utf-8")
+        assert "RUN_ERROR" in all_content or "run_error" in all_content.lower()
+        assert "Agent execution failed" in all_content
+
+    @pytest.mark.asyncio
+    async def test_handle_request_with_accept_header(self) -> None:
+        """Test handle_request with custom accept header."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ag_ui.core.events import RunAgentInput
+        from ag_ui.core.types import UserMessage
+
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        # Create input
+        input_data = RunAgentInput(
+            thread_id="thread-123",
+            run_id="run-456",
+            messages=[
+                UserMessage(id="msg-1", role="user", content="Hello"),
+            ],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        # Mock session
+        mock_response = MagicMock()
+        mock_response.content = "Hello!"
+        mock_response.tool_executions = []
+
+        mock_executor = MagicMock()
+        mock_executor.execute_turn = AsyncMock(return_value=mock_response)
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.agent_executor = mock_executor
+
+        # Create protocol with accept header
+        protocol = AGUIProtocol(accept_header="text/event-stream")
+        events = []
+        async for event_bytes in protocol.handle_request(input_data, mock_session):
+            events.append(event_bytes)
+
+        assert len(events) > 0

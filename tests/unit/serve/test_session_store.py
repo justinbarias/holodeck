@@ -103,6 +103,29 @@ class TestSessionStore:
         assert session1.session_id != session2.session_id
         assert len(store.sessions) == 2
 
+    def test_session_store_create_with_custom_session_id(self) -> None:
+        """Test SessionStore.create() accepts custom session_id."""
+        store = SessionStore()
+        mock_executor = MagicMock()
+        custom_id = "my-custom-thread-id"
+
+        session = store.create(mock_executor, session_id=custom_id)
+
+        assert session.session_id == custom_id
+        assert store.get(custom_id) is session
+        assert len(store.sessions) == 1
+
+    def test_session_store_create_duplicate_session_id_raises(self) -> None:
+        """Test SessionStore.create() raises on duplicate session_id."""
+        store = SessionStore()
+        mock_executor = MagicMock()
+        custom_id = "unique-session-id"
+
+        store.create(mock_executor, session_id=custom_id)
+
+        with pytest.raises(ValueError, match="already exists"):
+            store.create(mock_executor, session_id=custom_id)
+
     def test_session_store_get_existing(self) -> None:
         """Test SessionStore.get() returns existing session."""
         store = SessionStore()

@@ -393,3 +393,60 @@ class TestAgentServerIntegration:
             },
         )
         assert response.status_code == 200
+
+
+class TestAgentServerAGUIEndpoint:
+    """Tests for AG-UI endpoint validation.
+
+    Note: Full endpoint integration tests are in
+    tests/integration/serve/test_server_agui.py.
+    These unit tests focus on validation and endpoint registration.
+    """
+
+    def test_agui_endpoint_rejects_invalid_input(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """Test /awp endpoint returns 422 for invalid input."""
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+        client = TestClient(app)
+
+        # Missing required fields
+        response = client.post(
+            "/awp",
+            json={
+                "messages": [],
+            },
+        )
+        assert response.status_code == 422
+
+    def test_agui_endpoint_exists_on_ag_ui_protocol(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """Test /awp endpoint is registered with AG-UI protocol."""
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+
+        # Check endpoint is registered
+        routes = [route.path for route in app.routes]
+        assert "/awp" in routes
+
+    def test_agui_endpoint_not_present_on_rest_protocol(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """Test /awp endpoint is NOT registered with REST protocol."""
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.REST,
+        )
+        app = server.create_app()
+
+        # Check endpoint is NOT registered
+        routes = [route.path for route in app.routes]
+        assert "/awp" not in routes

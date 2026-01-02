@@ -58,8 +58,8 @@ logger = get_logger(__name__)
 @click.option(
     "--cors-origins",
     type=str,
-    default="*",
-    help="Comma-separated list of allowed CORS origins (default: *)",
+    default="http://localhost:3000",
+    help="Comma-separated list of allowed CORS origins (default: http://localhost:3000)",
 )
 def serve(
     agent_config: str,

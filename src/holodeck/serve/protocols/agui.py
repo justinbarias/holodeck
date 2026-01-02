@@ -78,8 +78,16 @@ def extract_message_from_input(input_data: RunAgentInput) -> str:
                 text_parts = []
                 for part in content:
                     if isinstance(part, dict):
-                        if part.get("type") == "text":
+                        part_type = part.get("type", "unknown")
+                        if part_type == "text":
                             text_parts.append(part.get("text", ""))
+                        else:
+                            # Non-text content (image, file, etc) not supported
+                            logger.warning(
+                                "Skipping non-text content part (type: %s). "
+                                "Only 'text' content parts are supported.",
+                                part_type,
+                            )
                     elif isinstance(part, str):
                         text_parts.append(part)
                 return " ".join(text_parts)

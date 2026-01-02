@@ -101,24 +101,39 @@ class SessionStore:
         """
         return list(self.sessions.values())
 
-    def create(self, agent_executor: AgentExecutor) -> ServerSession:
+    def create(
+        self,
+        agent_executor: AgentExecutor,
+        session_id: str | None = None,
+    ) -> ServerSession:
         """Create a new session with the given agent executor.
 
         Args:
             agent_executor: The AgentExecutor instance for this session.
+            session_id: Optional custom session ID. If not provided, a new
+                ULID will be generated. Useful for mapping external IDs
+                (like AG-UI thread_id) to sessions.
 
         Returns:
             The newly created ServerSession.
 
         Raises:
             RuntimeError: If max_sessions limit is reached.
+            ValueError: If session_id already exists.
         """
         if len(self.sessions) >= self.max_sessions:
             raise RuntimeError(
                 f"Maximum session limit ({self.max_sessions}) reached. "
                 "Try again later or increase max_sessions."
             )
+
+        if session_id is not None and session_id in self.sessions:
+            raise ValueError(f"Session with ID '{session_id}' already exists")
+
         session = ServerSession(agent_executor=agent_executor)
+        if session_id is not None:
+            session.session_id = session_id
+
         self.sessions[session.session_id] = session
         return session
 

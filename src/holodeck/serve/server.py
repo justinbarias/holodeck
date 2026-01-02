@@ -215,15 +215,9 @@ class AgentServer:
 
             if session is None:
                 # Create new executor for this session
+                # Use thread_id as session_id for AG-UI correlation
                 executor = AgentExecutor(self.agent_config)
-                session = self.sessions.create(executor)
-                # Save original auto-generated session_id before overriding
-                original_session_id = session.session_id
-                # Override session_id to match AG-UI thread_id for correlation
-                session.session_id = session_id
-                self.sessions.sessions[session_id] = session
-                # Remove the original auto-generated key
-                del self.sessions.sessions[original_session_id]
+                session = self.sessions.create(executor, session_id=session_id)
 
             # Touch session to update last activity
             self.sessions.touch(session_id)
