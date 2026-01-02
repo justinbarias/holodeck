@@ -3202,3 +3202,191 @@ class TestMiscellaneousCoverage:
 
             assert tool_calls == []
             assert tool_results == []
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_with_start_index_skips_earlier_messages(
+        self,
+    ) -> None:
+        """Test that start_index correctly skips earlier messages.
+
+        This is important for multi-turn conversations where we only want
+        to extract tool calls from the current turn, not from previous turns.
+        """
+        from semantic_kernel.contents import FunctionCallContent
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
+
+            # Create mock FunctionCallContent for turn 1 (should be skipped)
+            mock_fcc_turn1 = mock.Mock(spec=FunctionCallContent)
+            mock_fcc_turn1.id = "call_turn1"
+            mock_fcc_turn1.plugin_name = "tools"
+            mock_fcc_turn1.function_name = "old_tool"
+            mock_fcc_turn1.arguments = '{"query": "old"}'
+
+            # Create mock FunctionCallContent for turn 2 (should be included)
+            mock_fcc_turn2 = mock.Mock(spec=FunctionCallContent)
+            mock_fcc_turn2.id = "call_turn2"
+            mock_fcc_turn2.plugin_name = "tools"
+            mock_fcc_turn2.function_name = "new_tool"
+            mock_fcc_turn2.arguments = '{"query": "new"}'
+
+            # Message 0: User message from turn 1
+            mock_message_0 = mock.Mock()
+            mock_message_0.items = []
+
+            # Message 1: Assistant message with tool call from turn 1
+            mock_message_1 = mock.Mock()
+            mock_message_1.items = [mock_fcc_turn1]
+
+            # Message 2: User message from turn 2
+            mock_message_2 = mock.Mock()
+            mock_message_2.items = []
+
+            # Message 3: Assistant message with tool call from turn 2
+            mock_message_3 = mock.Mock()
+            mock_message_3.items = [mock_fcc_turn2]
+
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message_0
+                yield mock_message_1
+                yield mock_message_2
+                yield mock_message_3
+
+            mock_thread.get_messages = mock_get_messages
+
+            # Extract with start_index=2 (skip first 2 messages from turn 1)
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
+                mock_thread, start_index=2
+            )
+
+            # Should only have the tool call from turn 2
+            assert len(tool_calls) == 1
+            assert tool_calls[0]["name"] == "tools-new_tool"
+            assert tool_calls[0]["arguments"] == {"query": "new"}
+            assert tool_results == []
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_start_index_zero_returns_all(self) -> None:
+        """Test that start_index=0 returns all tool calls (default behavior)."""
+        from semantic_kernel.contents import FunctionCallContent
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
+
+            # Create two tool calls in separate messages
+            mock_fcc_1 = mock.Mock(spec=FunctionCallContent)
+            mock_fcc_1.id = "call_1"
+            mock_fcc_1.plugin_name = ""
+            mock_fcc_1.function_name = "tool_a"
+            mock_fcc_1.arguments = "{}"
+
+            mock_fcc_2 = mock.Mock(spec=FunctionCallContent)
+            mock_fcc_2.id = "call_2"
+            mock_fcc_2.plugin_name = ""
+            mock_fcc_2.function_name = "tool_b"
+            mock_fcc_2.arguments = "{}"
+
+            mock_message_1 = mock.Mock()
+            mock_message_1.items = [mock_fcc_1]
+
+            mock_message_2 = mock.Mock()
+            mock_message_2.items = [mock_fcc_2]
+
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message_1
+                yield mock_message_2
+
+            mock_thread.get_messages = mock_get_messages
+
+            # Extract with start_index=0 (default - get all)
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
+                mock_thread, start_index=0
+            )
+
+            # Should have both tool calls
+            assert len(tool_calls) == 2
+            assert tool_calls[0]["name"] == "tool_a"
+            assert tool_calls[1]["name"] == "tool_b"
+
+    @pytest.mark.asyncio
+    async def test_extract_tool_calls_start_index_beyond_messages(self) -> None:
+        """Test that start_index beyond message count returns empty list."""
+        from semantic_kernel.contents import FunctionCallContent
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+            thread_run = await factory.create_thread_run()
+
+            mock_fcc = mock.Mock(spec=FunctionCallContent)
+            mock_fcc.id = "call_1"
+            mock_fcc.plugin_name = ""
+            mock_fcc.function_name = "tool_a"
+            mock_fcc.arguments = "{}"
+
+            mock_message = mock.Mock()
+            mock_message.items = [mock_fcc]
+
+            mock_thread = mock.AsyncMock()
+
+            async def mock_get_messages() -> Any:
+                yield mock_message
+
+            mock_thread.get_messages = mock_get_messages
+
+            # Extract with start_index=100 (way beyond the single message)
+            tool_calls, tool_results = await thread_run._extract_tool_calls_from_thread(
+                mock_thread, start_index=100
+            )
+
+            # Should return empty since all messages are skipped
+            assert tool_calls == []
+            assert tool_results == []
