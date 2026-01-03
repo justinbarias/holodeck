@@ -3,10 +3,13 @@
 Tests for:
 - T017: AG-UI protocol endpoint (/awp)
 - T018: AG-UI streaming response
+- T029c: Integration test for AG-UI with image content
+- T029d: Integration test for AG-UI with PDF/document content
 """
 
 from __future__ import annotations
 
+import base64
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -17,6 +20,19 @@ from httpx import ASGITransport, AsyncClient
 
 if TYPE_CHECKING:
     pass
+
+
+# Minimal 1x1 transparent PNG for testing
+MINIMAL_PNG_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA"
+    "DUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
+
+# Minimal PDF header for testing
+MINIMAL_PDF_BASE64 = base64.b64encode(b"%PDF-1.4\n%test minimal pdf content").decode()
+
+# Long MIME type constant for Word documents
+WORD_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 # =============================================================================
@@ -471,3 +487,483 @@ class TestAGUIHealthEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert "ready" in data
+
+
+# =============================================================================
+# T029c: Integration tests for AG-UI with image content
+# =============================================================================
+
+
+class TestAGUIMultimodalImage:
+    """Integration tests for AG-UI protocol with image content."""
+
+    @pytest.mark.asyncio
+    async def test_awp_with_base64_png_image(
+        self,
+        mock_agent_config: MagicMock,
+        mock_agent_executor: MagicMock,
+    ) -> None:
+        """Test /awp handles message with base64 image content."""
+        from holodeck.serve.models import ProtocolType
+        from holodeck.serve.server import AgentServer
+
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+
+        # Create mock session
+        mock_session = MagicMock(
+            session_id="thread-123",
+            agent_executor=mock_agent_executor,
+            message_count=0,
+        )
+
+        with patch.object(
+            server.sessions,
+            "get",
+            return_value=mock_session,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as client:
+                response = await client.post(
+                    "/awp",
+                    json={
+                        "threadId": "thread-123",
+                        "runId": "run-456",
+                        "messages": [
+                            {
+                                "id": "msg-1",
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "What's in this image?"},
+                                    {
+                                        "type": "binary",
+                                        "mimeType": "image/png",
+                                        "data": MINIMAL_PNG_BASE64,
+                                        "filename": "test.png",
+                                    },
+                                ],
+                            },
+                        ],
+                        "state": None,
+                        "tools": [],
+                        "context": [],
+                        "forwardedProps": None,
+                    },
+                )
+
+                assert response.status_code == 200
+                content = response.text
+                # Should contain run started and finished events
+                assert "RUN_STARTED" in content or "run_started" in content.lower()
+                assert "RUN_FINISHED" in content or "run_finished" in content.lower()
+
+    @pytest.mark.asyncio
+    async def test_awp_with_image_url_reference(
+        self,
+        mock_agent_config: MagicMock,
+        mock_agent_executor: MagicMock,
+    ) -> None:
+        """Test /awp handles message with image URL reference."""
+        from holodeck.serve.models import ProtocolType
+        from holodeck.serve.server import AgentServer
+
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+
+        # Create mock session
+        mock_session = MagicMock(
+            session_id="thread-123",
+            agent_executor=mock_agent_executor,
+            message_count=0,
+        )
+
+        # Mock httpx for URL fetching
+        with (
+            patch.object(
+                server.sessions,
+                "get",
+                return_value=mock_session,
+            ),
+            patch("holodeck.serve.protocols.agui.httpx") as mock_httpx,
+        ):
+            mock_response = MagicMock()
+            mock_response.content = base64.b64decode(MINIMAL_PNG_BASE64)
+            mock_response.raise_for_status = MagicMock()
+            mock_httpx.get.return_value = mock_response
+
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as client:
+                response = await client.post(
+                    "/awp",
+                    json={
+                        "threadId": "thread-123",
+                        "runId": "run-456",
+                        "messages": [
+                            {
+                                "id": "msg-1",
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "Describe this image"},
+                                    {
+                                        "type": "binary",
+                                        "mimeType": "image/png",
+                                        "url": "https://example.com/test.png",
+                                    },
+                                ],
+                            },
+                        ],
+                        "state": None,
+                        "tools": [],
+                        "context": [],
+                        "forwardedProps": None,
+                    },
+                )
+
+                assert response.status_code == 200
+                content = response.text
+                assert "RUN_FINISHED" in content or "run_finished" in content.lower()
+
+    @pytest.mark.asyncio
+    async def test_awp_mixed_text_and_image(
+        self,
+        mock_agent_config: MagicMock,
+        mock_agent_executor: MagicMock,
+    ) -> None:
+        """Test /awp handles mixed text and image content."""
+        from holodeck.serve.models import ProtocolType
+        from holodeck.serve.server import AgentServer
+
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+
+        # Create mock session
+        mock_session = MagicMock(
+            session_id="thread-123",
+            agent_executor=mock_agent_executor,
+            message_count=0,
+        )
+
+        with patch.object(
+            server.sessions,
+            "get",
+            return_value=mock_session,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as client:
+                response = await client.post(
+                    "/awp",
+                    json={
+                        "threadId": "thread-123",
+                        "runId": "run-456",
+                        "messages": [
+                            {
+                                "id": "msg-1",
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "I have two questions."},
+                                    {
+                                        "type": "binary",
+                                        "mimeType": "image/png",
+                                        "data": MINIMAL_PNG_BASE64,
+                                    },
+                                    {"type": "text", "text": "What color is it?"},
+                                ],
+                            },
+                        ],
+                        "state": None,
+                        "tools": [],
+                        "context": [],
+                        "forwardedProps": None,
+                    },
+                )
+
+                assert response.status_code == 200
+                content = response.text
+                # Should process successfully
+                assert "RUN_FINISHED" in content or "run_finished" in content.lower()
+
+
+# =============================================================================
+# T029d: Integration tests for AG-UI with PDF/document content
+# =============================================================================
+
+
+class TestAGUIMultimodalDocument:
+    """Integration tests for AG-UI protocol with PDF/document content."""
+
+    @pytest.mark.asyncio
+    async def test_awp_with_base64_pdf(
+        self,
+        mock_agent_config: MagicMock,
+        mock_agent_executor: MagicMock,
+    ) -> None:
+        """Test /awp handles message with base64 PDF content."""
+        from holodeck.serve.models import ProtocolType
+        from holodeck.serve.server import AgentServer
+
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+
+        # Create mock session
+        mock_session = MagicMock(
+            session_id="thread-123",
+            agent_executor=mock_agent_executor,
+            message_count=0,
+        )
+
+        with patch.object(
+            server.sessions,
+            "get",
+            return_value=mock_session,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as client:
+                response = await client.post(
+                    "/awp",
+                    json={
+                        "threadId": "thread-123",
+                        "runId": "run-456",
+                        "messages": [
+                            {
+                                "id": "msg-1",
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "Summarize this document"},
+                                    {
+                                        "type": "binary",
+                                        "mimeType": "application/pdf",
+                                        "data": MINIMAL_PDF_BASE64,
+                                        "filename": "document.pdf",
+                                    },
+                                ],
+                            },
+                        ],
+                        "state": None,
+                        "tools": [],
+                        "context": [],
+                        "forwardedProps": None,
+                    },
+                )
+
+                assert response.status_code == 200
+                content = response.text
+                assert "RUN_FINISHED" in content or "run_finished" in content.lower()
+
+    @pytest.mark.asyncio
+    async def test_awp_with_word_document(
+        self,
+        mock_agent_config: MagicMock,
+        mock_agent_executor: MagicMock,
+    ) -> None:
+        """Test /awp handles message with Word document content."""
+        from holodeck.serve.models import ProtocolType
+        from holodeck.serve.server import AgentServer
+
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+
+        # Create mock session
+        mock_session = MagicMock(
+            session_id="thread-123",
+            agent_executor=mock_agent_executor,
+            message_count=0,
+        )
+
+        # Create mock docx data (starts with PK for zip format)
+        docx_data = base64.b64encode(b"PK\x03\x04" + b"\x00" * 20).decode()
+
+        with patch.object(
+            server.sessions,
+            "get",
+            return_value=mock_session,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as client:
+                response = await client.post(
+                    "/awp",
+                    json={
+                        "threadId": "thread-123",
+                        "runId": "run-456",
+                        "messages": [
+                            {
+                                "id": "msg-1",
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "Review this document"},
+                                    {
+                                        "type": "binary",
+                                        "mimeType": WORD_MIME,
+                                        "data": docx_data,
+                                        "filename": "report.docx",
+                                    },
+                                ],
+                            },
+                        ],
+                        "state": None,
+                        "tools": [],
+                        "context": [],
+                        "forwardedProps": None,
+                    },
+                )
+
+                assert response.status_code == 200
+                content = response.text
+                assert "RUN_FINISHED" in content or "run_finished" in content.lower()
+
+    @pytest.mark.asyncio
+    async def test_awp_multiple_files(
+        self,
+        mock_agent_config: MagicMock,
+        mock_agent_executor: MagicMock,
+    ) -> None:
+        """Test /awp handles multiple file attachments."""
+        from holodeck.serve.models import ProtocolType
+        from holodeck.serve.server import AgentServer
+
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+
+        # Create mock session
+        mock_session = MagicMock(
+            session_id="thread-123",
+            agent_executor=mock_agent_executor,
+            message_count=0,
+        )
+
+        with patch.object(
+            server.sessions,
+            "get",
+            return_value=mock_session,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as client:
+                response = await client.post(
+                    "/awp",
+                    json={
+                        "threadId": "thread-123",
+                        "runId": "run-456",
+                        "messages": [
+                            {
+                                "id": "msg-1",
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "Compare these files:"},
+                                    {
+                                        "type": "binary",
+                                        "mimeType": "image/png",
+                                        "data": MINIMAL_PNG_BASE64,
+                                        "filename": "image.png",
+                                    },
+                                    {
+                                        "type": "binary",
+                                        "mimeType": "application/pdf",
+                                        "data": MINIMAL_PDF_BASE64,
+                                        "filename": "document.pdf",
+                                    },
+                                ],
+                            },
+                        ],
+                        "state": None,
+                        "tools": [],
+                        "context": [],
+                        "forwardedProps": None,
+                    },
+                )
+
+                assert response.status_code == 200
+                content = response.text
+                assert "RUN_FINISHED" in content or "run_finished" in content.lower()
+
+    @pytest.mark.asyncio
+    async def test_awp_unsupported_file_id_skipped(
+        self,
+        mock_agent_config: MagicMock,
+        mock_agent_executor: MagicMock,
+    ) -> None:
+        """Test /awp handles file ID references (unsupported, skipped)."""
+        from holodeck.serve.models import ProtocolType
+        from holodeck.serve.server import AgentServer
+
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+
+        # Create mock session
+        mock_session = MagicMock(
+            session_id="thread-123",
+            agent_executor=mock_agent_executor,
+            message_count=0,
+        )
+
+        with patch.object(
+            server.sessions,
+            "get",
+            return_value=mock_session,
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as client:
+                response = await client.post(
+                    "/awp",
+                    json={
+                        "threadId": "thread-123",
+                        "runId": "run-456",
+                        "messages": [
+                            {
+                                "id": "msg-1",
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "Process this file"},
+                                    {
+                                        "type": "binary",
+                                        "mimeType": "application/pdf",
+                                        "id": "file-12345",  # File ID - not supported
+                                    },
+                                ],
+                            },
+                        ],
+                        "state": None,
+                        "tools": [],
+                        "context": [],
+                        "forwardedProps": None,
+                    },
+                )
+
+                # Should still succeed - file ID is skipped with warning
+                assert response.status_code == 200
+                content = response.text
+                # Request should complete (file ID skipped)
+                assert "RUN_FINISHED" in content or "run_finished" in content.lower()

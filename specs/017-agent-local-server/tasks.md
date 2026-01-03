@@ -87,17 +87,17 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T029a [P] [US1] Unit tests for AG-UI BinaryInputContent parsing in tests/unit/serve/test_protocols_agui.py
-- [ ] T029b [P] [US1] Unit tests for AG-UI multimodal content to FileInput conversion in tests/unit/serve/test_protocols_agui.py
-- [ ] T029c [P] [US1] Integration test for AG-UI with image content in tests/integration/serve/test_server_agui.py
-- [ ] T029d [P] [US1] Integration test for AG-UI with PDF/document content in tests/integration/serve/test_server_agui.py
+- [x] T029a [P] [US1] Unit tests for AG-UI BinaryInputContent parsing in tests/unit/serve/test_protocols_agui.py
+- [x] T029b [P] [US1] Unit tests for AG-UI multimodal content to FileInput conversion in tests/unit/serve/test_protocols_agui.py
+- [x] T029c [P] [US1] Integration test for AG-UI with image content in tests/integration/serve/test_server_agui.py
+- [x] T029d [P] [US1] Integration test for AG-UI with PDF/document content in tests/integration/serve/test_server_agui.py
 
 ### AG-UI Multimodal Implementation
 
-- [ ] T029e [US1] Implement BinaryInputContent parsing from AG-UI message content in src/holodeck/serve/protocols/agui.py
-- [ ] T029f [US1] Implement conversion of AG-UI binary content to FileInput for FileProcessor in src/holodeck/serve/protocols/agui.py
-- [ ] T029g [US1] Integrate FileProcessor output into agent message context in src/holodeck/serve/protocols/agui.py
-- [ ] T029h [US1] Handle inline base64, URL references, and file ID references in src/holodeck/serve/protocols/agui.py
+- [x] T029e [US1] Implement BinaryInputContent parsing from AG-UI message content in src/holodeck/serve/protocols/agui.py
+- [x] T029f [US1] Implement conversion of AG-UI binary content to FileInput for FileProcessor in src/holodeck/serve/protocols/agui.py
+- [x] T029g [US1] Integrate FileProcessor output into agent message context in src/holodeck/serve/protocols/agui.py
+- [x] T029h [US1] Handle inline base64, URL references, and file ID references in src/holodeck/serve/protocols/agui.py
 
 **Checkpoint**: At this point, `holodeck serve agent.yaml` works with AG-UI protocol including multimodal - all US1 tests pass ✅
 
