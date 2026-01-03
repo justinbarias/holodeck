@@ -9,13 +9,19 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from holodeck.lib.logging_config import get_logger
 from holodeck.serve.middleware import ErrorHandlingMiddleware, LoggingMiddleware
-from holodeck.serve.models import HealthResponse, ProtocolType, ServerState
+from holodeck.serve.models import (
+    ChatRequest,
+    ChatResponse,
+    HealthResponse,
+    ProtocolType,
+    ServerState,
+)
 from holodeck.serve.session_store import SessionStore
 
 if TYPE_CHECKING:
@@ -138,6 +144,8 @@ class AgentServer:
         # Register protocol-specific endpoints
         if self.protocol == ProtocolType.AG_UI:
             self._register_agui_endpoints(app)
+        elif self.protocol == ProtocolType.REST:
+            self._register_rest_endpoints(app)
 
         # Store reference
         self._app = app
@@ -246,6 +254,236 @@ class AgentServer:
                 protocol.handle_request(input_data, session),
                 media_type=protocol.content_type,
             )
+
+    def _register_rest_endpoints(self, app: FastAPI) -> None:
+        """Register REST protocol endpoints.
+
+        Endpoints:
+        - POST /agent/{agent_name}/chat - Synchronous chat
+        - POST /agent/{agent_name}/chat/stream - Streaming chat (SSE)
+        - DELETE /sessions/{session_id} - Delete session
+
+        Args:
+            app: The FastAPI application.
+        """
+        from holodeck.chat.executor import AgentExecutor
+        from holodeck.serve.protocols.rest import RESTProtocol
+
+        agent_name = self.agent_config.name
+
+        @app.post(
+            f"/agent/{agent_name}/chat",
+            response_model=ChatResponse,
+            tags=["Chat"],
+        )
+        async def chat_sync(request: ChatRequest) -> ChatResponse:
+            """Synchronous chat endpoint.
+
+            Accepts a message, processes it through the agent, and returns
+            the complete response as JSON.
+            """
+            # Get or create session
+            session_id = request.session_id
+            session = self.sessions.get(session_id) if session_id else None
+
+            if session is None:
+                # Create new executor for this session
+                timeout = (
+                    float(self.execution_config.llm_timeout)
+                    if self.execution_config and self.execution_config.llm_timeout
+                    else None
+                )
+                logger.debug(
+                    f"Creating AgentExecutor for new session with timeout={timeout}s"
+                )
+                executor = AgentExecutor(self.agent_config, timeout=timeout)
+                session = self.sessions.create(executor, session_id=session_id)
+
+            # Touch session to update last activity
+            self.sessions.touch(session.session_id)
+            session.message_count += 1
+
+            # Handle request synchronously
+            protocol = RESTProtocol()
+            return await protocol.handle_sync_request(request, session)
+
+        @app.post(
+            f"/agent/{agent_name}/chat/stream",
+            tags=["Chat"],
+        )
+        async def chat_stream(request: ChatRequest) -> StreamingResponse:
+            """Streaming chat endpoint with SSE.
+
+            Accepts a message, processes it through the agent, and streams
+            SSE events back to the client.
+            """
+            # Get or create session
+            session_id = request.session_id
+            session = self.sessions.get(session_id) if session_id else None
+
+            if session is None:
+                # Create new executor for this session
+                timeout = (
+                    float(self.execution_config.llm_timeout)
+                    if self.execution_config and self.execution_config.llm_timeout
+                    else None
+                )
+                logger.debug(
+                    f"Creating AgentExecutor for new session with timeout={timeout}s"
+                )
+                executor = AgentExecutor(self.agent_config, timeout=timeout)
+                session = self.sessions.create(executor, session_id=session_id)
+
+            # Touch session to update last activity
+            self.sessions.touch(session.session_id)
+            session.message_count += 1
+
+            # Handle request with streaming
+            protocol = RESTProtocol()
+            return StreamingResponse(
+                protocol.handle_request(request, session),
+                media_type=protocol.content_type,
+            )
+
+        # Multipart form-data endpoints
+        @app.post(
+            f"/agent/{agent_name}/chat/multipart",
+            response_model=ChatResponse,
+            tags=["Chat"],
+        )
+        async def chat_sync_multipart(
+            message: str = Form(..., min_length=1, max_length=10000),
+            session_id: str | None = Form(default=None),
+            files: list[UploadFile] = File(default=[]),  # noqa: B008
+        ) -> ChatResponse:
+            """Synchronous chat endpoint with multipart file upload.
+
+            Accepts a message and optional files via multipart form-data,
+            processes them through the agent, and returns the complete
+            response as JSON.
+            """
+            from holodeck.serve.protocols.rest import process_multipart_files
+
+            # Validate file count
+            if len(files) > 10:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Maximum 10 files allowed per request",
+                )
+
+            # Convert multipart files to FileContent
+            try:
+                file_contents = await process_multipart_files(files)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
+
+            # Create ChatRequest with files
+            chat_request = ChatRequest(
+                message=message,
+                session_id=session_id,
+                files=file_contents if file_contents else None,
+            )
+
+            # Get or create session
+            session = self.sessions.get(session_id) if session_id else None
+
+            if session is None:
+                timeout = (
+                    float(self.execution_config.llm_timeout)
+                    if self.execution_config and self.execution_config.llm_timeout
+                    else None
+                )
+                logger.debug(
+                    f"Creating AgentExecutor for new session with timeout={timeout}s"
+                )
+                executor = AgentExecutor(self.agent_config, timeout=timeout)
+                session = self.sessions.create(executor, session_id=session_id)
+
+            # Touch session to update last activity
+            self.sessions.touch(session.session_id)
+            session.message_count += 1
+
+            # Handle request synchronously
+            protocol = RESTProtocol()
+            return await protocol.handle_sync_request(chat_request, session)
+
+        @app.post(
+            f"/agent/{agent_name}/chat/stream/multipart",
+            tags=["Chat"],
+        )
+        async def chat_stream_multipart(
+            message: str = Form(..., min_length=1, max_length=10000),
+            session_id: str | None = Form(default=None),
+            files: list[UploadFile] = File(default=[]),  # noqa: B008
+        ) -> StreamingResponse:
+            """Streaming chat endpoint with multipart file upload.
+
+            Accepts a message and optional files via multipart form-data,
+            processes them through the agent, and streams SSE events back
+            to the client.
+            """
+            from holodeck.serve.protocols.rest import process_multipart_files
+
+            # Validate file count
+            if len(files) > 10:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Maximum 10 files allowed per request",
+                )
+
+            # Convert multipart files to FileContent
+            try:
+                file_contents = await process_multipart_files(files)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
+
+            # Create ChatRequest with files
+            chat_request = ChatRequest(
+                message=message,
+                session_id=session_id,
+                files=file_contents if file_contents else None,
+            )
+
+            # Get or create session
+            session = self.sessions.get(session_id) if session_id else None
+
+            if session is None:
+                timeout = (
+                    float(self.execution_config.llm_timeout)
+                    if self.execution_config and self.execution_config.llm_timeout
+                    else None
+                )
+                logger.debug(
+                    f"Creating AgentExecutor for new session with timeout={timeout}s"
+                )
+                executor = AgentExecutor(self.agent_config, timeout=timeout)
+                session = self.sessions.create(executor, session_id=session_id)
+
+            # Touch session to update last activity
+            self.sessions.touch(session.session_id)
+            session.message_count += 1
+
+            # Handle request with streaming
+            protocol = RESTProtocol()
+            return StreamingResponse(
+                protocol.handle_request(chat_request, session),
+                media_type=protocol.content_type,
+            )
+
+        @app.delete(
+            "/sessions/{session_id}",
+            status_code=204,
+            tags=["Sessions"],
+        )
+        async def delete_session(session_id: str) -> Response:
+            """Delete a session.
+
+            Removes the session and its conversation history.
+            Returns 204 No Content on success (idempotent).
+            """
+            self.sessions.delete(session_id)
+            logger.debug(f"Deleted session: {session_id}")
+            return Response(status_code=204)
 
     async def start(self) -> None:
         """Start the server and begin accepting requests.

@@ -269,13 +269,21 @@ def _display_startup_info(
     click.secho("  Endpoints:", bold=True)
 
     if protocol == ProtocolType.AG_UI:
-        click.echo("    POST /awp        AG-UI protocol endpoint")
+        click.echo(
+            "    POST /awp                               AG-UI protocol endpoint"
+        )
     else:
-        click.echo("    POST /chat       Chat endpoint (sync)")
-        click.echo("    POST /stream     Chat endpoint (streaming)")
+        click.echo(f"    POST /agent/{agent.name}/chat               Sync chat (JSON)")
+        click.echo(f"    POST /agent/{agent.name}/chat/stream        Stream (SSE)")
+        click.echo(f"    POST /agent/{agent.name}/chat/multipart     Sync (multipart)")
+        click.echo(
+            f"    POST /agent/{agent.name}/chat/stream/multipart  Stream (multipart)"
+        )
+        click.echo("    DELETE /sessions/{session_id}               Delete session")
+        click.echo("    GET  /docs                                  OpenAPI docs")
 
-    click.echo("    GET  /health     Health check")
-    click.echo("    GET  /ready      Readiness check")
+    click.echo("    GET  /health                           Health check")
+    click.echo("    GET  /ready                            Readiness check")
     click.echo()
     click.secho("  Press Ctrl+C to stop", fg="yellow")
     click.secho("=" * 60, fg="cyan")

@@ -83,7 +83,23 @@
 - [x] T028 [US1] Add serve command to CLI entry point in src/holodeck/cli/main.py
 - [x] T029 [US1] Implement server startup display with agent name, protocol, and URL in src/holodeck/cli/commands/serve.py
 
-**Checkpoint**: At this point, `holodeck serve agent.yaml` works with AG-UI protocol - all US1 tests pass ✅
+### AG-UI Multimodal Support (TDD)
+
+> **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+
+- [ ] T029a [P] [US1] Unit tests for AG-UI BinaryInputContent parsing in tests/unit/serve/test_protocols_agui.py
+- [ ] T029b [P] [US1] Unit tests for AG-UI multimodal content to FileInput conversion in tests/unit/serve/test_protocols_agui.py
+- [ ] T029c [P] [US1] Integration test for AG-UI with image content in tests/integration/serve/test_server_agui.py
+- [ ] T029d [P] [US1] Integration test for AG-UI with PDF/document content in tests/integration/serve/test_server_agui.py
+
+### AG-UI Multimodal Implementation
+
+- [ ] T029e [US1] Implement BinaryInputContent parsing from AG-UI message content in src/holodeck/serve/protocols/agui.py
+- [ ] T029f [US1] Implement conversion of AG-UI binary content to FileInput for FileProcessor in src/holodeck/serve/protocols/agui.py
+- [ ] T029g [US1] Integrate FileProcessor output into agent message context in src/holodeck/serve/protocols/agui.py
+- [ ] T029h [US1] Handle inline base64, URL references, and file ID references in src/holodeck/serve/protocols/agui.py
+
+**Checkpoint**: At this point, `holodeck serve agent.yaml` works with AG-UI protocol including multimodal - all US1 tests pass ✅
 
 ---
 
@@ -97,28 +113,28 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T030 [P] [US2] Contract tests for OpenAPI spec compliance in tests/contract/serve/test_openapi_contract.py
-- [ ] T031 [P] [US2] Unit tests for REST protocol handlers in tests/unit/serve/test_protocols_rest.py
-- [ ] T032 [P] [US2] Unit tests for SSE event serialization (stream_start, message_delta, tool_call_*, stream_end, error) in tests/unit/serve/test_protocols_rest.py
-- [ ] T033 [P] [US2] Integration test for synchronous chat endpoint in tests/integration/serve/test_server_rest.py
-- [ ] T034 [P] [US2] Integration test for streaming chat endpoint (SSE) in tests/integration/serve/test_server_rest.py
-- [ ] T035 [P] [US2] Integration test for multimodal file upload (base64 JSON) in tests/integration/serve/test_server_rest.py
-- [ ] T036 [P] [US2] Integration test for multimodal file upload (multipart form-data) in tests/integration/serve/test_server_rest.py
+- [x] T030 [P] [US2] Contract tests for OpenAPI spec compliance in tests/contract/serve/test_openapi_contract.py
+- [x] T031 [P] [US2] Unit tests for REST protocol handlers in tests/unit/serve/test_protocols_rest.py
+- [x] T032 [P] [US2] Unit tests for SSE event serialization (stream_start, message_delta, tool_call_*, stream_end, error) in tests/unit/serve/test_protocols_rest.py
+- [x] T033 [P] [US2] Integration test for synchronous chat endpoint in tests/integration/serve/test_server_rest.py
+- [x] T034 [P] [US2] Integration test for streaming chat endpoint (SSE) in tests/integration/serve/test_server_rest.py
+- [x] T035 [P] [US2] Integration test for multimodal file upload (base64 JSON) in tests/integration/serve/test_server_rest.py
+- [x] T036 [P] [US2] Integration test for multimodal file upload (multipart form-data) in tests/integration/serve/test_server_rest.py
 
 ### Implementation for User Story 2
 
-- [ ] T037 [US2] Implement RESTProtocol class extending Protocol ABC in src/holodeck/serve/protocols/rest.py
-- [ ] T038 [US2] Implement synchronous chat endpoint handler (/agent/{agent_name}/chat) in src/holodeck/serve/protocols/rest.py
-- [ ] T039 [US2] Implement SSE streaming chat endpoint handler (/agent/{agent_name}/chat/stream) in src/holodeck/serve/protocols/rest.py
-- [ ] T040 [US2] Implement SSE event serialization per sse-events.md contract (stream_start, message_delta, tool_call_*, stream_end, error) in src/holodeck/serve/protocols/rest.py
-- [ ] T041 [US2] Implement keepalive comments for long-running SSE streams in src/holodeck/serve/protocols/rest.py
-- [ ] T042 [US2] Implement multimodal file processing integration with FileProcessor in src/holodeck/serve/protocols/rest.py
-- [ ] T043 [US2] Implement multipart form-data file upload handling in src/holodeck/serve/protocols/rest.py
-- [ ] T044 [US2] Wire REST protocol endpoints into AgentServer in src/holodeck/serve/server.py
-- [ ] T045 [US2] Add --protocol flag to serve CLI command in src/holodeck/cli/commands/serve.py
-- [ ] T046 [US2] Enable FastAPI OpenAPI docs at root URL for REST protocol in src/holodeck/serve/server.py
+- [x] T037 [US2] Implement RESTProtocol class extending Protocol ABC in src/holodeck/serve/protocols/rest.py
+- [x] T038 [US2] Implement synchronous chat endpoint handler (/agent/{agent_name}/chat) in src/holodeck/serve/protocols/rest.py
+- [x] T039 [US2] Implement SSE streaming chat endpoint handler (/agent/{agent_name}/chat/stream) in src/holodeck/serve/protocols/rest.py
+- [x] T040 [US2] Implement SSE event serialization per sse-events.md contract (stream_start, message_delta, tool_call_*, stream_end, error) in src/holodeck/serve/protocols/rest.py
+- [x] T041 [US2] Implement keepalive comments for long-running SSE streams in src/holodeck/serve/protocols/rest.py
+- [x] T042 [US2] Implement multimodal file processing integration with FileProcessor in src/holodeck/serve/protocols/rest.py
+- [x] T043 [US2] Implement multipart form-data file upload handling in src/holodeck/serve/protocols/rest.py
+- [x] T044 [US2] Wire REST protocol endpoints into AgentServer in src/holodeck/serve/server.py
+- [x] T045 [US2] Add --protocol flag to serve CLI command in src/holodeck/cli/commands/serve.py
+- [x] T046 [US2] Enable FastAPI OpenAPI docs at root URL for REST protocol in src/holodeck/serve/server.py
 
-**Checkpoint**: At this point, `holodeck serve agent.yaml --protocol rest` works - all US2 tests pass
+**Checkpoint**: At this point, `holodeck serve agent.yaml --protocol rest` works - all US2 tests pass ✅
 
 ---
 
@@ -338,16 +354,17 @@ With multiple developers:
 
 ## Test Summary
 
-| Phase | Test Tasks | Implementation Tasks |
-|-------|------------|---------------------|
-| Foundational | 3 | 7 |
-| User Story 1 | 4 | 11 |
-| User Story 2 | 7 | 10 |
-| User Story 3 | 4 | 4 |
-| User Story 4 | 4 | 5 |
-| User Story 5 | 3 | 5 |
-| Edge Cases | 4 | 5 |
-| **Total** | **29** | **47** |
+| Phase | Test Tasks | Implementation Tasks | Status |
+|-------|------------|---------------------|--------|
+| Foundational | 3 | 7 | ✅ Complete |
+| User Story 1 (text) | 4 | 11 | ✅ Complete |
+| User Story 1 (multimodal) | 4 | 4 | ⏳ Pending |
+| User Story 2 | 7 | 10 | ✅ Complete |
+| User Story 3 | 4 | 4 | ⏳ Pending |
+| User Story 4 | 4 | 5 | ⏳ Pending |
+| User Story 5 | 3 | 5 | ⏳ Pending |
+| Edge Cases | 4 | 5 | ⏳ Pending |
+| **Total** | **33** | **51** | |
 
 ---
 
