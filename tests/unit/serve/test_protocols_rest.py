@@ -246,8 +246,8 @@ class TestFileContentToFileInput:
 
     def test_convert_image_file_content(self) -> None:
         """Test converting image FileContent to FileInput."""
+        from holodeck.serve.file_utils import convert_file_content_to_file_input
         from holodeck.serve.models import FileContent
-        from holodeck.serve.protocols.rest import convert_file_content_to_file_input
 
         # Create a valid base64-encoded 1x1 PNG
         png_bytes = base64.b64decode(
@@ -267,8 +267,8 @@ class TestFileContentToFileInput:
 
     def test_convert_pdf_file_content(self) -> None:
         """Test converting PDF FileContent to FileInput."""
+        from holodeck.serve.file_utils import convert_file_content_to_file_input
         from holodeck.serve.models import FileContent
-        from holodeck.serve.protocols.rest import convert_file_content_to_file_input
 
         # Create a minimal PDF content (just base64 placeholder)
         pdf_content = base64.b64encode(b"%PDF-1.0\n%%EOF").decode()
@@ -284,8 +284,8 @@ class TestFileContentToFileInput:
 
     def test_convert_text_file_content(self) -> None:
         """Test converting text FileContent to FileInput."""
+        from holodeck.serve.file_utils import convert_file_content_to_file_input
         from holodeck.serve.models import FileContent
-        from holodeck.serve.protocols.rest import convert_file_content_to_file_input
 
         text_content = base64.b64encode(b"Hello, world!").decode()
         file_content = FileContent(

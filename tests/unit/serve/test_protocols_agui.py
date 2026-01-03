@@ -974,7 +974,7 @@ class TestBinaryContentToFileInput:
 
     def test_convert_base64_png_creates_temp_file(self) -> None:
         """Test converting base64 PNG to FileInput creates temp file."""
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         binary_content: dict[str, Any] = {
             "type": "binary",
@@ -983,7 +983,7 @@ class TestBinaryContentToFileInput:
             "filename": "test.png",
         }
 
-        file_input = convert_agui_binary_to_file_input(binary_content)
+        file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is not None
         assert file_input.type == "image"
@@ -1001,7 +1001,7 @@ class TestBinaryContentToFileInput:
 
     def test_convert_base64_pdf_creates_temp_file(self) -> None:
         """Test converting base64 PDF to FileInput creates temp file."""
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         binary_content: dict[str, Any] = {
             "type": "binary",
@@ -1010,7 +1010,7 @@ class TestBinaryContentToFileInput:
             "filename": "document.pdf",
         }
 
-        file_input = convert_agui_binary_to_file_input(binary_content)
+        file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is not None
         assert file_input.type == "pdf"
@@ -1023,7 +1023,7 @@ class TestBinaryContentToFileInput:
 
     def test_convert_base64_jpeg_creates_temp_file(self) -> None:
         """Test converting base64 JPEG to FileInput."""
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         # Minimal JPEG-like data
         jpeg_data = base64.b64encode(b"\xff\xd8\xff\xe0" + b"\x00" * 10).decode()
@@ -1033,7 +1033,7 @@ class TestBinaryContentToFileInput:
             "data": jpeg_data,
         }
 
-        file_input = convert_agui_binary_to_file_input(binary_content)
+        file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is not None
         assert file_input.type == "image"
@@ -1044,7 +1044,7 @@ class TestBinaryContentToFileInput:
 
     def test_convert_url_reference_downloads_file(self) -> None:
         """Test converting URL reference downloads and creates FileInput."""
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         binary_content: dict[str, Any] = {
             "type": "binary",
@@ -1053,13 +1053,13 @@ class TestBinaryContentToFileInput:
         }
 
         # Mock httpx to avoid actual network call
-        with patch("holodeck.serve.protocols.agui.httpx") as mock_httpx:
+        with patch("holodeck.serve.file_utils.httpx") as mock_httpx:
             mock_response = MagicMock()
             mock_response.content = base64.b64decode(MINIMAL_PNG_BASE64)
             mock_response.raise_for_status = MagicMock()
             mock_httpx.get.return_value = mock_response
 
-            file_input = convert_agui_binary_to_file_input(binary_content)
+            file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is not None
         assert file_input.type == "image"
@@ -1073,7 +1073,7 @@ class TestBinaryContentToFileInput:
         """Test that file ID references log warning and return None."""
         import logging
 
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         binary_content: dict[str, Any] = {
             "type": "binary",
@@ -1081,17 +1081,17 @@ class TestBinaryContentToFileInput:
             "id": "file-12345",
         }
 
-        with caplog.at_level(logging.WARNING, logger="holodeck.serve.protocols.agui"):
-            file_input = convert_agui_binary_to_file_input(binary_content)
+        with caplog.at_level(logging.WARNING, logger="holodeck.serve.file_utils"):
+            file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is None
         assert "file-12345" in caplog.text or "not supported" in caplog.text.lower()
 
     def test_cleanup_removes_temp_files(self) -> None:
         """Test cleanup_temp_file removes temporary files."""
-        from holodeck.serve.protocols.agui import (
+        from holodeck.serve.file_utils import (
             cleanup_temp_file,
-            convert_agui_binary_to_file_input,
+            convert_binary_dict_to_file_input,
         )
 
         binary_content: dict[str, Any] = {
@@ -1100,7 +1100,7 @@ class TestBinaryContentToFileInput:
             "data": MINIMAL_PNG_BASE64,
         }
 
-        file_input = convert_agui_binary_to_file_input(binary_content)
+        file_input = convert_binary_dict_to_file_input(binary_content)
         assert file_input is not None
         assert Path(file_input.path).exists()
 
@@ -1109,7 +1109,7 @@ class TestBinaryContentToFileInput:
 
     def test_invalid_base64_raises_error(self) -> None:
         """Test that invalid base64 data raises an error."""
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         binary_content: dict[str, Any] = {
             "type": "binary",
@@ -1118,11 +1118,11 @@ class TestBinaryContentToFileInput:
         }
 
         with pytest.raises(ValueError, match="Invalid base64"):
-            convert_agui_binary_to_file_input(binary_content)
+            convert_binary_dict_to_file_input(binary_content)
 
     def test_convert_word_document(self) -> None:
         """Test converting Word document MIME type."""
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         docx_data = base64.b64encode(b"PK\x03\x04" + b"\x00" * 20).decode()
         binary_content: dict[str, Any] = {
@@ -1132,7 +1132,7 @@ class TestBinaryContentToFileInput:
             "filename": "doc.docx",
         }
 
-        file_input = convert_agui_binary_to_file_input(binary_content)
+        file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is not None
         assert file_input.type == "word"
@@ -1143,7 +1143,7 @@ class TestBinaryContentToFileInput:
 
     def test_convert_excel_spreadsheet(self) -> None:
         """Test converting Excel spreadsheet MIME type."""
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         xlsx_data = base64.b64encode(b"PK\x03\x04" + b"\x00" * 20).decode()
         binary_content: dict[str, Any] = {
@@ -1152,7 +1152,7 @@ class TestBinaryContentToFileInput:
             "data": xlsx_data,
         }
 
-        file_input = convert_agui_binary_to_file_input(binary_content)
+        file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is not None
         assert file_input.type == "excel"
@@ -1163,7 +1163,7 @@ class TestBinaryContentToFileInput:
 
     def test_convert_powerpoint_presentation(self) -> None:
         """Test converting PowerPoint presentation MIME type."""
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         pptx_data = base64.b64encode(b"PK\x03\x04" + b"\x00" * 20).decode()
         binary_content: dict[str, Any] = {
@@ -1172,7 +1172,7 @@ class TestBinaryContentToFileInput:
             "data": pptx_data,
         }
 
-        file_input = convert_agui_binary_to_file_input(binary_content)
+        file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is not None
         assert file_input.type == "powerpoint"
@@ -1183,7 +1183,7 @@ class TestBinaryContentToFileInput:
 
     def test_convert_text_file(self) -> None:
         """Test converting text file MIME type."""
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         text_data = base64.b64encode(b"Hello, this is a text file.").decode()
         binary_content: dict[str, Any] = {
@@ -1192,7 +1192,7 @@ class TestBinaryContentToFileInput:
             "data": text_data,
         }
 
-        file_input = convert_agui_binary_to_file_input(binary_content)
+        file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is not None
         assert file_input.type == "text"
@@ -1203,7 +1203,7 @@ class TestBinaryContentToFileInput:
 
     def test_convert_csv_file(self) -> None:
         """Test converting CSV file MIME type."""
-        from holodeck.serve.protocols.agui import convert_agui_binary_to_file_input
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         csv_data = base64.b64encode(b"name,value\nfoo,1\nbar,2").decode()
         binary_content: dict[str, Any] = {
@@ -1212,7 +1212,7 @@ class TestBinaryContentToFileInput:
             "data": csv_data,
         }
 
-        file_input = convert_agui_binary_to_file_input(binary_content)
+        file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is not None
         assert file_input.type == "csv"

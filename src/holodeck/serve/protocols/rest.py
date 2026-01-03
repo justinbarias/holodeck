@@ -12,15 +12,21 @@ from __future__ import annotations
 
 import base64
 import json
-import tempfile
 import time
 from collections.abc import AsyncGenerator
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ulid import ULID
 
 from holodeck.lib.logging_config import get_logger
+from holodeck.serve.file_utils import (
+    MAX_FILE_SIZE_BYTES,
+    MAX_FILE_SIZE_MB,
+    MAX_TOTAL_SIZE_BYTES,
+    MAX_TOTAL_SIZE_MB,
+    cleanup_temp_files,
+    process_multimodal_files,
+)
 from holodeck.serve.models import ChatRequest, ChatResponse, FileContent, ToolCallInfo
 from holodeck.serve.protocols.base import Protocol
 
@@ -28,7 +34,6 @@ if TYPE_CHECKING:
     from fastapi import UploadFile
 
     from holodeck.models.config import ExecutionConfig
-    from holodeck.models.test_case import FileInput
     from holodeck.serve.session_store import ServerSession
 
 logger = get_logger(__name__)
@@ -225,104 +230,6 @@ class SSEEvent:
 
 
 # =============================================================================
-# File Content to FileInput Conversion
-# =============================================================================
-
-
-def convert_file_content_to_file_input(file_content: FileContent) -> FileInput:
-    """Convert REST FileContent (base64) to FileProcessor-compatible FileInput.
-
-    Creates a temporary file with the decoded content and returns a FileInput
-    pointing to it.
-
-    Args:
-        file_content: FileContent with base64-encoded data and MIME type.
-
-    Returns:
-        FileInput suitable for FileProcessor.process_file().
-    """
-    from holodeck.models.test_case import FileInput
-
-    # Decode base64 content
-    content_bytes = base64.b64decode(file_content.content)
-
-    # MIME type constants for Office documents
-    docx_mime = (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
-    xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    pptx_mime = (
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    )
-
-    # Map MIME type to file type
-    mime_to_type: dict[str, str] = {
-        "image/png": "image",
-        "image/jpeg": "image",
-        "image/gif": "image",
-        "image/webp": "image",
-        "application/pdf": "pdf",
-        docx_mime: "word",
-        xlsx_mime: "excel",
-        pptx_mime: "powerpoint",
-        "text/plain": "text",
-        "text/csv": "csv",
-        "text/markdown": "text",
-    }
-    file_type = mime_to_type.get(file_content.mime_type, "text")
-
-    # Determine file extension from MIME type
-    mime_to_ext: dict[str, str] = {
-        "image/png": ".png",
-        "image/jpeg": ".jpg",
-        "image/gif": ".gif",
-        "image/webp": ".webp",
-        "application/pdf": ".pdf",
-        docx_mime: ".docx",
-        xlsx_mime: ".xlsx",
-        pptx_mime: ".pptx",
-        "text/plain": ".txt",
-        "text/csv": ".csv",
-        "text/markdown": ".md",
-    }
-    extension = mime_to_ext.get(file_content.mime_type, ".bin")
-
-    # Create temporary file
-    with tempfile.NamedTemporaryFile(suffix=extension, delete=False, mode="wb") as tmp:
-        tmp.write(content_bytes)
-        tmp_path = tmp.name
-
-    logger.debug(
-        f"Converted FileContent to temp file: {tmp_path} "
-        f"(type={file_type}, size={len(content_bytes)} bytes)"
-    )
-
-    return FileInput(
-        path=tmp_path,
-        url=None,
-        type=file_type,
-        description=file_content.filename,
-        pages=None,
-        sheet=None,
-        range=None,
-        cache=None,
-    )
-
-
-def cleanup_temp_file(file_input: FileInput) -> None:
-    """Clean up temporary file created by convert_file_content_to_file_input.
-
-    Args:
-        file_input: FileInput with path to temporary file.
-    """
-    if file_input.path:
-        try:
-            Path(file_input.path).unlink(missing_ok=True)
-        except Exception as e:
-            logger.warning(f"Failed to cleanup temp file {file_input.path}: {e}")
-
-
-# =============================================================================
 # Multipart File Upload Processing
 # =============================================================================
 
@@ -391,10 +298,6 @@ async def process_multipart_files(
     Raises:
         ValueError: If any file has unsupported MIME type or exceeds size limits.
     """
-    # Size limits per spec
-    max_file_size = 50 * 1024 * 1024  # 50 MB per file
-    max_total_size = 100 * 1024 * 1024  # 100 MB total
-
     file_contents: list[FileContent] = []
     total_size = 0
 
@@ -403,14 +306,17 @@ async def process_multipart_files(
         content = await upload_file.read()
         file_size = len(content)
 
-        if file_size > max_file_size:
+        if file_size > MAX_FILE_SIZE_BYTES:
             raise ValueError(
-                f"File '{upload_file.filename}' exceeds maximum size of 50MB"
+                f"File '{upload_file.filename}' exceeds maximum size of "
+                f"{MAX_FILE_SIZE_MB}MB"
             )
 
         total_size += file_size
-        if total_size > max_total_size:
-            raise ValueError("Total file size exceeds maximum of 100MB")
+        if total_size > MAX_TOTAL_SIZE_BYTES:
+            raise ValueError(
+                f"Total file size exceeds maximum of {MAX_TOTAL_SIZE_MB}MB"
+            )
 
         # Reset file position for re-reading
         await upload_file.seek(0)
@@ -623,38 +529,16 @@ class RESTProtocol(Protocol):
         Returns:
             Combined markdown content from all processed files.
         """
-        from holodeck.lib.file_processor import FileProcessor
-
         if not files:
             return ""
 
-        # Create FileProcessor
-        if execution_config:
-            processor = FileProcessor.from_execution_config(execution_config)
-        else:
-            processor = FileProcessor()
+        combined_content, file_inputs = process_multimodal_files(
+            files=files,
+            execution_config=execution_config,
+            is_agui_format=False,
+        )
 
-        # Process each file
-        file_inputs = []
-        combined_content = []
+        # Clean up temporary files
+        cleanup_temp_files(file_inputs)
 
-        try:
-            for file_content in files:
-                file_input = convert_file_content_to_file_input(file_content)
-                file_inputs.append(file_input)
-
-                # Process file
-                result = processor.process_file(file_input)
-
-                if result.error:
-                    logger.warning(f"File processing error: {result.error}")
-                    combined_content.append(f"[File processing error: {result.error}]")
-                elif result.markdown_content:
-                    combined_content.append(result.markdown_content)
-
-        finally:
-            # Clean up temporary files
-            for file_input in file_inputs:
-                cleanup_temp_file(file_input)
-
-        return "\n\n".join(combined_content)
+        return combined_content
