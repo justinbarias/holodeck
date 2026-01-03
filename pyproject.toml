@@ -31,11 +31,12 @@ dependencies = [
     "deepeval>=3.0.0,<4.0.0",
     "python-ulid>=3.1.0,<4.0.0",
     "ml-dtypes>=0.4.0,<0.5.0",
-    "mcp>=1.8",
+    "mcp>=1.23",
     "inquirerpy>=0.3.4,<0.4.0",
     "fastapi>=0.115.0,<1.0.0",
     "uvicorn[standard]>=0.34.0,<1.0.0",
     "ag-ui-protocol>=0.1.10,<1.0.0",
+    "werkzeug>=3.1.4",
 ]
 
 [project.scripts]
