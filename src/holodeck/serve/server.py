@@ -20,6 +20,7 @@ from holodeck.serve.session_store import SessionStore
 
 if TYPE_CHECKING:
     from holodeck.models.agent import Agent
+    from holodeck.models.config import ExecutionConfig
 
 logger = get_logger(__name__)
 
@@ -47,6 +48,7 @@ class AgentServer:
         port: int = 8000,
         cors_origins: list[str] | None = None,
         debug: bool = False,
+        execution_config: ExecutionConfig | None = None,
     ) -> None:
         """Initialize the agent server.
 
@@ -58,6 +60,7 @@ class AgentServer:
             port: The port to listen on (default: 8000).
             cors_origins: List of allowed CORS origins (default: ["*"]).
             debug: Enable debug logging (default: False).
+            execution_config: Resolved execution configuration for timeouts.
         """
         self.agent_config = agent_config
         self.protocol = protocol
@@ -65,6 +68,7 @@ class AgentServer:
         self.port = port
         self.cors_origins = cors_origins or ["*"]
         self.debug = debug
+        self.execution_config = execution_config
 
         # Warn if binding to all interfaces
         if host == "0.0.0.0":  # noqa: S104  # nosec B104
@@ -216,7 +220,17 @@ class AgentServer:
             if session is None:
                 # Create new executor for this session
                 # Use thread_id as session_id for AG-UI correlation
-                executor = AgentExecutor(self.agent_config)
+                # Pass timeout from execution_config if available
+                timeout = (
+                    float(self.execution_config.llm_timeout)
+                    if self.execution_config and self.execution_config.llm_timeout
+                    else None
+                )
+                logger.debug(
+                    f"Creating AgentExecutor for session {session_id} "
+                    f"with timeout={timeout}s"
+                )
+                executor = AgentExecutor(self.agent_config, timeout=timeout)
                 session = self.sessions.create(executor, session_id=session_id)
 
             # Touch session to update last activity

@@ -13,8 +13,10 @@ from typing import TYPE_CHECKING
 
 import click
 
+from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.logging_config import get_logger, setup_logging
+from holodeck.models.config import ExecutionConfig
 
 if TYPE_CHECKING:
     from holodeck.models.agent import Agent
@@ -117,6 +119,32 @@ def serve(
         agent_base_dir.set(agent_dir)
         logger.debug(f"Set agent_base_dir context: {agent_base_dir.get()}")
 
+        # Resolve execution config with 6-level priority hierarchy
+        # CLI flags > agent.yaml > project config > user config > env vars > defaults
+        # Note: serve command doesn't have CLI flags for execution config yet
+        cli_config = ExecutionConfig()  # Empty - no CLI overrides
+
+        # Load project-level config (same directory as agent.yaml)
+        project_config = loader.load_project_config(agent_dir)
+        project_execution = project_config.execution if project_config else None
+
+        # Load user-level config (~/.holodeck/)
+        user_config = loader.load_global_config()
+        user_execution = user_config.execution if user_config else None
+
+        resolved_config = loader.resolve_execution_config(
+            cli_config=cli_config,
+            yaml_config=agent.execution,
+            project_config=project_execution,
+            user_config=user_execution,
+            defaults=DEFAULT_EXECUTION_CONFIG,
+        )
+
+        logger.debug(
+            f"Resolved execution config: llm_timeout={resolved_config.llm_timeout}, "
+            f"file_timeout={resolved_config.file_timeout}"
+        )
+
         # Parse CORS origins
         origins = [o.strip() for o in cors_origins.split(",") if o.strip()]
 
@@ -134,6 +162,7 @@ def serve(
                 protocol=protocol_type,
                 cors_origins=origins,
                 debug=debug,
+                execution_config=resolved_config,
             )
         )
 
@@ -160,6 +189,7 @@ async def _run_server(
     protocol: ProtocolType,
     cors_origins: list[str],
     debug: bool,
+    execution_config: ExecutionConfig,
 ) -> None:
     """Run the HTTP server.
 
@@ -170,6 +200,7 @@ async def _run_server(
         protocol: Protocol type (AG-UI or REST).
         cors_origins: List of allowed CORS origins.
         debug: Enable debug mode.
+        execution_config: Resolved execution configuration.
     """
     import uvicorn
 
@@ -183,6 +214,7 @@ async def _run_server(
         port=port,
         cors_origins=cors_origins,
         debug=debug,
+        execution_config=execution_config,
     )
 
     # Create app

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from holodeck.models.config import ExecutionConfig
 from holodeck.serve.models import ProtocolType, ServerState
 from holodeck.serve.server import AgentServer
 
@@ -20,6 +21,20 @@ def mock_agent_config() -> MagicMock:
     agent = MagicMock()
     agent.name = "test-agent"
     return agent
+
+
+@pytest.fixture
+def mock_execution_config() -> ExecutionConfig:
+    """Create a mock execution configuration."""
+    return ExecutionConfig(
+        llm_timeout=120,
+        file_timeout=60,
+        download_timeout=60,
+        cache_enabled=True,
+        cache_dir=".holodeck/cache",
+        verbose=False,
+        quiet=False,
+    )
 
 
 class TestAgentServerInit:
@@ -35,6 +50,7 @@ class TestAgentServerInit:
         assert server.port == 8000
         assert server.cors_origins == ["*"]
         assert server.debug is False
+        assert server.execution_config is None
         assert server.state == ServerState.INITIALIZING
         assert server._app is None
         assert server._start_time is None
@@ -55,6 +71,21 @@ class TestAgentServerInit:
         assert server.port == 9000
         assert server.cors_origins == ["https://example.com"]
         assert server.debug is True
+
+    def test_init_with_execution_config(
+        self,
+        mock_agent_config: MagicMock,
+        mock_execution_config: ExecutionConfig,
+    ) -> None:
+        """Test AgentServer with execution configuration."""
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            execution_config=mock_execution_config,
+        )
+
+        assert server.execution_config is mock_execution_config
+        assert server.execution_config.llm_timeout == 120
+        assert server.execution_config.file_timeout == 60
 
     def test_init_warns_on_all_interfaces_binding(
         self, mock_agent_config: MagicMock

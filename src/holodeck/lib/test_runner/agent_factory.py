@@ -137,6 +137,11 @@ class AgentThreadRun:
         self.retry_exponential_base = retry_exponential_base
         self.chat_history = ChatHistory()  # Fresh history per instance
 
+        logger.debug(
+            f"AgentThreadRun initialized: timeout={self.timeout}s, "
+            f"max_retries={self.max_retries}, retry_delay={self.retry_delay}s"
+        )
+
     async def invoke(self, user_input: str) -> AgentExecutionResult:
         """Invoke agent with user input.
 
@@ -155,10 +160,18 @@ class AgentThreadRun:
 
             # Invoke with timeout and retry logic
             if self.timeout:
+                logger.debug(
+                    f"Invoking agent with timeout={self.timeout}s "
+                    f"(input length: {len(user_input)} chars)"
+                )
                 result = await asyncio.wait_for(
                     self._invoke_with_retry(), timeout=self.timeout
                 )
             else:
+                logger.debug(
+                    f"Invoking agent without timeout "
+                    f"(input length: {len(user_input)} chars)"
+                )
                 result = await self._invoke_with_retry()
 
             return result
@@ -999,6 +1012,14 @@ class AgentFactory:
         # Ensure kernel_arguments are built
         if self.kernel_arguments is None:
             self.kernel_arguments = self._build_kernel_arguments()
+
+        exec_timeout = (
+            self._execution_config.llm_timeout if self._execution_config else "N/A"
+        )
+        logger.debug(
+            f"Creating AgentThreadRun with timeout={self.timeout}s "
+            f"(from execution_config.llm_timeout={exec_timeout})"
+        )
 
         return AgentThreadRun(
             agent=self.agent,

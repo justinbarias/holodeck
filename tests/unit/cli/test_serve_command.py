@@ -18,6 +18,7 @@ from click.testing import CliRunner
 
 from holodeck.cli.commands.serve import _display_startup_info, _run_server, serve
 from holodeck.lib.errors import ConfigError
+from holodeck.models.config import ExecutionConfig
 from holodeck.serve.models import ProtocolType
 
 if TYPE_CHECKING:
@@ -56,7 +57,23 @@ def mock_agent() -> MagicMock:
     agent = MagicMock()
     agent.name = "test-agent"
     agent.description = "A test agent"
+    # Set execution to None to avoid MagicMock issues with Pydantic validation
+    agent.execution = None
     return agent
+
+
+@pytest.fixture
+def mock_execution_config() -> ExecutionConfig:
+    """Create a mock execution configuration."""
+    return ExecutionConfig(
+        llm_timeout=60,
+        file_timeout=30,
+        download_timeout=30,
+        cache_enabled=True,
+        cache_dir=".holodeck/cache",
+        verbose=False,
+        quiet=False,
+    )
 
 
 class TestServeCommandOptions:
@@ -83,6 +100,9 @@ class TestServeCommandOptions:
 class TestServeCommandExecution:
     """Tests for serve command execution with mocked dependencies."""
 
+    @patch("holodeck.config.loader.ConfigLoader.resolve_execution_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_global_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_project_config")
     @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
     @patch("asyncio.run")
     @patch("holodeck.cli.commands.serve.setup_logging")
@@ -91,18 +111,28 @@ class TestServeCommandExecution:
         mock_setup_logging: MagicMock,
         mock_asyncio_run: MagicMock,
         mock_load_agent: MagicMock,
+        mock_load_project: MagicMock,
+        mock_load_global: MagicMock,
+        mock_resolve_exec: MagicMock,
         runner: CliRunner,
         temp_agent_config: Path,
         mock_agent: MagicMock,
+        mock_execution_config: ExecutionConfig,
     ) -> None:
         """Test serve command loads agent configuration correctly."""
         mock_load_agent.return_value = mock_agent
+        mock_load_project.return_value = None
+        mock_load_global.return_value = None
+        mock_resolve_exec.return_value = mock_execution_config
 
         result = runner.invoke(serve, [str(temp_agent_config)])
 
         assert result.exit_code == 0
         mock_load_agent.assert_called_once_with(str(temp_agent_config))
 
+    @patch("holodeck.config.loader.ConfigLoader.resolve_execution_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_global_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_project_config")
     @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
     @patch("asyncio.run")
     @patch("holodeck.cli.commands.serve.setup_logging")
@@ -113,18 +143,28 @@ class TestServeCommandExecution:
         mock_setup_logging: MagicMock,
         mock_asyncio_run: MagicMock,
         mock_load_agent: MagicMock,
+        mock_load_project: MagicMock,
+        mock_load_global: MagicMock,
+        mock_resolve_exec: MagicMock,
         runner: CliRunner,
         temp_agent_config: Path,
         mock_agent: MagicMock,
+        mock_execution_config: ExecutionConfig,
     ) -> None:
         """Test serve command sets agent_base_dir context."""
         mock_load_agent.return_value = mock_agent
+        mock_load_project.return_value = None
+        mock_load_global.return_value = None
+        mock_resolve_exec.return_value = mock_execution_config
 
         result = runner.invoke(serve, [str(temp_agent_config)])
 
         assert result.exit_code == 0
         mock_ctx.set.assert_called_once()
 
+    @patch("holodeck.config.loader.ConfigLoader.resolve_execution_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_global_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_project_config")
     @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
     @patch("asyncio.run")
     @patch("holodeck.cli.commands.serve.setup_logging")
@@ -133,12 +173,19 @@ class TestServeCommandExecution:
         mock_setup_logging: MagicMock,
         mock_asyncio_run: MagicMock,
         mock_load_agent: MagicMock,
+        mock_load_project: MagicMock,
+        mock_load_global: MagicMock,
+        mock_resolve_exec: MagicMock,
         runner: CliRunner,
         temp_agent_config: Path,
         mock_agent: MagicMock,
+        mock_execution_config: ExecutionConfig,
     ) -> None:
         """Test serve command parses comma-separated CORS origins."""
         mock_load_agent.return_value = mock_agent
+        mock_load_project.return_value = None
+        mock_load_global.return_value = None
+        mock_resolve_exec.return_value = mock_execution_config
 
         result = runner.invoke(
             serve,
@@ -154,6 +201,9 @@ class TestServeCommandExecution:
         call_kwargs = mock_asyncio_run.call_args
         assert call_kwargs is not None
 
+    @patch("holodeck.config.loader.ConfigLoader.resolve_execution_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_global_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_project_config")
     @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
     @patch("asyncio.run")
     @patch("holodeck.cli.commands.serve.setup_logging")
@@ -162,17 +212,27 @@ class TestServeCommandExecution:
         mock_setup_logging: MagicMock,
         mock_asyncio_run: MagicMock,
         mock_load_agent: MagicMock,
+        mock_load_project: MagicMock,
+        mock_load_global: MagicMock,
+        mock_resolve_exec: MagicMock,
         runner: CliRunner,
         temp_agent_config: Path,
         mock_agent: MagicMock,
+        mock_execution_config: ExecutionConfig,
     ) -> None:
         """Test serve command with AG-UI protocol."""
         mock_load_agent.return_value = mock_agent
+        mock_load_project.return_value = None
+        mock_load_global.return_value = None
+        mock_resolve_exec.return_value = mock_execution_config
 
         result = runner.invoke(serve, [str(temp_agent_config), "--protocol", "ag-ui"])
 
         assert result.exit_code == 0
 
+    @patch("holodeck.config.loader.ConfigLoader.resolve_execution_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_global_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_project_config")
     @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
     @patch("asyncio.run")
     @patch("holodeck.cli.commands.serve.setup_logging")
@@ -181,17 +241,27 @@ class TestServeCommandExecution:
         mock_setup_logging: MagicMock,
         mock_asyncio_run: MagicMock,
         mock_load_agent: MagicMock,
+        mock_load_project: MagicMock,
+        mock_load_global: MagicMock,
+        mock_resolve_exec: MagicMock,
         runner: CliRunner,
         temp_agent_config: Path,
         mock_agent: MagicMock,
+        mock_execution_config: ExecutionConfig,
     ) -> None:
         """Test serve command with REST protocol."""
         mock_load_agent.return_value = mock_agent
+        mock_load_project.return_value = None
+        mock_load_global.return_value = None
+        mock_resolve_exec.return_value = mock_execution_config
 
         result = runner.invoke(serve, [str(temp_agent_config), "--protocol", "rest"])
 
         assert result.exit_code == 0
 
+    @patch("holodeck.config.loader.ConfigLoader.resolve_execution_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_global_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_project_config")
     @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
     @patch("asyncio.run")
     @patch("holodeck.cli.commands.serve.setup_logging")
@@ -200,18 +270,28 @@ class TestServeCommandExecution:
         mock_setup_logging: MagicMock,
         mock_asyncio_run: MagicMock,
         mock_load_agent: MagicMock,
+        mock_load_project: MagicMock,
+        mock_load_global: MagicMock,
+        mock_resolve_exec: MagicMock,
         runner: CliRunner,
         temp_agent_config: Path,
         mock_agent: MagicMock,
+        mock_execution_config: ExecutionConfig,
     ) -> None:
         """Test serve command with debug mode enabled."""
         mock_load_agent.return_value = mock_agent
+        mock_load_project.return_value = None
+        mock_load_global.return_value = None
+        mock_resolve_exec.return_value = mock_execution_config
 
         result = runner.invoke(serve, [str(temp_agent_config), "--debug"])
 
         assert result.exit_code == 0
         mock_setup_logging.assert_called_with(verbose=True, quiet=False)
 
+    @patch("holodeck.config.loader.ConfigLoader.resolve_execution_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_global_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_project_config")
     @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
     @patch("asyncio.run")
     @patch("holodeck.cli.commands.serve.setup_logging")
@@ -220,12 +300,19 @@ class TestServeCommandExecution:
         mock_setup_logging: MagicMock,
         mock_asyncio_run: MagicMock,
         mock_load_agent: MagicMock,
+        mock_load_project: MagicMock,
+        mock_load_global: MagicMock,
+        mock_resolve_exec: MagicMock,
         runner: CliRunner,
         temp_agent_config: Path,
         mock_agent: MagicMock,
+        mock_execution_config: ExecutionConfig,
     ) -> None:
         """Test serve command with custom port."""
         mock_load_agent.return_value = mock_agent
+        mock_load_project.return_value = None
+        mock_load_global.return_value = None
+        mock_resolve_exec.return_value = mock_execution_config
 
         result = runner.invoke(serve, [str(temp_agent_config), "--port", "9000"])
 
@@ -253,6 +340,9 @@ class TestServeCommandErrorHandling:
         assert "Error: Failed to load agent configuration" in result.output
         assert "Invalid configuration" in result.output
 
+    @patch("holodeck.config.loader.ConfigLoader.resolve_execution_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_global_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_project_config")
     @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
     @patch("asyncio.run")
     @patch("holodeck.cli.commands.serve.setup_logging")
@@ -261,12 +351,19 @@ class TestServeCommandErrorHandling:
         mock_setup_logging: MagicMock,
         mock_asyncio_run: MagicMock,
         mock_load_agent: MagicMock,
+        mock_load_project: MagicMock,
+        mock_load_global: MagicMock,
+        mock_resolve_exec: MagicMock,
         runner: CliRunner,
         temp_agent_config: Path,
         mock_agent: MagicMock,
+        mock_execution_config: ExecutionConfig,
     ) -> None:
         """Test serve command handles KeyboardInterrupt gracefully."""
         mock_load_agent.return_value = mock_agent
+        mock_load_project.return_value = None
+        mock_load_global.return_value = None
+        mock_resolve_exec.return_value = mock_execution_config
         mock_asyncio_run.side_effect = KeyboardInterrupt()
 
         result = runner.invoke(serve, [str(temp_agent_config)])
@@ -274,6 +371,9 @@ class TestServeCommandErrorHandling:
         assert result.exit_code == 130
         assert "Server stopped." in result.output
 
+    @patch("holodeck.config.loader.ConfigLoader.resolve_execution_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_global_config")
+    @patch("holodeck.config.loader.ConfigLoader.load_project_config")
     @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
     @patch("asyncio.run")
     @patch("holodeck.cli.commands.serve.setup_logging")
@@ -282,12 +382,19 @@ class TestServeCommandErrorHandling:
         mock_setup_logging: MagicMock,
         mock_asyncio_run: MagicMock,
         mock_load_agent: MagicMock,
+        mock_load_project: MagicMock,
+        mock_load_global: MagicMock,
+        mock_resolve_exec: MagicMock,
         runner: CliRunner,
         temp_agent_config: Path,
         mock_agent: MagicMock,
+        mock_execution_config: ExecutionConfig,
     ) -> None:
         """Test serve command handles unexpected errors gracefully."""
         mock_load_agent.return_value = mock_agent
+        mock_load_project.return_value = None
+        mock_load_global.return_value = None
+        mock_resolve_exec.return_value = mock_execution_config
         mock_asyncio_run.side_effect = RuntimeError("Something went wrong")
 
         result = runner.invoke(serve, [str(temp_agent_config)])
@@ -301,7 +408,9 @@ class TestRunServer:
     """Tests for _run_server async function."""
 
     @pytest.mark.asyncio
-    async def test_run_server_creates_agent_server(self, mock_agent: MagicMock) -> None:
+    async def test_run_server_creates_agent_server(
+        self, mock_agent: MagicMock, mock_execution_config: ExecutionConfig
+    ) -> None:
         """Test _run_server creates AgentServer with correct params."""
         with (
             patch("holodeck.serve.server.AgentServer") as mock_server_class,
@@ -326,6 +435,7 @@ class TestRunServer:
                 protocol=ProtocolType.AG_UI,
                 cors_origins=["*"],
                 debug=False,
+                execution_config=mock_execution_config,
             )
 
             mock_server_class.assert_called_once_with(
@@ -335,13 +445,14 @@ class TestRunServer:
                 port=8000,
                 cors_origins=["*"],
                 debug=False,
+                execution_config=mock_execution_config,
             )
             mock_server.create_app.assert_called_once()
             mock_server.start.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_run_server_calls_stop_on_cleanup(
-        self, mock_agent: MagicMock
+        self, mock_agent: MagicMock, mock_execution_config: ExecutionConfig
     ) -> None:
         """Test _run_server calls server.stop() in finally block."""
         with (
@@ -367,13 +478,14 @@ class TestRunServer:
                 protocol=ProtocolType.AG_UI,
                 cors_origins=["*"],
                 debug=False,
+                execution_config=mock_execution_config,
             )
 
             mock_server.stop.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_run_server_uvicorn_config_debug_mode(
-        self, mock_agent: MagicMock
+        self, mock_agent: MagicMock, mock_execution_config: ExecutionConfig
     ) -> None:
         """Test _run_server configures uvicorn with debug log level."""
         with (
@@ -399,6 +511,7 @@ class TestRunServer:
                 protocol=ProtocolType.AG_UI,
                 cors_origins=["*"],
                 debug=True,
+                execution_config=mock_execution_config,
             )
 
             # Check uvicorn.Config was called with debug log level
