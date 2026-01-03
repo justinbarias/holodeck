@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from holodeck.models.config import ExecutionConfig
 from holodeck.serve.models import ProtocolType, ServerState
 from holodeck.serve.server import AgentServer
 
@@ -20,6 +21,20 @@ def mock_agent_config() -> MagicMock:
     agent = MagicMock()
     agent.name = "test-agent"
     return agent
+
+
+@pytest.fixture
+def mock_execution_config() -> ExecutionConfig:
+    """Create a mock execution configuration."""
+    return ExecutionConfig(
+        llm_timeout=120,
+        file_timeout=60,
+        download_timeout=60,
+        cache_enabled=True,
+        cache_dir=".holodeck/cache",
+        verbose=False,
+        quiet=False,
+    )
 
 
 class TestAgentServerInit:
@@ -35,6 +50,7 @@ class TestAgentServerInit:
         assert server.port == 8000
         assert server.cors_origins == ["*"]
         assert server.debug is False
+        assert server.execution_config is None
         assert server.state == ServerState.INITIALIZING
         assert server._app is None
         assert server._start_time is None
@@ -55,6 +71,21 @@ class TestAgentServerInit:
         assert server.port == 9000
         assert server.cors_origins == ["https://example.com"]
         assert server.debug is True
+
+    def test_init_with_execution_config(
+        self,
+        mock_agent_config: MagicMock,
+        mock_execution_config: ExecutionConfig,
+    ) -> None:
+        """Test AgentServer with execution configuration."""
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            execution_config=mock_execution_config,
+        )
+
+        assert server.execution_config is mock_execution_config
+        assert server.execution_config.llm_timeout == 120
+        assert server.execution_config.file_timeout == 60
 
     def test_init_warns_on_all_interfaces_binding(
         self, mock_agent_config: MagicMock
@@ -393,3 +424,60 @@ class TestAgentServerIntegration:
             },
         )
         assert response.status_code == 200
+
+
+class TestAgentServerAGUIEndpoint:
+    """Tests for AG-UI endpoint validation.
+
+    Note: Full endpoint integration tests are in
+    tests/integration/serve/test_server_agui.py.
+    These unit tests focus on validation and endpoint registration.
+    """
+
+    def test_agui_endpoint_rejects_invalid_input(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """Test /awp endpoint returns 422 for invalid input."""
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+        client = TestClient(app)
+
+        # Missing required fields
+        response = client.post(
+            "/awp",
+            json={
+                "messages": [],
+            },
+        )
+        assert response.status_code == 422
+
+    def test_agui_endpoint_exists_on_ag_ui_protocol(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """Test /awp endpoint is registered with AG-UI protocol."""
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.AG_UI,
+        )
+        app = server.create_app()
+
+        # Check endpoint is registered
+        routes = [route.path for route in app.routes]
+        assert "/awp" in routes
+
+    def test_agui_endpoint_not_present_on_rest_protocol(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """Test /awp endpoint is NOT registered with REST protocol."""
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.REST,
+        )
+        app = server.create_app()
+
+        # Check endpoint is NOT registered
+        routes = [route.path for route in app.routes]
+        assert "/awp" not in routes

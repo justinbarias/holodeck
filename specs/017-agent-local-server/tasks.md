@@ -64,26 +64,26 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T015 [P] [US1] Unit tests for AG-UI event mapping (lifecycle, text message, tool call events) in tests/unit/serve/test_protocols_agui.py
-- [ ] T016 [P] [US1] Unit tests for RunAgentInput to HoloDeck request mapping in tests/unit/serve/test_protocols_agui.py
-- [ ] T017 [P] [US1] Integration test for AG-UI protocol endpoint in tests/integration/serve/test_server_agui.py
-- [ ] T018 [P] [US1] Integration test for AG-UI streaming response in tests/integration/serve/test_server_agui.py
+- [x] T015 [P] [US1] Unit tests for AG-UI event mapping (lifecycle, text message, tool call events) in tests/unit/serve/test_protocols_agui.py
+- [x] T016 [P] [US1] Unit tests for RunAgentInput to HoloDeck request mapping in tests/unit/serve/test_protocols_agui.py
+- [x] T017 [P] [US1] Integration test for AG-UI protocol endpoint in tests/integration/serve/test_server_agui.py
+- [x] T018 [P] [US1] Integration test for AG-UI streaming response in tests/integration/serve/test_server_agui.py
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] Implement RunAgentInput to HoloDeck request mapping in src/holodeck/serve/protocols/agui.py
-- [ ] T020 [US1] Implement AG-UI EventEncoder wrapper for streaming responses in src/holodeck/serve/protocols/agui.py
-- [ ] T021 [US1] Implement AG-UI lifecycle events (RunStartedEvent, RunFinishedEvent, RunErrorEvent) in src/holodeck/serve/protocols/agui.py
-- [ ] T022 [US1] Implement AG-UI text message events (TextMessageStartEvent, TextMessageContentEvent, TextMessageEndEvent) in src/holodeck/serve/protocols/agui.py
-- [ ] T023 [US1] Implement AG-UI tool call events (ToolCallStartEvent, ToolCallArgsEvent, ToolCallEndEvent, ToolCallResultEvent) in src/holodeck/serve/protocols/agui.py
-- [ ] T024 [US1] Implement AGUIProtocol class extending Protocol ABC in src/holodeck/serve/protocols/agui.py
-- [ ] T025 [US1] Integrate AgentExecutor with AG-UI event stream in src/holodeck/serve/protocols/agui.py
-- [ ] T026 [US1] Wire AG-UI protocol endpoints into AgentServer in src/holodeck/serve/server.py
-- [ ] T027 [US1] Implement CLI serve command with --port option in src/holodeck/cli/commands/serve.py
-- [ ] T028 [US1] Add serve command to CLI entry point in src/holodeck/cli/main.py
-- [ ] T029 [US1] Implement server startup display with agent name, protocol, and URL in src/holodeck/cli/commands/serve.py
+- [x] T019 [US1] Implement RunAgentInput to HoloDeck request mapping in src/holodeck/serve/protocols/agui.py
+- [x] T020 [US1] Implement AG-UI EventEncoder wrapper for streaming responses in src/holodeck/serve/protocols/agui.py
+- [x] T021 [US1] Implement AG-UI lifecycle events (RunStartedEvent, RunFinishedEvent, RunErrorEvent) in src/holodeck/serve/protocols/agui.py
+- [x] T022 [US1] Implement AG-UI text message events (TextMessageStartEvent, TextMessageContentEvent, TextMessageEndEvent) in src/holodeck/serve/protocols/agui.py
+- [x] T023 [US1] Implement AG-UI tool call events (ToolCallStartEvent, ToolCallArgsEvent, ToolCallEndEvent, ToolCallResultEvent) in src/holodeck/serve/protocols/agui.py
+- [x] T024 [US1] Implement AGUIProtocol class extending Protocol ABC in src/holodeck/serve/protocols/agui.py
+- [x] T025 [US1] Integrate AgentExecutor with AG-UI event stream in src/holodeck/serve/protocols/agui.py
+- [x] T026 [US1] Wire AG-UI protocol endpoints into AgentServer in src/holodeck/serve/server.py
+- [x] T027 [US1] Implement CLI serve command with --port option in src/holodeck/cli/commands/serve.py
+- [x] T028 [US1] Add serve command to CLI entry point in src/holodeck/cli/main.py
+- [x] T029 [US1] Implement server startup display with agent name, protocol, and URL in src/holodeck/cli/commands/serve.py
 
-**Checkpoint**: At this point, `holodeck serve agent.yaml` works with AG-UI protocol - all US1 tests pass
+**Checkpoint**: At this point, `holodeck serve agent.yaml` works with AG-UI protocol - all US1 tests pass ✅
 
 ---
 

@@ -137,6 +137,11 @@ class AgentThreadRun:
         self.retry_exponential_base = retry_exponential_base
         self.chat_history = ChatHistory()  # Fresh history per instance
 
+        logger.debug(
+            f"AgentThreadRun initialized: timeout={self.timeout}s, "
+            f"max_retries={self.max_retries}, retry_delay={self.retry_delay}s"
+        )
+
     async def invoke(self, user_input: str) -> AgentExecutionResult:
         """Invoke agent with user input.
 
@@ -155,10 +160,18 @@ class AgentThreadRun:
 
             # Invoke with timeout and retry logic
             if self.timeout:
+                logger.debug(
+                    f"Invoking agent with timeout={self.timeout}s "
+                    f"(input length: {len(user_input)} chars)"
+                )
                 result = await asyncio.wait_for(
                     self._invoke_with_retry(), timeout=self.timeout
                 )
             else:
+                logger.debug(
+                    f"Invoking agent without timeout "
+                    f"(input length: {len(user_input)} chars)"
+                )
                 result = await self._invoke_with_retry()
 
             return result
@@ -242,6 +255,11 @@ class AgentThreadRun:
         tool_results: list[dict[str, Any]] = []
         token_usage: TokenUsage | None = None
         try:
+            # Track message count before invoke to only extract current turn's
+            # tool calls. This prevents returning accumulated tool calls from
+            # previous turns in multi-turn conversations.
+            history_length_before = len(self.chat_history.messages)
+
             # Invoke agent with chat history
             thread = ChatHistoryAgentThread(self.chat_history)
             arguments = self.kernel_arguments
@@ -256,8 +274,9 @@ class AgentThreadRun:
                 break  # Only process first response
 
             # Extract tool calls and results from thread's chat history
+            # Only scan messages added during this turn (after history_length_before)
             tool_calls, tool_results = await self._extract_tool_calls_from_thread(
-                thread
+                thread, start_index=history_length_before
             )
 
             # Note: Assistant messages are automatically added to self.chat_history
@@ -293,7 +312,7 @@ class AgentThreadRun:
             return ""
 
     async def _extract_tool_calls_from_thread(
-        self, thread: ChatHistoryAgentThread
+        self, thread: ChatHistoryAgentThread, start_index: int = 0
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Extract tool calls and results from ChatHistoryAgentThread.
 
@@ -304,6 +323,9 @@ class AgentThreadRun:
         Args:
             thread: ChatHistoryAgentThread containing the conversation history
                 after agent invocation.
+            start_index: Index to start scanning from. Use this to only extract
+                tool calls from the current turn by passing the message count
+                before the invoke. Defaults to 0 (scan all messages).
 
         Returns:
             Tuple of:
@@ -322,7 +344,13 @@ class AgentThreadRun:
 
         try:
             # Iterate through thread messages (async generator)
+            # Skip messages before start_index to only process current turn
+            message_index = 0
             async for message in thread.get_messages():
+                if message_index < start_index:
+                    message_index += 1
+                    continue
+                message_index += 1
                 if hasattr(message, "items") and message.items:
                     for item in message.items:
                         if isinstance(item, FunctionCallContent):
@@ -984,6 +1012,14 @@ class AgentFactory:
         # Ensure kernel_arguments are built
         if self.kernel_arguments is None:
             self.kernel_arguments = self._build_kernel_arguments()
+
+        exec_timeout = (
+            self._execution_config.llm_timeout if self._execution_config else "N/A"
+        )
+        logger.debug(
+            f"Creating AgentThreadRun with timeout={self.timeout}s "
+            f"(from execution_config.llm_timeout={exec_timeout})"
+        )
 
         return AgentThreadRun(
             agent=self.agent,
