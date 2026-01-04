@@ -11,9 +11,11 @@ REST and AG-UI protocols, including:
 from __future__ import annotations
 
 import base64
+import binascii
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -144,8 +146,12 @@ def convert_file_content_to_file_input(file_content: FileContent) -> FileInput:
     )
 
 
+DEFAULT_DOWNLOAD_TIMEOUT = 30.0  # seconds
+
+
 def convert_binary_dict_to_file_input(
     binary_content: dict[str, Any],
+    download_timeout: float | None = None,
 ) -> FileInput | None:
     """Convert AG-UI binary content dict to FileProcessor-compatible FileInput.
 
@@ -156,6 +162,9 @@ def convert_binary_dict_to_file_input(
 
     Args:
         binary_content: Dict with type, mimeType, and data/url/id fields.
+        download_timeout: Timeout in seconds for URL downloads. Defaults to 30s.
+            Consider security implications: long timeouts may be exploited for
+            slowloris-style attacks. Configure via ExecutionConfig.download_timeout.
 
     Returns:
         FileInput suitable for FileProcessor, or None if not processable.
@@ -178,7 +187,7 @@ def convert_binary_dict_to_file_input(
         logger.debug("Processing base64 data (length=%d chars)", len(data))
         try:
             content_bytes = base64.b64decode(data)
-        except Exception as e:
+        except (ValueError, binascii.Error) as e:
             logger.error("Base64 decode failed: %s", e, exc_info=True)
             raise ValueError(f"Invalid base64 data: {e}") from e
 
@@ -191,19 +200,26 @@ def convert_binary_dict_to_file_input(
     # Handle URL reference
     if binary_content.get("url"):
         url = binary_content["url"]
-        logger.debug("Downloading file from URL: %s", url)
+        timeout = (
+            download_timeout
+            if download_timeout is not None
+            else DEFAULT_DOWNLOAD_TIMEOUT
+        )
+        logger.debug("Downloading file from URL: %s (timeout=%.1fs)", url, timeout)
         try:
-            response = httpx.get(url, timeout=30.0)
+            response = httpx.get(url, timeout=timeout)
             response.raise_for_status()
             content_bytes = response.content
         except Exception as e:
             logger.error("URL download failed for %s: %s", url, e, exc_info=True)
             raise ValueError(f"Failed to download file from {url}: {e}") from e
 
+        # Extract filename from URL path, handling query params/fragments safely
+        url_filename = urlparse(url).path.split("/")[-1] or "downloaded_file"
         return create_temp_file_from_bytes(
             content_bytes=content_bytes,
             mime_type=mime_type,
-            description=filename or url.split("/")[-1],
+            description=filename or url_filename,
         )
 
     # Handle file ID reference (not supported in MVP)
@@ -293,7 +309,15 @@ def process_multimodal_files(
                 # AG-UI binary content dict
                 binary_dict: dict[str, Any] = file_item  # type: ignore[assignment]
                 filename = binary_dict.get("filename")
-                file_input = convert_binary_dict_to_file_input(binary_dict)
+                # Pass download_timeout from ExecutionConfig if available
+                download_timeout = (
+                    float(execution_config.download_timeout)
+                    if execution_config and execution_config.download_timeout
+                    else None
+                )
+                file_input = convert_binary_dict_to_file_input(
+                    binary_dict, download_timeout=download_timeout
+                )
             else:
                 # REST FileContent Pydantic model
                 file_content: FileContent = file_item  # type: ignore[assignment]

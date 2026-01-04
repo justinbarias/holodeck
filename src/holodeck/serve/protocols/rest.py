@@ -27,7 +27,13 @@ from holodeck.serve.file_utils import (
     cleanup_temp_files,
     process_multimodal_files,
 )
-from holodeck.serve.models import ChatRequest, ChatResponse, FileContent, ToolCallInfo
+from holodeck.serve.models import (
+    SUPPORTED_MIME_TYPES,
+    ChatRequest,
+    ChatResponse,
+    FileContent,
+    ToolCallInfo,
+)
 from holodeck.serve.protocols.base import Protocol
 
 if TYPE_CHECKING:
@@ -236,6 +242,7 @@ class SSEEvent:
 
 async def convert_upload_file_to_file_content(
     upload_file: UploadFile,
+    content_bytes: bytes | None = None,
 ) -> FileContent:
     """Convert FastAPI UploadFile to FileContent model.
 
@@ -243,6 +250,8 @@ async def convert_upload_file_to_file_content(
 
     Args:
         upload_file: FastAPI UploadFile from multipart form-data.
+        content_bytes: Pre-read file content to avoid redundant I/O.
+            If provided, the file won't be read again.
 
     Returns:
         FileContent with base64-encoded content.
@@ -250,31 +259,18 @@ async def convert_upload_file_to_file_content(
     Raises:
         ValueError: If file content type is not supported.
     """
-    # Read file content
-    content = await upload_file.read()
+    # Use pre-read content if available, otherwise read from file
+    if content_bytes is None:
+        content_bytes = await upload_file.read()
 
     # Encode as base64
-    content_b64 = base64.b64encode(content).decode("utf-8")
+    content_b64 = base64.b64encode(content_bytes).decode("utf-8")
 
     # Get MIME type from content_type or filename
     mime_type = upload_file.content_type or "application/octet-stream"
 
-    # Validate MIME type is supported
-    supported_types = {
-        "image/png",
-        "image/jpeg",
-        "image/gif",
-        "image/webp",
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "text/plain",
-        "text/csv",
-        "text/markdown",
-    }
-
-    if mime_type not in supported_types:
+    # Validate MIME type is supported (uses shared constant from models)
+    if mime_type not in SUPPORTED_MIME_TYPES:
         raise ValueError(f"Unsupported MIME type: {mime_type}")
 
     return FileContent(
@@ -302,7 +298,7 @@ async def process_multipart_files(
     total_size = 0
 
     for upload_file in files:
-        # Check file size
+        # Read file content once
         content = await upload_file.read()
         file_size = len(content)
 
@@ -318,11 +314,10 @@ async def process_multipart_files(
                 f"Total file size exceeds maximum of {MAX_TOTAL_SIZE_MB}MB"
             )
 
-        # Reset file position for re-reading
-        await upload_file.seek(0)
-
-        # Convert to FileContent
-        file_content = await convert_upload_file_to_file_content(upload_file)
+        # Convert to FileContent, passing pre-read content to avoid redundant I/O
+        file_content = await convert_upload_file_to_file_content(
+            upload_file, content_bytes=content
+        )
         file_contents.append(file_content)
 
     return file_contents
