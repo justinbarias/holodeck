@@ -3,12 +3,16 @@
 Tests for:
 - T015: AG-UI event mapping (lifecycle, text message, tool call events)
 - T016: RunAgentInput to HoloDeck request mapping
+- T029a: Unit tests for AG-UI BinaryInputContent parsing
+- T029b: Unit tests for AG-UI multimodal content to FileInput conversion
 """
 
 from __future__ import annotations
 
+import base64
 import json
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -19,6 +23,21 @@ from ag_ui.core.types import UserMessage
 
 if TYPE_CHECKING:
     pass
+
+
+# Minimal 1x1 transparent PNG for testing
+MINIMAL_PNG_BASE64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA"
+    "DUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
+
+# Minimal PDF header for testing (not a valid PDF, just for header validation)
+MINIMAL_PDF_BASE64 = base64.b64encode(b"%PDF-1.4\n%test minimal pdf content").decode()
+
+# Long MIME type constants for Office documents
+WORD_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+EXCEL_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
 
 # =============================================================================
@@ -792,3 +811,409 @@ class TestAGUIProtocolHandleRequest:
             events.append(event_bytes)
 
         assert len(events) > 0
+
+
+# =============================================================================
+# T029a: Unit tests for AG-UI BinaryInputContent parsing
+# =============================================================================
+
+
+class TestBinaryInputContentParsing:
+    """Tests for extracting binary content parts from AG-UI message content."""
+
+    def test_extract_binary_parts_empty_content(self) -> None:
+        """Test extracting binary parts from empty content list."""
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        result = extract_binary_parts_from_content([])
+        assert result == []
+
+    def test_extract_binary_parts_text_only(self) -> None:
+        """Test extracting binary parts when content only has text."""
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content: list[dict[str, Any]] = [
+            {"type": "text", "text": "Hello world"},
+            {"type": "text", "text": "More text"},
+        ]
+        result = extract_binary_parts_from_content(content)
+        assert result == []
+
+    def test_extract_binary_parts_with_base64_image(self) -> None:
+        """Test extracting binary parts with inline base64 image data."""
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content: list[dict[str, Any]] = [
+            {"type": "text", "text": "What's in this image?"},
+            {
+                "type": "binary",
+                "mimeType": "image/png",
+                "data": MINIMAL_PNG_BASE64,
+                "filename": "test.png",
+            },
+        ]
+        result = extract_binary_parts_from_content(content)
+
+        assert len(result) == 1
+        assert result[0]["type"] == "binary"
+        assert result[0]["mimeType"] == "image/png"
+        assert result[0]["data"] == MINIMAL_PNG_BASE64
+        assert result[0]["filename"] == "test.png"
+
+    def test_extract_binary_parts_with_url_reference(self) -> None:
+        """Test extracting binary parts with URL reference."""
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content: list[dict[str, Any]] = [
+            {"type": "text", "text": "Describe this image"},
+            {
+                "type": "binary",
+                "mimeType": "image/jpeg",
+                "url": "https://example.com/image.jpg",
+            },
+        ]
+        result = extract_binary_parts_from_content(content)
+
+        assert len(result) == 1
+        assert result[0]["type"] == "binary"
+        assert result[0]["mimeType"] == "image/jpeg"
+        assert result[0]["url"] == "https://example.com/image.jpg"
+
+    def test_extract_binary_parts_with_file_id(self) -> None:
+        """Test extracting binary parts with file ID reference."""
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content: list[dict[str, Any]] = [
+            {"type": "text", "text": "Process this file"},
+            {
+                "type": "binary",
+                "mimeType": "application/pdf",
+                "id": "file-12345",
+            },
+        ]
+        result = extract_binary_parts_from_content(content)
+
+        assert len(result) == 1
+        assert result[0]["type"] == "binary"
+        assert result[0]["mimeType"] == "application/pdf"
+        assert result[0]["id"] == "file-12345"
+
+    def test_extract_binary_parts_mixed_content(self) -> None:
+        """Test extracting multiple binary parts from mixed content."""
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content: list[dict[str, Any]] = [
+            {"type": "text", "text": "Look at these files:"},
+            {
+                "type": "binary",
+                "mimeType": "image/png",
+                "data": MINIMAL_PNG_BASE64,
+            },
+            {"type": "text", "text": "And also:"},
+            {
+                "type": "binary",
+                "mimeType": "application/pdf",
+                "data": MINIMAL_PDF_BASE64,
+            },
+        ]
+        result = extract_binary_parts_from_content(content)
+
+        assert len(result) == 2
+        assert result[0]["mimeType"] == "image/png"
+        assert result[1]["mimeType"] == "application/pdf"
+
+    def test_extract_binary_parts_skips_unsupported_mime(self, caplog) -> None:
+        """Test that unsupported MIME types are skipped with warning."""
+        import logging
+
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content: list[dict[str, Any]] = [
+            {
+                "type": "binary",
+                "mimeType": "video/mp4",  # Not supported
+                "data": "somebase64data",
+            },
+            {
+                "type": "binary",
+                "mimeType": "image/png",  # Supported
+                "data": MINIMAL_PNG_BASE64,
+            },
+        ]
+
+        # Capture at root level since holodeck loggers propagate
+        with caplog.at_level(logging.WARNING):
+            result = extract_binary_parts_from_content(content)
+
+        # Only the supported MIME type should be returned
+        assert len(result) == 1
+        assert result[0]["mimeType"] == "image/png"
+
+        # Warning should be logged for unsupported MIME type
+        assert any("video/mp4" in record.message for record in caplog.records) or any(
+            "unsupported" in record.message.lower() for record in caplog.records
+        )
+
+    def test_extract_binary_parts_with_string_parts(self) -> None:
+        """Test extracting binary parts ignores plain string parts."""
+        from holodeck.serve.protocols.agui import extract_binary_parts_from_content
+
+        content: list[Any] = [
+            "Plain string content",
+            {"type": "binary", "mimeType": "image/png", "data": MINIMAL_PNG_BASE64},
+        ]
+        result = extract_binary_parts_from_content(content)
+
+        assert len(result) == 1
+        assert result[0]["mimeType"] == "image/png"
+
+
+# =============================================================================
+# T029b: Unit tests for AG-UI binary content to FileInput conversion
+# =============================================================================
+
+
+class TestBinaryContentToFileInput:
+    """Tests for converting AG-UI binary content to FileInput."""
+
+    def test_convert_base64_png_creates_temp_file(self) -> None:
+        """Test converting base64 PNG to FileInput creates temp file."""
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": "image/png",
+            "data": MINIMAL_PNG_BASE64,
+            "filename": "test.png",
+        }
+
+        file_input = convert_binary_dict_to_file_input(binary_content)
+
+        assert file_input is not None
+        assert file_input.type == "image"
+        assert file_input.path is not None
+        assert Path(file_input.path).exists()
+        assert file_input.description == "test.png"
+
+        # Verify file content
+        with open(file_input.path, "rb") as f:
+            content = f.read()
+        assert content == base64.b64decode(MINIMAL_PNG_BASE64)
+
+        # Cleanup
+        Path(file_input.path).unlink(missing_ok=True)
+
+    def test_convert_base64_pdf_creates_temp_file(self) -> None:
+        """Test converting base64 PDF to FileInput creates temp file."""
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": "application/pdf",
+            "data": MINIMAL_PDF_BASE64,
+            "filename": "document.pdf",
+        }
+
+        file_input = convert_binary_dict_to_file_input(binary_content)
+
+        assert file_input is not None
+        assert file_input.type == "pdf"
+        assert file_input.path is not None
+        assert Path(file_input.path).exists()
+        assert file_input.path.endswith(".pdf")
+
+        # Cleanup
+        Path(file_input.path).unlink(missing_ok=True)
+
+    def test_convert_base64_jpeg_creates_temp_file(self) -> None:
+        """Test converting base64 JPEG to FileInput."""
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        # Minimal JPEG-like data
+        jpeg_data = base64.b64encode(b"\xff\xd8\xff\xe0" + b"\x00" * 10).decode()
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": "image/jpeg",
+            "data": jpeg_data,
+        }
+
+        file_input = convert_binary_dict_to_file_input(binary_content)
+
+        assert file_input is not None
+        assert file_input.type == "image"
+        assert file_input.path.endswith(".jpg")
+
+        # Cleanup
+        Path(file_input.path).unlink(missing_ok=True)
+
+    def test_url_reference_returns_none_for_security(self, caplog) -> None:
+        """Test that URL references return None (disabled for SSRF security)."""
+        import logging
+
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": "image/png",
+            "url": "https://example.com/test.png",
+        }
+
+        with caplog.at_level(logging.WARNING, logger="holodeck.serve.file_utils"):
+            file_input = convert_binary_dict_to_file_input(binary_content)
+
+        # URL references should return None (disabled for security)
+        assert file_input is None
+        # Should log a warning about SSRF prevention
+        assert "SSRF" in caplog.text
+
+    def test_file_id_logs_warning_returns_none(self, caplog) -> None:
+        """Test that file ID references log warning and return None."""
+        import logging
+
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": "application/pdf",
+            "id": "file-12345",
+        }
+
+        with caplog.at_level(logging.WARNING, logger="holodeck.serve.file_utils"):
+            file_input = convert_binary_dict_to_file_input(binary_content)
+
+        assert file_input is None
+        assert "file-12345" in caplog.text or "not supported" in caplog.text.lower()
+
+    def test_cleanup_removes_temp_files(self) -> None:
+        """Test cleanup_temp_file removes temporary files."""
+        from holodeck.serve.file_utils import (
+            cleanup_temp_file,
+            convert_binary_dict_to_file_input,
+        )
+
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": "image/png",
+            "data": MINIMAL_PNG_BASE64,
+        }
+
+        file_input = convert_binary_dict_to_file_input(binary_content)
+        assert file_input is not None
+        assert Path(file_input.path).exists()
+
+        cleanup_temp_file(file_input)
+        assert not Path(file_input.path).exists()
+
+    def test_invalid_base64_raises_error(self) -> None:
+        """Test that invalid base64 data raises an error."""
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": "image/png",
+            "data": "not-valid-base64!!!",
+        }
+
+        with pytest.raises(ValueError, match="Invalid base64"):
+            convert_binary_dict_to_file_input(binary_content)
+
+    def test_convert_word_document(self) -> None:
+        """Test converting Word document MIME type."""
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        docx_data = base64.b64encode(b"PK\x03\x04" + b"\x00" * 20).decode()
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": WORD_MIME,
+            "data": docx_data,
+            "filename": "doc.docx",
+        }
+
+        file_input = convert_binary_dict_to_file_input(binary_content)
+
+        assert file_input is not None
+        assert file_input.type == "word"
+        assert file_input.path.endswith(".docx")
+
+        # Cleanup
+        Path(file_input.path).unlink(missing_ok=True)
+
+    def test_convert_excel_spreadsheet(self) -> None:
+        """Test converting Excel spreadsheet MIME type."""
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        xlsx_data = base64.b64encode(b"PK\x03\x04" + b"\x00" * 20).decode()
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": EXCEL_MIME,
+            "data": xlsx_data,
+        }
+
+        file_input = convert_binary_dict_to_file_input(binary_content)
+
+        assert file_input is not None
+        assert file_input.type == "excel"
+        assert file_input.path.endswith(".xlsx")
+
+        # Cleanup
+        Path(file_input.path).unlink(missing_ok=True)
+
+    def test_convert_powerpoint_presentation(self) -> None:
+        """Test converting PowerPoint presentation MIME type."""
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        pptx_data = base64.b64encode(b"PK\x03\x04" + b"\x00" * 20).decode()
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": PPTX_MIME,
+            "data": pptx_data,
+        }
+
+        file_input = convert_binary_dict_to_file_input(binary_content)
+
+        assert file_input is not None
+        assert file_input.type == "powerpoint"
+        assert file_input.path.endswith(".pptx")
+
+        # Cleanup
+        Path(file_input.path).unlink(missing_ok=True)
+
+    def test_convert_text_file(self) -> None:
+        """Test converting text file MIME type."""
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        text_data = base64.b64encode(b"Hello, this is a text file.").decode()
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": "text/plain",
+            "data": text_data,
+        }
+
+        file_input = convert_binary_dict_to_file_input(binary_content)
+
+        assert file_input is not None
+        assert file_input.type == "text"
+        assert file_input.path.endswith(".txt")
+
+        # Cleanup
+        Path(file_input.path).unlink(missing_ok=True)
+
+    def test_convert_csv_file(self) -> None:
+        """Test converting CSV file MIME type."""
+        from holodeck.serve.file_utils import convert_binary_dict_to_file_input
+
+        csv_data = base64.b64encode(b"name,value\nfoo,1\nbar,2").decode()
+        binary_content: dict[str, Any] = {
+            "type": "binary",
+            "mimeType": "text/csv",
+            "data": csv_data,
+        }
+
+        file_input = convert_binary_dict_to_file_input(binary_content)
+
+        assert file_input is not None
+        assert file_input.type == "csv"
+        assert file_input.path.endswith(".csv")
+
+        # Cleanup
+        Path(file_input.path).unlink(missing_ok=True)

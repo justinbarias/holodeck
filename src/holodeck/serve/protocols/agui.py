@@ -30,6 +30,12 @@ from ag_ui.encoder import EventEncoder
 from ulid import ULID
 
 from holodeck.lib.logging_config import get_logger
+from holodeck.models.test_case import FileInput
+from holodeck.serve.file_utils import (
+    cleanup_temp_files,
+    extract_binary_parts_from_content,
+    process_multimodal_files,
+)
 from holodeck.serve.protocols.base import Protocol
 
 if TYPE_CHECKING:
@@ -37,6 +43,102 @@ if TYPE_CHECKING:
     from holodeck.serve.session_store import ServerSession
 
 logger = get_logger(__name__)
+
+
+# =============================================================================
+# T029e-h: AG-UI Multimodal Support (shared utilities in file_utils.py)
+# =============================================================================
+
+
+def extract_message_and_files_from_input(
+    input_data: RunAgentInput,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Extract text message and binary content parts from RunAgentInput.
+
+    Args:
+        input_data: AG-UI input containing messages list.
+
+    Returns:
+        Tuple of (text_message, binary_parts_list).
+
+    Raises:
+        ValueError: If no user messages found.
+    """
+    messages = input_data.messages or []
+    logger.debug(
+        "Extracting message and files from input (total messages: %d)",
+        len(messages),
+    )
+
+    # Find the last user message
+    for message in reversed(messages):
+        # Messages can be dicts or Message objects
+        if isinstance(message, dict):  # type: ignore[unreachable]
+            role = message.get("role", "")  # type: ignore[unreachable]
+            content = message.get("content", "")
+        else:
+            role = getattr(message, "role", "")
+            content = getattr(message, "content", "")
+
+        if role == "user":
+            logger.debug(
+                "Found user message, content type: %s",
+                type(content).__name__,
+            )
+
+            # Content can be a string or a list of content parts
+            if isinstance(content, str):
+                logger.debug(
+                    "User message is plain string (%d chars), no files",
+                    len(content),
+                )
+                return content, []
+            elif isinstance(content, list):
+                logger.debug(
+                    "User message has list content (%d parts)",
+                    len(content),
+                )
+
+                # Extract text and binary parts
+                text_parts: list[str] = []
+                binary_parts = extract_binary_parts_from_content(content)
+
+                for part in content:
+                    # Handle dict format
+                    if isinstance(part, dict):
+                        part_type = part.get("type", "unknown")
+                        if part_type == "text":
+                            text_parts.append(part.get("text", ""))
+                    # Handle AG-UI Pydantic object (TextInputContent)
+                    elif (
+                        hasattr(part, "type") and getattr(part, "type", None) == "text"
+                    ):
+                        text_parts.append(getattr(part, "text", ""))
+                    # Handle plain string
+                    elif isinstance(part, str):
+                        text_parts.append(part)
+
+                # Validate that we have at least some content (text or binary)
+                if not text_parts and not binary_parts:
+                    logger.error(
+                        "No content found in user message - "
+                        "neither text nor binary parts"
+                    )
+                    raise ValueError(
+                        "No content found in user message. "
+                        "Message contained no text or binary content parts."
+                    )
+
+                text_message = " ".join(text_parts) if text_parts else ""
+                logger.debug(
+                    "Extracted: text=%d chars, binary_parts=%d",
+                    len(text_message),
+                    len(binary_parts),
+                )
+                return text_message, binary_parts
+
+    logger.error("No user messages found in input")
+    raise ValueError("No user messages found in input")
 
 
 # =============================================================================
@@ -450,10 +552,64 @@ class AGUIProtocol(Protocol):
         encoder = AGUIEventStream(accept_header=self._accept_header)
         message_id = str(ULID())
 
+        # Track file inputs for cleanup
+        file_inputs_to_cleanup: list[FileInput] = []
+
         try:
-            # Extract user message from input
-            message = extract_message_from_input(input_data)
-            logger.debug(f"Processing message: {message[:100]}...")
+            # Extract user message and binary content from input
+            logger.debug(
+                "Starting request processing for run_id=%s, thread_id=%s",
+                run_id,
+                thread_id,
+            )
+            text_message, binary_parts = extract_message_and_files_from_input(
+                input_data
+            )
+            logger.debug(
+                "Request contains: text=%d chars, binary_parts=%d",
+                len(text_message) if text_message else 0,
+                len(binary_parts),
+            )
+
+            # Process binary files if present
+            file_content = ""
+            if binary_parts:
+                logger.debug(
+                    "Processing %d binary parts for message context",
+                    len(binary_parts),
+                )
+                file_content, file_inputs_to_cleanup = process_multimodal_files(
+                    files=binary_parts,
+                    execution_config=None,
+                    is_agui_format=True,
+                )
+                if file_content:
+                    logger.debug(
+                        "File processing complete: %d files -> %d chars of context",
+                        len(file_inputs_to_cleanup),
+                        len(file_content),
+                    )
+                elif binary_parts:
+                    logger.warning(
+                        "File processing returned no content for %d files",
+                        len(binary_parts),
+                    )
+
+            # Combine text message with file content
+            if file_content and text_message:
+                full_message = f"{text_message}\n\n{file_content}"
+                logger.debug(
+                    "Combined message: text + files = %d chars total",
+                    len(full_message),
+                )
+            elif file_content:
+                full_message = file_content
+                logger.debug(
+                    "Message is file content only: %d chars",
+                    len(full_message),
+                )
+            else:
+                full_message = text_message
 
             # 1. Emit RunStartedEvent
             yield encoder.encode(create_run_started_event(thread_id, run_id))
@@ -461,13 +617,13 @@ class AGUIProtocol(Protocol):
             # 2. Emit TextMessageStartEvent
             yield encoder.encode(create_text_message_start(message_id))
 
-            # 3. Execute agent
-            logger.debug(f"Executing agent for session {session.session_id}")
-            response = await session.agent_executor.execute_turn(message)
+            # 3. Execute agent with combined message
+            logger.debug("Executing agent for session %s", session.session_id)
+            response = await session.agent_executor.execute_turn(full_message)
 
             # 4. Emit tool call events (if any)
             for tool_exec in response.tool_executions:
-                logger.debug(f"Emitting tool call events for: {tool_exec.tool_name}")
+                logger.debug("Emitting tool call events for: %s", tool_exec.tool_name)
                 for event in create_tool_call_events(tool_exec, message_id):
                     yield encoder.encode(event)
 
@@ -482,9 +638,18 @@ class AGUIProtocol(Protocol):
             # 7. Emit RunFinishedEvent
             yield encoder.encode(create_run_finished_event(thread_id, run_id))
 
-            logger.debug(f"Completed request for run {run_id}")
+            logger.debug("Completed request for run %s", run_id)
 
         except Exception as e:
-            logger.error(f"Error processing request: {e}", exc_info=True)
+            logger.error("Error processing request: %s", e, exc_info=True)
             # Emit error event
             yield encoder.encode(create_run_error_event(str(e)))
+
+        finally:
+            # Clean up temporary files
+            if file_inputs_to_cleanup:
+                logger.debug(
+                    "Cleaning up %d temporary files",
+                    len(file_inputs_to_cleanup),
+                )
+                cleanup_temp_files(file_inputs_to_cleanup)
