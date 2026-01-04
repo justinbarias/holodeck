@@ -922,7 +922,7 @@ class TestBinaryInputContentParsing:
         assert result[0]["mimeType"] == "image/png"
         assert result[1]["mimeType"] == "application/pdf"
 
-    def test_extract_binary_parts_skips_unsupported_mime(self, caplog) -> None:
+    def test_extract_binary_parts_skips_unsupported_mime(self, caplog, capsys) -> None:
         """Test that unsupported MIME types are skipped with warning."""
         import logging
 
@@ -941,7 +941,6 @@ class TestBinaryInputContentParsing:
             },
         ]
 
-        # Capture at root level since holodeck loggers propagate
         with caplog.at_level(logging.WARNING):
             result = extract_binary_parts_from_content(content)
 
@@ -950,9 +949,10 @@ class TestBinaryInputContentParsing:
         assert result[0]["mimeType"] == "image/png"
 
         # Warning should be logged for unsupported MIME type
-        assert any("video/mp4" in record.message for record in caplog.records) or any(
-            "unsupported" in record.message.lower() for record in caplog.records
-        )
+        # Check both caplog.text and stdout (logging handler timing)
+        captured_stdout = capsys.readouterr().out
+        log_output = caplog.text + captured_stdout
+        assert "video/mp4" in log_output or "unsupported" in log_output.lower()
 
     def test_extract_binary_parts_with_string_parts(self) -> None:
         """Test extracting binary parts ignores plain string parts."""
@@ -1046,7 +1046,7 @@ class TestBinaryContentToFileInput:
         # Cleanup
         Path(file_input.path).unlink(missing_ok=True)
 
-    def test_url_reference_returns_none_for_security(self, caplog) -> None:
+    def test_url_reference_returns_none_for_security(self, caplog, capsys) -> None:
         """Test that URL references return None (disabled for SSRF security)."""
         import logging
 
@@ -1064,9 +1064,12 @@ class TestBinaryContentToFileInput:
         # URL references should return None (disabled for security)
         assert file_input is None
         # Should log a warning about SSRF prevention
-        assert "SSRF" in caplog.text
+        # Check both caplog.text and stdout (logging handler timing)
+        captured_stdout = capsys.readouterr().out
+        log_output = caplog.text + captured_stdout
+        assert "SSRF" in log_output
 
-    def test_file_id_logs_warning_returns_none(self, caplog) -> None:
+    def test_file_id_logs_warning_returns_none(self, caplog, capsys) -> None:
         """Test that file ID references log warning and return None."""
         import logging
 
@@ -1082,7 +1085,10 @@ class TestBinaryContentToFileInput:
             file_input = convert_binary_dict_to_file_input(binary_content)
 
         assert file_input is None
-        assert "file-12345" in caplog.text or "not supported" in caplog.text.lower()
+        # Check both caplog.text and stdout (logging handler timing)
+        captured_stdout = capsys.readouterr().out
+        log_output = caplog.text + captured_stdout
+        assert "file-12345" in log_output or "not supported" in log_output.lower()
 
     def test_cleanup_removes_temp_files(self) -> None:
         """Test cleanup_temp_file removes temporary files."""
