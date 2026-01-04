@@ -941,14 +941,18 @@ class TestBinaryInputContentParsing:
             },
         ]
 
-        with caplog.at_level(logging.WARNING, logger="holodeck.serve.protocols.agui"):
+        # Capture at root level since holodeck loggers propagate
+        with caplog.at_level(logging.WARNING):
             result = extract_binary_parts_from_content(content)
 
         # Only the supported MIME type should be returned
         assert len(result) == 1
         assert result[0]["mimeType"] == "image/png"
+
         # Warning should be logged for unsupported MIME type
-        assert "video/mp4" in caplog.text or "Unsupported" in caplog.text
+        assert any("video/mp4" in record.message for record in caplog.records) or any(
+            "unsupported" in record.message.lower() for record in caplog.records
+        )
 
     def test_extract_binary_parts_with_string_parts(self) -> None:
         """Test extracting binary parts ignores plain string parts."""
