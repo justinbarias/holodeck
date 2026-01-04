@@ -563,12 +563,20 @@ class TestAGUIMultimodalImage:
                 assert "RUN_FINISHED" in content or "run_finished" in content.lower()
 
     @pytest.mark.asyncio
-    async def test_awp_with_image_url_reference(
+    async def test_awp_url_reference_skipped_for_security(
         self,
         mock_agent_config: MagicMock,
         mock_agent_executor: MagicMock,
+        caplog,
     ) -> None:
-        """Test /awp handles message with image URL reference."""
+        """Test /awp skips URL references (disabled for SSRF security).
+
+        URL file references are intentionally disabled to prevent SSRF attacks.
+        The request should still succeed, but the URL file should be skipped
+        with a warning logged.
+        """
+        import logging
+
         from holodeck.serve.models import ProtocolType
         from holodeck.serve.server import AgentServer
 
@@ -585,20 +593,14 @@ class TestAGUIMultimodalImage:
             message_count=0,
         )
 
-        # Mock httpx for URL fetching
         with (
             patch.object(
                 server.sessions,
                 "get",
                 return_value=mock_session,
             ),
-            patch("holodeck.serve.file_utils.httpx") as mock_httpx,
+            caplog.at_level(logging.WARNING),
         ):
-            mock_response = MagicMock()
-            mock_response.content = base64.b64decode(MINIMAL_PNG_BASE64)
-            mock_response.raise_for_status = MagicMock()
-            mock_httpx.get.return_value = mock_response
-
             async with AsyncClient(
                 transport=ASGITransport(app=app),
                 base_url="http://test",
@@ -629,9 +631,13 @@ class TestAGUIMultimodalImage:
                     },
                 )
 
+                # Request should succeed (URL file is skipped, not an error)
                 assert response.status_code == 200
                 content = response.text
                 assert "RUN_FINISHED" in content or "run_finished" in content.lower()
+
+        # Verify SSRF warning was logged
+        assert any("SSRF" in record.message for record in caplog.records)
 
     @pytest.mark.asyncio
     async def test_awp_mixed_text_and_image(

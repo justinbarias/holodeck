@@ -15,9 +15,6 @@ import binascii
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
-
-import httpx
 
 from holodeck.lib.logging_config import get_logger
 from holodeck.models.test_case import FileInput
@@ -146,31 +143,27 @@ def convert_file_content_to_file_input(file_content: FileContent) -> FileInput:
     )
 
 
-DEFAULT_DOWNLOAD_TIMEOUT = 30.0  # seconds
-
-
 def convert_binary_dict_to_file_input(
     binary_content: dict[str, Any],
-    download_timeout: float | None = None,
 ) -> FileInput | None:
     """Convert AG-UI binary content dict to FileProcessor-compatible FileInput.
 
-    Handles three transport options:
-    - data: Inline base64-encoded content
-    - url: Remote URL to download
-    - id: File ID reference (not supported, returns None)
+    Handles two transport options:
+    - data: Inline base64-encoded content (supported)
+    - url: Remote URL reference (NOT supported - SSRF security risk)
+    - id: File ID reference (NOT supported)
+
+    Note: URL downloads are intentionally disabled to prevent SSRF attacks.
+    Clients must provide file content inline as base64-encoded data.
 
     Args:
-        binary_content: Dict with type, mimeType, and data/url/id fields.
-        download_timeout: Timeout in seconds for URL downloads. Defaults to 30s.
-            Consider security implications: long timeouts may be exploited for
-            slowloris-style attacks. Configure via ExecutionConfig.download_timeout.
+        binary_content: Dict with type, mimeType, and data field.
 
     Returns:
         FileInput suitable for FileProcessor, or None if not processable.
 
     Raises:
-        ValueError: If base64 decoding fails or URL download fails.
+        ValueError: If base64 decoding fails.
     """
     mime_type = binary_content.get("mimeType", "")
     filename = binary_content.get("filename")
@@ -197,37 +190,22 @@ def convert_binary_dict_to_file_input(
             description=filename,
         )
 
-    # Handle URL reference
+    # Handle URL reference (DISABLED for security - SSRF risk)
     if binary_content.get("url"):
         url = binary_content["url"]
-        timeout = (
-            download_timeout
-            if download_timeout is not None
-            else DEFAULT_DOWNLOAD_TIMEOUT
+        logger.warning(
+            "URL file references are disabled for security (SSRF prevention). "
+            "Please provide file content as inline base64 data instead. url=%s",
+            url,
         )
-        logger.debug("Downloading file from URL: %s (timeout=%.1fs)", url, timeout)
-        try:
-            response = httpx.get(url, timeout=timeout)
-            response.raise_for_status()
-            content_bytes = response.content
-        except Exception as e:
-            logger.error("URL download failed for %s: %s", url, e, exc_info=True)
-            raise ValueError(f"Failed to download file from {url}: {e}") from e
+        return None
 
-        # Extract filename from URL path, handling query params/fragments safely
-        url_filename = urlparse(url).path.split("/")[-1] or "downloaded_file"
-        return create_temp_file_from_bytes(
-            content_bytes=content_bytes,
-            mime_type=mime_type,
-            description=filename or url_filename,
-        )
-
-    # Handle file ID reference (not supported in MVP)
+    # Handle file ID reference (not supported)
     if binary_content.get("id"):
         file_id = binary_content["id"]
         logger.warning(
-            "File ID references are not supported (MVP limitation). "
-            "Use inline base64 or URL instead. id=%s",
+            "File ID references are not supported. "
+            "Use inline base64 data instead. id=%s",
             file_id,
         )
         return None
@@ -309,15 +287,7 @@ def process_multimodal_files(
                 # AG-UI binary content dict
                 binary_dict: dict[str, Any] = file_item  # type: ignore[assignment]
                 filename = binary_dict.get("filename")
-                # Pass download_timeout from ExecutionConfig if available
-                download_timeout = (
-                    float(execution_config.download_timeout)
-                    if execution_config and execution_config.download_timeout
-                    else None
-                )
-                file_input = convert_binary_dict_to_file_input(
-                    binary_dict, download_timeout=download_timeout
-                )
+                file_input = convert_binary_dict_to_file_input(binary_dict)
             else:
                 # REST FileContent Pydantic model
                 file_content: FileContent = file_item  # type: ignore[assignment]

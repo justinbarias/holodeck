@@ -13,7 +13,7 @@ import base64
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from ag_ui.core.events import (
@@ -1042,8 +1042,10 @@ class TestBinaryContentToFileInput:
         # Cleanup
         Path(file_input.path).unlink(missing_ok=True)
 
-    def test_convert_url_reference_downloads_file(self) -> None:
-        """Test converting URL reference downloads and creates FileInput."""
+    def test_url_reference_returns_none_for_security(self, caplog) -> None:
+        """Test that URL references return None (disabled for SSRF security)."""
+        import logging
+
         from holodeck.serve.file_utils import convert_binary_dict_to_file_input
 
         binary_content: dict[str, Any] = {
@@ -1052,22 +1054,13 @@ class TestBinaryContentToFileInput:
             "url": "https://example.com/test.png",
         }
 
-        # Mock httpx to avoid actual network call
-        with patch("holodeck.serve.file_utils.httpx") as mock_httpx:
-            mock_response = MagicMock()
-            mock_response.content = base64.b64decode(MINIMAL_PNG_BASE64)
-            mock_response.raise_for_status = MagicMock()
-            mock_httpx.get.return_value = mock_response
-
+        with caplog.at_level(logging.WARNING, logger="holodeck.serve.file_utils"):
             file_input = convert_binary_dict_to_file_input(binary_content)
 
-        assert file_input is not None
-        assert file_input.type == "image"
-        assert file_input.path is not None
-        assert Path(file_input.path).exists()
-
-        # Cleanup
-        Path(file_input.path).unlink(missing_ok=True)
+        # URL references should return None (disabled for security)
+        assert file_input is None
+        # Should log a warning about SSRF prevention
+        assert "SSRF" in caplog.text
 
     def test_file_id_logs_warning_returns_none(self, caplog) -> None:
         """Test that file ID references log warning and return None."""
