@@ -160,7 +160,15 @@
 - [ ] T053 [P] [US3] Implement /ready endpoint for readiness checks in src/holodeck/serve/server.py
 - [ ] T054 [US3] Track server uptime and active session count for health responses in src/holodeck/serve/server.py
 
-**Checkpoint**: Health endpoints working - all US3 tests pass
+### Documentation Updates
+
+- [ ] T054a [P] [US3] Create serve command guide at docs/guides/serve.md (usage, protocols, options, examples)
+- [ ] T054b [P] [US3] Add serve API reference at docs/api/serve.md (endpoints, models, events)
+- [ ] T054c [US3] Update README.md to include serve capability in Quick Start section
+- [ ] T054d [US3] Update README.md Architecture section (remove "(Planned)" from Deployment, add serve details)
+- [ ] T054e [US3] Add serve to docs/index.md navigation and documentation links
+
+**Checkpoint**: Health endpoints working, documentation complete - all US3 tests pass
 
 ---
 
@@ -354,17 +362,17 @@ With multiple developers:
 
 ## Test Summary
 
-| Phase | Test Tasks | Implementation Tasks | Status |
-|-------|------------|---------------------|--------|
-| Foundational | 3 | 7 | ✅ Complete |
-| User Story 1 (text) | 4 | 11 | ✅ Complete |
-| User Story 1 (multimodal) | 4 | 4 | ⏳ Pending |
-| User Story 2 | 7 | 10 | ✅ Complete |
-| User Story 3 | 4 | 4 | ⏳ Pending |
-| User Story 4 | 4 | 5 | ⏳ Pending |
-| User Story 5 | 3 | 5 | ⏳ Pending |
-| Edge Cases | 4 | 5 | ⏳ Pending |
-| **Total** | **33** | **51** | |
+| Phase | Test Tasks | Implementation Tasks | Doc Tasks | Status |
+|-------|------------|---------------------|-----------|--------|
+| Foundational | 3 | 7 | 0 | ✅ Complete |
+| User Story 1 (text) | 4 | 11 | 0 | ✅ Complete |
+| User Story 1 (multimodal) | 4 | 4 | 0 | ⏳ Pending |
+| User Story 2 | 7 | 10 | 0 | ✅ Complete |
+| User Story 3 | 4 | 4 | 5 | ⏳ Pending |
+| User Story 4 | 4 | 5 | 0 | ⏳ Pending |
+| User Story 5 | 3 | 5 | 0 | ⏳ Pending |
+| Edge Cases | 4 | 5 | 0 | ⏳ Pending |
+| **Total** | **33** | **51** | **5** | |
 
 ---
 

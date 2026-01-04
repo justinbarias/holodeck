@@ -1,0 +1,283 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://holodeck.dev/schemas/observability-config.json",
+  "title": "ObservabilityConfig",
+  "description": "Configuration schema for HoloDeck observability features",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable observability features"
+    },
+    "service_name": {
+      "type": "string",
+      "default": "holodeck-agent",
+      "minLength": 1,
+      "description": "Service name for telemetry resource attributes"
+    },
+    "resource_attributes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "description": "Additional OpenTelemetry resource attributes"
+    },
+    "traces": {
+      "$ref": "#/definitions/TracingConfig"
+    },
+    "metrics": {
+      "$ref": "#/definitions/MetricsConfig"
+    },
+    "logs": {
+      "$ref": "#/definitions/LogsConfig"
+    },
+    "exporters": {
+      "$ref": "#/definitions/ExportersConfig"
+    }
+  },
+  "definitions": {
+    "TracingConfig": {
+      "type": "object",
+      "description": "Tracing-specific configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable trace collection"
+        },
+        "sample_rate": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 1.0,
+          "description": "Trace sampling rate (0.0 to 1.0)"
+        },
+        "capture_content": {
+          "type": "boolean",
+          "default": false,
+          "description": "Capture prompts and completions in spans (sensitive data)"
+        },
+        "redaction_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Regex patterns for redacting sensitive data"
+        },
+        "max_queue_size": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2048,
+          "description": "Maximum spans in export queue"
+        },
+        "max_export_batch_size": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 512,
+          "description": "Maximum spans per export batch"
+        }
+      }
+    },
+    "MetricsConfig": {
+      "type": "object",
+      "description": "Metrics-specific configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable metrics collection"
+        },
+        "export_interval_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 5000,
+          "description": "Metrics export interval in milliseconds"
+        },
+        "include_semantic_kernel_metrics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include Semantic Kernel internal metrics"
+        }
+      }
+    },
+    "LogsConfig": {
+      "type": "object",
+      "description": "Logging-specific configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable structured logging export"
+        },
+        "level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+          "default": "INFO",
+          "description": "Minimum log level to export"
+        },
+        "include_trace_context": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include trace/span IDs in log records"
+        },
+        "filter_namespaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["semantic_kernel"],
+          "description": "Logger namespaces to include"
+        }
+      }
+    },
+    "ExportersConfig": {
+      "type": "object",
+      "description": "Container for exporter configurations. If no exporters are explicitly enabled, console exporter is used as default.",
+      "properties": {
+        "console": {
+          "$ref": "#/definitions/ConsoleExporterConfig"
+        },
+        "otlp": {
+          "$ref": "#/definitions/OTLPExporterConfig"
+        },
+        "prometheus": {
+          "$ref": "#/definitions/PrometheusExporterConfig"
+        },
+        "azure_monitor": {
+          "$ref": "#/definitions/AzureMonitorExporterConfig"
+        }
+      }
+    },
+    "ConsoleExporterConfig": {
+      "type": "object",
+      "description": "Console exporter configuration. Used as default when no other exporters are enabled.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable console exporter"
+        },
+        "pretty_print": {
+          "type": "boolean",
+          "default": true,
+          "description": "Format output for human readability"
+        },
+        "include_timestamps": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include timestamps in console output"
+        }
+      }
+    },
+    "OTLPExporterConfig": {
+      "type": "object",
+      "description": "OTLP exporter configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable OTLP exporter"
+        },
+        "endpoint": {
+          "type": "string",
+          "format": "uri",
+          "default": "http://localhost:4317",
+          "description": "OTLP collector endpoint"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": ["grpc", "http"],
+          "default": "grpc",
+          "description": "Transport protocol"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Custom headers for authentication"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 30000,
+          "description": "Export timeout in milliseconds"
+        },
+        "compression": {
+          "type": "string",
+          "enum": ["gzip", "deflate"],
+          "description": "Compression algorithm"
+        },
+        "insecure": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use insecure connection (no TLS)"
+        }
+      }
+    },
+    "PrometheusExporterConfig": {
+      "type": "object",
+      "description": "Prometheus exporter configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Prometheus metrics endpoint"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "default": 8889,
+          "description": "Port for Prometheus metrics endpoint"
+        },
+        "host": {
+          "type": "string",
+          "default": "0.0.0.0",
+          "description": "Host to bind metrics endpoint"
+        },
+        "path": {
+          "type": "string",
+          "default": "/metrics",
+          "description": "Path for metrics endpoint"
+        }
+      }
+    },
+    "AzureMonitorExporterConfig": {
+      "type": "object",
+      "description": "Azure Monitor exporter configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Azure Monitor exporter"
+        },
+        "connection_string": {
+          "type": "string",
+          "description": "Application Insights connection string"
+        },
+        "disable_offline_storage": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable offline storage for retry"
+        },
+        "storage_directory": {
+          "type": "string",
+          "description": "Custom directory for offline storage"
+        }
+      },
+      "if": {
+        "properties": {
+          "enabled": { "const": true }
+        }
+      },
+      "then": {
+        "required": ["connection_string"]
+      }
+    }
+  }
+}
