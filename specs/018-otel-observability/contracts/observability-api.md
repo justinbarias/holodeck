@@ -345,3 +345,111 @@ All public functions are thread-safe:
 - `get_tracer` / `get_meter`: Return thread-safe instances
 
 The observability module follows OpenTelemetry SDK threading guarantees.
+
+---
+
+## Logging Coordination
+
+### Double Logging Prevention
+
+When the console exporter is active (either explicitly or as default), the default HoloDeck logger must be coordinated to prevent duplicate log output.
+
+#### `configure_logging`
+
+```python
+def configure_logging(config: ObservabilityConfig) -> None:
+    """Configure logging to prevent duplicates with console exporter.
+
+    This function coordinates between HoloDeck's default logging and
+    OpenTelemetry's console exporter to prevent double logging to stdout.
+
+    Args:
+        config: Observability configuration
+
+    Note:
+        Called automatically by initialize_observability().
+        When console exporter is active, removes default StreamHandlers
+        from the holodeck logger to prevent duplicate output.
+    """
+```
+
+#### `is_console_exporter_active`
+
+```python
+def is_console_exporter_active(config: ObservabilityConfig) -> bool:
+    """Check if console exporter will be used (explicitly or as default).
+
+    Returns:
+        True if console exporter is active, False otherwise.
+
+    Note:
+        Console exporter is active when:
+        - Explicitly enabled in config, OR
+        - No other exporters are configured (default fallback)
+    """
+```
+
+### Implementation Pattern
+
+```python
+import logging
+import sys
+
+def configure_logging(config: ObservabilityConfig) -> None:
+    """Configure logging, preventing duplicates with console exporter."""
+    holodeck_logger = logging.getLogger("holodeck")
+
+    if is_console_exporter_active(config):
+        # Remove default console handlers to prevent double logging
+        for handler in holodeck_logger.handlers[:]:
+            if isinstance(handler, logging.StreamHandler):
+                if handler.stream in (sys.stdout, sys.stderr):
+                    holodeck_logger.removeHandler(handler)
+
+    # Set up OTel logging handler if logs are enabled
+    if config.logs.enabled:
+        from opentelemetry.sdk._logs import LoggingHandler
+        otel_handler = LoggingHandler()
+        holodeck_logger.addHandler(otel_handler)
+
+def is_console_exporter_active(config: ObservabilityConfig) -> bool:
+    """Check if console exporter will be used."""
+    has_explicit_exporter = any([
+        config.exporters.otlp and config.exporters.otlp.enabled,
+        config.exporters.prometheus and config.exporters.prometheus.enabled,
+        config.exporters.azure_monitor and config.exporters.azure_monitor.enabled,
+    ])
+    return not has_explicit_exporter
+```
+
+### Behavior Matrix
+
+| Scenario | Default Logger | OTel Console | Result |
+|----------|---------------|--------------|--------|
+| No observability | Active | N/A | Normal HoloDeck logging |
+| Observability + OTLP | Active | Inactive | Normal logging + OTel to OTLP |
+| Observability + no exporter | Suppressed | Active | OTel console only |
+| Observability + console explicit | Suppressed | Active | OTel console only |
+
+### Integration
+
+The `configure_logging()` function is called during `initialize_observability()`:
+
+```python
+def initialize_observability(config: ObservabilityConfig) -> ObservabilityContext:
+    resource = create_resource(config)
+
+    # 1. Configure logging first (prevents double logging)
+    configure_logging(config)
+
+    # 2. Set up logging provider
+    set_up_logging(config, resource)
+
+    # 3. Set up tracing
+    set_up_tracing(config, resource)
+
+    # 4. Set up metrics
+    set_up_metrics(config, resource)
+
+    return ObservabilityContext(...)
+```

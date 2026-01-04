@@ -50,7 +50,7 @@ AgentConfig (existing)
 Top-level configuration for observability features.
 
 ```python
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 
 class ObservabilityConfig(BaseModel):
@@ -445,18 +445,29 @@ class AzureMonitorExporterConfig(BaseModel):
         description="Custom directory for offline storage"
     )
 
-    @validator("connection_string", pre=True, always=True)
+    @field_validator("connection_string", mode="before")
+    @classmethod
     def resolve_connection_string(cls, v: Optional[str]) -> Optional[str]:
         """Resolve from environment if not provided."""
         if v is None:
             import os
             return os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
         return v
+
+    @model_validator(mode="after")
+    def validate_connection_string_required(self) -> "AzureMonitorExporterConfig":
+        """Ensure connection_string is provided when enabled."""
+        if self.enabled and not self.connection_string:
+            raise ValueError(
+                "Azure Monitor connection string is required when enabled. "
+                "Set via config or APPLICATIONINSIGHTS_CONNECTION_STRING env var."
+            )
+        return self
 ```
 
 **Validation Rules**:
 - `connection_string`: Must be valid Application Insights connection string format
-- If `enabled=True` and `connection_string` is None, raise validation error
+- If `enabled=True` and `connection_string` is None, raise validation error (enforced by `model_validator`)
 
 ---
 
