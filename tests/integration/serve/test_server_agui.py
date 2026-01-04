@@ -592,7 +592,7 @@ class TestAGUIMultimodalImage:
                 "get",
                 return_value=mock_session,
             ),
-            patch("holodeck.serve.protocols.agui.httpx") as mock_httpx,
+            patch("holodeck.serve.file_utils.httpx") as mock_httpx,
         ):
             mock_response = MagicMock()
             mock_response.content = base64.b64decode(MINIMAL_PNG_BASE64)
