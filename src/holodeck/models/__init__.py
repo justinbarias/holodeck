@@ -18,6 +18,19 @@ from holodeck.models.chat import (
 from holodeck.models.config import DeploymentConfig, GlobalConfig, VectorstoreConfig
 from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
 from holodeck.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.observability import (
+    AzureMonitorExporterConfig,
+    ConsoleExporterConfig,
+    ExportersConfig,
+    LogLevel,
+    LogsConfig,
+    MetricsConfig,
+    ObservabilityConfig,
+    OTLPExporterConfig,
+    OTLPProtocol,
+    PrometheusExporterConfig,
+    TracingConfig,
+)
 from holodeck.models.test_case import FileInput, TestCase, TestCaseModel
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool import (
@@ -66,4 +79,16 @@ __all__: list[str] = [
     # Tool execution
     "ToolExecution",
     "ToolStatus",
+    # Observability models
+    "ObservabilityConfig",
+    "TracingConfig",
+    "MetricsConfig",
+    "LogsConfig",
+    "LogLevel",
+    "ExportersConfig",
+    "ConsoleExporterConfig",
+    "OTLPExporterConfig",
+    "OTLPProtocol",
+    "PrometheusExporterConfig",
+    "AzureMonitorExporterConfig",
 ]

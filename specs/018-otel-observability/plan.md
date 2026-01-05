@@ -7,6 +7,8 @@
 
 Enable OpenTelemetry-based observability for HoloDeck agents with support for OTLP, Prometheus, and Azure Monitor exporters. The implementation leverages Semantic Kernel's native telemetry instrumentation and follows OpenTelemetry GenAI semantic conventions. Users configure observability through YAML without writing code, consistent with HoloDeck's no-code-first principle.
 
+**Service Name Convention**: The OpenTelemetry service name defaults to `"holodeck-{agent.name}"` (e.g., `"holodeck-customer-support"`), derived from the agent's `name` field. Users can optionally override this with `observability.service_name`.
+
 ## Technical Context
 
 **Language/Version**: Python 3.10+ (per constitution and CLAUDE.md)

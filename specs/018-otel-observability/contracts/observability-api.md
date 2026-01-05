@@ -18,11 +18,15 @@ This document defines the internal Python API contract for the observability mod
 Initialize all telemetry providers based on configuration.
 
 ```python
-def initialize_observability(config: ObservabilityConfig) -> ObservabilityContext:
+def initialize_observability(
+    config: ObservabilityConfig,
+    agent_name: str
+) -> ObservabilityContext:
     """Initialize OpenTelemetry providers for traces, metrics, and logs.
 
     Args:
         config: Observability configuration from agent.yaml
+        agent_name: Agent name from agent.yaml (used for default service name)
 
     Returns:
         ObservabilityContext with initialized providers
@@ -31,13 +35,18 @@ def initialize_observability(config: ObservabilityConfig) -> ObservabilityContex
         ObservabilityConfigError: If configuration is invalid
         ExporterConnectionError: If exporter fails to connect
 
+    Note:
+        Service name resolution order:
+        1. config.service_name (if provided)
+        2. f"holodeck-{agent_name}" (default)
+
     Example:
         >>> from holodeck.lib.observability import initialize_observability
         >>> from holodeck.models.observability import ObservabilityConfig
         >>>
         >>> config = ObservabilityConfig(enabled=True)
-        >>> context = initialize_observability(config)
-        >>> # Telemetry now active
+        >>> context = initialize_observability(config, agent_name="my-agent")
+        >>> # Service name is "holodeck-my-agent"
     """
 ```
 
@@ -273,7 +282,7 @@ async def chat_command(agent_path: str) -> None:
 
     context = None
     if config.observability and config.observability.enabled:
-        context = initialize_observability(config.observability)
+        context = initialize_observability(config.observability, agent_name=config.name)
 
     try:
         await run_chat_session(config)
@@ -292,7 +301,7 @@ async def test_command(agent_path: str) -> None:
 
     context = None
     if config.observability and config.observability.enabled:
-        context = initialize_observability(config.observability)
+        context = initialize_observability(config.observability, agent_name=config.name)
 
     try:
         results = await run_tests(config)
@@ -317,7 +326,7 @@ async def lifespan(app: FastAPI):
 
     context = None
     if config.observability and config.observability.enabled:
-        context = initialize_observability(config.observability)
+        context = initialize_observability(config.observability, agent_name=config.name)
         app.state.observability_context = context
 
     yield  # Server runs here
@@ -436,8 +445,11 @@ def is_console_exporter_active(config: ObservabilityConfig) -> bool:
 The `configure_logging()` function is called during `initialize_observability()`:
 
 ```python
-def initialize_observability(config: ObservabilityConfig) -> ObservabilityContext:
-    resource = create_resource(config)
+def initialize_observability(
+    config: ObservabilityConfig,
+    agent_name: str
+) -> ObservabilityContext:
+    resource = create_resource(config, agent_name)
 
     # 1. Configure logging first (prevents double logging)
     configure_logging(config)
@@ -452,4 +464,18 @@ def initialize_observability(config: ObservabilityConfig) -> ObservabilityContex
     set_up_metrics(config, resource)
 
     return ObservabilityContext(...)
+
+
+def create_resource(config: ObservabilityConfig, agent_name: str) -> Resource:
+    """Create OpenTelemetry resource with service name.
+
+    Service name resolution order:
+    1. config.service_name (if provided)
+    2. f"holodeck-{agent_name}" (default)
+    """
+    service_name = config.service_name or f"holodeck-{agent_name}"
+    return Resource.create({
+        ResourceAttributes.SERVICE_NAME: service_name,
+        **config.resource_attributes
+    })
 ```

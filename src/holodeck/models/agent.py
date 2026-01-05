@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.evaluation import EvaluationConfig
 from holodeck.models.llm import LLMProvider
+from holodeck.models.observability import ObservabilityConfig
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.tool import ToolUnion
 
@@ -84,6 +85,9 @@ class Agent(BaseModel):
     )
     execution: ExecutionConfig | None = Field(
         default=None, description="Test execution configuration"
+    )
+    observability: ObservabilityConfig | None = Field(
+        default=None, description="Observability configuration for telemetry"
     )
 
     @field_validator("name")
