@@ -34,10 +34,9 @@ model:
 instructions:
   inline: You are a helpful assistant.
 
-# Enable observability
+# Enable observability - service name defaults to "holodeck-my-agent"
 observability:
   enabled: true
-  service_name: my-agent
 
   exporters:
     otlp:
@@ -45,7 +44,7 @@ observability:
       endpoint: http://localhost:4317
 ```
 
-That's it! Your agent now exports telemetry to the default OTLP endpoint.
+That's it! Your agent now exports telemetry to the OTLP endpoint with service name `"holodeck-my-agent"` (derived from your agent's `name` field).
 
 ---
 
@@ -87,9 +86,25 @@ View traces, metrics, and logs in your observability backend.
 ### Basic OTLP (Recommended for Development)
 
 ```yaml
+name: my-agent  # Service name defaults to "holodeck-my-agent"
+
 observability:
   enabled: true
-  service_name: my-agent
+
+  exporters:
+    otlp:
+      enabled: true
+      endpoint: http://localhost:4317
+```
+
+### With Custom Service Name Override
+
+```yaml
+name: my-agent
+
+observability:
+  enabled: true
+  service_name: prod-my-agent  # Overrides default "holodeck-my-agent"
 
   exporters:
     otlp:
@@ -100,9 +115,10 @@ observability:
 ### Prometheus Metrics
 
 ```yaml
+name: my-agent  # Service name: "holodeck-my-agent"
+
 observability:
   enabled: true
-  service_name: my-agent
 
   exporters:
     prometheus:
@@ -115,9 +131,10 @@ Scrape metrics at `http://localhost:8889/metrics`.
 ### Azure Monitor
 
 ```yaml
+name: my-agent  # Service name: "holodeck-my-agent"
+
 observability:
   enabled: true
-  service_name: my-agent
 
   exporters:
     azure_monitor:
@@ -134,9 +151,10 @@ export APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=..."
 ### Multiple Exporters
 
 ```yaml
+name: my-agent  # Service name: "holodeck-my-agent"
+
 observability:
   enabled: true
-  service_name: my-agent
 
   exporters:
     otlp:
@@ -155,9 +173,10 @@ observability:
 ### With Sensitive Data Capture
 
 ```yaml
+name: my-agent  # Service name: "holodeck-my-agent"
+
 observability:
   enabled: true
-  service_name: my-agent
 
   traces:
     capture_content: true  # Capture prompts/completions
@@ -174,9 +193,10 @@ observability:
 ### With Custom Headers (Authentication)
 
 ```yaml
+name: my-agent  # Service name: "holodeck-my-agent"
+
 observability:
   enabled: true
-  service_name: my-agent
 
   exporters:
     otlp:
@@ -224,7 +244,7 @@ Structured logs with trace context for correlation.
 ### Jaeger
 
 1. Open Jaeger UI (default: `http://localhost:16686`)
-2. Select service: `my-agent`
+2. Select service: `holodeck-my-agent` (or your custom `service_name`)
 3. Click **Find Traces**
 
 ### Prometheus + Grafana

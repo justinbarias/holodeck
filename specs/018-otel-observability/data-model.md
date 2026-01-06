@@ -16,7 +16,7 @@ AgentConfig (existing)
     │
     └── observability: ObservabilityConfig
             │
-            ├── service_name: str
+            ├── service_name: str | None  # Optional override, defaults to "holodeck-{agent.name}"
             ├── enabled: bool
             │
             ├── traces: TracingConfig
@@ -61,9 +61,9 @@ class ObservabilityConfig(BaseModel):
         description="Enable observability features"
     )
 
-    service_name: str = Field(
-        default="holodeck-agent",
-        description="Service name for telemetry resource attributes"
+    service_name: str | None = Field(
+        default=None,
+        description="Override service name (defaults to 'holodeck-{agent.name}' if not specified)"
     )
 
     traces: "TracingConfig" = Field(
@@ -93,7 +93,7 @@ class ObservabilityConfig(BaseModel):
 ```
 
 **Validation Rules**:
-- `service_name`: Non-empty string, valid OpenTelemetry service name
+- `service_name`: If provided, must be non-empty string; if None, defaults to `"holodeck-{agent.name}"` at runtime
 - If `enabled=True` and no exporters configured, emit warning
 
 ---
@@ -500,6 +500,8 @@ class AgentConfig(BaseModel):
 
 ## YAML Configuration Example
 
+### Basic (service name auto-derived from agent name)
+
 ```yaml
 name: customer-support-agent
 description: Handles customer inquiries
@@ -513,7 +515,7 @@ instructions:
 
 observability:
   enabled: true
-  service_name: customer-support-agent
+  # service_name defaults to "holodeck-customer-support-agent"
 
   traces:
     enabled: true
@@ -546,6 +548,29 @@ observability:
     azure_monitor:
       enabled: false
       connection_string: ${APPLICATIONINSIGHTS_CONNECTION_STRING}
+```
+
+### With custom service name override
+
+```yaml
+name: customer-support-agent
+description: Handles customer inquiries
+
+model:
+  provider: openai
+  name: gpt-4o-mini
+
+instructions:
+  file: instructions/system-prompt.md
+
+observability:
+  enabled: true
+  service_name: prod-cs-agent  # Custom override (instead of "holodeck-customer-support-agent")
+
+  exporters:
+    otlp:
+      enabled: true
+      endpoint: http://localhost:4317
 ```
 
 ---

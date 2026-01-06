@@ -155,7 +155,7 @@ As a HoloDeck user, I want to configure multiple telemetry exporters simultaneou
 - **FR-005**: System MUST follow OpenTelemetry GenAI semantic conventions for all LLM-related spans
 - **FR-006**: System MUST capture token usage metrics (prompt tokens, completion tokens, total tokens)
 - **FR-007**: System MUST capture request duration metrics for LLM calls and tool invocations
-- **FR-008**: System MUST allow configuration of service name and custom resource attributes
+- **FR-008**: System MUST use `"holodeck-{agent.name}"` as the default service name for OpenTelemetry resource attributes, with optional override via `observability.service_name`
 - **FR-009**: System MUST support environment variable substitution in observability configuration (e.g., `${API_KEY}`)
 - **FR-010**: System MUST allow users to control capture of sensitive content (prompts/completions)
 - **FR-011**: System MUST support configurable redaction patterns for sensitive data
@@ -173,12 +173,12 @@ As a HoloDeck user, I want to configure multiple telemetry exporters simultaneou
 
 ### Key Entities
 
-- **TelemetryConfig**: Top-level observability configuration containing enabled flag, service name, and exporter settings
+- **TelemetryConfig**: Top-level observability configuration containing enabled flag, optional service name override, and exporter settings
 - **ExporterConfig**: Configuration for a single exporter (type, endpoint, headers, protocol)
 - **TracingConfig**: Trace-specific settings (sample rate, content capture, redaction patterns)
 - **MetricsConfig**: Metrics-specific settings (export interval, histogram buckets)
 - **LogsConfig**: Logging-specific settings (level, format, trace context inclusion)
-- **ResourceAttributes**: Standard OpenTelemetry resource attributes identifying the service
+- **ResourceAttributes**: Standard OpenTelemetry resource attributes identifying the service (service name defaults to `"holodeck-{agent.name}"`)
 
 ## Success Criteria *(mandatory)*
 

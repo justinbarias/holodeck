@@ -47,7 +47,7 @@
 - [ ] T013 [P] Unit tests for PrometheusExporterConfig model (port range validation) in tests/unit/models/test_observability.py
 - [ ] T014 [P] Unit tests for AzureMonitorExporterConfig model (connection_string required when enabled) in tests/unit/models/test_observability.py
 - [ ] T015 [P] Unit tests for ExportersConfig model (get_enabled_exporters, uses_console_as_default) in tests/unit/models/test_observability.py
-- [ ] T016 Unit tests for ObservabilityConfig model (service_name validation, defaults) in tests/unit/models/test_observability.py
+- [ ] T016 Unit tests for ObservabilityConfig model (optional service_name, None default) in tests/unit/models/test_observability.py
 
 ### Implementation for Foundational
 
@@ -61,7 +61,7 @@
 - [ ] T024 [P] Implement PrometheusExporterConfig model with port, host, path in src/holodeck/models/observability.py
 - [ ] T025 [P] Implement AzureMonitorExporterConfig model with connection_string, disable_offline_storage, storage_directory in src/holodeck/models/observability.py
 - [ ] T026 Implement ExportersConfig model with get_enabled_exporters() and uses_console_as_default() methods in src/holodeck/models/observability.py
-- [ ] T027 Implement ObservabilityConfig model with enabled, service_name, traces, metrics, logs, exporters, resource_attributes in src/holodeck/models/observability.py
+- [ ] T027 Implement ObservabilityConfig model with enabled, optional service_name (str | None = None), traces, metrics, logs, exporters, resource_attributes in src/holodeck/models/observability.py
 - [ ] T028 Add ObservabilityConfig to AgentConfig model (optional field) in src/holodeck/models/agent.py
 - [ ] T029 Export all models from src/holodeck/models/observability.py in src/holodeck/models/__init__.py
 
@@ -80,7 +80,7 @@
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
 - [ ] T030 [P] [US1] Unit tests for ObservabilityError, ObservabilityConfigError custom exceptions in tests/unit/lib/observability/test_errors.py
-- [ ] T031 [P] [US1] Unit tests for create_resource() function (service_name, resource_attributes) in tests/unit/lib/observability/test_providers.py
+- [ ] T031 [P] [US1] Unit tests for create_resource() function (agent_name parameter, service_name override, "holodeck-{agent_name}" default format, resource_attributes) in tests/unit/lib/observability/test_providers.py
 - [ ] T032 [P] [US1] Unit tests for ObservabilityContext dataclass (is_enabled, get_resource) in tests/unit/lib/observability/test_providers.py
 - [ ] T033 [P] [US1] Unit tests for initialize_observability() function in tests/unit/lib/observability/test_providers.py
 - [ ] T034 [P] [US1] Unit tests for shutdown_observability() function in tests/unit/lib/observability/test_providers.py
@@ -92,12 +92,12 @@
 ### Implementation for User Story 1
 
 - [ ] T039 [US1] Implement ObservabilityError, ObservabilityConfigError exceptions in src/holodeck/lib/observability/errors.py
-- [ ] T040 [US1] Implement create_resource() function with service_name and resource_attributes in src/holodeck/lib/observability/providers.py
+- [ ] T040 [US1] Implement create_resource(config, agent_name) function with service_name resolution (config.service_name or f"holodeck-{agent_name}") and resource_attributes in src/holodeck/lib/observability/providers.py
 - [ ] T041 [US1] Implement ObservabilityContext dataclass with tracer_provider, meter_provider, logger_provider, exporters in src/holodeck/lib/observability/providers.py
 - [ ] T042 [US1] Implement set_up_logging() function for LoggerProvider initialization in src/holodeck/lib/observability/providers.py
 - [ ] T043 [US1] Implement set_up_tracing() function for TracerProvider initialization in src/holodeck/lib/observability/providers.py
 - [ ] T044 [US1] Implement set_up_metrics() function for MeterProvider initialization in src/holodeck/lib/observability/providers.py
-- [ ] T045 [US1] Implement initialize_observability() function with correct order (logging, tracing, metrics) in src/holodeck/lib/observability/providers.py
+- [ ] T045 [US1] Implement initialize_observability(config, agent_name) function with correct order (logging, tracing, metrics) in src/holodeck/lib/observability/providers.py
 - [ ] T046 [US1] Implement shutdown_observability() function with flush and close in src/holodeck/lib/observability/providers.py
 - [ ] T047 [US1] Implement get_tracer() and get_meter() helper functions in src/holodeck/lib/observability/providers.py
 - [ ] T048 [P] [US1] Implement ConsoleSpanExporter wrapper in src/holodeck/lib/observability/exporters/console.py

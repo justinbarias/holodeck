@@ -37,6 +37,10 @@ dependencies = [
     "uvicorn[standard]>=0.34.0,<1.0.0",
     "ag-ui-protocol>=0.1.10,<1.0.0",
     "werkzeug>=3.1.4",
+    # OpenTelemetry core (P1 - always installed)
+    "opentelemetry-sdk>=1.20.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0,<2.0.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.20.0,<2.0.0",
 ]
 
 [project.scripts]
@@ -82,6 +86,22 @@ vectorstores = [
     "psycopg[binary,pool]~=3.2",
     "qdrant-client~=1.9",
     "chromadb>=0.5,<1.1",
+]
+
+# OpenTelemetry exporters (install only what you need)
+otel-prometheus = [
+    "opentelemetry-exporter-prometheus>=0.60b0,<1.0.0",
+    "prometheus-client>=0.17.0,<1.0.0",
+]
+otel-azmon = [
+    "azure-monitor-opentelemetry-exporter>=1.0.0b24,<2.0.0",
+]
+
+# Convenience group for all OTel exporters
+otel-all = [
+    "opentelemetry-exporter-prometheus>=0.60b0,<1.0.0",
+    "prometheus-client>=0.17.0,<1.0.0",
+    "azure-monitor-opentelemetry-exporter>=1.0.0b24,<2.0.0",
 ]
 
 [build-system]
