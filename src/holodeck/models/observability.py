@@ -73,6 +73,16 @@ class TracingConfig(BaseModel):
                 raise ValueError(f"Invalid regex pattern '{pattern}': {e}") from e
         return v
 
+    @model_validator(mode="after")
+    def validate_queue_size_batch_size(self) -> "TracingConfig":
+        """Validate max_queue_size >= max_export_batch_size."""
+        if self.max_queue_size < self.max_export_batch_size:
+            raise ValueError(
+                f"max_queue_size ({self.max_queue_size}) must be >= "
+                f"max_export_batch_size ({self.max_export_batch_size})"
+            )
+        return self
+
 
 class MetricsConfig(BaseModel):
     """Metrics-specific configuration.

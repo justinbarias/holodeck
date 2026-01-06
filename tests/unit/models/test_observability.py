@@ -107,9 +107,10 @@ class TestTracingConfig:
         from holodeck.models.observability import TracingConfig
 
         with pytest.raises(ValidationError):
-            TracingConfig(max_queue_size=0)
+            TracingConfig(max_queue_size=0, max_export_batch_size=1)
 
-        config = TracingConfig(max_queue_size=1)
+        # Note: max_export_batch_size must be <= max_queue_size
+        config = TracingConfig(max_queue_size=1, max_export_batch_size=1)
         assert config.max_queue_size == 1
 
     def test_extra_fields_forbidden(self) -> None:
@@ -118,6 +119,26 @@ class TestTracingConfig:
 
         with pytest.raises(ValidationError):
             TracingConfig(unknown_field="value")  # type: ignore[call-arg]
+
+    def test_max_queue_size_must_be_gte_max_export_batch_size(self) -> None:
+        """Test max_queue_size must be >= max_export_batch_size."""
+        from holodeck.models.observability import TracingConfig
+
+        # Valid: queue_size > batch_size
+        config = TracingConfig(max_queue_size=1024, max_export_batch_size=512)
+        assert config.max_queue_size == 1024
+        assert config.max_export_batch_size == 512
+
+        # Valid: queue_size == batch_size
+        config_equal = TracingConfig(max_queue_size=512, max_export_batch_size=512)
+        assert config_equal.max_queue_size == 512
+        assert config_equal.max_export_batch_size == 512
+
+        # Invalid: queue_size < batch_size
+        with pytest.raises(ValidationError) as exc_info:
+            TracingConfig(max_queue_size=256, max_export_batch_size=512)
+        assert "max_queue_size" in str(exc_info.value)
+        assert "max_export_batch_size" in str(exc_info.value)
 
 
 # T009: Unit tests for MetricsConfig
