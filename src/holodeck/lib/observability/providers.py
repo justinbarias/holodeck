@@ -158,12 +158,10 @@ def set_up_logging(
     )
 
     # Add OTel handler to root logger so all Python logs are captured
+    # Note: Child loggers (like "holodeck") propagate to root by default,
+    # so we only need to add the handler here to avoid duplicate records.
     logging.getLogger().addHandler(otel_handler)
     logging.getLogger().setLevel(log_level)
-
-    # Also add to holodeck logger specifically
-    logging.getLogger("holodeck").addHandler(otel_handler)
-    logging.getLogger("holodeck").setLevel(log_level)
 
     # Configure third-party loggers to respect verbosity settings
     from holodeck.lib.logging_config import configure_third_party_loggers

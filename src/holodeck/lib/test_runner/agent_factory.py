@@ -277,15 +277,21 @@ class AgentThreadRun:
             # Invoke agent with chat history
             thread = ChatHistoryAgentThread(self.chat_history)
             arguments = self.kernel_arguments
-            async for (
-                response
-            ) in self.agent.invoke(  # pyright: ignore[reportUnknownMemberType]
+            # Get the async generator and properly close it after extracting
+            # first response. This avoids "Failed to detach context" errors
+            # from OTel when breaking early from the generator.
+            invoke_gen = self.agent.invoke(  # pyright: ignore[reportUnknownMemberType]
                 thread=thread,
                 arguments=arguments,
-            ):
-                # Extract token usage from first response
-                token_usage = self._extract_token_usage(response)
-                break  # Only process first response
+            )
+            try:
+                async for response in invoke_gen:
+                    # Extract token usage from first response
+                    token_usage = self._extract_token_usage(response)
+                    break  # Only process first response
+            finally:
+                # Explicitly close the generator to ensure proper OTel context cleanup
+                await invoke_gen.aclose()
 
             # Extract tool calls and results from thread's chat history
             # Only scan messages added during this turn (after history_length_before)
