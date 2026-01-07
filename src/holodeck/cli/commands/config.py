@@ -6,6 +6,9 @@ This module implements the 'holodeck config' command group and its subcommands.
 import click
 
 from holodeck.config.manager import ConfigManager
+from holodeck.lib.logging_config import get_logger, setup_logging
+
+logger = get_logger(__name__)
 
 
 @click.group(name="config")
@@ -34,10 +37,24 @@ def config() -> None:
     is_flag=True,
     help="Overwrite existing configuration file without prompting",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose debug logging",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress INFO logging output",
+)
 def init(
     global_config: bool,
     project_config: bool,
     force: bool,
+    verbose: bool,
+    quiet: bool,
 ) -> None:
     """Initialize HoloDeck global or project configuration.
 
@@ -58,6 +75,12 @@ def init(
 
     For more information, see: https://useholodeck.ai/docs/config
     """
+    # Initialize logging
+    setup_logging(verbose=verbose, quiet=quiet)
+    logger.debug(
+        f"Config init command invoked: global={global_config}, project={project_config}"
+    )
+
     # Determine which config to initialize
     if not global_config and not project_config:
         # Prompt user to choose

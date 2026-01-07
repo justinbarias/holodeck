@@ -55,6 +55,7 @@ class AgentServer:
         cors_origins: list[str] | None = None,
         debug: bool = False,
         execution_config: ExecutionConfig | None = None,
+        observability_enabled: bool = False,
     ) -> None:
         """Initialize the agent server.
 
@@ -67,6 +68,7 @@ class AgentServer:
             cors_origins: List of allowed CORS origins (default: ["*"]).
             debug: Enable debug logging (default: False).
             execution_config: Resolved execution configuration for timeouts.
+            observability_enabled: Enable OpenTelemetry per-request tracing.
         """
         self.agent_config = agent_config
         self.protocol = protocol
@@ -75,6 +77,7 @@ class AgentServer:
         self.cors_origins = cors_origins or ["*"]
         self.debug = debug
         self.execution_config = execution_config
+        self.observability_enabled = observability_enabled
 
         # Warn if binding to all interfaces
         if host == "0.0.0.0":  # noqa: S104  # nosec B104
@@ -136,7 +139,11 @@ class AgentServer:
         # 2. ErrorHandlingMiddleware catches handler exceptions and returns RFC 7807
         # 3. CORS headers are added to all responses including errors
         app.add_middleware(ErrorHandlingMiddleware, debug=self.debug)
-        app.add_middleware(LoggingMiddleware, debug=self.debug)
+        app.add_middleware(
+            LoggingMiddleware,
+            debug=self.debug,
+            observability_enabled=self.observability_enabled,
+        )
 
         # Register health endpoints
         self._register_health_endpoints(app)

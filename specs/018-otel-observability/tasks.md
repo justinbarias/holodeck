@@ -15,20 +15,20 @@
 
 ---
 
-## Phase 1: Setup (Shared Infrastructure)
+## Phase 1: Setup (Shared Infrastructure) ✅
 
 **Purpose**: Add dependencies and create module structure
 
-- [ ] T001 Add OpenTelemetry dependencies to pyproject.toml: `opentelemetry-sdk>=1.20.0`, `opentelemetry-exporter-otlp-proto-grpc>=1.20.0`, `opentelemetry-exporter-otlp-proto-http>=1.20.0`
-- [ ] T002 [P] Add Prometheus dependencies to pyproject.toml: `opentelemetry-exporter-prometheus>=0.60b1`, `prometheus-client>=0.17.0`
-- [ ] T003 [P] Add Azure Monitor dependency to pyproject.toml: `azure-monitor-opentelemetry-exporter>=1.0.0b24`
-- [ ] T004 Create observability module structure: src/holodeck/lib/observability/__init__.py
-- [ ] T005 [P] Create exporters submodule: src/holodeck/lib/observability/exporters/__init__.py
-- [ ] T006 [P] Create test directory structure: tests/unit/lib/observability/, tests/integration/observability/
+- [x] T001 Add OpenTelemetry dependencies to pyproject.toml: `opentelemetry-sdk>=1.20.0`, `opentelemetry-exporter-otlp-proto-grpc>=1.20.0`, `opentelemetry-exporter-otlp-proto-http>=1.20.0`
+- [x] T002 [P] Add Prometheus dependencies to pyproject.toml: `opentelemetry-exporter-prometheus>=0.60b1`, `prometheus-client>=0.17.0`
+- [x] T003 [P] Add Azure Monitor dependency to pyproject.toml: `azure-monitor-opentelemetry-exporter>=1.0.0b24`
+- [x] T004 Create observability module structure: src/holodeck/lib/observability/__init__.py
+- [x] T005 [P] Create exporters submodule: src/holodeck/lib/observability/exporters/__init__.py
+- [x] T006 [P] Create test directory structure: tests/unit/lib/observability/, tests/integration/observability/
 
 ---
 
-## Phase 2: Foundational (Pydantic Models - Blocking Prerequisites)
+## Phase 2: Foundational (Pydantic Models - Blocking Prerequisites) ✅
 
 **Purpose**: Core data models that MUST be complete before ANY user story can be implemented
 
@@ -38,38 +38,38 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T007 [P] Unit tests for LogLevel enum in tests/unit/models/test_observability.py
-- [ ] T008 [P] Unit tests for TracingConfig model (sample_rate validation, redaction_patterns regex validation) in tests/unit/models/test_observability.py
-- [ ] T009 [P] Unit tests for MetricsConfig model (export_interval_ms minimum validation) in tests/unit/models/test_observability.py
-- [ ] T010 [P] Unit tests for LogsConfig model (level enum validation) in tests/unit/models/test_observability.py
-- [ ] T011 [P] Unit tests for ConsoleExporterConfig model in tests/unit/models/test_observability.py
-- [ ] T012 [P] Unit tests for OTLPExporterConfig model (endpoint URL validation, protocol enum) in tests/unit/models/test_observability.py
-- [ ] T013 [P] Unit tests for PrometheusExporterConfig model (port range validation) in tests/unit/models/test_observability.py
-- [ ] T014 [P] Unit tests for AzureMonitorExporterConfig model (connection_string required when enabled) in tests/unit/models/test_observability.py
-- [ ] T015 [P] Unit tests for ExportersConfig model (get_enabled_exporters, uses_console_as_default) in tests/unit/models/test_observability.py
-- [ ] T016 Unit tests for ObservabilityConfig model (optional service_name, None default) in tests/unit/models/test_observability.py
+- [x] T007 [P] Unit tests for LogLevel enum in tests/unit/models/test_observability.py
+- [x] T008 [P] Unit tests for TracingConfig model (sample_rate validation, redaction_patterns regex validation) in tests/unit/models/test_observability.py
+- [x] T009 [P] Unit tests for MetricsConfig model (export_interval_ms minimum validation) in tests/unit/models/test_observability.py
+- [x] T010 [P] Unit tests for LogsConfig model (level enum validation) in tests/unit/models/test_observability.py
+- [x] T011 [P] Unit tests for ConsoleExporterConfig model in tests/unit/models/test_observability.py
+- [x] T012 [P] Unit tests for OTLPExporterConfig model (endpoint URL validation, protocol enum) in tests/unit/models/test_observability.py
+- [x] T013 [P] Unit tests for PrometheusExporterConfig model (port range validation) in tests/unit/models/test_observability.py
+- [x] T014 [P] Unit tests for AzureMonitorExporterConfig model (connection_string required when enabled) in tests/unit/models/test_observability.py
+- [x] T015 [P] Unit tests for ExportersConfig model (get_enabled_exporters, uses_console_as_default) in tests/unit/models/test_observability.py
+- [x] T016 Unit tests for ObservabilityConfig model (optional service_name, None default) in tests/unit/models/test_observability.py
 
 ### Implementation for Foundational
 
-- [ ] T017 Implement LogLevel enum (DEBUG, INFO, WARNING, ERROR, CRITICAL) in src/holodeck/models/observability.py
-- [ ] T018 Implement OTLPProtocol enum (GRPC, HTTP) in src/holodeck/models/observability.py
-- [ ] T019 [P] Implement TracingConfig model with sample_rate, capture_content, redaction_patterns, max_queue_size, max_export_batch_size in src/holodeck/models/observability.py
-- [ ] T020 [P] Implement MetricsConfig model with export_interval_ms, include_semantic_kernel_metrics in src/holodeck/models/observability.py
-- [ ] T021 [P] Implement LogsConfig model with level, include_trace_context, filter_namespaces in src/holodeck/models/observability.py
-- [ ] T022 [P] Implement ConsoleExporterConfig model with pretty_print, include_timestamps in src/holodeck/models/observability.py
-- [ ] T023 [P] Implement OTLPExporterConfig model with endpoint, protocol, headers, timeout_ms, compression, insecure in src/holodeck/models/observability.py
-- [ ] T024 [P] Implement PrometheusExporterConfig model with port, host, path in src/holodeck/models/observability.py
-- [ ] T025 [P] Implement AzureMonitorExporterConfig model with connection_string, disable_offline_storage, storage_directory in src/holodeck/models/observability.py
-- [ ] T026 Implement ExportersConfig model with get_enabled_exporters() and uses_console_as_default() methods in src/holodeck/models/observability.py
-- [ ] T027 Implement ObservabilityConfig model with enabled, optional service_name (str | None = None), traces, metrics, logs, exporters, resource_attributes in src/holodeck/models/observability.py
-- [ ] T028 Add ObservabilityConfig to AgentConfig model (optional field) in src/holodeck/models/agent.py
-- [ ] T029 Export all models from src/holodeck/models/observability.py in src/holodeck/models/__init__.py
+- [x] T017 Implement LogLevel enum (DEBUG, INFO, WARNING, ERROR, CRITICAL) in src/holodeck/models/observability.py
+- [x] T018 Implement OTLPProtocol enum (GRPC, HTTP) in src/holodeck/models/observability.py
+- [x] T019 [P] Implement TracingConfig model with sample_rate, capture_content, redaction_patterns, max_queue_size, max_export_batch_size in src/holodeck/models/observability.py
+- [x] T020 [P] Implement MetricsConfig model with export_interval_ms, include_semantic_kernel_metrics in src/holodeck/models/observability.py
+- [x] T021 [P] Implement LogsConfig model with level, include_trace_context, filter_namespaces in src/holodeck/models/observability.py
+- [x] T022 [P] Implement ConsoleExporterConfig model with pretty_print, include_timestamps in src/holodeck/models/observability.py
+- [x] T023 [P] Implement OTLPExporterConfig model with endpoint, protocol, headers, timeout_ms, compression, insecure in src/holodeck/models/observability.py
+- [x] T024 [P] Implement PrometheusExporterConfig model with port, host, path in src/holodeck/models/observability.py
+- [x] T025 [P] Implement AzureMonitorExporterConfig model with connection_string, disable_offline_storage, storage_directory in src/holodeck/models/observability.py
+- [x] T026 Implement ExportersConfig model with get_enabled_exporters() and uses_console_as_default() methods in src/holodeck/models/observability.py
+- [x] T027 Implement ObservabilityConfig model with enabled, optional service_name (str | None = None), traces, metrics, logs, exporters, resource_attributes in src/holodeck/models/observability.py
+- [x] T028 Add ObservabilityConfig to AgentConfig model (optional field) in src/holodeck/models/agent.py
+- [x] T029 Export all models from src/holodeck/models/observability.py in src/holodeck/models/__init__.py
 
-**Checkpoint**: Foundation ready - all foundational tests pass - user story implementation can now begin
+**Checkpoint**: Foundation ready - all foundational tests pass - user story implementation can now begin ✅
 
 ---
 
-## Phase 3: User Story 1 - Basic Observability Setup (Priority: P1) MVP
+## Phase 3: User Story 1 - Basic Observability Setup (Priority: P1) MVP ✅
 
 **Goal**: User adds `observability: enabled: true` to agent.yaml and telemetry is output to console (default exporter)
 
@@ -79,63 +79,65 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T030 [P] [US1] Unit tests for ObservabilityError, ObservabilityConfigError custom exceptions in tests/unit/lib/observability/test_errors.py
-- [ ] T031 [P] [US1] Unit tests for create_resource() function (agent_name parameter, service_name override, "holodeck-{agent_name}" default format, resource_attributes) in tests/unit/lib/observability/test_providers.py
-- [ ] T032 [P] [US1] Unit tests for ObservabilityContext dataclass (is_enabled, get_resource) in tests/unit/lib/observability/test_providers.py
-- [ ] T033 [P] [US1] Unit tests for initialize_observability() function in tests/unit/lib/observability/test_providers.py
-- [ ] T034 [P] [US1] Unit tests for shutdown_observability() function in tests/unit/lib/observability/test_providers.py
-- [ ] T035 [P] [US1] Unit tests for get_tracer() function in tests/unit/lib/observability/test_providers.py
-- [ ] T036 [P] [US1] Unit tests for get_meter() function in tests/unit/lib/observability/test_providers.py
-- [ ] T037 [P] [US1] Unit tests for console exporter creation (traces, metrics, logs) in tests/unit/lib/observability/test_exporters_console.py
-- [ ] T038 [US1] Unit tests for console exporter as default when no exporters configured in tests/unit/lib/observability/test_console_default.py
+- [x] T030 [P] [US1] Unit tests for ObservabilityError, ObservabilityConfigError custom exceptions in tests/unit/lib/observability/test_errors.py
+- [x] T031 [P] [US1] Unit tests for create_resource() function (agent_name parameter, service_name override, "holodeck-{agent_name}" default format, resource_attributes) in tests/unit/lib/observability/test_providers.py
+- [x] T032 [P] [US1] Unit tests for ObservabilityContext dataclass (is_enabled, get_resource) in tests/unit/lib/observability/test_providers.py
+- [x] T033 [P] [US1] Unit tests for initialize_observability() function in tests/unit/lib/observability/test_providers.py
+- [x] T034 [P] [US1] Unit tests for shutdown_observability() function in tests/unit/lib/observability/test_providers.py
+- [x] T035 [P] [US1] Unit tests for get_tracer() function in tests/unit/lib/observability/test_providers.py
+- [x] T036 [P] [US1] Unit tests for get_meter() function in tests/unit/lib/observability/test_providers.py
+- [x] T037 [P] [US1] Unit tests for console exporter creation (traces, metrics, logs) in tests/unit/lib/observability/test_exporters_console.py
+- [x] T038 [US1] Unit tests for console exporter as default when no exporters configured in tests/unit/lib/observability/test_console_default.py
 
 ### Implementation for User Story 1
 
-- [ ] T039 [US1] Implement ObservabilityError, ObservabilityConfigError exceptions in src/holodeck/lib/observability/errors.py
-- [ ] T040 [US1] Implement create_resource(config, agent_name) function with service_name resolution (config.service_name or f"holodeck-{agent_name}") and resource_attributes in src/holodeck/lib/observability/providers.py
-- [ ] T041 [US1] Implement ObservabilityContext dataclass with tracer_provider, meter_provider, logger_provider, exporters in src/holodeck/lib/observability/providers.py
-- [ ] T042 [US1] Implement set_up_logging() function for LoggerProvider initialization in src/holodeck/lib/observability/providers.py
-- [ ] T043 [US1] Implement set_up_tracing() function for TracerProvider initialization in src/holodeck/lib/observability/providers.py
-- [ ] T044 [US1] Implement set_up_metrics() function for MeterProvider initialization in src/holodeck/lib/observability/providers.py
-- [ ] T045 [US1] Implement initialize_observability(config, agent_name) function with correct order (logging, tracing, metrics) in src/holodeck/lib/observability/providers.py
-- [ ] T046 [US1] Implement shutdown_observability() function with flush and close in src/holodeck/lib/observability/providers.py
-- [ ] T047 [US1] Implement get_tracer() and get_meter() helper functions in src/holodeck/lib/observability/providers.py
-- [ ] T048 [P] [US1] Implement ConsoleSpanExporter wrapper in src/holodeck/lib/observability/exporters/console.py
-- [ ] T049 [P] [US1] Implement ConsoleMetricExporter wrapper in src/holodeck/lib/observability/exporters/console.py
-- [ ] T050 [P] [US1] Implement ConsoleLogExporter wrapper in src/holodeck/lib/observability/exporters/console.py
-- [ ] T051 [US1] Implement create_console_exporters() factory function in src/holodeck/lib/observability/exporters/console.py
-- [ ] T052 [US1] Implement default-to-console logic in configure_exporters() in src/holodeck/lib/observability/config.py
-- [ ] T053 [US1] Export public API (initialize_observability, shutdown_observability, get_tracer, get_meter) in src/holodeck/lib/observability/__init__.py
+- [x] T039 [US1] Implement ObservabilityError, ObservabilityConfigError exceptions in src/holodeck/lib/observability/errors.py
+- [x] T040 [US1] Implement create_resource(config, agent_name) function with service_name resolution (config.service_name or f"holodeck-{agent_name}") and resource_attributes in src/holodeck/lib/observability/providers.py
+- [x] T041 [US1] Implement ObservabilityContext dataclass with tracer_provider, meter_provider, logger_provider, exporters in src/holodeck/lib/observability/providers.py
+- [x] T042 [US1] Implement set_up_logging() function for LoggerProvider initialization in src/holodeck/lib/observability/providers.py
+- [x] T043 [US1] Implement set_up_tracing() function for TracerProvider initialization in src/holodeck/lib/observability/providers.py
+- [x] T044 [US1] Implement set_up_metrics() function for MeterProvider initialization in src/holodeck/lib/observability/providers.py
+- [x] T045 [US1] Implement initialize_observability(config, agent_name) function with correct order (logging, tracing, metrics) in src/holodeck/lib/observability/providers.py
+- [x] T046 [US1] Implement shutdown_observability() function with flush and close in src/holodeck/lib/observability/providers.py
+- [x] T047 [US1] Implement get_tracer() and get_meter() helper functions in src/holodeck/lib/observability/providers.py
+- [x] T048 [P] [US1] Implement ConsoleSpanExporter wrapper in src/holodeck/lib/observability/exporters/console.py
+- [x] T049 [P] [US1] Implement ConsoleMetricExporter wrapper in src/holodeck/lib/observability/exporters/console.py
+- [x] T050 [P] [US1] Implement ConsoleLogExporter wrapper in src/holodeck/lib/observability/exporters/console.py
+- [x] T051 [US1] Implement create_console_exporters() factory function in src/holodeck/lib/observability/exporters/console.py
+- [x] T052 [US1] Implement default-to-console logic in configure_exporters() in src/holodeck/lib/observability/config.py
+- [x] T053 [US1] Export public API (initialize_observability, shutdown_observability, get_tracer, get_meter) in src/holodeck/lib/observability/__init__.py
 
-**Checkpoint**: At this point, basic observability with console exporter works - all US1 tests pass
+**Checkpoint**: At this point, basic observability with console exporter works - all US1 tests pass ✅
 
 ---
 
-## Phase 4: User Story 5 - GenAI Semantic Conventions (Priority: P1)
+## Phase 4: User Story 5 - GenAI Semantic Conventions (Priority: P1) ✅
 
 **Goal**: Telemetry follows OpenTelemetry GenAI semantic conventions with `gen_ai.*` attributes
 
 **Independent Test**: Invoke agent, examine exported spans, verify `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.*` attributes present
 
+**Implementation Note**: Semantic Kernel provides native OTel instrumentation with GenAI semantic conventions. We only need to enable it via environment variables. Tasks T054-T060 were skipped as SK handles attribute capture natively.
+
 ### Tests for User Story 5 (TDD)
 
-> **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+> **NOTE: T054-T056 skipped - SK provides native instrumentation. Tests added for enable_semantic_kernel_telemetry() in test_instrumentation.py**
 
-- [ ] T054 [P] [US5] Unit tests for GenAI attribute constants in tests/unit/lib/observability/test_semantic_conventions.py
-- [ ] T055 [P] [US5] Unit tests for span naming convention (operation + model) in tests/unit/lib/observability/test_semantic_conventions.py
-- [ ] T056 [US5] Integration test for Semantic Kernel instrumentation hooks in tests/integration/observability/test_telemetry_flow.py
+- [~] T054 [P] [US5] ~~Unit tests for GenAI attribute constants~~ - SKIPPED: SK provides native semantic conventions
+- [~] T055 [P] [US5] ~~Unit tests for span naming convention~~ - SKIPPED: SK handles span naming natively
+- [~] T056 [US5] ~~Integration test for SK instrumentation hooks~~ - SKIPPED: Covered by enable_semantic_kernel_telemetry tests
 
 ### Implementation for User Story 5
 
-- [ ] T057 [US5] Implement GenAI operation name constants (CHAT, EMBEDDINGS, TEXT_COMPLETION) in src/holodeck/lib/observability/semantic_conventions.py
-- [ ] T058 [US5] Implement GenAI attribute key constants (SYSTEM, REQUEST_MODEL, USAGE_*, RESPONSE_*) in src/holodeck/lib/observability/semantic_conventions.py
-- [ ] T059 [US5] Implement tool execution attribute constants (TOOL_NAME, TOOL_CALL_ID) in src/holodeck/lib/observability/semantic_conventions.py
-- [ ] T060 [US5] Implement sensitive attribute constants (PROMPT_*, COMPLETION_*) in src/holodeck/lib/observability/semantic_conventions.py
-- [ ] T061 [US5] Implement enable_semantic_kernel_telemetry() to set environment variables in src/holodeck/lib/observability/instrumentation.py
-- [ ] T062 [US5] Call enable_semantic_kernel_telemetry() in initialize_observability() in src/holodeck/lib/observability/providers.py
-- [ ] T063 [US5] Export semantic_conventions module in src/holodeck/lib/observability/__init__.py
+- [~] T057 [US5] ~~Implement GenAI operation name constants~~ - SKIPPED: SK provides natively
+- [~] T058 [US5] ~~Implement GenAI attribute key constants~~ - SKIPPED: SK provides natively
+- [~] T059 [US5] ~~Implement tool execution attribute constants~~ - SKIPPED: SK provides natively
+- [~] T060 [US5] ~~Implement sensitive attribute constants~~ - SKIPPED: SK provides natively
+- [x] T061 [US5] Implement enable_semantic_kernel_telemetry() to set environment variables in src/holodeck/lib/observability/instrumentation.py
+- [x] T062 [US5] Call enable_semantic_kernel_telemetry() in initialize_observability() in src/holodeck/lib/observability/providers.py
+- [x] T063 [US5] Export instrumentation module in src/holodeck/lib/observability/__init__.py
 
-**Checkpoint**: Telemetry now includes GenAI semantic convention attributes - all US5 tests pass
+**Checkpoint**: Telemetry now includes GenAI semantic convention attributes via SK native instrumentation - US5 complete ✅
 
 ---
 
@@ -282,7 +284,7 @@
 
 ---
 
-## Phase 10: CLI Integration
+## Phase 10: CLI Integration ✅
 
 **Purpose**: Integrate observability with chat, test, and serve commands
 
@@ -290,20 +292,20 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T117 [P] Unit tests for chat command observability initialization in tests/unit/cli/commands/test_chat_observability.py
-- [ ] T118 [P] Unit tests for test command observability initialization in tests/unit/cli/commands/test_test_observability.py
-- [ ] T119 [P] Unit tests for serve command observability initialization in tests/unit/serve/test_server_observability.py
-- [ ] T120 [P] Unit tests for double logging prevention when console exporter active in tests/unit/lib/observability/test_logging_coordination.py
+- [x] T117 [P] Unit tests for chat command observability initialization in tests/unit/cli/commands/test_chat_observability.py
+- [x] T118 [P] Unit tests for test command observability initialization in tests/unit/cli/commands/test_test_observability.py
+- [x] T119 [P] Unit tests for serve command observability initialization in tests/unit/serve/test_server_observability.py
+- [x] T120 [P] Unit tests for double logging prevention when console exporter active in tests/unit/lib/observability/test_logging_coordination.py
 
 ### Implementation for CLI Integration
 
-- [ ] T121 Implement configure_logging() for double logging prevention in src/holodeck/lib/observability/config.py
-- [ ] T122 Implement is_console_exporter_active() helper in src/holodeck/lib/observability/config.py
-- [ ] T123 Integrate observability initialization/shutdown into chat command in src/holodeck/cli/commands/chat.py
-- [ ] T124 Integrate observability initialization/shutdown into test command in src/holodeck/cli/commands/test.py
-- [ ] T125 Integrate observability into serve command FastAPI lifespan in src/holodeck/serve/server.py
+- [x] T121 Implement configure_logging() for double logging prevention in src/holodeck/lib/observability/config.py
+- [x] T122 Implement is_console_exporter_active() helper in src/holodeck/lib/observability/config.py
+- [x] T123 Integrate observability initialization/shutdown into chat command in src/holodeck/cli/commands/chat.py
+- [x] T124 Integrate observability initialization/shutdown into test command in src/holodeck/cli/commands/test.py
+- [x] T125 Integrate observability into serve command FastAPI lifespan in src/holodeck/serve/server.py
 
-**Checkpoint**: All CLI commands support observability - all CLI integration tests pass
+**Checkpoint**: All CLI commands support observability - all CLI integration tests pass ✅
 
 ---
 
@@ -448,19 +450,21 @@ With multiple developers:
 
 | Phase | Test Tasks | Implementation Tasks | Status |
 |-------|------------|---------------------|--------|
-| Setup | 0 | 6 | ⏳ Pending |
-| Foundational | 10 | 13 | ⏳ Pending |
-| User Story 1 (MVP) | 9 | 15 | ⏳ Pending |
-| User Story 5 (GenAI) | 3 | 7 | ⏳ Pending |
+| Setup | 0 | 6 | ✅ Complete |
+| Foundational | 10 | 13 | ✅ Complete |
+| User Story 1 (MVP) | 9 | 15 | ✅ Complete |
+| User Story 5 (GenAI) | 1* | 3* | ✅ Complete |
 | User Story 2 (OTLP) | 7 | 8 | ⏳ Pending |
 | User Story 3 (Prometheus) | 4 | 5 | ⏳ Pending |
 | User Story 4 (Azure) | 5 | 7 | ⏳ Pending |
 | User Story 6 (Sensitive) | 4 | 5 | ⏳ Pending |
 | User Story 7 (Multiple) | 4 | 4 | ⏳ Pending |
-| CLI Integration | 4 | 5 | ⏳ Pending |
+| CLI Integration | 4 | 5 | ✅ Complete |
 | Edge Cases | 4 | 4 | ⏳ Pending |
 | Polish | 0 | 8 | ⏳ Pending |
 | **Total** | **54** | **87** | |
+
+*\* US5 reduced: SK provides native GenAI semantic conventions - only enable_semantic_kernel_telemetry() implementation needed (T061-T063)*
 
 ---
 

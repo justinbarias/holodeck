@@ -40,7 +40,27 @@ THIRD_PARTY_LOGGERS = [
     "asyncio",
     "redis",
     "azure",
+    "chromadb",
 ]
+
+
+def configure_third_party_loggers(log_level: int) -> None:
+    """Configure known third-party loggers to respect the specified log level.
+
+    This suppresses noisy INFO logs from libraries like httpx, chromadb, etc.
+    Can be called from both traditional logging and OTel logging setup.
+
+    Setting level on parent logger (e.g., "chromadb") also affects child
+    loggers (e.g., "chromadb.telemetry.product.posthog").
+
+    Args:
+        log_level: The logging level to apply (e.g., logging.WARNING)
+    """
+    for logger_name in THIRD_PARTY_LOGGERS:
+        third_party_logger = logging.getLogger(logger_name)
+        third_party_logger.setLevel(log_level)
+        third_party_logger.handlers.clear()
+        third_party_logger.propagate = True
 
 
 def setup_logging(
@@ -77,7 +97,7 @@ def setup_logging(
     """
     # Determine log level based on flags and configuration
     if quiet:
-        log_level = logging.ERROR
+        log_level = logging.WARNING
     elif verbose:
         log_level = logging.DEBUG
     elif level:
@@ -183,13 +203,8 @@ def _configure_all_loggers(log_level: int) -> None:
     Returns:
         None
     """
-    # Configure known third-party loggers (even if not yet created)
-    # These are libraries that can be noisy and we want to control
-    for logger_name in THIRD_PARTY_LOGGERS:
-        third_party_logger = logging.getLogger(logger_name)
-        third_party_logger.setLevel(log_level)
-        third_party_logger.handlers.clear()
-        third_party_logger.propagate = True
+    # Configure known third-party loggers using the shared function
+    configure_third_party_loggers(log_level)
 
     # Configure holodeck loggers only (not all loggers system-wide)
     # This avoids interfering with third-party libraries that configure
@@ -204,7 +219,7 @@ def _configure_all_loggers(log_level: int) -> None:
         logger.handlers.clear()
         # Set level to NOTSET so it inherits from root, OR set explicitly
         # For quiet mode, we set explicitly to ensure no messages get through
-        if log_level >= logging.ERROR:
+        if log_level >= logging.WARNING:
             logger.setLevel(log_level)
         else:
             # For non-quiet modes, let loggers inherit from root

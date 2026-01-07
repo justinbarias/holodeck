@@ -13,6 +13,7 @@ Key features:
 
 import asyncio
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -116,6 +117,7 @@ class AgentThreadRun:
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = DEFAULT_RETRY_DELAY_SECONDS,
         retry_exponential_base: float = DEFAULT_RETRY_EXPONENTIAL_BASE,
+        observability_enabled: bool = False,
     ) -> None:
         """Initialize an agent thread run with isolated chat history.
 
@@ -127,6 +129,7 @@ class AgentThreadRun:
             max_retries: Maximum retry attempts for transient failures.
             retry_delay: Base delay in seconds for exponential backoff.
             retry_exponential_base: Exponential base for backoff calculation.
+            observability_enabled: Whether OTel tracing is enabled.
         """
         self.agent = agent
         self.kernel = kernel
@@ -135,6 +138,7 @@ class AgentThreadRun:
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.retry_exponential_base = retry_exponential_base
+        self.observability_enabled = observability_enabled
         self.chat_history = ChatHistory()  # Fresh history per instance
 
         logger.debug(
@@ -154,36 +158,46 @@ class AgentThreadRun:
         Raises:
             AgentFactoryError: If invocation fails after retries.
         """
-        try:
-            # Add user input to chat history
-            self.chat_history.add_user_message(user_input)
+        # Create tracer span only if observability is enabled
+        if self.observability_enabled:
+            from holodeck.lib.observability import get_tracer
 
-            # Invoke with timeout and retry logic
-            if self.timeout:
-                logger.debug(
-                    f"Invoking agent with timeout={self.timeout}s "
-                    f"(input length: {len(user_input)} chars)"
-                )
-                result = await asyncio.wait_for(
-                    self._invoke_with_retry(), timeout=self.timeout
-                )
-            else:
-                logger.debug(
-                    f"Invoking agent without timeout "
-                    f"(input length: {len(user_input)} chars)"
-                )
-                result = await self._invoke_with_retry()
+            tracer = get_tracer(__name__)
+            span_context: Any = tracer.start_as_current_span("holodeck.agent.invoke")
+        else:
+            span_context = nullcontext()
 
-            return result
+        with span_context:
+            try:
+                # Add user input to chat history
+                self.chat_history.add_user_message(user_input)
 
-        except TimeoutError as e:
-            raise AgentFactoryError(
-                f"Agent invocation timeout after {self.timeout}s"
-            ) from e
-        except AgentFactoryError:
-            raise
-        except Exception as e:
-            raise AgentFactoryError(f"Agent invocation failed: {e}") from e
+                # Invoke with timeout and retry logic
+                if self.timeout:
+                    logger.debug(
+                        f"Invoking agent with timeout={self.timeout}s "
+                        f"(input length: {len(user_input)} chars)"
+                    )
+                    result = await asyncio.wait_for(
+                        self._invoke_with_retry(), timeout=self.timeout
+                    )
+                else:
+                    logger.debug(
+                        f"Invoking agent without timeout "
+                        f"(input length: {len(user_input)} chars)"
+                    )
+                    result = await self._invoke_with_retry()
+
+                return result
+
+            except TimeoutError as e:
+                raise AgentFactoryError(
+                    f"Agent invocation timeout after {self.timeout}s"
+                ) from e
+            except AgentFactoryError:
+                raise
+            except Exception as e:
+                raise AgentFactoryError(f"Agent invocation failed: {e}") from e
 
     async def _invoke_with_retry(self) -> AgentExecutionResult:
         """Invoke agent with retry logic for transient failures.
@@ -551,6 +565,17 @@ class AgentFactory:
         except Exception as e:
             logger.error(f"Failed to initialize agent factory: {e}", exc_info=True)
             raise AgentFactoryError(f"Failed to initialize agent factory: {e}") from e
+
+    def _is_observability_enabled(self) -> bool:
+        """Check if observability is enabled for this agent.
+
+        Returns:
+            True if observability is configured and enabled, False otherwise.
+        """
+        return (
+            self.agent_config.observability is not None
+            and self.agent_config.observability.enabled
+        )
 
     def _create_kernel(self) -> Kernel:
         """Create and configure Semantic Kernel for LLM provider.
@@ -1029,6 +1054,7 @@ class AgentFactory:
             max_retries=self.max_retries,
             retry_delay=self.retry_delay,
             retry_exponential_base=self.retry_exponential_base,
+            observability_enabled=self._is_observability_enabled(),
         )
 
     def _build_kernel_arguments(self) -> KernelArguments:

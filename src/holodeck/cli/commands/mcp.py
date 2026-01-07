@@ -27,6 +27,7 @@ from holodeck.lib.errors import (
     RegistryConnectionError,
     ServerNotFoundError,
 )
+from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.models.registry import RegistryServer, SearchResult
 from holodeck.models.tool import MCPTool
 from holodeck.services.mcp_registry import (
@@ -35,6 +36,8 @@ from holodeck.services.mcp_registry import (
     find_stdio_package,
     registry_to_mcp_tool,
 )
+
+logger = get_logger(__name__)
 
 # --- Helper Functions for Search Command ---
 
@@ -363,7 +366,21 @@ def mcp() -> None:
     is_flag=True,
     help="Output results as JSON",
 )
-def search(query: str | None, limit: int, as_json: bool) -> None:
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose debug logging",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress INFO logging output",
+)
+def search(
+    query: str | None, limit: int, as_json: bool, verbose: bool, quiet: bool
+) -> None:
     """Search the MCP registry for available servers.
 
     QUERY is an optional search term to filter servers by name.
@@ -381,6 +398,10 @@ def search(query: str | None, limit: int, as_json: bool) -> None:
         Get results as JSON:
             holodeck mcp search --json
     """
+    # Initialize logging
+    setup_logging(verbose=verbose, quiet=quiet)
+    logger.debug(f"MCP search command invoked: query={query}, limit={limit}")
+
     try:
         with MCPRegistryClient() as client:
             result = client.search(query=query, limit=limit)
@@ -430,11 +451,25 @@ def search(query: str | None, limit: int, as_json: bool) -> None:
     is_flag=True,
     help="Output results as JSON",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose debug logging",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress INFO logging output",
+)
 def list_cmd(
     agent_file: str,
     global_only: bool,
     show_all: bool,
     as_json: bool,
+    verbose: bool,
+    quiet: bool,
 ) -> None:
     """List installed MCP servers.
 
@@ -453,6 +488,12 @@ def list_cmd(
         List all servers with source labels:
             holodeck mcp list --all
     """
+    # Initialize logging
+    setup_logging(verbose=verbose, quiet=quiet)
+    logger.debug(
+        f"MCP list command invoked: agent_file={agent_file}, global_only={global_only}"
+    )
+
     servers: list[tuple[MCPTool, str]] = []
 
     try:
@@ -534,6 +575,18 @@ def list_cmd(
     default=None,
     help="Custom name for the server (overrides default short name)",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose debug logging",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress INFO logging output",
+)
 def add(
     server: str,
     agent_file: str,
@@ -541,6 +594,8 @@ def add(
     server_version: str,
     transport: str,
     custom_name: str | None,
+    verbose: bool,
+    quiet: bool,
 ) -> None:
     """Add an MCP server to your configuration.
 
@@ -562,6 +617,10 @@ def add(
         Add specific version:
             holodeck mcp add io.github.example/server --version 1.2.0
     """
+    # Initialize logging
+    setup_logging(verbose=verbose, quiet=quiet)
+    logger.debug(f"MCP add command invoked: server={server}, version={server_version}")
+
     try:
         # 1. Fetch server from registry
         with MCPRegistryClient() as client:
@@ -658,10 +717,24 @@ def add(
     is_flag=True,
     help="Remove from global configuration",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose debug logging",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress INFO logging output",
+)
 def remove(
     server: str,
     agent_file: str,
     global_remove: bool,
+    verbose: bool,
+    quiet: bool,
 ) -> None:
     """Remove an MCP server from your configuration.
 
@@ -679,6 +752,10 @@ def remove(
         Remove from global config:
             holodeck mcp remove github -g
     """
+    # Initialize logging
+    setup_logging(verbose=verbose, quiet=quiet)
+    logger.debug(f"MCP remove command invoked: server={server}, global={global_remove}")
+
     try:
         if global_remove:
             remove_mcp_server_from_global(server)

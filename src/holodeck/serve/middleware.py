@@ -9,6 +9,8 @@ from __future__ import annotations
 import time
 import traceback
 from collections.abc import Awaitable, Callable
+from contextlib import nullcontext
+from typing import Any
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -24,24 +26,29 @@ RequestCallNext = Callable[[Request], Awaitable[Response]]
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
-    """Middleware for request/response logging.
+    """Middleware for request/response logging and tracing.
 
     Captures request metadata including timestamp, endpoint, session ID,
-    and latency for each request.
+    and latency for each request. When observability is enabled, creates
+    per-request trace spans with HTTP attributes.
     """
 
-    def __init__(self, app: Callable, debug: bool = False) -> None:
+    def __init__(
+        self, app: Callable, debug: bool = False, observability_enabled: bool = False
+    ) -> None:
         """Initialize logging middleware.
 
         Args:
             app: The ASGI application.
             debug: Enable verbose logging of full request/response content.
+            observability_enabled: Enable OpenTelemetry per-request tracing.
         """
         super().__init__(app)
         self.debug = debug
+        self.observability_enabled = observability_enabled
 
     async def dispatch(self, request: Request, call_next: RequestCallNext) -> Response:
-        """Process request and log metadata.
+        """Process request, log metadata, and create trace span if enabled.
 
         Args:
             request: The incoming HTTP request.
@@ -55,44 +62,70 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         # Extract session ID from various sources
         session_id = self._extract_session_id(request)
 
-        # Log request
-        logger.info(
-            "Request started",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "session_id": session_id,
-            },
-        )
+        # Create span context for per-request tracing
+        if self.observability_enabled:
+            from opentelemetry import trace
 
-        if self.debug:
-            logger.debug(
-                "Request details",
+            from holodeck.lib.observability import get_tracer
+
+            tracer = get_tracer(__name__)
+            span_context: Any = tracer.start_as_current_span(
+                "holodeck.serve.request",
+                kind=trace.SpanKind.SERVER,
+            )
+        else:
+            span_context = nullcontext()
+
+        with span_context as span:
+            # Set initial span attributes if span exists
+            if span:
+                span.set_attribute("http.method", request.method)
+                span.set_attribute("http.route", request.url.path)
+                if session_id:
+                    span.set_attribute("session.id", session_id)
+
+            # Log request
+            logger.info(
+                "Request started",
                 extra={
-                    "headers": dict(request.headers),
-                    "query_params": dict(request.query_params),
+                    "method": request.method,
+                    "path": request.url.path,
+                    "session_id": session_id,
                 },
             )
 
-        # Process request
-        response = await call_next(request)
+            if self.debug:
+                logger.debug(
+                    "Request details",
+                    extra={
+                        "headers": dict(request.headers),
+                        "query_params": dict(request.query_params),
+                    },
+                )
 
-        # Calculate latency
-        latency_ms = (time.perf_counter() - start_time) * 1000
+            # Process request
+            response = await call_next(request)
 
-        # Log response
-        logger.info(
-            "Request completed",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "status_code": response.status_code,
-                "latency_ms": round(latency_ms, 2),
-                "session_id": session_id,
-            },
-        )
+            # Set response status on span
+            if span:
+                span.set_attribute("http.status_code", response.status_code)
 
-        return response
+            # Calculate latency
+            latency_ms = (time.perf_counter() - start_time) * 1000
+
+            # Log response
+            logger.info(
+                "Request completed",
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": response.status_code,
+                    "latency_ms": round(latency_ms, 2),
+                    "session_id": session_id,
+                },
+            )
+
+            return response
 
     def _extract_session_id(self, request: Request) -> str | None:
         """Extract session ID from request.

@@ -8,12 +8,19 @@ import asyncio
 import sys
 import threading
 import time
+from contextlib import nullcontext
 from pathlib import Path
+from typing import Any
 
 import click
 
 from holodeck.lib.errors import ConfigError, EvaluationError, ExecutionError
 from holodeck.lib.logging_config import get_logger, setup_logging
+from holodeck.lib.observability import (
+    ObservabilityContext,
+    initialize_observability,
+    shutdown_observability,
+)
 from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.lib.test_runner.progress import ProgressIndicator
 from holodeck.lib.test_runner.reporter import generate_markdown_report
@@ -113,16 +120,9 @@ def test(
 
     AGENT_CONFIG is the path to the agent.yaml configuration file.
     """
-    # Reconfigure logging based on CLI flags
-    # If verbose is enabled, it overrides quiet mode
+    # Initialize observability context (will be set if observability enabled)
+    obs_context: ObservabilityContext | None = None
     effective_quiet = quiet and not verbose
-    setup_logging(verbose=verbose, quiet=effective_quiet)
-
-    logger.info(
-        f"Test command invoked: config={agent_config}, "
-        f"verbose={verbose}, quiet={quiet}, timeout={timeout}, "
-        f"force_ingest={force_ingest}"
-    )
 
     start_time = time.time()
 
@@ -140,14 +140,31 @@ def test(
                 quiet=quiet or None,
             )
 
-        # Load agent config to get test count for progress indicator
+        # Load agent config FIRST to check observability setting
         from holodeck.config.context import agent_base_dir
         from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
         from holodeck.config.loader import ConfigLoader
 
-        logger.debug(f"Loading agent configuration from {agent_config}")
         loader = ConfigLoader()
         agent = loader.load_agent_yaml(agent_config)
+
+        # Determine logging strategy: OTel replaces setup_logging when enabled
+        if agent.observability and agent.observability.enabled:
+            # OTel handles all logging - skip setup_logging
+            # Console exporter not enabled by default (only serve enables it)
+            obs_context = initialize_observability(
+                agent.observability, agent.name, verbose=verbose, quiet=quiet
+            )
+        else:
+            # Traditional logging
+            setup_logging(verbose=verbose, quiet=effective_quiet)
+
+        logger.info(
+            f"Test command invoked: config={agent_config}, "
+            f"verbose={verbose}, quiet={quiet}, timeout={timeout}, "
+            f"force_ingest={force_ingest}"
+        )
+        logger.debug(f"Loading agent configuration from {agent_config}")
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
 
         # Set the base directory context for resolving relative paths in tools
@@ -231,13 +248,27 @@ def test(
         if not quiet and sys.stdout.isatty():
             spinner_thread.start()
 
+        # Determine if observability is enabled for span creation
+        observability_enabled = obs_context is not None
+
         async def run_tests_with_cleanup() -> TestReport:
             """Execute tests and ensure proper cleanup of MCP plugins."""
-            try:
-                return await executor.execute_tests()
-            finally:
-                await executor.shutdown()
+            # Create parent span for test command if observability is enabled
+            if observability_enabled:
+                from holodeck.lib.observability import get_tracer
 
+                tracer = get_tracer(__name__)
+                span_context: Any = tracer.start_as_current_span("holodeck.cli.test")
+            else:
+                span_context = nullcontext()
+
+            with span_context:
+                try:
+                    return await executor.execute_tests()
+                finally:
+                    await executor.shutdown()
+
+        # Run tests
         try:
             report = asyncio.run(run_tests_with_cleanup())
         finally:
@@ -286,6 +317,10 @@ def test(
         logger.error(f"Unexpected error: {e}", exc_info=True)
         click.echo(f"Error: {str(e)}", err=True)
         sys.exit(3)
+    finally:
+        # Shutdown observability if it was initialized
+        if obs_context:
+            shutdown_observability(obs_context)
 
 
 def _save_report(report: TestReport, output: str, format: str | None) -> None:
