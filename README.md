@@ -600,7 +600,7 @@ observability:
 
 - [x] **v0.1** - Core agent engine + CLI
 - [x] **v0.2** - Evaluation framework (DeepEval, NLP), Tools (MCP, Vectorstore)
-- [ ] **v0.3** - API deployment, OpenTelemetry observability
+- [x] **v0.3** - API deployment, OpenTelemetry observability
 - [ ] **v0.4** - Web UI (no-code editor)
 - [ ] **v0.5** - Multi-agent orchestration
 - [ ] **v0.6** - Enterprise features (SSO, audit logs, RBAC)

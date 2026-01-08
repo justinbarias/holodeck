@@ -72,6 +72,7 @@ When multiple configuration sources define the same setting, HoloDeck applies th
 #### Example 1: Provider Override
 
 Global config:
+
 ```yaml
 providers:
   openai:
@@ -80,11 +81,12 @@ providers:
 ```
 
 Agent config:
+
 ```yaml
 model:
   provider: openai
-  name: gpt-4o       # Overrides global default
-  temperature: 0.5   # Overrides global default
+  name: gpt-4o # Overrides global default
+  temperature: 0.5 # Overrides global default
 ```
 
 Result: Agent uses `gpt-4o` at temperature `0.5` (agent config wins)
@@ -92,6 +94,7 @@ Result: Agent uses `gpt-4o` at temperature `0.5` (agent config wins)
 #### Example 2: Environment Variable
 
 Global config:
+
 ```yaml
 providers:
   openai:
@@ -99,12 +102,14 @@ providers:
 ```
 
 Agent config:
+
 ```yaml
 model:
   provider: openai
 ```
 
 Environment:
+
 ```bash
 export OPENAI_API_KEY="sk-..."
 ```
@@ -114,6 +119,7 @@ Result: Uses environment variable for API key
 #### Example 3: Full Precedence Chain
 
 Global config:
+
 ```yaml
 providers:
   default_model: gpt-4o-mini
@@ -123,16 +129,18 @@ deployment:
 ```
 
 Agent config:
+
 ```yaml
 model:
   provider: openai
   # No explicit temperature
 
 deployment:
-  port: 8080  # Overrides global
+  port: 8080 # Overrides global
 ```
 
 Environment:
+
 ```bash
 export TEMPERATURE=0.5
 ```
@@ -178,13 +186,13 @@ model:
   provider: openai
   # Inherits temperature: 0.7 from global, can override
 
-response_format:  # Cannot be inherited, must define here
+response_format: # Cannot be inherited, must define here
   type: object
   properties:
     answer:
       type: string
 
-instructions:  # Must be defined here
+instructions: # Must be defined here
   inline: "You are a helpful assistant"
 ```
 
@@ -195,19 +203,19 @@ Defines LLM provider configurations with credentials and defaults.
 ```yaml
 providers:
   azure_openai:
-    provider: azure_openai              # Required: provider type
-    name: gpt-4o                        # Required: model name
-    temperature: 0.3                    # Optional: temperature (0.0-2.0)
-    max_tokens: 2048                    # Optional: max tokens
-    endpoint: ${AZURE_OPENAI_ENDPOINT}  # Required: Azure endpoint
-    api_key: ${AZURE_OPENAI_API_KEY}    # Required: API key
+    provider: azure_openai # Required: provider type
+    name: gpt-4o # Required: model name
+    temperature: 0.3 # Optional: temperature (0.0-2.0)
+    max_tokens: 2048 # Optional: max tokens
+    endpoint: ${AZURE_OPENAI_ENDPOINT} # Required: Azure endpoint
+    api_key: ${AZURE_OPENAI_API_KEY} # Required: API key
 
   openai:
     provider: openai
     name: gpt-4o-mini
     temperature: 0.7
     api_key: ${OPENAI_API_KEY}
-    organization: my-org                # Optional
+    organization: my-org # Optional
 
   anthropic:
     provider: anthropic
@@ -237,13 +245,13 @@ Configures execution settings for agent test runs and file processing.
 
 ```yaml
 execution:
-  file_timeout: 30            # Timeout for file processing (seconds)
-  llm_timeout: 60             # Timeout for LLM API calls (seconds)
-  download_timeout: 30        # Timeout for downloading files (seconds)
-  cache_enabled: true         # Enable caching of file downloads
-  cache_dir: .holodeck_cache  # Directory for cache storage
-  verbose: false              # Enable verbose logging
-  quiet: false                # Enable quiet mode
+  file_timeout: 30 # Timeout for file processing (seconds)
+  llm_timeout: 60 # Timeout for LLM API calls (seconds)
+  download_timeout: 30 # Timeout for downloading files (seconds)
+  cache_enabled: true # Enable caching of file downloads
+  cache_dir: .holodeck_cache # Directory for cache storage
+  verbose: false # Enable verbose logging
+  quiet: false # Enable quiet mode
 ```
 
 ### Execution Fields
@@ -263,8 +271,8 @@ Replace sensitive values with environment variables using `${VAR_NAME}` syntax:
 ```yaml
 providers:
   openai:
-    api_key: ${OPENAI_API_KEY}      # Reads from environment
-    organization: my-org             # Literal value
+    api_key: ${OPENAI_API_KEY} # Reads from environment
+    organization: my-org # Literal value
 ```
 
 ### Setting Environment Variables
@@ -368,6 +376,7 @@ execution:
 Keep secrets in global config with environment variable substitution:
 
 Global config (project root):
+
 ```yaml
 # config.yaml
 providers:
@@ -379,6 +388,7 @@ providers:
 ```
 
 Agent config:
+
 ```yaml
 # agent.yaml
 model:
@@ -387,6 +397,7 @@ model:
 ```
 
 Environment:
+
 ```bash
 export AZURE_OPENAI_ENDPOINT="https://..."
 export AZURE_OPENAI_API_KEY="..."
@@ -397,6 +408,7 @@ export AZURE_OPENAI_API_KEY="..."
 Set timeouts and caching for all agents:
 
 Global config:
+
 ```yaml
 # config.yaml
 providers:
@@ -419,6 +431,7 @@ All agents inherit these execution settings automatically.
 Configure multiple providers for different use cases:
 
 Global config:
+
 ```yaml
 # config.yaml
 providers:
@@ -438,10 +451,11 @@ execution:
 ```
 
 Agent config (use either provider):
+
 ```yaml
 # agent.yaml
 model:
-  provider: azure_openai  # or openai
+  provider: azure_openai # or openai
   # Model name and settings come from global config
 ```
 
@@ -454,12 +468,14 @@ You can create configuration files using the `holodeck config init` command or m
 The CLI provides a convenient way to initialize configuration files with default settings.
 
 **Initialize Global Configuration:**
+
 ```bash
 holodeck config init -g
 # Creates ~/.holodeck/config.yaml
 ```
 
 **Initialize Project Configuration:**
+
 ```bash
 holodeck config init -p
 # Creates config.yaml in the current directory
@@ -632,4 +648,3 @@ holodeck test
 
 - See [Agent Configuration Guide](agent-configuration.md) for agent-specific settings
 - See [File References Guide](file-references.md) for path resolution
-- See [Environment Variables Documentation](../guides/environment-variables.md) (future)

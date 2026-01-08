@@ -42,6 +42,8 @@ nav:
     - Evaluations: guides/evaluations.md
     - Global Configuration: guides/global-config.md
     - File References: guides/file-references.md
+    - Agent Server: guides/serve.md
+    - Observability: guides/observability.md
   - Examples:
     - Overview: examples/README.md
   - API Reference:

@@ -11,6 +11,8 @@
 - **Flexible Tool Integration**: Vector stores, custom functions, MCP servers, and AI-powered tools
 - **Built-in Testing & Evaluation**: Run evaluations with multiple metrics, customize models per metric
 - **Multimodal Test Support**: Images, PDFs, Word docs, Excel sheets, and mixed media in test cases
+- **Agent Server**: Deploy agents as REST APIs or AG-UI endpoints for integration with web apps
+- **OpenTelemetry Observability**: Built-in tracing, metrics, and logs with OTLP export
 
 ## Get Started
 
@@ -26,6 +28,8 @@ uv tool install holodeck-ai@latest --prerelease allow --python 3.10
 - **[Tools Guide](guides/tools.md)** - All tool types explained with examples
 - **[Evaluations](guides/evaluations.md)** - Testing and evaluation framework
 - **[Global Configuration](guides/global-config.md)** - System-wide settings and precedence rules
+- **[Agent Server](guides/serve.md)** - Deploy agents as REST and AG-UI endpoints
+- **[Observability](guides/observability.md)** - OpenTelemetry integration and tracing
 - **[API Reference](api/models.md)** - Python API documentation
 
 ## Examples
@@ -34,18 +38,18 @@ Browse **[complete examples](examples/README.md)** including basic agents, tool 
 
 ## Project Status
 
-**Version**: 0.2.0 (Development)
+**Version**: 0.3.0
 
 - Core configuration schema (Pydantic models)
 - YAML parsing and validation
 - Environment variable support
-- CLI interface (holodeck command with init, test, chat, deploy)
+- CLI interface (holodeck command with init, test, chat, serve)
 - Agent execution engine (LLM provider integration, tool execution, memory)
 - Interactive chat with spinner, token tracking, and adaptive status display
 - Evaluation framework (AI-powered and NLP metrics with threshold validation)
-- Deployment tools (planned for v0.3)
-- Multi-agent orchestration (planned for v0.3)
-- OpenTelemetry instrumentation (planned for v0.3)
+- Agent Local Server with REST API and AG-UI endpoints
+- OpenTelemetry instrumentation with OTLP export
+- Multi-agent orchestration (planned for v0.4)
 
 ## Community & Support
 
