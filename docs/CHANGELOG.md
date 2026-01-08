@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Deployment Engine**: Convert agents to production FastAPI endpoints
 - **CLI Commands**: `holodeck deploy`
 - **Plugin System**: Pre-built plugin packages for common integrations
-- **Agent Framework Migration**: Plans to migrate the Agents abstraction to [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/agent-framework-overview) once it reaches 1.0
+- **Agent Framework Migration**: Plans to migrate away from Semantic Kernel to another agent framework (either Agents Framework, or Google ADK, alternatively support for Claude Agent SDK)
 
 ---
 
