@@ -11,9 +11,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Deployment Engine**: Convert agents to production FastAPI endpoints
 - **CLI Commands**: `holodeck deploy`
-- **Observability**: OpenTelemetry integration with GenAI semantic conventions
 - **Plugin System**: Pre-built plugin packages for common integrations
-- **Agent Framework Migration**: Plans to migrate the Agents abstraction to [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework/overview/agent-framework-overview) once it reaches 1.0
+- **Agent Framework Migration**: Plans to migrate away from Semantic Kernel to another agent framework (either Agents Framework, or Google ADK, alternatively support for Claude Agent SDK)
+
+---
+
+## [0.3.0] - 2026-01-08
+
+### Added
+
+- **OpenTelemetry Observability**: Full observability instrumentation with GenAI semantic conventions
+  - OpenTelemetry configuration models (traces, metrics, logs)
+  - OTLP export support for traces and metrics
+- **Agent Local Server (`holodeck serve`)**: REST API server for agents
+  - FastAPI-based REST endpoints for agent invocation
+  - AG-UI compliant endpoint for agent interaction
+
+---
+
+## [0.1.7] - 2025-12-27
+
+### Added
+
+- **MCP CLI Commands**: Complete CLI for managing MCP servers
+  - `holodeck mcp search`: Search MCP registry for servers
+  - `holodeck mcp add`: Add MCP servers to configuration
+  - `holodeck mcp list`: List configured servers (agent and global)
+  - `holodeck mcp remove`: Remove MCP servers from configuration
+  - Global MCP server merge into agent configurations
+- **Structured Data Ingestion**: Loader and vectorstore integration for structured data sources
+- **Vectorstore Reranking**: Reranking support for vectorstore search results
+- **Interactive Config Wizard Enhancements**:
+  - Template selection step
+  - LLM provider selection step
+- **DeepEval Metrics**: DeepEval integration as alternative/complement to Azure AI Evals
+- **CLI Defaults**: `agent.yaml` as default config for `chat` and `test` commands
+- **New Package Entrypoint**: Added `holodeck-ai` script entrypoint
+
+### Changed
+
+- **Vector Store Providers**: Removed Redis support, added PostgreSQL (pgvector), Pinecone, and Qdrant
+- **Documentation**: Updated for `uv tool install`, Ollama as preferred provider
+- **Test Progress/Reporting**: Improved display and refactored agent_factory
+- **Schema Validation**: Relaxed validation for better flexibility
+
+### Fixed
+
+- Telemetry warning in CLI
+- CNAME configuration bug
 
 ---
 
@@ -415,17 +460,19 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 
 ---
 
-[unreleased]: https://github.com/justinbarias/agentlab/compare/0.1.6...HEAD
-[0.1.6]: https://github.com/justinbarias/agentlab/compare/0.1.5...0.1.6
-[0.1.5]: https://github.com/justinbarias/agentlab/compare/0.1.4...0.1.5
-[0.1.4]: https://github.com/justinbarias/agentlab/compare/0.1.3...0.1.4
-[0.1.3]: https://github.com/justinbarias/agentlab/compare/0.1.2...0.1.3
-[0.1.2]: https://github.com/justinbarias/agentlab/compare/0.1.1...0.1.2
-[0.1.1]: https://github.com/justinbarias/agentlab/compare/0.1.0...0.1.1
-[0.1.0]: https://github.com/justinbarias/agentlab/compare/0.0.14...0.1.0
-[0.0.14]: https://github.com/justinbarias/agentlab/compare/0.0.7...0.0.14
-[0.0.7]: https://github.com/justinbarias/agentlab/compare/0.0.6...0.0.7
-[0.0.6]: https://github.com/justinbarias/agentlab/compare/0.0.5...0.0.6
-[0.0.5]: https://github.com/justinbarias/agentlab/compare/0.0.4...0.0.5
-[0.0.4]: https://github.com/justinbarias/agentlab/compare/0.0.1...0.0.4
-[0.0.1]: https://github.com/justinbarias/agentlab/releases/tag/0.0.1
+[unreleased]: https://github.com/justinbarias/holodeck/compare/0.3.0...HEAD
+[0.3.0]: https://github.com/justinbarias/holodeck/compare/0.1.7...0.3.0
+[0.1.7]: https://github.com/justinbarias/holodeck/compare/0.1.6...0.1.7
+[0.1.6]: https://github.com/justinbarias/holodeck/compare/0.1.5...0.1.6
+[0.1.5]: https://github.com/justinbarias/holodeck/compare/0.1.4...0.1.5
+[0.1.4]: https://github.com/justinbarias/holodeck/compare/0.1.3...0.1.4
+[0.1.3]: https://github.com/justinbarias/holodeck/compare/0.1.2...0.1.3
+[0.1.2]: https://github.com/justinbarias/holodeck/compare/0.1.1...0.1.2
+[0.1.1]: https://github.com/justinbarias/holodeck/compare/0.1.0...0.1.1
+[0.1.0]: https://github.com/justinbarias/holodeck/compare/0.0.14...0.1.0
+[0.0.14]: https://github.com/justinbarias/holodeck/compare/0.0.7...0.0.14
+[0.0.7]: https://github.com/justinbarias/holodeck/compare/0.0.6...0.0.7
+[0.0.6]: https://github.com/justinbarias/holodeck/compare/0.0.5...0.0.6
+[0.0.5]: https://github.com/justinbarias/holodeck/compare/0.0.4...0.0.5
+[0.0.4]: https://github.com/justinbarias/holodeck/compare/0.0.1...0.0.4
+[0.0.1]: https://github.com/justinbarias/holodeck/releases/tag/0.0.1
