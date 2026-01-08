@@ -11,6 +11,12 @@ Main features:
 - OpenTelemetry observability
 """
 
+import os
+
+# CRITICAL: Disable deepeval telemetry BEFORE any imports to prevent it from
+# setting a TracerProvider. This allows HoloDeck to control OTel configuration.
+os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
+
 from importlib.metadata import PackageNotFoundError, version
 
 from holodeck.config.loader import ConfigLoader

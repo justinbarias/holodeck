@@ -8,7 +8,9 @@ import asyncio
 import sys
 import threading
 import time
+from contextlib import nullcontext
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -18,6 +20,11 @@ from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
 from holodeck.lib.errors import AgentInitializationError, ConfigError, ExecutionError
 from holodeck.lib.logging_config import get_logger, setup_logging
+from holodeck.lib.observability import (
+    ObservabilityContext,
+    initialize_observability,
+    shutdown_observability,
+)
 from holodeck.models.agent import Agent
 from holodeck.models.chat import ChatConfig
 from holodeck.models.config import ExecutionConfig
@@ -70,8 +77,8 @@ class ChatSpinnerThread(threading.Thread):
 @click.option(
     "--quiet/--no-quiet",
     "-q/-Q",
-    default=True,
-    help="Suppress logging output (default: quiet). Use -Q or --no-quiet to show logs.",
+    default=False,
+    help="Suppress INFO logging output. Use -q or --quiet to hide logs.",
 )
 @click.option(
     "--observability",
@@ -122,24 +129,34 @@ def chat(
         --observability / -o    Enable OpenTelemetry tracing for debugging
         --max-messages / -m     Set max messages before context warning (default: 50)
     """
-    # Reconfigure logging based on CLI flags
-    # If verbose is enabled, it overrides quiet mode
+    # Initialize observability context (will be set if observability enabled)
+    obs_context: ObservabilityContext | None = None
     effective_quiet = quiet and not verbose
-    setup_logging(verbose=verbose, quiet=effective_quiet)
-
-    logger.info(
-        f"Chat command invoked: config={agent_config}, "
-        f"verbose={verbose}, quiet={quiet}, observability={observability}, "
-        f"max_messages={max_messages}, force_ingest={force_ingest}"
-    )
 
     try:
-        # Load agent configuration
+        # Load agent configuration FIRST to check observability setting
         from holodeck.config.context import agent_base_dir
 
-        logger.debug(f"Loading agent configuration from {agent_config}")
         loader = ConfigLoader()
         agent = loader.load_agent_yaml(agent_config)
+
+        # Determine logging strategy: OTel replaces setup_logging when enabled
+        if agent.observability and agent.observability.enabled:
+            # OTel handles all logging - skip setup_logging
+            # Console exporter not enabled by default (only serve enables it)
+            obs_context = initialize_observability(
+                agent.observability, agent.name, verbose=verbose, quiet=quiet
+            )
+        else:
+            # Traditional logging
+            setup_logging(verbose=verbose, quiet=effective_quiet)
+
+        logger.info(
+            f"Chat command invoked: config={agent_config}, "
+            f"verbose={verbose}, quiet={quiet}, observability={observability}, "
+            f"max_messages={max_messages}, force_ingest={force_ingest}"
+        )
+        logger.debug(f"Loading agent configuration from {agent_config}")
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
 
         # Set the base directory context for resolving relative paths in tools
@@ -187,6 +204,7 @@ def chat(
                 max_messages=max_messages,
                 force_ingest=force_ingest,
                 llm_timeout=resolved_config.llm_timeout,
+                observability_enabled=obs_context is not None,
             )
         )
 
@@ -217,6 +235,10 @@ def chat(
         logger.error(f"Unexpected error: {e}", exc_info=True)
         click.secho(f"Error: {str(e)}", fg="red", err=True)
         sys.exit(1)
+    finally:
+        # Shutdown observability if it was initialized
+        if obs_context:
+            shutdown_observability(obs_context)
 
 
 async def _run_chat_session(
@@ -228,6 +250,7 @@ async def _run_chat_session(
     max_messages: int,
     force_ingest: bool = False,
     llm_timeout: int | None = None,
+    observability_enabled: bool = False,
 ) -> None:
     """Run the interactive chat session.
 
@@ -240,132 +263,143 @@ async def _run_chat_session(
         max_messages: Maximum messages before warning
         force_ingest: Force re-ingestion of vector store source files
         llm_timeout: LLM API call timeout in seconds
+        observability_enabled: Whether OTel tracing is enabled
 
     Raises:
         KeyboardInterrupt: When user interrupts (Ctrl+C)
     """
-    # Initialize session manager
-    try:
-        chat_config = ChatConfig(
-            agent_config_path=Path(agent_config_path),
-            verbose=verbose,
-            enable_observability=enable_observability,
-            max_messages=max_messages,
-            force_ingest=force_ingest,
-            llm_timeout=llm_timeout,
-        )
-        session_manager = ChatSessionManager(
-            agent_config=agent,
-            config=chat_config,
-        )
-    except Exception as e:
-        logger.error(f"Failed to initialize session: {e}", exc_info=True)
-        raise AgentInitializationError(agent.name, str(e)) from e
+    # Create parent span for chat command if observability is enabled
+    if observability_enabled:
+        from holodeck.lib.observability import get_tracer
 
-    # Start session
-    try:
-        logger.debug("Starting chat session")
-        await session_manager.start()
-    except Exception as e:
-        logger.error(f"Failed to start session: {e}", exc_info=True)
-        raise AgentInitializationError(agent.name, str(e)) from e
+        tracer = get_tracer(__name__)
+        span_context: Any = tracer.start_as_current_span("holodeck.cli.chat")
+    else:
+        span_context = nullcontext()
 
-    try:
-        # Display welcome message
-        click.secho(f"\nStarting chat with {agent.name}...", fg="green", bold=True)
-        click.echo("Type 'exit' or 'quit' to end session.")
-        click.echo()
+    with span_context:
+        # Initialize session manager
+        try:
+            chat_config = ChatConfig(
+                agent_config_path=Path(agent_config_path),
+                verbose=verbose,
+                enable_observability=enable_observability,
+                max_messages=max_messages,
+                force_ingest=force_ingest,
+                llm_timeout=llm_timeout,
+            )
+            session_manager = ChatSessionManager(
+                agent_config=agent,
+                config=chat_config,
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize session: {e}", exc_info=True)
+            raise AgentInitializationError(agent.name, str(e)) from e
 
-        # Initialize progress indicator
-        progress = ChatProgressIndicator(
-            max_messages=max_messages,
-            quiet=quiet,
-            verbose=verbose,
-        )
+        # Start session
+        try:
+            logger.debug("Starting chat session")
+            await session_manager.start()
+        except Exception as e:
+            logger.error(f"Failed to start session: {e}", exc_info=True)
+            raise AgentInitializationError(agent.name, str(e)) from e
 
-        # REPL loop
-        while True:
-            try:
-                # Get user input
-                user_input = click.prompt("You", default="").strip()
+        try:
+            # Display welcome message
+            click.secho(f"\nStarting chat with {agent.name}...", fg="green", bold=True)
+            click.echo("Type 'exit' or 'quit' to end session.")
+            click.echo()
 
-                # Check for exit commands
-                if user_input.lower() in ("exit", "quit"):
+            # Initialize progress indicator
+            progress = ChatProgressIndicator(
+                max_messages=max_messages,
+                quiet=quiet,
+                verbose=verbose,
+            )
+
+            # REPL loop
+            while True:
+                try:
+                    # Get user input
+                    user_input = click.prompt("You", default="").strip()
+
+                    # Check for exit commands
+                    if user_input.lower() in ("exit", "quit"):
+                        click.secho("Goodbye!", fg="yellow")
+                        break
+
+                    # Skip empty messages (validation handled in session)
+                    if not user_input:
+                        continue
+
+                    # Start spinner (always show, regardless of quiet mode)
+                    spinner = None
+                    if sys.stdout.isatty():
+                        spinner = ChatSpinnerThread(progress)
+                        spinner.start()
+
+                    try:
+                        logger.debug(f"Processing user message: {user_input[:50]}...")
+                        response = await session_manager.process_message(user_input)
+
+                        # Stop spinner
+                        if spinner:
+                            spinner.stop()
+                            spinner.join()
+
+                        # Display agent response
+                        if response:
+                            # Update progress
+                            progress.update(response)
+
+                            # Display response with status
+                            if verbose:
+                                click.echo(progress.get_status_panel())
+                                click.echo(f"Agent: {response.content}\n")
+                            else:
+                                # Inline status
+                                status = progress.get_status_inline()
+                                click.echo(f"Agent: {response.content} {status}\n")
+
+                            logger.debug(
+                                f"Agent responded with {len(response.tool_executions)} "
+                                f"tool executions"
+                            )
+
+                        # Check for context limit warning
+                        if session_manager.should_warn_context_limit():
+                            click.secho(
+                                "⚠️  Approaching context limit. Consider a new session.",
+                                fg="yellow",
+                            )
+                            click.echo()
+
+                    except Exception as e:
+                        # Stop spinner on error
+                        if spinner:
+                            spinner.stop()
+                            spinner.join()
+
+                        # Display error but continue session (don't crash)
+                        logger.warning(f"Error processing message: {e}")
+                        click.secho(f"Error: {str(e)}", fg="red")
+                        click.echo()
+
+                except EOFError:
+                    # Handle Ctrl+D
+                    click.echo()
                     click.secho("Goodbye!", fg="yellow")
                     break
 
-                # Skip empty messages (validation handled in session)
-                if not user_input:
-                    continue
-
-                # Start spinner (always show, regardless of quiet mode)
-                spinner = None
-                if sys.stdout.isatty():
-                    spinner = ChatSpinnerThread(progress)
-                    spinner.start()
-
-                try:
-                    logger.debug(f"Processing user message: {user_input[:50]}...")
-                    response = await session_manager.process_message(user_input)
-
-                    # Stop spinner
-                    if spinner:
-                        spinner.stop()
-                        spinner.join()
-
-                    # Display agent response
-                    if response:
-                        # Update progress
-                        progress.update(response)
-
-                        # Display response with status
-                        if verbose:
-                            click.echo(progress.get_status_panel())
-                            click.echo(f"Agent: {response.content}\n")
-                        else:
-                            # Inline status
-                            status = progress.get_status_inline()
-                            click.echo(f"Agent: {response.content} {status}\n")
-
-                        logger.debug(
-                            f"Agent responded with {len(response.tool_executions)} "
-                            f"tool executions"
-                        )
-
-                    # Check for context limit warning
-                    if session_manager.should_warn_context_limit():
-                        click.secho(
-                            "⚠️  Approaching context limit. Consider a new session.",
-                            fg="yellow",
-                        )
-                        click.echo()
-
-                except Exception as e:
-                    # Stop spinner on error
-                    if spinner:
-                        spinner.stop()
-                        spinner.join()
-
-                    # Display error but continue session (don't crash)
-                    logger.warning(f"Error processing message: {e}")
-                    click.secho(f"Error: {str(e)}", fg="red")
-                    click.echo()
-
-            except EOFError:
-                # Handle Ctrl+D
-                click.echo()
-                click.secho("Goodbye!", fg="yellow")
-                break
-
-    except KeyboardInterrupt:
-        # Handle Ctrl+C
-        click.echo()
-        click.secho("Goodbye!", fg="yellow")
-        raise
-    finally:
-        # Cleanup
-        try:
-            logger.debug("Terminating chat session")
-            await session_manager.terminate()
-        except Exception as e:
-            logger.warning(f"Error during session cleanup: {e}")
+        except KeyboardInterrupt:
+            # Handle Ctrl+C
+            click.echo()
+            click.secho("Goodbye!", fg="yellow")
+            raise
+        finally:
+            # Cleanup
+            try:
+                logger.debug("Terminating chat session")
+                await session_manager.terminate()
+            except Exception as e:
+                logger.warning(f"Error during session cleanup: {e}")

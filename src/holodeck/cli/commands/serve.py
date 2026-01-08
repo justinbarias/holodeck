@@ -8,14 +8,20 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from contextlib import nullcontext
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import click
 
 from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.logging_config import get_logger, setup_logging
+from holodeck.lib.observability import (
+    ObservabilityContext,
+    initialize_observability,
+    shutdown_observability,
+)
 from holodeck.models.config import ExecutionConfig
 
 if TYPE_CHECKING:
@@ -53,9 +59,16 @@ logger = get_logger(__name__)
     help="Protocol to use (default: ag-ui)",
 )
 @click.option(
-    "--debug/--no-debug",
-    default=False,
-    help="Enable debug logging",
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose debug logging",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress INFO logging output",
 )
 @click.option(
     "--cors-origins",
@@ -68,7 +81,8 @@ def serve(
     port: int,
     host: str,
     protocol: str,
-    debug: bool,
+    verbose: bool,
+    quiet: bool,
     cors_origins: str,
 ) -> None:
     """Start an HTTP server exposing an agent.
@@ -93,25 +107,46 @@ def serve(
         --port / -p         Port to listen on (default: 8000)
         --host / -h         Host to bind to (default: 127.0.0.1)
         --protocol          Protocol to use: ag-ui or rest (default: ag-ui)
-        --debug             Enable debug logging
+        --verbose / -v      Enable verbose debug logging
+        --quiet / -q        Suppress INFO logging output
         --cors-origins      Comma-separated CORS origins (default: *)
     """
-    # Setup logging
-    setup_logging(verbose=debug, quiet=not debug)
-
-    logger.info(
-        f"Serve command invoked: config={agent_config}, "
-        f"port={port}, host={host}, protocol={protocol}, debug={debug}"
-    )
+    # Initialize observability context (will be set if observability enabled)
+    obs_context: ObservabilityContext | None = None
 
     try:
-        # Load agent configuration
+        # Load agent configuration FIRST to check observability setting
         from holodeck.config.context import agent_base_dir
         from holodeck.config.loader import ConfigLoader
 
-        logger.debug(f"Loading agent configuration from {agent_config}")
         loader = ConfigLoader()
         agent = loader.load_agent_yaml(agent_config)
+
+        # Determine logging strategy: OTel replaces setup_logging when enabled
+        if agent.observability and agent.observability.enabled:
+            # Enable console exporter for serve command (structured OTel output)
+            from holodeck.models.observability import ConsoleExporterConfig
+
+            if agent.observability.exporters.console is None:
+                agent.observability.exporters.console = ConsoleExporterConfig(
+                    enabled=True
+                )
+            else:
+                agent.observability.exporters.console.enabled = True
+
+            # OTel handles all logging - skip setup_logging
+            obs_context = initialize_observability(
+                agent.observability, agent.name, verbose=verbose, quiet=quiet
+            )
+        else:
+            # Traditional logging
+            setup_logging(verbose=verbose, quiet=quiet)
+
+        logger.info(
+            f"Serve command invoked: config={agent_config}, "
+            f"port={port}, host={host}, protocol={protocol}, verbose={verbose}"
+        )
+        logger.debug(f"Loading agent configuration from {agent_config}")
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
 
         # Set the base directory context for resolving relative paths in tools
@@ -153,6 +188,9 @@ def serve(
 
         protocol_type = ProtocolType.AG_UI if protocol == "ag-ui" else ProtocolType.REST
 
+        # Determine if observability is enabled for span creation
+        observability_enabled = obs_context is not None
+
         # Create and run server
         asyncio.run(
             _run_server(
@@ -161,8 +199,9 @@ def serve(
                 port=port,
                 protocol=protocol_type,
                 cors_origins=origins,
-                debug=debug,
+                verbose=verbose,
                 execution_config=resolved_config,
+                observability_enabled=observability_enabled,
             )
         )
 
@@ -180,6 +219,10 @@ def serve(
         logger.error(f"Unexpected error: {e}", exc_info=True)
         click.secho(f"Error: {str(e)}", fg="red", err=True)
         sys.exit(1)
+    finally:
+        # Shutdown observability if it was initialized
+        if obs_context:
+            shutdown_observability(obs_context)
 
 
 async def _run_server(
@@ -188,8 +231,9 @@ async def _run_server(
     port: int,
     protocol: ProtocolType,
     cors_origins: list[str],
-    debug: bool,
+    verbose: bool,
     execution_config: ExecutionConfig,
+    observability_enabled: bool = False,
 ) -> None:
     """Run the HTTP server.
 
@@ -199,46 +243,58 @@ async def _run_server(
         port: Port to listen on.
         protocol: Protocol type (AG-UI or REST).
         cors_origins: List of allowed CORS origins.
-        debug: Enable debug mode.
+        verbose: Enable verbose debug logging.
         execution_config: Resolved execution configuration.
+        observability_enabled: Enable OpenTelemetry per-request tracing.
     """
-    import uvicorn
+    # Create parent span for serve command if observability is enabled
+    if observability_enabled:
+        from holodeck.lib.observability import get_tracer
 
-    from holodeck.serve.server import AgentServer
+        tracer = get_tracer(__name__)
+        span_context: Any = tracer.start_as_current_span("holodeck.cli.serve")
+    else:
+        span_context = nullcontext()
 
-    # Create server
-    server = AgentServer(
-        agent_config=agent,
-        protocol=protocol,
-        host=host,
-        port=port,
-        cors_origins=cors_origins,
-        debug=debug,
-        execution_config=execution_config,
-    )
+    with span_context:
+        import uvicorn
 
-    # Create app
-    app = server.create_app()
+        from holodeck.serve.server import AgentServer
 
-    # Start server lifecycle
-    await server.start()
+        # Create server
+        server = AgentServer(
+            agent_config=agent,
+            protocol=protocol,
+            host=host,
+            port=port,
+            cors_origins=cors_origins,
+            debug=verbose,
+            execution_config=execution_config,
+            observability_enabled=observability_enabled,
+        )
 
-    # Display startup info
-    _display_startup_info(agent, protocol, host, port)
+        # Create app
+        app = server.create_app()
 
-    # Configure uvicorn
-    config = uvicorn.Config(
-        app=app,
-        host=host,
-        port=port,
-        log_level="debug" if debug else "info",
-    )
-    server_instance = uvicorn.Server(config)
+        # Start server lifecycle
+        await server.start()
 
-    try:
-        await server_instance.serve()
-    finally:
-        await server.stop()
+        # Display startup info
+        _display_startup_info(agent, protocol, host, port)
+
+        # Configure uvicorn
+        config = uvicorn.Config(
+            app=app,
+            host=host,
+            port=port,
+            log_level="debug" if verbose else "info",
+        )
+        server_instance = uvicorn.Server(config)
+
+        try:
+            await server_instance.serve()
+        finally:
+            await server.stop()
 
 
 def _display_startup_info(

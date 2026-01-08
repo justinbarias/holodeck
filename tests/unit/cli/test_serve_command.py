@@ -59,6 +59,8 @@ def mock_agent() -> MagicMock:
     agent.description = "A test agent"
     # Set execution to None to avoid MagicMock issues with Pydantic validation
     agent.execution = None
+    # Set observability to None to skip OTel initialization in tests
+    agent.observability = None
     return agent
 
 
@@ -87,7 +89,7 @@ class TestServeCommandOptions:
         assert "--port" in result.output
         assert "--host" in result.output
         assert "--protocol" in result.output
-        assert "--debug" in result.output
+        assert "--verbose" in result.output
         assert "--cors-origins" in result.output
 
     def test_serve_command_protocol_choices(self, runner: CliRunner) -> None:
@@ -265,7 +267,7 @@ class TestServeCommandExecution:
     @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
     @patch("asyncio.run")
     @patch("holodeck.cli.commands.serve.setup_logging")
-    def test_serve_command_debug_mode(
+    def test_serve_command_verbose_mode(
         self,
         mock_setup_logging: MagicMock,
         mock_asyncio_run: MagicMock,
@@ -278,13 +280,13 @@ class TestServeCommandExecution:
         mock_agent: MagicMock,
         mock_execution_config: ExecutionConfig,
     ) -> None:
-        """Test serve command with debug mode enabled."""
+        """Test serve command with verbose mode enabled."""
         mock_load_agent.return_value = mock_agent
         mock_load_project.return_value = None
         mock_load_global.return_value = None
         mock_resolve_exec.return_value = mock_execution_config
 
-        result = runner.invoke(serve, [str(temp_agent_config), "--debug"])
+        result = runner.invoke(serve, [str(temp_agent_config), "--verbose"])
 
         assert result.exit_code == 0
         mock_setup_logging.assert_called_with(verbose=True, quiet=False)
@@ -434,7 +436,7 @@ class TestRunServer:
                 port=8000,
                 protocol=ProtocolType.AG_UI,
                 cors_origins=["*"],
-                debug=False,
+                verbose=False,
                 execution_config=mock_execution_config,
             )
 
@@ -446,6 +448,7 @@ class TestRunServer:
                 cors_origins=["*"],
                 debug=False,
                 execution_config=mock_execution_config,
+                observability_enabled=False,
             )
             mock_server.create_app.assert_called_once()
             mock_server.start.assert_called_once()
@@ -477,17 +480,17 @@ class TestRunServer:
                 port=8000,
                 protocol=ProtocolType.AG_UI,
                 cors_origins=["*"],
-                debug=False,
+                verbose=False,
                 execution_config=mock_execution_config,
             )
 
             mock_server.stop.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_run_server_uvicorn_config_debug_mode(
+    async def test_run_server_uvicorn_config_verbose_mode(
         self, mock_agent: MagicMock, mock_execution_config: ExecutionConfig
     ) -> None:
-        """Test _run_server configures uvicorn with debug log level."""
+        """Test _run_server configures uvicorn with debug log level when verbose."""
         with (
             patch("holodeck.serve.server.AgentServer") as mock_server_class,
             patch("uvicorn.Config") as mock_config,
@@ -510,7 +513,7 @@ class TestRunServer:
                 port=8000,
                 protocol=ProtocolType.AG_UI,
                 cors_origins=["*"],
-                debug=True,
+                verbose=True,
                 execution_config=mock_execution_config,
             )
 

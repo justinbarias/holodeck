@@ -15,6 +15,7 @@ from holodeck.cli.utils.wizard import (
     is_interactive,
     run_wizard,
 )
+from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.template_engine import TemplateRenderer
 from holodeck.models.project_config import ProjectInitInput
 from holodeck.models.wizard_config import (
@@ -27,6 +28,8 @@ from holodeck.models.wizard_config import (
     get_default_evals,
     get_default_mcp_servers,
 )
+
+logger = get_logger(__name__)
 
 
 def validate_template(
@@ -127,6 +130,18 @@ def _parse_comma_arg(value: str | None) -> list[str]:
     is_flag=True,
     help="Skip all interactive prompts (use defaults or flag values)",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose debug logging",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress INFO logging output",
+)
 def init(
     project_name: str | None,
     template: str,
@@ -138,6 +153,8 @@ def init(
     evals_arg: str | None,
     mcp_arg: str | None,
     non_interactive: bool,
+    verbose: bool,
+    quiet: bool,
 ) -> None:
     """Initialize a new HoloDeck agent project.
 
@@ -195,6 +212,13 @@ def init(
 
     For more information, see: https://useholodeck.ai/docs/getting-started
     """
+    # Initialize logging
+    setup_logging(verbose=verbose, quiet=quiet)
+    logger.debug(
+        f"Init command invoked: project_name={project_name}, template={template}, "
+        f"non_interactive={non_interactive}"
+    )
+
     try:
         # Get current working directory as output directory
         output_dir = Path.cwd()

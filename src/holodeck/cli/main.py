@@ -4,7 +4,18 @@ This module defines the main CLI entry point and registers all available
 commands (init, etc.). It's the root command group that all subcommands attach to.
 """
 
+import os
 from pathlib import Path
+
+# =============================================================================
+# CRITICAL: Set telemetry env vars BEFORE any library imports.
+# - DEEPEVAL_TELEMETRY_OPT_OUT: Prevents deepeval from setting a TracerProvider
+# - SK env var: Enables Semantic Kernel telemetry
+# =============================================================================
+os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
+os.environ.setdefault(
+    "SEMANTICKERNEL_EXPERIMENTAL_GENAI_ENABLE_OTEL_DIAGNOSTICS", "true"
+)
 
 import click
 from dotenv import load_dotenv
