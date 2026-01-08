@@ -50,6 +50,10 @@
     },
     "execution": {
       "$ref": "#/$defs/ExecutionConfig"
+    },
+    "observability": {
+      "$ref": "#/$defs/ObservabilityConfig",
+      "description": "OpenTelemetry observability configuration"
     }
   },
   "$defs": {
@@ -686,6 +690,298 @@
         "quiet": { "type": "boolean", "description": "Quiet output mode" }
       },
       "description": "Test execution configuration"
+    },
+    "LogLevel": {
+      "type": "string",
+      "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+      "description": "Supported log levels for observability"
+    },
+    "OTLPProtocol": {
+      "type": "string",
+      "enum": ["grpc", "http"],
+      "description": "OTLP transport protocol"
+    },
+    "TracingConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable trace collection"
+        },
+        "sample_rate": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 1.0,
+          "description": "Trace sampling rate (0.0 to 1.0)"
+        },
+        "capture_content": {
+          "type": "boolean",
+          "default": false,
+          "description": "Capture prompts and completions in spans (sensitive data)"
+        },
+        "redaction_patterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Regex patterns for redacting sensitive data"
+        },
+        "max_queue_size": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2048,
+          "description": "Maximum spans in export queue"
+        },
+        "max_export_batch_size": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 512,
+          "description": "Maximum spans per export batch"
+        }
+      },
+      "description": "Tracing-specific configuration"
+    },
+    "MetricsConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable metrics collection"
+        },
+        "export_interval_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 5000,
+          "description": "Metrics export interval in milliseconds (minimum 1000ms)"
+        },
+        "include_semantic_kernel_metrics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include Semantic Kernel internal metrics"
+        }
+      },
+      "description": "Metrics-specific configuration"
+    },
+    "LogsConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable structured logging export"
+        },
+        "level": {
+          "$ref": "#/$defs/LogLevel",
+          "default": "INFO",
+          "description": "Minimum log level to export"
+        },
+        "include_trace_context": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include trace/span IDs in log records"
+        },
+        "filter_namespaces": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["semantic_kernel"],
+          "description": "Logger namespaces to include"
+        }
+      },
+      "description": "Logging-specific configuration"
+    },
+    "ConsoleExporterConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable console exporter"
+        },
+        "pretty_print": {
+          "type": "boolean",
+          "default": true,
+          "description": "Format for readability"
+        },
+        "include_timestamps": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include timestamps"
+        }
+      },
+      "description": "Console exporter configuration"
+    },
+    "OTLPExporterConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable OTLP exporter"
+        },
+        "endpoint": {
+          "type": "string",
+          "default": "http://localhost:4317",
+          "description": "OTLP collector endpoint"
+        },
+        "protocol": {
+          "$ref": "#/$defs/OTLPProtocol",
+          "default": "grpc",
+          "description": "Transport protocol (grpc or http)"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Custom headers for authentication"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "default": 30000,
+          "description": "Export timeout in milliseconds"
+        },
+        "compression": {
+          "type": ["string", "null"],
+          "description": "Compression algorithm (gzip, deflate, or null)"
+        },
+        "insecure": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use insecure connection (no TLS)"
+        }
+      },
+      "description": "OTLP exporter configuration"
+    },
+    "PrometheusExporterConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Prometheus endpoint"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "default": 8889,
+          "description": "Port for metrics endpoint (1024-65535)"
+        },
+        "host": {
+          "type": "string",
+          "default": "0.0.0.0",
+          "description": "Host to bind metrics endpoint"
+        },
+        "path": {
+          "type": "string",
+          "default": "/metrics",
+          "description": "Path for metrics endpoint"
+        }
+      },
+      "description": "Prometheus exporter configuration"
+    },
+    "AzureMonitorExporterConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Azure Monitor exporter"
+        },
+        "connection_string": {
+          "type": ["string", "null"],
+          "description": "Application Insights connection string"
+        },
+        "disable_offline_storage": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable offline storage for retry"
+        },
+        "storage_directory": {
+          "type": ["string", "null"],
+          "description": "Custom directory for offline storage"
+        }
+      },
+      "description": "Azure Monitor exporter configuration"
+    },
+    "ExportersConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "console": {
+          "oneOf": [
+            { "$ref": "#/$defs/ConsoleExporterConfig" },
+            { "type": "null" }
+          ],
+          "description": "Console exporter (default if no other exporters)"
+        },
+        "otlp": {
+          "oneOf": [
+            { "$ref": "#/$defs/OTLPExporterConfig" },
+            { "type": "null" }
+          ],
+          "description": "OTLP exporter configuration"
+        },
+        "prometheus": {
+          "oneOf": [
+            { "$ref": "#/$defs/PrometheusExporterConfig" },
+            { "type": "null" }
+          ],
+          "description": "Prometheus exporter configuration"
+        },
+        "azure_monitor": {
+          "oneOf": [
+            { "$ref": "#/$defs/AzureMonitorExporterConfig" },
+            { "type": "null" }
+          ],
+          "description": "Azure Monitor exporter configuration"
+        }
+      },
+      "description": "Container for exporter configurations"
+    },
+    "ObservabilityConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable observability features"
+        },
+        "service_name": {
+          "type": ["string", "null"],
+          "description": "Override service name (defaults to 'holodeck-{agent.name}')"
+        },
+        "traces": {
+          "$ref": "#/$defs/TracingConfig",
+          "description": "Tracing configuration"
+        },
+        "metrics": {
+          "$ref": "#/$defs/MetricsConfig",
+          "description": "Metrics configuration"
+        },
+        "logs": {
+          "$ref": "#/$defs/LogsConfig",
+          "description": "Logging configuration"
+        },
+        "exporters": {
+          "$ref": "#/$defs/ExportersConfig",
+          "description": "Exporter configurations"
+        },
+        "resource_attributes": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Additional OpenTelemetry resource attributes"
+        }
+      },
+      "description": "Top-level observability configuration for OpenTelemetry"
     }
   }
 }
