@@ -460,19 +460,19 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 
 ---
 
-[unreleased]: https://github.com/justinbarias/agentlab/compare/0.3.0...HEAD
-[0.3.0]: https://github.com/justinbarias/agentlab/compare/0.1.7...0.3.0
-[0.1.7]: https://github.com/justinbarias/agentlab/compare/0.1.6...0.1.7
-[0.1.6]: https://github.com/justinbarias/agentlab/compare/0.1.5...0.1.6
-[0.1.5]: https://github.com/justinbarias/agentlab/compare/0.1.4...0.1.5
-[0.1.4]: https://github.com/justinbarias/agentlab/compare/0.1.3...0.1.4
-[0.1.3]: https://github.com/justinbarias/agentlab/compare/0.1.2...0.1.3
-[0.1.2]: https://github.com/justinbarias/agentlab/compare/0.1.1...0.1.2
-[0.1.1]: https://github.com/justinbarias/agentlab/compare/0.1.0...0.1.1
-[0.1.0]: https://github.com/justinbarias/agentlab/compare/0.0.14...0.1.0
-[0.0.14]: https://github.com/justinbarias/agentlab/compare/0.0.7...0.0.14
-[0.0.7]: https://github.com/justinbarias/agentlab/compare/0.0.6...0.0.7
-[0.0.6]: https://github.com/justinbarias/agentlab/compare/0.0.5...0.0.6
-[0.0.5]: https://github.com/justinbarias/agentlab/compare/0.0.4...0.0.5
-[0.0.4]: https://github.com/justinbarias/agentlab/compare/0.0.1...0.0.4
-[0.0.1]: https://github.com/justinbarias/agentlab/releases/tag/0.0.1
+[unreleased]: https://github.com/justinbarias/holodeck/compare/0.3.0...HEAD
+[0.3.0]: https://github.com/justinbarias/holodeck/compare/0.1.7...0.3.0
+[0.1.7]: https://github.com/justinbarias/holodeck/compare/0.1.6...0.1.7
+[0.1.6]: https://github.com/justinbarias/holodeck/compare/0.1.5...0.1.6
+[0.1.5]: https://github.com/justinbarias/holodeck/compare/0.1.4...0.1.5
+[0.1.4]: https://github.com/justinbarias/holodeck/compare/0.1.3...0.1.4
+[0.1.3]: https://github.com/justinbarias/holodeck/compare/0.1.2...0.1.3
+[0.1.2]: https://github.com/justinbarias/holodeck/compare/0.1.1...0.1.2
+[0.1.1]: https://github.com/justinbarias/holodeck/compare/0.1.0...0.1.1
+[0.1.0]: https://github.com/justinbarias/holodeck/compare/0.0.14...0.1.0
+[0.0.14]: https://github.com/justinbarias/holodeck/compare/0.0.7...0.0.14
+[0.0.7]: https://github.com/justinbarias/holodeck/compare/0.0.6...0.0.7
+[0.0.6]: https://github.com/justinbarias/holodeck/compare/0.0.5...0.0.6
+[0.0.5]: https://github.com/justinbarias/holodeck/compare/0.0.4...0.0.5
+[0.0.4]: https://github.com/justinbarias/holodeck/compare/0.0.1...0.0.4
+[0.0.1]: https://github.com/justinbarias/holodeck/releases/tag/0.0.1
