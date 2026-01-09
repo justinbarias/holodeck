@@ -114,30 +114,35 @@ def validate_tool_calls(
 ) -> bool | None:
     """Validate actual tool calls against expected tools.
 
-    Tool call validation compares the set of tools actually called by the agent
-    against the set of tools expected by the test case. Validation is exact set
-    matching - order doesn't matter, but all expected tools must be called and
-    no extra tools should be called.
+    Tool call validation checks that each expected tool name is found within
+    at least one actual tool call. This uses substring matching - if any actual
+    tool name contains the expected tool name, it's considered a match.
 
     Args:
         actual: List of tool names actually called by agent
         expected: List of expected tool names from test case (None = skip validation)
 
     Returns:
-        True if actual matches expected exactly (set equality)
-        False if actual doesn't match expected
+        True if all expected tools are found (substring match) in actual
+        False if any expected tool is not found in any actual tool
         None if expected is None (validation skipped)
+
+    Examples:
+        - expected=["search"], actual=["vectorstore-search"] -> True
+        - expected=["search", "fetch"], actual=["search_tool", "fetch_data"] -> True
+        - expected=["search"], actual=["fetch"] -> False
     """
     if expected is None:
         return None
 
-    actual_set = set(actual)
-    expected_set = set(expected)
-    matched = actual_set == expected_set
+    def is_expected_found(expected_tool: str) -> bool:
+        """Check if expected tool name is found in any actual tool call."""
+        return any(expected_tool in actual_tool for actual_tool in actual)
+
+    matched = all(is_expected_found(exp) for exp in expected)
 
     logger.debug(
-        f"Tool validation: expected={expected_set}, actual={actual_set}, "
-        f"matched={matched}"
+        f"Tool validation: expected={expected}, actual={actual}, " f"matched={matched}"
     )
 
     return matched

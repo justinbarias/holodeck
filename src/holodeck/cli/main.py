@@ -17,10 +17,16 @@ os.environ.setdefault(
     "SEMANTICKERNEL_EXPERIMENTAL_GENAI_ENABLE_OTEL_DIAGNOSTICS", "true"
 )
 
+from importlib.metadata import PackageNotFoundError, version
+
 import click
 from dotenv import load_dotenv
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("holodeck-ai")
+except PackageNotFoundError:
+    # Package not installed, development mode
+    __version__ = "0.0.0.dev0"
 
 
 def _load_dotenv_files() -> None:

@@ -25,7 +25,11 @@ from holodeck.models.test_result import ProcessedFileInput, TestResult
 
 
 class TestToolCallValidation:
-    """Tests for T049: Tool call validation against expected tools."""
+    """Tests for T049: Tool call validation against expected tools.
+
+    Validation uses substring matching - each expected tool name must be found
+    within at least one actual tool name. Extra tools are allowed.
+    """
 
     def test_exact_match_passes(self):
         """Tool calls exactly matching expected tools passes validation."""
@@ -60,8 +64,8 @@ class TestToolCallValidation:
 
         assert result is None
 
-    def test_empty_expected_tools_with_calls_fails(self):
-        """Agent calling tools when none expected fails validation."""
+    def test_empty_expected_tools_with_calls_passes(self):
+        """Empty expected list passes (all zero expected tools are found)."""
         from holodeck.lib.test_runner.executor import validate_tool_calls
 
         actual: list[str] = ["search_tool"]
@@ -69,7 +73,7 @@ class TestToolCallValidation:
 
         result = validate_tool_calls(actual, expected)
 
-        assert result is False
+        assert result is True
 
     def test_empty_actual_with_expected_fails(self):
         """Agent not calling expected tools fails validation."""
@@ -83,7 +87,7 @@ class TestToolCallValidation:
         assert result is False
 
     def test_order_independent_matching(self):
-        """Tool call order doesn't matter, only set membership."""
+        """Tool call order doesn't matter for validation."""
         from holodeck.lib.test_runner.executor import validate_tool_calls
 
         actual = ["calculator", "search_tool"]  # Different order
@@ -104,12 +108,45 @@ class TestToolCallValidation:
 
         assert result is False
 
-    def test_superset_of_expected_fails(self):
-        """Calling more tools than expected fails validation."""
+    def test_extra_tools_allowed(self):
+        """Calling more tools than expected passes validation."""
         from holodeck.lib.test_runner.executor import validate_tool_calls
 
         actual = ["search_tool", "calculator", "extra_tool"]
         expected = ["search_tool", "calculator"]
+
+        result = validate_tool_calls(actual, expected)
+
+        assert result is True
+
+    def test_substring_match_with_prefix(self):
+        """Expected tool found as substring in actual tool with prefix."""
+        from holodeck.lib.test_runner.executor import validate_tool_calls
+
+        actual = ["vectorstore-search", "mcp-calculator"]
+        expected = ["search", "calculator"]
+
+        result = validate_tool_calls(actual, expected)
+
+        assert result is True
+
+    def test_substring_match_with_suffix(self):
+        """Expected tool found as substring in actual tool with suffix."""
+        from holodeck.lib.test_runner.executor import validate_tool_calls
+
+        actual = ["search_v2", "calculator_advanced"]
+        expected = ["search", "calculator"]
+
+        result = validate_tool_calls(actual, expected)
+
+        assert result is True
+
+    def test_substring_match_partial_only_fails(self):
+        """Expected tool not found as substring in any actual tool fails."""
+        from holodeck.lib.test_runner.executor import validate_tool_calls
+
+        actual = ["vectorstore-query", "mcp-math"]
+        expected = ["search"]  # "search" not in any actual tool
 
         result = validate_tool_calls(actual, expected)
 
