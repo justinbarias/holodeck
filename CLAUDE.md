@@ -445,6 +445,270 @@ test_cases: # Optional: Test scenarios
     files: [...] # Multimodal file inputs
 ```
 
+## HoloDeck CLI Usage
+
+### The `test` Command
+
+The `holodeck test` command executes test cases defined in your agent configuration and evaluates responses against specified metrics.
+
+```bash
+# Basic usage (uses agent.yaml in current directory)
+holodeck test
+
+# Specify a different agent config
+holodeck test path/to/agent.yaml
+
+# With options
+holodeck test agent.yaml --verbose --output report.md --format markdown
+```
+
+**Command Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--output PATH` | Save test report to file (JSON or Markdown) |
+| `--format [json\|markdown]` | Report format (auto-detects from extension if not specified) |
+| `--verbose, -v` | Enable verbose output with debug information |
+| `--quiet, -q` | Suppress progress output (summary still shown) |
+| `--timeout SECONDS` | LLM execution timeout in seconds |
+| `--force-ingest, -f` | Force re-ingestion of all vector store source files |
+
+**Exit Codes:**
+
+| Code | Meaning |
+|------|---------|
+| 0 | All tests passed |
+| 1 | One or more tests failed |
+| 2 | Configuration error |
+| 3 | Execution error |
+| 4 | Evaluation error |
+
+### Test Case Configuration
+
+Test cases are defined in the `test_cases` section of `agent.yaml`:
+
+```yaml
+test_cases:
+  - name: "Basic greeting"              # Optional: Test identifier
+    input: "Hello, how are you?"        # Required: User query/prompt
+    ground_truth: "Greeting response"   # Optional: Expected output for comparison
+    expected_tools:                     # Optional: Tools expected to be called
+      - search_knowledge_base
+      - get_user_context
+    files:                              # Optional: Multimodal file inputs
+      - path: "./data/image.png"
+        type: image
+        description: "Product image"
+    retrieval_context:                  # Optional: RAG context for RAG metrics
+      - "Retrieved chunk 1..."
+      - "Retrieved chunk 2..."
+    evaluations:                        # Optional: Per-test metric overrides
+      - type: standard
+        metric: bleu
+        threshold: 0.6
+```
+
+**File Input Types:**
+
+| Type | Description |
+|------|-------------|
+| `image` | Images (PNG, JPG) - processed via OCR |
+| `pdf` | PDF documents |
+| `text` | Plain text files |
+| `excel` | Excel spreadsheets (supports `sheet` and `range` options) |
+| `word` | Word documents |
+| `powerpoint` | PowerPoint presentations (supports `pages` option) |
+| `csv` | CSV files |
+
+### Evaluation Metrics Configuration
+
+HoloDeck supports three types of evaluation metrics:
+
+#### 1. Standard NLP Metrics (`type: standard`)
+
+Traditional text comparison metrics that don't require an LLM:
+
+```yaml
+evaluations:
+  metrics:
+    # BLEU - Precision-focused n-gram matching (0.0-1.0)
+    - type: standard
+      metric: bleu
+      threshold: 0.5
+
+    # ROUGE - Recall-focused overlap (variants: rouge1, rouge2, rougeL)
+    - type: standard
+      metric: rouge
+      threshold: 0.6
+
+    # METEOR - Translation quality with synonym handling
+    - type: standard
+      metric: meteor
+      threshold: 0.7
+```
+
+**Available Standard Metrics:**
+
+| Metric | Description | Score Range | Use Case |
+|--------|-------------|-------------|----------|
+| `bleu` | Precision of n-gram matches (uses SacreBLEU with smoothing) | 0.0-1.0 | Machine translation, exact matching |
+| `rouge` | Recall of n-gram overlaps (rouge1, rouge2, rougeL variants) | 0.0-1.0 | Summarization quality |
+| `meteor` | Synonym-aware matching with stemming | 0.0-1.0 | Semantic similarity |
+
+#### 2. G-Eval Custom Criteria (`type: geval`)
+
+LLM-as-judge evaluation with custom natural language criteria:
+
+```yaml
+evaluations:
+  model:                                # Default LLM for all metrics
+    provider: ollama
+    name: gpt-oss:20b
+    temperature: 0.0
+  metrics:
+    - type: geval
+      name: Professionalism            # Custom metric name
+      criteria: |                       # Natural language criteria
+        Evaluate if the response uses professional language,
+        avoids slang, and maintains a respectful tone.
+      evaluation_steps:                 # Optional: Explicit evaluation steps
+        - "Check if the language is formal and professional"
+        - "Verify no slang or casual expressions are used"
+        - "Assess the overall respectful tone"
+      evaluation_params:                # Fields to include in evaluation
+        - actual_output                 # Agent's response
+        - input                         # User's query
+        - expected_output               # Ground truth (if provided)
+      threshold: 0.7
+      strict_mode: false                # If true, binary scoring (1.0 or 0.0)
+```
+
+**Valid `evaluation_params`:**
+
+- `input` - User's query
+- `actual_output` - Agent's response
+- `expected_output` - Ground truth reference
+- `context` - Additional context
+- `retrieval_context` - Retrieved RAG chunks
+
+#### 3. RAG Pipeline Metrics (`type: rag`)
+
+Specialized metrics for evaluating Retrieval-Augmented Generation:
+
+```yaml
+evaluations:
+  model:
+    provider: openai
+    name: gpt-4o
+  metrics:
+    # Faithfulness - Detects hallucinations
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.8
+      include_reason: true
+
+    # Answer Relevancy - Response relevance to query
+    - type: rag
+      metric_type: answer_relevancy
+      threshold: 0.7
+
+    # Contextual Relevancy - Retrieved chunks relevance
+    - type: rag
+      metric_type: contextual_relevancy
+      threshold: 0.6
+
+    # Contextual Precision - Ranking quality of chunks
+    - type: rag
+      metric_type: contextual_precision
+      threshold: 0.7
+
+    # Contextual Recall - Retrieval completeness
+    - type: rag
+      metric_type: contextual_recall
+      threshold: 0.6
+```
+
+**RAG Metric Types:**
+
+| Metric Type | Description | Required Fields |
+|-------------|-------------|-----------------|
+| `faithfulness` | Detects hallucinations by comparing response to retrieval context | `input`, `actual_output`, `retrieval_context` |
+| `answer_relevancy` | Measures if response addresses the query | `input`, `actual_output` |
+| `contextual_relevancy` | Evaluates if retrieved chunks are relevant to query | `input`, `retrieval_context` |
+| `contextual_precision` | Assesses ranking quality of retrieved chunks | `input`, `expected_output`, `retrieval_context` |
+| `contextual_recall` | Measures retrieval completeness | `input`, `expected_output`, `retrieval_context` |
+
+### Complete Evaluation Example
+
+```yaml
+name: customer-support-agent
+model:
+  provider: openai
+  name: gpt-4o
+
+evaluations:
+  model:                                # Default model for LLM-based metrics
+    provider: openai
+    name: gpt-4o
+    temperature: 0.0
+  metrics:
+    # Standard NLP metrics (no LLM required)
+    - type: standard
+      metric: bleu
+      threshold: 0.4
+    - type: standard
+      metric: rouge
+      threshold: 0.5
+
+    # Custom G-Eval criteria
+    - type: geval
+      name: Helpfulness
+      criteria: "Evaluate if the response provides actionable, helpful information"
+      evaluation_params: [actual_output, input]
+      threshold: 0.7
+
+    # RAG evaluation
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.8
+
+test_cases:
+  - name: "Refund policy question"
+    input: "What is your refund policy?"
+    ground_truth: "We offer a 30-day money-back guarantee on all products."
+    retrieval_context:
+      - "Refund Policy: All products come with a 30-day money-back guarantee."
+      - "Returns must be initiated within 30 days of purchase."
+
+  - name: "Product recommendation"
+    input: "I need a laptop for video editing"
+    expected_tools: [search_products, get_specifications]
+    evaluations:                        # Per-test metric override
+      - type: geval
+        name: TechnicalAccuracy
+        criteria: "Verify the response contains accurate technical specifications"
+        threshold: 0.8
+```
+
+### Running Tests
+
+```bash
+# Run tests with progress indicator
+holodeck test agent.yaml
+
+# Verbose output for debugging
+holodeck test agent.yaml -v
+
+# Save detailed report
+holodeck test agent.yaml --output results/report.md --format markdown
+
+# Force vector store re-ingestion
+holodeck test agent.yaml --force-ingest
+
+# Quiet mode (summary only)
+holodeck test agent.yaml -q --output results.json
+```
+
 ## Workflow
 
 This project uses **spec-kit** for feature development:
