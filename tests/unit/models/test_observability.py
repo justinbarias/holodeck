@@ -52,9 +52,43 @@ class TestTracingConfig:
         assert config.enabled is True
         assert config.sample_rate == 1.0
         assert config.capture_content is False
+        assert config.capture_evaluation_content is False
         assert config.redaction_patterns == []
         assert config.max_queue_size == 2048
         assert config.max_export_batch_size == 512
+
+    def test_capture_evaluation_content_default_false(self) -> None:
+        """Test capture_evaluation_content defaults to False."""
+        from holodeck.models.observability import TracingConfig
+
+        config = TracingConfig()
+        assert config.capture_evaluation_content is False
+
+    def test_capture_evaluation_content_can_be_enabled(self) -> None:
+        """Test capture_evaluation_content can be set to True."""
+        from holodeck.models.observability import TracingConfig
+
+        config = TracingConfig(capture_evaluation_content=True)
+        assert config.capture_evaluation_content is True
+
+    def test_capture_evaluation_content_independent_of_capture_content(self) -> None:
+        """Test capture_evaluation_content is independent of capture_content."""
+        from holodeck.models.observability import TracingConfig
+
+        # Only capture_content enabled
+        config1 = TracingConfig(capture_content=True, capture_evaluation_content=False)
+        assert config1.capture_content is True
+        assert config1.capture_evaluation_content is False
+
+        # Only capture_evaluation_content enabled
+        config2 = TracingConfig(capture_content=False, capture_evaluation_content=True)
+        assert config2.capture_content is False
+        assert config2.capture_evaluation_content is True
+
+        # Both enabled
+        config3 = TracingConfig(capture_content=True, capture_evaluation_content=True)
+        assert config3.capture_content is True
+        assert config3.capture_evaluation_content is True
 
     def test_sample_rate_validation_lower_bound(self) -> None:
         """Test sample_rate rejects values below 0.0."""

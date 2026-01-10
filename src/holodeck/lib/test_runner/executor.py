@@ -70,6 +70,7 @@ from holodeck.models.evaluation import (
     RAGMetricType,
 )
 from holodeck.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.observability import TracingConfig
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.test_result import (
     MetricResult,
@@ -83,18 +84,23 @@ logger = get_logger(__name__)
 
 
 class RAGEvaluatorConstructor(Protocol):
-    """Protocol for RAG evaluator constructor signature.
+    """Protocol for RAG evaluator constructors with full type safety.
 
-    Defines the expected constructor interface for all RAG evaluators,
-    enabling type-safe mapping of RAGMetricType to evaluator classes.
+    Defines the common constructor signature for all RAG evaluators.
+    The actual evaluators may have additional parameters with defaults
+    (timeout, retry_config) but this Protocol captures what we use.
     """
 
     def __call__(
         self,
+        *,
         model_config: DeepEvalModelConfig | None = None,
         threshold: float = 0.5,
         include_reason: bool = True,
-    ) -> BaseEvaluator: ...
+        observability_config: TracingConfig | None = None,
+    ) -> BaseEvaluator:
+        """Construct a RAG evaluator with the given configuration."""
+        ...
 
 
 # Mapping of RAG metric types to their evaluator classes
@@ -334,6 +340,17 @@ class TestExecutor:
         # Get default model for all metrics
         default_model = self.agent_config.evaluations.model
 
+        # Get observability config for span instrumentation
+        # Only pass it if observability is enabled and traces are enabled
+        observability_config = None
+        if (
+            self.agent_config.observability
+            and self.agent_config.observability.enabled
+            and self.agent_config.observability.traces
+            and self.agent_config.observability.traces.enabled
+        ):
+            observability_config = self.agent_config.observability.traces
+
         # Create evaluators for configured metrics
         for metric_config in self.agent_config.evaluations.metrics:
             # Handle GEval custom criteria metrics
@@ -350,6 +367,7 @@ class TestExecutor:
                     strict_mode=metric_config.strict_mode,
                     model_config=deepeval_config,
                     threshold=metric_config.threshold or 0.5,
+                    observability_config=observability_config,
                 )
                 logger.debug(
                     f"Created GEvalEvaluator: name={metric_config.name}, "
@@ -370,6 +388,7 @@ class TestExecutor:
                         model_config=deepeval_config,
                         threshold=metric_config.threshold,
                         include_reason=metric_config.include_reason,
+                        observability_config=observability_config,
                     )
                     logger.debug(
                         f"Created RAG evaluator: type={metric_name}, "

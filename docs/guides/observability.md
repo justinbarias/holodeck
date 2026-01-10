@@ -205,6 +205,43 @@ Every LLM invocation captures:
 
 ---
 
+## Evaluation Tracing (DeepEval)
+
+HoloDeck creates OpenTelemetry spans for DeepEval metric evaluations during test runs. Enable `capture_evaluation_content` to capture evaluation inputs/outputs:
+
+```yaml
+observability:
+  enabled: true
+  traces:
+    capture_evaluation_content: true  # Capture inputs, outputs, reasoning
+```
+
+### Captured Span Attributes
+
+Every DeepEval evaluation creates a span named `holodeck.evaluation.{metric_name}` with these attributes:
+
+| Attribute | Description | Example |
+|-----------|-------------|---------|
+| `evaluation.metric.name` | Metric identifier | `geval`, `faithfulness` |
+| `evaluation.threshold` | Pass/fail threshold | `0.7` |
+| `evaluation.model.provider` | Evaluation LLM provider | `openai`, `ollama` |
+| `evaluation.model.name` | Evaluation model name | `gpt-4o`, `llama3.2` |
+| `evaluation.score` | Evaluation score (0.0-1.0) | `0.85` |
+| `evaluation.passed` | Whether score met threshold | `true` |
+| `evaluation.duration_ms` | Evaluation duration | `1523` |
+
+### Content Attributes (when capture_evaluation_content enabled)
+
+| Attribute | Description | Max Length |
+|-----------|-------------|------------|
+| `evaluation.input` | User query being evaluated | 1000 chars |
+| `evaluation.actual_output` | Agent response being evaluated | 1000 chars |
+| `evaluation.expected_output` | Ground truth (if provided) | 1000 chars |
+| `evaluation.retrieval_context` | RAG context chunks (JSON) | 2000 chars |
+| `evaluation.reasoning` | LLM-generated evaluation reasoning | 2000 chars |
+
+---
+
 ## Exporters
 
 ### Console Exporter (Default)

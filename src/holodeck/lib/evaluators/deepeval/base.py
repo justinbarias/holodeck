@@ -4,8 +4,13 @@ This module provides the abstract base class for all DeepEval-based evaluators.
 It handles model configuration, test case construction, and result normalization.
 """
 
+from __future__ import annotations
+
+import json
+import time
 from abc import abstractmethod
-from typing import Any, ClassVar
+from contextlib import nullcontext
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from deepeval.test_case import LLMTestCase
 
@@ -14,6 +19,9 @@ from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.evaluators.deepeval.errors import DeepEvalError
 from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
 from holodeck.lib.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from holodeck.models.observability import TracingConfig
 
 logger = get_logger(__name__)
 
@@ -73,6 +81,7 @@ class DeepEvalBaseEvaluator(BaseEvaluator):
         threshold: float = 0.5,
         timeout: float | None = 60.0,
         retry_config: RetryConfig | None = None,
+        observability_config: TracingConfig | None = None,
     ) -> None:
         """Initialize DeepEval base evaluator.
 
@@ -82,11 +91,14 @@ class DeepEvalBaseEvaluator(BaseEvaluator):
             threshold: Score threshold for pass/fail (0.0-1.0, default: 0.5)
             timeout: Evaluation timeout in seconds (default: 60.0)
             retry_config: Retry configuration for transient failures
+            observability_config: Tracing configuration for span instrumentation.
+                                 If None, no spans are created.
         """
         super().__init__(timeout=timeout, retry_config=retry_config)
         self._model_config = model_config or DeepEvalModelConfig()
         self._model = self._model_config.to_deepeval_model()
         self._threshold = threshold
+        self._observability_config = observability_config
 
         logger.debug(
             f"DeepEval evaluator initialized: {self.name}, "
@@ -188,6 +200,87 @@ class DeepEvalBaseEvaluator(BaseEvaluator):
                 "Provide retrieval_context=[...] with retrieved text chunks."
             )
 
+    def _create_span_context(self) -> Any:
+        """Create span context for observability instrumentation.
+
+        Returns a span context manager if observability is enabled,
+        otherwise returns a nullcontext (no-op).
+
+        Returns:
+            Context manager that yields a span or None
+        """
+        if self._observability_config is None:
+            return nullcontext()
+
+        from holodeck.lib.observability import get_tracer
+
+        tracer = get_tracer(__name__)
+        return tracer.start_as_current_span(f"holodeck.evaluation.{self.name}")
+
+    def _should_capture_content(self) -> bool:
+        """Check if evaluation content capture is enabled.
+
+        Returns:
+            True if observability is configured and capture_evaluation_content is True
+        """
+        return (
+            self._observability_config is not None
+            and self._observability_config.capture_evaluation_content
+        )
+
+    def _set_span_attributes(
+        self,
+        span: Any,
+        test_case: LLMTestCase,
+        start_time: float,
+        result: dict[str, Any] | None = None,
+    ) -> None:
+        """Set span attributes for evaluation observability.
+
+        Args:
+            span: The OpenTelemetry span to set attributes on
+            test_case: The LLMTestCase being evaluated
+            start_time: Start time from time.perf_counter()
+            result: Evaluation result dict (if evaluation completed)
+        """
+        if span is None:
+            return
+
+        # Standard attributes (always captured)
+        span.set_attribute("evaluation.metric.name", self.name)
+        span.set_attribute("evaluation.threshold", self._threshold)
+        span.set_attribute(
+            "evaluation.model.provider", self._model_config.provider.value
+        )
+        span.set_attribute("evaluation.model.name", self._model_config.model_name)
+
+        # Content attributes (only when capture_evaluation_content=True)
+        if self._should_capture_content():
+            if test_case.input:
+                span.set_attribute("evaluation.input", test_case.input[:1000])
+            if test_case.actual_output:
+                span.set_attribute(
+                    "evaluation.actual_output", test_case.actual_output[:1000]
+                )
+            if test_case.expected_output:
+                span.set_attribute(
+                    "evaluation.expected_output", test_case.expected_output[:1000]
+                )
+            if test_case.retrieval_context:
+                span.set_attribute(
+                    "evaluation.retrieval_context",
+                    json.dumps(test_case.retrieval_context)[:2000],
+                )
+
+        # Result attributes (if evaluation completed)
+        if result is not None:
+            span.set_attribute("evaluation.score", result.get("score", 0.0))
+            span.set_attribute("evaluation.passed", result.get("passed", False))
+            elapsed_ms = int((time.perf_counter() - start_time) * 1000)
+            span.set_attribute("evaluation.duration_ms", elapsed_ms)
+            if self._should_capture_content() and result.get("reasoning"):
+                span.set_attribute("evaluation.reasoning", result["reasoning"][:2000])
+
     @abstractmethod
     def _create_metric(self) -> Any:
         """Create the DeepEval metric instance.
@@ -201,13 +294,14 @@ class DeepEvalBaseEvaluator(BaseEvaluator):
         pass
 
     async def _evaluate_impl(self, **kwargs: Any) -> dict[str, Any]:
-        """Execute evaluation using the DeepEval metric.
+        """Execute evaluation using the DeepEval metric with observability.
 
         This method:
         1. Builds an LLMTestCase from the input parameters
         2. Creates the metric instance via _create_metric()
-        3. Calls metric.measure() to perform evaluation
-        4. Normalizes and returns the result
+        3. Wraps evaluation in a span (if observability enabled)
+        4. Calls metric.measure() to perform evaluation
+        5. Normalizes and returns the result
 
         Args:
             **kwargs: Evaluation parameters (input, actual_output, etc.)
@@ -223,6 +317,7 @@ class DeepEvalBaseEvaluator(BaseEvaluator):
         Raises:
             DeepEvalError: If the metric evaluation fails
         """
+        start_time = time.perf_counter()
         test_case = self._build_test_case(**kwargs)
         metric = self._create_metric()
 
@@ -232,30 +327,50 @@ class DeepEvalBaseEvaluator(BaseEvaluator):
             f"output_len={len(test_case.actual_output or '')}"
         )
 
-        try:
-            metric.measure(test_case)
-        except Exception as e:
-            logger.error(f"DeepEval metric {self.name} failed: {e}")
-            raise DeepEvalError(
-                message=f"DeepEval metric '{self.name}' failed: {e}",
-                metric_name=self.name,
-                original_error=e,
-                test_case_summary=self._summarize_test_case(test_case),
-            ) from e
+        span_ctx = self._create_span_context()
 
-        score = metric.score
-        passed = bool(score >= self._threshold)
-        reasoning = metric.reason or ""
+        with span_ctx as span:
+            # Set pre-execution attributes
+            self._set_span_attributes(span, test_case, start_time)
 
-        logger.debug(
-            f"Evaluation complete: metric={self.name}, score={score:.3f}, "
-            f"passed={passed}, threshold={self._threshold}"
-        )
+            try:
+                metric.measure(test_case)
+            except Exception as e:
+                logger.error(f"DeepEval metric {self.name} failed: {e}")
+                # Record error on span
+                if span is not None:
+                    from opentelemetry.trace import Status, StatusCode
 
-        return {
-            "score": score,
-            "passed": passed,
-            "reasoning": reasoning,
-            "metric_name": self.name,
-            "threshold": self._threshold,
-        }
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    span.set_attribute("error", True)
+                    span.set_attribute("error.type", type(e).__name__)
+                    span.set_attribute("error.message", str(e))
+                    span.record_exception(e)
+                raise DeepEvalError(
+                    message=f"DeepEval metric '{self.name}' failed: {e}",
+                    metric_name=self.name,
+                    original_error=e,
+                    test_case_summary=self._summarize_test_case(test_case),
+                ) from e
+
+            score = metric.score
+            passed = bool(score >= self._threshold)
+            reasoning = metric.reason or ""
+
+            result = {
+                "score": score,
+                "passed": passed,
+                "reasoning": reasoning,
+                "metric_name": self.name,
+                "threshold": self._threshold,
+            }
+
+            # Set post-execution attributes
+            self._set_span_attributes(span, test_case, start_time, result)
+
+            logger.debug(
+                f"Evaluation complete: metric={self.name}, score={score:.3f}, "
+                f"passed={passed}, threshold={self._threshold}"
+            )
+
+            return result

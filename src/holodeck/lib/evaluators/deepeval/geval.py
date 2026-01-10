@@ -4,6 +4,10 @@ This module provides the GEvalEvaluator class that wraps DeepEval's GEval metric
 for evaluating LLM outputs against user-defined natural language criteria.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from deepeval.metrics import GEval
 from deepeval.test_case import LLMTestCaseParams
 
@@ -11,6 +15,9 @@ from holodeck.lib.evaluators.base import RetryConfig
 from holodeck.lib.evaluators.deepeval.base import DeepEvalBaseEvaluator
 from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from holodeck.models.observability import TracingConfig
 
 logger = get_logger(__name__)
 
@@ -71,6 +78,7 @@ class GEvalEvaluator(DeepEvalBaseEvaluator):
         strict_mode: bool = False,
         timeout: float | None = 60.0,
         retry_config: RetryConfig | None = None,
+        observability_config: TracingConfig | None = None,
     ) -> None:
         """Initialize G-Eval evaluator.
 
@@ -88,6 +96,8 @@ class GEvalEvaluator(DeepEvalBaseEvaluator):
             strict_mode: If True, scores are binary (1.0 or 0.0). Default: False.
             timeout: Evaluation timeout in seconds. Default: 60.0.
             retry_config: Retry configuration for transient failures.
+            observability_config: Tracing configuration for span instrumentation.
+                                 If None, no spans are created.
 
         Raises:
             ValueError: If invalid evaluation_params are provided.
@@ -115,6 +125,7 @@ class GEvalEvaluator(DeepEvalBaseEvaluator):
             threshold=threshold,
             timeout=timeout,
             retry_config=retry_config,
+            observability_config=observability_config,
         )
 
         logger.debug(
@@ -152,4 +163,5 @@ class GEvalEvaluator(DeepEvalBaseEvaluator):
             model=self._model,
             threshold=self._threshold,
             strict_mode=self._strict_mode,
+            top_logprobs=5,  # OpenAI API limit is 5 (DeepEval defaults to 20)
         )

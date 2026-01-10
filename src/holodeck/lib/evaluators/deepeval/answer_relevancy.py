@@ -5,7 +5,9 @@ AnswerRelevancyMetric for measuring how relevant the response statements are
 to the input query.
 """
 
-from typing import Any, ClassVar
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from deepeval.metrics import AnswerRelevancyMetric
 
@@ -14,6 +16,9 @@ from holodeck.lib.evaluators.deepeval.base import DeepEvalBaseEvaluator
 from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
 from holodeck.lib.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from holodeck.models.observability import TracingConfig
 
 logger = get_logger(__name__)
 
@@ -54,6 +59,7 @@ class AnswerRelevancyEvaluator(DeepEvalBaseEvaluator):
         strict_mode: bool = False,
         timeout: float | None = 60.0,
         retry_config: RetryConfig | None = None,
+        observability_config: TracingConfig | None = None,
     ) -> None:
         """Initialize Answer Relevancy evaluator.
 
@@ -64,6 +70,8 @@ class AnswerRelevancyEvaluator(DeepEvalBaseEvaluator):
             strict_mode: Binary scoring mode (1.0 or 0.0 only). Default: False.
             timeout: Evaluation timeout in seconds. Default: 60.0.
             retry_config: Retry configuration for transient failures.
+            observability_config: Tracing configuration for span instrumentation.
+                                 If None, no spans are created.
         """
         self._include_reason = include_reason
         self._strict_mode = strict_mode
@@ -73,6 +81,7 @@ class AnswerRelevancyEvaluator(DeepEvalBaseEvaluator):
             threshold=threshold,
             timeout=timeout,
             retry_config=retry_config,
+            observability_config=observability_config,
         )
 
         logger.debug(
