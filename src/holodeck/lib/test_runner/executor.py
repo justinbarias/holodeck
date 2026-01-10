@@ -25,7 +25,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from semantic_kernel.contents import ChatHistory
 
@@ -70,6 +70,7 @@ from holodeck.models.evaluation import (
     RAGMetricType,
 )
 from holodeck.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.observability import TracingConfig
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.test_result import (
     MetricResult,
@@ -82,10 +83,25 @@ from holodeck.models.test_result import (
 logger = get_logger(__name__)
 
 
-# Type alias for RAG evaluator constructors.
-# Uses Callable[..., BaseEvaluator] to allow evaluators with varying signatures
-# while ensuring they all return BaseEvaluator instances.
-RAGEvaluatorConstructor = Callable[..., BaseEvaluator]
+class RAGEvaluatorConstructor(Protocol):
+    """Protocol for RAG evaluator constructors with full type safety.
+
+    Defines the common constructor signature for all RAG evaluators.
+    The actual evaluators may have additional parameters with defaults
+    (timeout, retry_config) but this Protocol captures what we use.
+    """
+
+    def __call__(
+        self,
+        *,
+        model_config: DeepEvalModelConfig | None = None,
+        threshold: float = 0.5,
+        include_reason: bool = True,
+        observability_config: TracingConfig | None = None,
+    ) -> BaseEvaluator:
+        """Construct a RAG evaluator with the given configuration."""
+        ...
+
 
 # Mapping of RAG metric types to their evaluator classes
 # Used to eliminate repetitive if/elif chains in _create_evaluators
