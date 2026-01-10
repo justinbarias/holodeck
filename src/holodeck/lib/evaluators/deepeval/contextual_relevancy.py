@@ -5,7 +5,9 @@ ContextualRelevancyMetric for measuring the relevance of retrieved context
 to the user query.
 """
 
-from typing import Any, ClassVar
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from deepeval.metrics import ContextualRelevancyMetric
 
@@ -14,6 +16,9 @@ from holodeck.lib.evaluators.deepeval.base import DeepEvalBaseEvaluator
 from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
 from holodeck.lib.logging_config import get_logger
+
+if TYPE_CHECKING:
+    from holodeck.models.observability import TracingConfig
 
 logger = get_logger(__name__)
 
@@ -59,6 +64,7 @@ class ContextualRelevancyEvaluator(DeepEvalBaseEvaluator):
         include_reason: bool = True,
         timeout: float | None = 60.0,
         retry_config: RetryConfig | None = None,
+        observability_config: TracingConfig | None = None,
     ) -> None:
         """Initialize Contextual Relevancy evaluator.
 
@@ -68,6 +74,8 @@ class ContextualRelevancyEvaluator(DeepEvalBaseEvaluator):
             include_reason: Whether to include reasoning in results. Default: True.
             timeout: Evaluation timeout in seconds. Default: 60.0.
             retry_config: Retry configuration for transient failures.
+            observability_config: Tracing configuration for span instrumentation.
+                                 If None, no spans are created.
         """
         self._include_reason = include_reason
 
@@ -76,6 +84,7 @@ class ContextualRelevancyEvaluator(DeepEvalBaseEvaluator):
             threshold=threshold,
             timeout=timeout,
             retry_config=retry_config,
+            observability_config=observability_config,
         )
 
         logger.debug(

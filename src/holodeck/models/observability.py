@@ -47,6 +47,13 @@ class TracingConfig(BaseModel):
         default=False,
         description="Capture prompts and completions in spans (sensitive data)",
     )
+    capture_evaluation_content: bool = Field(
+        default=False,
+        description=(
+            "Capture evaluation inputs (input, actual_output, expected_output) "
+            "in spans (sensitive data)"
+        ),
+    )
     redaction_patterns: list[str] = Field(
         default_factory=list,
         description="Regex patterns for redacting sensitive data",
