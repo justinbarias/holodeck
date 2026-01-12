@@ -86,7 +86,9 @@ VALID_LLM_PROVIDERS: frozenset[str] = frozenset(p.value for p in ProviderEnum)
 
 # Vector store choices - curated subset of DatabaseConfig.provider
 # (see holodeck.models.tool). Qdrant used instead of redis (not in DatabaseConfig)
-VALID_VECTOR_STORES = frozenset(["chromadb", "qdrant", "postgres", "pinecone", "in-memory"])
+VALID_VECTOR_STORES = frozenset(
+    ["chromadb", "qdrant", "postgres", "pinecone", "in-memory"]
+)
 VALID_EVALS = frozenset(
     [
         "rag-faithfulness",
