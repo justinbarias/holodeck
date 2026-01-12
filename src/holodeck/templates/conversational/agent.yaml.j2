@@ -68,6 +68,7 @@ tools:
     database:
       provider: pinecone
       api_key: ${PINECONE_API_KEY}
+      index_name: ${PINECONE_INDEX_NAME:-holodeck}
       namespace: holodeck  # Optional: Pinecone namespace
 {% endif %}
 {% if llm_provider == "openai" %}
