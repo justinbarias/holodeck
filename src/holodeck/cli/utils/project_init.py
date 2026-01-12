@@ -83,6 +83,33 @@ def get_vectorstore_endpoint(store: str) -> str | None:
     return None
 
 
+def get_vectorstore_config(store: str) -> dict[str, str | bool | None]:
+    """Get configuration for a vector store.
+
+    Args:
+        store: Vector store identifier (e.g., 'chromadb', 'qdrant', 'in-memory').
+
+    Returns:
+        Dictionary with vector store configuration (provider, endpoint, ephemeral flag).
+    """
+    for choice in VECTOR_STORE_CHOICES:
+        if choice.value == store:
+            return {
+                "provider": choice.value,
+                "display_name": choice.display_name,
+                "endpoint": choice.default_endpoint,
+                "is_ephemeral": choice.persistence == "none",
+                "requires_connection": choice.connection_required,
+            }
+    return {
+        "provider": store,
+        "display_name": store,
+        "endpoint": None,
+        "is_ephemeral": False,
+        "requires_connection": True,
+    }
+
+
 def get_provider_api_key_env_var(provider: str) -> str | None:
     """Get the API key environment variable name for an LLM provider.
 
@@ -296,6 +323,7 @@ class ProjectInitializer:
                 llm_endpoint = f"${{{endpoint_env_var}}}"
 
             # Prepare template variables
+            vectorstore_config = get_vectorstore_config(input_data.vector_store)
             template_vars = {
                 "project_name": project_name,
                 "description": input_data.description or "TODO: Add agent description",
@@ -312,6 +340,7 @@ class ProjectInitializer:
                 "vector_store_endpoint": get_vectorstore_endpoint(
                     input_data.vector_store
                 ),
+                "vectorstore_config": vectorstore_config,
                 "evals": input_data.evals,
                 "mcp_servers": [
                     get_mcp_server_config(s) for s in input_data.mcp_servers

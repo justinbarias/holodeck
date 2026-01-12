@@ -46,6 +46,35 @@ instructions:
 
 # Tools Configuration
 tools:
+{% if vectorstore_config and vectorstore_config.requires_connection %}
+  # Vector Store Tool - {{ vectorstore_config.display_name }}
+{% if vectorstore_config.is_ephemeral %}
+  # WARNING: In-memory storage is ephemeral - data will be lost on restart
+{% endif %}
+  - type: vectorstore
+    name: knowledge_base
+    description: Search the knowledge base for relevant information
+    provider: {{ vectorstore_config.provider }}
+{% if vectorstore_config.endpoint %}
+    connection_string: "{{ vectorstore_config.endpoint }}"
+{% endif %}
+    collection_name: {{ project_name }}_knowledge
+    embedding_model:
+      provider: {{ llm_provider }}
+      name: text-embedding-3-small
+{% if llm_provider == "openai" %}
+      api_key: ${OPENAI_API_KEY}
+{% elif llm_provider == "azure_openai" %}
+      endpoint: {{ llm_endpoint }}
+      api_key: ${AZURE_OPENAI_API_KEY}
+{% endif %}
+    source_files:
+      - path: ./knowledge/**/*.md
+        recursive: true
+      - path: ./knowledge/**/*.txt
+        recursive: true
+
+{% endif %}
 {% if mcp_servers %}
 {% for server in mcp_servers %}
   # {{ server.display_name }} - {{ server.description }}
@@ -58,14 +87,11 @@ tools:
       - "{{ server.package }}"
     request_timeout: 30
 {% endfor %}
-{% else %}
-  # No MCP servers configured - add tools as needed
+{% endif %}
+{% if not mcp_servers and not (vectorstore_config and vectorstore_config.requires_connection) %}
+  # No tools configured - add tools as needed
   []
 {% endif %}
-
-# Note: Vector store '{{ vector_store }}' selected
-# Configure vectorstore tools in the tools section above as needed.
-# See docs: https://useholodeck.ai/docs/tools/vectorstore
 
 # Evaluation Configuration
 evaluations:
