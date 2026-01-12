@@ -68,6 +68,7 @@ instructions:
 
 # Tools Configuration
 tools:
+{% if vector_store and vector_store != "in-memory" %}
   # Vectorstore for research paper search (structured data)
   - type: vectorstore
     name: search_papers
@@ -100,9 +101,6 @@ tools:
       api_key: ${PINECONE_API_KEY}
       index_name: ${PINECONE_INDEX_NAME:-holodeck}
       namespace: holodeck  # Optional: Pinecone namespace
-{% elif vector_store == "in-memory" %}
-    database:
-      provider: in-memory
 {% endif %}
 {% if llm_provider == "openai" %}
     embedding_model: text-embedding-3-small
@@ -115,8 +113,9 @@ tools:
 {% endif %}
     top_k: 5
     min_similarity_score: 0.25
-{% if mcp_servers %}
 
+{% endif %}
+{% if mcp_servers %}
   # MCP Servers (from wizard selection)
 {% for server in mcp_servers %}
   # {{ server.display_name }} - {{ server.description }}
@@ -129,6 +128,10 @@ tools:
       - "{{ server.package }}"
     request_timeout: 30
 {% endfor %}
+{% endif %}
+{% if not vector_store or (vector_store == "in-memory" and not mcp_servers) %}
+  # No tools configured - add tools as needed
+  []
 {% endif %}
 {% if vector_store == "in-memory" %}
 
