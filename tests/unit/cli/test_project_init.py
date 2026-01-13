@@ -613,3 +613,49 @@ class TestProjectInitializerInitializeComprehensive:
         )
         # Should not raise
         self.initializer.validate_inputs(input_data)
+
+
+class TestVectorStoreConfigHelpers:
+    """Tests for vector store configuration helper functions."""
+
+    def test_get_vectorstore_endpoint_chromadb(self):
+        """Test getting ChromaDB endpoint."""
+        from holodeck.cli.utils.project_init import get_vectorstore_endpoint
+
+        endpoint = get_vectorstore_endpoint("chromadb")
+        assert endpoint == "http://localhost:8000"
+
+    def test_get_vectorstore_endpoint_postgres(self):
+        """Test getting PostgreSQL endpoint."""
+        from holodeck.cli.utils.project_init import get_vectorstore_endpoint
+
+        endpoint = get_vectorstore_endpoint("postgres")
+        assert endpoint == "postgresql://localhost:5432/holodeck"
+
+    def test_get_vectorstore_endpoint_qdrant(self):
+        """Test getting Qdrant endpoint."""
+        from holodeck.cli.utils.project_init import get_vectorstore_endpoint
+
+        endpoint = get_vectorstore_endpoint("qdrant")
+        assert endpoint == "http://localhost:6333"
+
+    def test_get_vectorstore_endpoint_pinecone(self):
+        """Test getting Pinecone endpoint (should be None - uses API key)."""
+        from holodeck.cli.utils.project_init import get_vectorstore_endpoint
+
+        endpoint = get_vectorstore_endpoint("pinecone")
+        assert endpoint is None
+
+    def test_get_vectorstore_endpoint_in_memory(self):
+        """Test getting In-Memory endpoint (should be None)."""
+        from holodeck.cli.utils.project_init import get_vectorstore_endpoint
+
+        endpoint = get_vectorstore_endpoint("in-memory")
+        assert endpoint is None
+
+    def test_get_vectorstore_endpoint_unknown(self):
+        """Test getting endpoint for unknown vector store."""
+        from holodeck.cli.utils.project_init import get_vectorstore_endpoint
+
+        endpoint = get_vectorstore_endpoint("unknown-store")
+        assert endpoint is None

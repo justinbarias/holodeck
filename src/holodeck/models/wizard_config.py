@@ -86,7 +86,9 @@ VALID_LLM_PROVIDERS: frozenset[str] = frozenset(p.value for p in ProviderEnum)
 
 # Vector store choices - curated subset of DatabaseConfig.provider
 # (see holodeck.models.tool). Qdrant used instead of redis (not in DatabaseConfig)
-VALID_VECTOR_STORES = frozenset(["chromadb", "qdrant", "in-memory"])
+VALID_VECTOR_STORES = frozenset(
+    ["chromadb", "qdrant", "postgres", "pinecone", "in-memory"]
+)
 VALID_EVALS = frozenset(
     [
         "rag-faithfulness",
@@ -459,11 +461,29 @@ VECTOR_STORE_CHOICES: list[VectorStoreChoice] = [
         connection_required=True,
     ),
     VectorStoreChoice(
+        value="postgres",
+        display_name="PostgreSQL (pgvector)",
+        description="Production-grade vector storage with full SQL capabilities",
+        is_default=False,
+        default_endpoint="postgresql://localhost:5432/holodeck",
+        persistence="local",
+        connection_required=True,
+    ),
+    VectorStoreChoice(
         value="qdrant",
         display_name="Qdrant",
         description="High-performance vector database with REST/gRPC API",
         is_default=False,
         default_endpoint="http://localhost:6333",
+        persistence="remote",
+        connection_required=True,
+    ),
+    VectorStoreChoice(
+        value="pinecone",
+        display_name="Pinecone",
+        description="Fully managed, serverless vector database",
+        is_default=False,
+        default_endpoint=None,
         persistence="remote",
         connection_required=True,
     ),

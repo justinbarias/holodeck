@@ -68,6 +68,7 @@ instructions:
 
 # Tools Configuration
 tools:
+{% if vector_store and vector_store != "in-memory" %}
   # Vectorstore for research paper search (structured data)
   - type: vectorstore
     name: search_papers
@@ -82,13 +83,39 @@ tools:
       - year
       - url
     field_separator: "\n\n"              # Separator when joining vector fields
-    embedding_model: nomic-embed-text:latest
+{% if vector_store == "chromadb" %}
+    database:
+      provider: chromadb
+      connection_string: {{ vector_store_endpoint }}
+{% elif vector_store == "postgres" %}
+    database:
+      provider: postgres
+      connection_string: ${POSTGRES_CONNECTION_STRING}  # postgresql://user:password@localhost:5432/holodeck
+{% elif vector_store == "qdrant" %}
+    database:
+      provider: qdrant
+      connection_string: {{ vector_store_endpoint }}
+{% elif vector_store == "pinecone" %}
+    database:
+      provider: pinecone
+      api_key: ${PINECONE_API_KEY}
+      index_name: ${PINECONE_INDEX_NAME:-holodeck}
+      namespace: holodeck  # Optional: Pinecone namespace
+{% endif %}
+{% if llm_provider == "openai" %}
+    embedding_model: text-embedding-3-small
+{% elif llm_provider == "azure_openai" %}
+    embedding_model: text-embedding-3-small
+{% elif llm_provider == "anthropic" %}
+    embedding_model: voyage-3  # Anthropic recommends Voyage AI embeddings
+{% else %}
+    embedding_model: nomic-embed-text  # Ollama embedding model
+{% endif %}
     top_k: 5
     min_similarity_score: 0.25
-    database:
-      provider: {{ vector_store }}
-{% if mcp_servers %}
 
+{% endif %}
+{% if mcp_servers %}
   # MCP Servers (from wizard selection)
 {% for server in mcp_servers %}
   # {{ server.display_name }} - {{ server.description }}
@@ -102,9 +129,16 @@ tools:
     request_timeout: 30
 {% endfor %}
 {% endif %}
+{% if not vector_store or (vector_store == "in-memory" and not mcp_servers) %}
+  # No tools configured - add tools as needed
+  []
+{% endif %}
+{% if vector_store == "in-memory" %}
 
-# Note: Vector store '{{ vector_store }}' selected for vectorstore tools above.
-# See docs: https://useholodeck.ai/docs/tools/vectorstore
+# WARNING: In-Memory vector store selected
+# Data will be lost when the agent restarts. Use this only for testing.
+# For persistent storage, use ChromaDB, PostgreSQL, Qdrant, or Pinecone.
+{% endif %}
 
 # Evaluation Configuration
 evaluations:

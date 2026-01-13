@@ -226,7 +226,7 @@ class TestWizardResult:
 
     @pytest.mark.parametrize(
         "vector_store",
-        ["chromadb", "qdrant", "in-memory"],
+        ["chromadb", "qdrant", "postgres", "pinecone", "in-memory"],
     )
     def test_valid_vector_stores(self, vector_store: str) -> None:
         """Test that all valid vector stores are accepted."""
@@ -378,9 +378,9 @@ class TestVectorStoreChoice:
         assert choice.value == "test"
         assert choice.persistence == "local"
 
-    def test_choices_list_has_three_items(self) -> None:
-        """Test that VECTOR_STORE_CHOICES has exactly 3 items."""
-        assert len(VECTOR_STORE_CHOICES) == 3
+    def test_choices_list_has_five_items(self) -> None:
+        """Test that VECTOR_STORE_CHOICES has exactly 5 items."""
+        assert len(VECTOR_STORE_CHOICES) == 5
 
     def test_only_one_default(self) -> None:
         """Test that only one choice has is_default=True."""
@@ -508,7 +508,10 @@ class TestValidSets:
 
     def test_valid_vector_stores(self) -> None:
         """Test VALID_VECTOR_STORES contains expected values."""
-        assert frozenset(["chromadb", "qdrant", "in-memory"]) == VALID_VECTOR_STORES
+        assert (
+            frozenset(["chromadb", "qdrant", "postgres", "pinecone", "in-memory"])
+            == VALID_VECTOR_STORES
+        )
 
     def test_valid_evals(self) -> None:
         """Test VALID_EVALS contains expected values."""
