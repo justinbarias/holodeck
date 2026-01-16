@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from holodeck.lib.tool_filter.models import ToolFilterConfig
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.evaluation import EvaluationConfig
 from holodeck.models.llm import LLMProvider
@@ -76,6 +77,14 @@ class Agent(BaseModel):
     )
     tools: list[ToolUnion] | None = Field(
         default=None, description="Agent tools (vectorstore, function, mcp, prompt)"
+    )
+    tool_filtering: ToolFilterConfig | None = Field(
+        default=None,
+        description=(
+            "Automatic tool filtering configuration. When enabled, dynamically "
+            "filters tools per request based on semantic similarity to reduce "
+            "token usage."
+        ),
     )
     evaluations: EvaluationConfig | None = Field(
         default=None, description="Evaluation configuration"

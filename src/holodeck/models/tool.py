@@ -71,6 +71,14 @@ class Tool(BaseModel):
     type: str = Field(
         ..., description="Tool type: vectorstore, function, mcp, or prompt"
     )
+    defer_loading: bool = Field(
+        default=True,
+        description=(
+            "If True, tool is excluded from initial context and loaded on-demand "
+            "via semantic search. Set to False for critical tools that should "
+            "always be available."
+        ),
+    )
 
 
 class DatabaseConfig(BaseModel):
@@ -138,6 +146,13 @@ class VectorstoreTool(BaseModel):
     name: str = Field(..., pattern=r"^[0-9A-Za-z_]+$", description="Tool identifier")
     description: str = Field(..., description="Tool description")
     type: Literal["vectorstore"] = Field(default="vectorstore", description="Tool type")
+    defer_loading: bool = Field(
+        default=True,
+        description=(
+            "If True, tool is excluded from initial context and loaded on-demand "
+            "via semantic search. Set to False for critical tools."
+        ),
+    )
     source: str = Field(..., description="Path to data file or directory")
     vector_field: str | list[str] | None = Field(
         None, description="Field(s) to vectorize"
@@ -282,6 +297,13 @@ class FunctionTool(BaseModel):
     name: str = Field(..., pattern=r"^[0-9A-Za-z_]+$", description="Tool identifier")
     description: str = Field(..., description="Tool description")
     type: Literal["function"] = Field(default="function", description="Tool type")
+    defer_loading: bool = Field(
+        default=True,
+        description=(
+            "If True, tool is excluded from initial context and loaded on-demand "
+            "via semantic search. Set to False for critical tools."
+        ),
+    )
     file: str = Field(..., description="Path to Python file")
     function: str = Field(..., description="Function name")
     parameters: dict[str, dict[str, Any]] | None = Field(
@@ -324,6 +346,13 @@ class MCPTool(BaseModel):
     name: str = Field(..., pattern=r"^[0-9A-Za-z_]+$", description="Tool identifier")
     description: str = Field(..., description="Tool description")
     type: Literal["mcp"] = Field(default="mcp", description="Tool type")
+    defer_loading: bool = Field(
+        default=True,
+        description=(
+            "If True, tool is excluded from initial context and loaded on-demand "
+            "via semantic search. Set to False for critical tools."
+        ),
+    )
 
     # Transport configuration
     transport: TransportType = Field(
@@ -433,6 +462,13 @@ class PromptTool(BaseModel):
     name: str = Field(..., pattern=r"^[0-9A-Za-z_]+$", description="Tool identifier")
     description: str = Field(..., description="Tool description")
     type: Literal["prompt"] = Field(default="prompt", description="Tool type")
+    defer_loading: bool = Field(
+        default=True,
+        description=(
+            "If True, tool is excluded from initial context and loaded on-demand "
+            "via semantic search. Set to False for critical tools."
+        ),
+    )
     template: str | None = Field(None, description="Inline prompt template")
     file: str | None = Field(None, description="Path to prompt file")
     parameters: dict[str, dict[str, Any]] = Field(
