@@ -299,7 +299,7 @@ class AgentThreadRun:
                     )
                 )
                 arguments = KernelArguments(settings=filtered_settings)
-                logger.debug(f"Applied tool filtering for query: {user_query[:50]}...")
+                logger.info(f"Tool filtering applied for query: '{user_query[:50]}...'")
             else:
                 arguments = self.kernel_arguments
 

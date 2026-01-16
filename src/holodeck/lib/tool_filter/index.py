@@ -14,9 +14,14 @@ Key features:
 
 import math
 import re
-from typing import Any
 
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.embedding_generator_base import (
+    EmbeddingGeneratorBase,
+)
+from semantic_kernel.functions.kernel_function import KernelFunction
+from semantic_kernel.functions.kernel_parameter_metadata import KernelParameterMetadata
+from semantic_kernel.functions.kernel_plugin import KernelPlugin
 
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.tool_filter.models import ToolMetadata
@@ -50,14 +55,19 @@ def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
 def _tokenize(text: str) -> list[str]:
     """Simple tokenizer for BM25 search.
 
+    Splits text on non-alphanumeric characters INCLUDING underscores,
+    so that tool names like "brave_web_search" become ["brave", "web", "search"].
+    This enables matching individual terms like "web" against tool names.
+
     Args:
         text: Input text to tokenize.
 
     Returns:
         List of lowercase tokens.
     """
-    # Split on non-alphanumeric, convert to lowercase
-    tokens = re.findall(r"\w+", text.lower())
+    # Split on non-alphanumeric characters (excluding underscores from word chars)
+    # This ensures "brave_web_search" -> ["brave", "web", "search"]
+    tokens = re.findall(r"[a-zA-Z0-9]+", text.lower())
     return tokens
 
 
@@ -89,7 +99,7 @@ class ToolIndex:
     async def build_from_kernel(
         self,
         kernel: Kernel,
-        embedding_service: Any | None = None,
+        embedding_service: EmbeddingGeneratorBase | None = None,
         defer_loading_map: dict[str, bool] | None = None,
     ) -> None:
         """Build index from Semantic Kernel plugins.
@@ -107,13 +117,13 @@ class ToolIndex:
         documents_for_bm25: list[tuple[str, str]] = []
 
         # Get all plugins and their functions
-        plugins = getattr(kernel, "plugins", {})
+        plugins: dict[str, KernelPlugin] = getattr(kernel, "plugins", {})
         if not plugins:
             logger.debug("No plugins found in kernel")
             return
 
         for plugin_name, plugin in plugins.items():
-            functions = getattr(plugin, "functions", {})
+            functions: dict[str, KernelFunction] = getattr(plugin, "functions", {})
             for func_name, func in functions.items():
                 # Build full name
                 full_name = f"{plugin_name}-{func_name}" if plugin_name else func_name
@@ -132,15 +142,15 @@ class ToolIndex:
                 # Extract parameter descriptions
                 parameters: list[str] = []
                 try:
-                    func_params = getattr(func, "parameters", None)
+                    func_params: list[KernelParameterMetadata] | None = getattr(
+                        func, "parameters", None
+                    )
                     if func_params:
                         for param in func_params:
-                            param_desc = getattr(param, "description", "")
-                            param_name = getattr(param, "name", "")
-                            if param_desc:
-                                parameters.append(f"{param_name}: {param_desc}")
-                            elif param_name:
-                                parameters.append(param_name)
+                            if param.description:
+                                parameters.append(f"{param.name}: {param.description}")
+                            elif param.name:
+                                parameters.append(param.name)
                 except Exception as e:
                     logger.debug(f"Could not extract parameters for {full_name}: {e}")
 
@@ -163,7 +173,10 @@ class ToolIndex:
                 doc_text = self._create_searchable_text(tool_metadata)
                 documents_for_bm25.append((full_name, doc_text))
 
-                logger.debug(f"Indexed tool: {full_name}")
+                logger.debug(
+                    f"Indexed tool: {full_name} | "
+                    f"searchable_text: {doc_text[:200]}..."
+                )
 
         # Build BM25 index
         self._build_bm25_index(documents_for_bm25)
@@ -226,7 +239,9 @@ class ToolIndex:
         for term, df in term_doc_freq.items():
             self._idf_cache[term] = math.log((n - df + 0.5) / (df + 0.5) + 1)
 
-    async def _generate_embeddings(self, embedding_service: Any) -> None:
+    async def _generate_embeddings(
+        self, embedding_service: EmbeddingGeneratorBase
+    ) -> None:
         """Generate embeddings for all tools using the embedding service.
 
         Args:
@@ -262,7 +277,7 @@ class ToolIndex:
         top_k: int,
         method: str = "semantic",
         threshold: float = 0.0,
-        embedding_service: Any | None = None,
+        embedding_service: EmbeddingGeneratorBase | None = None,
     ) -> list[tuple[ToolMetadata, float]]:
         """Search for relevant tools based on query.
 
@@ -289,15 +304,29 @@ class ToolIndex:
             logger.warning(f"Unknown search method: {method}, falling back to semantic")
             results = await self._semantic_search(query, embedding_service)
 
+        # Sort all results by score descending
+        results.sort(key=lambda x: x[1], reverse=True)
+
+        # Log ALL tool scores for debugging (helps diagnose ranking issues)
+        logger.debug(
+            f"Tool search ({method}) all scores: "
+            f"{[(t.full_name, f'{s:.4f}') for t, s in results]}"
+        )
+
         # Filter by threshold
         filtered = [(tool, score) for tool, score in results if score >= threshold]
 
-        # Sort by score descending and return top_k
-        filtered.sort(key=lambda x: x[1], reverse=True)
-        return filtered[:top_k]
+        top_results = filtered[:top_k]
+
+        # Log top matches for visibility
+        if top_results:
+            top_matches = [(t.full_name, f"{s:.3f}") for t, s in top_results[:3]]
+            logger.info(f"Tool search ({method}): top matches {top_matches}")
+
+        return top_results
 
     async def _semantic_search(
-        self, query: str, embedding_service: Any | None
+        self, query: str, embedding_service: EmbeddingGeneratorBase | None
     ) -> list[tuple[ToolMetadata, float]]:
         """Perform semantic search using embeddings.
 
@@ -340,15 +369,20 @@ class ToolIndex:
             query: User query.
 
         Returns:
-            List of (ToolMetadata, bm25_score) tuples.
+            List of (ToolMetadata, normalized_score) tuples with scores in 0-1 range.
         """
-        results: list[tuple[ToolMetadata, float]] = []
+        raw_results: list[tuple[ToolMetadata, float]] = []
 
         for tool in self.tools.values():
             score = self._bm25_score_single(query, tool)
-            results.append((tool, score))
+            raw_results.append((tool, score))
 
-        return results
+        # Normalize BM25 scores to 0-1 range
+        # Raw BM25 scores can be arbitrarily high (typically 0-10+)
+        max_score = max((score for _, score in raw_results), default=1.0)
+        if max_score > 0:
+            return [(tool, score / max_score) for tool, score in raw_results]
+        return raw_results
 
     def _bm25_score_single(self, query: str, tool: ToolMetadata) -> float:
         """Calculate BM25 score for a single tool.
@@ -394,7 +428,7 @@ class ToolIndex:
         return score
 
     async def _hybrid_search(
-        self, query: str, embedding_service: Any | None
+        self, query: str, embedding_service: EmbeddingGeneratorBase | None
     ) -> list[tuple[ToolMetadata, float]]:
         """Perform hybrid search combining semantic and BM25.
 
@@ -412,6 +446,21 @@ class ToolIndex:
 
         # Get BM25 results
         bm25_results = self._bm25_search(query)
+
+        # Log intermediate results for debugging
+        semantic_sorted_debug = sorted(
+            semantic_results, key=lambda x: x[1], reverse=True
+        )
+        bm25_sorted_debug = sorted(bm25_results, key=lambda x: x[1], reverse=True)
+
+        logger.debug(
+            f"Hybrid search - Semantic top 5: "
+            f"{[(t.full_name, f'{s:.4f}') for t, s in semantic_sorted_debug[:5]]}"
+        )
+        logger.debug(
+            f"Hybrid search - BM25 top 5: "
+            f"{[(t.full_name, f'{s:.4f}') for t, s in bm25_sorted_debug[:5]]}"
+        )
 
         # Combine using reciprocal rank fusion (RRF)
         k = 60  # RRF constant
@@ -431,9 +480,20 @@ class ToolIndex:
                 k + rank + 1
             )
 
-        # Build final results
+        # Normalize RRF scores to 0-1 range
+        # Raw RRF scores are typically 0.01-0.03, which breaks threshold filtering
+        # Normalizing ensures consistency with semantic search scores
+        max_score = max(rrf_scores.values()) if rrf_scores else 1.0
+        if max_score > 0:
+            normalized_scores = {
+                name: score / max_score for name, score in rrf_scores.items()
+            }
+        else:
+            normalized_scores = rrf_scores
+
+        # Build final results with normalized scores
         results: list[tuple[ToolMetadata, float]] = []
-        for full_name, score in rrf_scores.items():
+        for full_name, score in normalized_scores.items():
             found_tool = self.tools.get(full_name)
             if found_tool:
                 results.append((found_tool, score))

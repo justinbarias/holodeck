@@ -58,9 +58,18 @@ class TestTokenize:
         assert result == ["hello", "world"]
 
     def test_special_characters(self) -> None:
-        """Test tokenizing text with special characters."""
+        """Test tokenizing text with special characters and underscores."""
         result = _tokenize("hello-world, how's it_going?")
-        assert result == ["hello", "world", "how", "s", "it_going"]
+        # Underscores are now treated as separators (not word chars)
+        # to enable matching "web" against "brave_web_search"
+        assert result == ["hello", "world", "how", "s", "it", "going"]
+
+    def test_underscore_splitting(self) -> None:
+        """Test that underscores split tokens for tool name matching."""
+        result = _tokenize("brave_web_search")
+        # Tool names like "brave_web_search" should split into components
+        # so that queries containing "web" can match the tool
+        assert result == ["brave", "web", "search"]
 
     def test_numbers(self) -> None:
         """Test tokenizing text with numbers."""

@@ -15,6 +15,9 @@ Key responsibilities:
 from typing import Any
 
 from semantic_kernel import Kernel
+from semantic_kernel.connectors.ai.embedding_generator_base import (
+    EmbeddingGeneratorBase,
+)
 from semantic_kernel.connectors.ai.function_choice_behavior import (
     FunctionChoiceBehavior,
 )
@@ -48,7 +51,7 @@ class ToolFilterManager:
         self,
         config: ToolFilterConfig,
         kernel: Kernel,
-        embedding_service: Any | None = None,
+        embedding_service: EmbeddingGeneratorBase | None = None,
     ) -> None:
         """Initialize the tool filter manager.
 
@@ -152,10 +155,11 @@ class ToolFilterManager:
                 included_tools.add(tool.full_name)
                 logger.debug(f"Included tool {tool.full_name} (score={score:.3f})")
 
-        logger.debug(
-            f"Filtered tools: {len(included_tools)}/{len(self.index.tools)} "
-            f"for query: {query[:50]}..."
+        logger.info(
+            f"Tool filtering: {len(included_tools)}/{len(self.index.tools)} tools "
+            f"selected for query: '{query[:50]}...'"
         )
+        logger.info(f"Selected tools: {sorted(included_tools)}")
 
         return list(included_tools)
 
