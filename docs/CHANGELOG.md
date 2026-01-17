@@ -16,6 +16,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.3] - 2026-01-17
+
+### Added
+
+- **Holodeck Init - Support for Vector Store Provider choice**: PostgreSQL (pgvector) and Pinecone support
+
+### Changed
+
+- **Tool Filtering**: Anthropic tool search to reduce token usage
+- **Claude Workflow**: use Opus model in Claude workflow
+
+### Documentation
+
+- Tool filtering configuration guide
+
+---
+
+## [0.3.2] - 2026-01-10
+
+### Added
+
+- **DeepEval Evaluation Tracing**: Observability support for DeepEval metrics
+
+### Fixed
+
+- Security vulnerabilities identified in dependencies
+
+---
+
+## [0.3.1] - 2026-01-09
+
+### Changed
+
+- **Test Runner Expected Tools**: loosened expected_tools validation to allow substring matching
+
+---
+
 ## [0.3.0] - 2026-01-08
 
 ### Added
@@ -460,7 +497,10 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 
 ---
 
-[unreleased]: https://github.com/justinbarias/holodeck/compare/0.3.0...HEAD
+[unreleased]: https://github.com/justinbarias/holodeck/compare/0.3.3...HEAD
+[0.3.3]: https://github.com/justinbarias/holodeck/compare/0.3.2...0.3.3
+[0.3.2]: https://github.com/justinbarias/holodeck/compare/0.3.1...0.3.2
+[0.3.1]: https://github.com/justinbarias/holodeck/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/justinbarias/holodeck/compare/0.1.7...0.3.0
 [0.1.7]: https://github.com/justinbarias/holodeck/compare/0.1.6...0.1.7
 [0.1.6]: https://github.com/justinbarias/holodeck/compare/0.1.5...0.1.6
