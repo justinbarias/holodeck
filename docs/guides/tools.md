@@ -15,6 +15,69 @@ Tools are agent capabilities defined in `agent.yaml`. HoloDeck supports four too
 
 > **Note**: **Vectorstore Tools** and **MCP Tools** are fully implemented. Function and Prompt tools are defined in the configuration schema but not yet functional.
 
+## Tool Filtering
+
+Tool filtering automatically reduces tool context per request by selecting only the most relevant tools. It builds an in-memory index of tool metadata and uses Semantic Kernel's `FunctionChoiceBehavior` to include a filtered set of tools for each query.
+
+### Agent Configuration
+
+```yaml
+# agent.yaml
+name: support-agent
+model:
+  provider: openai
+  name: gpt-4o-mini
+instructions:
+  file: instructions/system.md
+
+tool_filtering:
+  enabled: true
+  top_k: 5
+  similarity_threshold: 0.3
+  always_include_top_n_used: 3
+  search_method: semantic
+
+
+tools:
+  - name: filesystem
+    type: mcp
+    description: Read and write files
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
+```
+
+### Configuration Knobs
+
+- `top_k`: Max tools per request (includes always-included tools)
+- `similarity_threshold`: Filter out tools scoring below this value
+- `always_include`: Tool names always available (full name or function name suffix)
+- `always_include_top_n_used`: Keep most-used tools in context (usage-aware)
+- `search_method`: `semantic`, `bm25`, or `hybrid`
+
+### Sensible Defaults
+
+| Parameter | Default | Rationale |
+| --- | --- | --- |
+| `top_k` | 5 | Enough tools for most tasks without token bloat |
+| `similarity_threshold` | 0.3 | Include tools at least 30% as relevant as top result |
+| `always_include` | `[]` | Agent-specific—add your critical tools here |
+| `always_include_top_n_used` | 3 | Keep frequently used tools in context |
+| `search_method` | `semantic` | Best semantic match for short prompts |
+
+### Threshold Tuning by Search Method
+
+All search methods return normalized scores in the 0-1 range, so `similarity_threshold` is consistent across methods.
+
+| Method | Good Match Range | Recommended Threshold |
+| --- | --- | --- |
+| `semantic` | 0.4 - 0.6 | 0.3 - 0.4 |
+| `bm25` (normalized) | 0.8 - 1.0 | 0.5 - 0.6 |
+| `hybrid` (normalized) | 0.8 - 1.0 | 0.5 - 0.6 |
+
+A threshold of 0.3 means "include tools scoring at least 30% of what the top result scores."
+
+> **Tip**: `always_include_top_n_used` tracks usage across requests, so early or accidental tool calls can bias results. Set it to 0 during development if you want to avoid usage bias.
+
 ## Common Tool Fields
 
 All tools share these fields:
