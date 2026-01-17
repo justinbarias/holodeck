@@ -33,10 +33,10 @@ instructions:
 tool_filtering:
   enabled: true
   top_k: 5
-  similarity_threshold: 0.5
-  always_include: [filesystem]
-  always_include_top_n_used: 0
-  search_method: hybrid
+  similarity_threshold: 0.3
+  always_include_top_n_used: 3
+  search_method: semantic
+
 
 tools:
   - name: filesystem
@@ -59,10 +59,10 @@ tools:
 | Parameter | Default | Rationale |
 | --- | --- | --- |
 | `top_k` | 5 | Enough tools for most tasks without token bloat |
-| `similarity_threshold` | 0.5 | Include tools at least 50% as relevant as top result |
+| `similarity_threshold` | 0.3 | Include tools at least 30% as relevant as top result |
 | `always_include` | `[]` | Agent-specific—add your critical tools here |
-| `always_include_top_n_used` | 0 | Avoid early usage bias; enable after patterns stabilize |
-| `search_method` | `hybrid` | Best of semantic + keyword matching |
+| `always_include_top_n_used` | 3 | Keep frequently used tools in context |
+| `search_method` | `semantic` | Best semantic match for short prompts |
 
 ### Threshold Tuning by Search Method
 
@@ -74,9 +74,9 @@ All search methods return normalized scores in the 0-1 range, so `similarity_thr
 | `bm25` (normalized) | 0.8 - 1.0 | 0.5 - 0.6 |
 | `hybrid` (normalized) | 0.8 - 1.0 | 0.5 - 0.6 |
 
-A threshold of 0.5 means "include tools scoring at least 50% of what the top result scores."
+A threshold of 0.3 means "include tools scoring at least 30% of what the top result scores."
 
-> **Tip**: `always_include_top_n_used` tracks usage across requests, so early or accidental tool calls can bias results. Keep it at 0 during development.
+> **Tip**: `always_include_top_n_used` tracks usage across requests, so early or accidental tool calls can bias results. Set it to 0 during development if you want to avoid usage bias.
 
 ## Common Tool Fields
 
