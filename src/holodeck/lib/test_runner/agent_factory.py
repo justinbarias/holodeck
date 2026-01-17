@@ -39,6 +39,7 @@ from semantic_kernel.functions.kernel_function_from_method import (
 from holodeck.config.schema import SchemaValidator
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
+from holodeck.lib.tool_filter import ToolFilterManager
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import ProviderEnum
@@ -118,6 +119,7 @@ class AgentThreadRun:
         retry_delay: float = DEFAULT_RETRY_DELAY_SECONDS,
         retry_exponential_base: float = DEFAULT_RETRY_EXPONENTIAL_BASE,
         observability_enabled: bool = False,
+        tool_filter_manager: ToolFilterManager | None = None,
     ) -> None:
         """Initialize an agent thread run with isolated chat history.
 
@@ -130,6 +132,7 @@ class AgentThreadRun:
             retry_delay: Base delay in seconds for exponential backoff.
             retry_exponential_base: Exponential base for backoff calculation.
             observability_enabled: Whether OTel tracing is enabled.
+            tool_filter_manager: Optional manager for filtering tools per request.
         """
         self.agent = agent
         self.kernel = kernel
@@ -139,11 +142,13 @@ class AgentThreadRun:
         self.retry_delay = retry_delay
         self.retry_exponential_base = retry_exponential_base
         self.observability_enabled = observability_enabled
+        self.tool_filter_manager = tool_filter_manager
         self.chat_history = ChatHistory()  # Fresh history per instance
 
         logger.debug(
             f"AgentThreadRun initialized: timeout={self.timeout}s, "
-            f"max_retries={self.max_retries}, retry_delay={self.retry_delay}s"
+            f"max_retries={self.max_retries}, retry_delay={self.retry_delay}s, "
+            f"tool_filtering={'enabled' if tool_filter_manager else 'disabled'}"
         )
 
     async def invoke(self, user_input: str) -> AgentExecutionResult:
@@ -276,7 +281,28 @@ class AgentThreadRun:
 
             # Invoke agent with chat history
             thread = ChatHistoryAgentThread(self.chat_history)
-            arguments = self.kernel_arguments
+
+            # Apply tool filtering if enabled
+            base_settings = self.kernel_arguments.execution_settings
+            if self.tool_filter_manager and base_settings is not None:
+                # Get the user query from the last message
+                user_query = ""
+                if self.chat_history.messages:
+                    last_msg = self.chat_history.messages[-1]
+                    user_query = str(getattr(last_msg, "content", ""))
+
+                # Get filtered execution settings
+                filtered_settings = (
+                    await self.tool_filter_manager.prepare_execution_settings(
+                        query=user_query,
+                        base_settings=base_settings,
+                    )
+                )
+                arguments = KernelArguments(settings=filtered_settings)
+                logger.info(f"Tool filtering applied for query: '{user_query[:50]}...'")
+            else:
+                arguments = self.kernel_arguments
+
             # Get the async generator and properly close it after extracting
             # first response. This avoids "Failed to detach context" errors
             # from OTel when breaking early from the generator.
@@ -291,13 +317,17 @@ class AgentThreadRun:
                     break  # Only process first response
             finally:
                 # Explicitly close the generator to ensure proper OTel context cleanup
-                await invoke_gen.aclose()
+                await invoke_gen.aclose()  # type: ignore[attr-defined]
 
             # Extract tool calls and results from thread's chat history
             # Only scan messages added during this turn (after history_length_before)
             tool_calls, tool_results = await self._extract_tool_calls_from_thread(
                 thread, start_index=history_length_before
             )
+
+            # Record tool usage for adaptive optimization
+            if self.tool_filter_manager and tool_calls:
+                self.tool_filter_manager.record_tool_usage(tool_calls)
 
             # Note: Assistant messages are automatically added to self.chat_history
             # by ChatHistoryAgentThread.on_new_message() during agent.invoke().
@@ -551,6 +581,9 @@ class AgentFactory:
         # MCP tool support
         self._mcp_plugins: list[Any] = []
 
+        # Tool filtering support
+        self._tool_filter_manager: ToolFilterManager | None = None
+
         logger.debug(
             f"Initializing AgentFactory: agent={agent_config.name}, "
             f"provider={agent_config.model.provider}, timeout={self.timeout}s, "
@@ -581,6 +614,17 @@ class AgentFactory:
         return (
             self.agent_config.observability is not None
             and self.agent_config.observability.enabled
+        )
+
+    def _is_tool_filtering_enabled(self) -> bool:
+        """Check if tool filtering is enabled for this agent.
+
+        Returns:
+            True if tool_filtering is configured and enabled, False otherwise.
+        """
+        return (
+            self.agent_config.tool_filtering is not None
+            and self.agent_config.tool_filtering.enabled
         )
 
     def _create_kernel(self) -> Kernel:
@@ -916,7 +960,46 @@ class AgentFactory:
             return
         await self._register_vectorstore_tools()
         await self._register_mcp_tools()
+
+        # Initialize tool filtering if enabled
+        if self._is_tool_filtering_enabled():
+            await self._initialize_tool_filter()
+
         self._tools_initialized = True
+
+    async def _initialize_tool_filter(self) -> None:
+        """Initialize the tool filter manager for semantic tool search.
+
+        Creates a ToolFilterManager and builds the tool index from the kernel's
+        registered plugins. This enables automatic tool filtering per request
+        based on query relevance.
+        """
+        if not self.agent_config.tool_filtering:
+            return
+
+        config = self.agent_config.tool_filtering
+
+        # Build defer_loading map from tool configs
+        defer_loading_map: dict[str, bool] = {}
+        if self.agent_config.tools:
+            for tool in self.agent_config.tools:
+                # Tools can have nested functions, we need to build full names
+                # For now, map by tool name (will be matched in index)
+                defer_loading = getattr(tool, "defer_loading", True)
+                defer_loading_map[tool.name] = defer_loading
+
+        # Create and initialize the manager
+        self._tool_filter_manager = ToolFilterManager(
+            config=config,
+            kernel=self.kernel,
+            embedding_service=self._embedding_service,
+        )
+
+        await self._tool_filter_manager.initialize(defer_loading_map=defer_loading_map)
+        logger.info(
+            f"Tool filter manager initialized: "
+            f"{len(self._tool_filter_manager.index.tools)} tools indexed"
+        )
 
     async def shutdown(self) -> None:
         """Shutdown all MCP plugins and release resources.
@@ -1061,6 +1144,7 @@ class AgentFactory:
             retry_delay=self.retry_delay,
             retry_exponential_base=self.retry_exponential_base,
             observability_enabled=self._is_observability_enabled(),
+            tool_filter_manager=self._tool_filter_manager,
         )
 
     def _build_kernel_arguments(self) -> KernelArguments:

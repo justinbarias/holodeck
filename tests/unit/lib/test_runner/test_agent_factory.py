@@ -242,6 +242,7 @@ class TestAgentFactoryKernelArguments:
         factory._mcp_plugins = []  # No MCP plugins in test
         factory._vectorstore_tool_instances = []  # No vectorstore tools in test
         factory._execution_config = None  # No execution config in test
+        factory._tool_filter_manager = None  # No tool filtering in test
         # Add retry and timeout attributes needed by create_thread_run
         factory.timeout = 60.0
         factory.max_retries = 3
@@ -2086,6 +2087,7 @@ class TestResponseFormatWrapping:
         factory._mcp_plugins = []  # No MCP plugins in test
         factory._vectorstore_tool_instances = []  # No vectorstore tools in test
         factory._execution_config = None  # No execution config in test
+        factory._tool_filter_manager = None  # No tool filtering in test
         # Add retry and timeout attributes needed by create_thread_run
         factory.timeout = 60.0
         factory.max_retries = 3
