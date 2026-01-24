@@ -9,10 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned Features
 
-- **Deployment Engine**: Convert agents to production FastAPI endpoints
-- **CLI Commands**: `holodeck deploy`
+- **Deployment Engine**: Registry push (`holodeck deploy push`) and cloud deployment (`holodeck deploy run`)
 - **Plugin System**: Pre-built plugin packages for common integrations
 - **Agent Framework Migration**: Plans to migrate away from Semantic Kernel to another agent framework (either Agents Framework, or Google ADK, alternatively support for Claude Agent SDK)
+
+---
+
+## [0.3.4] - 2026-01-24
+
+### Added
+
+- **Deploy Build Command** (`holodeck deploy build`): Build container images from agent configuration
+  - Pydantic deployment configuration models with validation
+  - Dockerfile generation with Jinja2 templates
+  - Container image building via Docker SDK (docker-py)
+  - Tag strategies: `git_sha`, `git_tag`, `latest`, `custom`
+  - OCI-compliant image labels
+  - `--dry-run` mode to preview builds without executing
+  - `--no-cache` flag for fresh builds
+- **HoloDeck Base Image**: Pre-built Docker base image for agent containers
+  - Multi-architecture support (linux/amd64, linux/arm64)
+  - GitHub Actions workflow for automated builds
+  - Published to `ghcr.io/justinbarias/holodeck-base:latest`
+  - Non-root user for security
+  - Health check configuration
+- **OpenCode Speckit Support**: Spec-kit slash commands for OpenCode editor
+  - `/speckit.specify`, `/speckit.clarify`, `/speckit.plan`, `/speckit.tasks`
+  - `/speckit.analyze`, `/speckit.checklist`, `/speckit.implement`
+  - `/speckit.constitution`, `/speckit.taskstoissues`
+
+### Documentation
+
+- Comprehensive deployment guide at `docs/guides/deployment.md`
+- DIY deployment instructions using the base image
+- Cloud provider configuration reference (AWS App Runner, GCP Cloud Run, Azure Container Apps)
 
 ---
 
@@ -441,7 +471,7 @@ None reported in 0.0.1.
 
 - [x] **v0.1** - Core agent engine + CLI
 - [x] **v0.2** - Evaluation framework
-- [ ] **v0.3** - API deployment
+- [x] **v0.3** - API deployment (serve + deploy build)
 - [ ] **v0.4** - Multi-agent orchestration & workflows
 - [ ] **v0.5** - Web UI (no-code editor)
 - [ ] **v0.6** - Enterprise features (SSO, audit logs, RBAC)
@@ -497,7 +527,8 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 
 ---
 
-[unreleased]: https://github.com/justinbarias/holodeck/compare/0.3.3...HEAD
+[unreleased]: https://github.com/justinbarias/holodeck/compare/0.3.4...HEAD
+[0.3.4]: https://github.com/justinbarias/holodeck/compare/0.3.3...0.3.4
 [0.3.3]: https://github.com/justinbarias/holodeck/compare/0.3.2...0.3.3
 [0.3.2]: https://github.com/justinbarias/holodeck/compare/0.3.1...0.3.2
 [0.3.1]: https://github.com/justinbarias/holodeck/compare/0.3.0...0.3.1
