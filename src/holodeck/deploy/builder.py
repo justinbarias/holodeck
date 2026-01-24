@@ -6,7 +6,7 @@ HoloDeck agent configurations using the Docker SDK.
 
 from __future__ import annotations
 
-import subprocess
+import subprocess  # nosec B404
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -97,7 +97,7 @@ def generate_tag(strategy: TagStrategy, custom_tag: str | None = None) -> str:
         return custom_tag
 
     if strategy == TagStrategy.GIT_SHA:
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # noqa: S603  # nosec B603 B607
             ["git", "rev-parse", "HEAD"],  # noqa: S607
             capture_output=True,
             text=True,
@@ -111,7 +111,7 @@ def generate_tag(strategy: TagStrategy, custom_tag: str | None = None) -> str:
         return result.stdout.strip()[:7]
 
     if strategy == TagStrategy.GIT_TAG:
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # noqa: S603  # nosec B603 B607
             ["git", "describe", "--tags", "--abbrev=0"],  # noqa: S607
             capture_output=True,
             text=True,
