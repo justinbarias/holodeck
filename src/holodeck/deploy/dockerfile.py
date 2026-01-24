@@ -23,6 +23,9 @@ LABEL org.opencontainers.image.created="{{ created }}"
 LABEL org.opencontainers.image.source="{{ source_url }}"
 LABEL com.holodeck.managed="true"
 
+# Switch to root for file operations
+USER root
+
 # Set working directory
 WORKDIR /app
 
@@ -64,7 +67,8 @@ EXPOSE {{ port }}
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\
     CMD curl -f http://localhost:{{ port }}/health || exit 1
 
-# Switch to non-root user (holodeck user from base image)
+# Fix ownership and switch to non-root user
+RUN chown -R holodeck:holodeck /app
 USER holodeck
 
 # Entrypoint
