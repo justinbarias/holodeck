@@ -18,6 +18,8 @@ class TestConfigManager:
         """Test that create_default_config returns a valid GlobalConfig."""
         config = ConfigManager.create_default_config()
         assert isinstance(config, GlobalConfig)
+        assert config.providers is not None
+        assert config.vectorstores is not None
         assert config.providers["openai"].name == "gpt-4"
         assert config.vectorstores["postgres"].provider == "postgres"
 

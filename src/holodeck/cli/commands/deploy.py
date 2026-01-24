@@ -14,8 +14,17 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
+from holodeck.deploy.deployers import create_deployer
+from holodeck.deploy.state import (
+    compute_config_hash,
+    get_deployment_record,
+    get_state_path,
+    update_deployment_record,
+)
 from holodeck.lib.errors import ConfigError, DeploymentError, DockerNotAvailableError
 from holodeck.lib.logging_config import get_logger, setup_logging
+from holodeck.models.deployment import CloudProvider
+from holodeck.models.deployment_state import DeploymentRecord
 
 if TYPE_CHECKING:
     from holodeck.deploy.builder import BuildResult
@@ -33,6 +42,9 @@ def deploy(ctx: click.Context) -> None:
     Subcommands:
 
         build   Build a container image for the agent
+        run     Deploy a container image to the cloud
+        status  Check deployment status
+        destroy Destroy a deployment
 
     Example:
 
@@ -257,6 +269,288 @@ def build(
         sys.exit(3)
 
 
+@deploy.command()
+@click.argument(
+    "agent_config",
+    type=click.Path(exists=True),
+    default="agent.yaml",
+    required=False,
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be done without executing",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose debug logging",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress progress output",
+)
+def run(
+    agent_config: str,
+    dry_run: bool,
+    verbose: bool,
+    quiet: bool,
+) -> None:
+    """Deploy an agent image to the configured cloud provider."""
+    if not quiet:
+        setup_logging(verbose=verbose, quiet=quiet)
+
+    try:
+        agent, deployment_config, agent_path = _load_agent_and_deployment(agent_config)
+        _ensure_azure_provider(deployment_config, operation="deploy")
+
+        image_uri, image_tag = _resolve_image_uri(deployment_config)
+
+        if not quiet:
+            click.echo()
+            click.secho("Deploy Configuration:", bold=True)
+            click.echo(f"  Agent:     {agent.name}")
+            click.echo(f"  Image:     {image_uri}")
+            click.echo(f"  Tag:       {image_tag}")
+            click.echo(f"  Provider:  {deployment_config.target.provider.value}")
+            click.echo(f"  Port:      {deployment_config.port}")
+            click.echo()
+
+        if dry_run:
+            click.secho("[DRY RUN] Would deploy image:", fg="yellow")
+            click.echo(f"  {image_uri}")
+            click.secho("[DRY RUN] No deployment was created", fg="yellow")
+            sys.exit(0)
+
+        deployer = create_deployer(deployment_config.target)
+        result = deployer.deploy(
+            service_name=agent.name,
+            image_uri=image_uri,
+            port=deployment_config.port,
+            env_vars=deployment_config.environment,
+            health_check_path="/health",
+        )
+
+        service_id = (
+            result.get("service_id") or result.get("service_name") or agent.name
+        )
+        service_name = result.get("service_name") or agent.name
+        url = result.get("url")
+        status = result.get("status") or "UNKNOWN"
+
+        state_path = get_state_path(agent_path)
+        record = DeploymentRecord(
+            provider=deployment_config.target.provider,
+            service_id=service_id,
+            service_name=service_name,
+            url=url,
+            status=status,
+            image_uri=image_uri,
+            config_hash=compute_config_hash(deployment_config),
+        )
+        record = update_deployment_record(state_path, agent.name, record)
+
+        if quiet:
+            click.echo(url or "")
+            sys.exit(0)
+
+        click.echo()
+        click.secho("Deployment Successful!", fg="green", bold=True)
+        click.echo(f"  Service:   {record.service_name}")
+        click.echo(f"  Status:    {record.status}")
+        if record.url:
+            click.echo(f"  URL:       {record.url}")
+            click.echo(f"  Health:    {record.url}/health")
+        else:
+            click.echo("  URL:       (not available yet)")
+        click.echo()
+
+    except ConfigError as e:
+        logger.error(f"Configuration error: {e}")
+        click.secho("Error: Configuration error", fg="red", err=True)
+        click.echo(f"  {e.message}", err=True)
+        sys.exit(2)
+
+    except DeploymentError as e:
+        logger.error(f"Deployment error: {e}")
+        click.secho(f"Error: {e.operation} failed", fg="red", err=True)
+        click.echo(f"  {e.message}", err=True)
+        sys.exit(3)
+
+    except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
+        click.secho(f"Error: {e}", fg="red", err=True)
+        sys.exit(3)
+
+
+@deploy.command()
+@click.argument(
+    "agent_config",
+    type=click.Path(exists=True),
+    default="agent.yaml",
+    required=False,
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose debug logging",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress progress output",
+)
+def status(agent_config: str, verbose: bool, quiet: bool) -> None:
+    """Check deployment status for an agent."""
+    if not quiet:
+        setup_logging(verbose=verbose, quiet=quiet)
+
+    try:
+        agent, deployment_config, agent_path = _load_agent_and_deployment(agent_config)
+        _ensure_azure_provider(deployment_config, operation="status")
+
+        state_path = get_state_path(agent_path)
+        record = get_deployment_record(state_path, agent.name)
+        if record is None:
+            raise ConfigError(
+                field="deployment_state",
+                message="No deployment record found. Run `holodeck deploy run` first.",
+            )
+
+        deployer = create_deployer(deployment_config.target)
+        status_info = deployer.get_status(record.service_id)
+
+        updated_record = record.model_copy(
+            update={
+                "status": status_info.get("status") or record.status,
+                "url": status_info.get("url") or record.url,
+            }
+        )
+        record = update_deployment_record(state_path, agent.name, updated_record)
+
+        if quiet:
+            click.echo(record.status or "UNKNOWN")
+            sys.exit(0)
+
+        click.echo()
+        click.secho("Deployment Status", bold=True)
+        click.echo(f"  Service:   {record.service_name}")
+        click.echo(f"  Provider:  {deployment_config.target.provider.value}")
+        click.echo(f"  Status:    {record.status}")
+        if record.url:
+            click.echo(f"  URL:       {record.url}")
+        if record.updated_at:
+            click.echo(f"  Updated:   {record.updated_at.isoformat()}")
+        click.echo()
+
+    except ConfigError as e:
+        logger.error(f"Configuration error: {e}")
+        click.secho("Error: Configuration error", fg="red", err=True)
+        click.echo(f"  {e.message}", err=True)
+        sys.exit(2)
+
+    except DeploymentError as e:
+        logger.error(f"Deployment error: {e}")
+        click.secho(f"Error: {e.operation} failed", fg="red", err=True)
+        click.echo(f"  {e.message}", err=True)
+        sys.exit(3)
+
+    except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
+        click.secho(f"Error: {e}", fg="red", err=True)
+        sys.exit(3)
+
+
+@deploy.command()
+@click.argument(
+    "agent_config",
+    type=click.Path(exists=True),
+    default="agent.yaml",
+    required=False,
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Skip confirmation prompt",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Enable verbose debug logging",
+)
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Suppress progress output",
+)
+def destroy(agent_config: str, force: bool, verbose: bool, quiet: bool) -> None:
+    """Destroy a deployed agent."""
+    if not quiet:
+        setup_logging(verbose=verbose, quiet=quiet)
+
+    try:
+        agent, deployment_config, agent_path = _load_agent_and_deployment(agent_config)
+        _ensure_azure_provider(deployment_config, operation="destroy")
+
+        state_path = get_state_path(agent_path)
+        record = get_deployment_record(state_path, agent.name)
+        if record is None:
+            raise ConfigError(
+                field="deployment_state",
+                message="No deployment record found. Run `holodeck deploy run` first.",
+            )
+
+        service_name = record.service_name or agent.name
+
+        if not force:
+            confirm = click.confirm(
+                f"Destroy deployment '{service_name}'?", default=False
+            )
+            if not confirm:
+                click.secho("Destroy aborted.", fg="yellow")
+                sys.exit(0)
+
+        deployer = create_deployer(deployment_config.target)
+        deployer.destroy(record.service_id)
+
+        updated_record = record.model_copy(update={"status": "DELETED"})
+        record = update_deployment_record(state_path, agent.name, updated_record)
+
+        if quiet:
+            click.echo("deleted")
+            sys.exit(0)
+
+        click.echo()
+        click.secho("Deployment Destroyed", fg="green", bold=True)
+        click.echo(f"  Service:   {record.service_name}")
+        click.echo(f"  Status:    {record.status}")
+        click.echo()
+
+    except ConfigError as e:
+        logger.error(f"Configuration error: {e}")
+        click.secho("Error: Configuration error", fg="red", err=True)
+        click.echo(f"  {e.message}", err=True)
+        sys.exit(2)
+
+    except DeploymentError as e:
+        logger.error(f"Deployment error: {e}")
+        click.secho(f"Error: {e.operation} failed", fg="red", err=True)
+        click.echo(f"  {e.message}", err=True)
+        sys.exit(3)
+
+    except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
+        click.secho(f"Error: {e}", fg="red", err=True)
+        sys.exit(3)
+
+
 def _generate_dockerfile_content(
     agent: Agent,
     deployment_config: DeploymentConfig,
@@ -402,3 +696,45 @@ def _display_build_success(result: BuildResult, quiet: bool) -> None:
     click.echo(f"    Run locally:  docker run -p 8080:8080 {result.full_name}")
     click.echo(f"    Push to registry:  docker push {result.full_name}")
     click.echo()
+
+
+def _load_agent_and_deployment(
+    agent_config: str,
+) -> tuple[Agent, DeploymentConfig, Path]:
+    from holodeck.config.loader import ConfigLoader
+
+    loader = ConfigLoader()
+    agent = loader.load_agent_yaml(agent_config)
+
+    if not agent.deployment:
+        raise ConfigError(
+            field="deployment",
+            message="No 'deployment' section found in agent configuration",
+        )
+
+    return agent, agent.deployment, Path(agent_config).resolve()
+
+
+def _ensure_azure_provider(deployment_config: DeploymentConfig, operation: str) -> None:
+    provider = deployment_config.target.provider
+    if provider != CloudProvider.AZURE:
+        raise DeploymentError(
+            operation=operation,
+            message=(
+                f"Cloud provider '{provider.value}' is not supported yet. "
+                "Azure Container Apps is the only supported provider for now."
+            ),
+        )
+
+
+def _resolve_image_uri(deployment_config: DeploymentConfig) -> tuple[str, str]:
+    from holodeck.deploy.builder import generate_tag
+
+    tag = generate_tag(
+        deployment_config.registry.tag_strategy,
+        deployment_config.registry.custom_tag,
+    )
+    registry_url = deployment_config.registry.url
+    repository = deployment_config.registry.repository
+    image_name = f"{registry_url}/{repository}"
+    return f"{image_name}:{tag}", tag
