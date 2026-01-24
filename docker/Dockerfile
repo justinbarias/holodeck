@@ -15,8 +15,8 @@
 
 FROM python:3.10-slim
 
-# Build argument for holodeck version
-ARG HOLODECK_VERSION=latest
+# Build argument for holodeck version (empty = latest from PyPI)
+ARG HOLODECK_VERSION=""
 
 # OCI Labels for container metadata
 LABEL org.opencontainers.image.title="HoloDeck Base Image"
@@ -52,9 +52,9 @@ RUN groupadd --gid 1000 holodeck \
 # Set working directory
 WORKDIR /app
 
-# Install holodeck package
-# Using pip for simplicity; UV can also be used
-RUN pip install --no-cache-dir "holodeck-ai${HOLODECK_VERSION:+==$HOLODECK_VERSION}"
+# Install holodeck package using UV
+# --prerelease=allow needed for azure-ai-agents dependency
+RUN uv pip install --system --no-cache --prerelease=allow "holodeck-ai${HOLODECK_VERSION:+==$HOLODECK_VERSION}"
 
 # Copy entrypoint script
 COPY entrypoint.sh /app/entrypoint.sh
