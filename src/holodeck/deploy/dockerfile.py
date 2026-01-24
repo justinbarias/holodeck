@@ -77,7 +77,7 @@ def generate_dockerfile(
     port: int,
     protocol: str,
     *,
-    base_image: str = "holodeck-ai/base:latest",
+    base_image: str = "ghcr.io/justinbarias/holodeck-base:latest",
     version: str = "0.0.0",
     source_url: str = "",
     instruction_files: list[str] | None = None,

@@ -174,7 +174,7 @@ class TestGenerateDockerfile:
         )
 
         # Should use default holodeck base image
-        assert "FROM holodeck-ai/base" in dockerfile or "FROM python:" in dockerfile
+        assert "FROM ghcr.io/justinbarias/holodeck-base:latest" in dockerfile
 
     def test_dockerfile_healthcheck_present(self) -> None:
         """Test HEALTHCHECK instruction is present."""
