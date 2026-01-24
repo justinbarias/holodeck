@@ -162,35 +162,35 @@ Use these references when implementing each task:
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T013 [P] [US1] Unit tests for container builder in tests/unit/deploy/test_builder.py
+- [x] T013 [P] [US1] Unit tests for container builder in tests/unit/deploy/test_builder.py
   - Research details: @research.md L:26-88 (docker-py patterns)
   - Test Docker client initialization
   - Test build() method with streaming output
   - Test error handling for BuildError, DockerException
   - Mock docker.from_env() and images.build()
 
-- [ ] T014 [P] [US1] Integration test for image building in tests/integration/deploy/test_build_image.py
+- [x] T014 [P] [US1] Integration test for image building in tests/integration/deploy/test_build_image.py
   - Spec details: @spec.md L:20-23 (acceptance scenarios)
   - Test with sample agent from tests/fixtures/deploy/sample_agent/
   - Test --dry-run flag behavior
   - Test error when Docker not available
   - Requires Docker daemon (mark with @pytest.mark.docker)
 
-- [ ] T015 [P] [US1] Create sample agent fixture in tests/fixtures/deploy/sample_agent/
+- [x] T015 [P] [US1] Create sample agent fixture in tests/fixtures/deploy/sample_agent/
   - Create minimal agent.yaml for testing
   - Create instructions.md file
   - Create sample data directory with test file
 
 ### Implementation for User Story 1
 
-- [ ] T016 [US1] Implement ContainerBuilder class in src/holodeck/deploy/builder.py
+- [x] T016 [US1] Implement ContainerBuilder class in src/holodeck/deploy/builder.py
   - Research details: @research.md L:26-88 (docker-py SDK implementation)
   - Implement __init__() with docker.from_env()
   - Implement build() method with streaming logs
   - Implement tag generation (git-sha, semver, timestamp, custom)
   - Add OCI labels per @data-model.md L:251-256
 
-- [ ] T017 [US1] Implement `holodeck deploy build` CLI command in src/holodeck/cli/commands/deploy.py
+- [x] T017 [US1] Implement `holodeck deploy build` CLI command in src/holodeck/cli/commands/deploy.py
   - Spec details: @spec.md L:112 (FR-015)
   - Plan details: @plan.md L:132-167 (CLI structure)
   - Create @click.group(name="deploy") with invoke_without_command=True
@@ -199,11 +199,11 @@ Use these references when implementing each task:
   - Show progress indicators for build steps
   - Output image name and tag on success
 
-- [ ] T018 [US1] Register deploy command in CLI main in src/holodeck/cli/main.py
+- [x] T018 [US1] Register deploy command in CLI main in src/holodeck/cli/main.py
   - Import and register deploy command group
   - Ensure deploy appears in holodeck --help
 
-- [ ] T019 [US1] Add validation for missing Docker runtime
+- [x] T019 [US1] Add validation for missing Docker runtime
   - Spec details: @spec.md L:22-23 (acceptance scenario 3)
   - Clear error message with installation instructions
   - Exit code 3 (execution error)
@@ -426,9 +426,11 @@ Use these references when implementing each task:
   - Mark with @pytest.mark.docker and @pytest.mark.slow
   - Skip in CI if Docker not available
 
-- [ ] T045 Update holodeck --help and docs with deploy command
+- [x] T045 Update holodeck --help and docs with deploy command
   - Add deploy command to CLI help
   - Update README.md if needed
+  - Created comprehensive deployment guide at docs/guides/deployment.md
+  - Added navigation entry to mkdocs.yml
 
 - [ ] T046 Run and validate quickstart.md scenarios
   - Quickstart details: @quickstart.md L:1-396

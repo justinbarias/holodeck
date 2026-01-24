@@ -43,6 +43,7 @@ nav:
     - Global Configuration: guides/global-config.md
     - File References: guides/file-references.md
     - Agent Server: guides/serve.md
+    - Deployment: guides/deployment.md
     - Observability: guides/observability.md
   - Examples:
     - Overview: examples/README.md
