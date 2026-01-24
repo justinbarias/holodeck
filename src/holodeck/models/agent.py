@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from holodeck.lib.tool_filter.models import ToolFilterConfig
 from holodeck.models.config import ExecutionConfig
+from holodeck.models.deployment import DeploymentConfig
 from holodeck.models.evaluation import EvaluationConfig
 from holodeck.models.llm import LLMProvider
 from holodeck.models.observability import ObservabilityConfig
@@ -97,6 +98,9 @@ class Agent(BaseModel):
     )
     observability: ObservabilityConfig | None = Field(
         default=None, description="Observability configuration for telemetry"
+    )
+    deployment: DeploymentConfig | None = Field(
+        default=None, description="Deployment configuration for containerization"
     )
 
     @field_validator("name")

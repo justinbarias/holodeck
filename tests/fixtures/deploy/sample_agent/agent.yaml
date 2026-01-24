@@ -8,9 +8,7 @@ model:
   temperature: 0.7
 
 instructions:
-  inline: |
-    You are a helpful test agent for deployment testing.
-    Respond concisely and accurately.
+  file: instructions.md
 
 deployment:
   registry:
