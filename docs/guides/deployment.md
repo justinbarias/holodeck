@@ -384,8 +384,6 @@ docker run -p 3000:3000 \
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   agent:
     build:
