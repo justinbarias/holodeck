@@ -35,8 +35,11 @@ class TestConfigEndToEndWorkflow:
         global_config_file.write_text(
             yaml.dump(
                 {
-                    "deployment": {
-                        "type": "kubernetes",
+                    "providers": {
+                        "openai": {
+                            "provider": "openai",
+                            "name": "gpt-4o",
+                        }
                     },
                 }
             )
@@ -459,8 +462,11 @@ class TestConfigPrecedenceScenarios:
         global_config_file.write_text(
             yaml.dump(
                 {
-                    "deployment": {
-                        "type": "azure",
+                    "providers": {
+                        "openai": {
+                            "provider": "openai",
+                            "name": "gpt-4o",
+                        }
                     },
                 }
             )

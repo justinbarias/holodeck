@@ -323,8 +323,11 @@ class TestConfigPrecedence:
 
         agent_config = {"name": "test"}
         global_config_dict = {
-            "deployment": {
-                "type": "docker",
+            "providers": {
+                "openai": {
+                    "provider": "openai",
+                    "name": "gpt-4o",
+                }
             }
         }
         global_config = GlobalConfig(**global_config_dict)
@@ -1064,7 +1067,6 @@ class TestMergeConfigsAdvanced:
                     "temperature": 0.5,
                 }
             },
-            "deployment": {"type": "docker"},
         }
         global_config = GlobalConfig(**global_config_dict)
 
@@ -1279,8 +1281,14 @@ class TestGlobalConfigValidationFailures:
                 }
             },
             "deployment": {
-                "type": "docker",
-                "settings": {"image": "holodeck:latest"},
+                "registry": {
+                    "url": "ghcr.io",
+                    "repository": "test-org/test-agent",
+                },
+                "target": {
+                    "provider": "aws",
+                    "aws": {"region": "us-east-1"},
+                },
             },
         }
         global_config_file.write_text(yaml.dump(config_content))
@@ -1295,4 +1303,5 @@ class TestGlobalConfigValidationFailures:
         assert result.vectorstores is not None
         assert "postgres_store" in result.vectorstores
         assert result.deployment is not None
-        assert result.deployment.type == "docker"
+        assert result.deployment.registry.url == "ghcr.io"
+        assert result.deployment.target.provider.value == "aws"
