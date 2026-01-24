@@ -3,8 +3,19 @@
 import pytest
 from pydantic import ValidationError
 
-from holodeck.models.config import DeploymentConfig, GlobalConfig, VectorstoreConfig
+from holodeck.models.config import GlobalConfig, VectorstoreConfig
+from holodeck.models.deployment import DeploymentConfig
 from holodeck.models.llm import LLMProvider, ProviderEnum
+
+
+def _make_deployment_config(**kwargs) -> DeploymentConfig:
+    """Create a minimal valid DeploymentConfig for testing."""
+    defaults = {
+        "registry": {"url": "ghcr.io", "repository": "org/agent"},
+        "target": {"provider": "aws", "aws": {"region": "us-east-1"}},
+    }
+    defaults.update(kwargs)
+    return DeploymentConfig(**defaults)
 
 
 class TestVectorstoreConfig:
@@ -48,32 +59,36 @@ class TestVectorstoreConfig:
 
 
 class TestDeploymentConfig:
-    """Tests for DeploymentConfig model."""
+    """Tests for DeploymentConfig model.
+
+    Note: Comprehensive tests for the DeploymentConfig model are in
+    tests/unit/deploy/test_models.py. These tests verify basic integration
+    with GlobalConfig.
+    """
 
     def test_deployment_config_valid(self) -> None:
         """Test creating a valid DeploymentConfig."""
-        config = DeploymentConfig(
-            type="docker",
-        )
-        assert config.type == "docker"
+        config = _make_deployment_config()
+        assert config.registry.url == "ghcr.io"
+        assert config.registry.repository == "org/agent"
+        assert config.target.provider.value == "aws"
 
-    def test_deployment_config_type_required(self) -> None:
-        """Test that type is required."""
+    def test_deployment_config_registry_required(self) -> None:
+        """Test that registry is required."""
         with pytest.raises(ValidationError):
-            DeploymentConfig()
+            DeploymentConfig(target={"provider": "aws", "aws": {"region": "us-east-1"}})
 
-    def test_deployment_config_settings_optional(self) -> None:
-        """Test that settings are optional."""
-        config = DeploymentConfig(type="docker")
-        assert config.settings is None or isinstance(config.settings, dict)
+    def test_deployment_config_target_required(self) -> None:
+        """Test that target is required."""
+        with pytest.raises(ValidationError):
+            DeploymentConfig(registry={"url": "ghcr.io", "repository": "org/agent"})
 
-    def test_deployment_config_with_settings(self) -> None:
-        """Test DeploymentConfig with settings."""
-        config = DeploymentConfig(
-            type="kubernetes",
-            settings={"namespace": "default", "replicas": 3},
+    def test_deployment_config_with_environment(self) -> None:
+        """Test DeploymentConfig with environment variables."""
+        config = _make_deployment_config(
+            environment={"DEBUG": "true", "LOG_LEVEL": "info"}
         )
-        assert config.settings == {"namespace": "default", "replicas": 3}
+        assert config.environment == {"DEBUG": "true", "LOG_LEVEL": "info"}
 
 
 class TestGlobalConfig:
@@ -123,10 +138,10 @@ class TestGlobalConfig:
 
     def test_global_config_with_deployment(self) -> None:
         """Test GlobalConfig with deployment config."""
-        deployment = DeploymentConfig(type="docker")
+        deployment = _make_deployment_config()
         config = GlobalConfig(deployment=deployment)
         assert config.deployment is not None
-        assert config.deployment.type == "docker"
+        assert config.deployment.registry.url == "ghcr.io"
 
     def test_global_config_all_fields(self) -> None:
         """Test GlobalConfig with all fields."""
@@ -138,9 +153,9 @@ class TestGlobalConfig:
             provider="redis",
             connection_string="redis://localhost",
         )
-        deployment = DeploymentConfig(
-            type="kubernetes",
-            settings={"namespace": "holodeck"},
+        deployment = _make_deployment_config(
+            port=3000,
+            environment={"NAMESPACE": "holodeck"},
         )
 
         config = GlobalConfig(
@@ -151,7 +166,7 @@ class TestGlobalConfig:
 
         assert len(config.providers) == 1
         assert len(config.vectorstores) == 1
-        assert config.deployment.type == "kubernetes"
+        assert config.deployment.port == 3000
 
     def test_global_config_multiple_providers(self) -> None:
         """Test GlobalConfig with multiple providers."""

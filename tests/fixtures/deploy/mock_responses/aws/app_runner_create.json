@@ -1,0 +1,12 @@
+{
+  "Service": {
+    "ServiceArn": "arn:aws:apprunner:us-east-1:123456789012:service/test-agent/abc123",
+    "ServiceId": "abc123",
+    "ServiceName": "test-agent",
+    "ServiceUrl": "abc123.us-east-1.awsapprunner.com",
+    "Status": "OPERATION_IN_PROGRESS",
+    "CreatedAt": "2024-01-15T10:00:00Z",
+    "UpdatedAt": "2024-01-15T10:00:00Z"
+  },
+  "OperationId": "op-123456"
+}

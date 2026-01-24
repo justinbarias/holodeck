@@ -1,0 +1,21 @@
+{
+  "id": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test-rg/providers/Microsoft.App/containerApps/test-agent",
+  "name": "test-agent",
+  "type": "Microsoft.App/containerApps",
+  "location": "eastus",
+  "properties": {
+    "provisioningState": "InProgress",
+    "managedEnvironmentId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/test-rg/providers/Microsoft.App/managedEnvironments/test-env",
+    "configuration": {
+      "ingress": {
+        "fqdn": "test-agent.happyforest-abc123.eastus.azurecontainerapps.io",
+        "external": true,
+        "targetPort": 8080
+      }
+    },
+    "latestRevisionName": "test-agent--v1"
+  },
+  "tags": {
+    "com.holodeck.managed": "true"
+  }
+}

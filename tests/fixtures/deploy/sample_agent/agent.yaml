@@ -1,0 +1,25 @@
+# Sample agent configuration for deployment testing
+name: test-agent
+description: A test agent for deployment testing
+
+model:
+  provider: openai
+  name: gpt-4o
+  temperature: 0.7
+
+instructions:
+  inline: |
+    You are a helpful test agent for deployment testing.
+    Respond concisely and accurately.
+
+deployment:
+  registry:
+    url: ghcr.io
+    repository: test-org/test-agent
+    tag_strategy: git_sha
+  target:
+    provider: aws
+    aws:
+      region: us-east-1
+      cpu: 1
+      memory: 2048

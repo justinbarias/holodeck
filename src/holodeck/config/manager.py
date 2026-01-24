@@ -9,10 +9,16 @@ from pathlib import Path
 import yaml
 
 from holodeck.models.config import (
-    DeploymentConfig,
     ExecutionConfig,
     GlobalConfig,
     VectorstoreConfig,
+)
+from holodeck.models.deployment import (
+    AWSAppRunnerConfig,
+    CloudProvider,
+    CloudTargetConfig,
+    DeploymentConfig,
+    RegistryConfig,
 )
 from holodeck.models.llm import LLMProvider, ProviderEnum
 
@@ -53,7 +59,11 @@ class ConfigManager:
 
         # Create a default deployment config
         default_deployment = DeploymentConfig(
-            type="docker", settings={"registry": "docker.io"}
+            registry=RegistryConfig(url="docker.io", repository="holodeck/agent"),
+            target=CloudTargetConfig(
+                provider=CloudProvider.AWS,
+                aws=AWSAppRunnerConfig(region="us-east-1"),
+            ),
         )
 
         # Create the global config
