@@ -464,24 +464,24 @@ holodeck test agent.yaml --verbose --output report.md --format markdown
 
 **Command Options:**
 
-| Option | Description |
-|--------|-------------|
-| `--output PATH` | Save test report to file (JSON or Markdown) |
+| Option                      | Description                                                  |
+| --------------------------- | ------------------------------------------------------------ |
+| `--output PATH`             | Save test report to file (JSON or Markdown)                  |
 | `--format [json\|markdown]` | Report format (auto-detects from extension if not specified) |
-| `--verbose, -v` | Enable verbose output with debug information |
-| `--quiet, -q` | Suppress progress output (summary still shown) |
-| `--timeout SECONDS` | LLM execution timeout in seconds |
-| `--force-ingest, -f` | Force re-ingestion of all vector store source files |
+| `--verbose, -v`             | Enable verbose output with debug information                 |
+| `--quiet, -q`               | Suppress progress output (summary still shown)               |
+| `--timeout SECONDS`         | LLM execution timeout in seconds                             |
+| `--force-ingest, -f`        | Force re-ingestion of all vector store source files          |
 
 **Exit Codes:**
 
-| Code | Meaning |
-|------|---------|
-| 0 | All tests passed |
-| 1 | One or more tests failed |
-| 2 | Configuration error |
-| 3 | Execution error |
-| 4 | Evaluation error |
+| Code | Meaning                  |
+| ---- | ------------------------ |
+| 0    | All tests passed         |
+| 1    | One or more tests failed |
+| 2    | Configuration error      |
+| 3    | Execution error          |
+| 4    | Evaluation error         |
 
 ### Test Case Configuration
 
@@ -489,20 +489,20 @@ Test cases are defined in the `test_cases` section of `agent.yaml`:
 
 ```yaml
 test_cases:
-  - name: "Basic greeting"              # Optional: Test identifier
-    input: "Hello, how are you?"        # Required: User query/prompt
-    ground_truth: "Greeting response"   # Optional: Expected output for comparison
-    expected_tools:                     # Optional: Tools expected to be called
+  - name: "Basic greeting" # Optional: Test identifier
+    input: "Hello, how are you?" # Required: User query/prompt
+    ground_truth: "Greeting response" # Optional: Expected output for comparison
+    expected_tools: # Optional: Tools expected to be called
       - search_knowledge_base
       - get_user_context
-    files:                              # Optional: Multimodal file inputs
+    files: # Optional: Multimodal file inputs
       - path: "./data/image.png"
         type: image
         description: "Product image"
-    retrieval_context:                  # Optional: RAG context for RAG metrics
+    retrieval_context: # Optional: RAG context for RAG metrics
       - "Retrieved chunk 1..."
       - "Retrieved chunk 2..."
-    evaluations:                        # Optional: Per-test metric overrides
+    evaluations: # Optional: Per-test metric overrides
       - type: standard
         metric: bleu
         threshold: 0.6
@@ -510,15 +510,15 @@ test_cases:
 
 **File Input Types:**
 
-| Type | Description |
-|------|-------------|
-| `image` | Images (PNG, JPG) - processed via OCR |
-| `pdf` | PDF documents |
-| `text` | Plain text files |
-| `excel` | Excel spreadsheets (supports `sheet` and `range` options) |
-| `word` | Word documents |
-| `powerpoint` | PowerPoint presentations (supports `pages` option) |
-| `csv` | CSV files |
+| Type         | Description                                               |
+| ------------ | --------------------------------------------------------- |
+| `image`      | Images (PNG, JPG) - processed via OCR                     |
+| `pdf`        | PDF documents                                             |
+| `text`       | Plain text files                                          |
+| `excel`      | Excel spreadsheets (supports `sheet` and `range` options) |
+| `word`       | Word documents                                            |
+| `powerpoint` | PowerPoint presentations (supports `pages` option)        |
+| `csv`        | CSV files                                                 |
 
 ### Evaluation Metrics Configuration
 
@@ -549,11 +549,11 @@ evaluations:
 
 **Available Standard Metrics:**
 
-| Metric | Description | Score Range | Use Case |
-|--------|-------------|-------------|----------|
-| `bleu` | Precision of n-gram matches (uses SacreBLEU with smoothing) | 0.0-1.0 | Machine translation, exact matching |
-| `rouge` | Recall of n-gram overlaps (rouge1, rouge2, rougeL variants) | 0.0-1.0 | Summarization quality |
-| `meteor` | Synonym-aware matching with stemming | 0.0-1.0 | Semantic similarity |
+| Metric   | Description                                                 | Score Range | Use Case                            |
+| -------- | ----------------------------------------------------------- | ----------- | ----------------------------------- |
+| `bleu`   | Precision of n-gram matches (uses SacreBLEU with smoothing) | 0.0-1.0     | Machine translation, exact matching |
+| `rouge`  | Recall of n-gram overlaps (rouge1, rouge2, rougeL variants) | 0.0-1.0     | Summarization quality               |
+| `meteor` | Synonym-aware matching with stemming                        | 0.0-1.0     | Semantic similarity                 |
 
 #### 2. G-Eval Custom Criteria (`type: geval`)
 
@@ -561,26 +561,26 @@ LLM-as-judge evaluation with custom natural language criteria:
 
 ```yaml
 evaluations:
-  model:                                # Default LLM for all metrics
+  model: # Default LLM for all metrics
     provider: ollama
     name: gpt-oss:20b
     temperature: 0.0
   metrics:
     - type: geval
-      name: Professionalism            # Custom metric name
-      criteria: |                       # Natural language criteria
+      name: Professionalism # Custom metric name
+      criteria: | # Natural language criteria
         Evaluate if the response uses professional language,
         avoids slang, and maintains a respectful tone.
-      evaluation_steps:                 # Optional: Explicit evaluation steps
+      evaluation_steps: # Optional: Explicit evaluation steps
         - "Check if the language is formal and professional"
         - "Verify no slang or casual expressions are used"
         - "Assess the overall respectful tone"
-      evaluation_params:                # Fields to include in evaluation
-        - actual_output                 # Agent's response
-        - input                         # User's query
-        - expected_output               # Ground truth (if provided)
+      evaluation_params: # Fields to include in evaluation
+        - actual_output # Agent's response
+        - input # User's query
+        - expected_output # Ground truth (if provided)
       threshold: 0.7
-      strict_mode: false                # If true, binary scoring (1.0 or 0.0)
+      strict_mode: false # If true, binary scoring (1.0 or 0.0)
 ```
 
 **Valid `evaluation_params`:**
@@ -630,13 +630,13 @@ evaluations:
 
 **RAG Metric Types:**
 
-| Metric Type | Description | Required Fields |
-|-------------|-------------|-----------------|
-| `faithfulness` | Detects hallucinations by comparing response to retrieval context | `input`, `actual_output`, `retrieval_context` |
-| `answer_relevancy` | Measures if response addresses the query | `input`, `actual_output` |
-| `contextual_relevancy` | Evaluates if retrieved chunks are relevant to query | `input`, `retrieval_context` |
-| `contextual_precision` | Assesses ranking quality of retrieved chunks | `input`, `expected_output`, `retrieval_context` |
-| `contextual_recall` | Measures retrieval completeness | `input`, `expected_output`, `retrieval_context` |
+| Metric Type            | Description                                                       | Required Fields                                 |
+| ---------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| `faithfulness`         | Detects hallucinations by comparing response to retrieval context | `input`, `actual_output`, `retrieval_context`   |
+| `answer_relevancy`     | Measures if response addresses the query                          | `input`, `actual_output`                        |
+| `contextual_relevancy` | Evaluates if retrieved chunks are relevant to query               | `input`, `retrieval_context`                    |
+| `contextual_precision` | Assesses ranking quality of retrieved chunks                      | `input`, `expected_output`, `retrieval_context` |
+| `contextual_recall`    | Measures retrieval completeness                                   | `input`, `expected_output`, `retrieval_context` |
 
 ### Complete Evaluation Example
 
@@ -647,7 +647,7 @@ model:
   name: gpt-4o
 
 evaluations:
-  model:                                # Default model for LLM-based metrics
+  model: # Default model for LLM-based metrics
     provider: openai
     name: gpt-4o
     temperature: 0.0
@@ -683,7 +683,7 @@ test_cases:
   - name: "Product recommendation"
     input: "I need a laptop for video editing"
     expected_tools: [search_products, get_specifications]
-    evaluations:                        # Per-test metric override
+    evaluations: # Per-test metric override
       - type: geval
         name: TechnicalAccuracy
         criteria: "Verify the response contains accurate technical specifications"
@@ -718,14 +718,14 @@ This project uses **spec-kit** for feature development:
 3. **Plan:** `/speckit.plan`
 4. **Create tasks:** `/speckit.tasks`
 5. **Run plan mode to create a todo list** - Read all files in `specs/<spec_name>/`:
-
    - spec.md, plan.md, tasks.md, data-model.md
    - research.md, quickstart.md (if exist)
    - contracts/\*.md (if any)
 
    After planning, _ALWAYS provide the plan file path_ to the user for review. If you can, open it in the editor for them.
+   If applicable, use Claude tasks to break down the plan into actionable tasks.
 
-6. **Implement** - Follow the todo list
+6. **Implement** - Use Claude tasks to guide your work.
 7. **Run code quality checks** after each task:
 
 When planning for tasks or implementing any feature, always extract context from the relevant spec-kit files in `specs/`.
@@ -805,3 +805,9 @@ When generating commit messages:
 - [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
 
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
+
+## Active Technologies
+- N/A (stateless CLI tool, uses cloud provider state) (019-deploy-command)
+
+## Recent Changes
+- 019-deploy-command: Added Python 3.10+

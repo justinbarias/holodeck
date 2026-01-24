@@ -1,0 +1,341 @@
+# HoloDeck Deployment Configuration Schema
+# JSON Schema draft-07 compatible
+# Location: agent.yaml → deployment section
+
+$schema: "http://json-schema.org/draft-07/schema#"
+$id: "https://holodeck.dev/schemas/deployment-config.json"
+title: "DeploymentConfig"
+description: "Configuration for deploying HoloDeck agents to cloud platforms"
+type: object
+
+required:
+  - registry
+  - target
+
+properties:
+  runtime:
+    type: string
+    enum: ["docker", "auto"]
+    default: "auto"
+    description: "Container runtime to use for building images"
+
+  registry:
+    $ref: "#/definitions/RegistryConfig"
+
+  target:
+    $ref: "#/definitions/CloudTargetConfig"
+
+  protocol:
+    type: string
+    enum: ["rest", "ag-ui", "both"]
+    default: "rest"
+    description: "Protocol(s) the deployed container exposes"
+
+  port:
+    type: integer
+    minimum: 1
+    maximum: 65535
+    default: 8080
+    description: "Port the container listens on"
+
+  environment:
+    type: object
+    additionalProperties:
+      type: string
+    default: {}
+    description: "Environment variables injected at runtime. Supports ${VAR} substitution."
+
+definitions:
+  RegistryConfig:
+    type: object
+    required:
+      - url
+      - repository
+    properties:
+      url:
+        type: string
+        description: "Registry URL (e.g., docker.io, ghcr.io, 123456.dkr.ecr.us-east-1.amazonaws.com)"
+        examples:
+          - "docker.io"
+          - "ghcr.io"
+          - "123456789012.dkr.ecr.us-east-1.amazonaws.com"
+          - "us-docker.pkg.dev"
+          - "myacr.azurecr.io"
+
+      repository:
+        type: string
+        pattern: "^[a-z0-9]+(?:[._/-][a-z0-9]+)*$"
+        description: "Repository name within the registry"
+        examples:
+          - "my-org/agents"
+          - "holodeck-agents"
+          - "project/images/agent"
+
+      tag_strategy:
+        type: string
+        enum: ["semver", "git-sha", "timestamp", "custom"]
+        default: "git-sha"
+        description: |
+          Strategy for generating image tags:
+          - semver: Use version from pyproject.toml
+          - git-sha: First 8 chars of current commit
+          - timestamp: YYYYMMDD-HHMMSS format
+          - custom: Use custom_tag value
+
+      custom_tag:
+        type: string
+        pattern: "^[a-zA-Z0-9][a-zA-Z0-9._-]*$"
+        description: "Custom tag value (required when tag_strategy is 'custom')"
+
+      credentials_env_prefix:
+        type: string
+        description: "Environment variable prefix for registry credentials (e.g., DOCKER → DOCKER_USERNAME, DOCKER_PASSWORD)"
+
+  CloudTargetConfig:
+    type: object
+    required:
+      - provider
+    properties:
+      provider:
+        type: string
+        enum: ["aws", "gcp", "azure"]
+        description: "Cloud provider for deployment"
+
+      aws:
+        $ref: "#/definitions/AWSAppRunnerConfig"
+
+      gcp:
+        $ref: "#/definitions/GCPCloudRunConfig"
+
+      azure:
+        $ref: "#/definitions/AzureContainerAppsConfig"
+
+    allOf:
+      - if:
+          properties:
+            provider:
+              const: "aws"
+        then:
+          required: ["aws"]
+      - if:
+          properties:
+            provider:
+              const: "gcp"
+        then:
+          required: ["gcp"]
+      - if:
+          properties:
+            provider:
+              const: "azure"
+        then:
+          required: ["azure"]
+
+  AWSAppRunnerConfig:
+    type: object
+    required:
+      - ecr_role_arn
+    properties:
+      region:
+        type: string
+        default: "us-east-1"
+        description: "AWS region for deployment"
+        examples: ["us-east-1", "us-west-2", "eu-west-1"]
+
+      cpu:
+        type: string
+        enum: ["0.25 vCPU", "0.5 vCPU", "1 vCPU", "2 vCPU", "4 vCPU"]
+        default: "1 vCPU"
+        description: "CPU allocation"
+
+      memory:
+        type: string
+        enum: ["512 MB", "1 GB", "2 GB", "3 GB", "4 GB"]
+        default: "2 GB"
+        description: "Memory allocation"
+
+      ecr_role_arn:
+        type: string
+        pattern: "^arn:aws:iam::\\d{12}:role/.+$"
+        description: "IAM role ARN for ECR access"
+
+      health_check_path:
+        type: string
+        default: "/health"
+        description: "HTTP path for health checks"
+
+      auto_scaling_min:
+        type: integer
+        minimum: 1
+        maximum: 25
+        default: 1
+        description: "Minimum number of instances"
+
+      auto_scaling_max:
+        type: integer
+        minimum: 1
+        maximum: 25
+        default: 25
+        description: "Maximum number of instances"
+
+  GCPCloudRunConfig:
+    type: object
+    required:
+      - project_id
+    properties:
+      project_id:
+        type: string
+        pattern: "^[a-z][a-z0-9-]{4,28}[a-z0-9]$"
+        description: "GCP project ID"
+
+      region:
+        type: string
+        default: "us-central1"
+        description: "GCP region for deployment"
+        examples: ["us-central1", "us-east1", "europe-west1"]
+
+      memory:
+        type: string
+        pattern: "^\\d+(Mi|Gi)$"
+        default: "512Mi"
+        description: "Memory allocation (e.g., 512Mi, 1Gi, 2Gi)"
+
+      cpu:
+        type: string
+        pattern: "^\\d+m?$"
+        default: "1000m"
+        description: "CPU allocation in millicores (1000m = 1 CPU)"
+
+      concurrency:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 80
+        description: "Maximum concurrent requests per instance"
+
+      timeout_seconds:
+        type: integer
+        minimum: 1
+        maximum: 3600
+        default: 300
+        description: "Request timeout in seconds"
+
+      min_instances:
+        type: integer
+        minimum: 0
+        maximum: 1000
+        default: 0
+        description: "Minimum instances (0 enables scale-to-zero)"
+
+      max_instances:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+        description: "Maximum instances"
+
+  AzureContainerAppsConfig:
+    type: object
+    required:
+      - subscription_id
+      - resource_group
+      - environment_name
+    properties:
+      subscription_id:
+        type: string
+        format: uuid
+        description: "Azure subscription ID"
+
+      resource_group:
+        type: string
+        pattern: "^[-\\w._()]+$"
+        description: "Azure resource group name"
+
+      environment_name:
+        type: string
+        description: "Container Apps environment name"
+
+      location:
+        type: string
+        default: "eastus"
+        description: "Azure region"
+        examples: ["eastus", "westus2", "northeurope"]
+
+      cpu:
+        type: string
+        enum: ["0.25", "0.5", "0.75", "1", "1.25", "1.5", "1.75", "2"]
+        default: "0.5"
+        description: "CPU cores"
+
+      memory:
+        type: string
+        pattern: "^\\d+(Gi)$"
+        default: "1Gi"
+        description: "Memory allocation (must be 2x CPU in Gi)"
+
+      ingress_external:
+        type: boolean
+        default: true
+        description: "Whether ingress is externally accessible"
+
+      min_replicas:
+        type: integer
+        minimum: 0
+        maximum: 300
+        default: 1
+        description: "Minimum replicas"
+
+      max_replicas:
+        type: integer
+        minimum: 1
+        maximum: 300
+        default: 10
+        description: "Maximum replicas"
+
+examples:
+  - # Minimal AWS deployment
+    registry:
+      url: "123456789012.dkr.ecr.us-east-1.amazonaws.com"
+      repository: "my-agents"
+    target:
+      provider: "aws"
+      aws:
+        ecr_role_arn: "arn:aws:iam::123456789012:role/AppRunnerECRRole"
+
+  - # Full GCP deployment
+    runtime: "docker"
+    protocol: "both"
+    port: 8080
+    registry:
+      url: "us-docker.pkg.dev"
+      repository: "my-project/agents/customer-support"
+      tag_strategy: "semver"
+    target:
+      provider: "gcp"
+      gcp:
+        project_id: "my-gcp-project"
+        region: "us-central1"
+        memory: "1Gi"
+        cpu: "1000m"
+        concurrency: 100
+        min_instances: 1
+        max_instances: 50
+    environment:
+      LOG_LEVEL: "INFO"
+
+  - # Azure deployment
+    registry:
+      url: "myacr.azurecr.io"
+      repository: "holodeck-agents"
+      tag_strategy: "custom"
+      custom_tag: "production-v2.1.0"
+    target:
+      provider: "azure"
+      azure:
+        subscription_id: "12345678-1234-1234-1234-123456789012"
+        resource_group: "holodeck-prod"
+        environment_name: "holodeck-env"
+        location: "eastus"
+        cpu: "1"
+        memory: "2Gi"
+        min_replicas: 2
+        max_replicas: 20
