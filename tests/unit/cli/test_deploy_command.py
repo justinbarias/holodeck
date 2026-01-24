@@ -22,14 +22,21 @@ if TYPE_CHECKING:
 
 from holodeck.cli.commands.deploy import (
     _display_build_success,
+    _ensure_azure_provider,
     _generate_dockerfile_content,
+    _load_agent_and_deployment,
     _prepare_build_context,
+    _resolve_image_uri,
     build,
     deploy,
+    destroy,
+    run,
+    status,
 )
 from holodeck.lib.errors import ConfigError, DeploymentError, DockerNotAvailableError
 from holodeck.models.deployment import (
     AWSAppRunnerConfig,
+    AzureContainerAppsConfig,
     CloudProvider,
     CloudTargetConfig,
     DeploymentConfig,
@@ -119,6 +126,77 @@ def mock_build_result() -> MagicMock:
     result.full_name = "ghcr.io/test-org/test-agent:latest"
     result.log_lines = ["Step 1/5: FROM python:3.10-slim", "Step 2/5: WORKDIR /app"]
     return result
+
+
+@pytest.fixture
+def mock_azure_agent() -> MagicMock:
+    """Create a mock agent with Azure deployment configuration."""
+    agent = MagicMock()
+    agent.name = "test-agent"
+    agent.description = "A test agent"
+    agent.tools = None
+
+    # Mock instructions
+    agent.instructions = MagicMock()
+    agent.instructions.file = None
+    agent.instructions.inline = "You are a helpful assistant."
+
+    # Mock Azure deployment config
+    deployment = DeploymentConfig(
+        registry=RegistryConfig(
+            url="ghcr.io",
+            repository="test-org/test-agent",
+            tag_strategy=TagStrategy.LATEST,
+        ),
+        target=CloudTargetConfig(
+            provider=CloudProvider.AZURE,
+            azure=AzureContainerAppsConfig(
+                subscription_id="00000000-0000-0000-0000-000000000000",
+                resource_group="test-rg",
+                environment_name="test-env",
+            ),
+        ),
+        protocol=ProtocolType.REST,
+        port=8080,
+        environment={"API_KEY": "test-key"},
+    )
+    agent.deployment = deployment
+
+    return agent
+
+
+@pytest.fixture
+def temp_azure_agent_config(tmp_path: Path) -> Path:
+    """Create a temporary agent.yaml config file with Azure deployment section."""
+    agent_file = tmp_path / "agent.yaml"
+    agent_file.write_text(
+        """
+name: test-agent
+description: A test agent
+
+model:
+  provider: openai
+  name: gpt-4o
+
+instructions:
+  inline: You are a helpful assistant.
+
+deployment:
+  registry:
+    url: ghcr.io
+    repository: test-org/test-agent
+    tag_strategy: latest
+  target:
+    provider: azure
+    azure:
+      subscription_id: "00000000-0000-0000-0000-000000000000"
+      resource_group: test-rg
+      environment_name: test-env
+  protocol: rest
+  port: 8080
+"""
+    )
+    return agent_file
 
 
 class TestDeployCommandGroup:
@@ -672,3 +750,568 @@ class TestDisplayBuildSuccess:
         assert output.strip() == mock_build_result.full_name
         assert "Build Successful" not in output
         assert "Next steps" not in output
+
+
+class TestRunCommand:
+    """Tests for deploy run command."""
+
+    def test_run_command_help(self, runner: CliRunner) -> None:
+        """Test run command help shows all options."""
+        result = runner.invoke(run, ["--help"])
+        assert result.exit_code == 0
+        assert "--dry-run" in result.output
+        assert "--verbose" in result.output
+        assert "--quiet" in result.output
+
+    @patch("holodeck.cli.commands.deploy.update_deployment_record")
+    @patch("holodeck.cli.commands.deploy.compute_config_hash")
+    @patch("holodeck.cli.commands.deploy.get_state_path")
+    @patch("holodeck.cli.commands.deploy.create_deployer")
+    @patch("holodeck.cli.commands.deploy._resolve_image_uri")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_run_command_success(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_resolve_uri: MagicMock,
+        mock_create_deployer: MagicMock,
+        mock_get_state: MagicMock,
+        mock_compute_hash: MagicMock,
+        mock_update_record: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test successful run command execution."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_resolve_uri.return_value = ("ghcr.io/test-org/test-agent:latest", "latest")
+        mock_get_state.return_value = Path("/tmp/state")  # noqa: S108
+        mock_compute_hash.return_value = "abc123"
+
+        mock_deployer = MagicMock()
+        mock_deployer.deploy.return_value = {
+            "service_id": "test-service-id",
+            "service_name": "test-agent",
+            "url": "https://test-agent.azurecontainerapps.io",
+            "status": "Running",
+        }
+        mock_create_deployer.return_value = mock_deployer
+
+        mock_record = MagicMock()
+        mock_record.service_name = "test-agent"
+        mock_record.status = "Running"
+        mock_record.url = "https://test-agent.azurecontainerapps.io"
+        mock_update_record.return_value = mock_record
+
+        result = runner.invoke(run, [str(temp_azure_agent_config)])
+
+        assert result.exit_code == 0
+        assert "Deployment Successful" in result.output
+        mock_deployer.deploy.assert_called_once()
+
+    @patch("holodeck.cli.commands.deploy._resolve_image_uri")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_run_command_dry_run(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_resolve_uri: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test run command dry run mode."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_resolve_uri.return_value = ("ghcr.io/test-org/test-agent:latest", "latest")
+
+        result = runner.invoke(run, [str(temp_azure_agent_config), "--dry-run"])
+
+        assert result.exit_code == 0
+        assert "[DRY RUN]" in result.output
+        assert "No deployment was created" in result.output
+
+    @patch("holodeck.cli.commands.deploy.update_deployment_record")
+    @patch("holodeck.cli.commands.deploy.compute_config_hash")
+    @patch("holodeck.cli.commands.deploy.get_state_path")
+    @patch("holodeck.cli.commands.deploy.create_deployer")
+    @patch("holodeck.cli.commands.deploy._resolve_image_uri")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_run_command_quiet_mode(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_resolve_uri: MagicMock,
+        mock_create_deployer: MagicMock,
+        mock_get_state: MagicMock,
+        mock_compute_hash: MagicMock,
+        mock_update_record: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test run command quiet mode outputs only URL."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_resolve_uri.return_value = ("ghcr.io/test-org/test-agent:latest", "latest")
+        mock_get_state.return_value = Path("/tmp/state")  # noqa: S108
+        mock_compute_hash.return_value = "abc123"
+
+        mock_deployer = MagicMock()
+        mock_deployer.deploy.return_value = {
+            "service_id": "test-service-id",
+            "service_name": "test-agent",
+            "url": "https://test-agent.azurecontainerapps.io",
+            "status": "Running",
+        }
+        mock_create_deployer.return_value = mock_deployer
+
+        mock_record = MagicMock()
+        mock_record.url = "https://test-agent.azurecontainerapps.io"
+        mock_update_record.return_value = mock_record
+
+        result = runner.invoke(run, [str(temp_azure_agent_config), "--quiet"])
+
+        assert result.exit_code == 0
+        assert "https://test-agent.azurecontainerapps.io" in result.output
+        assert "Deployment Successful" not in result.output
+
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_run_command_config_error(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+    ) -> None:
+        """Test run command handles ConfigError gracefully."""
+        mock_load_agent.side_effect = ConfigError("deployment", "Invalid configuration")
+
+        result = runner.invoke(run, [str(temp_azure_agent_config)])
+
+        assert result.exit_code == 2
+        assert "Configuration error" in result.output
+
+    @patch("holodeck.cli.commands.deploy.create_deployer")
+    @patch("holodeck.cli.commands.deploy._resolve_image_uri")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_run_command_deployment_error(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_resolve_uri: MagicMock,
+        mock_create_deployer: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test run command handles DeploymentError gracefully."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_resolve_uri.return_value = ("ghcr.io/test-org/test-agent:latest", "latest")
+
+        mock_deployer = MagicMock()
+        mock_deployer.deploy.side_effect = DeploymentError(
+            operation="deploy", message="Azure deployment failed"
+        )
+        mock_create_deployer.return_value = mock_deployer
+
+        result = runner.invoke(run, [str(temp_azure_agent_config)])
+
+        assert result.exit_code == 3
+        assert "deploy failed" in result.output
+
+
+class TestStatusCommand:
+    """Tests for deploy status command."""
+
+    def test_status_command_help(self, runner: CliRunner) -> None:
+        """Test status command help shows all options."""
+        result = runner.invoke(status, ["--help"])
+        assert result.exit_code == 0
+        assert "--verbose" in result.output
+        assert "--quiet" in result.output
+
+    @patch("holodeck.cli.commands.deploy.update_deployment_record")
+    @patch("holodeck.cli.commands.deploy.create_deployer")
+    @patch("holodeck.cli.commands.deploy.get_deployment_record")
+    @patch("holodeck.cli.commands.deploy.get_state_path")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_status_command_success(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_get_state: MagicMock,
+        mock_get_record: MagicMock,
+        mock_create_deployer: MagicMock,
+        mock_update_record: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test successful status command execution."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_get_state.return_value = Path("/tmp/state")  # noqa: S108
+
+        mock_record = MagicMock()
+        mock_record.service_id = "test-service-id"
+        mock_record.service_name = "test-agent"
+        mock_record.status = "Running"
+        mock_record.url = "https://test-agent.azurecontainerapps.io"
+        mock_record.updated_at = None
+        mock_record.model_copy.return_value = mock_record
+        mock_get_record.return_value = mock_record
+        mock_update_record.return_value = mock_record
+
+        mock_deployer = MagicMock()
+        mock_deployer.get_status.return_value = {
+            "status": "Running",
+            "url": "https://test-agent.azurecontainerapps.io",
+        }
+        mock_create_deployer.return_value = mock_deployer
+
+        result = runner.invoke(status, [str(temp_azure_agent_config)])
+
+        assert result.exit_code == 0
+        assert "Deployment Status" in result.output
+        assert "Running" in result.output
+
+    @patch("holodeck.cli.commands.deploy.get_deployment_record")
+    @patch("holodeck.cli.commands.deploy.get_state_path")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_status_command_no_deployment_record(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_get_state: MagicMock,
+        mock_get_record: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test status command when no deployment record exists."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_get_state.return_value = Path("/tmp/state")  # noqa: S108
+        mock_get_record.return_value = None
+
+        result = runner.invoke(status, [str(temp_azure_agent_config)])
+
+        assert result.exit_code == 2
+        assert "No deployment record found" in result.output
+
+    @patch("holodeck.cli.commands.deploy.update_deployment_record")
+    @patch("holodeck.cli.commands.deploy.create_deployer")
+    @patch("holodeck.cli.commands.deploy.get_deployment_record")
+    @patch("holodeck.cli.commands.deploy.get_state_path")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_status_command_quiet_mode(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_get_state: MagicMock,
+        mock_get_record: MagicMock,
+        mock_create_deployer: MagicMock,
+        mock_update_record: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test status command quiet mode outputs only status."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_get_state.return_value = Path("/tmp/state")  # noqa: S108
+
+        mock_record = MagicMock()
+        mock_record.service_id = "test-service-id"
+        mock_record.status = "Running"
+        mock_record.model_copy.return_value = mock_record
+        mock_get_record.return_value = mock_record
+        mock_update_record.return_value = mock_record
+
+        mock_deployer = MagicMock()
+        mock_deployer.get_status.return_value = {"status": "Running", "url": None}
+        mock_create_deployer.return_value = mock_deployer
+
+        result = runner.invoke(status, [str(temp_azure_agent_config), "--quiet"])
+
+        assert result.exit_code == 0
+        assert result.output.strip() == "Running"
+
+
+class TestDestroyCommand:
+    """Tests for deploy destroy command."""
+
+    def test_destroy_command_help(self, runner: CliRunner) -> None:
+        """Test destroy command help shows all options."""
+        result = runner.invoke(destroy, ["--help"])
+        assert result.exit_code == 0
+        assert "--force" in result.output
+        assert "--verbose" in result.output
+        assert "--quiet" in result.output
+
+    @patch("holodeck.cli.commands.deploy.update_deployment_record")
+    @patch("holodeck.cli.commands.deploy.create_deployer")
+    @patch("holodeck.cli.commands.deploy.get_deployment_record")
+    @patch("holodeck.cli.commands.deploy.get_state_path")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_destroy_command_success_with_force(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_get_state: MagicMock,
+        mock_get_record: MagicMock,
+        mock_create_deployer: MagicMock,
+        mock_update_record: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test successful destroy command execution with --force."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_get_state.return_value = Path("/tmp/state")  # noqa: S108
+
+        mock_record = MagicMock()
+        mock_record.service_id = "test-service-id"
+        mock_record.service_name = "test-agent"
+        mock_record.status = "DELETED"
+        mock_record.model_copy.return_value = mock_record
+        mock_get_record.return_value = mock_record
+        mock_update_record.return_value = mock_record
+
+        mock_deployer = MagicMock()
+        mock_create_deployer.return_value = mock_deployer
+
+        result = runner.invoke(destroy, [str(temp_azure_agent_config), "--force"])
+
+        assert result.exit_code == 0
+        assert "Deployment Destroyed" in result.output
+        mock_deployer.destroy.assert_called_once_with("test-service-id")
+
+    @patch("holodeck.cli.commands.deploy.update_deployment_record")
+    @patch("holodeck.cli.commands.deploy.create_deployer")
+    @patch("holodeck.cli.commands.deploy.get_deployment_record")
+    @patch("holodeck.cli.commands.deploy.get_state_path")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_destroy_command_abort_without_force(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_get_state: MagicMock,
+        mock_get_record: MagicMock,
+        mock_create_deployer: MagicMock,
+        mock_update_record: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test destroy command aborts when user declines confirmation."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_get_state.return_value = Path("/tmp/state")  # noqa: S108
+
+        mock_record = MagicMock()
+        mock_record.service_id = "test-service-id"
+        mock_record.service_name = "test-agent"
+        mock_get_record.return_value = mock_record
+
+        # Simulate user answering "n" to confirmation
+        result = runner.invoke(destroy, [str(temp_azure_agent_config)], input="n\n")
+
+        assert result.exit_code == 0
+        assert "Destroy aborted" in result.output
+        mock_create_deployer.return_value.destroy.assert_not_called()
+
+    @patch("holodeck.cli.commands.deploy.get_deployment_record")
+    @patch("holodeck.cli.commands.deploy.get_state_path")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_destroy_command_no_deployment_record(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_get_state: MagicMock,
+        mock_get_record: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test destroy command when no deployment record exists."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_get_state.return_value = Path("/tmp/state")  # noqa: S108
+        mock_get_record.return_value = None
+
+        result = runner.invoke(destroy, [str(temp_azure_agent_config), "--force"])
+
+        assert result.exit_code == 2
+        assert "No deployment record found" in result.output
+
+    @patch("holodeck.cli.commands.deploy.update_deployment_record")
+    @patch("holodeck.cli.commands.deploy.create_deployer")
+    @patch("holodeck.cli.commands.deploy.get_deployment_record")
+    @patch("holodeck.cli.commands.deploy.get_state_path")
+    @patch("holodeck.cli.commands.deploy._ensure_azure_provider")
+    @patch("holodeck.cli.commands.deploy._load_agent_and_deployment")
+    @patch("holodeck.cli.commands.deploy.setup_logging")
+    def test_destroy_command_quiet_mode(
+        self,
+        _mock_setup_logging: MagicMock,
+        mock_load_agent: MagicMock,
+        mock_ensure_azure: MagicMock,
+        mock_get_state: MagicMock,
+        mock_get_record: MagicMock,
+        mock_create_deployer: MagicMock,
+        mock_update_record: MagicMock,
+        runner: CliRunner,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test destroy command quiet mode outputs only 'deleted'."""
+        mock_load_agent.return_value = (
+            mock_azure_agent,
+            mock_azure_agent.deployment,
+            temp_azure_agent_config,
+        )
+        mock_get_state.return_value = Path("/tmp/state")  # noqa: S108
+
+        mock_record = MagicMock()
+        mock_record.service_id = "test-service-id"
+        mock_record.service_name = "test-agent"
+        mock_record.model_copy.return_value = mock_record
+        mock_get_record.return_value = mock_record
+        mock_update_record.return_value = mock_record
+
+        mock_deployer = MagicMock()
+        mock_create_deployer.return_value = mock_deployer
+
+        result = runner.invoke(
+            destroy, [str(temp_azure_agent_config), "--force", "--quiet"]
+        )
+
+        assert result.exit_code == 0
+        assert result.output.strip() == "deleted"
+
+
+class TestHelperFunctions:
+    """Tests for helper functions."""
+
+    def test_ensure_azure_provider_success(self, mock_azure_agent: MagicMock) -> None:
+        """Test _ensure_azure_provider passes for Azure provider."""
+        # Should not raise
+        _ensure_azure_provider(mock_azure_agent.deployment, operation="deploy")
+
+    def test_ensure_azure_provider_fails_for_aws(self, mock_agent: MagicMock) -> None:
+        """Test _ensure_azure_provider raises for non-Azure provider."""
+        with pytest.raises(DeploymentError) as exc_info:
+            _ensure_azure_provider(mock_agent.deployment, operation="deploy")
+
+        assert "not supported yet" in str(exc_info.value.message)
+        assert "Azure Container Apps" in str(exc_info.value.message)
+
+    def test_resolve_image_uri(self, mock_azure_agent: MagicMock) -> None:
+        """Test _resolve_image_uri returns correct URI and tag."""
+        with patch("holodeck.deploy.builder.generate_tag") as mock_gen:
+            mock_gen.return_value = "v1.0.0"
+
+            uri, tag = _resolve_image_uri(mock_azure_agent.deployment)
+
+            assert uri == "ghcr.io/test-org/test-agent:v1.0.0"
+            assert tag == "v1.0.0"
+
+    @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
+    def test_load_agent_and_deployment_success(
+        self,
+        mock_load_agent: MagicMock,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test _load_agent_and_deployment returns agent and config."""
+        mock_load_agent.return_value = mock_azure_agent
+
+        agent, deployment_config, path = _load_agent_and_deployment(
+            str(temp_azure_agent_config)
+        )
+
+        assert agent == mock_azure_agent
+        assert deployment_config == mock_azure_agent.deployment
+        assert path == temp_azure_agent_config
+
+    @patch("holodeck.config.loader.ConfigLoader.load_agent_yaml")
+    def test_load_agent_and_deployment_no_deployment_section(
+        self,
+        mock_load_agent: MagicMock,
+        temp_azure_agent_config: Path,
+        mock_azure_agent: MagicMock,
+    ) -> None:
+        """Test _load_agent_and_deployment raises when deployment section missing."""
+        mock_azure_agent.deployment = None
+        mock_load_agent.return_value = mock_azure_agent
+
+        with pytest.raises(ConfigError) as exc_info:
+            _load_agent_and_deployment(str(temp_azure_agent_config))
+
+        assert "deployment" in exc_info.value.field

@@ -10,11 +10,19 @@ from holodeck.lib.errors import CloudSDKNotInstalledError, DeploymentError
 from holodeck.models.deployment import AzureContainerAppsConfig
 
 if TYPE_CHECKING:
+    from azure.core.exceptions import (
+        ClientAuthenticationError,
+        HttpResponseError,
+        ResourceNotFoundError,
+        ServiceRequestError,
+    )
     from azure.mgmt.appcontainers import ContainerAppsAPIClient
     from azure.mgmt.appcontainers.models import (
         Configuration,
         Container,
         ContainerApp,
+        ContainerAppProbe,
+        ContainerAppProbeHttpGet,
         ContainerResources,
         EnvironmentVar,
         Ingress,
@@ -44,12 +52,20 @@ class AzureContainerAppsDeployer(BaseDeployer):
             )
 
         try:
+            from azure.core.exceptions import (
+                ClientAuthenticationError,
+                HttpResponseError,
+                ResourceNotFoundError,
+                ServiceRequestError,
+            )
             from azure.identity import DefaultAzureCredential
             from azure.mgmt.appcontainers import ContainerAppsAPIClient
             from azure.mgmt.appcontainers.models import (
                 Configuration,
                 Container,
                 ContainerApp,
+                ContainerAppProbe,
+                ContainerAppProbeHttpGet,
                 ContainerResources,
                 EnvironmentVar,
                 Ingress,
@@ -62,6 +78,14 @@ class AzureContainerAppsDeployer(BaseDeployer):
                 provider="azure", sdk_name="azure-mgmt-appcontainers"
             ) from exc
 
+        # Store exception types for use in methods
+        self._ClientAuthenticationError: type[ClientAuthenticationError] = (
+            ClientAuthenticationError
+        )
+        self._HttpResponseError: type[HttpResponseError] = HttpResponseError
+        self._ResourceNotFoundError: type[ResourceNotFoundError] = ResourceNotFoundError
+        self._ServiceRequestError: type[ServiceRequestError] = ServiceRequestError
+
         self._config = config
         self._client: ContainerAppsAPIClient = ContainerAppsAPIClient(
             DefaultAzureCredential(), config.subscription_id
@@ -69,6 +93,10 @@ class AzureContainerAppsDeployer(BaseDeployer):
         self._Configuration: type[Configuration] = Configuration
         self._Container: type[Container] = Container
         self._ContainerApp: type[ContainerApp] = ContainerApp
+        self._ContainerAppProbe: type[ContainerAppProbe] = ContainerAppProbe
+        self._ContainerAppProbeHttpGet: type[ContainerAppProbeHttpGet] = (
+            ContainerAppProbeHttpGet
+        )
         self._ContainerResources: type[ContainerResources] = ContainerResources
         self._EnvironmentVar: type[EnvironmentVar] = EnvironmentVar
         self._Ingress: type[Ingress] = Ingress
@@ -97,6 +125,19 @@ class AzureContainerAppsDeployer(BaseDeployer):
             for key, value in env_vars.items()
         ]
 
+        # Configure liveness probe for health monitoring
+        liveness_probe = self._ContainerAppProbe(
+            type="Liveness",
+            http_get=self._ContainerAppProbeHttpGet(
+                port=port,
+                path=health_check_path,
+            ),
+            initial_delay_seconds=10,
+            period_seconds=30,
+            failure_threshold=3,
+            timeout_seconds=5,
+        )
+
         container = self._Container(
             name=service_name,
             image=image_uri,
@@ -105,6 +146,7 @@ class AzureContainerAppsDeployer(BaseDeployer):
                 memory=self._config.memory,
             ),
             env=env_list if env_list else None,
+            probes=[liveness_probe],
         )
 
         scale = self._Scale(
@@ -134,6 +176,23 @@ class AzureContainerAppsDeployer(BaseDeployer):
                 container_app_envelope=container_app,
             )
             result = poller.result()
+        except self._ClientAuthenticationError as exc:
+            raise DeploymentError(
+                operation="deploy",
+                message=f"Azure authentication failed: {exc}. "
+                "Check your Azure credentials configuration.",
+            ) from exc
+        except self._ServiceRequestError as exc:
+            raise DeploymentError(
+                operation="deploy",
+                message=f"Network error connecting to Azure: {exc}. "
+                "Check your network connectivity.",
+            ) from exc
+        except self._HttpResponseError as exc:
+            raise DeploymentError(
+                operation="deploy",
+                message=f"Azure API error (HTTP {exc.status_code}): {exc.message}",
+            ) from exc
         except Exception as exc:
             raise DeploymentError(
                 operation="deploy",
@@ -165,6 +224,28 @@ class AzureContainerAppsDeployer(BaseDeployer):
                 resource_group_name=self._config.resource_group,
                 container_app_name=container_app_name,
             )
+        except self._ResourceNotFoundError as exc:
+            raise DeploymentError(
+                operation="status",
+                message=f"Container app '{container_app_name}' not found: {exc}",
+            ) from exc
+        except self._ClientAuthenticationError as exc:
+            raise DeploymentError(
+                operation="status",
+                message=f"Azure authentication failed: {exc}. "
+                "Check your Azure credentials configuration.",
+            ) from exc
+        except self._ServiceRequestError as exc:
+            raise DeploymentError(
+                operation="status",
+                message=f"Network error connecting to Azure: {exc}. "
+                "Check your network connectivity.",
+            ) from exc
+        except self._HttpResponseError as exc:
+            raise DeploymentError(
+                operation="status",
+                message=f"Azure API error (HTTP {exc.status_code}): {exc.message}",
+            ) from exc
         except Exception as exc:
             raise DeploymentError(
                 operation="status",
@@ -189,6 +270,28 @@ class AzureContainerAppsDeployer(BaseDeployer):
                 container_app_name=container_app_name,
             )
             poller.result()
+        except self._ResourceNotFoundError as exc:
+            raise DeploymentError(
+                operation="destroy",
+                message=f"Container app '{container_app_name}' not found: {exc}",
+            ) from exc
+        except self._ClientAuthenticationError as exc:
+            raise DeploymentError(
+                operation="destroy",
+                message=f"Azure authentication failed: {exc}. "
+                "Check your Azure credentials configuration.",
+            ) from exc
+        except self._ServiceRequestError as exc:
+            raise DeploymentError(
+                operation="destroy",
+                message=f"Network error connecting to Azure: {exc}. "
+                "Check your network connectivity.",
+            ) from exc
+        except self._HttpResponseError as exc:
+            raise DeploymentError(
+                operation="destroy",
+                message=f"Azure API error (HTTP {exc.status_code}): {exc.message}",
+            ) from exc
         except Exception as exc:
             raise DeploymentError(
                 operation="destroy",
@@ -203,7 +306,31 @@ class AzureContainerAppsDeployer(BaseDeployer):
 
     @staticmethod
     def _resolve_container_app_name(service_id: str) -> str:
-        """Resolve container app name from a service identifier."""
+        """Resolve container app name from a service identifier.
+
+        Args:
+            service_id: Service identifier, either a container app name
+                or a full Azure resource ID.
+
+        Returns:
+            The container app name extracted from the service_id.
+
+        Raises:
+            DeploymentError: If service_id is invalid (empty or resolves to empty).
+        """
+        if not service_id or not service_id.strip():
+            raise DeploymentError(
+                operation="resolve",
+                message=f"Invalid service_id: '{service_id}' (empty or whitespace)",
+            )
+
         if "/" in service_id:
-            return service_id.rstrip("/").split("/")[-1]
+            name = service_id.rstrip("/").split("/")[-1]
+            if not name:
+                raise DeploymentError(
+                    operation="resolve",
+                    message=f"Invalid service_id: '{service_id}' "
+                    "(could not extract container app name)",
+                )
+            return name
         return service_id

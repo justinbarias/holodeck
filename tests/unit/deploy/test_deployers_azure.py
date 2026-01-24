@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from holodeck.deploy.deployers.azure_containerapps import AzureContainerAppsDeployer
-from holodeck.lib.errors import CloudSDKNotInstalledError
+from holodeck.lib.errors import CloudSDKNotInstalledError, DeploymentError
 from holodeck.models.deployment import AzureContainerAppsConfig
 
 
@@ -33,7 +33,7 @@ def _load_fixture() -> dict[str, Any]:
         / "azure"
         / "container_app_create.json"
     )
-    return json.loads(fixture_path.read_text(encoding="utf-8"))
+    return cast(dict[str, Any], json.loads(fixture_path.read_text(encoding="utf-8")))
 
 
 def _build_result_from_fixture(data: dict[str, Any]) -> DummyModel:
@@ -57,6 +57,21 @@ def azure_sdk(monkeypatch: pytest.MonkeyPatch) -> type:
             self.subscription_id = subscription_id
             self.container_apps: MagicMock = MagicMock()
 
+    # Mock azure.core.exceptions
+    core_exceptions_module = types.ModuleType("azure.core.exceptions")
+    core_exceptions_module.ClientAuthenticationError = type(  # type: ignore[attr-defined]
+        "ClientAuthenticationError", (Exception,), {}
+    )
+    core_exceptions_module.HttpResponseError = type(  # type: ignore[attr-defined]
+        "HttpResponseError", (Exception,), {"status_code": 500, "message": "error"}
+    )
+    core_exceptions_module.ResourceNotFoundError = type(  # type: ignore[attr-defined]
+        "ResourceNotFoundError", (Exception,), {}
+    )
+    core_exceptions_module.ServiceRequestError = type(  # type: ignore[attr-defined]
+        "ServiceRequestError", (Exception,), {}
+    )
+
     identity_module = types.ModuleType("azure.identity")
     identity_module.DefaultAzureCredential = MagicMock(  # type: ignore[attr-defined]
         return_value="credential"
@@ -70,6 +85,8 @@ def azure_sdk(monkeypatch: pytest.MonkeyPatch) -> type:
         "Configuration",
         "Container",
         "ContainerApp",
+        "ContainerAppProbe",
+        "ContainerAppProbeHttpGet",
         "ContainerResources",
         "EnvironmentVar",
         "Ingress",
@@ -80,6 +97,8 @@ def azure_sdk(monkeypatch: pytest.MonkeyPatch) -> type:
         setattr(models_module, name, DummyModel)
 
     monkeypatch.setitem(sys.modules, "azure", types.ModuleType("azure"))
+    monkeypatch.setitem(sys.modules, "azure.core", types.ModuleType("azure.core"))
+    monkeypatch.setitem(sys.modules, "azure.core.exceptions", core_exceptions_module)
     monkeypatch.setitem(sys.modules, "azure.identity", identity_module)
     monkeypatch.setitem(sys.modules, "azure.mgmt", types.ModuleType("azure.mgmt"))
     monkeypatch.setitem(sys.modules, "azure.mgmt.appcontainers", appcontainers_module)
@@ -165,6 +184,17 @@ class TestAzureContainerAppsDeployer:
         assert container.env[0].name == "OPENAI_API_KEY"
         assert container.env[0].value == "secret"
 
+        # Verify health probe configuration (uses default /health path)
+        assert len(container.probes) == 1
+        probe = container.probes[0]
+        assert probe.type == "Liveness"
+        assert probe.http_get.port == 8080
+        assert probe.http_get.path == "/health"
+        assert probe.initial_delay_seconds == 10
+        assert probe.period_seconds == 30
+        assert probe.failure_threshold == 3
+        assert probe.timeout_seconds == 5
+
         scale = envelope.template.scale
         assert scale.min_replicas == 1
         assert scale.max_replicas == 3
@@ -228,3 +258,98 @@ class TestAzureContainerAppsDeployer:
             container_app_name="test-agent",
         )
         poller.result.assert_called_once()
+
+    def test_deploy_with_custom_health_check_path(self, azure_sdk: type) -> None:
+        """Test deploy configures custom health check path."""
+        config = AzureContainerAppsConfig(
+            subscription_id="00000000-0000-0000-0000-000000000000",
+            resource_group="test-rg",
+            environment_name="test-env",
+            location="eastus",
+        )
+        deployer = AzureContainerAppsDeployer(config)
+
+        client = deployer._client
+        container_apps = cast(MagicMock, client.container_apps)
+        poller = MagicMock()
+        fixture = _load_fixture()
+        result = _build_result_from_fixture(fixture)
+        poller.result.return_value = result
+        container_apps.begin_create_or_update.return_value = poller
+
+        deployer.deploy(
+            service_name="test-agent",
+            image_uri="ghcr.io/holodeck/test-agent:abc1234",
+            port=8080,
+            env_vars={},
+            health_check_path="/api/healthz",
+        )
+
+        call_kwargs = container_apps.begin_create_or_update.call_args.kwargs
+        envelope = call_kwargs["container_app_envelope"]
+        container = envelope.template.containers[0]
+
+        # Verify custom health check path is used
+        probe = container.probes[0]
+        assert probe.http_get.path == "/api/healthz"
+        assert probe.http_get.port == 8080
+
+    def test_resolve_container_app_name_valid_simple_name(
+        self, azure_sdk: type
+    ) -> None:
+        """Test _resolve_container_app_name returns simple names unchanged."""
+        assert (
+            AzureContainerAppsDeployer._resolve_container_app_name("my-app") == "my-app"
+        )
+
+    def test_resolve_container_app_name_valid_resource_id(
+        self, azure_sdk: type
+    ) -> None:
+        """Test _resolve_container_app_name extracts name from resource ID."""
+        resource_id = (
+            "/subscriptions/00000000-0000-0000-0000-000000000000/"
+            "resourceGroups/my-rg/providers/Microsoft.App/containerApps/my-app"
+        )
+        assert (
+            AzureContainerAppsDeployer._resolve_container_app_name(resource_id)
+            == "my-app"
+        )
+
+    def test_resolve_container_app_name_valid_with_trailing_slash(
+        self, azure_sdk: type
+    ) -> None:
+        """Test _resolve_container_app_name handles trailing slashes."""
+        resource_id = (
+            "/subscriptions/00000000-0000-0000-0000-000000000000/"
+            "resourceGroups/my-rg/providers/Microsoft.App/containerApps/my-app/"
+        )
+        assert (
+            AzureContainerAppsDeployer._resolve_container_app_name(resource_id)
+            == "my-app"
+        )
+
+    def test_resolve_container_app_name_invalid_empty(self, azure_sdk: type) -> None:
+        """Test _resolve_container_app_name raises error for empty string."""
+        with pytest.raises(DeploymentError, match="empty or whitespace"):
+            AzureContainerAppsDeployer._resolve_container_app_name("")
+
+    def test_resolve_container_app_name_invalid_whitespace(
+        self, azure_sdk: type
+    ) -> None:
+        """Test _resolve_container_app_name raises error for whitespace."""
+        with pytest.raises(DeploymentError, match="empty or whitespace"):
+            AzureContainerAppsDeployer._resolve_container_app_name("   ")
+
+    def test_resolve_container_app_name_invalid_slash_only(
+        self, azure_sdk: type
+    ) -> None:
+        """Test _resolve_container_app_name raises error for '/' only."""
+        with pytest.raises(DeploymentError, match="could not extract"):
+            AzureContainerAppsDeployer._resolve_container_app_name("/")
+
+    def test_resolve_container_app_name_invalid_double_slash(
+        self, azure_sdk: type
+    ) -> None:
+        """Test _resolve_container_app_name raises error for '//' only."""
+        with pytest.raises(DeploymentError, match="could not extract"):
+            AzureContainerAppsDeployer._resolve_container_app_name("//")
