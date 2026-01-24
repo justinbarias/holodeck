@@ -30,6 +30,7 @@ from holodeck.cli.commands.deploy import (
     build,
     deploy,
     destroy,
+    handle_deployment_errors,
     run,
     status,
 )
@@ -1317,3 +1318,36 @@ class TestHelperFunctions:
             _load_agent_and_deployment(str(temp_azure_agent_config))
 
         assert "deployment" in exc_info.value.field
+
+
+class TestHandleDeploymentErrors:
+    """Tests for handle_deployment_errors context manager."""
+
+    def test_handle_config_error(self) -> None:
+        """Test context manager handles ConfigError with exit code 2."""
+        with pytest.raises(SystemExit) as exc_info, handle_deployment_errors():
+            raise ConfigError(field="test", message="Test config error")
+
+        assert exc_info.value.code == 2
+
+    def test_handle_deployment_error(self) -> None:
+        """Test context manager handles DeploymentError with exit code 3."""
+        with pytest.raises(SystemExit) as exc_info, handle_deployment_errors():
+            raise DeploymentError(operation="deploy", message="Test deploy error")
+
+        assert exc_info.value.code == 3
+
+    def test_handle_unexpected_error(self) -> None:
+        """Test context manager handles unexpected exceptions with exit code 3."""
+        with pytest.raises(SystemExit) as exc_info, handle_deployment_errors():
+            raise RuntimeError("Unexpected error")
+
+        assert exc_info.value.code == 3
+
+    def test_no_error_passes_through(self) -> None:
+        """Test context manager allows normal execution without errors."""
+        result = None
+        with handle_deployment_errors():
+            result = "success"
+
+        assert result == "success"

@@ -9,6 +9,8 @@ from __future__ import annotations
 import shutil
 import sys
 import tempfile
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +34,35 @@ if TYPE_CHECKING:
     from holodeck.models.deployment import DeploymentConfig
 
 logger = get_logger(__name__)
+
+
+@contextmanager
+def handle_deployment_errors() -> Generator[None, None, None]:
+    """Context manager for consistent error handling in deployment commands.
+
+    Catches and handles ConfigError, DeploymentError, and unexpected exceptions
+    with appropriate logging, user feedback, and exit codes.
+
+    Exit codes:
+        2: Configuration error
+        3: Deployment/execution error
+    """
+    try:
+        yield
+    except ConfigError as e:
+        logger.error(f"Configuration error: {e}")
+        click.secho("Error: Configuration error", fg="red", err=True)
+        click.echo(f"  {e.message}", err=True)
+        sys.exit(2)
+    except DeploymentError as e:
+        logger.error(f"Deployment error: {e}")
+        click.secho(f"Error: {e.operation} failed", fg="red", err=True)
+        click.echo(f"  {e.message}", err=True)
+        sys.exit(3)
+    except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
+        click.secho(f"Error: {e}", fg="red", err=True)
+        sys.exit(3)
 
 
 @click.group(name="deploy", invoke_without_command=True)
@@ -303,7 +334,7 @@ def run(
     if not quiet:
         setup_logging(verbose=verbose, quiet=quiet)
 
-    try:
+    with handle_deployment_errors():
         agent, deployment_config, agent_path = _load_agent_and_deployment(agent_config)
         _ensure_azure_provider(deployment_config, operation="deploy")
 
@@ -363,23 +394,6 @@ def run(
             click.echo("  URL:       (not available yet)")
         click.echo()
 
-    except ConfigError as e:
-        logger.error(f"Configuration error: {e}")
-        click.secho("Error: Configuration error", fg="red", err=True)
-        click.echo(f"  {e.message}", err=True)
-        sys.exit(2)
-
-    except DeploymentError as e:
-        logger.error(f"Deployment error: {e}")
-        click.secho(f"Error: {e.operation} failed", fg="red", err=True)
-        click.echo(f"  {e.message}", err=True)
-        sys.exit(3)
-
-    except Exception as e:
-        logger.exception(f"Unexpected error: {e}")
-        click.secho(f"Error: {e}", fg="red", err=True)
-        sys.exit(3)
-
 
 @deploy.command()
 @click.argument(
@@ -405,7 +419,7 @@ def status(agent_config: str, verbose: bool, quiet: bool) -> None:
     if not quiet:
         setup_logging(verbose=verbose, quiet=quiet)
 
-    try:
+    with handle_deployment_errors():
         agent, deployment_config, agent_path = _load_agent_and_deployment(agent_config)
         _ensure_azure_provider(deployment_config, operation="status")
 
@@ -443,23 +457,6 @@ def status(agent_config: str, verbose: bool, quiet: bool) -> None:
             click.echo(f"  Updated:   {record.updated_at.isoformat()}")
         click.echo()
 
-    except ConfigError as e:
-        logger.error(f"Configuration error: {e}")
-        click.secho("Error: Configuration error", fg="red", err=True)
-        click.echo(f"  {e.message}", err=True)
-        sys.exit(2)
-
-    except DeploymentError as e:
-        logger.error(f"Deployment error: {e}")
-        click.secho(f"Error: {e.operation} failed", fg="red", err=True)
-        click.echo(f"  {e.message}", err=True)
-        sys.exit(3)
-
-    except Exception as e:
-        logger.exception(f"Unexpected error: {e}")
-        click.secho(f"Error: {e}", fg="red", err=True)
-        sys.exit(3)
-
 
 @deploy.command()
 @click.argument(
@@ -490,7 +487,7 @@ def destroy(agent_config: str, force: bool, verbose: bool, quiet: bool) -> None:
     if not quiet:
         setup_logging(verbose=verbose, quiet=quiet)
 
-    try:
+    with handle_deployment_errors():
         agent, deployment_config, agent_path = _load_agent_and_deployment(agent_config)
         _ensure_azure_provider(deployment_config, operation="destroy")
 
@@ -527,23 +524,6 @@ def destroy(agent_config: str, force: bool, verbose: bool, quiet: bool) -> None:
         click.echo(f"  Service:   {record.service_name}")
         click.echo(f"  Status:    {record.status}")
         click.echo()
-
-    except ConfigError as e:
-        logger.error(f"Configuration error: {e}")
-        click.secho("Error: Configuration error", fg="red", err=True)
-        click.echo(f"  {e.message}", err=True)
-        sys.exit(2)
-
-    except DeploymentError as e:
-        logger.error(f"Deployment error: {e}")
-        click.secho(f"Error: {e.operation} failed", fg="red", err=True)
-        click.echo(f"  {e.message}", err=True)
-        sys.exit(3)
-
-    except Exception as e:
-        logger.exception(f"Unexpected error: {e}")
-        click.secho(f"Error: {e}", fg="red", err=True)
-        sys.exit(3)
 
 
 def _generate_dockerfile_content(
