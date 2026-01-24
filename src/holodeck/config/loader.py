@@ -437,7 +437,47 @@ class ConfigLoader:
 
             self._merge_mcp_servers(agent_config["tools"], global_config.mcp_servers)
 
+        # Merge global deployment config (agent.yaml takes precedence)
+        if global_config.deployment:
+            if "deployment" not in agent_config:
+                # No deployment in agent.yaml, use global
+                agent_config["deployment"] = global_config.deployment.model_dump(
+                    exclude_unset=True
+                )
+            else:
+                # Merge global into agent deployment (agent takes precedence)
+                global_deploy = global_config.deployment.model_dump(exclude_unset=True)
+                agent_deploy = agent_config["deployment"]
+                if isinstance(agent_deploy, dict):
+                    self._deep_merge_deployment(global_deploy, agent_deploy)
+                    agent_config["deployment"] = global_deploy
+
         return agent_config
+
+    def _deep_merge_deployment(
+        self, base: dict[str, Any], override: dict[str, Any]
+    ) -> None:
+        """Deep merge deployment configs, with override taking precedence.
+
+        For nested dicts like registry and target, merge recursively.
+        For other keys, override wins if set.
+
+        Args:
+            base: Base config (will be modified in place)
+            override: Override config (values take precedence)
+        """
+        for key, override_value in override.items():
+            if key in base:
+                base_value = base[key]
+                if isinstance(base_value, dict) and isinstance(override_value, dict):
+                    # Recursively merge nested dicts
+                    self._deep_merge_deployment(base_value, override_value)
+                else:
+                    # Override wins for non-dict values
+                    base[key] = override_value
+            else:
+                # Key not in base, just add it
+                base[key] = override_value
 
     def _resolve_vectorstore_references(
         self,

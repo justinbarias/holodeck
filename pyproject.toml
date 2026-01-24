@@ -105,6 +105,19 @@ otel-all = [
     "azure-monitor-opentelemetry-exporter>=1.0.0b24,<2.0.0",
 ]
 
+# Deployment engine
+deploy = ["docker>=7.0.0"]
+deploy-aws = ["boto3>=1.42.0"]
+deploy-gcp = ["google-cloud-run>=0.13.0"]
+deploy-azure = ["azure-mgmt-appcontainers>=4.0.0", "azure-identity>=1.15.0"]
+deploy-all = [
+    "docker>=7.0.0",
+    "boto3>=1.42.0",
+    "google-cloud-run>=0.13.0",
+    "azure-mgmt-appcontainers>=4.0.0",
+    "azure-identity>=1.15.0",
+]
+
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"

@@ -1,0 +1,24 @@
+# Knowledge Base for Test Agent
+
+## Company Information
+
+HoloDeck is an open-source experimentation platform for building, testing,
+and deploying AI agents through pure YAML configuration.
+
+### Key Features
+
+- No-code agent definition via YAML
+- Multiple LLM provider support (OpenAI, Azure, Anthropic, Ollama)
+- Built-in evaluation framework
+- Container-based deployment
+
+## FAQ
+
+Q: What is HoloDeck?
+A: HoloDeck is a platform for building and deploying AI agents without code.
+
+Q: How do I create an agent?
+A: Define your agent in an agent.yaml file with name, model, and instructions.
+
+Q: What deployment options are available?
+A: HoloDeck supports AWS App Runner, GCP Cloud Run, and Azure Container Apps.

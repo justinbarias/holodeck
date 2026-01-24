@@ -399,3 +399,124 @@ class RecordPathError(HoloDeckError):
             f"Failed to navigate path '{path}': {message}. "
             f"Available keys: {available_keys}"
         )
+
+
+# Deployment Exceptions
+
+
+class DeploymentError(HoloDeckError):
+    """Base exception for deployment operations.
+
+    Parent class for all deployment-related errors including Docker,
+    registry, and cloud provider operations.
+
+    Attributes:
+        operation: The deployment operation that failed
+        message: Human-readable error message
+    """
+
+    def __init__(self, operation: str, message: str) -> None:
+        """Initialize DeploymentError with operation context.
+
+        Args:
+            operation: The deployment operation that failed
+            message: Descriptive error message
+        """
+        self.operation = operation
+        self.message = message
+        super().__init__(f"Deployment error during '{operation}': {message}")
+
+
+class DockerNotAvailableError(DeploymentError):
+    """Exception raised when Docker daemon is not available.
+
+    Raised when Docker operations fail due to the daemon not running
+    or Docker not being installed.
+
+    Attributes:
+        operation: The operation that required Docker
+        message: Human-readable error message with resolution guidance
+    """
+
+    def __init__(self, operation: str = "docker") -> None:
+        """Initialize DockerNotAvailableError.
+
+        Args:
+            operation: The operation that required Docker
+        """
+        message = (
+            "Docker daemon is not available.\n"
+            "Ensure Docker is installed and running:\n"
+            "  - macOS/Windows: Start Docker Desktop\n"
+            "  - Linux: sudo systemctl start docker"
+        )
+        super().__init__(operation, message)
+
+
+class RegistryAuthError(DeploymentError):
+    """Exception raised when container registry authentication fails.
+
+    Raised when pushing images to a registry fails due to authentication
+    or authorization issues.
+
+    Attributes:
+        registry: The registry URL that failed authentication
+        operation: The operation that failed
+        message: Human-readable error message
+    """
+
+    def __init__(self, registry: str, detail: str | None = None) -> None:
+        """Initialize RegistryAuthError with registry details.
+
+        Args:
+            registry: The registry URL that failed authentication
+            detail: Optional additional error detail
+        """
+        self.registry = registry
+        message = f"Authentication failed for registry '{registry}'."
+        if detail:
+            message += f"\n{detail}"
+        message += (
+            "\nEnsure credentials are configured:\n"
+            "  - AWS ECR: aws ecr get-login-password | docker login\n"
+            "  - GCP: gcloud auth configure-docker\n"
+            "  - Azure: az acr login --name <registry>"
+        )
+        super().__init__("push", message)
+
+
+class CloudSDKNotInstalledError(DeploymentError):
+    """Exception raised when required cloud SDK is not installed.
+
+    Raised when deployment to a cloud provider fails because the
+    required CLI/SDK is not available on the system.
+
+    Attributes:
+        provider: The cloud provider (aws, gcp, azure)
+        sdk_name: The name of the missing SDK
+        operation: The operation that required the SDK
+        message: Human-readable error message with installation guidance
+    """
+
+    def __init__(self, provider: str, sdk_name: str) -> None:
+        """Initialize CloudSDKNotInstalledError with provider details.
+
+        Args:
+            provider: The cloud provider (aws, gcp, azure)
+            sdk_name: The name of the missing SDK
+        """
+        self.provider = provider
+        self.sdk_name = sdk_name
+
+        install_instructions = {
+            "aws": "pip install 'holodeck-ai[deploy-aws]'",
+            "gcp": "pip install 'holodeck-ai[deploy-gcp]'",
+            "azure": "pip install 'holodeck-ai[deploy-azure]'",
+        }
+
+        install_cmd = install_instructions.get(provider, "Check provider docs")
+        message = (
+            f"Cloud SDK '{sdk_name}' is not installed for provider '{provider}'.\n"
+            f"Install it with: {install_cmd}"
+        )
+        super().__init__("deploy", message)

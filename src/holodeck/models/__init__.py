@@ -15,7 +15,8 @@ from holodeck.models.chat import (
     MessageRole,
     SessionState,
 )
-from holodeck.models.config import DeploymentConfig, GlobalConfig, VectorstoreConfig
+from holodeck.models.config import GlobalConfig, VectorstoreConfig
+from holodeck.models.deployment import DeploymentConfig
 from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.observability import (

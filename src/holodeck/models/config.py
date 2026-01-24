@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from holodeck.models.deployment import DeploymentConfig  # noqa: F401 - re-exported
 from holodeck.models.llm import LLMProvider
 from holodeck.models.tool import MCPTool
 
@@ -44,28 +45,6 @@ class VectorstoreConfig(BaseModel):
         """Validate connection_string is not empty."""
         if not v or not v.strip():
             raise ValueError("connection_string must be a non-empty string")
-        return v
-
-
-class DeploymentConfig(BaseModel):
-    """Deployment configuration for global defaults.
-
-    Specifies deployment platform and settings for deploying agents.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    type: str = Field(..., description="Deployment type (docker, kubernetes, etc.)")
-    settings: dict[str, Any] | None = Field(
-        None, description="Deployment-specific settings"
-    )
-
-    @field_validator("type")
-    @classmethod
-    def validate_type(cls, v: str) -> str:
-        """Validate type is not empty."""
-        if not v or not v.strip():
-            raise ValueError("type must be a non-empty string")
         return v
 
 
