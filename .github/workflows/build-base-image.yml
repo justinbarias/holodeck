@@ -2,7 +2,7 @@ name: Build Base Image
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/deploy-base-image-tasks]
     paths:
       - 'docker/**'
       - '.github/workflows/build-base-image.yml'
