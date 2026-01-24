@@ -61,6 +61,7 @@ dev = [
     "tox>=4.0.0",
     "bandit[toml]>=1.8.0",
     "safety>=3.0.0",
+    "marshmallow>=4.2.1",  # CVE-2025-68480 fix (transitive dep of safety)
     "detect-secrets>=1.4.0",
     "types-PyYAML>=6.0.12",
     "mkdocstrings[python]>=0.25.0",

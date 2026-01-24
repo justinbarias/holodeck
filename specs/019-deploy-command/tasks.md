@@ -29,25 +29,25 @@ Use these references when implementing each task:
 
 **Purpose**: Project initialization and dependency configuration
 
-- [ ] T001 Add optional deployment dependencies to pyproject.toml extras
+- [x] T001 Add optional deployment dependencies to pyproject.toml extras
   - Spec details: @plan.md L:17-20 (dependencies)
   - Add `deploy`, `deploy-aws`, `deploy-gcp`, `deploy-azure`, `deploy-all` extras
   - Packages: docker>=7.0.0, boto3>=1.42.0, google-cloud-run>=0.13.0, azure-mgmt-appcontainers>=4.0.0, azure-identity>=1.15.0
 
-- [ ] T002 [P] Create deploy package structure in src/holodeck/deploy/
+- [x] T002 [P] Create deploy package structure in src/holodeck/deploy/
   - Spec details: @plan.md L:85-102 (project structure)
   - Create directories: deploy/, deploy/deployers/
   - Create __init__.py files for each
 
-- [ ] T003 [P] Add DeploymentError exception to src/holodeck/lib/errors.py
+- [x] T003 [P] Add DeploymentError exception to src/holodeck/lib/errors.py
   - Spec details: @plan.md L:106 (error handling)
   - Add DeploymentError class extending HoloDeckError
 
-- [ ] T004 [P] Create docker/ directory with base image files at repository root
+- [x] T004 [P] Create docker/ directory with base image files at repository root
   - Spec details: @plan.md L:107-111 (docker files)
   - Create docker/Dockerfile and docker/entrypoint.sh placeholders
 
-- [ ] T005 [P] Create test fixture directories in tests/
+- [x] T005 [P] Create test fixture directories in tests/
   - Spec details: @plan.md L:112-126 (test structure)
   - Create tests/unit/deploy/, tests/integration/deploy/, tests/fixtures/deploy/sample_agent/, tests/fixtures/deploy/mock_responses/
 
@@ -63,14 +63,14 @@ Use these references when implementing each task:
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T006 [P] Unit tests for Pydantic deployment models in tests/unit/deploy/test_models.py
+- [x] T006 [P] Unit tests for Pydantic deployment models in tests/unit/deploy/test_models.py
   - Schema details: @contracts/deployment-config-schema.yaml L:1-342
   - Data model details: @data-model.md L:103-235
   - Test DeploymentConfig, RegistryConfig, CloudTargetConfig, provider-specific configs
   - Test validation rules (patterns, enums, defaults)
   - Test discriminated union behavior for CloudTargetConfig
 
-- [ ] T007 [P] Unit tests for Dockerfile generation in tests/unit/deploy/test_dockerfile.py
+- [x] T007 [P] Unit tests for Dockerfile generation in tests/unit/deploy/test_dockerfile.py
   - Research details: @research.md L:92-128 (Dockerfile template)
   - Test Jinja2 template rendering
   - Test OCI label generation
@@ -78,38 +78,75 @@ Use these references when implementing each task:
 
 ### Implementation for Foundational Phase
 
-- [ ] T008 Implement Pydantic models in src/holodeck/models/deployment.py
+- [x] T008 Implement Pydantic models in src/holodeck/models/deployment.py
   - Schema details: @contracts/deployment-config-schema.yaml L:48-291 (definitions)
   - Data model details: @data-model.md L:103-235 (entity definitions)
   - Implement: RegistryConfig, AWSAppRunnerConfig, GCPCloudRunConfig, AzureContainerAppsConfig
   - Implement: CloudTargetConfig (discriminated union), DeploymentConfig
   - Add validators for all patterns and constraints
 
-- [ ] T009 Implement Dockerfile generator in src/holodeck/deploy/dockerfile.py
+- [x] T009 Implement Dockerfile generator in src/holodeck/deploy/dockerfile.py
   - Research details: @research.md L:92-128 (Jinja2 template)
   - Create HOLODECK_DOCKERFILE_TEMPLATE constant
   - Implement generate_dockerfile() function accepting agent config
   - Support instruction files, data directories, environment variables
 
-- [ ] T010 Create HoloDeck base image Dockerfile in docker/Dockerfile
+- [x] T010 Create HoloDeck base image Dockerfile in docker/Dockerfile
   - Spec details: @plan.md L:255-287 (base image definition)
   - Research details: @research.md L:535-538 (base image dependencies)
   - FROM python:3.10-slim, install UV, create non-root user
   - Install holodeck package, configure healthcheck
   - Set entrypoint to holodeck serve
 
-- [ ] T011 Create container entrypoint script in docker/entrypoint.sh
+- [x] T011 Create container entrypoint script in docker/entrypoint.sh
   - Spec details: @plan.md L:108 (entrypoint)
   - Handle environment variable configuration
   - Execute holodeck serve with appropriate flags
 
-- [ ] T012 Implement deployment config resolver in src/holodeck/deploy/config.py
+- [x] T012 Implement deployment config resolver in src/holodeck/deploy/config.py
   - Data model details: @data-model.md L:103-119 (DeploymentConfig)
   - Load deployment section from agent.yaml
   - Resolve environment variable substitutions (${VAR} syntax)
   - Validate against Pydantic models
 
-**Checkpoint**: Foundation ready - Pydantic models, Dockerfile generation, and base image defined
+**Checkpoint**: Foundation ready - Pydantic models, Dockerfile generation, and base image defined ✅
+
+---
+
+## Phase 2b: Build & Publish Base Image (Blocking Prerequisite)
+
+**Purpose**: Build and publish the HoloDeck base image to a container registry so user agent images can use it as their `FROM` layer.
+
+**⚠️ CRITICAL**: User Story 1 (build) requires the base image to exist in a registry. This phase must complete before Phase 3 can be fully tested.
+
+### Implementation for Base Image Publishing
+
+- [ ] T012a [P] Create GitHub Actions workflow for base image in .github/workflows/build-base-image.yml
+  - Trigger on: push to main (docker/ changes), manual dispatch, release tags
+  - Build multi-arch image (linux/amd64, linux/arm64)
+  - Push to GitHub Container Registry (ghcr.io/holodeck-ai/holodeck-base)
+  - Tag with: latest, git-sha, semver (on release)
+  - Use Docker Buildx for multi-platform builds
+
+- [ ] T012b [P] Add base image build script in scripts/build-base-image.sh
+  - Local development script to build base image
+  - Support --push flag for publishing
+  - Support --tag flag for custom tags
+  - Validate Dockerfile syntax before build
+
+- [ ] T012c Test base image locally before publishing
+  - Build base image from docker/Dockerfile
+  - Run container and verify `holodeck serve` starts
+  - Verify healthcheck endpoint responds
+  - Test with sample agent.yaml mounted
+
+- [ ] T012d Publish initial base image to GitHub Container Registry
+  - Create ghcr.io/holodeck-ai/holodeck-base:latest
+  - Create ghcr.io/holodeck-ai/holodeck-base:0.1.0 (initial version)
+  - Update docker/Dockerfile generated by T009 to reference published image
+  - Document image versioning strategy in docker/README.md
+
+**Checkpoint**: Base image available at ghcr.io - agent builds can use `FROM ghcr.io/holodeck-ai/holodeck-base:latest`
 
 ---
 
@@ -414,7 +451,8 @@ Use these references when implementing each task:
 
 - **Setup (Phase 1)**: No dependencies - can start immediately
 - **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
-- **User Story 1 (Phase 3)**: Depends on Foundational - can start after Phase 2
+- **Base Image (Phase 2b)**: Depends on Phase 2 - BLOCKS full testing of Phase 3
+- **User Story 1 (Phase 3)**: Depends on Foundational - can start after Phase 2, full testing needs Phase 2b
 - **User Story 2 (Phase 4)**: Depends on Foundational - can start after Phase 2, integrates with US1
 - **User Story 3 (Phase 5)**: Depends on Foundational - can start after Phase 2, integrates with US1+US2
 - **User Story 4 (Phase 6)**: Depends on US1, US2, US3 - orchestrates all three
@@ -427,7 +465,9 @@ Phase 1: Setup
     ↓
 Phase 2: Foundational (Pydantic models, Dockerfile generation)
     ↓
-    ├── Phase 3: US1 - Build (can start after Phase 2)
+Phase 2b: Base Image (build & publish holodeck-base to ghcr.io)
+    ↓
+    ├── Phase 3: US1 - Build (can start after Phase 2, full testing needs Phase 2b)
     ↓
     ├── Phase 4: US2 - Push (can start after Phase 2, needs built image from US1 to test fully)
     ↓
@@ -454,6 +494,10 @@ Phase 7: Polish
 **Phase 2 (Foundational)**:
 - T006, T007 (tests) can run in parallel
 - T008, T009, T010, T011 can be parallelized after tests written
+
+**Phase 2b (Base Image)**:
+- T012a, T012b can run in parallel (workflow and build script)
+- T012c, T012d are sequential (test then publish)
 
 **Phase 3-5 (User Stories)**:
 - Tests within each story can run in parallel (T013-T015, T020-T021, T026-T029)
@@ -505,18 +549,20 @@ Task: T033 "Implement AzureContainerAppsDeployer"
 
 1. Complete Phase 1: Setup (T001-T005)
 2. Complete Phase 2: Foundational (T006-T012)
-3. Complete Phase 3: User Story 1 - Build (T013-T019)
-4. **STOP and VALIDATE**: `holodeck deploy build` works independently
-5. Demo: Developer can build container images from agent.yaml
+3. Complete Phase 2b: Base Image (T012a-T012d) - build & publish holodeck-base
+4. Complete Phase 3: User Story 1 - Build (T013-T019)
+5. **STOP and VALIDATE**: `holodeck deploy build` works independently
+6. Demo: Developer can build container images from agent.yaml
 
 ### Incremental Delivery
 
 1. Setup + Foundational → Core infrastructure ready
-2. Add User Story 1 (Build) → Test independently → Demo (developers can build images!)
-3. Add User Story 2 (Push) → Test independently → Demo (developers can push to registries!)
-4. Add User Story 3 (Deploy) → Test independently → Demo (developers can deploy to cloud!)
-5. Add User Story 4 (Pipeline) → Test full workflow → Demo (single command deployment!)
-6. Polish phase → Production-ready quality
+2. Base Image (Phase 2b) → Publish holodeck-base to ghcr.io
+3. Add User Story 1 (Build) → Test independently → Demo (developers can build images!)
+4. Add User Story 2 (Push) → Test independently → Demo (developers can push to registries!)
+5. Add User Story 3 (Deploy) → Test independently → Demo (developers can deploy to cloud!)
+6. Add User Story 4 (Pipeline) → Test full workflow → Demo (single command deployment!)
+7. Polish phase → Production-ready quality
 
 ### Parallel Team Strategy
 
