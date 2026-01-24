@@ -205,11 +205,11 @@ class TestAzureContainerAppsDeployer:
         assert ingress.traffic[0].percentage == 100
         assert ingress.traffic[0].latest_revision is True
 
-        assert response["service_id"] == fixture["id"]
-        assert response["service_name"] == fixture["name"]
-        assert response["status"] == fixture["properties"]["provisioningState"]
+        assert response.service_id == fixture["id"]
+        assert response.service_name == fixture["name"]
+        assert response.status == fixture["properties"]["provisioningState"]
         assert (
-            response["url"]
+            response.url
             == f"https://{fixture['properties']['configuration']['ingress']['fqdn']}"
         )
 
@@ -235,7 +235,8 @@ class TestAzureContainerAppsDeployer:
             resource_group_name="test-rg",
             container_app_name="test-agent",
         )
-        assert status == {"status": "RUNNING", "url": "https://test.example.com"}
+        assert status.status == "RUNNING"
+        assert status.url == "https://test.example.com"
 
     def test_destroy_calls_begin_delete(self, azure_sdk: type) -> None:
         """Test destroy issues begin_delete and waits for completion."""

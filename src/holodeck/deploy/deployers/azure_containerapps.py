@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 from holodeck.deploy.deployers.base import BaseDeployer
 from holodeck.lib.errors import CloudSDKNotInstalledError, DeploymentError
-from holodeck.models.deployment import AzureContainerAppsConfig
+from holodeck.models.deployment import (
+    AzureContainerAppsConfig,
+    DeployResult,
+    StatusResult,
+)
 
 if TYPE_CHECKING:
     from azure.core.exceptions import (
@@ -118,7 +122,7 @@ class AzureContainerAppsDeployer(BaseDeployer):
         env_vars: dict[str, str],
         health_check_path: str = "/health",
         **kwargs: Any,
-    ) -> dict[str, str | None]:
+    ) -> DeployResult:
         """Deploy a container to Azure Container Apps."""
         env_list = [
             self._EnvironmentVar(name=key, value=value)
@@ -205,18 +209,20 @@ class AzureContainerAppsDeployer(BaseDeployer):
             if fqdn:
                 url = f"https://{fqdn}"
 
-        service_id = result.id or result.name or service_name
-        service_name = result.name or service_name
-        status = result.provisioning_state or "UNKNOWN"
+        result_service_id = result.id or result.name or service_name
+        result_service_name = result.name or service_name
+        result_status = (
+            str(result.provisioning_state) if result.provisioning_state else "UNKNOWN"
+        )
 
-        return {
-            "service_id": service_id,
-            "service_name": service_name,
-            "url": url,
-            "status": status,
-        }
+        return DeployResult(
+            service_id=result_service_id,
+            service_name=result_service_name,
+            url=url,
+            status=result_status,
+        )
 
-    def get_status(self, service_id: str) -> dict[str, str | None]:
+    def get_status(self, service_id: str) -> StatusResult:
         """Get status for an Azure Container App."""
         container_app_name = self._resolve_container_app_name(service_id)
         try:
@@ -258,8 +264,8 @@ class AzureContainerAppsDeployer(BaseDeployer):
             if fqdn:
                 url = f"https://{fqdn}"
 
-        status = app.provisioning_state or "UNKNOWN"
-        return {"status": status, "url": url}
+        status = str(app.provisioning_state) if app.provisioning_state else "UNKNOWN"
+        return StatusResult(status=status, url=url)
 
     def destroy(self, service_id: str) -> None:
         """Destroy an Azure Container App deployment."""

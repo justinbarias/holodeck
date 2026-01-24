@@ -40,8 +40,10 @@ from holodeck.models.deployment import (
     CloudProvider,
     CloudTargetConfig,
     DeploymentConfig,
+    DeployResult,
     ProtocolType,
     RegistryConfig,
+    StatusResult,
     TagStrategy,
 )
 
@@ -796,12 +798,12 @@ class TestRunCommand:
         mock_compute_hash.return_value = "abc123"
 
         mock_deployer = MagicMock()
-        mock_deployer.deploy.return_value = {
-            "service_id": "test-service-id",
-            "service_name": "test-agent",
-            "url": "https://test-agent.azurecontainerapps.io",
-            "status": "Running",
-        }
+        mock_deployer.deploy.return_value = DeployResult(
+            service_id="test-service-id",
+            service_name="test-agent",
+            url="https://test-agent.azurecontainerapps.io",
+            status="Running",
+        )
         mock_create_deployer.return_value = mock_deployer
 
         mock_record = MagicMock()
@@ -877,12 +879,12 @@ class TestRunCommand:
         mock_compute_hash.return_value = "abc123"
 
         mock_deployer = MagicMock()
-        mock_deployer.deploy.return_value = {
-            "service_id": "test-service-id",
-            "service_name": "test-agent",
-            "url": "https://test-agent.azurecontainerapps.io",
-            "status": "Running",
-        }
+        mock_deployer.deploy.return_value = DeployResult(
+            service_id="test-service-id",
+            service_name="test-agent",
+            url="https://test-agent.azurecontainerapps.io",
+            status="Running",
+        )
         mock_create_deployer.return_value = mock_deployer
 
         mock_record = MagicMock()
@@ -997,10 +999,10 @@ class TestStatusCommand:
         mock_update_record.return_value = mock_record
 
         mock_deployer = MagicMock()
-        mock_deployer.get_status.return_value = {
-            "status": "Running",
-            "url": "https://test-agent.azurecontainerapps.io",
-        }
+        mock_deployer.get_status.return_value = StatusResult(
+            status="Running",
+            url="https://test-agent.azurecontainerapps.io",
+        )
         mock_create_deployer.return_value = mock_deployer
 
         result = runner.invoke(status, [str(temp_azure_agent_config)])
@@ -1075,7 +1077,7 @@ class TestStatusCommand:
         mock_update_record.return_value = mock_record
 
         mock_deployer = MagicMock()
-        mock_deployer.get_status.return_value = {"status": "Running", "url": None}
+        mock_deployer.get_status.return_value = StatusResult(status="Running", url=None)
         mock_create_deployer.return_value = mock_deployer
 
         result = runner.invoke(status, [str(temp_azure_agent_config), "--quiet"])

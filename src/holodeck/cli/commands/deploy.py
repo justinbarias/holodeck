@@ -331,30 +331,23 @@ def run(
             image_uri=image_uri,
             port=deployment_config.port,
             env_vars=deployment_config.environment,
-            health_check_path="/health",
+            health_check_path=deployment_config.health_check_path,
         )
-
-        service_id = (
-            result.get("service_id") or result.get("service_name") or agent.name
-        )
-        service_name = result.get("service_name") or agent.name
-        url = result.get("url")
-        status = result.get("status") or "UNKNOWN"
 
         state_path = get_state_path(agent_path)
         record = DeploymentRecord(
             provider=deployment_config.target.provider,
-            service_id=service_id,
-            service_name=service_name,
-            url=url,
-            status=status,
+            service_id=result.service_id,
+            service_name=result.service_name,
+            url=result.url,
+            status=result.status,
             image_uri=image_uri,
             config_hash=compute_config_hash(deployment_config),
         )
         record = update_deployment_record(state_path, agent.name, record)
 
         if quiet:
-            click.echo(url or "")
+            click.echo(result.url or "")
             sys.exit(0)
 
         click.echo()
@@ -363,7 +356,9 @@ def run(
         click.echo(f"  Status:    {record.status}")
         if record.url:
             click.echo(f"  URL:       {record.url}")
-            click.echo(f"  Health:    {record.url}/health")
+            click.echo(
+                f"  Health:    {record.url}{deployment_config.health_check_path}"
+            )
         else:
             click.echo("  URL:       (not available yet)")
         click.echo()
@@ -423,12 +418,12 @@ def status(agent_config: str, verbose: bool, quiet: bool) -> None:
             )
 
         deployer = create_deployer(deployment_config.target)
-        status_info = deployer.get_status(record.service_id)
+        status_result = deployer.get_status(record.service_id)
 
         updated_record = record.model_copy(
             update={
-                "status": status_info.get("status") or record.status,
-                "url": status_info.get("url") or record.url,
+                "status": status_result.status or record.status,
+                "url": status_result.url or record.url,
             }
         )
         record = update_deployment_record(state_path, agent.name, updated_record)
