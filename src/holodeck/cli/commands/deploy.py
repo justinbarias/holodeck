@@ -200,13 +200,15 @@ def build(
             click.secho("Build Configuration:", bold=True)
             click.echo(f"  Agent:     {agent_name}")
             click.echo(f"  Image:     {full_image_name}")
+            click.echo(f"  Platform:  {deployment_config.platform}")
             click.echo(f"  Protocol:  {deployment_config.protocol.value}")
             click.echo(f"  Port:      {deployment_config.port}")
             click.echo()
 
         if dry_run:
             click.secho("[DRY RUN] Would build image:", fg="yellow")
-            click.echo(f"  Image: {full_image_name}")
+            click.echo(f"  Image:    {full_image_name}")
+            click.echo(f"  Platform: {deployment_config.platform}")
 
             # Show generated Dockerfile
             dockerfile_content = _generate_dockerfile_content(
@@ -258,6 +260,7 @@ def build(
                 image_name=image_name,
                 tag=image_tag,
                 labels=labels,
+                platform=deployment_config.platform,
                 **build_kwargs,
             )
 
@@ -346,13 +349,15 @@ def run(
             click.echo(f"  Agent:     {agent.name}")
             click.echo(f"  Image:     {image_uri}")
             click.echo(f"  Tag:       {image_tag}")
+            click.echo(f"  Platform:  {deployment_config.platform}")
             click.echo(f"  Provider:  {deployment_config.target.provider.value}")
             click.echo(f"  Port:      {deployment_config.port}")
             click.echo()
 
         if dry_run:
             click.secho("[DRY RUN] Would deploy image:", fg="yellow")
-            click.echo(f"  {image_uri}")
+            click.echo(f"  Image:    {image_uri}")
+            click.echo(f"  Platform: {deployment_config.platform}")
             click.secho("[DRY RUN] No deployment was created", fg="yellow")
             sys.exit(0)
 

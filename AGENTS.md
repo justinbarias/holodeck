@@ -13,6 +13,7 @@ This file provides detailed guidance for AI agents (like Claude) working with th
 **Core Value Proposition:** No-code agent definition. Users define agents, tools, evaluations, and deployments entirely through YAML files.
 
 **Current Status:** Early development (v0.1 in progress)
+
 - CLI and configuration infrastructure: **Complete**
 - Agent execution engine: **Complete**
 - Evaluation framework: **Complete**
@@ -20,6 +21,7 @@ This file provides detailed guidance for AI agents (like Claude) working with th
 - Deployment engine: **Planned**
 
 **Technology Stack:**
+
 - **Language:** Python 3.10+
 - **Package Manager:** UV (fast, modern replacement for pip/Poetry)
 - **Framework:** Microsoft Semantic Kernel (agent framework)
@@ -80,26 +82,31 @@ This file provides detailed guidance for AI agents (like Claude) working with th
 ### Key Architectural Patterns
 
 **1. Configuration-Driven Design**
+
 - All agent behavior defined via YAML
 - Pydantic models enforce schema validation
 - Environment variable substitution for secrets
 
 **2. Plugin Architecture**
+
 - Tool system supports 5 types: vectorstore, function, MCP, prompt, plugin
 - MCP protocol for standardized integrations (design decision: APIs use MCP, not custom types)
 - Dynamic tool loading from configuration
 
 **3. Multimodal Testing**
+
 - File processor handles images (OCR), PDFs, Office documents
 - Test cases can include multiple files with metadata
 - MarkItDown library for document-to-markdown conversion
 
 **4. Evaluation Flexibility**
+
 - Three-level model configuration: global, per-evaluation, per-metric
 - Support for AI-powered metrics (Azure AI, DeepEval) and NLP metrics
 - Async evaluation execution for performance
 
 **5. Streaming Architecture**
+
 - Real-time streaming for chat interface
 - Progress indicators for test execution
 - Async/await throughout for non-blocking I/O
@@ -421,6 +428,7 @@ make clean-all
 Follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html).
 
 **Enforced by Tooling:**
+
 - **Formatting:** Black (88 character line length)
 - **Linting:** Ruff (comprehensive rule set)
 - **Type Checking:** MyPy (strict mode)
@@ -461,6 +469,7 @@ class MyModel(BaseModel):
 ### Linting Rules (Ruff)
 
 Enabled rule sets:
+
 - **E/W:** pycodestyle errors and warnings
 - **F:** pyflakes (undefined names, unused imports)
 - **I:** isort (import sorting)
@@ -472,6 +481,7 @@ Enabled rule sets:
 - **S:** flake8-bandit (security issues)
 
 Exceptions for tests:
+
 - S101: Allow `assert` in tests
 - S603/S607: Allow subprocess in tests
 
@@ -510,6 +520,7 @@ class Agent:
 ```
 
 MyPy settings (from pyproject.toml):
+
 - `disallow_untyped_defs = true`: All functions must have type hints
 - `strict_optional = true`: Strict None checking
 - `warn_return_any = true`: Warn when returning Any
@@ -551,6 +562,7 @@ def calculate_score(
 ```
 
 **Docstring Format:**
+
 - One-line summary (imperative mood: "Calculate", not "Calculates")
 - Blank line
 - Detailed description (optional)
@@ -633,16 +645,19 @@ def test_uppercase_conversion(input_text, expected):
 ```
 
 **Test Markers:**
+
 - `@pytest.mark.unit`: Unit tests (fast, isolated)
 - `@pytest.mark.integration`: Integration tests (cross-component)
 - `@pytest.mark.slow`: Slow-running tests
 
 **Test Naming:**
+
 - Files: `test_*.py`
 - Classes: `Test*`
 - Functions: `test_*`
 
 **Test Structure (AAA Pattern):**
+
 1. **Arrange:** Set up test data and preconditions
 2. **Act:** Execute the code under test
 3. **Assert:** Verify the expected outcome
@@ -854,49 +869,49 @@ content = await processor.process_file(file_config)
 
 ```yaml
 # agent.yaml
-name: string                         # Required: Agent identifier
-description: string                  # Optional: Human-readable description
-author: string                       # Optional: Agent author
+name: string # Required: Agent identifier
+description: string # Optional: Human-readable description
+author: string # Optional: Agent author
 
-model:                               # Required: LLM provider configuration
+model: # Required: LLM provider configuration
   provider: openai | azure_openai | anthropic | ollama
-  name: string                       # Model name (e.g., "gpt-4o")
-  temperature: float                 # 0.0 to 2.0 (default: 0.7)
-  max_tokens: int                    # Max output tokens (optional)
-  top_p: float                       # Nucleus sampling (optional)
+  name: string # Model name (e.g., "gpt-4o")
+  temperature: float # 0.0 to 2.0 (default: 0.7)
+  max_tokens: int # Max output tokens (optional)
+  top_p: float # Nucleus sampling (optional)
   # Provider-specific fields
-  endpoint: string                   # Azure OpenAI endpoint (azure_openai only)
-  api_version: string                # Azure API version (azure_openai only)
+  endpoint: string # Azure OpenAI endpoint (azure_openai only)
+  api_version: string # Azure API version (azure_openai only)
 
-instructions:                        # Required: System instructions
-  file: path                         # Path to instruction file (exclusive with inline)
+instructions: # Required: System instructions
+  file: path # Path to instruction file (exclusive with inline)
   # OR
-  inline: string                     # Inline instruction text (exclusive with file)
+  inline: string # Inline instruction text (exclusive with file)
 
-response_format:                     # Optional: Structured output schema
+response_format: # Optional: Structured output schema
   type: json_object | json_schema
   # For json_schema:
   schema:
     type: object
-    properties: {...}
+    properties: { ... }
 
-tools:                               # Optional: List of tools
+tools: # Optional: List of tools
   # Vector Store Tool
   - name: string
     type: vectorstore
     provider: redis | postgres | qdrant | chromadb | pinecone
-    connection: string               # Connection string
-    source: path                     # Data source directory
-    embedding_model: string          # Embedding model name
-    description: string              # Tool description
+    connection: string # Connection string
+    source: path # Data source directory
+    embedding_model: string # Embedding model name
+    description: string # Tool description
 
   # Custom Function Tool
   - name: string
     type: function
-    file: path                       # Python file path
-    function: string                 # Function name
-    description: string              # Tool description
-    parameters:                      # Function parameters
+    file: path # Python file path
+    function: string # Function name
+    description: string # Tool description
+    parameters: # Function parameters
       param_name:
         type: string | float | int | boolean | array | object
         description: string
@@ -904,39 +919,39 @@ tools:                               # Optional: List of tools
   # MCP Tool
   - name: string
     type: mcp
-    server: string                   # MCP server (package or path)
-    transport: stdio | sse           # Transport protocol
-    config:                          # Server-specific config
+    server: string # MCP server (package or path)
+    transport: stdio | sse # Transport protocol
+    config: # Server-specific config
       key: value
 
   # Prompt Tool (AI-powered semantic function)
   - name: string
     type: prompt
-    description: string              # Tool description
-    template: string                 # Jinja2 template (inline)
+    description: string # Tool description
+    template: string # Jinja2 template (inline)
     # OR
-    file: path                       # Path to template file
-    parameters:                      # Template parameters
+    file: path # Path to template file
+    parameters: # Template parameters
       param_name:
         type: string
         description: string
-    model:                           # Optional: Override model for this tool
+    model: # Optional: Override model for this tool
       provider: openai
       name: gpt-4o-mini
       temperature: 0.3
 
-evaluations:                         # Optional: Evaluation configuration
-  default_model:                     # Optional: Global model for all metrics
+evaluations: # Optional: Evaluation configuration
+  default_model: # Optional: Global model for all metrics
     provider: openai
     name: gpt-4o-mini
     temperature: 0.0
 
-  metrics:                           # List of metrics to evaluate
+  metrics: # List of metrics to evaluate
     # AI-powered metric
     - metric: groundedness | relevance | coherence | safety
-      threshold: float               # Minimum passing score
-      enabled: boolean               # Enable/disable metric
-      model:                         # Optional: Per-metric model override
+      threshold: float # Minimum passing score
+      enabled: boolean # Enable/disable metric
+      model: # Optional: Per-metric model override
         provider: openai
         name: gpt-4o
         temperature: 0.0
@@ -948,50 +963,50 @@ evaluations:                         # Optional: Evaluation configuration
 
     # Custom G-Eval metric
     - metric: geval
-      name: string                   # Metric name
-      criteria: string               # Evaluation criteria
+      name: string # Metric name
+      criteria: string # Evaluation criteria
       threshold: float
-      model: {...}                   # Model configuration
+      model: { ... } # Model configuration
 
-test_cases:                          # Optional: Test scenarios
-  - name: string                     # Optional: Test case name
-    input: string                    # Required: Test input query
-    ground_truth: string             # Optional: Expected output
-    expected_tools: list[string]     # Optional: Expected tools used
+test_cases: # Optional: Test scenarios
+  - name: string # Optional: Test case name
+    input: string # Required: Test input query
+    ground_truth: string # Optional: Expected output
+    expected_tools: list[string] # Optional: Expected tools used
 
-    files:                           # Optional: Multimodal file inputs
+    files: # Optional: Multimodal file inputs
       # Image input
-      - path: path                   # File path
-        type: image                  # File type
-        description: string          # Optional: File description
+      - path: path # File path
+        type: image # File type
+        description: string # Optional: File description
 
       # PDF input
       - path: path
         type: pdf
-        pages: list[int]             # Optional: Specific pages
-        extract_images: boolean      # Optional: Extract embedded images
-        ocr: boolean                 # Optional: Apply OCR to scanned pages
+        pages: list[int] # Optional: Specific pages
+        extract_images: boolean # Optional: Extract embedded images
+        ocr: boolean # Optional: Apply OCR to scanned pages
 
       # Excel input
       - path: path
         type: excel
-        sheet: string                # Optional: Sheet name
-        range: string                # Optional: Cell range (e.g., "A1:E100")
+        sheet: string # Optional: Sheet name
+        range: string # Optional: Cell range (e.g., "A1:E100")
 
       # URL input
-      - url: string                  # Remote file URL
+      - url: string # Remote file URL
         type: pdf | image | csv
-        cache: boolean               # Optional: Cache for reuse
+        cache: boolean # Optional: Cache for reuse
 
-    evaluations:                     # Optional: Per-test-case evaluations
+    evaluations: # Optional: Per-test-case evaluations
       - f1_score
       - bleu
       - groundedness
 
-execution:                           # Optional: Test execution configuration
-  parallel: boolean                  # Run tests in parallel (default: false)
-  timeout_ms: int                    # Timeout per test (milliseconds)
-  retry_on_failure: int              # Retry count on failure
+execution: # Optional: Test execution configuration
+  parallel: boolean # Run tests in parallel (default: false)
+  timeout_ms: int # Timeout per test (milliseconds)
+  retry_on_failure: int # Retry count on failure
 ```
 
 ### Example: Customer Support Agent
@@ -1101,6 +1116,220 @@ execution:
   parallel: false
   timeout_ms: 10000
   retry_on_failure: 1
+```
+
+---
+
+## HoloDeck CLI Usage
+
+### The `test` Command
+
+The `holodeck test` command executes test cases defined in your agent configuration and evaluates responses against specified metrics.
+
+```bash
+# Basic usage (uses agent.yaml in current directory)
+holodeck test
+
+# Specify a different agent config
+holodeck test path/to/agent.yaml
+
+# With options
+holodeck test agent.yaml --verbose --output report.md --format markdown
+```
+
+**Command Options:**
+
+| Option                      | Description                                                  |
+| --------------------------- | ------------------------------------------------------------ |
+| `--output PATH`             | Save test report to file (JSON or Markdown)                  |
+| `--format [json\|markdown]` | Report format (auto-detects from extension if not specified) |
+| `--verbose, -v`             | Enable verbose output with debug information                 |
+| `--quiet, -q`               | Suppress progress output (summary still shown)               |
+| `--timeout SECONDS`         | LLM execution timeout in seconds                             |
+| `--force-ingest, -f`        | Force re-ingestion of all vector store source files          |
+
+**Exit Codes:**
+
+| Code | Meaning                  |
+| ---- | ------------------------ |
+| 0    | All tests passed         |
+| 1    | One or more tests failed |
+| 2    | Configuration error      |
+| 3    | Execution error          |
+| 4    | Evaluation error         |
+
+### Test Case Configuration
+
+Test cases are defined in the `test_cases` section of `agent.yaml`:
+
+```yaml
+test_cases:
+  - name: "Basic greeting" # Optional: Test identifier
+    input: "Hello, how are you?" # Required: User query/prompt
+    ground_truth: "Greeting response" # Optional: Expected output for comparison
+    expected_tools: # Optional: Tools expected to be called
+      - search_knowledge_base
+      - get_user_context
+    files: # Optional: Multimodal file inputs
+      - path: "./data/image.png"
+        type: image
+        description: "Product image"
+    retrieval_context: # Optional: RAG context for RAG metrics
+      - "Retrieved chunk 1..."
+      - "Retrieved chunk 2..."
+    evaluations: # Optional: Per-test metric overrides
+      - type: standard
+        metric: bleu
+        threshold: 0.6
+```
+
+**File Input Types:**
+
+| Type         | Description                                               |
+| ------------ | --------------------------------------------------------- |
+| `image`      | Images (PNG, JPG) - processed via OCR                     |
+| `pdf`        | PDF documents                                             |
+| `text`       | Plain text files                                          |
+| `excel`      | Excel spreadsheets (supports `sheet` and `range` options) |
+| `word`       | Word documents                                            |
+| `powerpoint` | PowerPoint presentations (supports `pages` option)        |
+| `csv`        | CSV files                                                 |
+
+### Evaluation Metrics Configuration
+
+HoloDeck supports three types of evaluation metrics:
+
+#### 1. Standard NLP Metrics (`type: standard`)
+
+Traditional text comparison metrics that don't require an LLM:
+
+```yaml
+evaluations:
+  metrics:
+    # BLEU - Precision-focused n-gram matching (0.0-1.0)
+    - type: standard
+      metric: bleu
+      threshold: 0.5
+
+    # ROUGE - Recall-focused overlap (variants: rouge1, rouge2, rougeL)
+    - type: standard
+      metric: rouge
+      threshold: 0.6
+
+    # METEOR - Translation quality with synonym handling
+    - type: standard
+      metric: meteor
+      threshold: 0.7
+```
+
+**Available Standard Metrics:**
+
+| Metric   | Description                                                 | Score Range | Use Case                            |
+| -------- | ----------------------------------------------------------- | ----------- | ----------------------------------- |
+| `bleu`   | Precision of n-gram matches (uses SacreBLEU with smoothing) | 0.0-1.0     | Machine translation, exact matching |
+| `rouge`  | Recall of n-gram overlaps (rouge1, rouge2, rougeL variants) | 0.0-1.0     | Summarization quality               |
+| `meteor` | Synonym-aware matching with stemming                        | 0.0-1.0     | Semantic similarity                 |
+
+#### 2. G-Eval Custom Criteria (`type: geval`)
+
+LLM-as-judge evaluation with custom natural language criteria:
+
+```yaml
+evaluations:
+  model: # Default LLM for all metrics
+    provider: ollama
+    name: gpt-oss:20b
+    temperature: 0.0
+  metrics:
+    - type: geval
+      name: Professionalism # Custom metric name
+      criteria: | # Natural language criteria
+        Evaluate if the response uses professional language,
+        avoids slang, and maintains a respectful tone.
+      evaluation_steps: # Optional: Explicit evaluation steps
+        - "Check if the language is formal and professional"
+        - "Verify no slang or casual expressions are used"
+        - "Assess the overall respectful tone"
+      evaluation_params: # Fields to include in evaluation
+        - actual_output # Agent's response
+        - input # User's query
+        - expected_output # Ground truth (if provided)
+      threshold: 0.7
+      strict_mode: false # If true, binary scoring (1.0 or 0.0)
+```
+
+**Valid `evaluation_params`:**
+
+- `input` - User's query
+- `actual_output` - Agent's response
+- `expected_output` - Ground truth reference
+- `context` - Additional context
+- `retrieval_context` - Retrieved RAG chunks
+
+#### 3. RAG Pipeline Metrics (`type: rag`)
+
+Specialized metrics for evaluating Retrieval-Augmented Generation:
+
+```yaml
+evaluations:
+  model:
+    provider: openai
+    name: gpt-4o
+  metrics:
+    # Faithfulness - Detects hallucinations
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.8
+      include_reason: true
+
+    # Answer Relevancy - Response relevance to query
+    - type: rag
+      metric_type: answer_relevancy
+      threshold: 0.7
+
+    # Contextual Relevancy - Retrieved chunks relevance
+    - type: rag
+      metric_type: contextual_relevancy
+      threshold: 0.6
+
+    # Contextual Precision - Ranking quality of chunks
+    - type: rag
+      metric_type: contextual_precision
+      threshold: 0.7
+
+    # Contextual Recall - Retrieval completeness
+    - type: rag
+      metric_type: contextual_recall
+      threshold: 0.6
+```
+
+**RAG Metric Types:**
+
+| Metric Type            | Description                                                       | Required Fields                                 |
+| ---------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| `faithfulness`         | Detects hallucinations by comparing response to retrieval context | `input`, `actual_output`, `retrieval_context`   |
+| `answer_relevancy`     | Measures if response addresses the query                          | `input`, `actual_output`                        |
+| `contextual_relevancy` | Evaluates if retrieved chunks are relevant to query               | `input`, `retrieval_context`                    |
+| `contextual_precision` | Assesses ranking quality of retrieved chunks                      | `input`, `expected_output`, `retrieval_context` |
+| `contextual_recall`    | Measures retrieval completeness                                   | `input`, `expected_output`, `retrieval_context` |
+
+### Running Tests
+
+```bash
+# Run tests with progress indicator
+holodeck test agent.yaml
+
+# Verbose output for debugging
+holodeck test agent.yaml -v
+
+# Save detailed report
+holodeck test agent.yaml --output results/report.md --format markdown
+
+# Force vector store re-ingestion
+holodeck test agent.yaml --force-ingest
+
+# Quiet mode (summary only)
+holodeck test agent.yaml -q --output results.json
 ```
 
 ---
@@ -1326,6 +1555,7 @@ tags:
    - Document why dependency is needed in PR
 
 8. **DON'T use mutable default arguments**
+
    ```python
    # BAD
    def my_func(items: list = []):
@@ -1344,6 +1574,36 @@ tags:
 10. **DON'T mix testing and implementation code**
     - Keep tests in `tests/` directory
     - Use fixtures in `tests/fixtures/`
+
+---
+
+## Git Commit Guidelines
+
+When generating commit messages:
+
+- **Do NOT attribute Claude Code** in commit messages
+- Do NOT include "Generated with Claude Code" or similar attributions
+- Write clean, conventional commit messages focused on the changes
+
+**Commit Message Format:**
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer]
+```
+
+**Types:**
+
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation only changes
+- `style`: Formatting, missing semi colons, etc.
+- `refactor`: Code change that neither fixes a bug nor adds a feature
+- `test`: Adding missing tests
+- `chore`: Changes to build process or auxiliary tools
 
 ---
 
@@ -1377,6 +1637,7 @@ Updates: `specs/<spec_name>/spec.md` with clarifications
 ```
 
 This creates:
+
 - `specs/<spec_name>/plan.md`: High-level implementation plan
 - `specs/<spec_name>/data-model.md`: Data structures (if needed)
 - `specs/<spec_name>/contracts/*.md`: API contracts (if needed)
@@ -1393,6 +1654,7 @@ This creates: `specs/<spec_name>/tasks.md`
 ### 5. Plan Todo List
 
 Before implementing:
+
 1. Read ALL files in `specs/<spec_name>/`:
    - spec.md
    - plan.md
@@ -1400,7 +1662,7 @@ Before implementing:
    - data-model.md
    - research.md (if exists)
    - quickstart.md (if exists)
-   - contracts/*.md (if exist)
+   - contracts/\*.md (if exist)
 
 2. Create a detailed todo list for the specific task(s) you're working on
 
@@ -1497,6 +1759,16 @@ uv sync --all-extras
 
 ---
 
+## Key Design Constraints
+
+1. **No-Code First**: Users configure agents via YAML, not Python
+2. **MCP for APIs**: External API integrations must use MCP servers, not custom API tool types
+3. **OpenTelemetry Native**: Observability follows GenAI semantic conventions
+4. **Evaluation Flexibility**: Support model configuration at global, run, and metric levels
+5. **Multimodal Testing**: First-class support for images, PDFs, Office docs
+
+---
+
 ## Additional Resources
 
 ### Documentation
@@ -1540,12 +1812,16 @@ This AGENTS.md file provides comprehensive documentation for AI agents working o
 5. **Code Quality Standards**: Python style, formatting, linting, type checking
 6. **Key Patterns**: Configuration loading, tool loading, evaluations, async/await
 7. **Agent Configuration Schema**: Complete YAML reference
-8. **Common Development Tasks**: Adding commands, metrics, tools, templates
-9. **Do's and Don'ts**: Best practices and anti-patterns
-10. **Workflow**: spec-kit process for new features
-11. **Troubleshooting**: Common issues and solutions
+8. **HoloDeck CLI Usage**: Test command, options, exit codes, evaluation metrics
+9. **Common Development Tasks**: Adding commands, metrics, tools, templates
+10. **Do's and Don'ts**: Best practices and anti-patterns
+11. **Git Commit Guidelines**: Conventional commit format and types
+12. **Workflow**: spec-kit process for new features
+13. **Key Design Constraints**: Core architectural principles
+14. **Troubleshooting**: Common issues and solutions
 
 When working on HoloDeck, always:
+
 - Follow the spec-kit workflow for new features
 - Run code quality checks before committing
 - Write comprehensive tests

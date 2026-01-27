@@ -332,6 +332,7 @@ class DeploymentConfig(BaseModel):
         port: Container port to expose
         health_check_path: HTTP path for health checks (e.g., /health, /healthz)
         environment: Environment variables for the container
+        platform: Target platform for container image (e.g., linux/amd64, linux/arm64)
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -357,6 +358,10 @@ class DeploymentConfig(BaseModel):
     )
     environment: dict[str, str] = Field(
         default_factory=dict, description="Environment variables for the container"
+    )
+    platform: str = Field(
+        default="linux/amd64",
+        description="Target platform for container image (e.g., linux/amd64)",
     )
 
 

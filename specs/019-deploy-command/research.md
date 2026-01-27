@@ -396,7 +396,7 @@ class AzureContainerAppsDeployer:
         ingress = Ingress(
             external=ingress_external,
             target_port=port,
-            traffic=[TrafficWeight(percentage=100, latest_revision=True)]
+            traffic=[TrafficWeight(weight=100, latest_revision=True)]
         )
 
         container_app = ContainerApp(
