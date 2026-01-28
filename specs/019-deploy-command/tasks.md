@@ -281,7 +281,7 @@ Use these references when implementing each task:
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T026 [P] [US3] Unit tests for BaseDeployer interface in tests/unit/deploy/test_deployers_base.py
+- [x] T026 [P] [US3] Unit tests for BaseDeployer interface in tests/unit/deploy/test_deployers_base.py
   - Plan details: @plan.md L:220-253 (deployer interface)
   - Test abstract method signatures
   - Test common validation logic
@@ -301,7 +301,7 @@ Use these references when implementing each task:
   - Test get_status() and destroy()
   - Add mock responses in tests/fixtures/deploy/mock_responses/gcp/
 
-- [ ] T029 [P] [US3] Unit tests for Azure Container Apps deployer in tests/unit/deploy/test_deployers_azure.py
+- [x] T029 [P] [US3] Unit tests for Azure Container Apps deployer in tests/unit/deploy/test_deployers_azure.py
   - Research details: @research.md L:338-437 (Azure patterns)
   - Mock azure-mgmt-appcontainers client
   - Test begin_create_or_update() with poller
@@ -310,7 +310,7 @@ Use these references when implementing each task:
 
 ### Implementation for User Story 3
 
-- [ ] T030 [US3] Implement BaseDeployer abstract class in src/holodeck/deploy/deployers/base.py
+- [x] T030 [US3] Implement BaseDeployer abstract class in src/holodeck/deploy/deployers/base.py
   - Plan details: @plan.md L:220-253 (interface definition)
   - Define abstract methods: deploy(), get_status(), destroy(), stream_logs()
   - Add common validation and error handling
@@ -329,19 +329,19 @@ Use these references when implementing each task:
   - Implement get_status() and destroy()
   - Handle missing google-cloud-run with ImportError
 
-- [ ] T033 [US3] Implement AzureContainerAppsDeployer in src/holodeck/deploy/deployers/azure_containerapps.py
+- [x] T033 [US3] Implement AzureContainerAppsDeployer in src/holodeck/deploy/deployers/azure_containerapps.py
   - Research details: @research.md L:338-437 (implementation pattern)
   - Implement deploy() with begin_create_or_update()
   - Handle poller with result()
   - Implement get_status() and destroy()
   - Handle missing azure SDK with ImportError
 
-- [ ] T034 [US3] Create deployer factory in src/holodeck/deploy/deployers/__init__.py
+- [x] T034 [US3] Create deployer factory in src/holodeck/deploy/deployers/__init__.py
   - Return appropriate deployer based on provider config
   - Raise DeploymentError if SDK not installed
   - Provide clear installation instructions in error
 
-- [ ] T035 [US3] Implement `holodeck deploy run` CLI command in src/holodeck/cli/commands/deploy.py
+- [x] T035 [US3] Implement `holodeck deploy run` CLI command in src/holodeck/cli/commands/deploy.py
   - Spec details: @spec.md L:114 (FR-017)
   - Implement run subcommand
   - Validate image exists in registry
@@ -349,18 +349,18 @@ Use these references when implementing each task:
   - Output deployment URL and health check URL
   - Add --dry-run support
 
-- [ ] T036 [US3] Implement `holodeck deploy status` CLI command in src/holodeck/cli/commands/deploy.py
+- [x] T036 [US3] Implement `holodeck deploy status` CLI command in src/holodeck/cli/commands/deploy.py
   - Spec details: @spec.md L:117 (FR-029)
   - Query deployment status from cloud provider
   - Display URL, status, last updated timestamp
 
-- [ ] T037 [US3] Implement `holodeck deploy destroy` CLI command in src/holodeck/cli/commands/deploy.py
+- [x] T037 [US3] Implement `holodeck deploy destroy` CLI command in src/holodeck/cli/commands/deploy.py
   - Spec details: @spec.md L:118 (FR-030)
   - Confirm destruction (unless --force flag)
   - Call deployer.destroy()
   - Update local state file
 
-- [ ] T038 [US3] Implement deployment state tracking in .holodeck/deployments.json
+- [x] T038 [US3] Implement deployment state tracking in .holodeck/deployments.json
   - Data model details: @data-model.md L:353-373 (state file format)
   - Create/update state file on successful deploy
   - Use state file for status and destroy commands
