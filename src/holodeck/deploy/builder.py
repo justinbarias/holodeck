@@ -200,6 +200,7 @@ class ContainerBuilder:
         tag: str,
         labels: dict[str, str] | None = None,
         dockerfile: str = "Dockerfile",
+        platform: str = "linux/amd64",
         **build_kwargs: Any,
     ) -> BuildResult:
         """Build a container image from the specified context.
@@ -210,6 +211,7 @@ class ContainerBuilder:
             tag: Tag for the built image
             labels: Optional OCI labels to apply
             dockerfile: Path to Dockerfile relative to context
+            platform: Target platform for the image (default: linux/amd64)
             **build_kwargs: Additional arguments passed to Docker build
 
         Returns:
@@ -234,6 +236,8 @@ class ContainerBuilder:
                 dockerfile=dockerfile,
                 labels=labels or {},
                 rm=True,  # Remove intermediate containers
+                platform=platform,
+                pull=True,  # Always pull base image to get correct platform
                 **build_kwargs,
             )
 

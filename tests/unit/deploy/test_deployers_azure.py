@@ -202,7 +202,7 @@ class TestAzureContainerAppsDeployer:
         ingress = envelope.configuration.ingress
         assert ingress.external is True
         assert ingress.target_port == 8080
-        assert ingress.traffic[0].percentage == 100
+        assert ingress.traffic[0].weight == 100
         assert ingress.traffic[0].latest_revision is True
 
         assert response.service_id == fixture["id"]

@@ -162,7 +162,7 @@ class AzureContainerAppsDeployer(BaseDeployer):
         ingress = self._Ingress(
             external=self._config.ingress_external,
             target_port=port,
-            traffic=[self._TrafficWeight(percentage=100, latest_revision=True)],
+            traffic=[self._TrafficWeight(weight=100, latest_revision=True)],
         )
         configuration = self._Configuration(ingress=ingress)
 
