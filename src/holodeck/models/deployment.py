@@ -330,6 +330,7 @@ class DeploymentConfig(BaseModel):
         target: Cloud deployment target configuration
         protocol: API protocol type
         port: Container port to expose
+        health_check_path: HTTP path for health checks (e.g., /health, /healthz)
         environment: Environment variables for the container
     """
 
@@ -350,6 +351,44 @@ class DeploymentConfig(BaseModel):
     port: Annotated[int, Field(ge=1, le=65535)] = Field(
         default=8080, description="Container port to expose"
     )
+    health_check_path: str = Field(
+        default="/health",
+        description="HTTP path for health checks (e.g., /health, /healthz)",
+    )
     environment: dict[str, str] = Field(
         default_factory=dict, description="Environment variables for the container"
     )
+
+
+class DeployResult(BaseModel):
+    """Result of a deployment operation.
+
+    Attributes:
+        service_id: Unique identifier for the deployed service (e.g., Azure resource ID)
+        service_name: Human-readable name of the deployed service
+        url: Public URL where the service is accessible (if available)
+        status: Current deployment status (e.g., "Running", "Provisioning", "Failed")
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    service_id: str = Field(
+        ..., description="Unique identifier for the deployed service"
+    )
+    service_name: str = Field(..., description="Human-readable name of the service")
+    url: str | None = Field(default=None, description="Public URL for the service")
+    status: str = Field(..., description="Current deployment status")
+
+
+class StatusResult(BaseModel):
+    """Result of a status check operation.
+
+    Attributes:
+        status: Current deployment status (e.g., "Running", "Stopped", "Failed")
+        url: Public URL where the service is accessible (if available)
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: str = Field(..., description="Current deployment status")
+    url: str | None = Field(default=None, description="Public URL for the service")

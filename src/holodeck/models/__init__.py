@@ -17,6 +17,7 @@ from holodeck.models.chat import (
 )
 from holodeck.models.config import GlobalConfig, VectorstoreConfig
 from holodeck.models.deployment import DeploymentConfig
+from holodeck.models.deployment_state import DeploymentRecord, DeploymentState
 from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.observability import (
@@ -58,6 +59,8 @@ __all__: list[str] = [
     "GlobalConfig",
     "VectorstoreConfig",
     "DeploymentConfig",
+    "DeploymentState",
+    "DeploymentRecord",
     # LLM models
     "LLMProvider",
     "ProviderEnum",
