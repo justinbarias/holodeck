@@ -1,0 +1,154 @@
+# HierarchicalDocumentTool Configuration Contract
+# This file documents the YAML configuration schema for the HierarchicalDocumentTool
+
+# Configuration Examples
+# Each example shows a different use case for the HierarchicalDocumentTool
+
+examples:
+  # Full configuration example with all options
+  full_config:
+    tools:
+      - name: knowledge_base
+        type: hierarchical_document
+        description: "Search company documentation with hybrid semantic and keyword search"
+        source: "./docs/"  # Required: path to file or directory
+
+        # Chunking configuration
+        chunking_strategy: structure  # structure | token (default: structure)
+        max_chunk_tokens: 800         # 100-2000 (default: 800, per Anthropic baseline)
+        chunk_overlap: 50             # 0-200 (default: 50)
+
+        # Search configuration
+        search_mode: hybrid           # semantic | keyword | exact | hybrid (default: hybrid)
+        top_k: 10                     # 1-100 (default: 10)
+        min_score: 0.5                # 0.0-1.0, optional threshold
+
+        # Hybrid search weights (should sum to 1.0)
+        semantic_weight: 0.5          # Weight for dense embedding search
+        keyword_weight: 0.3           # Weight for BM25 keyword search
+        exact_weight: 0.2             # Weight for exact phrase/ID match
+
+        # RRF configuration
+        rrf_k: 60                     # 1-1000 (default: 60, industry standard)
+
+        # Embedding configuration
+        embedding_model: null         # Custom model or null for provider default
+        embedding_dimensions: null    # Auto-detected if null
+
+        # LLM Context Generation (Anthropic Contextual Retrieval)
+        # Calls LLM per chunk to generate explanatory context before embedding
+        contextual_embeddings: true   # Enable LLM context generation (default: true)
+        context_model:                # LLM for context generation (default: Claude Haiku)
+          provider: anthropic
+          name: claude-3-haiku-20240307
+          temperature: 0.0
+        context_max_tokens: 100       # Max tokens for generated context (50-200, default: 100)
+        context_concurrency: 10       # Parallel LLM calls during ingestion (1-50, default: 10)
+        # Cost: ~$0.03 per 100-page document using Haiku
+        # Effect: 49% better retrieval vs standard RAG (per Anthropic research)
+
+        # Feature toggles
+        extract_definitions: true     # Auto-extract definitions from documents
+        extract_cross_references: true  # Auto-extract cross-references
+        enable_reranking: false       # Optional reranking
+        reranker_model: null          # Required if enable_reranking: true
+
+        # Storage configuration
+        database: null                # null = in-memory, or DatabaseConfig
+        defer_loading: true           # Defer until first use
+
+  # Minimal configuration example
+  minimal_config:
+    tools:
+      - name: docs_search
+        type: hierarchical_document
+        description: "Search documentation"
+        source: "./data/documents/"
+        # All other options use defaults:
+        # - chunking_strategy: structure
+        # - max_chunk_tokens: 800
+        # - search_mode: hybrid
+        # - top_k: 10
+        # - contextual_embeddings: true (uses Claude Haiku for context generation)
+        # - context_model: claude-3-haiku-20240307
+        # - extract_definitions: true
+        # - database: null (in-memory)
+
+  # Semantic-only configuration (no BM25)
+  semantic_only:
+    tools:
+      - name: semantic_search
+        type: hierarchical_document
+        description: "Pure semantic search over documents"
+        source: "./knowledge/"
+        search_mode: semantic
+        top_k: 5
+        contextual_embeddings: true
+
+  # Keyword-focused configuration (emphasis on exact matches)
+  keyword_focused:
+    tools:
+      - name: legal_search
+        type: hierarchical_document
+        description: "Legal document search with strong keyword matching"
+        source: "./legal_docs/"
+        search_mode: hybrid
+        semantic_weight: 0.3
+        keyword_weight: 0.5
+        exact_weight: 0.2
+        extract_definitions: true
+        extract_cross_references: true
+
+  # With persistent storage (PostgreSQL)
+  persistent_storage:
+    tools:
+      - name: persistent_kb
+        type: hierarchical_document
+        description: "Persistent knowledge base"
+        source: "./docs/"
+        database:
+          provider: postgres
+          connection_string: "${POSTGRES_CONNECTION_STRING}"
+
+  # With custom context model (e.g., for cost optimization or specific provider)
+  custom_context_model:
+    tools:
+      - name: custom_context_search
+        type: hierarchical_document
+        description: "Search with custom context generation model"
+        source: "./docs/"
+        contextual_embeddings: true
+        context_model:
+          provider: openai
+          name: gpt-4o-mini         # Alternative to Haiku
+          temperature: 0.0
+        context_max_tokens: 100
+        context_concurrency: 20     # Higher concurrency for faster ingestion
+
+  # With reranking enabled
+  with_reranking:
+    tools:
+      - name: high_precision_search
+        type: hierarchical_document
+        description: "High-precision search with reranking"
+        source: "./technical_docs/"
+        search_mode: hybrid
+        top_k: 20
+        enable_reranking: true
+        reranker_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+# Reference Tables
+#
+# Search modes comparison:
+# | Mode     | Dense | BM25 | Exact | RRF | Best For           |
+# |----------|-------|------|-------|-----|--------------------|
+# | semantic | Yes   | No   | No    | No  | Conceptual queries |
+# | keyword  | No    | Yes  | No    | No  | Technical terms    |
+# | exact    | No    | No   | Yes   | No  | Section numbers    |
+# | hybrid   | Yes   | Yes  | Yes   | Yes | General purpose    |
+#
+# Chunking strategies comparison:
+# | Strategy  | Behavior                                              | Best For                           |
+# |-----------|-------------------------------------------------------|------------------------------------|
+# | structure | Chunks by headings/sections, respects doc hierarchy   | Structured docs (legal, technical) |
+# | token     | Fixed token-based chunks with overlap                 | Flat text, unstructured content    |
