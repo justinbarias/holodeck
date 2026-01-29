@@ -102,6 +102,13 @@
 - [ ] T027 [US1] Implement `contextualize_chunk()` returning `"{context}\n\n{chunk.content}"` per plan.md:385-393
 - [ ] T028 [US1] Implement `contextualize_batch()` with semaphore for concurrency control (default 10) per plan.md:394-418 and research.md:52-55
 
+#### Context Generation Error Handling
+
+- [ ] T028a [US1] Implement exponential backoff retry for LLM failures (3 attempts: 1s, 2s, 4s delays) per spec.md:163-166
+- [ ] T028b [US1] Implement fallback to no-context on final retry failure (use original chunk content) per spec.md:165-166
+- [ ] T028c [US1] Implement adaptive concurrency reduction on rate limit errors (halve on 429, respect Retry-After) per spec.md:167-170
+- [ ] T028d [US1] Implement document truncation when exceeding LLM context window (prioritize beginning/end) per spec.md:171-174
+
 #### Dense Index Integration
 
 - [ ] T029 [US1] Create `HierarchicalDocumentTool` class skeleton in src/holodeck/tools/hierarchical_document_tool.py
@@ -501,11 +508,13 @@ T107, T108 can run in parallel (different documentation areas)
 | Milestone | Tasks Complete | Capability |
 |-----------|----------------|------------|
 | Foundation | T001-T017 | Models and infrastructure ready |
-| Semantic MVP | T018-T035 | Natural language search works |
+| Semantic MVP | T018-T035 (includes T028a-d) | Natural language search works |
 | Full P1 | T036-T058 | All search modes work |
 | Production | T059-T076 | Hybrid fusion + YAML config |
 | Advanced | T077-T091 | Definitions + reranking |
 | Complete | T092-T110 | All features + tests + refactoring |
+
+**Note**: Total task count is 114 (110 original + 4 error handling tasks T028a-T028d)
 
 ---
 

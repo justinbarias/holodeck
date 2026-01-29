@@ -223,11 +223,6 @@ class HierarchicalDocumentToolConfig(BaseModel):
         le=10000,
         description="Embedding dimensions (auto-detected if not specified)"
     )
-    contextual_embeddings: bool = Field(
-        default=True,
-        description="Prepend structural context before embedding"
-    )
-
     # LLM Context Generation (Anthropic approach)
     contextual_embeddings: bool = Field(
         default=True,

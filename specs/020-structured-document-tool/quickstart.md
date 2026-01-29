@@ -135,6 +135,21 @@ tools:
     top_k: 20
 ```
 
+### MongoDB Atlas with Native Hybrid Search
+
+```yaml
+tools:
+  - name: atlas_search
+    type: hierarchical_document
+    description: "MongoDB Atlas with native hybrid search"
+    source: "./docs/"
+    database:
+      provider: mongodb  # MongoDB Atlas - supports native hybrid_search()
+      connection_string: "${MONGODB_ATLAS_URL}"
+```
+
+> **Important**: The `mongodb` provider refers to **MongoDB Atlas** (native MongoDB), which supports native hybrid search via Semantic Kernel's `MongoDBAtlasStore`. If you're using **Azure Cosmos DB's MongoDB API**, use `azure-cosmos-mongo` instead - this provider uses the BM25 fallback strategy since it doesn't support native hybrid search.
+
 ## Search Modes
 
 | Mode | Use Case | Example Query |

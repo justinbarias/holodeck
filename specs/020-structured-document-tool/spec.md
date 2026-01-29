@@ -158,6 +158,21 @@ As an advanced user, I want to optionally enable a reranker to improve result qu
 - What happens when definitions conflict across multiple documents?
   - Each document maintains its own definition namespace; conflicts are surfaced to the user
 
+**Context Generation Error Handling**:
+
+- What happens when the context generation LLM call fails?
+  - Implement exponential backoff retry (3 attempts with 1s, 2s, 4s delays)
+  - On final failure, fall back to no context (use original chunk content only)
+  - Log warning with chunk ID for debugging
+- How does the system handle rate limiting during concurrent context generation?
+  - Respect rate limit headers from LLM provider (Retry-After)
+  - Implement adaptive concurrency reduction (halve concurrency on 429 errors)
+  - Queue remaining chunks and resume when rate limit clears
+- What happens when a document exceeds the context generation LLM's context window?
+  - Truncate document to fit within context window (prioritize beginning and end sections)
+  - Log info message noting truncation occurred
+  - Store truncation flag in chunk metadata for transparency
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements

@@ -495,6 +495,11 @@ Definitions are persisted via the vector store chunk records and rebuilt on star
 
 ## Open Questions (Deferred)
 
-1. **LLM-based contextual embedding**: Should we offer optional Claude-generated context? (Cost vs accuracy tradeoff)
-2. **Reranking models**: Which reranker models to support? (User-provided via config)
-3. **Async BM25**: rank_bm25 is sync; may need thread pool for large corpora
+1. **Reranking models**: Which specific reranker models to support beyond cross-encoder? (User-provided via config for now)
+2. **Async BM25**: rank_bm25 is sync; may need thread pool for large corpora (>10K chunks)
+3. **Multi-language support**: Should we add language detection and model selection? (Defer to future iteration)
+
+## Resolved Decisions
+
+1. **LLM-based contextual embedding**: ✅ RESOLVED - Using Claude Haiku (or configurable model) to generate 50-100 token context per chunk. Cost: ~$0.03 per 100-page document. Benefit: 49% retrieval improvement per Anthropic research.
+2. **Keyword search strategy**: ✅ RESOLVED - Tiered approach using native `hybrid_search()` for supported providers, BM25 fallback for others.
