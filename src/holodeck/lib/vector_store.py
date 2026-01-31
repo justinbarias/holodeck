@@ -653,6 +653,120 @@ def create_structured_record_class(
 DocumentRecord = create_document_record_class(1536)
 
 
+def create_hierarchical_document_record_class(dimensions: int = 1536) -> type[Any]:
+    """Create a HierarchicalDocumentRecord class with specified embedding dimensions.
+
+    This factory creates a record class for hierarchical document chunks that
+    preserves document structure, parent-child relationships, cross-references,
+    and definition information. Designed for advanced hybrid search with
+    native full-text indexing.
+
+    Args:
+        dimensions: Embedding vector dimensions (default: 1536)
+
+    Returns:
+        HierarchicalDocumentRecord class configured for the specified dimensions
+
+    Raises:
+        ValueError: If dimensions is invalid (<=0 or >10000)
+
+    Example:
+        >>> RecordClass = create_hierarchical_document_record_class(768)
+        >>> record = RecordClass(
+        ...     id="doc_chunk_0",
+        ...     source_path="/docs/policy.md",
+        ...     chunk_index=0,
+        ...     content="Section 1.1 defines the term...",
+        ...     embedding=[...],
+        ...     parent_chain='["Chapter 1", "Section 1.1"]',
+        ...     section_id="1.1",
+        ...     chunk_type="definition",
+        ...     cross_references='["Section 2.3", "Appendix A"]',
+        ...     contextualized_content="This section about X defines...",
+        ...     mtime=1706623200.0,
+        ...     file_type=".md",
+        ...     defined_term="Force Majeure",
+        ...     defined_term_normalized="force majeure",
+        ... )
+    """
+    if dimensions <= 0 or dimensions > 10000:
+        raise ValueError(f"Invalid dimensions: {dimensions}")
+
+    @vectorstoremodel(collection_name=f"hierarchical_docs_dim{dimensions}")
+    @dataclass
+    class DynamicHierarchicalDocumentRecord:  # type: ignore[misc]
+        """Vector store record for hierarchical document chunks with structure metadata.
+
+        Each document chunk preserves its position in the document hierarchy,
+        cross-references to other sections, and optional definition information.
+        Supports native hybrid search via is_full_text_indexed on content field.
+
+        Attributes:
+            id: Unique identifier (key field) following format:
+                {source_path}_chunk_{chunk_index}
+            source_path: Original source file path (indexed for filtering)
+            chunk_index: Chunk index within document (0-indexed, indexed)
+            section_id: Document section identifier (e.g., "1.2.3") for filtering
+            content: Chunk content for semantic search (full-text indexed for hybrid)
+            embedding: Vector embedding for semantic similarity search
+            parent_chain: JSON-encoded list of ancestor headings
+                (e.g., '["Ch1", "Sec1.1"]')
+            chunk_type: Classification of content type (content, definition, etc.)
+            cross_references: JSON-encoded list of referenced section IDs
+            contextualized_content: Content with added context for better retrieval
+            mtime: File modification time (Unix timestamp) for change detection
+            file_type: Source file extension (.txt, .md, .pdf, etc.)
+            defined_term: The term being defined (if chunk_type is definition)
+            defined_term_normalized: Lowercase normalized term for
+                case-insensitive lookup
+        """
+
+        id: Annotated[str, VectorStoreField("key")] = field(
+            default_factory=lambda: str(uuid4())
+        )
+        source_path: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(
+            default=""
+        )
+        chunk_index: Annotated[int, VectorStoreField("data", is_indexed=True)] = field(
+            default=0
+        )
+        section_id: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(
+            default=""
+        )
+        content: Annotated[str, VectorStoreField("data", is_full_text_indexed=True)] = (
+            field(default="")
+        )
+        embedding: Annotated[
+            list[float] | None,
+            VectorStoreField(
+                "vector",
+                dimensions=dimensions,
+                distance_function=DistanceFunction.COSINE_SIMILARITY,
+            ),
+        ] = field(default=None)
+        parent_chain: Annotated[str, VectorStoreField("data")] = field(default="[]")
+        chunk_type: Annotated[str, VectorStoreField("data")] = field(default="content")
+        cross_references: Annotated[str, VectorStoreField("data")] = field(default="[]")
+        contextualized_content: Annotated[str, VectorStoreField("data")] = field(
+            default=""
+        )
+        mtime: Annotated[float, VectorStoreField("data")] = field(default=0.0)
+        file_type: Annotated[str, VectorStoreField("data")] = field(default="")
+        defined_term: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(
+            default=""
+        )
+        defined_term_normalized: Annotated[
+            str, VectorStoreField("data", is_indexed=True)
+        ] = field(default="")
+        subsection_ids: Annotated[str, VectorStoreField("data")] = field(default="[]")
+
+    return cast(type[Any], DynamicHierarchicalDocumentRecord)
+
+
+# Default HierarchicalDocumentRecord for 1536 dimensions (OpenAI ada-002, etc.)
+HierarchicalDocumentRecord = create_hierarchical_document_record_class(1536)
+
+
 @dataclass
 class QueryResult:
     """Search result from vector store query.

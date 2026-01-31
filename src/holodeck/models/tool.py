@@ -10,6 +10,7 @@ Tool types:
 - PromptTool: AI-powered semantic functions
 """
 
+import warnings
 from enum import Enum
 from typing import Annotated, Any, Literal
 
@@ -22,6 +23,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+from holodeck.models.llm import LLMProvider
 
 
 class TransportType(str, Enum):
@@ -55,6 +58,58 @@ class CommandType(str, Enum):
     NODE = "node"
     UVX = "uvx"
     DOCKER = "docker"
+
+
+class SearchMode(str, Enum):
+    """Search modality options for HierarchicalDocumentTool.
+
+    Defines which search indices are used during query:
+    - SEMANTIC: Dense embeddings only (conceptual similarity)
+    - KEYWORD: BM25 sparse index only (term frequency)
+    - EXACT: Exact section ID or phrase match only
+    - HYBRID: All modalities combined with RRF fusion
+    """
+
+    SEMANTIC = "semantic"
+    KEYWORD = "keyword"
+    EXACT = "exact"
+    HYBRID = "hybrid"
+
+
+class ChunkingStrategy(str, Enum):
+    """Document chunking approach for HierarchicalDocumentTool.
+
+    Defines how documents are split into chunks:
+    - STRUCTURE: Parse markdown headings and split at structural boundaries
+    - TOKEN: Fixed token-based splitting with overlap (fallback for flat text)
+    """
+
+    STRUCTURE = "structure"
+    TOKEN = "token"  # noqa: S105 - Not a password, refers to token-based chunking
+
+
+class DocumentDomain(str, Enum):
+    """Predefined document structure patterns for subsection detection.
+
+    Enables YAML-based configuration of domain-specific parsing rules
+    for hierarchical document tools. Each domain defines subsection patterns
+    that recognize implicit headings in documents.
+
+    Attributes:
+        NONE: No subsection patterns (default, backward compatible).
+        US_LEGISLATIVE: US Code style: (a), (1), (A), (i) hierarchy.
+        AU_LEGISLATIVE: Australian style: (1), (a), (i), (A) hierarchy.
+        ACADEMIC: Academic papers: 1., 1.1, 1.1.1 numbered sections.
+        TECHNICAL: Technical manuals: Step 1, 1.1, Note:, Warning:.
+        LEGAL_CONTRACT: Legal contracts: Article I, Section 1, (a) clauses.
+    """
+
+    NONE = "none"
+    US_LEGISLATIVE = "us_legislative"
+    AU_LEGISLATIVE = "au_legislative"
+    ACADEMIC = "academic"
+    TECHNICAL = "technical"
+    LEGAL_CONTRACT = "legal_contract"
 
 
 class Tool(BaseModel):
@@ -518,6 +573,231 @@ class PromptTool(BaseModel):
         return v
 
 
+class HierarchicalDocumentToolConfig(BaseModel):
+    """Configuration for the HierarchicalDocumentTool.
+
+    A specialized document search tool that preserves document structure,
+    supports multiple search modalities (semantic, keyword, exact), and
+    enables context-aware embeddings for improved retrieval quality.
+
+    Features:
+    - Structure-aware chunking that respects markdown headings
+    - Hybrid search combining semantic, keyword, and exact matching
+    - Contextual embeddings that include document/section context
+    - Automatic definition and cross-reference extraction
+    - Optional reranking for improved result quality
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Required fields
+    name: str = Field(
+        ...,
+        pattern=r"^[0-9A-Za-z_]+$",
+        description="Tool identifier (alphanumeric and underscores only)",
+    )
+    description: str = Field(..., description="Human-readable tool description")
+    type: Literal["hierarchical_document"] = Field(
+        default="hierarchical_document", description="Tool type"
+    )
+    source: str = Field(
+        ...,
+        description=(
+            "Path to markdown document or directory containing markdown files. "
+            "Supports glob patterns for multiple files."
+        ),
+    )
+
+    # Chunking configuration
+    chunking_strategy: ChunkingStrategy = Field(
+        default=ChunkingStrategy.STRUCTURE,
+        description=(
+            "Document chunking approach: 'structure' parses markdown headings, "
+            "'token' uses fixed token-based splitting"
+        ),
+    )
+    max_chunk_tokens: int = Field(
+        default=800,
+        ge=100,
+        le=2000,
+        description="Maximum tokens per chunk (100-2000, default 800)",
+    )
+    chunk_overlap: int = Field(
+        default=50,
+        ge=0,
+        le=200,
+        description="Token overlap between chunks (0-200, default 50)",
+    )
+
+    # Document domain configuration for subsection detection
+    document_domain: DocumentDomain = Field(
+        default=DocumentDomain.NONE,
+        description=(
+            "Document structure domain for subsection detection. "
+            "Options: 'none' (default), 'us_legislative', 'au_legislative', "
+            "'academic', 'technical', 'legal_contract'. When set to a domain, "
+            "enables recognition of implicit headings like (a), (1), Step 1, etc."
+        ),
+    )
+    max_subsection_depth: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Maximum subsection nesting depth. If None (default), uses all "
+            "patterns defined for the document_domain. Set to limit depth, e.g., "
+            "2 to only recognize Title and Chapter but not Section and below."
+        ),
+    )
+
+    # Search configuration
+    search_mode: SearchMode = Field(
+        default=SearchMode.HYBRID,
+        description=(
+            "Search modality: 'semantic' (embeddings), 'keyword' (BM25), "
+            "'exact' (ID/phrase match), 'hybrid' (all combined)"
+        ),
+    )
+    top_k: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Number of results to return (1-100, default 10)",
+    )
+    min_score: float | None = Field(
+        default=None,
+        description="Minimum similarity score threshold for results (0.0-1.0)",
+    )
+    semantic_weight: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Weight for semantic search in hybrid mode (default 0.5)",
+    )
+    keyword_weight: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Weight for keyword search in hybrid mode (default 0.3)",
+    )
+    exact_weight: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Weight for exact search in hybrid mode (default 0.2)",
+    )
+    rrf_k: int = Field(
+        default=60,
+        ge=1,
+        description=(
+            "Reciprocal Rank Fusion constant for hybrid search (default 60). "
+            "Higher values give more weight to lower-ranked results."
+        ),
+    )
+
+    # Contextual embeddings configuration
+    contextual_embeddings: bool = Field(
+        default=True,
+        description=(
+            "Enable contextual embeddings that include document/section context "
+            "for improved semantic understanding"
+        ),
+    )
+    context_model: LLMProvider | None = Field(
+        default=None,
+        description=(
+            "LLM for generating contextual summaries. "
+            "If not specified, uses the agent's default model."
+        ),
+    )
+    context_max_tokens: int = Field(
+        default=100,
+        ge=50,
+        le=200,
+        description="Maximum tokens for context summary (50-200, default 100)",
+    )
+    context_concurrency: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Concurrent context generation requests (1-50, default 10)",
+    )
+
+    # Feature extraction
+    extract_definitions: bool = Field(
+        default=True,
+        description="Extract and index term definitions from documents",
+    )
+    extract_cross_references: bool = Field(
+        default=True,
+        description="Extract and resolve cross-references between sections",
+    )
+
+    # Reranking configuration
+    enable_reranking: bool = Field(
+        default=False,
+        description="Enable LLM-based reranking of search results",
+    )
+    reranker_model: LLMProvider | None = Field(
+        default=None,
+        description=("LLM for reranking results. Required when enable_reranking=True."),
+    )
+
+    # Storage configuration
+    database: DatabaseConfig | str | None = Field(
+        default=None,
+        description=(
+            "Vector database configuration. Can be:\n"
+            "- DatabaseConfig object with provider and connection details\n"
+            "- String reference to a named vectorstore in global config\n"
+            "- None for in-memory storage"
+        ),
+    )
+    defer_loading: bool = Field(
+        default=True,
+        description=(
+            "If True, tool is excluded from initial context and loaded on-demand "
+            "via semantic search. Set to False for critical tools."
+        ),
+    )
+
+    @field_validator("source")
+    @classmethod
+    def validate_source(cls, v: str) -> str:
+        """Validate source is not empty."""
+        if not v or not v.strip():
+            raise ValueError("source must be a non-empty path")
+        return v
+
+    @field_validator("min_score")
+    @classmethod
+    def validate_min_score(cls, v: float | None) -> float | None:
+        """Validate min_score is between 0.0 and 1.0 if provided."""
+        if v is not None and not (0.0 <= v <= 1.0):
+            raise ValueError("min_score must be between 0.0 and 1.0")
+        return v
+
+    @model_validator(mode="after")
+    def validate_weights(self) -> "HierarchicalDocumentToolConfig":
+        """Warn if hybrid weights don't sum to approximately 1.0."""
+        if self.search_mode == SearchMode.HYBRID:
+            total = self.semantic_weight + self.keyword_weight + self.exact_weight
+            if not (0.95 <= total <= 1.05):
+                warnings.warn(
+                    f"Hybrid search weights sum to {total:.2f}, not 1.0. "
+                    "Results may be unexpected.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_reranker(self) -> "HierarchicalDocumentToolConfig":
+        """Validate reranker_model is provided when enable_reranking=True."""
+        if self.enable_reranking and self.reranker_model is None:
+            raise ValueError("reranker_model is required when enable_reranking=True")
+        return self
+
+
 def _get_tool_type(v: Any) -> str:
     """Extract tool type from dict or model for discrimination.
 
@@ -540,6 +820,7 @@ ToolUnion = Annotated[
     Annotated[VectorstoreTool, Tag("vectorstore")]
     | Annotated[FunctionTool, Tag("function")]
     | Annotated[MCPTool, Tag("mcp")]
-    | Annotated[PromptTool, Tag("prompt")],
+    | Annotated[PromptTool, Tag("prompt")]
+    | Annotated[HierarchicalDocumentToolConfig, Tag("hierarchical_document")],
     Discriminator(_get_tool_type),
 ]

@@ -69,24 +69,27 @@ class TestConfigInitCommand:
         assert result.exit_code == 0
         assert "Initialize HoloDeck global or project configuration" in result.output
 
+    @patch("pathlib.Path.exists", return_value=False)
     @patch("holodeck.config.manager.ConfigManager.write_config")
-    def test_init_global(self, mock_write, runner):
+    def test_init_global(self, mock_write, mock_exists, runner):
         """Test initializing global configuration."""
         result = runner.invoke(init, ["-g"])
         assert result.exit_code == 0
         assert "Global configuration initialized successfully" in result.output
         mock_write.assert_called_once()
 
+    @patch("pathlib.Path.exists", return_value=False)
     @patch("holodeck.config.manager.ConfigManager.write_config")
-    def test_init_project(self, mock_write, runner):
+    def test_init_project(self, mock_write, mock_exists, runner):
         """Test initializing project configuration."""
         result = runner.invoke(init, ["-p"])
         assert result.exit_code == 0
         assert "Project configuration initialized successfully" in result.output
         mock_write.assert_called_once()
 
+    @patch("pathlib.Path.exists", return_value=False)
     @patch("holodeck.config.manager.ConfigManager.write_config")
-    def test_init_prompt_default(self, mock_write, runner):
+    def test_init_prompt_default(self, mock_write, mock_exists, runner):
         """Test prompting for config type (default global)."""
         # Simulate pressing enter for default
         result = runner.invoke(init, input="\n")
@@ -95,8 +98,9 @@ class TestConfigInitCommand:
         assert "Global configuration initialized successfully" in result.output
         mock_write.assert_called_once()
 
+    @patch("pathlib.Path.exists", return_value=False)
     @patch("holodeck.config.manager.ConfigManager.write_config")
-    def test_init_prompt_project(self, mock_write, runner):
+    def test_init_prompt_project(self, mock_write, mock_exists, runner):
         """Test prompting for config type (choose project)."""
         result = runner.invoke(init, input="p\n")
         assert result.exit_code == 0

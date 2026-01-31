@@ -6,7 +6,9 @@ from pydantic import ValidationError
 from holodeck.models.tool import (
     CommandType,
     DatabaseConfig,
+    DocumentDomain,
     FunctionTool,
+    HierarchicalDocumentToolConfig,
     MCPTool,
     PromptTool,
     Tool,
@@ -1169,3 +1171,211 @@ class TestVectorstoreToolStructuredData:
         assert tool.field_separator == "\n\n"
         assert tool.delimiter == ","
         assert tool.meta_fields == ["category", "price"]
+
+
+class TestDocumentDomainEnum:
+    """Tests for DocumentDomain enum."""
+
+    def test_document_domain_none_value(self) -> None:
+        """Test that NONE domain has value 'none'."""
+        assert DocumentDomain.NONE.value == "none"
+
+    def test_document_domain_us_legislative_value(self) -> None:
+        """Test that US_LEGISLATIVE domain has value 'us_legislative'."""
+        assert DocumentDomain.US_LEGISLATIVE.value == "us_legislative"
+
+    def test_document_domain_au_legislative_value(self) -> None:
+        """Test that AU_LEGISLATIVE domain has value 'au_legislative'."""
+        assert DocumentDomain.AU_LEGISLATIVE.value == "au_legislative"
+
+    def test_document_domain_academic_value(self) -> None:
+        """Test that ACADEMIC domain has value 'academic'."""
+        assert DocumentDomain.ACADEMIC.value == "academic"
+
+    def test_document_domain_technical_value(self) -> None:
+        """Test that TECHNICAL domain has value 'technical'."""
+        assert DocumentDomain.TECHNICAL.value == "technical"
+
+    def test_document_domain_legal_contract_value(self) -> None:
+        """Test that LEGAL_CONTRACT domain has value 'legal_contract'."""
+        assert DocumentDomain.LEGAL_CONTRACT.value == "legal_contract"
+
+    def test_document_domain_all_values(self) -> None:
+        """Test that all expected domains are available."""
+        expected_domains = {
+            "none",
+            "us_legislative",
+            "au_legislative",
+            "academic",
+            "technical",
+            "legal_contract",
+        }
+        actual_domains = {d.value for d in DocumentDomain}
+        assert actual_domains == expected_domains
+
+    def test_document_domain_is_str_enum(self) -> None:
+        """Test that DocumentDomain values are strings."""
+        for domain in DocumentDomain:
+            assert isinstance(domain.value, str)
+
+
+class TestHierarchicalDocumentToolConfigDomainFields:
+    """Tests for document domain configuration in HierarchicalDocumentToolConfig."""
+
+    def test_document_domain_default_none(self) -> None:
+        """Test that document_domain defaults to NONE."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+        )
+        assert config.document_domain == DocumentDomain.NONE
+
+    def test_document_domain_us_legislative(self) -> None:
+        """Test setting document_domain to us_legislative."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            document_domain=DocumentDomain.US_LEGISLATIVE,
+        )
+        assert config.document_domain == DocumentDomain.US_LEGISLATIVE
+
+    def test_document_domain_au_legislative(self) -> None:
+        """Test setting document_domain to au_legislative."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            document_domain=DocumentDomain.AU_LEGISLATIVE,
+        )
+        assert config.document_domain == DocumentDomain.AU_LEGISLATIVE
+
+    def test_document_domain_academic(self) -> None:
+        """Test setting document_domain to academic."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            document_domain=DocumentDomain.ACADEMIC,
+        )
+        assert config.document_domain == DocumentDomain.ACADEMIC
+
+    def test_document_domain_technical(self) -> None:
+        """Test setting document_domain to technical."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            document_domain=DocumentDomain.TECHNICAL,
+        )
+        assert config.document_domain == DocumentDomain.TECHNICAL
+
+    def test_document_domain_legal_contract(self) -> None:
+        """Test setting document_domain to legal_contract."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            document_domain=DocumentDomain.LEGAL_CONTRACT,
+        )
+        assert config.document_domain == DocumentDomain.LEGAL_CONTRACT
+
+    def test_document_domain_from_string(self) -> None:
+        """Test that document_domain can be set from string value."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            document_domain="us_legislative",  # type: ignore[arg-type]
+        )
+        assert config.document_domain == DocumentDomain.US_LEGISLATIVE
+
+    def test_document_domain_invalid_value(self) -> None:
+        """Test that invalid document_domain raises ValidationError."""
+        with pytest.raises(ValidationError):
+            HierarchicalDocumentToolConfig(
+                name="test",
+                description="Test tool",
+                source="./docs/",
+                document_domain="invalid_domain",  # type: ignore[arg-type]
+            )
+
+    def test_max_subsection_depth_default(self) -> None:
+        """Test that max_subsection_depth defaults to None (use all patterns)."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+        )
+        assert config.max_subsection_depth is None
+
+    def test_max_subsection_depth_custom_value(self) -> None:
+        """Test setting custom max_subsection_depth."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            max_subsection_depth=2,
+        )
+        assert config.max_subsection_depth == 2
+
+    def test_max_subsection_depth_minimum_valid(self) -> None:
+        """Test that max_subsection_depth can be set to minimum (1)."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            max_subsection_depth=1,
+        )
+        assert config.max_subsection_depth == 1
+
+    def test_max_subsection_depth_large_value_valid(self) -> None:
+        """Test that max_subsection_depth accepts large values (runtime validated)."""
+        # Config allows any positive value; runtime validates against pattern count
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            max_subsection_depth=10,
+        )
+        assert config.max_subsection_depth == 10
+
+    def test_max_subsection_depth_below_minimum(self) -> None:
+        """Test that max_subsection_depth below 1 raises ValidationError."""
+        with pytest.raises(ValidationError):
+            HierarchicalDocumentToolConfig(
+                name="test",
+                description="Test tool",
+                source="./docs/",
+                max_subsection_depth=0,
+            )
+
+    def test_domain_and_depth_combination(self) -> None:
+        """Test combining document_domain with max_subsection_depth."""
+        config = HierarchicalDocumentToolConfig(
+            name="policy_search",
+            description="Search policy documents",
+            source="./policies/",
+            document_domain=DocumentDomain.US_LEGISLATIVE,
+            max_subsection_depth=2,
+        )
+        assert config.document_domain == DocumentDomain.US_LEGISLATIVE
+        assert config.max_subsection_depth == 2
+
+    def test_full_config_with_domain(self) -> None:
+        """Test full configuration with all domain-related fields."""
+        config = HierarchicalDocumentToolConfig(
+            name="legislation_search",
+            description="Search legislation documents",
+            source="./legislation/",
+            document_domain=DocumentDomain.US_LEGISLATIVE,
+            max_subsection_depth=4,  # Title, Chapter, Section, Subsection
+            max_chunk_tokens=800,
+            search_mode="hybrid",
+            top_k=10,
+        )
+        assert config.name == "legislation_search"
+        assert config.document_domain == DocumentDomain.US_LEGISLATIVE
+        assert config.max_subsection_depth == 4
+        assert config.max_chunk_tokens == 800
