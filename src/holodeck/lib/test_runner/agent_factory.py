@@ -44,7 +44,11 @@ from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import ProviderEnum
 from holodeck.models.token_usage import TokenUsage
-from holodeck.models.tool import MCPTool, VectorstoreTool
+from holodeck.models.tool import (
+    HierarchicalDocumentToolConfig,
+    MCPTool,
+    VectorstoreTool,
+)
 
 # Default configuration constants for AgentFactory
 DEFAULT_TIMEOUT_SECONDS: float = 60.0
@@ -578,6 +582,9 @@ class AgentFactory:
         self._vectorstore_tools: list[Any] = []
         self._embedding_service: Any = None
 
+        # Hierarchical document tool support
+        self._hierarchical_document_tools: list[Any] = []
+
         # MCP tool support
         self._mcp_plugins: list[Any] = []
 
@@ -593,8 +600,8 @@ class AgentFactory:
         try:
             self.kernel = self._create_kernel()
 
-            # Register embedding service if vectorstore tools are configured
-            if self._has_vectorstore_tools():
+            # Register embedding service if vectorstore or hierarchical document tools
+            if self._has_vectorstore_tools() or self._has_hierarchical_document_tools():
                 self._register_embedding_service()
 
             self.agent = self._create_agent()
@@ -889,6 +896,20 @@ class AgentFactory:
 
         return any(isinstance(tool, MCPTool) for tool in self.agent_config.tools)
 
+    def _has_hierarchical_document_tools(self) -> bool:
+        """Check if agent config contains any hierarchical document tools.
+
+        Returns:
+            True if at least one hierarchical document tool is configured.
+        """
+        if not self.agent_config.tools:
+            return False
+
+        return any(
+            isinstance(tool, HierarchicalDocumentToolConfig)
+            for tool in self.agent_config.tools
+        )
+
     async def _register_mcp_tools(self) -> None:
         """Discover, initialize, and register MCP tools from agent config.
 
@@ -950,6 +971,66 @@ class AgentFactory:
                     f"Failed to initialize MCP tool {tool_config.name}: {e}"
                 ) from e
 
+    async def _register_hierarchical_document_tools(self) -> None:
+        """Register hierarchical document tools from agent config.
+
+        Iterates through agent_config.tools, finds hierarchical document tools,
+        creates HierarchicalDocumentTool instances, initializes them, and
+        registers their search methods as KernelFunctions.
+
+        Raises:
+            AgentFactoryError: If tool initialization fails.
+        """
+        if not self.agent_config.tools:
+            return
+
+        if not self._has_hierarchical_document_tools():
+            return
+
+        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+
+        for tool_config in self.agent_config.tools:
+            if not isinstance(tool_config, HierarchicalDocumentToolConfig):
+                continue
+
+            try:
+                # Create tool instance
+                tool = HierarchicalDocumentTool(tool_config)
+
+                # Inject services
+                tool.set_embedding_service(self._embedding_service)
+                if self._llm_service:
+                    tool.set_chat_service(self._llm_service)
+
+                # Initialize (processes documents, generates embeddings)
+                await tool.initialize(force_ingest=self._force_ingest)
+
+                # Create and register KernelFunction
+                kernel_function = self._create_search_kernel_function(
+                    tool=tool,
+                    tool_name=tool_config.name,
+                    tool_description=tool_config.description,
+                )
+
+                self.kernel.add_function(
+                    plugin_name="hierarchical_document", function=kernel_function
+                )
+                self._hierarchical_document_tools.append(tool)
+
+                logger.info(
+                    f"Registered hierarchical document tool: {tool_config.name}"
+                )
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to initialize hierarchical document tool "
+                    f"{tool_config.name}: {e}"
+                )
+                raise AgentFactoryError(
+                    f"Failed to initialize hierarchical document tool "
+                    f"{tool_config.name}: {e}"
+                ) from e
+
     async def _ensure_tools_initialized(self) -> None:
         """Ensure all tools are initialized (called before first invoke).
 
@@ -960,6 +1041,7 @@ class AgentFactory:
             return
         await self._register_vectorstore_tools()
         await self._register_mcp_tools()
+        await self._register_hierarchical_document_tools()
 
         # Initialize tool filtering if enabled
         if self._is_tool_filtering_enabled():
@@ -1034,6 +1116,17 @@ class AgentFactory:
                 errors.append(e)
 
         self._vectorstore_tools.clear()
+
+        # Cleanup hierarchical document tools if they have cleanup methods
+        for tool in self._hierarchical_document_tools:
+            try:
+                if hasattr(tool, "cleanup"):
+                    await tool.cleanup()
+            except Exception as e:
+                logger.warning(f"Error cleaning up hierarchical document tool: {e}")
+                errors.append(e)
+
+        self._hierarchical_document_tools.clear()
         self._tools_initialized = False
 
         if errors:

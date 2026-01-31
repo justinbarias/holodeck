@@ -880,3 +880,260 @@ class TestConfidenceIndication:
         assert results[0].keyword_score is None
         assert results[0].semantic_score == 0.85
         assert results[0].exact_match is False
+
+
+class TestPydanticConfigValidation:
+    """T085: Tests for Pydantic model validation."""
+
+    def test_valid_config_creation(self, tmp_path: Path) -> None:
+        """Test creating a valid HierarchicalDocumentToolConfig."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test\n\nContent")
+
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test tool",
+            source=str(doc_file),
+        )
+
+        assert config.name == "test_tool"
+        assert config.type == "hierarchical_document"
+        assert config.top_k == 10  # default
+        assert config.search_mode.value == "hybrid"  # default
+        assert config.defer_loading is True  # default
+
+    def test_invalid_name_pattern_raises_validation_error(self, tmp_path: Path) -> None:
+        """Test that invalid name pattern raises ValidationError (T085)."""
+        from pydantic import ValidationError
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        with pytest.raises(ValidationError, match="name"):
+            HierarchicalDocumentToolConfig(
+                name="invalid-name-with-dash",  # Only alphanumeric and _ allowed
+                description="Test tool",
+                source=str(doc_file),
+            )
+
+    def test_empty_source_raises_validation_error(self, tmp_path: Path) -> None:
+        """Test that empty source raises ValidationError (T085)."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="source"):
+            HierarchicalDocumentToolConfig(
+                name="test_tool",
+                description="Test tool",
+                source="   ",  # Empty/whitespace only
+            )
+
+    def test_invalid_top_k_raises_validation_error(self, tmp_path: Path) -> None:
+        """Test that invalid top_k raises ValidationError."""
+        from pydantic import ValidationError
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        with pytest.raises(ValidationError, match="top_k"):
+            HierarchicalDocumentToolConfig(
+                name="test_tool",
+                description="Test tool",
+                source=str(doc_file),
+                top_k=0,  # Must be >= 1
+            )
+
+    def test_invalid_min_score_raises_validation_error(self, tmp_path: Path) -> None:
+        """Test that min_score out of range raises ValidationError."""
+        from pydantic import ValidationError
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        with pytest.raises(ValidationError, match="min_score"):
+            HierarchicalDocumentToolConfig(
+                name="test_tool",
+                description="Test tool",
+                source=str(doc_file),
+                min_score=1.5,  # Must be <= 1.0
+            )
+
+    def test_reranker_required_when_enabled(self, tmp_path: Path) -> None:
+        """Test that reranker_model is required when enable_reranking=True."""
+        from pydantic import ValidationError
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        with pytest.raises(ValidationError, match="reranker_model"):
+            HierarchicalDocumentToolConfig(
+                name="test_tool",
+                description="Test tool",
+                source=str(doc_file),
+                enable_reranking=True,  # Requires reranker_model
+                # reranker_model is missing
+            )
+
+
+class TestWeightValidation:
+    """T088: Tests for weight validation warning."""
+
+    def test_weights_sum_to_one_no_warning(self, tmp_path: Path) -> None:
+        """Test that weights summing to 1.0 don't emit warning."""
+        import warnings
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            config = HierarchicalDocumentToolConfig(
+                name="test_tool",
+                description="Test tool",
+                source=str(doc_file),
+                search_mode="hybrid",
+                semantic_weight=0.5,
+                keyword_weight=0.3,
+                exact_weight=0.2,
+            )
+            # No warning expected
+            assert len([x for x in w if "sum to" in str(x.message)]) == 0
+            assert config.semantic_weight == 0.5
+
+    def test_weights_not_sum_to_one_emits_warning(self, tmp_path: Path) -> None:
+        """Test that weights not summing to 1.0 emit warning (T088)."""
+        import warnings
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            HierarchicalDocumentToolConfig(
+                name="test_tool",
+                description="Test tool",
+                source=str(doc_file),
+                search_mode="hybrid",
+                semantic_weight=0.5,
+                keyword_weight=0.5,
+                exact_weight=0.5,  # Sum = 1.5, not 1.0
+            )
+            # Warning expected
+            weight_warnings = [x for x in w if "sum to" in str(x.message)]
+            assert len(weight_warnings) == 1
+            assert "1.50" in str(weight_warnings[0].message)
+
+    def test_weights_ignored_for_non_hybrid_mode(self, tmp_path: Path) -> None:
+        """Test that weight validation is skipped for non-hybrid modes."""
+        import warnings
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            config = HierarchicalDocumentToolConfig(
+                name="test_tool",
+                description="Test tool",
+                source=str(doc_file),
+                search_mode="semantic",  # Not hybrid
+                semantic_weight=0.9,  # Would trigger warning in hybrid
+                keyword_weight=0.5,
+                exact_weight=0.5,
+            )
+            # No warning expected for non-hybrid mode
+            weight_warnings = [x for x in w if "sum to" in str(x.message)]
+            assert len(weight_warnings) == 0
+            assert config.search_mode.value == "semantic"
+
+
+class TestDeferLoading:
+    """T087: Tests for defer_loading behavior."""
+
+    def test_defer_loading_defaults_true(self, tmp_path: Path) -> None:
+        """Test that defer_loading defaults to True (T087)."""
+        config = create_config(tmp_path)
+        assert config.defer_loading is True
+
+    def test_defer_loading_can_be_false(self, tmp_path: Path) -> None:
+        """Test that defer_loading can be set to False."""
+        config = create_config(tmp_path, defer_loading=False)
+        assert config.defer_loading is False
+
+    def test_tool_has_defer_loading_attribute(self, tmp_path: Path) -> None:
+        """Test that HierarchicalDocumentTool has defer_loading in config."""
+        config = create_config(tmp_path, defer_loading=False)
+        tool = HierarchicalDocumentTool(config)
+        assert tool.config.defer_loading is False
+
+
+class TestDatabaseConfig:
+    """T086: Tests for database configuration (low priority)."""
+
+    def test_database_none_uses_inmemory(self, tmp_path: Path) -> None:
+        """Test that None database config defaults to in-memory storage (T086)."""
+        config = create_config(tmp_path)
+        # database defaults to None
+        assert config.database is None
+
+        tool = HierarchicalDocumentTool(config)
+        # Provider defaults to in-memory
+        assert tool._provider == "in-memory"
+
+    def test_database_config_object_accepted(self, tmp_path: Path) -> None:
+        """Test that DatabaseConfig object is accepted."""
+        from holodeck.models.tool import DatabaseConfig
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        db_config = DatabaseConfig(provider="in-memory")
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test tool",
+            source=str(doc_file),
+            database=db_config,
+        )
+        assert config.database is not None
+        assert config.database.provider == "in-memory"
+
+
+class TestToolFactoryIntegration:
+    """T082: Tests for AgentFactory registration (mocked)."""
+
+    def test_tool_config_type_is_hierarchical_document(self, tmp_path: Path) -> None:
+        """Test that HierarchicalDocumentToolConfig has correct type."""
+        config = create_config(tmp_path)
+        assert config.type == "hierarchical_document"
+
+    def test_config_included_in_tool_union(self) -> None:
+        """Test that HierarchicalDocumentToolConfig is part of ToolUnion."""
+        from typing import get_args
+
+        from holodeck.models.tool import ToolUnion
+
+        # Get the types from the Union
+        union_args = get_args(ToolUnion)
+        # The first element is the Annotated union
+        annotated_union = union_args[0]
+        inner_args = get_args(annotated_union)
+
+        # Extract type names
+        type_names = []
+        for arg in inner_args:
+            inner_type = get_args(arg)[0] if get_args(arg) else arg
+            if hasattr(inner_type, "__name__"):
+                type_names.append(inner_type.__name__)
+
+        assert "HierarchicalDocumentToolConfig" in type_names
+
+    def test_tool_instantiation_from_config(self, tmp_path: Path) -> None:
+        """Test HierarchicalDocumentTool instantiation from config (T082)."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        assert tool.config == config
+        assert tool._initialized is False
+        assert hasattr(tool, "set_embedding_service")
+        assert hasattr(tool, "set_chat_service")
+        assert hasattr(tool, "initialize")
+        assert hasattr(tool, "search")
