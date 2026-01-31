@@ -653,7 +653,9 @@ def create_structured_record_class(
 DocumentRecord = create_document_record_class(1536)
 
 
-def create_hierarchical_document_record_class(dimensions: int = 1536) -> type[Any]:
+def create_hierarchical_document_record_class(
+    dimensions: int = 1536, tool_name: str = "default"
+) -> type[Any]:
     """Create a HierarchicalDocumentRecord class with specified embedding dimensions.
 
     This factory creates a record class for hierarchical document chunks that
@@ -663,6 +665,7 @@ def create_hierarchical_document_record_class(dimensions: int = 1536) -> type[An
 
     Args:
         dimensions: Embedding vector dimensions (default: 1536)
+        tool_name: Name of the tool for collection namespacing (default: "default")
 
     Returns:
         HierarchicalDocumentRecord class configured for the specified dimensions
@@ -671,7 +674,7 @@ def create_hierarchical_document_record_class(dimensions: int = 1536) -> type[An
         ValueError: If dimensions is invalid (<=0 or >10000)
 
     Example:
-        >>> RecordClass = create_hierarchical_document_record_class(768)
+        >>> RecordClass = create_hierarchical_document_record_class(768, "doc_search")
         >>> record = RecordClass(
         ...     id="doc_chunk_0",
         ...     source_path="/docs/policy.md",
@@ -692,7 +695,7 @@ def create_hierarchical_document_record_class(dimensions: int = 1536) -> type[An
     if dimensions <= 0 or dimensions > 10000:
         raise ValueError(f"Invalid dimensions: {dimensions}")
 
-    @vectorstoremodel(collection_name=f"hierarchical_docs_dim{dimensions}")
+    @vectorstoremodel(collection_name=f"hierarchical_docs_{tool_name}_dim{dimensions}")
     @dataclass
     class DynamicHierarchicalDocumentRecord:  # type: ignore[misc]
         """Vector store record for hierarchical document chunks with structure metadata.

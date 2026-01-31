@@ -158,9 +158,9 @@ class HierarchicalDocumentTool:
         if self._embedding_dimensions is None:
             self._embedding_dimensions = 1536  # Default
 
-        # Create record class with correct dimensions
+        # Create record class with correct dimensions and tool name
         record_class = create_hierarchical_document_record_class(
-            self._embedding_dimensions
+            self._embedding_dimensions, self.config.name
         )
 
         # Create collection factory
@@ -251,6 +251,81 @@ class HierarchicalDocumentTool:
         # Path doesn't exist - return empty list (error handled in initialize)
         return []
 
+    async def _needs_reingest(self, file_path: Path) -> bool:
+        """Check if file needs re-ingestion based on modification time.
+
+        Compares file's current mtime against stored record mtime.
+
+        Args:
+            file_path: Path to file to check.
+
+        Returns:
+            True if file needs re-ingestion (modified or not in store).
+            False if file is up-to-date.
+        """
+        if self._collection is None:
+            return True  # No collection, must ingest
+
+        # Round to 6 decimal places to match stored precision
+        current_mtime = round(file_path.stat().st_mtime, 6)
+
+        # Match chunk ID format from StructuredChunker
+        # (slashes replaced with underscores)
+        source_name = str(file_path).replace("/", "_").replace("\\", "_")
+
+        async with self._collection as collection:
+            try:
+                # Get first chunk to check mtime (all chunks share same mtime)
+                record_id = f"{source_name}_chunk_0"
+                record = await collection.get(record_id)
+
+                if record is None:
+                    return True  # Not in store, must ingest
+
+                stored_mtime: float = float(record.mtime)
+                return current_mtime > stored_mtime
+
+            except Exception as e:
+                logger.debug(f"Could not retrieve record for {file_path}: {e}")
+                return True  # Error = must ingest
+
+    async def _delete_file_records(self, file_path: Path) -> int:
+        """Delete all records for a source file from vector store.
+
+        Args:
+            file_path: Path to source file whose records should be deleted.
+
+        Returns:
+            Number of records deleted.
+        """
+        if self._collection is None:
+            return 0
+
+        # Match chunk ID format from StructuredChunker
+        # (slashes replaced with underscores)
+        source_name = str(file_path).replace("/", "_").replace("\\", "_")
+        deleted_count = 0
+
+        async with self._collection as collection:
+            chunk_index = 0
+            while True:
+                record_id = f"{source_name}_chunk_{chunk_index}"
+                try:
+                    record = await collection.get(record_id)
+                    if record is None:
+                        break
+                    await collection.delete(record_id)
+                    deleted_count += 1
+                    chunk_index += 1
+                except Exception as e:
+                    logger.debug(f"Error deleting record {record_id}: {e}")
+                    break
+
+        if deleted_count > 0:
+            logger.debug(f"Deleted {deleted_count} records for {file_path}")
+
+        return deleted_count
+
     async def _convert_to_markdown(self, file_path: str) -> str:
         """Convert a file to markdown using FileProcessor.
 
@@ -311,17 +386,22 @@ class HierarchicalDocumentTool:
         domain_key = self.config.document_domain.value
         return DOMAIN_PATTERNS.get(domain_key)
 
-    async def _ingest_documents(self) -> None:
+    async def _ingest_documents(self, force_ingest: bool = False) -> None:
         """Ingest all configured documents through the ingestion pipeline.
 
         Pipeline stages:
         1. Document Discovery - resolve source path and discover files
-        2. Conversion - markitdown via FileProcessor
-        3. Structure Parsing - StructuredChunker.parse()
-        4. LLM Context Generation - LLMContextGenerator.contextualize_batch()
-        5. Embedding Generation - self._embed_chunks()
-        6. Index Construction - semantic only for MVP
-        7. Persistence - self._store_chunks()
+        2. Incremental Check - skip unchanged files (unless force_ingest)
+        3. Conversion - markitdown via FileProcessor
+        4. Structure Parsing - StructuredChunker.parse()
+        5. LLM Context Generation - LLMContextGenerator.contextualize_batch()
+        6. Embedding Generation - self._embed_chunks()
+        7. Index Construction - semantic only for MVP
+        8. Persistence - self._store_chunks()
+
+        Args:
+            force_ingest: If True, re-ingest all files regardless of modification
+                time. Existing records will be deleted before re-ingestion.
 
         Raises:
             FileNotFoundError: If source path does not exist.
@@ -363,7 +443,21 @@ class HierarchicalDocumentTool:
 
         logger.info(f"Discovered {len(files)} files for ingestion")
 
+        skipped_files = 0
+        ingested_files = 0
+
         for file_path in files:
+            # Check if file needs re-ingestion (unless force_ingest)
+            if not force_ingest:
+                needs_reingest = await self._needs_reingest(file_path)
+                if not needs_reingest:
+                    logger.debug(f"Skipping unchanged file: {file_path}")
+                    skipped_files += 1
+                    continue
+            else:
+                # Force ingest: delete existing records first
+                await self._delete_file_records(file_path)
+
             # 1-2. Convert to markdown
             markdown_content = await self._convert_to_markdown(str(file_path))
             if not markdown_content.strip():
@@ -407,8 +501,14 @@ class HierarchicalDocumentTool:
             # 7. Store
             await self._store_chunks(chunks)
             self._chunks.extend(chunks)
+            ingested_files += 1
 
             logger.debug(f"Ingested {len(chunks)} chunks from {file_path}")
+
+        logger.info(
+            f"Ingestion complete: {ingested_files} files processed, "
+            f"{skipped_files} skipped (up-to-date), {len(self._chunks)} total chunks"
+        )
 
     async def _embed_chunks(self, chunks: list[DocumentChunk]) -> None:
         """Generate embeddings for document chunks.
@@ -464,7 +564,7 @@ class HierarchicalDocumentTool:
         from holodeck.lib.vector_store import create_hierarchical_document_record_class
 
         dims = self._embedding_dimensions or 1536
-        record_class = create_hierarchical_document_record_class(dims)
+        record_class = create_hierarchical_document_record_class(dims, self.config.name)
 
         records = []
         for chunk in chunks:
@@ -583,12 +683,21 @@ class HierarchicalDocumentTool:
         results.sort(key=lambda r: r.fused_score, reverse=True)
         return results
 
-    async def initialize(self) -> None:
+    async def initialize(self, force_ingest: bool = False) -> None:
         """Initialize the tool by processing all configured documents.
 
         This method should be called before any search operations.
         It loads documents, chunks them, extracts definitions, and
         indexes content for search.
+
+        Uses mtime-based incremental ingestion to skip unchanged files.
+        Files are only re-ingested if their modification time is newer
+        than the stored record's mtime.
+
+        Args:
+            force_ingest: If True, re-ingest all files regardless of
+                modification time. Existing records will be deleted
+                before re-ingestion.
 
         Raises:
             FileNotFoundError: If a document file is not found.
@@ -596,8 +705,8 @@ class HierarchicalDocumentTool:
         # Set up collection
         self._setup_collection()
 
-        # Ingest all documents
-        await self._ingest_documents()
+        # Ingest all documents (with incremental check)
+        await self._ingest_documents(force_ingest=force_ingest)
 
         self._initialized = True
         logger.info(

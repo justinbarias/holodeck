@@ -108,7 +108,7 @@
   - Test fallback to no-context on final retry failure
   - Test adaptive concurrency reduction on rate limits
 
-- [ ] T020 [TDD][US1] Create tests/unit/tools/test_hierarchical_document_tool.py skeleton with test cases per plan.md:232:
+- [x] T020 [TDD][US1] Create tests/unit/tools/test_hierarchical_document_tool.py skeleton with test cases per plan.md:232:
   - Test tool initialization from config
   - Test `_ingest_documents()` orchestration
   - Test `search()` semantic mode returns results with scores
@@ -149,8 +149,8 @@
 
 ### Implementation: Search Result Formatting
 
-- [ ] T041 [US1] Implement `SearchResult.format()` method with source attribution per data-model.md:400-415 and spec.md:30-31
-- [ ] T042 [US1] Add confidence indication when no matches found per spec.md:32-33
+- [x] T041 [US1] Implement `SearchResult.format()` method with source attribution per data-model.md:400-415 and spec.md:30-31
+- [x] T042 [US1] Add confidence indication when no matches found per spec.md:32-33
 
 **Checkpoint**: Semantic search working - can ingest documents and query with natural language. All US1 unit tests pass.
 
