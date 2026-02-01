@@ -131,6 +131,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self._provider: str = "in-memory"
         self._embedding_dimensions: int | None = None
 
+        # Hybrid search executor (initialized during ingestion)
+        self._hybrid_executor: Any = None
+
     # set_embedding_service is inherited from EmbeddingServiceMixin
 
     def set_chat_service(self, service: Any) -> None:
@@ -488,6 +491,10 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             f"{skipped_files} skipped (up-to-date), {len(self._chunks)} total chunks"
         )
 
+        # Build hybrid search indices if we have chunks
+        if self._chunks:
+            await self._build_hybrid_indices()
+
     async def _embed_chunks(self, chunks: list[DocumentChunk]) -> None:
         """Generate embeddings for document chunks.
 
@@ -661,6 +668,212 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         results.sort(key=lambda r: r.fused_score, reverse=True)
         return results
 
+    async def _build_hybrid_indices(self) -> None:
+        """Build hybrid search indices (BM25 and exact match).
+
+        Creates the HybridSearchExecutor with BM25 fallback index
+        and exact match index from the stored chunks. This enables
+        keyword search, exact match, and hybrid search modes.
+        """
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+
+        if not self._chunks:
+            logger.debug("No chunks to build hybrid indices from")
+            return
+
+        # Create hybrid search executor
+        self._hybrid_executor = HybridSearchExecutor(self._provider, self._collection)
+
+        # Prepare documents for indexing: (chunk_id, section_id, contextualized_content)
+        bm25_docs = [
+            (
+                chunk.id,
+                chunk.section_id,
+                chunk.contextualized_content or chunk.content,
+            )
+            for chunk in self._chunks
+        ]
+
+        # Build BM25 and exact match indices
+        self._hybrid_executor.build_bm25_index(bm25_docs)
+
+        logger.info(f"Built hybrid search indices: {len(bm25_docs)} documents indexed")
+
+    async def _hybrid_search(
+        self,
+        query: str,
+        query_embedding: list[float],
+        top_k: int,
+    ) -> list[SearchResult]:
+        """Perform hybrid search combining semantic, keyword, and exact match.
+
+        Uses the HybridSearchExecutor to route to native hybrid search or
+        BM25 fallback based on provider capabilities.
+
+        Args:
+            query: Search query string.
+            query_embedding: Query embedding vector.
+            top_k: Number of results to return.
+
+        Returns:
+            List of SearchResult objects sorted by fused score.
+        """
+        if self._hybrid_executor is None:
+            # Fall back to semantic-only if hybrid executor not available
+            logger.warning("Hybrid executor not initialized, using semantic search")
+            return await self._semantic_search(query_embedding, top_k)
+
+        # Get fused results from hybrid executor
+        fused_results = await self._hybrid_executor.search(
+            query, query_embedding, top_k
+        )
+
+        # Convert to SearchResult objects by looking up chunk metadata
+        results: list[SearchResult] = []
+        chunk_map = {chunk.id: chunk for chunk in self._chunks}
+
+        for chunk_id, score in fused_results:
+            chunk = chunk_map.get(chunk_id)
+            if chunk is None:
+                continue
+
+            results.append(
+                SearchResult(
+                    chunk_id=chunk_id,
+                    content=chunk.content,
+                    fused_score=max(0.0, min(1.0, score)),
+                    source_path=chunk.source_path,
+                    parent_chain=chunk.parent_chain,
+                    section_id=chunk.section_id,
+                    subsection_ids=chunk.subsection_ids,
+                    semantic_score=None,  # Fused score combines all modalities
+                    keyword_score=None,
+                    exact_match=False,
+                    definitions_context=[],
+                )
+            )
+
+        return results
+
+    async def _keyword_search(
+        self,
+        query: str,
+        top_k: int,
+    ) -> list[SearchResult]:
+        """Perform keyword-only BM25 search.
+
+        Args:
+            query: Search query string.
+            top_k: Number of results to return.
+
+        Returns:
+            List of SearchResult objects sorted by BM25 score.
+        """
+        if self._hybrid_executor is None or self._hybrid_executor._bm25_index is None:
+            logger.warning("BM25 index not available, returning empty results")
+            return []
+
+        # Get BM25 results
+        bm25_results = self._hybrid_executor._bm25_index.search(query, top_k)
+
+        # Convert to SearchResult objects
+        results: list[SearchResult] = []
+        chunk_map = {chunk.id: chunk for chunk in self._chunks}
+
+        for chunk_id, score in bm25_results:
+            chunk = chunk_map.get(chunk_id)
+            if chunk is None:
+                continue
+
+            # Normalize BM25 score to 0-1 range (approximate)
+            normalized_score = min(1.0, score / 10.0) if score > 0 else 0.0
+
+            results.append(
+                SearchResult(
+                    chunk_id=chunk_id,
+                    content=chunk.content,
+                    fused_score=normalized_score,
+                    source_path=chunk.source_path,
+                    parent_chain=chunk.parent_chain,
+                    section_id=chunk.section_id,
+                    subsection_ids=chunk.subsection_ids,
+                    semantic_score=None,
+                    keyword_score=score,
+                    exact_match=False,
+                    definitions_context=[],
+                )
+            )
+
+        return results
+
+    async def _exact_search(
+        self,
+        query: str,
+        top_k: int,
+    ) -> list[SearchResult]:
+        """Perform exact match search for section IDs or quoted phrases.
+
+        Args:
+            query: Search query (section ID or quoted phrase).
+            top_k: Number of results to return.
+
+        Returns:
+            List of SearchResult objects with exact matches.
+        """
+        from holodeck.lib.hybrid_search import extract_exact_query, is_exact_match_query
+
+        if self._hybrid_executor is None or self._hybrid_executor._exact_index is None:
+            logger.warning("Exact match index not available, returning empty results")
+            return []
+
+        # Determine query type and search
+        if is_exact_match_query(query):
+            exact_term = extract_exact_query(query)
+
+            if query.startswith('"') and query.endswith('"'):
+                # Quoted phrase search
+                chunk_ids = self._hybrid_executor._exact_index.search_phrase(
+                    exact_term, top_k
+                )
+            else:
+                # Section ID search
+                chunk_ids = self._hybrid_executor._exact_index.search_section(
+                    exact_term
+                )[:top_k]
+        else:
+            # Not an exact match query, return empty
+            return []
+
+        # Convert to SearchResult objects
+        results: list[SearchResult] = []
+        chunk_map = {chunk.id: chunk for chunk in self._chunks}
+
+        for i, chunk_id in enumerate(chunk_ids):
+            chunk = chunk_map.get(chunk_id)
+            if chunk is None:
+                continue
+
+            # Exact matches get high score, decreasing by rank
+            score = 1.0 - (i * 0.01)
+
+            results.append(
+                SearchResult(
+                    chunk_id=chunk_id,
+                    content=chunk.content,
+                    fused_score=score,
+                    source_path=chunk.source_path,
+                    parent_chain=chunk.parent_chain,
+                    section_id=chunk.section_id,
+                    subsection_ids=chunk.subsection_ids,
+                    semantic_score=None,
+                    keyword_score=None,
+                    exact_match=True,
+                    definitions_context=[],
+                )
+            )
+
+        return results
+
     async def initialize(
         self, force_ingest: bool = False, provider_type: str | None = None
     ) -> None:
@@ -732,15 +945,18 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         effective_top_k = top_k or self.config.top_k
 
-        # Generate query embedding
+        # Generate query embedding (needed for semantic and hybrid modes)
         query_embedding = await self._embed_query(query)
 
-        # For MVP, use semantic-only search
-        # Future: Support search_mode from config for hybrid/keyword/exact
-        if self.config.search_mode == SearchMode.SEMANTIC:
-            results = await self._semantic_search(query_embedding, effective_top_k)
+        # Route to appropriate search mode
+        if self.config.search_mode == SearchMode.KEYWORD:
+            results = await self._keyword_search(query, effective_top_k)
+        elif self.config.search_mode == SearchMode.EXACT:
+            results = await self._exact_search(query, effective_top_k)
+        elif self.config.search_mode == SearchMode.HYBRID:
+            results = await self._hybrid_search(query, query_embedding, effective_top_k)
         else:
-            # Default to semantic for MVP
+            # SEMANTIC mode (default)
             results = await self._semantic_search(query_embedding, effective_top_k)
 
         # Filter by min_score if configured

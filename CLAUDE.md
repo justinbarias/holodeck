@@ -197,13 +197,20 @@ HoloDeck loads environment variables from (priority order):
 
 ### Testing
 
+**IMPORTANT**: Always run tests with parallel execution (`-n auto`) for faster results.
+
 ```bash
-make test                # Run all tests
-make test-unit          # Unit tests only
-make test-integration   # Integration tests only
+make test                # Run all tests (parallel)
+make test-unit          # Unit tests only (parallel)
+make test-integration   # Integration tests only (parallel)
 make test-coverage      # With coverage report (htmlcov/index.html)
 make test-failed        # Re-run failed tests only
-make test-parallel      # Parallel execution
+make test-parallel      # Parallel execution (same as make test)
+
+# When running pytest directly, ALWAYS use -n auto:
+pytest tests/unit/ -n auto              # Run unit tests in parallel
+pytest tests/unit/lib/ -n auto -v       # Verbose with parallel
+pytest tests/ -n auto -q                # Quiet mode with parallel
 ```
 
 ### Code Quality
