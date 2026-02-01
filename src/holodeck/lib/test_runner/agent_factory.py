@@ -1002,8 +1002,13 @@ class AgentFactory:
                 if self._llm_service:
                     tool.set_chat_service(self._llm_service)
 
+                # Get provider type from agent config for dimension resolution
+                provider_type = self.agent_config.model.provider.value
+
                 # Initialize (processes documents, generates embeddings)
-                await tool.initialize(force_ingest=self._force_ingest)
+                await tool.initialize(
+                    force_ingest=self._force_ingest, provider_type=provider_type
+                )
 
                 # Create and register KernelFunction
                 kernel_function = self._create_search_kernel_function(

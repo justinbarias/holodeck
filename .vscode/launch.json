@@ -51,7 +51,7 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}/sample/research-agent",
+            "cwd": "${workspaceFolder}/sample/legal-assistant",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }
