@@ -1137,3 +1137,701 @@ class TestToolFactoryIntegration:
         assert hasattr(tool, "set_chat_service")
         assert hasattr(tool, "initialize")
         assert hasattr(tool, "search")
+
+
+class TestSetChatServiceWithoutContextualEmbeddings:
+    """Tests for set_chat_service when contextual_embeddings is disabled."""
+
+    def test_set_chat_service_without_contextual_embeddings(
+        self, tmp_path: Path
+    ) -> None:
+        """Test set_chat_service logs debug when contextual_embeddings is False."""
+        config = create_config(tmp_path, contextual_embeddings=False)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_chat_service = MagicMock()
+        tool.set_chat_service(mock_chat_service)
+
+        # Should not create context generator
+        assert tool._context_generator is None
+        assert tool._chat_service == mock_chat_service
+
+
+class TestDatabaseConfigHandling:
+    """Tests for database configuration edge cases."""
+
+    def test_database_string_reference_falls_back_to_inmemory(
+        self, tmp_path: Path
+    ) -> None:
+        """Test unresolved string database ref falls back to in-memory."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        # Create config with a string reference (simulating unresolved ref)
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test tool",
+            source=str(doc_file),
+        )
+        # Manually set database to a string (simulating unresolved reference)
+        object.__setattr__(config, "database", "unresolved_db_ref")
+
+        tool = HierarchicalDocumentTool(config)
+        tool._setup_collection("openai")
+
+        # Should fall back to in-memory
+        assert tool._provider == "in-memory"
+
+    def test_database_config_with_connection_string(self, tmp_path: Path) -> None:
+        """Test DatabaseConfig with connection_string is handled."""
+        from holodeck.models.tool import DatabaseConfig
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        db_config = DatabaseConfig(
+            provider="in-memory",
+            connection_string="memory://test",
+        )
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test tool",
+            source=str(doc_file),
+            database=db_config,
+        )
+
+        tool = HierarchicalDocumentTool(config)
+        tool._setup_collection("openai")
+
+        assert tool._provider == "in-memory"
+
+    def test_database_config_with_extra_fields(self, tmp_path: Path) -> None:
+        """Test DatabaseConfig with extra fields from model_extra."""
+        from holodeck.models.tool import DatabaseConfig
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        db_config = DatabaseConfig(
+            provider="in-memory",
+            custom_setting="value",  # Extra field via extra="allow"
+        )
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test tool",
+            source=str(doc_file),
+            database=db_config,
+        )
+
+        tool = HierarchicalDocumentTool(config)
+        tool._setup_collection("openai")
+
+        assert tool._provider == "in-memory"
+
+
+class TestMinScoreFiltering:
+    """Tests for min_score filtering in search results."""
+
+    @pytest.mark.asyncio
+    async def test_min_score_filters_low_scores(self, tmp_path: Path) -> None:
+        """Test that results below min_score are filtered out."""
+        config = create_config(tmp_path, min_score=0.7)
+        tool = HierarchicalDocumentTool(config)
+        tool._initialized = True
+        tool._embedding_dimensions = 1536
+
+        mock_embed = AsyncMock()
+        mock_embed.generate_embeddings.return_value = [[0.1] * 1536]
+        tool._embedding_service = mock_embed
+
+        # Create results with varying scores
+        mock_results_data = [
+            {"id": "chunk_0", "content": "A", "score": 0.5},  # Below threshold
+            {"id": "chunk_1", "content": "B", "score": 0.8},  # Above threshold
+            {"id": "chunk_2", "content": "C", "score": 0.6},  # Below threshold
+            {"id": "chunk_3", "content": "D", "score": 0.9},  # Above threshold
+        ]
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_results():
+            for data in mock_results_data:
+                result = MagicMock()
+                result.record = MagicMock()
+                result.record.id = data["id"]
+                result.record.content = data["content"]
+                result.record.source_path = "/test.md"
+                result.record.parent_chain = "[]"
+                result.record.section_id = ""
+                result.score = data["score"]
+                yield result
+
+        mock_search_results = MagicMock()
+        mock_search_results.results = mock_results()
+        mock_collection.search = AsyncMock(return_value=mock_search_results)
+        tool._collection = mock_collection
+
+        results = await tool.search("query")
+
+        # Only scores >= 0.7 should remain
+        assert len(results) == 2
+        assert all(r.fused_score >= 0.7 for r in results)
+
+    @pytest.mark.asyncio
+    async def test_min_score_none_returns_all(self, tmp_path: Path) -> None:
+        """Test that min_score=None returns all results."""
+        config = create_config(tmp_path)  # min_score defaults to None
+        tool = HierarchicalDocumentTool(config)
+        tool._initialized = True
+        tool._embedding_dimensions = 1536
+
+        mock_embed = AsyncMock()
+        mock_embed.generate_embeddings.return_value = [[0.1] * 1536]
+        tool._embedding_service = mock_embed
+
+        mock_results_data = [
+            {"id": "chunk_0", "content": "A", "score": 0.1},
+            {"id": "chunk_1", "content": "B", "score": 0.9},
+        ]
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_results():
+            for data in mock_results_data:
+                result = MagicMock()
+                result.record = MagicMock()
+                result.record.id = data["id"]
+                result.record.content = data["content"]
+                result.record.source_path = "/test.md"
+                result.record.parent_chain = "[]"
+                result.record.section_id = ""
+                result.score = data["score"]
+                yield result
+
+        mock_search_results = MagicMock()
+        mock_search_results.results = mock_results()
+        mock_collection.search = AsyncMock(return_value=mock_search_results)
+        tool._collection = mock_collection
+
+        results = await tool.search("query")
+
+        # All results should be returned
+        assert len(results) == 2
+
+
+class TestGetContext:
+    """Tests for get_context method."""
+
+    @pytest.mark.asyncio
+    async def test_get_context_returns_formatted_string(self, tmp_path: Path) -> None:
+        """Test get_context returns properly formatted context."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._initialized = True
+        tool._embedding_dimensions = 1536
+
+        mock_embed = AsyncMock()
+        mock_embed.generate_embeddings.return_value = [[0.1] * 1536]
+        tool._embedding_service = mock_embed
+
+        mock_result = MagicMock()
+        mock_result.record = MagicMock()
+        mock_result.record.id = "chunk_0"
+        mock_result.record.content = "Test content"
+        mock_result.record.source_path = "/test.md"
+        mock_result.record.parent_chain = "[]"
+        mock_result.record.section_id = ""
+        mock_result.score = 0.85
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_results():
+            yield mock_result
+
+        mock_search_results = MagicMock()
+        mock_search_results.results = mock_results()
+        mock_collection.search = AsyncMock(return_value=mock_search_results)
+        tool._collection = mock_collection
+
+        context = await tool.get_context("test query")
+
+        assert "Context for query: test query" in context
+        assert "[1]" in context
+
+    @pytest.mark.asyncio
+    async def test_get_context_no_results(self, tmp_path: Path) -> None:
+        """Test get_context returns message when no results found."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._initialized = True
+        tool._embedding_dimensions = 1536
+
+        mock_embed = AsyncMock()
+        mock_embed.generate_embeddings.return_value = [[0.1] * 1536]
+        tool._embedding_service = mock_embed
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_results():
+            return
+            yield  # Empty generator
+
+        mock_search_results = MagicMock()
+        mock_search_results.results = mock_results()
+        mock_collection.search = AsyncMock(return_value=mock_search_results)
+        tool._collection = mock_collection
+
+        context = await tool.get_context("test query")
+
+        assert "No relevant context found for: test query" in context
+
+
+class TestGetDefinition:
+    """Tests for get_definition method."""
+
+    def test_get_definition_returns_none_without_glossary(self, tmp_path: Path) -> None:
+        """Test get_definition returns None when no glossary exists."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._glossary = None
+
+        result = tool.get_definition("test term")
+        assert result is None
+
+    def test_get_definition_returns_entry(self, tmp_path: Path) -> None:
+        """Test get_definition returns matching entry from glossary."""
+        from holodeck.lib.definition_extractor import DefinitionEntry
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        # Set up glossary
+        tool._glossary = {
+            "force_majeure": DefinitionEntry(
+                id="def_1",
+                source_path="/test.md",
+                term="Force Majeure",
+                term_normalized="force majeure",
+                definition_text="Events beyond reasonable control",
+                source_section="Definitions",
+            )
+        }
+
+        result = tool.get_definition("Force Majeure")
+        assert result is not None
+        assert result["term"] == "Force Majeure"
+        assert result["definition"] == "Events beyond reasonable control"
+
+    def test_get_definition_normalizes_term(self, tmp_path: Path) -> None:
+        """Test get_definition normalizes term for lookup."""
+        from holodeck.lib.definition_extractor import DefinitionEntry
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        tool._glossary = {
+            "test_term": DefinitionEntry(
+                id="def_1",
+                source_path="/test.md",
+                term="Test Term",
+                term_normalized="test term",
+                definition_text="A test definition",
+                source_section="Definitions",
+            )
+        }
+
+        # Should normalize "Test Term" to "test_term"
+        result = tool.get_definition("Test Term")
+        assert result is not None
+        assert result["term"] == "Test Term"
+
+    def test_get_definition_returns_none_for_missing_term(self, tmp_path: Path) -> None:
+        """Test get_definition returns None for non-existent term."""
+        from holodeck.lib.definition_extractor import DefinitionEntry
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        tool._glossary = {
+            "existing_term": DefinitionEntry(
+                id="def_1",
+                source_path="/test.md",
+                term="Existing Term",
+                term_normalized="existing term",
+                definition_text="Definition",
+                source_section="Definitions",
+            )
+        }
+
+        result = tool.get_definition("nonexistent")
+        assert result is None
+
+
+class TestToSemanticKernelFunction:
+    """Tests for to_semantic_kernel_function method."""
+
+    @pytest.mark.asyncio
+    async def test_sk_function_returns_results(self, tmp_path: Path) -> None:
+        """Test SK function wrapper returns formatted results."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._initialized = True
+        tool._embedding_dimensions = 1536
+
+        mock_embed = AsyncMock()
+        mock_embed.generate_embeddings.return_value = [[0.1] * 1536]
+        tool._embedding_service = mock_embed
+
+        mock_result = MagicMock()
+        mock_result.record = MagicMock()
+        mock_result.record.id = "chunk_0"
+        mock_result.record.content = "Test content"
+        mock_result.record.source_path = "/test.md"
+        mock_result.record.parent_chain = "[]"
+        mock_result.record.section_id = ""
+        mock_result.score = 0.85
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_results():
+            yield mock_result
+
+        mock_search_results = MagicMock()
+        mock_search_results.results = mock_results()
+        mock_collection.search = AsyncMock(return_value=mock_search_results)
+        tool._collection = mock_collection
+
+        sk_func = tool.to_semantic_kernel_function()
+        result = await sk_func("test query")
+
+        assert isinstance(result, str)
+        assert "Test content" in result
+
+    @pytest.mark.asyncio
+    async def test_sk_function_no_results(self, tmp_path: Path) -> None:
+        """Test SK function returns message when no results."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._initialized = True
+        tool._embedding_dimensions = 1536
+
+        mock_embed = AsyncMock()
+        mock_embed.generate_embeddings.return_value = [[0.1] * 1536]
+        tool._embedding_service = mock_embed
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        async def mock_results():
+            return
+            yield  # Empty generator
+
+        mock_search_results = MagicMock()
+        mock_search_results.results = mock_results()
+        mock_collection.search = AsyncMock(return_value=mock_search_results)
+        tool._collection = mock_collection
+
+        sk_func = tool.to_semantic_kernel_function()
+        result = await sk_func("test query")
+
+        assert result == "No results found."
+
+
+class TestRelativePathResolution:
+    """Tests for relative path resolution with context variable."""
+
+    def test_resolve_absolute_path_unchanged(self, tmp_path: Path) -> None:
+        """Test absolute paths are returned unchanged."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test",
+            source=str(doc_file),  # Absolute path
+        )
+        tool = HierarchicalDocumentTool(config)
+
+        resolved = tool._resolve_source_path()
+        assert resolved == doc_file
+
+    def test_resolve_relative_path_with_base_dir(self, tmp_path: Path) -> None:
+        """Test relative path resolved against explicit base_dir."""
+        doc_file = tmp_path / "docs" / "test.md"
+        doc_file.parent.mkdir(parents=True, exist_ok=True)
+        doc_file.write_text("# Test")
+
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test",
+            source="docs/test.md",  # Relative path
+        )
+        tool = HierarchicalDocumentTool(config, base_dir=str(tmp_path))
+
+        resolved = tool._resolve_source_path()
+        assert resolved == doc_file
+
+    def test_resolve_relative_path_with_context_var(self, tmp_path: Path) -> None:
+        """Test relative path resolved using context variable."""
+        from holodeck.config.context import agent_base_dir
+
+        doc_file = tmp_path / "docs" / "test.md"
+        doc_file.parent.mkdir(parents=True, exist_ok=True)
+        doc_file.write_text("# Test")
+
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test",
+            source="docs/test.md",  # Relative path
+        )
+        tool = HierarchicalDocumentTool(config)  # No explicit base_dir
+
+        # Set context variable
+        token = agent_base_dir.set(str(tmp_path))
+        try:
+            resolved = tool._resolve_source_path()
+            assert resolved == doc_file
+        finally:
+            agent_base_dir.reset(token)
+
+    def test_resolve_relative_path_no_context(self, tmp_path: Path) -> None:
+        """Test relative path resolved against cwd when no context."""
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test",
+            source="relative/path.md",  # Relative path
+        )
+        tool = HierarchicalDocumentTool(config)
+
+        # Should resolve relative to cwd
+        resolved = tool._resolve_source_path()
+        assert resolved.is_absolute()
+
+
+class TestDiscoverFiles:
+    """Tests for file discovery."""
+
+    def test_discover_single_file(self, tmp_path: Path) -> None:
+        """Test discovering a single file source."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        files = tool._discover_files()
+        assert len(files) == 1
+        assert files[0] == doc_file
+
+    def test_discover_directory(self, tmp_path: Path) -> None:
+        """Test discovering files in a directory."""
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "file1.md").write_text("# File 1")
+        (docs_dir / "file2.md").write_text("# File 2")
+        (docs_dir / "file3.txt").write_text("Not markdown")
+
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test",
+            source=str(docs_dir),
+        )
+        tool = HierarchicalDocumentTool(config)
+
+        files = tool._discover_files()
+        # Should include .md but also .txt (supported extension)
+        assert len(files) >= 2
+        assert all(f.suffix in [".md", ".txt", ".pdf"] for f in files)
+
+    def test_discover_nested_directory(self, tmp_path: Path) -> None:
+        """Test discovering files recursively in nested directories."""
+        docs_dir = tmp_path / "docs"
+        nested_dir = docs_dir / "nested"
+        nested_dir.mkdir(parents=True)
+        (docs_dir / "root.md").write_text("# Root")
+        (nested_dir / "nested.md").write_text("# Nested")
+
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test",
+            source=str(docs_dir),
+        )
+        tool = HierarchicalDocumentTool(config)
+
+        files = tool._discover_files()
+        file_names = [f.name for f in files]
+        assert "root.md" in file_names
+        assert "nested.md" in file_names
+
+
+class TestNeedsReingest:
+    """Tests for incremental ingestion mtime checking."""
+
+    @pytest.mark.asyncio
+    async def test_needs_reingest_no_collection(self, tmp_path: Path) -> None:
+        """Test needs_reingest returns True when no collection exists."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._collection = None
+
+        result = await tool._needs_reingest(doc_file)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_needs_reingest_file_not_in_store(self, tmp_path: Path) -> None:
+        """Test needs_reingest returns True when file not in store."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.get = AsyncMock(return_value=[])  # No records found
+        tool._collection = mock_collection
+
+        result = await tool._needs_reingest(doc_file)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_needs_reingest_file_unchanged(self, tmp_path: Path) -> None:
+        """Test needs_reingest returns False when file hasn't changed."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+        current_mtime = doc_file.stat().st_mtime
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_record = MagicMock()
+        mock_record.mtime = current_mtime  # Same mtime
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.get = AsyncMock(return_value=[mock_record])
+        tool._collection = mock_collection
+
+        result = await tool._needs_reingest(doc_file)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_needs_reingest_file_modified(self, tmp_path: Path) -> None:
+        """Test needs_reingest returns True when file is modified."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+        current_mtime = doc_file.stat().st_mtime
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_record = MagicMock()
+        mock_record.mtime = current_mtime - 100  # Older mtime
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.get = AsyncMock(return_value=[mock_record])
+        tool._collection = mock_collection
+
+        result = await tool._needs_reingest(doc_file)
+        assert result is True
+
+
+class TestDeleteFileRecords:
+    """Tests for deleting file records from vector store."""
+
+    @pytest.mark.asyncio
+    async def test_delete_file_records_no_collection(self, tmp_path: Path) -> None:
+        """Test delete returns 0 when no collection exists."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._collection = None
+
+        result = await tool._delete_file_records(doc_file)
+        assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_file_records_deletes_all(self, tmp_path: Path) -> None:
+        """Test delete removes all records for a file."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        # Mock records
+        mock_records = [
+            MagicMock(id="chunk_0"),
+            MagicMock(id="chunk_1"),
+            MagicMock(id="chunk_2"),
+        ]
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.get = AsyncMock(return_value=mock_records)
+        mock_collection.delete = AsyncMock()
+        tool._collection = mock_collection
+
+        result = await tool._delete_file_records(doc_file)
+
+        assert result == 3
+        mock_collection.delete.assert_called_once()
+
+
+class TestCollectionSetupFallback:
+    """Tests for collection setup error handling."""
+
+    def test_setup_collection_fallback_on_error(self, tmp_path: Path) -> None:
+        """Test collection setup falls back to in-memory on connection error."""
+        from holodeck.models.tool import DatabaseConfig
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        # Use a provider that will fail
+        db_config = DatabaseConfig(provider="postgres")
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test",
+            source=str(doc_file),
+            database=db_config,
+        )
+
+        tool = HierarchicalDocumentTool(config)
+
+        # Mock get_collection_factory at the source module
+        with patch("holodeck.lib.vector_store.get_collection_factory") as mock_factory:
+            # First call (postgres) raises error, second (in-memory) succeeds
+            mock_inmemory_collection = MagicMock()
+            mock_inmemory_factory = MagicMock(return_value=mock_inmemory_collection)
+            mock_factory.side_effect = [
+                ConnectionError("Failed to connect"),
+                mock_inmemory_factory,
+            ]
+
+            tool._setup_collection("openai")
+
+            # Should have fallen back to in-memory
+            assert tool._provider == "in-memory"
+            assert tool._collection == mock_inmemory_collection

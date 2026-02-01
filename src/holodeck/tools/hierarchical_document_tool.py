@@ -859,6 +859,10 @@ class HierarchicalDocumentTool:
             # Default to semantic for MVP
             results = await self._semantic_search(query_embedding, effective_top_k)
 
+        # Filter by min_score if configured
+        if self.config.min_score is not None:
+            results = [r for r in results if r.fused_score >= self.config.min_score]
+
         return results
 
     async def get_context(self, query: str, max_tokens: int | None = None) -> str:
