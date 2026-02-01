@@ -155,10 +155,12 @@ class HierarchicalDocumentTool:
             self._context_generator = LLMContextGenerator(
                 chat_service=service,
                 max_context_tokens=self.config.context_max_tokens,
+                concurrency=self.config.context_concurrency,
             )
             logger.info(
                 f"LLMContextGenerator created for {self.config.name} "
-                f"(max_context_tokens={self.config.context_max_tokens})"
+                f"(max_tokens={self.config.context_max_tokens}, "
+                f"concurrency={self.config.context_concurrency})"
             )
         else:
             logger.debug("Chat service set for HierarchicalDocumentTool")

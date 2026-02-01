@@ -85,7 +85,7 @@ class ChunkingStrategy(str, Enum):
     """
 
     STRUCTURE = "structure"
-    TOKEN = "token"  # noqa: S105 - Not a password, refers to token-based chunking
+    TOKEN = "token"  # noqa: S105  # nosec B105 - Not a password, token-based chunking
 
 
 class DocumentDomain(str, Enum):
@@ -700,13 +700,6 @@ class HierarchicalDocumentToolConfig(BaseModel):
         description=(
             "Enable contextual embeddings that include document/section context "
             "for improved semantic understanding"
-        ),
-    )
-    context_model: LLMProvider | None = Field(
-        default=None,
-        description=(
-            "LLM for generating contextual summaries. "
-            "If not specified, uses the agent's default model."
         ),
     )
     context_max_tokens: int = Field(

@@ -100,6 +100,7 @@ class LLMContextGenerator:
         execution_settings: "PromptExecutionSettings | None" = None,
         max_context_tokens: int = DEFAULT_MAX_CONTEXT_TOKENS,
         max_document_tokens: int = DEFAULT_MAX_DOCUMENT_TOKENS,
+        concurrency: int | None = None,
         retry_config: RetryConfig | None = None,
     ) -> None:
         """Initialize the LLM Context Generator.
@@ -110,13 +111,16 @@ class LLMContextGenerator:
                 defaults will be used with max_tokens set to max_context_tokens.
             max_context_tokens: Maximum tokens for generated context (default: 100).
             max_document_tokens: Maximum tokens for document truncation (default: 8000).
+            concurrency: Maximum concurrent LLM requests (default: 10).
             retry_config: Configuration for retry logic. Uses defaults if not provided.
         """
         self._chat_service = chat_service
         self._execution_settings = execution_settings
         self._max_context_tokens = max_context_tokens
         self._max_document_tokens = max_document_tokens
-        self._concurrency = self.DEFAULT_CONCURRENCY
+        self._concurrency = (
+            concurrency if concurrency is not None else self.DEFAULT_CONCURRENCY
+        )
         self._retry_config = retry_config or RetryConfig()
         self._encoder = tiktoken.get_encoding("cl100k_base")
 
