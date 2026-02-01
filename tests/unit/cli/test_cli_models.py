@@ -11,30 +11,6 @@ from pydantic import ValidationError
 
 
 @pytest.mark.unit
-def test_project_init_input_model_exists() -> None:
-    """Test that ProjectInitInput model can be imported."""
-    from holodeck.models.project_config import ProjectInitInput
-
-    assert ProjectInitInput is not None
-
-
-@pytest.mark.unit
-def test_project_init_result_model_exists() -> None:
-    """Test that ProjectInitResult model can be imported."""
-    from holodeck.models.project_config import ProjectInitResult
-
-    assert ProjectInitResult is not None
-
-
-@pytest.mark.unit
-def test_template_manifest_model_exists() -> None:
-    """Test that TemplateManifest model can be imported."""
-    from holodeck.models.template_manifest import TemplateManifest
-
-    assert TemplateManifest is not None
-
-
-@pytest.mark.unit
 def test_project_init_input_valid_creation() -> None:
     """Test that ProjectInitInput can be created with valid data."""
     from holodeck.models.project_config import ProjectInitInput

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from holodeck.cli.commands.init import init
@@ -61,52 +62,26 @@ class TestInitCommandBasic:
             assert result.exit_code == 0
             assert Path("my-project").exists()
 
-    def test_init_command_success_message(self):
-        """Test init command displays success message."""
+    @pytest.mark.parametrize(
+        "expected_content,description",
+        [
+            ("Project initialized successfully", "success message"),
+            ("my-project", "project name"),
+            ("Next steps:", "next steps section"),
+            ("Template:", "template used"),
+        ],
+        ids=["success_msg", "project_name", "next_steps", "template"],
+    )
+    def test_init_command_output_contains_expected_content(
+        self, expected_content: str, description: str
+    ):
+        """Test init command output contains expected content."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
             result = self.runner.invoke(
                 init, ["--name", "my-project", "--non-interactive"]
             )
             assert result.exit_code == 0
-            assert "Project initialized successfully" in result.output
-            assert "my-project" in result.output
-
-    def test_init_command_shows_project_location(self):
-        """Test init command shows project location in output."""
-        with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(
-                init, ["--name", "my-project", "--non-interactive"]
-            )
-            assert result.exit_code == 0
-            assert "Location:" in result.output or "project" in result.output.lower()
-
-    def test_init_command_shows_next_steps(self):
-        """Test init command shows next steps in output."""
-        with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(
-                init, ["--name", "my-project", "--non-interactive"]
-            )
-            assert result.exit_code == 0
-            assert "Next steps:" in result.output
-            assert "cd " in result.output or "Edit" in result.output
-
-    def test_init_command_shows_template_used(self):
-        """Test init command displays which template was used."""
-        with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(
-                init, ["--name", "my-project", "--non-interactive"]
-            )
-            assert result.exit_code == 0
-            assert "Template:" in result.output
-
-    def test_init_command_shows_duration(self):
-        """Test init command displays duration in output."""
-        with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(
-                init, ["--name", "my-project", "--non-interactive"]
-            )
-            assert result.exit_code == 0
-            assert "Time:" in result.output or "s" in result.output
+            assert expected_content in result.output
 
     @patch("holodeck.cli.commands.init.ProjectInitializer")
     def test_init_command_calls_initializer(self, mock_initializer_class: Any) -> None:
@@ -147,57 +122,27 @@ class TestInitCommandTemplates:
         if Path(self.temp_dir).exists():
             shutil.rmtree(self.temp_dir)
 
-    def test_init_command_with_conversational_template(self):
-        """Test init command with conversational template."""
+    @pytest.mark.parametrize(
+        "template,check_output",
+        [
+            (None, True),  # Default is conversational
+            ("conversational", True),
+            ("research", False),
+            ("customer-support", False),
+        ],
+        ids=["default", "conversational", "research", "customer-support"],
+    )
+    def test_init_command_with_template(self, template: str | None, check_output: bool):
+        """Test init command with various templates."""
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(
-                init,
-                [
-                    "--name",
-                    "my-project",
-                    "--template",
-                    "conversational",
-                    "--non-interactive",
-                ],
-            )
-            assert result.exit_code == 0
-            assert "conversational" in result.output.lower()
-
-    def test_init_command_with_research_template(self):
-        """Test init command with research template."""
-        with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(
-                init,
-                ["--name", "my-project", "--template", "research", "--non-interactive"],
-            )
+            args = ["--name", "my-project", "--non-interactive"]
+            if template:
+                args.extend(["--template", template])
+            result = self.runner.invoke(init, args)
             assert result.exit_code == 0
             assert Path("my-project").exists()
-
-    def test_init_command_with_customer_support_template(self):
-        """Test init command with customer-support template."""
-        with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(
-                init,
-                [
-                    "--name",
-                    "my-project",
-                    "--template",
-                    "customer-support",
-                    "--non-interactive",
-                ],
-            )
-            assert result.exit_code == 0
-            assert Path("my-project").exists()
-
-    def test_init_command_default_template_is_conversational(self):
-        """Test init command defaults to conversational template."""
-        with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(
-                init, ["--name", "my-project", "--non-interactive"]
-            )
-            assert result.exit_code == 0
-            # Default is conversational
-            assert "conversational" in result.output.lower()
+            if check_output:
+                assert "conversational" in result.output.lower()
 
 
 class TestInitCommandExistingDirectory:
@@ -306,15 +251,26 @@ class TestInitCommandErrorHandling:
         if Path(self.temp_dir).exists():
             shutil.rmtree(self.temp_dir)
 
+    @pytest.mark.parametrize(
+        "exception_class,exception_msg,expected_output",
+        [
+            (ValidationError, "Invalid project name", "Error:"),
+            (InitError, "Failed to initialize project", "Error:"),
+            (RuntimeError, "Something went wrong", "Unexpected error"),
+        ],
+        ids=["validation_error", "init_error", "unexpected_error"],
+    )
     @patch("holodeck.cli.commands.init.ProjectInitializer")
-    def test_init_command_handles_validation_error(
-        self, mock_initializer_class: Any
+    def test_init_command_handles_errors(
+        self,
+        mock_initializer_class: Any,
+        exception_class: type,
+        exception_msg: str,
+        expected_output: str,
     ) -> None:
-        """Test init command handles ValidationError gracefully."""
+        """Test init command handles various exceptions gracefully."""
         mock_initializer = MagicMock()
-        mock_initializer.initialize.side_effect = ValidationError(
-            "Invalid project name"
-        )
+        mock_initializer.initialize.side_effect = exception_class(exception_msg)
         mock_initializer_class.return_value = mock_initializer
 
         with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
@@ -322,39 +278,7 @@ class TestInitCommandErrorHandling:
                 init, ["--name", "my-project", "--non-interactive"]
             )
             assert result.exit_code != 0
-            assert "Error:" in result.output
-
-    @patch("holodeck.cli.commands.init.ProjectInitializer")
-    def test_init_command_handles_init_error(self, mock_initializer_class: Any) -> None:
-        """Test init command handles InitError gracefully."""
-        mock_initializer = MagicMock()
-        mock_initializer.initialize.side_effect = InitError(
-            "Failed to initialize project"
-        )
-        mock_initializer_class.return_value = mock_initializer
-
-        with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(
-                init, ["--name", "my-project", "--non-interactive"]
-            )
-            assert result.exit_code != 0
-            assert "Error:" in result.output
-
-    @patch("holodeck.cli.commands.init.ProjectInitializer")
-    def test_init_command_handles_unexpected_error(
-        self, mock_initializer_class: Any
-    ) -> None:
-        """Test init command handles unexpected errors gracefully."""
-        mock_initializer = MagicMock()
-        mock_initializer.initialize.side_effect = RuntimeError("Something went wrong")
-        mock_initializer_class.return_value = mock_initializer
-
-        with self.runner.isolated_filesystem(temp_dir=self.temp_dir):
-            result = self.runner.invoke(
-                init, ["--name", "my-project", "--non-interactive"]
-            )
-            assert result.exit_code != 0
-            assert "Unexpected error" in result.output
+            assert expected_output in result.output
 
     @patch("holodeck.cli.commands.init.ProjectInitializer")
     def test_init_command_handles_keyboard_interrupt(
