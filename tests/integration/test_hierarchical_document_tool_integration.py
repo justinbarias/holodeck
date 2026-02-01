@@ -821,9 +821,12 @@ class TestDocumentDomainConfiguration:
         assert tool._initialized is True
         assert len(tool._chunks) > 0
 
-        # Check that Step patterns were detected
-        step_chunks = [c for c in tool._chunks if "Step" in c.content]
-        assert len(step_chunks) >= 3, "Step markers should be detected"
+        # Check that Step patterns were detected in subsection_ids
+        all_subsection_ids = []
+        for chunk in tool._chunks:
+            all_subsection_ids.extend(chunk.subsection_ids)
+        step_ids = [sid for sid in all_subsection_ids if "step_" in sid.lower()]
+        assert len(step_ids) >= 3, f"Step markers should be detected, got: {step_ids}"
 
     @pytest.mark.asyncio
     async def test_legal_contract_domain_detects_article_section(
@@ -865,9 +868,14 @@ class TestDocumentDomainConfiguration:
         assert tool._initialized is True
         assert len(tool._chunks) > 0
 
-        # Check that Article/Section patterns were detected
-        article_chunks = [c for c in tool._chunks if "Article" in c.content]
-        assert len(article_chunks) >= 2, "Article markers should be detected"
+        # Check that Article/Section patterns were detected in subsection_ids
+        all_subsection_ids = []
+        for chunk in tool._chunks:
+            all_subsection_ids.extend(chunk.subsection_ids)
+        article_ids = [sid for sid in all_subsection_ids if "article_" in sid.lower()]
+        assert (
+            len(article_ids) >= 2
+        ), f"Article markers should be detected, got: {article_ids}"
 
     @pytest.mark.asyncio
     async def test_max_subsection_depth_limits_detection(self, tmp_path: Path) -> None:
