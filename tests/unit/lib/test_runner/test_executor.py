@@ -2290,69 +2290,27 @@ class TestExecutorComponentCreation:
 
     @pytest.mark.asyncio
     async def test_extract_response_text_empty_history(self):
-        """Test _extract_response_text with empty chat history."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.llm import LLMProvider, ProviderEnum
+        """Test extract_last_assistant_content with empty chat history.
 
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[],
-            evaluations=None,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-        )
+        Note: This tests the shared utility function from chat_history_utils.
+        """
+        from holodeck.lib.chat_history_utils import extract_last_assistant_content
 
         # Test with None chat history
-        result = executor._extract_response_text(None)
+        result = extract_last_assistant_content(None)  # type: ignore
         assert result == ""
 
     @pytest.mark.asyncio
     async def test_extract_tool_names_malformed(self):
-        """Test _extract_tool_names with malformed tool calls."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.llm import LLMProvider, ProviderEnum
+        """Test extract_tool_names with malformed tool calls.
 
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[],
-            evaluations=None,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-        )
+        Note: This tests the shared utility function from chat_history_utils.
+        """
+        from holodeck.lib.chat_history_utils import extract_tool_names
 
         # Test with tool calls missing 'name' key
         tool_calls = [{"arguments": "test"}, {"name": "valid_tool"}]
-        result = executor._extract_tool_names(tool_calls)
+        result = extract_tool_names(tool_calls)
         assert result == ["valid_tool"]
 
     @pytest.mark.asyncio
