@@ -28,6 +28,14 @@ from holodeck.lib.vector_store import (
     StructuredQueryResult,
     convert_document_to_query_result,
 )
+from holodeck.tools.base_tool import DatabaseConfigMixin, EmbeddingServiceMixin
+from holodeck.tools.common import (
+    SUPPORTED_EXTENSIONS,
+    discover_files,
+    generate_placeholder_embeddings,
+    get_file_type,
+    resolve_source_path,
+)
 
 if TYPE_CHECKING:
     from holodeck.models.config import ExecutionConfig
@@ -36,13 +44,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Supported file extensions for ingestion
-SUPPORTED_EXTENSIONS: frozenset[str] = frozenset(
-    {".txt", ".md", ".pdf", ".csv", ".json"}
-)
-
-
-class VectorStoreTool:
+class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
     """Vectorstore tool for semantic search over unstructured data.
 
     This tool enables agents to perform semantic search over documents by:
@@ -52,6 +54,10 @@ class VectorStoreTool:
     4. Generating embeddings via Semantic Kernel services
     5. Storing document chunks in a vector database
     6. Performing similarity search on queries
+
+    Inherits from:
+        EmbeddingServiceMixin: Provides set_embedding_service() method
+        DatabaseConfigMixin: Provides database config resolution and collection creation
 
     Attributes:
         config: Tool configuration from agent.yaml
@@ -129,18 +135,7 @@ class VectorStoreTool:
             f"source={config.source}, base_dir={base_dir}, top_k={config.top_k}"
         )
 
-    def set_embedding_service(self, service: Any) -> None:
-        """Set the embedding service for generating embeddings.
-
-        This method allows AgentFactory to inject a Semantic Kernel TextEmbedding
-        service for generating real embeddings instead of placeholder zeros.
-
-        Args:
-            service: Semantic Kernel TextEmbedding service instance
-                (OpenAITextEmbedding or AzureTextEmbedding).
-        """
-        self._embedding_service = service
-        logger.debug(f"Embedding service set for tool: {self.config.name}")
+    # set_embedding_service is inherited from EmbeddingServiceMixin
 
     def _is_structured_mode(self) -> bool:
         """Check if tool is configured for structured data mode.
@@ -196,12 +191,8 @@ class VectorStoreTool:
     ) -> None:
         """Set up the collection instance based on database configuration.
 
-        Uses config.database to determine the vector store provider.
-        Defaults to in-memory if no database is configured.
-        Falls back to in-memory storage if database connection fails.
-
-        Creates a persistent collection instance that is reused for both
-        storing and searching documents.
+        Uses DatabaseConfigMixin methods for config resolution and collection creation
+        with automatic fallback to in-memory storage.
 
         Args:
             provider_type: LLM provider type for dimension resolution
@@ -213,69 +204,20 @@ class VectorStoreTool:
         # Resolve dimensions before creating collection
         if self._embedding_dimensions is None:
             self._embedding_dimensions = self._resolve_dimensions(provider_type)
-        # Handle database configuration (can be DatabaseConfig, string ref, or None)
-        database = self.config.database
-        if isinstance(database, str):
-            # Unresolved string reference - this shouldn't happen if merge_configs
-            # was called, but fall back to in-memory with a warning
-            logger.warning(
-                f"Vectorstore tool '{self.config.name}' has unresolved database "
-                f"reference '{database}'. Falling back to in-memory storage."
-            )
-            self._provider = "in-memory"
-            connection_kwargs: dict[str, Any] = {}
-        elif database is not None:
-            # DatabaseConfig object - use its settings
-            self._provider = database.provider
-            connection_kwargs = {}
-            if database.connection_string:
-                connection_kwargs["connection_string"] = database.connection_string
-            # Add extra fields from DatabaseConfig (extra="allow")
-            if hasattr(database, "model_extra"):
-                extra_fields = database.model_extra or {}
-                connection_kwargs.update(extra_fields)
-        else:
-            # None - use in-memory
-            self._provider = "in-memory"
-            connection_kwargs = {}
 
-        # Create persistent collection instance with fallback
-        try:
-            from holodeck.lib.vector_store import get_collection_factory
+        # Use mixin to resolve database config
+        provider, connection_kwargs = self._resolve_database_config(
+            self.config.database
+        )
 
-            factory = get_collection_factory(
-                provider=self._provider,
-                dimensions=self._embedding_dimensions,
-                record_class=record_class,
-                definition=definition,
-                **connection_kwargs,
-            )
-            self._collection = factory()
-            logger.info(
-                f"Vector store connected: provider={self._provider}, "
-                f"dimensions={self._embedding_dimensions}"
-            )
-        except (ImportError, ConnectionError, Exception) as e:
-            # Fall back to in-memory storage for non-in-memory providers
-            if self._provider != "in-memory":
-                logger.warning(
-                    f"Failed to connect to {self._provider}: {e}. "
-                    "Falling back to in-memory storage."
-                )
-                self._provider = "in-memory"
-                from holodeck.lib.vector_store import get_collection_factory
-
-                factory = get_collection_factory(
-                    provider="in-memory",
-                    dimensions=self._embedding_dimensions,
-                    record_class=record_class,
-                    definition=definition,
-                )
-                self._collection = factory()
-                logger.info("Using in-memory vector storage (fallback)")
-            else:
-                # Don't catch errors for in-memory provider
-                raise
+        # Use mixin to create collection with fallback
+        self._collection = self._create_collection_with_fallback(
+            provider=provider,
+            dimensions=self._embedding_dimensions,
+            connection_kwargs=connection_kwargs,
+            record_class=record_class,
+            definition=definition,
+        )
 
         logger.debug(
             f"Collection created for provider: {self._provider}, "
@@ -300,77 +242,23 @@ class VectorStoreTool:
     def _resolve_source_path(self) -> Path:
         """Resolve the source path relative to base directory.
 
-        This method handles:
-        - Absolute paths: returned as-is
-        - Relative paths: resolved relative to base_dir in this order:
-          1. Explicit base_dir passed to constructor
-          2. agent_base_dir context variable (set by CLI commands)
-          3. Current working directory (fallback)
+        Delegates to common.resolve_source_path utility.
 
         Returns:
             Resolved absolute Path to the source.
         """
-        source_path = Path(self.config.source)
-
-        # If path is absolute, use it directly
-        if source_path.is_absolute():
-            return source_path
-
-        # Resolve relative to base directory
-        # Priority: explicit base_dir > context var > cwd
-        base_dir = self._base_dir
-        if base_dir is None:
-            # Try to get from context variable
-            from holodeck.config.context import agent_base_dir
-
-            base_dir = agent_base_dir.get()
-
-        if base_dir:
-            return (Path(base_dir) / self.config.source).resolve()
-
-        return source_path.resolve()
+        return resolve_source_path(self.config.source, self._base_dir)
 
     def _discover_files(self) -> list[Path]:
         """Discover files to ingest from configured source.
 
-        Recursively traverses directories and filters by supported extensions.
-        Source path is resolved relative to base_dir if set.
+        Delegates to common.discover_files utility.
 
         Returns:
             List of Path objects for files to process.
-
-        Note:
-            This method does not validate file existence - that happens
-            during initialization.
         """
         source_path = self._resolve_source_path()
-
-        if source_path.is_file():
-            # Single file - check if supported
-            if source_path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                return [source_path]
-            logger.warning(
-                f"File {source_path} has unsupported extension "
-                f"{source_path.suffix}. Supported: {SUPPORTED_EXTENSIONS}"
-            )
-            return []
-
-        if source_path.is_dir():
-            # Directory - recursively find all supported files
-            discovered: list[Path] = []
-            for file_path in source_path.rglob("*"):
-                if file_path.is_file():
-                    if file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
-                        discovered.append(file_path)
-                    else:
-                        logger.debug(
-                            f"Skipping unsupported file: {file_path} "
-                            f"(extension: {file_path.suffix})"
-                        )
-            return discovered
-
-        # Path doesn't exist - return empty list (error handled in initialize)
-        return []
+        return discover_files(source_path)
 
     async def _process_file(self, file_path: Path) -> SourceFile | None:
         """Process a single file into a SourceFile with chunks.
@@ -404,20 +292,10 @@ class VectorStoreTool:
             # Convert to markdown using FileProcessor
             from holodeck.models.test_case import FileInput
 
-            # Map file extensions to FileInput type values
-            type_mapping = {
-                ".txt": "text",
-                ".md": "text",
-                ".pdf": "pdf",
-                ".csv": "csv",
-                ".json": "text",
-            }
-            file_type = type_mapping.get(file_path.suffix.lower(), "text")
-
             file_input = FileInput(
                 path=str(file_path),
                 url=None,
-                type=file_type,
+                type=get_file_type(file_path),
                 description=None,
                 pages=None,
                 sheet=None,
@@ -515,12 +393,8 @@ class VectorStoreTool:
         if self._embedding_dimensions is None:
             self._embedding_dimensions = 1536
 
-        placeholder: list[list[float]] = [
-            [0.0] * self._embedding_dimensions for _ in chunks
-        ]
-        logger.debug(
-            f"Generated {len(chunks)} placeholder embeddings, "
-            f"dim={self._embedding_dimensions}"
+        placeholder = generate_placeholder_embeddings(
+            len(chunks), self._embedding_dimensions
         )
         return placeholder
 
