@@ -6,118 +6,24 @@ that combine semantic (vector) similarity with keyword (full-text) matching.
 Key Features:
 - SearchResult dataclass for unified result representation
 - Reciprocal Rank Fusion (RRF) for merging ranked result lists
-- Exact match index for section IDs and quoted phrases
-- Pattern detection for identifying exact match queries
 
 Usage:
     from holodeck.lib.hybrid_search import (
         SearchResult,
         reciprocal_rank_fusion,
-        ExactMatchIndex,
-        is_exact_match_query,
     )
 
     # Merge results from multiple search modalities
     fused = reciprocal_rank_fusion([semantic_results, keyword_results], k=60)
-
-    # Check if query is an exact match query
-    if is_exact_match_query("Section 203(a)(1)"):
-        # Route to exact match search
-        ...
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from holodeck.lib.definition_extractor import DefinitionEntry
-
-
-# Regex patterns for exact match query detection
-
-# Section ID patterns: "Section 203", "203(a)(1)", "§4.2", "1.2.3"
-SECTION_ID_PATTERN = re.compile(
-    r"^(?:Section\s+)?(\d+(?:\.\d+)*(?:\([a-zA-Z0-9]+\))*)$",
-    re.IGNORECASE,
-)
-
-# Section symbol pattern: "§4.2", "§ 4.2.1"
-SECTION_SYMBOL_PATTERN = re.compile(
-    r"^§\s*(\d+(?:\.\d+)*)$",
-    re.IGNORECASE,
-)
-
-# Numbered section pattern: "1.2.3", "4.5"
-NUMBERED_SECTION_PATTERN = re.compile(
-    r"^(\d+(?:\.\d+)+)$",
-)
-
-# Quoted exact phrase pattern: "Force Majeure", "reasonable best efforts"
-EXACT_PHRASE_PATTERN = re.compile(r'^"([^"]+)"$')
-
-
-def is_exact_match_query(query: str) -> bool:
-    """Check if query is a section ID or quoted exact phrase.
-
-    Detects queries that should be routed to exact match search:
-    - Section references: "Section 203", "203(a)(1)", "§4.2"
-    - Numbered sections: "1.2.3"
-    - Quoted phrases: "Force Majeure"
-
-    Args:
-        query: Search query string
-
-    Returns:
-        True if query matches exact match patterns, False otherwise
-
-    Example:
-        >>> is_exact_match_query("Section 203(a)(1)")
-        True
-        >>> is_exact_match_query('"Force Majeure"')
-        True
-        >>> is_exact_match_query("What are the reporting requirements?")
-        False
-    """
-    query = query.strip()
-
-    # Check all patterns: quoted phrase, section symbol, numbered section, section ID
-    return bool(
-        EXACT_PHRASE_PATTERN.match(query)
-        or SECTION_SYMBOL_PATTERN.match(query)
-        or NUMBERED_SECTION_PATTERN.match(query)
-        or SECTION_ID_PATTERN.match(query)
-    )
-
-
-def extract_exact_query(query: str) -> str:
-    """Extract the exact term from a query.
-
-    Removes outer quotes from quoted phrases, otherwise returns
-    the query as-is (for section ID queries).
-
-    Args:
-        query: Query string (may be quoted or section ID)
-
-    Returns:
-        Extracted exact term without outer quotes
-
-    Example:
-        >>> extract_exact_query('"Force Majeure"')
-        'Force Majeure'
-        >>> extract_exact_query("Section 203")
-        'Section 203'
-    """
-    query = query.strip()
-
-    # Remove quotes from exact phrase
-    match = EXACT_PHRASE_PATTERN.match(query)
-    if match:
-        return match.group(1)
-
-    return query
 
 
 def reciprocal_rank_fusion(
@@ -186,114 +92,6 @@ def reciprocal_rank_fusion(
         return normalized
 
     return sorted_results
-
-
-class ExactMatchIndex:
-    """Index for fast exact section ID and phrase lookup.
-
-    Maintains mappings for:
-    - Section ID → chunk IDs (for "Section 203(a)(1)" queries)
-    - Content → chunk IDs (for exact phrase search)
-
-    This enables O(1) lookup for section ID queries and efficient
-    phrase matching for quoted search terms.
-
-    Example:
-        >>> index = ExactMatchIndex()
-        >>> index.build([
-        ...     ("chunk1", "Section 1.1", "Content about policies"),
-        ...     ("chunk2", "Section 1.2", "Content about compliance"),
-        ... ])
-        >>> index.search_section("Section 1.1")
-        ['chunk1']
-    """
-
-    def __init__(self) -> None:
-        """Initialize empty exact match index."""
-        self._section_to_chunks: dict[str, list[str]] = {}
-        self._chunks_content: dict[str, str] = {}
-
-    def build(self, chunks: list[tuple[str, str, str]]) -> None:
-        """Build exact match index from chunks.
-
-        Args:
-            chunks: List of (chunk_id, section_id, content) tuples.
-                section_id is used for section lookup.
-                content is used for phrase search.
-
-        Example:
-            >>> index.build([
-            ...     ("chunk1", "203(a)(1)", "Force Majeure means..."),
-            ...     ("chunk2", "203(a)(2)", "Other content here..."),
-            ... ])
-        """
-        self._section_to_chunks.clear()
-        self._chunks_content.clear()
-
-        for chunk_id, section_id, content in chunks:
-            # Index by section ID
-            if section_id:
-                if section_id not in self._section_to_chunks:
-                    self._section_to_chunks[section_id] = []
-                self._section_to_chunks[section_id].append(chunk_id)
-
-            # Store content for phrase search
-            self._chunks_content[chunk_id] = content
-
-    def search_section(self, section_id: str) -> list[str]:
-        """Find chunks matching exact section ID.
-
-        Args:
-            section_id: Section identifier (e.g., "203(a)(1)", "Section 1.2")
-
-        Returns:
-            List of chunk IDs matching the section ID
-
-        Example:
-            >>> index.search_section("203(a)(1)")
-            ['chunk1']
-        """
-        # Try exact match first
-        if section_id in self._section_to_chunks:
-            return self._section_to_chunks[section_id]
-
-        # Try with "Section " prefix removed/added
-        normalized = section_id.replace("Section ", "").strip()
-        if normalized in self._section_to_chunks:
-            return self._section_to_chunks[normalized]
-
-        prefixed = f"Section {normalized}"
-        if prefixed in self._section_to_chunks:
-            return self._section_to_chunks[prefixed]
-
-        return []
-
-    def search_phrase(self, phrase: str, top_k: int = 10) -> list[str]:
-        """Find chunks containing exact phrase.
-
-        Performs case-insensitive substring matching on chunk content.
-
-        Args:
-            phrase: Exact phrase to search for
-            top_k: Maximum number of results to return
-
-        Returns:
-            List of chunk IDs containing the phrase
-
-        Example:
-            >>> index.search_phrase("Force Majeure")
-            ['chunk1', 'chunk3']
-        """
-        phrase_lower = phrase.lower()
-        matches: list[str] = []
-
-        for chunk_id, content in self._chunks_content.items():
-            if phrase_lower in content.lower():
-                matches.append(chunk_id)
-                if len(matches) >= top_k:
-                    break
-
-        return matches
 
 
 @dataclass

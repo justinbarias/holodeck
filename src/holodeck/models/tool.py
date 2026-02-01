@@ -66,13 +66,11 @@ class SearchMode(str, Enum):
     Defines which search indices are used during query:
     - SEMANTIC: Dense embeddings only (conceptual similarity)
     - KEYWORD: BM25 sparse index only (term frequency)
-    - EXACT: Exact section ID or phrase match only
-    - HYBRID: All modalities combined with RRF fusion
+    - HYBRID: Keyword + semantic combined with RRF fusion
     """
 
     SEMANTIC = "semantic"
     KEYWORD = "keyword"
-    EXACT = "exact"
     HYBRID = "hybrid"
 
 

@@ -806,74 +806,6 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         return results
 
-    async def _exact_search(
-        self,
-        query: str,
-        top_k: int,
-    ) -> list[SearchResult]:
-        """Perform exact match search for section IDs or quoted phrases.
-
-        Args:
-            query: Search query (section ID or quoted phrase).
-            top_k: Number of results to return.
-
-        Returns:
-            List of SearchResult objects with exact matches.
-        """
-        from holodeck.lib.hybrid_search import extract_exact_query, is_exact_match_query
-
-        if self._hybrid_executor is None or self._hybrid_executor._exact_index is None:
-            logger.warning("Exact match index not available, returning empty results")
-            return []
-
-        # Determine query type and search
-        if is_exact_match_query(query):
-            exact_term = extract_exact_query(query)
-
-            if query.startswith('"') and query.endswith('"'):
-                # Quoted phrase search
-                chunk_ids = self._hybrid_executor._exact_index.search_phrase(
-                    exact_term, top_k
-                )
-            else:
-                # Section ID search
-                chunk_ids = self._hybrid_executor._exact_index.search_section(
-                    exact_term
-                )[:top_k]
-        else:
-            # Not an exact match query, return empty
-            return []
-
-        # Convert to SearchResult objects
-        results: list[SearchResult] = []
-        chunk_map = {chunk.id: chunk for chunk in self._chunks}
-
-        for i, chunk_id in enumerate(chunk_ids):
-            chunk = chunk_map.get(chunk_id)
-            if chunk is None:
-                continue
-
-            # Exact matches get high score, decreasing by rank
-            score = 1.0 - (i * 0.01)
-
-            results.append(
-                SearchResult(
-                    chunk_id=chunk_id,
-                    content=chunk.content,
-                    fused_score=score,
-                    source_path=chunk.source_path,
-                    parent_chain=chunk.parent_chain,
-                    section_id=chunk.section_id,
-                    subsection_ids=chunk.subsection_ids,
-                    semantic_score=None,
-                    keyword_score=None,
-                    exact_match=True,
-                    definitions_context=[],
-                )
-            )
-
-        return results
-
     async def initialize(
         self, force_ingest: bool = False, provider_type: str | None = None
     ) -> None:
@@ -951,8 +883,6 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         # Route to appropriate search mode
         if self.config.search_mode == SearchMode.KEYWORD:
             results = await self._keyword_search(query, effective_top_k)
-        elif self.config.search_mode == SearchMode.EXACT:
-            results = await self._exact_search(query, effective_top_k)
         elif self.config.search_mode == SearchMode.HYBRID:
             results = await self._hybrid_search(query, query_embedding, effective_top_k)
         else:

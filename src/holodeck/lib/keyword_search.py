@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 from opentelemetry import trace
 
 if TYPE_CHECKING:
-    from holodeck.lib.hybrid_search import ExactMatchIndex
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -239,8 +239,7 @@ class HybridSearchExecutor:
     """Executes hybrid search using appropriate strategy for provider.
 
     Routes search requests to either native hybrid search or BM25 fallback
-    based on the provider's capabilities. Handles exact match boosting
-    for section ID queries (SC-002 compliance).
+    based on the provider's capabilities.
 
     Attributes:
         provider: Vector store provider name
@@ -253,9 +252,6 @@ class HybridSearchExecutor:
         >>> results = await executor.search(query, embedding, top_k=10)
     """
 
-    # Boost factor for exact matches to ensure top-result position (SC-002)
-    EXACT_MATCH_BOOST = 10.0
-
     def __init__(self, provider: str, collection: Any) -> None:
         """Initialize the hybrid search executor.
 
@@ -267,7 +263,6 @@ class HybridSearchExecutor:
         self.collection = collection
         self.strategy = get_keyword_search_strategy(provider)
         self._bm25_index: BM25FallbackProvider | None = None
-        self._exact_index: ExactMatchIndex | None = None
 
         logger.debug(
             f"HybridSearchExecutor initialized: provider={provider}, "
@@ -275,11 +270,11 @@ class HybridSearchExecutor:
         )
 
     def build_bm25_index(self, documents: list[tuple[str, str, str]]) -> None:
-        """Build BM25 and exact match indices with graceful degradation.
+        """Build BM25 index with graceful degradation.
 
-        Creates both the BM25 sparse index and exact match index from
-        the provided documents. If BM25 build fails, logs a warning and
-        continues with semantic-only search.
+        Creates the BM25 sparse index from the provided documents.
+        If BM25 build fails, logs a warning and continues with
+        semantic-only search.
 
         Args:
             documents: List of (chunk_id, section_id, contextualized_content)
@@ -292,9 +287,6 @@ class HybridSearchExecutor:
             ...     ("chunk2", "Section 1.2", "Context: ... More content"),
             ... ])
         """
-        # Import here to avoid circular imports
-        from holodeck.lib.hybrid_search import ExactMatchIndex
-
         # Build BM25 index with graceful degradation
         try:
             self._bm25_index = BM25FallbackProvider(k1=1.5, b=0.75)
@@ -308,15 +300,6 @@ class HybridSearchExecutor:
             )
             self._bm25_index = None
 
-        # Build exact match index
-        try:
-            self._exact_index = ExactMatchIndex()
-            self._exact_index.build(documents)
-            logger.debug(f"Built exact match index with {len(documents)} documents")
-        except Exception as e:
-            logger.warning(f"Exact match index build failed: {e}")
-            self._exact_index = None
-
     async def search(
         self,
         query: str,
@@ -326,8 +309,6 @@ class HybridSearchExecutor:
         """Execute hybrid search and return ranked results.
 
         Routes to native hybrid search or BM25 fallback based on provider.
-        Applies exact match boosting for section ID queries to ensure
-        they appear at position 1 (SC-002 compliance).
 
         Args:
             query: Search query string
@@ -340,11 +321,11 @@ class HybridSearchExecutor:
 
         Example:
             >>> results = await executor.search(
-            ...     "Section 203(a)(1)",
+            ...     "reporting requirements",
             ...     [0.1, 0.2, ...],
             ...     top_k=10
             ... )
-            [('chunk_203a1', 0.95), ('chunk_other', 0.72), ...]
+            [('chunk_report', 0.95), ('chunk_other', 0.72), ...]
         """
         with tracer.start_as_current_span(
             "hybrid_search.execute",
@@ -354,55 +335,18 @@ class HybridSearchExecutor:
                 "search.top_k": top_k,
             },
         ) as span:
-            # Check for exact match query (section IDs, quoted phrases)
-            from holodeck.lib.hybrid_search import (
-                extract_exact_query,
-                is_exact_match_query,
-            )
-
-            exact_results: list[tuple[str, float]] = []
-            if is_exact_match_query(query) and self._exact_index is not None:
-                exact_term = extract_exact_query(query)
-
-                # Check if it's a quoted phrase or section ID
-                if query.startswith('"') and query.endswith('"'):
-                    exact_chunk_ids = self._exact_index.search_phrase(
-                        exact_term, top_k=top_k
-                    )
-                else:
-                    exact_chunk_ids = self._exact_index.search_section(exact_term)
-
-                # Apply exact match boost (SC-002)
-                exact_results = [
-                    (chunk_id, self.EXACT_MATCH_BOOST) for chunk_id in exact_chunk_ids
-                ]
-
             # Execute hybrid search based on strategy
             if self.strategy == KeywordSearchStrategy.NATIVE_HYBRID:
-                hybrid_results = await self._native_hybrid_search(
+                results = await self._native_hybrid_search(
                     query, query_embedding, top_k
                 )
             else:
-                hybrid_results = await self._fallback_hybrid_search(
+                results = await self._fallback_hybrid_search(
                     query, query_embedding, top_k
                 )
-
-            # Combine exact matches with hybrid results
-            if exact_results:
-                from holodeck.lib.hybrid_search import reciprocal_rank_fusion
-
-                # Exact matches get priority via boosting
-                combined = reciprocal_rank_fusion(
-                    [exact_results, hybrid_results],
-                    k=60,
-                    weights=[2.0, 1.0],  # Weight exact matches higher
-                )
-                results = combined[:top_k]
-            else:
-                results = hybrid_results[:top_k]
 
             span.set_attribute("search.result_count", len(results))
-            return results
+            return results[:top_k]
 
     async def _native_hybrid_search(
         self,
