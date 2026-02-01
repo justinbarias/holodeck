@@ -228,7 +228,7 @@
 
 ### TDD: Write Tests First
 
-- [ ] T060 [TDD][US3] Add test cases to tests/unit/lib/test_structured_chunker.py for structure enhancements:
+- [x] T060 [TDD][US3] Add test cases to tests/unit/lib/test_structured_chunker.py for structure enhancements:
   - Test normalized section_id generation (e.g., "sec_1_2_3")
   - Test heading level tracking (1-6 for H1-H6, 0 for body)
   - Test chunk_type classification from heading keywords
@@ -236,19 +236,19 @@
 
 ### Implementation: Enhanced Structure Parsing
 
-- [ ] T061 [US3] Enhance `StructuredChunker` to generate normalized section_id from heading text (e.g., "sec_1_2_3") per data-model.md:36-37
-- [ ] T062 [US3] Implement heading level tracking (1-6 for H1-H6, 0 for body content) per data-model.md:39
-- [ ] T063 [US3] Implement chunk_type classification based on heading keywords and content patterns per data-model.md:37-38
+- [x] T061 [US3] Enhance `StructuredChunker` to generate normalized section_id from heading text (e.g., "sec_1_2_3") per data-model.md:36-37
+- [x] T062 [US3] Implement heading level tracking (1-6 for H1-H6, 0 for body content) per data-model.md:39
+- [x] T063 [US3] Implement chunk_type classification based on heading keywords and content patterns per data-model.md:37-38
 
 ### Implementation: Markitdown Integration
 
-- [ ] T064 [US3] Integrate with existing markitdown for PDF/Word/HTML → Markdown conversion per plan.md:73-79
-- [ ] T065 [US3] Ensure heading levels from converted documents map correctly to hierarchical depth per spec.md:63
+- [x] T064 [US3] Integrate with existing markitdown for PDF/Word/HTML → Markdown conversion per plan.md:73-79
+- [x] T065 [US3] Ensure heading levels from converted documents map correctly to hierarchical depth per spec.md:63
 
 ### Implementation: Parent Chain Metadata
 
-- [ ] T066 [US3] Store parent_chain as JSON string in vector store record per data-model.md:479
-- [ ] T067 [US3] Include parent_chain in SearchResult for display per data-model.md:95
+- [x] T066 [US3] Store parent_chain as JSON string in vector store record per data-model.md:479
+- [x] T067 [US3] Include parent_chain in SearchResult for display per data-model.md:95
 
 **Checkpoint**: Structure-aware ingestion working - chunks retain full hierarchical context. All US3 unit tests pass.
 
