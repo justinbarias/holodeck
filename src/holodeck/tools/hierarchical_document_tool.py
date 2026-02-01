@@ -140,15 +140,40 @@ class HierarchicalDocumentTool:
         """Set the chat service for LLM context generation.
 
         This enables contextual embeddings via the LLMContextGenerator.
+        When contextual_embeddings is enabled in config, this also creates
+        the LLMContextGenerator instance.
 
         Args:
             service: Semantic Kernel ChatCompletion service instance.
         """
         self._chat_service = service
-        logger.debug("Chat service set for HierarchicalDocumentTool")
 
-    def _setup_collection(self) -> None:
-        """Set up the vector store collection for chunk storage."""
+        # Create LLMContextGenerator if contextual embeddings are enabled
+        if self.config.contextual_embeddings and service is not None:
+            from holodeck.lib.llm_context_generator import LLMContextGenerator
+
+            self._context_generator = LLMContextGenerator(
+                chat_service=service,
+                max_context_tokens=self.config.context_max_tokens,
+            )
+            logger.info(
+                f"LLMContextGenerator created for {self.config.name} "
+                f"(max_context_tokens={self.config.context_max_tokens})"
+            )
+        else:
+            logger.debug("Chat service set for HierarchicalDocumentTool")
+
+    def _setup_collection(self, provider_type: str = "openai") -> None:
+        """Set up the vector store collection for chunk storage.
+
+        Uses config.database to determine the vector store provider.
+        Defaults to in-memory if no database is configured.
+        Falls back to in-memory storage if database connection fails.
+
+        Args:
+            provider_type: LLM provider type for dimension resolution
+                (e.g., "openai", "azure_openai", "ollama").
+        """
         from holodeck.lib.vector_store import (
             create_hierarchical_document_record_class,
             get_collection_factory,
@@ -156,20 +181,74 @@ class HierarchicalDocumentTool:
 
         # Resolve embedding dimensions if not set
         if self._embedding_dimensions is None:
-            self._embedding_dimensions = 1536  # Default
+            from holodeck.config.defaults import get_embedding_dimensions
+
+            self._embedding_dimensions = get_embedding_dimensions(
+                model_name=None, provider=provider_type
+            )
+
+        # Handle database configuration (can be DatabaseConfig, string ref, or None)
+        database = self.config.database
+        if isinstance(database, str):
+            # Unresolved string reference - this shouldn't happen if merge_configs
+            # was called, but fall back to in-memory with a warning
+            logger.warning(
+                f"HierarchicalDocumentTool '{self.config.name}' has unresolved "
+                f"database reference '{database}'. Falling back to in-memory."
+            )
+            self._provider = "in-memory"
+            connection_kwargs: dict[str, Any] = {}
+        elif database is not None:
+            # DatabaseConfig object - use its settings
+            self._provider = database.provider
+            connection_kwargs = {}
+            if database.connection_string:
+                connection_kwargs["connection_string"] = database.connection_string
+            # Add extra fields from DatabaseConfig (extra="allow")
+            if hasattr(database, "model_extra"):
+                extra_fields = database.model_extra or {}
+                connection_kwargs.update(extra_fields)
+        else:
+            # None - use in-memory
+            self._provider = "in-memory"
+            connection_kwargs = {}
 
         # Create record class with correct dimensions and tool name
         record_class = create_hierarchical_document_record_class(
             self._embedding_dimensions, self.config.name
         )
 
-        # Create collection factory
-        factory = get_collection_factory(
-            provider=self._provider,
-            dimensions=self._embedding_dimensions,
-            record_class=record_class,
-        )
-        self._collection = factory()
+        # Create collection factory with fallback
+        try:
+            factory = get_collection_factory(
+                provider=self._provider,
+                dimensions=self._embedding_dimensions,
+                record_class=record_class,
+                **connection_kwargs,
+            )
+            self._collection = factory()
+            logger.info(
+                f"Vector store connected: provider={self._provider}, "
+                f"dimensions={self._embedding_dimensions}"
+            )
+        except (ImportError, ConnectionError, Exception) as e:
+            # Fall back to in-memory storage for non-in-memory providers
+            if self._provider != "in-memory":
+                logger.warning(
+                    f"Failed to connect to {self._provider}: {e}. "
+                    "Falling back to in-memory storage."
+                )
+                self._provider = "in-memory"
+                factory = get_collection_factory(
+                    provider="in-memory",
+                    dimensions=self._embedding_dimensions,
+                    record_class=record_class,
+                )
+                self._collection = factory()
+                logger.info("Using in-memory vector storage (fallback)")
+            else:
+                # Don't catch errors for in-memory provider
+                raise
 
         logger.debug(
             f"Collection setup: provider={self._provider}, "
@@ -266,24 +345,24 @@ class HierarchicalDocumentTool:
         if self._collection is None:
             return True  # No collection, must ingest
 
-        # Round to 6 decimal places to match stored precision
-        current_mtime = round(file_path.stat().st_mtime, 6)
-
-        # Match chunk ID format from StructuredChunker
-        # (slashes replaced with underscores)
-        source_name = str(file_path).replace("/", "_").replace("\\", "_")
+        current_mtime = file_path.stat().st_mtime
+        source_path_str = str(file_path)
 
         async with self._collection as collection:
             try:
-                # Get first chunk to check mtime (all chunks share same mtime)
-                record_id = f"{source_name}_chunk_0"
-                record = await collection.get(record_id)
+                # Get first available record for this file to check mtime
+                # (all chunks from the same file share the same mtime)
+                records = await collection.get(
+                    top=1,
+                    filter=lambda r: r.source_path == source_path_str,
+                )
 
-                if record is None:
+                if not records:
                     return True  # Not in store, must ingest
 
-                stored_mtime: float = float(record.mtime)
-                return current_mtime > stored_mtime
+                stored_mtime = float(records[0].mtime)
+                # Use tolerance to handle floating-point precision loss in storage
+                return current_mtime - stored_mtime > 0.001
 
             except Exception as e:
                 logger.debug(f"Could not retrieve record for {file_path}: {e}")
@@ -301,25 +380,25 @@ class HierarchicalDocumentTool:
         if self._collection is None:
             return 0
 
-        # Match chunk ID format from StructuredChunker
-        # (slashes replaced with underscores)
-        source_name = str(file_path).replace("/", "_").replace("\\", "_")
+        source_path_str = str(file_path)
         deleted_count = 0
 
         async with self._collection as collection:
-            chunk_index = 0
-            while True:
-                record_id = f"{source_name}_chunk_{chunk_index}"
-                try:
-                    record = await collection.get(record_id)
-                    if record is None:
-                        break
-                    await collection.delete(record_id)
-                    deleted_count += 1
-                    chunk_index += 1
-                except Exception as e:
-                    logger.debug(f"Error deleting record {record_id}: {e}")
-                    break
+            try:
+                # Get all records for this file
+                records = await collection.get(
+                    top=10000,  # Large limit to get all chunks
+                    filter=lambda r: r.source_path == source_path_str,
+                )
+
+                if records:
+                    # Delete all records by their IDs
+                    record_ids = [r.id for r in records]
+                    await collection.delete(record_ids)
+                    deleted_count = len(record_ids)
+
+            except Exception as e:
+                logger.debug(f"Error deleting records for {file_path}: {e}")
 
         if deleted_count > 0:
             logger.debug(f"Deleted {deleted_count} records for {file_path}")
@@ -484,6 +563,10 @@ class HierarchicalDocumentTool:
                 and self._context_generator is not None
                 and self._chat_service is not None
             ):
+                logger.info(
+                    f"Using contextual embeddings for {file_path} "
+                    f"({len(chunks)} chunks)"
+                )
                 contextualized = await self._context_generator.contextualize_batch(
                     chunks, document_text=markdown_content
                 )
@@ -492,6 +575,15 @@ class HierarchicalDocumentTool:
                     chunk.contextualized_content = ctx_content
             else:
                 # Fall back to original content
+                if not self.config.contextual_embeddings:
+                    reason = "disabled in config"
+                elif self._context_generator is None:
+                    reason = "no context generator configured"
+                else:
+                    reason = "no chat service available"
+                logger.info(
+                    f"Skipping contextual embeddings for {file_path} ({reason})"
+                )
                 for chunk in chunks:
                     chunk.contextualized_content = chunk.content
 
@@ -683,7 +775,9 @@ class HierarchicalDocumentTool:
         results.sort(key=lambda r: r.fused_score, reverse=True)
         return results
 
-    async def initialize(self, force_ingest: bool = False) -> None:
+    async def initialize(
+        self, force_ingest: bool = False, provider_type: str | None = None
+    ) -> None:
         """Initialize the tool by processing all configured documents.
 
         This method should be called before any search operations.
@@ -698,12 +792,21 @@ class HierarchicalDocumentTool:
             force_ingest: If True, re-ingest all files regardless of
                 modification time. Existing records will be deleted
                 before re-ingestion.
+            provider_type: LLM provider for dimension auto-detection
+                (defaults to "openai" if not specified).
 
         Raises:
             FileNotFoundError: If a document file is not found.
         """
-        # Set up collection
-        self._setup_collection()
+        # Default to openai if not specified
+        if provider_type is None:
+            provider_type = "openai"
+            logger.debug(
+                f"Defaulting to '{provider_type}' for dimension auto-detection"
+            )
+
+        # Set up collection with provider type for dimension resolution
+        self._setup_collection(provider_type)
 
         # Ingest all documents (with incremental check)
         await self._ingest_documents(force_ingest=force_ingest)
