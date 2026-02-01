@@ -679,3 +679,55 @@ Query Input
 | top_k | 1-100 | InvalidTopK |
 | weights | Sum to ~1.0 (warning) | WeightsSumWarning |
 | reranker_model | Required if enable_reranking | MissingReranker |
+
+## Observability Attributes (Constitution Principle IV)
+
+All search and indexing operations MUST emit OpenTelemetry spans with the following attributes.
+
+### Search Operation Spans
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `search.mode` | string | semantic, keyword, exact, or hybrid |
+| `search.provider` | string | Vector store provider name (e.g., "qdrant", "postgres") |
+| `search.strategy` | string | NATIVE_HYBRID or FALLBACK_BM25 |
+| `search.top_k` | int | Requested result count |
+| `search.result_count` | int | Actual results returned |
+| `search.exact_match_count` | int | Count of exact matches found |
+| `search.query_length` | int | Length of query in characters |
+
+### BM25 Operation Spans
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `bm25.query_tokens` | int | Token count in query after tokenization |
+| `bm25.index_size` | int | Documents in BM25 index |
+| `bm25.rebuild_required` | bool | Whether index was rebuilt on startup |
+| `bm25.build_duration_ms` | float | Time to build/rebuild index |
+
+### Ingestion Operation Spans
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `ingest.document_count` | int | Number of documents being ingested |
+| `ingest.chunk_count` | int | Total chunks generated |
+| `ingest.context_generation_enabled` | bool | Whether LLM context generation is enabled |
+| `ingest.context_model` | string | Model used for context generation (if enabled) |
+| `ingest.embedding_model` | string | Model used for embeddings |
+
+### Example Span Hierarchy
+
+```
+hierarchical_document.ingest
+├── hierarchical_document.parse (per document)
+├── hierarchical_document.contextualize_batch
+│   └── llm.completion (per chunk, concurrent)
+├── hierarchical_document.embed_batch
+└── hierarchical_document.store
+
+hierarchical_document.search
+├── hierarchical_document.search.exact_match
+├── hierarchical_document.search.semantic (or native_hybrid)
+├── bm25.search (if fallback strategy)
+└── hierarchical_document.search.rrf_fusion
+```

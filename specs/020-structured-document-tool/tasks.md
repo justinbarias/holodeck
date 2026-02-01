@@ -175,20 +175,24 @@
   - Test `KeywordSearchStrategy` enum values
   - Test `get_keyword_search_strategy()` returns correct strategy per provider
   - Test `NATIVE_HYBRID_PROVIDERS` contains expected providers
-  - Test `FALLBACK_BM25_PROVIDERS` contains expected providers
-  - Test `BM25FallbackProvider.build()` indexes documents
+  - Test `FALLBACK_BM25_PROVIDERS` contains expected providers (6 providers, NOT azure-cosmos-mongo)
+  - Test `BM25FallbackProvider.build()` indexes documents using contextualized_content
   - Test `BM25FallbackProvider.search()` returns ranked results
   - Test `_tokenize()` handles edge cases (empty, special chars)
   - Test `HybridSearchExecutor` routing to correct strategy
+  - Test exact section ID query returns as TOP result (SC-002 validation)
+  - Test native hybrid search via `collection.hybrid_search()` mock
+  - Test graceful degradation when BM25 build fails
 
 ### Implementation: Keyword Search Module (Tiered Strategy)
 
 - [ ] T044 [US2] Create `KeywordSearchStrategy` enum (NATIVE_HYBRID, FALLBACK_BM25) in src/holodeck/lib/keyword_search.py per plan.md:485-491
 - [ ] T045 [US2] Define `NATIVE_HYBRID_PROVIDERS` set (azure-ai-search, weaviate, qdrant, mongodb, azure-cosmos-nosql) per plan.md:495-501 and research.md:113-119
-- [ ] T046 [US2] Define `FALLBACK_BM25_PROVIDERS` set (postgres, pinecone, chromadb, faiss, in-memory, sql-server, azure-cosmos-mongo) per plan.md:503-511 and research.md:120-124
+- [ ] T046 [US2] Define `FALLBACK_BM25_PROVIDERS` set (postgres, pinecone, chromadb, faiss, in-memory, sql-server) per plan.md:503-511 and research.md:120-124 (NOTE: azure-cosmos-mongo excluded - does NOT support hybrid search)
 - [ ] T047 [US2] Implement `get_keyword_search_strategy()` factory function per plan.md:514-518
 - [ ] T048 [US2] Create `BM25FallbackProvider` class using rank_bm25.BM25Okapi per plan.md:588-614 and research.md:137-166
 - [ ] T049 [US2] Implement `BM25FallbackProvider.build()` from (doc_id, contextualized_text) tuples per plan.md:597-602
+- [ ] T049a [US2] Ensure BM25FallbackProvider.build() uses chunk.contextualized_content (not raw content) per plan.md:170-171
 - [ ] T050 [US2] Implement `BM25FallbackProvider.search()` returning (doc_id, score) tuples per plan.md:604-609
 - [ ] T051 [US2] Implement `_tokenize()` using regex `[a-zA-Z0-9]+` lowercase per plan.md:611-613
 
@@ -203,6 +207,10 @@
 - [ ] T055 [US2] Create `HybridSearchExecutor` class in src/holodeck/lib/keyword_search.py per plan.md:520-586
 - [ ] T056 [US2] Implement `_native_hybrid_search()` using SK `collection.hybrid_search()` per plan.md:543-562 and research.md:173-216
 - [ ] T057 [US2] Implement `_fallback_hybrid_search()` running vector + BM25 separately per plan.md:563-586
+- [ ] T057a [US2] Add OpenTelemetry spans for BM25FallbackProvider.search() with query and result_count attributes per Constitution Principle IV
+- [ ] T057b [US2] Add OpenTelemetry spans for HybridSearchExecutor.search() with search_mode and provider attributes per Constitution Principle IV
+- [ ] T057c [US2] Implement exact match boosting to ensure top-result position per spec SC-002 (exact matches get score boost before RRF)
+- [ ] T057d [US2] Implement graceful degradation when BM25 build fails (log warning, fall back to semantic-only)
 
 ### Implementation: Tool Integration
 
@@ -317,7 +325,7 @@
 
 ### Implementation: Context Application to BM25
 
-- [x] T077 [US5] Ensure BM25 index uses contextualized_content (not raw content) per plan.md:170-171 and research.md:88-93 _(Moved to Phase 4 - requires BM25 implementation)_
+- [x] T077 [US5] ~~Ensure BM25 index uses contextualized_content (not raw content)~~ **MOVED to Phase 4 as T049a** - BM25 contextualized_content requirement is co-located with BM25 implementation
 - [x] T078 [US5] Store both original `content` and `contextualized_content` in vector store record per research.md:54-55
 
 ### Implementation: Configurable Context Generation

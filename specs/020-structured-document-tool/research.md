@@ -122,6 +122,9 @@ Document (PDF/Word/etc)
 | chromadb | ❌ No | Use rank_bm25 fallback + app-level RRF |
 | faiss | ❌ No | Use rank_bm25 fallback + app-level RRF |
 | in-memory | ❌ No | Use rank_bm25 fallback + app-level RRF |
+| sql-server | ❌ No | Use rank_bm25 fallback + app-level RRF |
+
+**Note**: Azure Cosmos MongoDB vCore (`azure-cosmos-mongo`) is **EXCLUDED** from both provider lists. It does NOT support hybrid search natively. MongoDB vCore uses a different API pattern and requires separate vector + text search API calls, which is not compatible with either the native hybrid strategy or the standard BM25 fallback approach. Use `mongodb` (MongoDB Atlas via MongoDBAtlasStore) for native hybrid search support.
 
 **Rationale**:
 - Native hybrid search is more efficient (single query, provider handles fusion)

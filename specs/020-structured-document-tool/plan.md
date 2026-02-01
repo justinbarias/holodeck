@@ -39,9 +39,8 @@ This builds on existing `VectorStoreTool` patterns while adding markdown structu
 | faiss | ❌ No | Use rank_bm25 fallback + app-level RRF |
 | in-memory | ❌ No | Use rank_bm25 fallback + app-level RRF |
 | sql-server | ❌ No | Use rank_bm25 fallback + app-level RRF |
-| azure-cosmos-mongo | ❌ No | Use rank_bm25 fallback + app-level RRF |
 
-**Note**: MongoDB Atlas requires the `MongoDBAtlasStore` connector (not `azure-cosmos-mongo`).
+**Note**: MongoDB Atlas requires the `MongoDBAtlasStore` connector (not `azure-cosmos-mongo`). Azure Cosmos MongoDB vCore (`azure-cosmos-mongo`) is EXCLUDED from both lists as it does NOT support hybrid search natively and requires a different integration pattern.
 
 **Testing**: pytest with markers (`@pytest.mark.unit`, `@pytest.mark.integration`)
 
@@ -314,7 +313,6 @@ No constitution violations requiring justification.
 │  │ • mongodb (Atlas)     │   │ • faiss               │                 │
 │  │ • azure-cosmos-nosql  │   │ • in-memory           │                 │
 │  │                       │   │ • sql-server          │                 │
-│  │                       │   │ • azure-cosmos-mongo  │                 │
 │  ├───────────────────────┤   ├───────────────────────┤                 │
 │  │ collection.hybrid_    │   │ Build local BM25      │                 │
 │  │ search(query,         │   │ index via rank_bm25,  │                 │
@@ -507,8 +505,9 @@ FALLBACK_BM25_PROVIDERS: set[str] = {
     "faiss",
     "in-memory",
     "sql-server",
-    "azure-cosmos-mongo",
 }
+# NOTE: azure-cosmos-mongo is EXCLUDED - it does NOT support hybrid search.
+# MongoDB vCore uses a different API and requires MongoDBAtlasStore for native hybrid.
 
 
 def get_keyword_search_strategy(provider: str) -> KeywordSearchStrategy:
@@ -617,9 +616,81 @@ class BM25FallbackProvider:
 - **Native hybrid providers**: Full-text index persisted by the provider automatically
 - **Fallback (rank_bm25)**: In-memory only, rebuilt on startup from stored chunks
 
+**Persistence**:
+- **Native hybrid providers**: Full-text index persisted by the provider automatically
+- **Fallback (rank_bm25)**: In-memory only, rebuilt on startup from stored chunks
+
 **Sources**:
 - [Semantic Kernel Hybrid Search](https://learn.microsoft.com/en-us/semantic-kernel/concepts/vector-store-connectors/hybrid-search)
 - [Semantic Kernel MongoDB Connector](https://learn.microsoft.com/en-us/semantic-kernel/concepts/vector-store-connectors/out-of-the-box-connectors/mongodb-connector)
+
+### 2.1 Observability (Constitution Principle IV)
+
+All search operations MUST emit OpenTelemetry spans per Constitution Principle IV:
+
+```python
+from opentelemetry import trace
+
+tracer = trace.get_tracer("holodeck.hierarchical_document")
+
+class HybridSearchExecutor:
+    """Executes hybrid search with OpenTelemetry instrumentation."""
+
+    async def search(
+        self,
+        query: str,
+        query_embedding: list[float],
+        top_k: int = 10,
+    ) -> list[tuple[str, float]]:
+        """Execute hybrid search with tracing."""
+        with tracer.start_as_current_span(
+            "hierarchical_document.search",
+            attributes={
+                "search.mode": self.strategy.value,
+                "search.provider": self.provider,
+                "search.top_k": top_k,
+            }
+        ) as span:
+            results = await self._execute_search(query, query_embedding, top_k)
+            span.set_attribute("search.result_count", len(results))
+            return results
+
+
+class BM25FallbackProvider:
+    """BM25 fallback with OpenTelemetry instrumentation."""
+
+    def search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
+        """Search with tracing."""
+        with tracer.start_as_current_span(
+            "bm25.search",
+            attributes={
+                "bm25.query_tokens": len(self._tokenize(query)),
+                "bm25.index_size": len(self._doc_ids),
+            }
+        ) as span:
+            results = self._search_internal(query, top_k)
+            span.set_attribute("search.result_count", len(results))
+            return results
+```
+
+### 2.2 Graceful Degradation
+
+When BM25 index build fails, the system MUST degrade gracefully to semantic-only search:
+
+```python
+class HybridSearchExecutor:
+    def _build_bm25_index(self, documents: list[tuple[str, str]]) -> None:
+        """Build BM25 index with graceful degradation."""
+        try:
+            self._bm25_index = BM25FallbackProvider()
+            self._bm25_index.build(documents)
+        except Exception as e:
+            import logging
+            logging.warning(
+                f"BM25 index build failed, falling back to semantic-only: {e}"
+            )
+            self._bm25_index = None  # Semantic-only mode
+```
 
 ### 3. Reciprocal Rank Fusion
 
@@ -645,6 +716,56 @@ def reciprocal_rank_fusion(
 
     # Sort by fused score descending
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
+```
+
+### 3.1 Exact Match Boosting (SC-002 Compliance)
+
+To achieve 99% top-result accuracy for exact matches (SC-002), apply a score boost BEFORE RRF fusion:
+
+```python
+EXACT_MATCH_BOOST = 10.0  # Large boost to ensure top position
+
+def apply_exact_match_boost(
+    exact_results: list[tuple[str, float]],
+    other_results: list[tuple[str, float]],
+) -> list[tuple[str, float]]:
+    """Boost exact matches to ensure they appear first.
+
+    When a user queries for an exact section ID (e.g., "Section 203(a)(1)"),
+    the exact match MUST appear at position 1 in results.
+
+    Args:
+        exact_results: Results from exact match index
+        other_results: Results from semantic/keyword search
+
+    Returns:
+        Combined results with exact matches boosted to top
+    """
+    boosted = [(doc_id, score + EXACT_MATCH_BOOST) for doc_id, score in exact_results]
+    return boosted + other_results
+
+
+def hybrid_search_with_exact_boost(
+    exact_results: list[tuple[str, float]],
+    semantic_results: list[tuple[str, float]],
+    keyword_results: list[tuple[str, float]],
+    k: int = 60,
+) -> list[tuple[str, float]]:
+    """Hybrid search with exact match boosting for SC-002 compliance.
+
+    Ensures exact section lookups (e.g., "Section 203(a)(1)") always
+    appear at position 1.
+    """
+    # Apply boost to exact matches before RRF
+    boosted_exact = apply_exact_match_boost(exact_results, [])
+
+    # Run RRF on semantic + keyword
+    rrf_results = reciprocal_rank_fusion(
+        [semantic_results, keyword_results], k=k
+    )
+
+    # Merge boosted exact matches with RRF results
+    return apply_exact_match_boost(boosted_exact, rrf_results)
 ```
 
 ### 4. Definition Detection and Persistence

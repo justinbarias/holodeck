@@ -148,7 +148,7 @@ tools:
       connection_string: "${MONGODB_ATLAS_URL}"
 ```
 
-> **Important**: The `mongodb` provider refers to **MongoDB Atlas** (native MongoDB), which supports native hybrid search via Semantic Kernel's `MongoDBAtlasStore`. If you're using **Azure Cosmos DB's MongoDB API**, use `azure-cosmos-mongo` instead - this provider uses the BM25 fallback strategy since it doesn't support native hybrid search.
+> **Important**: The `mongodb` provider refers to **MongoDB Atlas** (native MongoDB), which supports native hybrid search via Semantic Kernel's `MongoDBAtlasStore`. **Azure Cosmos DB's MongoDB API** (`azure-cosmos-mongo`) is NOT supported for hybrid search - it requires a different integration pattern with separate vector + text search APIs. If you need hybrid search with Azure Cosmos DB, use `azure-cosmos-nosql` which supports native hybrid search.
 
 ## Search Modes
 
