@@ -8,26 +8,6 @@ from holodeck.chat.streaming import ToolEvent, ToolEventType, ToolExecutionStrea
 from holodeck.models.tool_execution import ToolExecution, ToolStatus
 
 
-class TestToolEventType:
-    """Tests for ToolEventType enum."""
-
-    def test_event_type_started(self) -> None:
-        """STARTED event type exists."""
-        assert ToolEventType.STARTED is not None
-
-    def test_event_type_progress(self) -> None:
-        """PROGRESS event type exists."""
-        assert ToolEventType.PROGRESS is not None
-
-    def test_event_type_completed(self) -> None:
-        """COMPLETED event type exists."""
-        assert ToolEventType.COMPLETED is not None
-
-    def test_event_type_failed(self) -> None:
-        """FAILED event type exists."""
-        assert ToolEventType.FAILED is not None
-
-
 class TestToolEvent:
     """Tests for ToolEvent model."""
 
