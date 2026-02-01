@@ -27,10 +27,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from semantic_kernel.contents import ChatHistory
-
 from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
+from holodeck.lib.chat_history_utils import (
+    extract_last_assistant_content,
+    extract_tool_names,
+)
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.evaluators.azure_ai import (
     CoherenceEvaluator,
@@ -546,8 +548,8 @@ class TestExecutor:
             result = await thread_run.invoke(agent_input)
             invoke_elapsed = time.time() - invoke_start
 
-            agent_response = self._extract_response_text(result.chat_history)
-            tool_calls = self._extract_tool_names(result.tool_calls)
+            agent_response = extract_last_assistant_content(result.chat_history)
+            tool_calls = extract_tool_names(result.tool_calls)
             tool_results = result.tool_results
 
             logger.debug(
@@ -641,39 +643,6 @@ class TestExecutor:
         parts.append(test_case.input)
 
         return "\n\n".join(parts)
-
-    def _extract_response_text(self, chat_history: ChatHistory) -> str:
-        """Extract agent's last response from chat history.
-
-        Args:
-            chat_history: Semantic Kernel ChatHistory object
-
-        Returns:
-            Agent's response text or empty string if not found
-        """
-        if not chat_history or not chat_history.messages:
-            return ""
-
-        # Get last assistant message (most recent response)
-        for message in reversed(chat_history.messages):
-            if message.role == "assistant":
-                content = message.content
-                return str(content) if content else ""
-
-        return ""
-
-    def _extract_tool_names(self, tool_calls: list[dict[str, Any]]) -> list[str]:
-        """Extract tool names from tool calls list.
-
-        Tool calls are represented as list of dicts with 'name' and 'arguments' keys.
-
-        Args:
-            tool_calls: List of tool call dicts from agent
-
-        Returns:
-            List of tool names that were called
-        """
-        return [call.get("name", "") for call in tool_calls if "name" in call]
 
     async def _run_evaluations(
         self,

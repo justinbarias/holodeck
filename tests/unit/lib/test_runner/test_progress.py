@@ -16,22 +16,26 @@ class TestTTYDetection:
     """Test TTY detection for progress display formatting."""
 
     def test_tty_detection_with_tty(self) -> None:
-        """Test that TTY is correctly detected when stdout is a terminal."""
-        with patch("sys.stdout.isatty", return_value=True):
+        """Test that spinner works when stdout is a terminal."""
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=True):
             indicator = ProgressIndicator(total_tests=10)
-            assert indicator.is_tty is True
+            line = indicator.get_spinner_line()
+            assert line != ""
+            assert "Running..." in line
 
     def test_tty_detection_without_tty(self) -> None:
-        """Test that non-TTY is correctly detected (e.g., in CI/CD)."""
-        with patch("sys.stdout.isatty", return_value=False):
+        """Test that spinner returns empty when not TTY (e.g., in CI/CD)."""
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
             indicator = ProgressIndicator(total_tests=10)
-            assert indicator.is_tty is False
+            line = indicator.get_spinner_line()
+            assert line == ""
 
     def test_tty_detection_with_pipe(self) -> None:
         """Test TTY detection when stdout is piped."""
-        with patch("sys.stdout.isatty", return_value=False):
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
             indicator = ProgressIndicator(total_tests=10)
-            assert indicator.is_tty is False
+            line = indicator.get_spinner_line()
+            assert line == ""
 
 
 class TestProgressDisplay:
@@ -39,15 +43,18 @@ class TestProgressDisplay:
 
     def test_progress_format_with_tty(self) -> None:
         """Test that progress format includes interactive elements in TTY mode."""
-        with patch("sys.stdout.isatty", return_value=True):
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=True):
             indicator = ProgressIndicator(total_tests=10)
-            assert indicator.is_tty is True
+            spinner_line = indicator.get_spinner_line()
+            assert spinner_line != ""
+            assert "Running..." in spinner_line
 
     def test_progress_format_without_tty(self) -> None:
         """Test that progress format is plain text in non-TTY mode."""
-        with patch("sys.stdout.isatty", return_value=False):
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
             indicator = ProgressIndicator(total_tests=10)
-            assert indicator.is_tty is False
+            spinner_line = indicator.get_spinner_line()
+            assert spinner_line == ""
 
     def test_initial_state(self) -> None:
         """Test that progress indicator initializes with correct state."""
@@ -270,7 +277,7 @@ class TestCIDCDCompatibility:
 
     def test_ci_cd_no_interactive_elements(self) -> None:
         """Test that non-TTY output contains no interactive elements."""
-        with patch("sys.stdout.isatty", return_value=False):
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
             indicator = ProgressIndicator(total_tests=5)
 
             for i in range(3):
@@ -283,7 +290,7 @@ class TestCIDCDCompatibility:
             output = indicator.get_progress_line()
 
             # CI/CD logs should not have control characters for ANSI codes
-            assert "\x1b" not in output or indicator.is_tty
+            assert "\x1b" not in output
 
     def test_ci_cd_output_readability(self) -> None:
         """Test that CI/CD output is readable and parseable."""
@@ -468,7 +475,7 @@ class TestSpinnerDisplay:
 
     def test_spinner_appears_for_long_tests(self) -> None:
         """Test that spinner appears for tests exceeding 5 seconds."""
-        with patch("sys.stdout.isatty", return_value=True):
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=True):
             indicator = ProgressIndicator(total_tests=1)
             result = MagicMock(spec=TestResult)
             result.test_name = "Long Running Test"
@@ -477,20 +484,22 @@ class TestSpinnerDisplay:
 
             indicator.update(result)
 
-            # Get spinner character
-            spinner_char = indicator._get_spinner_char()
+            # Get spinner character using the mixin method
+            spinner_char = indicator.get_spinner_char()
 
             # Spinner character should be one of the Braille patterns
-            spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-            assert spinner_char in spinner_chars or spinner_char == ""
+            from holodeck.lib.ui.spinner import SpinnerMixin
+
+            assert spinner_char in SpinnerMixin.SPINNER_CHARS
 
     def test_spinner_rotation(self) -> None:
         """Test that spinner characters rotate correctly."""
-        with patch("sys.stdout.isatty", return_value=True):
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=True):
             indicator = ProgressIndicator(total_tests=3)
-            spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
             # Simulate multiple long-running tests
+            from holodeck.lib.ui.spinner import SpinnerMixin
+
             previous_chars = []
             for i in range(3):
                 result = MagicMock(spec=TestResult)
@@ -499,15 +508,15 @@ class TestSpinnerDisplay:
                 result.execution_time_ms = 6000
 
                 indicator.update(result)
-                spinner_char = indicator._get_spinner_char()
+                spinner_char = indicator.get_spinner_char()
                 previous_chars.append(spinner_char)
 
-                # Each character should be in the spinner set or empty
-                assert spinner_char in spinner_chars or spinner_char == ""
+                # Each character should be in the spinner set
+                assert spinner_char in SpinnerMixin.SPINNER_CHARS
 
     def test_spinner_disabled_in_non_tty(self) -> None:
-        """Test that spinner is disabled in non-TTY environments."""
-        with patch("sys.stdout.isatty", return_value=False):
+        """Test that spinner line is empty in non-TTY environments."""
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
             indicator = ProgressIndicator(total_tests=1)
             result = MagicMock(spec=TestResult)
             result.test_name = "Test"
@@ -515,10 +524,10 @@ class TestSpinnerDisplay:
             result.execution_time_ms = 6000
 
             indicator.update(result)
-            spinner_char = indicator._get_spinner_char()
+            spinner_line = indicator.get_spinner_line()
 
-            # In non-TTY, spinner should return empty string
-            assert spinner_char == ""
+            # In non-TTY, spinner line should return empty string
+            assert spinner_line == ""
 
     def test_spinner_not_shown_for_quick_tests(self) -> None:
         """Test that spinner does not appear for tests under 5 seconds."""
@@ -788,7 +797,7 @@ class TestGetSpinnerLine:
 
     def test_get_spinner_line_in_tty(self) -> None:
         """Test get_spinner_line returns spinner in TTY mode."""
-        with patch("sys.stdout.isatty", return_value=True):
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=True):
             indicator = ProgressIndicator(total_tests=5)
             indicator.start_test("Running Test")
             line = indicator.get_spinner_line()
@@ -797,7 +806,7 @@ class TestGetSpinnerLine:
 
     def test_get_spinner_line_in_non_tty(self) -> None:
         """Test get_spinner_line returns empty in non-TTY mode."""
-        with patch("sys.stdout.isatty", return_value=False):
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
             indicator = ProgressIndicator(total_tests=5)
             indicator.start_test("Running Test")
             line = indicator.get_spinner_line()
@@ -805,7 +814,7 @@ class TestGetSpinnerLine:
 
     def test_get_spinner_line_in_quiet_mode(self) -> None:
         """Test get_spinner_line returns empty in quiet mode."""
-        with patch("sys.stdout.isatty", return_value=True):
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=True):
             indicator = ProgressIndicator(total_tests=5, quiet=True)
             indicator.start_test("Running Test")
             line = indicator.get_spinner_line()
@@ -813,7 +822,7 @@ class TestGetSpinnerLine:
 
     def test_get_spinner_line_exceeds_total(self) -> None:
         """Test get_spinner_line handles case where current test exceeds total."""
-        with patch("sys.stdout.isatty", return_value=True):
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=True):
             indicator = ProgressIndicator(total_tests=2)
             indicator.current_test = 3  # Exceeds total
             line = indicator.get_spinner_line()
@@ -822,15 +831,16 @@ class TestGetSpinnerLine:
 
 
 class TestColorize:
-    """Tests for _colorize method."""
+    """Tests for colorize function (shared utility)."""
 
     def test_colorize_in_non_tty(self) -> None:
-        """Test _colorize returns plain text in non-TTY mode."""
-        with patch("sys.stdout.isatty", return_value=False):
-            indicator = ProgressIndicator(total_tests=1)
-            result = indicator._colorize("test", "\033[92m")
-            assert result == "test"
-            assert "\033[" not in result
+        """Test colorize returns plain text in non-TTY mode."""
+        from holodeck.lib.ui.colors import ANSIColors, colorize
+
+        # Using force_tty=False to simulate non-TTY
+        result = colorize("test", ANSIColors.GREEN, force_tty=False)
+        assert result == "test"
+        assert "\033[" not in result
 
 
 class TestGetSummaryEdgeCases:

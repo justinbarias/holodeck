@@ -2,24 +2,23 @@
 
 from __future__ import annotations
 
-import sys
 from datetime import datetime
 from typing import Any
 
+from holodeck.lib.ui import SpinnerMixin, is_tty
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool_execution import ToolExecution, ToolStatus
 
 
-class ChatProgressIndicator:
+class ChatProgressIndicator(SpinnerMixin):
     """Track and display chat session progress with spinner and status information.
 
     Provides animated spinner during agent execution and adaptive status display
     (minimal in default mode, rich in verbose mode). Tracks message count,
     tokens, session time, response timing, and tool executions.
-    """
 
-    # Braille spinner characters
-    _SPINNER_CHARS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    Inherits spinner animation from SpinnerMixin.
+    """
 
     def __init__(self, max_messages: int, quiet: bool, verbose: bool) -> None:
         """Initialize progress indicator.
@@ -35,11 +34,7 @@ class ChatProgressIndicator:
 
         # State tracking
         self.current_messages = 0
-        self.total_tokens = TokenUsage(
-            prompt_tokens=0,
-            completion_tokens=0,
-            total_tokens=0,
-        )
+        self.total_tokens = TokenUsage.zero()
         self.last_response_time: float | None = None
         self.session_start = datetime.now()
         self._spinner_index = 0
@@ -48,28 +43,16 @@ class ChatProgressIndicator:
         self.last_tool_executions: list[ToolExecution] = []
         self.total_tool_calls: int = 0
 
-    @property
-    def is_tty(self) -> bool:
-        """Check if stdout is connected to a terminal.
-
-        Returns:
-            True if stdout is a TTY, False otherwise.
-        """
-        return sys.stdout.isatty()
-
     def get_spinner_line(self) -> str:
         """Get current spinner animation frame.
 
         Returns:
             Animated spinner text, or empty string if not TTY.
         """
-        if not self.is_tty:
+        if not is_tty():
             return ""
 
-        spinner_char = self._SPINNER_CHARS[
-            self._spinner_index % len(self._SPINNER_CHARS)
-        ]
-        self._spinner_index += 1
+        spinner_char = self.get_spinner_char()
         return f"{spinner_char} Thinking..."
 
     def update(self, response: Any) -> None:
@@ -88,13 +71,7 @@ class ChatProgressIndicator:
 
         # Accumulate token usage
         if hasattr(response, "tokens_used") and response.tokens_used:
-            tokens = response.tokens_used
-            self.total_tokens = TokenUsage(
-                prompt_tokens=self.total_tokens.prompt_tokens + tokens.prompt_tokens,
-                completion_tokens=self.total_tokens.completion_tokens
-                + tokens.completion_tokens,
-                total_tokens=self.total_tokens.total_tokens + tokens.total_tokens,
-            )
+            self.total_tokens = self.total_tokens + response.tokens_used
 
         # Track tool executions
         if hasattr(response, "tool_executions") and response.tool_executions:

@@ -302,21 +302,24 @@ class TestStatusPanel:
 
 
 class TestTTYDetection:
-    """Tests for TTY detection."""
+    """Tests for TTY detection behavior."""
 
-    def test_is_tty_property_returns_true_for_tty(self) -> None:
-        """is_tty returns True when stdout is a TTY."""
+    def test_spinner_line_shows_content_when_tty(self) -> None:
+        """Spinner line shows content when is_tty returns True."""
         progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
 
-        with patch("sys.stdout.isatty", return_value=True):
-            assert progress.is_tty is True
+        with patch("holodeck.chat.progress.is_tty", return_value=True):
+            spinner_line = progress.get_spinner_line()
+            assert spinner_line != ""
+            assert "Thinking..." in spinner_line
 
-    def test_is_tty_property_returns_false_for_non_tty(self) -> None:
-        """is_tty returns False when stdout is not a TTY."""
+    def test_spinner_line_empty_when_not_tty(self) -> None:
+        """Spinner line is empty when is_tty returns False."""
         progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
 
-        with patch("sys.stdout.isatty", return_value=False):
-            assert progress.is_tty is False
+        with patch("holodeck.chat.progress.is_tty", return_value=False):
+            spinner_line = progress.get_spinner_line()
+            assert spinner_line == ""
 
 
 class TestChatProgressIntegration:

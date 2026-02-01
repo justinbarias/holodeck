@@ -9,6 +9,7 @@ from typing import Any
 
 from semantic_kernel.contents import ChatHistory
 
+from holodeck.lib.chat_history_utils import extract_last_assistant_content
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentThreadRun
 from holodeck.models.agent import Agent
@@ -120,7 +121,7 @@ class AgentExecutor:
             elapsed = time.time() - start_time
 
             # Extract content from chat history
-            content = self._extract_content(result.chat_history)
+            content = extract_last_assistant_content(result.chat_history)
 
             # Convert tool calls to ToolExecution models
             tool_executions = self._convert_tool_calls(result.tool_calls)
@@ -183,28 +184,6 @@ class AgentExecutor:
             logger.debug("AgentExecutor shutdown complete")
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
-
-    def _extract_content(self, history: ChatHistory) -> str:
-        """Extract last assistant message content from history.
-
-        Args:
-            history: ChatHistory to extract from.
-
-        Returns:
-            Content of the last assistant message, or empty string.
-        """
-        try:
-            # ChatHistory messages are in order, get the last one
-            if hasattr(history, "messages") and history.messages:
-                # Get last message from history
-                last_message = history.messages[-1]
-                if hasattr(last_message, "content"):
-                    content = last_message.content
-                    return str(content) if content else ""
-            return ""
-        except Exception as e:
-            logger.warning(f"Failed to extract content from history: {e}")
-            return ""
 
     def _convert_tool_calls(
         self, tool_calls: list[dict[str, Any]]
