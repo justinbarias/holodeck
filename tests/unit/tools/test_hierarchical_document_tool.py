@@ -2377,11 +2377,11 @@ class TestHybridSearch:
         mock_chunk.parent_chain = ["Chapter 1"]
         mock_chunk.section_id = "1.1"
         mock_chunk.subsection_ids = []
-        tool._chunks = [mock_chunk]
 
-        # Set up mock hybrid executor
+        # Set up mock hybrid executor (executor now owns chunk data)
         mock_executor = MagicMock()
         mock_executor.search = AsyncMock(return_value=[("chunk_0", 0.95)])
+        mock_executor.get_chunk.return_value = mock_chunk
         tool._hybrid_executor = mock_executor
 
         results = await tool._hybrid_search("test query", [0.1] * 1536, top_k=10)
@@ -2389,6 +2389,7 @@ class TestHybridSearch:
         assert len(results) == 1
         assert results[0].chunk_id == "chunk_0"
         assert results[0].fused_score == 0.95
+        mock_executor.get_chunk.assert_called_with("chunk_0")
 
 
 class TestKeywordSearch:
@@ -2407,17 +2408,18 @@ class TestKeywordSearch:
 
     @pytest.mark.asyncio
     async def test_keyword_search_no_bm25_index(self, tmp_path: Path) -> None:
-        """Test _keyword_search returns empty when no BM25 index."""
+        """Test _keyword_search returns empty when BM25 index not built."""
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
 
         mock_executor = MagicMock()
-        mock_executor._bm25_index = None
+        mock_executor.keyword_search.return_value = []
         tool._hybrid_executor = mock_executor
 
         results = await tool._keyword_search("test query", top_k=10)
 
         assert results == []
+        mock_executor.keyword_search.assert_called_once_with("test query", 10)
 
     @pytest.mark.asyncio
     async def test_keyword_search_with_results(self, tmp_path: Path) -> None:
@@ -2435,14 +2437,11 @@ class TestKeywordSearch:
         mock_chunk.parent_chain = ["Chapter 1"]
         mock_chunk.section_id = "1.1"
         mock_chunk.subsection_ids = []
-        tool._chunks = [mock_chunk]
 
-        # Set up mock BM25 index
-        mock_bm25 = MagicMock()
-        mock_bm25.search.return_value = [("chunk_0", 5.5)]
-
+        # Set up mock executor with public keyword_search and get_chunk
         mock_executor = MagicMock()
-        mock_executor._bm25_index = mock_bm25
+        mock_executor.keyword_search.return_value = [("chunk_0", 5.5)]
+        mock_executor.get_chunk.return_value = mock_chunk
         tool._hybrid_executor = mock_executor
 
         results = await tool._keyword_search("test query", top_k=10)
@@ -2452,6 +2451,7 @@ class TestKeywordSearch:
         assert results[0].keyword_score == 5.5
         # Normalized score should be min(1.0, 5.5/10.0) = 0.55
         assert results[0].fused_score == 0.55
+        mock_executor.get_chunk.assert_called_with("chunk_0")
 
 
 class TestSearchModeRouting:
@@ -2531,3 +2531,304 @@ class TestSearchModeRouting:
 
             mock_semantic.assert_called_once()
             assert results == []
+
+
+class TestLoadChunksFromStore:
+    """Tests for _load_chunks_from_store method."""
+
+    @pytest.mark.asyncio
+    async def test_load_chunks_no_collection(self, tmp_path: Path) -> None:
+        """Test returns [] when self._collection is None."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._collection = None
+
+        result = await tool._load_chunks_from_store()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_load_chunks_collection_not_exists(self, tmp_path: Path) -> None:
+        """Test returns [] when collection_exists() returns False."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=False)
+        tool._collection = mock_collection
+
+        result = await tool._load_chunks_from_store()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_load_chunks_empty_store(self, tmp_path: Path) -> None:
+        """Test returns [] when collection.get() returns no records."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=True)
+        mock_collection.get = AsyncMock(return_value=[])
+        tool._collection = mock_collection
+
+        result = await tool._load_chunks_from_store()
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_load_chunks_reconstructs_fields(self, tmp_path: Path) -> None:
+        """Test happy path: records are reconstructed into DocumentChunks."""
+        from holodeck.lib.structured_chunker import ChunkType
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_record = MagicMock()
+        mock_record.id = "chunk_0"
+        mock_record.source_path = "/test.md"
+        mock_record.chunk_index = 0
+        mock_record.content = "Test content"
+        mock_record.parent_chain = '["Chapter 1", "Section 1.1"]'
+        mock_record.section_id = "1.1"
+        mock_record.chunk_type = "content"
+        mock_record.cross_references = '["2.1", "3.0"]'
+        mock_record.contextualized_content = "Contextualized test content"
+        mock_record.mtime = 12345.0
+        mock_record.defined_term = "TestTerm"
+        mock_record.defined_term_normalized = "testterm"
+        mock_record.subsection_ids = '["1.1.1", "1.1.2"]'
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=True)
+        mock_collection.get = AsyncMock(return_value=[mock_record])
+        tool._collection = mock_collection
+
+        result = await tool._load_chunks_from_store()
+
+        assert len(result) == 1
+        chunk = result[0]
+        assert chunk.id == "chunk_0"
+        assert chunk.source_path == "/test.md"
+        assert chunk.chunk_index == 0
+        assert chunk.content == "Test content"
+        assert chunk.parent_chain == ["Chapter 1", "Section 1.1"]
+        assert chunk.section_id == "1.1"
+        assert chunk.chunk_type == ChunkType.CONTENT
+        assert chunk.cross_references == ["2.1", "3.0"]
+        assert chunk.contextualized_content == "Contextualized test content"
+        assert chunk.mtime == 12345.0
+        assert chunk.defined_term == "TestTerm"
+        assert chunk.defined_term_normalized == "testterm"
+        assert chunk.subsection_ids == ["1.1.1", "1.1.2"]
+        assert chunk.heading_level == 0
+
+    @pytest.mark.asyncio
+    async def test_load_chunks_invalid_json_degrades(self, tmp_path: Path) -> None:
+        """Test corrupt JSON in list fields yields empty lists, no raise."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_record = MagicMock()
+        mock_record.id = "chunk_0"
+        mock_record.source_path = "/test.md"
+        mock_record.chunk_index = 0
+        mock_record.content = "Content"
+        mock_record.parent_chain = "not valid json"
+        mock_record.section_id = ""
+        mock_record.chunk_type = "content"
+        mock_record.cross_references = "{broken"
+        mock_record.contextualized_content = ""
+        mock_record.mtime = 0.0
+        mock_record.defined_term = ""
+        mock_record.defined_term_normalized = ""
+        mock_record.subsection_ids = "also broken"
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=True)
+        mock_collection.get = AsyncMock(return_value=[mock_record])
+        tool._collection = mock_collection
+
+        result = await tool._load_chunks_from_store()
+
+        assert len(result) == 1
+        assert result[0].parent_chain == []
+        assert result[0].cross_references == []
+        assert result[0].subsection_ids == []
+
+    @pytest.mark.asyncio
+    async def test_load_chunks_invalid_chunk_type(self, tmp_path: Path) -> None:
+        """Test unknown chunk_type string defaults to ChunkType.CONTENT."""
+        from holodeck.lib.structured_chunker import ChunkType
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_record = MagicMock()
+        mock_record.id = "chunk_0"
+        mock_record.source_path = "/test.md"
+        mock_record.chunk_index = 0
+        mock_record.content = "Content"
+        mock_record.parent_chain = "[]"
+        mock_record.section_id = ""
+        mock_record.chunk_type = "unknown_type"
+        mock_record.cross_references = "[]"
+        mock_record.contextualized_content = ""
+        mock_record.mtime = 0.0
+        mock_record.defined_term = ""
+        mock_record.defined_term_normalized = ""
+        mock_record.subsection_ids = "[]"
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(return_value=True)
+        mock_collection.get = AsyncMock(return_value=[mock_record])
+        tool._collection = mock_collection
+
+        result = await tool._load_chunks_from_store()
+
+        assert len(result) == 1
+        assert result[0].chunk_type == ChunkType.CONTENT
+
+    @pytest.mark.asyncio
+    async def test_load_chunks_graceful_on_exception(self, tmp_path: Path) -> None:
+        """Test collection.get() raises -> returns [], logs warning."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+        mock_collection.collection_exists = AsyncMock(
+            side_effect=Exception("Connection failed")
+        )
+        tool._collection = mock_collection
+
+        result = await tool._load_chunks_from_store()
+        assert result == []
+
+
+class TestInitializeRebuild:
+    """Tests for initialize() BM25 rebuild when files are skipped."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_rebuilds_when_files_skipped(self, tmp_path: Path) -> None:
+        """Test rebuild when provider is persistent and files were skipped."""
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._provider = "qdrant"
+
+        stored_chunks = [
+            DocumentChunk(
+                id="chunk_0",
+                source_path="/test.md",
+                chunk_index=0,
+                content="Stored content",
+                contextualized_content="Stored content",
+            ),
+        ]
+
+        with (
+            patch.object(tool, "_setup_collection"),
+            patch.object(
+                tool,
+                "_ingest_documents",
+                new_callable=AsyncMock,
+                return_value=2,
+            ),
+            patch.object(
+                tool,
+                "_load_chunks_from_store",
+                new_callable=AsyncMock,
+                return_value=stored_chunks,
+            ) as mock_load,
+            patch.object(
+                tool,
+                "_build_hybrid_indices",
+                new_callable=AsyncMock,
+            ) as mock_build,
+        ):
+            await tool.initialize()
+
+            mock_load.assert_called_once()
+            mock_build.assert_called_once()
+            assert tool._chunks == stored_chunks
+            assert tool._initialized is True
+
+    @pytest.mark.asyncio
+    async def test_initialize_skips_rebuild_for_in_memory(self, tmp_path: Path) -> None:
+        """Test no rebuild when provider is in-memory even if files skipped."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._provider = "in-memory"
+
+        with (
+            patch.object(tool, "_setup_collection"),
+            patch.object(
+                tool,
+                "_ingest_documents",
+                new_callable=AsyncMock,
+                return_value=2,
+            ),
+            patch.object(
+                tool,
+                "_load_chunks_from_store",
+                new_callable=AsyncMock,
+            ) as mock_load,
+        ):
+            await tool.initialize()
+
+            mock_load.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_initialize_no_rebuild_when_zero_skipped(
+        self, tmp_path: Path
+    ) -> None:
+        """Test no rebuild when _ingest_documents returns 0 skipped."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._provider = "qdrant"
+
+        with (
+            patch.object(tool, "_setup_collection"),
+            patch.object(
+                tool,
+                "_ingest_documents",
+                new_callable=AsyncMock,
+                return_value=0,
+            ),
+            patch.object(
+                tool,
+                "_load_chunks_from_store",
+                new_callable=AsyncMock,
+            ) as mock_load,
+        ):
+            await tool.initialize()
+
+            mock_load.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ingest_documents_returns_skipped_count(self, tmp_path: Path) -> None:
+        """Test _ingest_documents returns the correct skipped file count."""
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test\n\nContent here.")
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._collection = MagicMock()
+        tool._embedding_dimensions = 1536
+
+        with patch.object(
+            tool, "_needs_reingest", new_callable=AsyncMock, return_value=False
+        ):
+            result = await tool._ingest_documents(force_ingest=False)
+
+            assert result == 1  # One file discovered, one skipped

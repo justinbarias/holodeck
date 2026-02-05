@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 from opentelemetry import trace
 
 if TYPE_CHECKING:
-    pass
+    from holodeck.lib.structured_chunker import DocumentChunk
 
 logger = logging.getLogger(__name__)
 
@@ -252,53 +252,93 @@ class HybridSearchExecutor:
         >>> results = await executor.search(query, embedding, top_k=10)
     """
 
-    def __init__(self, provider: str, collection: Any) -> None:
+    def __init__(
+        self,
+        provider: str,
+        collection: Any,
+        semantic_weight: float = 0.5,
+        keyword_weight: float = 0.3,
+        rrf_k: int = 60,
+    ) -> None:
         """Initialize the hybrid search executor.
 
         Args:
             provider: Vector store provider name (determines strategy)
             collection: Semantic Kernel vector store collection instance
+            semantic_weight: Weight for semantic results in RRF fusion (default 0.5)
+            keyword_weight: Weight for keyword results in RRF fusion (default 0.3)
+            rrf_k: RRF ranking constant (default 60)
         """
         self.provider = provider
         self.collection = collection
         self.strategy = get_keyword_search_strategy(provider)
+        self.semantic_weight = semantic_weight
+        self.keyword_weight = keyword_weight
+        self.rrf_k = rrf_k
         self._bm25_index: BM25FallbackProvider | None = None
+        self._chunk_map: dict[str, DocumentChunk] = {}
 
         logger.debug(
             f"HybridSearchExecutor initialized: provider={provider}, "
-            f"strategy={self.strategy.value}"
+            f"strategy={self.strategy.value}, "
+            f"weights=semantic:{semantic_weight}/keyword:{keyword_weight}, "
+            f"rrf_k={rrf_k}"
         )
 
-    def build_bm25_index(self, documents: list[tuple[str, str, str]]) -> None:
+    def build_bm25_index(self, chunks: list[DocumentChunk]) -> None:
         """Build BM25 index with graceful degradation.
 
-        Creates the BM25 sparse index from the provided documents.
-        If BM25 build fails, logs a warning and continues with
-        semantic-only search.
+        Creates the BM25 sparse index from the provided chunks and stores
+        a chunk map for ID-based lookups. If BM25 build fails, logs a
+        warning and continues with semantic-only search.
 
         Args:
-            documents: List of (chunk_id, section_id, contextualized_content)
-                tuples. The contextualized_content includes LLM-generated
-                context prepended to the original chunk.
+            chunks: List of DocumentChunk objects. The chunk's
+                contextualized_content (or content fallback) is indexed.
 
         Example:
-            >>> executor.build_bm25_index([
-            ...     ("chunk1", "Section 1.1", "Context: ... Chunk content"),
-            ...     ("chunk2", "Section 1.2", "Context: ... More content"),
-            ... ])
+            >>> executor.build_bm25_index(chunks)
         """
+        # Store chunk map for ID-based lookups
+        self._chunk_map = {c.id: c for c in chunks}
+
         # Build BM25 index with graceful degradation
         try:
             self._bm25_index = BM25FallbackProvider(k1=1.5, b=0.75)
-            # BM25 expects (doc_id, content) tuples
-            bm25_docs = [(doc_id, content) for doc_id, _, content in documents]
+            bm25_docs = [(c.id, c.contextualized_content or c.content) for c in chunks]
             self._bm25_index.build(bm25_docs)
-            logger.debug(f"Built BM25 index with {len(documents)} documents")
+            logger.debug(f"Built BM25 index with {len(chunks)} documents")
         except Exception as e:
             logger.warning(
                 f"BM25 index build failed, falling back to semantic-only: {e}"
             )
             self._bm25_index = None
+
+    def get_chunk(self, chunk_id: str) -> DocumentChunk | None:
+        """Look up a chunk by ID from the stored chunk map.
+
+        Args:
+            chunk_id: The unique identifier of the chunk.
+
+        Returns:
+            The DocumentChunk if found, or None.
+        """
+        return self._chunk_map.get(chunk_id)
+
+    def keyword_search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
+        """Perform keyword-only BM25 search.
+
+        Args:
+            query: Search query string.
+            top_k: Maximum number of results to return.
+
+        Returns:
+            List of (chunk_id, score) tuples sorted by BM25 score descending.
+            Returns empty list if BM25 index is not built.
+        """
+        if self._bm25_index is None:
+            return []
+        return self._bm25_index.search(query, top_k)
 
     async def search(
         self,
@@ -424,12 +464,12 @@ class HybridSearchExecutor:
         if self._bm25_index is not None:
             bm25_results = self._bm25_index.search(query, top_k=top_k)
 
-        # Fuse results with RRF
+        # Fuse results with RRF using configured weights
         if bm25_results:
             fused = reciprocal_rank_fusion(
                 [vector_results, bm25_results],
-                k=60,
-                weights=[0.6, 0.4],  # Slight preference for semantic
+                k=self.rrf_k,
+                weights=[self.semantic_weight, self.keyword_weight],
             )
             return fused
         else:

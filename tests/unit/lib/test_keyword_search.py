@@ -349,19 +349,35 @@ class TestHybridSearchExecutor:
         assert executor.strategy == KeywordSearchStrategy.FALLBACK_BM25
 
     def test_build_bm25_index_creates_index(self) -> None:
-        """Test build_bm25_index() creates BM25 index."""
+        """Test build_bm25_index() creates BM25 index and chunk map."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
+        from holodeck.lib.structured_chunker import DocumentChunk
 
         mock_collection = MagicMock()
         executor = HybridSearchExecutor("in-memory", mock_collection)
 
-        documents = [
-            ("chunk1", "sec1", "Content about reporting requirements"),
-            ("chunk2", "sec2", "Content about compliance"),
+        chunks = [
+            DocumentChunk(
+                id="chunk1",
+                source_path="/test.md",
+                chunk_index=0,
+                content="Content about reporting requirements",
+                contextualized_content="Content about reporting requirements",
+            ),
+            DocumentChunk(
+                id="chunk2",
+                source_path="/test.md",
+                chunk_index=1,
+                content="Content about compliance",
+                contextualized_content="Content about compliance",
+            ),
         ]
-        executor.build_bm25_index(documents)
+        executor.build_bm25_index(chunks)
 
         assert executor._bm25_index is not None
+        assert executor.get_chunk("chunk1") is chunks[0]
+        assert executor.get_chunk("chunk2") is chunks[1]
+        assert executor.get_chunk("nonexistent") is None
 
     @pytest.mark.asyncio
     async def test_search_routes_to_native_hybrid(self) -> None:
