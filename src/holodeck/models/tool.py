@@ -10,7 +10,7 @@ Tool types:
 - PromptTool: AI-powered semantic functions
 """
 
-import warnings
+import math
 from enum import Enum
 from typing import Annotated, Any, Literal
 
@@ -767,17 +767,28 @@ class HierarchicalDocumentToolConfig(BaseModel):
             raise ValueError("min_score must be between 0.0 and 1.0")
         return v
 
+    @field_validator("semantic_weight", "keyword_weight", "exact_weight")
+    @classmethod
+    def validate_finite_weights(cls, v: float) -> float:
+        """Validate search weights are finite numeric values."""
+        if not math.isfinite(v):
+            raise ValueError("search weights must be finite numbers")
+        return v
+
     @model_validator(mode="after")
     def validate_weights(self) -> "HierarchicalDocumentToolConfig":
-        """Warn if hybrid weights don't sum to approximately 1.0."""
+        """Validate hybrid weights are well-formed for deterministic fusion."""
         if self.search_mode == SearchMode.HYBRID:
             total = self.semantic_weight + self.keyword_weight + self.exact_weight
-            if not (0.95 <= total <= 1.05):
-                warnings.warn(
-                    f"Hybrid search weights sum to {total:.2f}, not 1.0. "
-                    "Results may be unexpected.",
-                    UserWarning,
-                    stacklevel=2,
+            if not math.isclose(total, 1.0, rel_tol=0.0, abs_tol=1e-6):
+                raise ValueError(
+                    f"Hybrid search weights must sum to 1.0, got {total:.6f} "
+                    "(semantic_weight + keyword_weight + exact_weight)"
+                )
+
+            if (self.semantic_weight + self.keyword_weight) <= 0:
+                raise ValueError(
+                    "Hybrid search requires semantic_weight + keyword_weight > 0"
                 )
         return self
 

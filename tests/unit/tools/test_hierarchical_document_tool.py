@@ -975,39 +975,35 @@ class TestPydanticConfigValidation:
 
 
 class TestWeightValidation:
-    """T088: Tests for weight validation warning."""
+    """T088: Tests for strict hybrid weight validation."""
 
     def test_weights_sum_to_one_no_warning(self, tmp_path: Path) -> None:
-        """Test that weights summing to 1.0 don't emit warning."""
-        import warnings
+        """Test that weights summing to 1.0 are accepted."""
 
         doc_file = tmp_path / "test.md"
         doc_file.write_text("# Test")
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            config = HierarchicalDocumentToolConfig(
-                name="test_tool",
-                description="Test tool",
-                source=str(doc_file),
-                search_mode="hybrid",
-                semantic_weight=0.5,
-                keyword_weight=0.3,
-                exact_weight=0.2,
-            )
-            # No warning expected
-            assert len([x for x in w if "sum to" in str(x.message)]) == 0
-            assert config.semantic_weight == 0.5
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test tool",
+            source=str(doc_file),
+            search_mode="hybrid",
+            semantic_weight=0.5,
+            keyword_weight=0.3,
+            exact_weight=0.2,
+        )
+        assert config.semantic_weight == 0.5
 
-    def test_weights_not_sum_to_one_emits_warning(self, tmp_path: Path) -> None:
-        """Test that weights not summing to 1.0 emit warning (T088)."""
-        import warnings
+    def test_weights_not_sum_to_one_raises_validation_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that hybrid weights must sum to exactly 1.0."""
+        from pydantic import ValidationError
 
         doc_file = tmp_path / "test.md"
         doc_file.write_text("# Test")
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
+        with pytest.raises(ValidationError, match="must sum to 1.0"):
             HierarchicalDocumentToolConfig(
                 name="test_tool",
                 description="Test tool",
@@ -1017,33 +1013,59 @@ class TestWeightValidation:
                 keyword_weight=0.5,
                 exact_weight=0.5,  # Sum = 1.5, not 1.0
             )
-            # Warning expected
-            weight_warnings = [x for x in w if "sum to" in str(x.message)]
-            assert len(weight_warnings) == 1
-            assert "1.50" in str(weight_warnings[0].message)
 
-    def test_weights_ignored_for_non_hybrid_mode(self, tmp_path: Path) -> None:
-        """Test that weight validation is skipped for non-hybrid modes."""
-        import warnings
+    def test_hybrid_weights_require_semantic_or_keyword(self, tmp_path: Path) -> None:
+        """Test that hybrid mode requires semantic+keyword weight > 0."""
+        from pydantic import ValidationError
 
         doc_file = tmp_path / "test.md"
         doc_file.write_text("# Test")
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            config = HierarchicalDocumentToolConfig(
+        with pytest.raises(ValidationError, match=r"semantic_weight \+ keyword_weight"):
+            HierarchicalDocumentToolConfig(
                 name="test_tool",
                 description="Test tool",
                 source=str(doc_file),
-                search_mode="semantic",  # Not hybrid
-                semantic_weight=0.9,  # Would trigger warning in hybrid
-                keyword_weight=0.5,
-                exact_weight=0.5,
+                search_mode="hybrid",
+                semantic_weight=0.0,
+                keyword_weight=0.0,
+                exact_weight=1.0,
             )
-            # No warning expected for non-hybrid mode
-            weight_warnings = [x for x in w if "sum to" in str(x.message)]
-            assert len(weight_warnings) == 0
-            assert config.search_mode.value == "semantic"
+
+    def test_non_finite_weight_raises_validation_error(self, tmp_path: Path) -> None:
+        """Test that non-finite weights are rejected by validation."""
+        from pydantic import ValidationError
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        with pytest.raises(ValidationError):
+            HierarchicalDocumentToolConfig(
+                name="test_tool",
+                description="Test tool",
+                source=str(doc_file),
+                search_mode="hybrid",
+                semantic_weight=float("nan"),
+                keyword_weight=0.3,
+                exact_weight=0.7,
+            )
+
+    def test_weights_ignored_for_non_hybrid_mode(self, tmp_path: Path) -> None:
+        """Test that weight validation is skipped for non-hybrid modes."""
+
+        doc_file = tmp_path / "test.md"
+        doc_file.write_text("# Test")
+
+        config = HierarchicalDocumentToolConfig(
+            name="test_tool",
+            description="Test tool",
+            source=str(doc_file),
+            search_mode="semantic",  # Not hybrid
+            semantic_weight=0.9,
+            keyword_weight=0.5,
+            exact_weight=0.5,
+        )
+        assert config.search_mode.value == "semantic"
 
 
 class TestDeferLoading:
