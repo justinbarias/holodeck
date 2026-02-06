@@ -1,19 +1,20 @@
 # Tools Reference Guide
 
-This guide explains HoloDeck's four tool types that extend agent capabilities.
+This guide explains HoloDeck's five tool types that extend agent capabilities.
 
 ## Overview
 
-Tools are agent capabilities defined in `agent.yaml`. HoloDeck supports four tool types:
+Tools are agent capabilities defined in `agent.yaml`. HoloDeck supports five tool types:
 
-| Tool Type             | Description                    | Status         |
-| --------------------- | ------------------------------ | -------------- |
-| **Vectorstore Tools** | Semantic search over data      | ✅ Implemented |
-| **MCP Tools**         | Model Context Protocol servers | ✅ Implemented |
-| **Function Tools**    | Custom Python functions        | 🚧 Planned     |
-| **Prompt Tools**      | LLM-powered semantic functions | 🚧 Planned     |
+| Tool Type                        | Description                              | Status         |
+| -------------------------------- | ---------------------------------------- | -------------- |
+| **Vectorstore Tools**            | Semantic search over data                | ✅ Implemented |
+| **Hierarchical Document Tools**  | Structure-aware hybrid document search   | ✅ Implemented |
+| **MCP Tools**                    | Model Context Protocol servers           | ✅ Implemented |
+| **Function Tools**               | Custom Python functions                  | 🚧 Planned     |
+| **Prompt Tools**                 | LLM-powered semantic functions           | 🚧 Planned     |
 
-> **Note**: **Vectorstore Tools** and **MCP Tools** are fully implemented. Function and Prompt tools are defined in the configuration schema but not yet functional.
+> **Note**: **Vectorstore Tools**, **Hierarchical Document Tools**, and **MCP Tools** are fully implemented. Function and Prompt tools are defined in the configuration schema but not yet functional.
 
 ## Tool Filtering
 
@@ -116,7 +117,7 @@ tools:
 
 - **Required**: Yes
 - **Type**: String (Enum)
-- **Options**: `vectorstore`, `function`, `mcp`, `prompt`
+- **Options**: `vectorstore`, `hierarchical_document`, `function`, `mcp`, `prompt`
 - **Purpose**: Determines which additional fields are required
 
 ```yaml
@@ -396,6 +397,431 @@ title,content,source
 "Getting Started","How to get started...","docs/intro"
 "API Reference","API documentation...","docs/api"
 ```
+
+---
+
+## Hierarchical Document Tools ✅
+
+> **Status**: Fully implemented
+
+Structure-aware hybrid document search combining semantic, keyword, and exact match modalities with contextual embeddings for superior retrieval quality.
+
+### When to Use
+
+- Searching structured/legal/regulatory documents with section hierarchy
+- Hybrid search combining semantic, keyword, and exact match
+- RAG pipelines needing contextual embeddings (Anthropic approach — 49% better retrieval)
+- Documents with heading-based structure (markdown, PDF, Word)
+
+### Basic Example
+
+```yaml
+tools:
+  - name: docs_search
+    type: hierarchical_document
+    description: "Search company documentation"
+    source: "./docs/"
+```
+
+The tool automatically:
+
+1. Converts documents to markdown (via markitdown)
+2. Parses hierarchical structure from headings
+3. Chunks by structure (max 800 tokens)
+4. Generates LLM context for each chunk (Anthropic contextual retrieval approach)
+5. Generates embeddings from contextualized text
+6. Builds BM25 and exact match indices
+
+### Required Fields
+
+#### Source
+
+- **Type**: String (path)
+- **Purpose**: Path to document file or directory to index
+- **Formats Supported**: `.md`, `.pdf`, `.docx`, `.txt`
+- **Note**: Directories are recursively indexed
+
+```yaml
+source: "./docs/"
+# OR
+source: "./legal/compliance-manual.pdf"
+```
+
+### Optional Fields
+
+#### Chunking
+
+| Field | Type | Default | Range | Description |
+| --- | --- | --- | --- | --- |
+| `chunking_strategy` | Enum | `structure` | `structure`, `token` | `structure` parses markdown headings; `token` uses fixed token-based splitting |
+| `max_chunk_tokens` | Integer | `800` | 100–2000 | Maximum tokens per chunk |
+| `chunk_overlap` | Integer | `50` | 0–200 | Token overlap between chunks |
+
+```yaml
+chunking_strategy: structure
+max_chunk_tokens: 1000
+chunk_overlap: 100
+```
+
+#### Document Domain
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `document_domain` | Enum | `none` | Domain-specific subsection detection patterns |
+| `max_subsection_depth` | Integer | None | Maximum subsection nesting depth (None = unlimited) |
+
+**Available domains:**
+
+| Domain | Description | Example Patterns |
+| --- | --- | --- |
+| `none` | No subsection patterns (default) | — |
+| `us_legislative` | US Code style | (a), (1), (A), (i) hierarchy |
+| `au_legislative` | Australian style | (1), (a), (i), (A) hierarchy |
+| `academic` | Academic papers | 1., 1.1, 1.1.1 numbered sections |
+| `technical` | Technical manuals | Step 1, 1.1, Note:, Warning: |
+| `legal_contract` | Legal contracts | Article I, Section 1, (a) clauses |
+
+```yaml
+document_domain: us_legislative
+max_subsection_depth: 3
+```
+
+#### Search
+
+| Field | Type | Default | Range | Description |
+| --- | --- | --- | --- | --- |
+| `search_mode` | Enum | `hybrid` | `semantic`, `keyword`, `exact`, `hybrid` | Search modality |
+| `top_k` | Integer | `10` | 1–100 | Number of results to return |
+| `min_score` | Float | None | 0.0–1.0 | Minimum similarity score threshold |
+| `semantic_weight` | Float | `0.5` | 0.0–1.0 | Weight for semantic search in hybrid mode |
+| `keyword_weight` | Float | `0.3` | 0.0–1.0 | Weight for keyword search in hybrid mode |
+| `exact_weight` | Float | `0.2` | 0.0–1.0 | Weight for exact match in hybrid mode |
+| `rrf_k` | Integer | `60` | ≥ 1 | Reciprocal Rank Fusion constant |
+
+> **Note**: In `hybrid` mode, `semantic_weight + keyword_weight + exact_weight` must sum to 1.0.
+
+```yaml
+search_mode: hybrid
+top_k: 15
+semantic_weight: 0.4
+keyword_weight: 0.4
+exact_weight: 0.2
+```
+
+#### Contextual Embeddings
+
+| Field | Type | Default | Range | Description |
+| --- | --- | --- | --- | --- |
+| `contextual_embeddings` | Boolean | `true` | — | Enable LLM-generated context per chunk |
+| `context_max_tokens` | Integer | `100` | 50–200 | Max tokens for context summary |
+| `context_concurrency` | Integer | `10` | 1–50 | Parallel LLM context generation requests |
+
+Contextual embeddings prepend an LLM-generated summary to each chunk before embedding, yielding ~49% better retrieval accuracy (per Anthropic research). Uses Claude Haiku by default.
+
+```yaml
+contextual_embeddings: true
+context_max_tokens: 100
+context_concurrency: 15
+```
+
+#### Feature Extraction
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `extract_definitions` | Boolean | `true` | Extract and index term definitions from documents |
+| `extract_cross_references` | Boolean | `true` | Extract and resolve cross-references between sections |
+
+```yaml
+extract_definitions: true
+extract_cross_references: true
+```
+
+#### Reranking
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enable_reranking` | Boolean | `false` | Enable LLM-based reranking of search results |
+| `reranker_model` | LLMProvider | None | LLM config for reranking (required when `enable_reranking: true`) |
+
+```yaml
+enable_reranking: true
+reranker_model:
+  provider: openai
+  name: gpt-4o-mini
+  temperature: 0.0
+```
+
+#### Storage
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `database` | DatabaseConfig / String | None | Vector database configuration or named reference (None = in-memory) |
+| `keyword_index` | KeywordIndexConfig | None | Keyword index backend configuration (None = in-memory BM25) |
+
+See [Vectorstore Tools — Database Configuration](#database-configuration-examples) for `database` provider options.
+
+### Search Modes
+
+| Mode | Use Case | Example Query |
+| --- | --- | --- |
+| `semantic` | Conceptual questions | "What are the compliance requirements?" |
+| `keyword` | Technical terms | "authentication timeout error" |
+| `exact` | Section references | "Section 203(a)(1)" |
+| `hybrid` | General purpose (default) | "reporting requirements in Section 5" |
+
+### Keyword Index Configuration
+
+#### In-Memory BM25 (Default)
+
+Zero-configuration — uses `rank_bm25` in-process. This is the default when `keyword_index` is omitted or set to `in-memory`.
+
+```yaml
+tools:
+  - name: docs_search
+    type: hierarchical_document
+    description: "Search with in-memory BM25 keyword index"
+    source: "./docs/"
+    search_mode: hybrid
+    keyword_index:
+      provider: in-memory  # Optional — this is the default
+```
+
+#### OpenSearch (Production)
+
+For production workloads, use an external OpenSearch cluster for the keyword index. This offloads BM25 scoring to a dedicated search engine, suitable for large corpora and multi-instance deployments.
+
+```yaml
+tools:
+  - name: docs_search
+    type: hierarchical_document
+    description: "Search with OpenSearch keyword backend"
+    source: "./docs/"
+    search_mode: hybrid
+    keyword_index:
+      provider: opensearch
+      endpoint: "https://search.example.com:9200"
+      index_name: "my-keyword-index"
+      username: "${OPENSEARCH_USERNAME}"
+      password: "${OPENSEARCH_PASSWORD}"
+      verify_certs: true
+      timeout_seconds: 10
+```
+
+**KeywordIndexConfig fields (OpenSearch):**
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `provider` | Enum | `in-memory` | `in-memory` or `opensearch` |
+| `endpoint` | String | None | OpenSearch endpoint URL (required for opensearch) |
+| `index_name` | String | None | OpenSearch index name (required for opensearch) |
+| `username` | String | None | Basic auth username |
+| `password` | String | None | Basic auth password |
+| `api_key` | String | None | API key auth (alternative to basic auth) |
+| `verify_certs` | Boolean | `true` | Verify TLS certificates |
+| `timeout_seconds` | Integer | `10` | Connection timeout in seconds (1–120) |
+
+### OpenSearch Docker Setup
+
+#### Development (security disabled)
+
+```bash
+docker run -d -p 9200:9200 -p 9600:9600 \
+  -e "discovery.type=single-node" \
+  -e "DISABLE_SECURITY_PLUGIN=true" \
+  opensearchproject/opensearch:latest
+```
+
+Then use `endpoint: "http://localhost:9200"` with no auth.
+
+#### With admin password (OpenSearch 2.12+)
+
+```bash
+docker run -d -p 9200:9200 -p 9600:9600 \
+  -e "discovery.type=single-node" \
+  -e "OPENSEARCH_INITIAL_ADMIN_PASSWORD=<YourStrongPassword1!>" \
+  opensearchproject/opensearch:latest
+```
+
+> **Note**: On Linux, you may need to increase the `vm.max_map_count` kernel setting:
+> ```bash
+> sudo sysctl -w vm.max_map_count=262144
+> ```
+
+**Verify OpenSearch is running:**
+
+```bash
+curl -s http://localhost:9200 | python -m json.tool
+```
+
+### Configuration Examples
+
+#### Semantic-Only Search
+
+Best for conceptual questions without specific terminology.
+
+```yaml
+tools:
+  - name: concept_search
+    type: hierarchical_document
+    description: "Search by concepts"
+    source: "./docs/"
+    search_mode: semantic
+    contextual_embeddings: true
+```
+
+#### Keyword-Heavy Search
+
+Best for technical documents with specific terminology.
+
+```yaml
+tools:
+  - name: tech_search
+    type: hierarchical_document
+    description: "Technical documentation search"
+    source: "./technical/"
+    search_mode: hybrid
+    semantic_weight: 0.3
+    keyword_weight: 0.5
+    exact_weight: 0.2
+```
+
+#### Legal/Regulatory Documents
+
+Optimized for section references and definitions.
+
+```yaml
+tools:
+  - name: legal_search
+    type: hierarchical_document
+    description: "Search legal documents"
+    source: "./legal/"
+    search_mode: hybrid
+    document_domain: us_legislative
+    extract_definitions: true
+    extract_cross_references: true
+    exact_weight: 0.3
+    keyword_weight: 0.3
+    semantic_weight: 0.4
+```
+
+#### Custom Context Model
+
+Specify a different LLM for context generation (defaults to Claude Haiku).
+
+```yaml
+tools:
+  - name: docs_search
+    type: hierarchical_document
+    description: "Search with custom context model"
+    source: "./docs/"
+    contextual_embeddings: true
+    context_max_tokens: 100
+    context_concurrency: 10
+```
+
+#### Large Corpus with Persistence
+
+```yaml
+tools:
+  - name: knowledge_base
+    type: hierarchical_document
+    description: "Persistent knowledge base"
+    source: "./knowledge/"
+    database:
+      provider: postgres
+      connection_string: "${POSTGRES_URL}"
+    top_k: 20
+```
+
+### How It Works
+
+#### Preprocessing Pipeline (Anthropic Contextual Retrieval)
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         INGESTION (per document)                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  document.pdf  →  [markitdown]  →  markdown text                        │
+│                                                                         │
+│  markdown text →  [StructuredChunker]  →  chunks with parent_chain      │
+│                                                                         │
+│  For each chunk:                                                        │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │ [LLM Context Generation] - Claude Haiku                          │  │
+│  │                                                                   │  │
+│  │ Input:  Whole document + chunk                                    │  │
+│  │ Output: "This chunk describes the reporting requirements under    │  │
+│  │          Section 203 of the Environmental Protection Act..."      │  │
+│  │                                                                   │  │
+│  │ Cost: ~$0.03 per 100-page document                                │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+│  contextualized = "{LLM context}\n\n{original chunk}"                   │
+│                                                                         │
+│  contextualized  →  [Embedding]  →  dense vector                        │
+│  contextualized  →  [BM25/Native] →  keyword index                      │
+│  section_id      →  [Dict]        →  exact match index                  │
+│                                                                         │
+│  Result: 49% better retrieval vs standard RAG (Anthropic research)      │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Hybrid Search Flow
+
+```
+Query: "reporting requirements in Section 403"
+                    │
+    ┌───────────────┼───────────────┐
+    ▼               ▼               ▼
+[Semantic]      [BM25]          [Exact]
+contextualized  contextualized  section_id
+embeddings      text search     lookup
+    │               │               │
+    └───────────────┼───────────────┘
+                    ▼
+              [RRF Fusion]
+              k=60, weights
+                    │
+                    ▼
+            [Top K Results]
+```
+
+1. **Query Analysis**: Detects exact match patterns (section numbers, quoted phrases)
+2. **Parallel Search**: Runs semantic, keyword, and exact match searches
+3. **RRF Fusion**: Combines ranked results using Reciprocal Rank Fusion (k=60)
+4. **Enrichment**: Adds relevant definitions if terms are defined in documents
+
+### Result Format
+
+Each search result includes:
+
+```
+[1] Score: 0.847 | Source: docs/compliance.md
+Location: Chapter 5 > Section 5.3 > Reporting Requirements
+Section: sec_5_3
+
+Annual reporting must be submitted within 60 days of the fiscal year end.
+All covered entities must include revenue breakdowns by category.
+
+Relevant definitions:
+  • Covered entity: Any organization with annual revenue exceeding...
+```
+
+### Performance Tips
+
+1. **Chunk size**: Default 800 tokens works well. Increase for dense technical content, decrease for granular retrieval.
+2. **Weights tuning**: Increase `semantic_weight` for conceptual queries, `keyword_weight` for technical terminology, `exact_weight` for regulatory documents.
+3. **Persistence**: For large corpora (>1000 documents), use a persistent database to avoid re-indexing on restart.
+4. **Contextual embeddings**: Keep enabled (default) for 49% better retrieval accuracy per Anthropic research.
+5. **Context generation cost**: ~$0.03 per 100-page document using Claude Haiku. Increase `context_concurrency` to reduce ingestion time.
+6. **Large documents**: For very large documents that exceed context limits, the tool automatically truncates the document context while preserving the chunk content.
+
+### Error Handling
+
+- **No results found**: Returns empty results — check that documents exist in `source` path and format is supported
+- **Slow ingestion**: Large PDFs take longer; consider splitting very large documents or using persistent storage
+- **Missing context**: Ensure `contextual_embeddings: true` (default) and documents have heading structure
 
 ---
 
@@ -1026,15 +1452,15 @@ Loops (if parameter is array):
 
 ## Tool Comparison
 
-| Feature        | Vectorstore             | MCP                     | Function        | Prompt          |
-| -------------- | ----------------------- | ----------------------- | --------------- | --------------- |
-| **Status**     | ✅ Implemented          | ✅ Implemented          | 🚧 Planned      | 🚧 Planned      |
-| **Use Case**   | Search data             | External integrations   | Custom logic    | Template-based  |
-| **Execution**  | Vector similarity       | MCP protocol (stdio)    | Python function | LLM generation  |
-| **Setup**      | Data files              | Server config + runtime | Python files    | Template text   |
-| **Parameters** | Implicit (search query) | Server-specific tools   | Defined in code | Defined in YAML |
-| **Latency**    | Medium (~100ms)         | Medium (~50-500ms)      | Low (<10ms)     | High (LLM call) |
-| **Cost**       | Embedding API           | Server resource         | Internal        | LLM tokens      |
+| Feature        | Vectorstore             | Hierarchical Document       | MCP                     | Function        | Prompt          |
+| -------------- | ----------------------- | --------------------------- | ----------------------- | --------------- | --------------- |
+| **Status**     | ✅ Implemented          | ✅ Implemented               | ✅ Implemented          | 🚧 Planned      | 🚧 Planned      |
+| **Use Case**   | Search data             | Structured document search  | External integrations   | Custom logic    | Template-based  |
+| **Execution**  | Vector similarity       | Hybrid RRF fusion           | MCP protocol (stdio)    | Python function | LLM generation  |
+| **Setup**      | Data files              | Document files              | Server config + runtime | Python files    | Template text   |
+| **Parameters** | Implicit (search query) | Implicit (search query)     | Server-specific tools   | Defined in code | Defined in YAML |
+| **Latency**    | Medium (~100ms)         | Medium (~100-300ms)         | Medium (~50-500ms)      | Low (<10ms)     | High (LLM call) |
+| **Cost**       | Embedding API           | Embedding + context LLM     | Server resource         | Internal        | LLM tokens      |
 
 ---
 
@@ -1084,6 +1510,22 @@ Loops (if parameter is array):
   args: ["-y", "@modelcontextprotocol/server-github"]
   env:
     GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+```
+
+### Structured Document Search
+
+```yaml
+- name: policy_search
+  type: hierarchical_document
+  description: "Search policy documents with section awareness"
+  source: "./policies/"
+  search_mode: hybrid
+  document_domain: legal_contract
+  extract_definitions: true
+  extract_cross_references: true
+  database:
+    provider: postgres
+    connection_string: "${POSTGRES_URL}"
 ```
 
 ### Text Transformation
