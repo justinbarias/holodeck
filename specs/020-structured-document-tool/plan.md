@@ -7,19 +7,20 @@
 
 Implement a HierarchicalDocumentTool that extends HoloDeck's vectorstore capabilities with:
 1. **Structure-aware document parsing** - Preserve hierarchical structure (headings → parent chains)
-2. **Hybrid search** - Combine dense embeddings, BM25 sparse index, and exact match
+2. **Hybrid search** - Combine dense embeddings, sparse keyword index, and exact match
 3. **Contextual embeddings** - Prepend structural context before embedding (per Anthropic's research)
 4. **Reciprocal Rank Fusion** - Merge results from multiple search modalities
 5. **Definition/cross-reference extraction** - Auto-detect and index definitions and references
 
-This builds on existing `VectorStoreTool` patterns while adding markdown structure parsing, tiered BM25 indexing (native or fallback), and RRF-based result fusion.
+This builds on existing `VectorStoreTool` patterns while adding markdown structure parsing, tiered keyword indexing (native or configurable fallback), and RRF-based result fusion.
 
 ## Technical Context
 
 **Language/Version**: Python 3.10+
 **Primary Dependencies**:
 - Semantic Kernel (existing) - vector store abstraction, embeddings
-- rank_bm25 - BM25Okapi implementation for sparse indexing (fallback only)
+- opensearch-py - OpenSearch client for production sparse keyword index service
+- rank_bm25 - BM25Okapi implementation for in-memory sparse fallback (dev/local)
 - markitdown (existing) - document-to-markdown conversion
 - Pydantic v2 (existing) - configuration models
 
@@ -33,12 +34,12 @@ This builds on existing `VectorStoreTool` patterns while adding markdown structu
 | qdrant | ✅ Yes | Use `collection.hybrid_search()` |
 | mongodb | ✅ Yes | Use `collection.hybrid_search()` (MongoDB Atlas) |
 | azure-cosmos-nosql | ✅ Yes | Use `collection.hybrid_search()` |
-| postgres | ❌ No | Use rank_bm25 fallback + app-level RRF |
-| pinecone | ❌ No | Use rank_bm25 fallback + app-level RRF |
-| chromadb | ❌ No | Use rank_bm25 fallback + app-level RRF |
-| faiss | ❌ No | Use rank_bm25 fallback + app-level RRF |
-| in-memory | ❌ No | Use rank_bm25 fallback + app-level RRF |
-| sql-server | ❌ No | Use rank_bm25 fallback + app-level RRF |
+| postgres | ❌ No | Use configurable sparse fallback (OpenSearch endpoint preferred, in-memory BM25 optional) + app-level RRF |
+| pinecone | ❌ No | Use configurable sparse fallback (OpenSearch endpoint preferred, in-memory BM25 optional) + app-level RRF |
+| chromadb | ❌ No | Use configurable sparse fallback (OpenSearch endpoint preferred, in-memory BM25 optional) + app-level RRF |
+| faiss | ❌ No | Use configurable sparse fallback (OpenSearch endpoint preferred, in-memory BM25 optional) + app-level RRF |
+| in-memory | ❌ No | Use configurable sparse fallback (OpenSearch endpoint preferred, in-memory BM25 optional) + app-level RRF |
+| sql-server | ❌ No | Use configurable sparse fallback (OpenSearch endpoint preferred, in-memory BM25 optional) + app-level RRF |
 
 **Note**: MongoDB Atlas requires the `MongoDBAtlasStore` connector (not `azure-cosmos-mongo`). Azure Cosmos MongoDB vCore (`azure-cosmos-mongo`) is EXCLUDED from both lists as it does NOT support hybrid search natively and requires a different integration pattern.
 
@@ -142,9 +143,9 @@ The preprocessing pipeline follows Anthropic's contextual retrieval approach, us
 │  │  │  DENSE INDEX    │  │  KEYWORD INDEX  │  │  EXACT INDEX    │        │ │
 │  │  ├─────────────────┤  ├─────────────────┤  ├─────────────────┤        │ │
 │  │  │ Contextualized  │  │ Contextualized  │  │ section_id →    │        │ │
-│  │  │ embeddings      │  │ text (BM25 or   │  │ chunk_id        │        │ │
-│  │  │                 │  │ native hybrid)  │  │                 │        │ │
-│  │  │ → Vector Store  │  │ → Native/BM25   │  │ → Dict lookup   │        │ │
+│  │  │ embeddings      │  │ text (native or │  │ chunk_id        │        │ │
+│  │  │                 │  │ sparse fallback)│  │                 │        │ │
+│  │  │ → Vector Store  │  │ → Native/Sparse │  │ → Dict lookup   │        │ │
 │  │  └─────────────────┘  └─────────────────┘  └─────────────────┘        │ │
 │  │                                                                        │ │
 │  │  + Definition Index: term_normalized → DefinitionEntry                 │ │
@@ -158,7 +159,8 @@ The preprocessing pipeline follows Anthropic's contextual retrieval approach, us
 │  │  Dense Index + Metadata → Vector Store (postgres, qdrant, etc.)        │ │
 │  │  Keyword Index:                                                        │ │
 │  │    • Native hybrid providers → Persisted by provider                   │ │
-│  │    • Fallback (rank_bm25) → Rebuilt from chunks on startup             │ │
+│  │    • Fallback (opensearch) → Persisted in OpenSearch endpoint           │ │
+│  │    • Optional in-memory BM25 fallback → Rebuilt from chunks on startup  │ │
 │  │  Exact/Definition Index → Rebuilt from stored chunks on startup        │ │
 │  │  Original + Contextualized content → Stored in vector store records    │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
@@ -166,7 +168,7 @@ The preprocessing pipeline follows Anthropic's contextual retrieval approach, us
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key Insight**: Both embeddings AND BM25 index use the contextualized text. This allows keyword searches to match on the LLM-generated context, not just the original chunk content.
+**Key Insight**: Both embeddings AND sparse keyword index use the contextualized text. This allows keyword searches to match on the LLM-generated context, not just the original chunk content.
 
 ## Constitution Check
 
@@ -213,7 +215,7 @@ src/holodeck/
 │   ├── vector_store.py              # Existing (reuse patterns)
 │   ├── text_chunker.py              # Existing (extend for structure-aware)
 │   ├── structured_chunker.py        # NEW: Markdown structure parser
-│   ├── keyword_search.py            # NEW: Tiered keyword search (native/BM25 fallback)
+│   ├── keyword_search.py            # NEW: Tiered keyword search (native/OpenSearch/in-memory)
 │   ├── hybrid_search.py             # NEW: RRF fusion + provider-aware hybrid orchestration
 │   ├── definition_extractor.py      # NEW: Definition/cross-ref extraction
 │   └── tool_filter/
@@ -223,7 +225,7 @@ tests/
 ├── unit/
 │   ├── lib/
 │   │   ├── test_structured_chunker.py
-│   │   ├── test_keyword_search.py       # Tests for BM25 fallback + provider detection
+│   │   ├── test_keyword_search.py       # Tests for OpenSearch + in-memory fallback + provider detection
 │   │   ├── test_hybrid_search.py        # Tests for RRF fusion logic
 │   │   └── test_definition_extractor.py
 │   └── tools/
@@ -272,15 +274,15 @@ No constitution violations requiring justification.
 │  │ (Embeddings) │  │ (see below)  │  │ (dict lookup)│                   │
 │  │              │  │              │  │              │                   │
 │  │ Contextual   │  │ Tiered:      │  │ Section IDs  │                   │
-│  │ embedding    │  │ Native/BM25  │  │ + phrases    │                   │
+│  │ embedding    │  │ Native/Sparse│  │ + phrases    │                   │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘                   │
 │         │                 │                 │                            │
 │         └─────────────────┼─────────────────┘                           │
 │                           ▼                                              │
 │  ┌─────────────────────────────────────────────────────────────┐        │
 │  │              HybridSearch (Provider-Aware)                   │        │
-│  │  • Native hybrid: azure-ai-search, weaviate, pinecone        │        │
-│  │  • Fallback: rank_bm25 + app-level RRF (k=60)                │        │
+│  │  • Native hybrid: azure-ai-search, weaviate, qdrant, mongodb │        │
+│  │  • Fallback: OpenSearch endpoint (or in-memory BM25) + RRF   │        │
 │  │  • Configurable weights per modality                         │        │
 │  │  • Optional reranking                                        │        │
 │  └──────────────────────────┬──────────────────────────────────┘        │
@@ -304,8 +306,8 @@ No constitution violations requiring justification.
 │              ┌─────────────┴─────────────┐                              │
 │              ▼                           ▼                              │
 │  ┌───────────────────────┐   ┌───────────────────────┐                 │
-│  │    Native Hybrid      │   │    BM25 Fallback      │                 │
-│  │   (SK hybrid_search)  │   │    (rank_bm25)        │                 │
+│  │    Native Hybrid      │   │  Sparse Fallback      │                 │
+│  │   (SK hybrid_search)  │   │ (OpenSearch/BM25)     │                 │
 │  ├───────────────────────┤   ├───────────────────────┤                 │
 │  │ • azure-ai-search     │   │ • postgres            │                 │
 │  │ • weaviate            │   │ • pinecone            │                 │
@@ -314,11 +316,11 @@ No constitution violations requiring justification.
 │  │ • azure-cosmos-nosql  │   │ • in-memory           │                 │
 │  │                       │   │ • sql-server          │                 │
 │  ├───────────────────────┤   ├───────────────────────┤                 │
-│  │ collection.hybrid_    │   │ Build local BM25      │                 │
-│  │ search(query,         │   │ index via rank_bm25,  │                 │
-│  │   additional_property │   │ run vector search,    │                 │
-│  │   _name="content")    │   │ fuse with app-level   │                 │
-│  │                       │   │ RRF (k=60)            │                 │
+│  │ collection.hybrid_    │   │ Query OpenSearch text │                 │
+│  │ search(query,         │   │ index (preferred) or  │                 │
+│  │   additional_property │   │ local BM25, then fuse │                 │
+│  │   _name="content")    │   │ with app-level RRF    │                 │
+│  │                       │   │ (k=60)                │                 │
 │  └───────────────────────┘   └───────────────────────┘                 │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -333,7 +335,7 @@ No constitution violations requiring justification.
 - Anthropic's research shows 49% reduction in retrieval failures (67% with reranking)
 - LLM understands semantic meaning, not just structural position
 - Context explains what the chunk is about within the document
-- Both embeddings AND BM25 index use the contextualized text
+- Both embeddings AND sparse keyword index use the contextualized text
 
 **Prompt Template** (from Anthropic):
 
@@ -440,17 +442,18 @@ tools:
 
 **What Gets Indexed**:
 - **Dense Index**: Embed the contextualized text (context + chunk)
-- **BM25 Index**: Index the contextualized text (enables keyword search on context too)
+- **Sparse Keyword Index**: Index the contextualized text (OpenSearch endpoint or in-memory BM25)
 - **Exact Index**: Uses original chunk.section_id for fast lookup
 
 ### 2. Tiered Keyword Search Strategy
 
-**Decision**: Use Semantic Kernel's native `hybrid_search()` when provider supports it, fall back to `rank_bm25` otherwise.
+**Decision**: Use Semantic Kernel's native `hybrid_search()` when provider supports it. For providers without native hybrid, use a configurable sparse keyword backend: OpenSearch endpoint (`opensearch`) for production, or in-memory BM25 (`in-memory`) for local/dev.
 
 **Rationale**:
 - Native hybrid search is more efficient (single query, provider handles fusion)
 - Semantic Kernel's `hybrid_search()` requires `is_full_text_indexed=True` on the content field
-- `rank_bm25` provides consistent behavior for providers without native support
+- OpenSearch endpoint gives durable sparse indexing that survives restarts and scales for serve/deploy
+- In-memory BM25 keeps local/dev workflows simple and dependency-light
 
 **Semantic Kernel Hybrid Search API**:
 
@@ -477,16 +480,43 @@ async for result in search_results.results:
 - String field with `is_full_text_indexed=True` (our `content` field has this)
 - Provider must implement hybrid search interface
 
+**Configuration Model (vectorstore-style)**:
+
+```python
+from enum import Enum
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class KeywordIndexProvider(str, Enum):
+    IN_MEMORY = "in-memory"
+    OPENSEARCH = "opensearch"
+
+
+class KeywordIndexConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    provider: Literal["in-memory", "opensearch"] = Field(default="in-memory")
+    endpoint: str | None = Field(default=None)
+    index_name: str | None = Field(default=None)
+    username: str | None = Field(default=None)
+    password: str | None = Field(default=None)
+    api_key: str | None = Field(default=None)
+    verify_certs: bool = Field(default=True)
+    timeout_seconds: int = Field(default=10, ge=1, le=120)
+```
+
 **Implementation**:
 
 ```python
 from enum import Enum
-from typing import Any, Protocol
+from typing import Any
 
 class KeywordSearchStrategy(str, Enum):
     """Keyword search strategy based on provider capabilities."""
     NATIVE_HYBRID = "native_hybrid"    # Use collection.hybrid_search()
-    FALLBACK_BM25 = "fallback_bm25"    # Use rank_bm25 + app-level RRF
+    FALLBACK_BM25 = "fallback_bm25"    # Use sparse fallback + app-level RRF
 
 
 # Provider capability mapping (based on Semantic Kernel support)
@@ -520,11 +550,18 @@ def get_keyword_search_strategy(provider: str) -> KeywordSearchStrategy:
 class HybridSearchExecutor:
     """Executes hybrid search using appropriate strategy for provider."""
 
-    def __init__(self, provider: str, collection: Any):
+    def __init__(
+        self,
+        provider: str,
+        collection: Any,
+        keyword_index_config: KeywordIndexConfig,
+    ):
         self.provider = provider
         self.collection = collection
         self.strategy = get_keyword_search_strategy(provider)
-        self._bm25_index: BM25FallbackProvider | None = None
+        self.keyword_index_config = keyword_index_config
+        self._bm25_index: InMemoryBM25KeywordProvider | None = None
+        self._opensearch_index: OpenSearchKeywordProvider | None = None
 
     async def search(
         self,
@@ -565,7 +602,7 @@ class HybridSearchExecutor:
         query_embedding: list[float],
         top_k: int,
     ) -> list[tuple[str, float]]:
-        """Run vector + BM25 separately, fuse with RRF."""
+        """Run vector + sparse keyword separately, fuse with RRF."""
         # Vector search
         async with self.collection as coll:
             vector_results = await coll.search(vector=query_embedding, top=top_k)
@@ -574,8 +611,10 @@ class HybridSearchExecutor:
                 async for result in vector_results.results
             ]
 
-        # BM25 search (requires index to be built during ingestion)
-        if self._bm25_index:
+        # Sparse keyword search (OpenSearch preferred, BM25 optional)
+        if self.keyword_index_config.provider == "opensearch":
+            bm25_ranked = self._opensearch_index.search(query, top_k)
+        elif self._bm25_index:
             bm25_ranked = self._bm25_index.search(query, top_k)
         else:
             bm25_ranked = []
@@ -584,8 +623,8 @@ class HybridSearchExecutor:
         return reciprocal_rank_fusion([vector_ranked, bm25_ranked], k=60)
 
 
-class BM25FallbackProvider:
-    """Fallback BM25 implementation using rank_bm25 library."""
+class InMemoryBM25KeywordProvider:
+    """In-memory BM25 fallback implementation using rank_bm25."""
 
     def __init__(self, k1: float = 1.5, b: float = 0.75):
         self.k1 = k1
@@ -610,19 +649,35 @@ class BM25FallbackProvider:
     def _tokenize(self, text: str) -> list[str]:
         import re
         return re.findall(r"[a-zA-Z0-9]+", text.lower())
+
+
+class OpenSearchKeywordProvider:
+    """Sparse keyword provider backed by OpenSearch endpoint."""
+
+    def __init__(self, endpoint: str, index_name: str, **kwargs: Any):
+        from opensearchpy import OpenSearch
+
+        self._client = OpenSearch(hosts=[endpoint], **kwargs)
+        self._index_name = index_name
+
+    def build(self, documents: list[tuple[str, str]]) -> None:
+        """Bulk upsert contextualized chunks into OpenSearch index."""
+        ...
+
+    def search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
+        """Run BM25-style text search via OpenSearch query DSL."""
+        ...
 ```
 
 **Persistence**:
 - **Native hybrid providers**: Full-text index persisted by the provider automatically
-- **Fallback (rank_bm25)**: In-memory only, rebuilt on startup from stored chunks
-
-**Persistence**:
-- **Native hybrid providers**: Full-text index persisted by the provider automatically
-- **Fallback (rank_bm25)**: In-memory only, rebuilt on startup from stored chunks
+- **Fallback (`keyword_index.provider=opensearch`)**: Persisted in OpenSearch endpoint; recommended for serve/deploy
+- **Fallback (`keyword_index.provider=in-memory`)**: Rebuilt from stored chunks on startup
 
 **Sources**:
 - [Semantic Kernel Hybrid Search](https://learn.microsoft.com/en-us/semantic-kernel/concepts/vector-store-connectors/hybrid-search)
 - [Semantic Kernel MongoDB Connector](https://learn.microsoft.com/en-us/semantic-kernel/concepts/vector-store-connectors/out-of-the-box-connectors/mongodb-connector)
+- [OpenSearch Python Client](https://opensearch.org/docs/latest/clients/python-low-level/)
 
 ### 2.1 Observability (Constitution Principle IV)
 
@@ -656,17 +711,35 @@ class HybridSearchExecutor:
             return results
 
 
-class BM25FallbackProvider:
-    """BM25 fallback with OpenTelemetry instrumentation."""
+class InMemoryBM25KeywordProvider:
+    """In-memory BM25 fallback with OpenTelemetry instrumentation."""
 
     def search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
         """Search with tracing."""
         with tracer.start_as_current_span(
-            "bm25.search",
+            "keyword.search.in_memory_bm25",
             attributes={
+                "search.query": query,
                 "bm25.query_tokens": len(self._tokenize(query)),
                 "bm25.index_size": len(self._doc_ids),
             }
+        ) as span:
+            results = self._search_internal(query, top_k)
+            span.set_attribute("search.result_count", len(results))
+            return results
+
+
+class OpenSearchKeywordProvider:
+    """OpenSearch keyword fallback with OpenTelemetry instrumentation."""
+
+    def search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
+        with tracer.start_as_current_span(
+            "keyword.search.opensearch",
+            attributes={
+                "search.query": query,
+                "search.top_k": top_k,
+                "keyword.provider": "opensearch",
+            },
         ) as span:
             results = self._search_internal(query, top_k)
             span.set_attribute("search.result_count", len(results))
@@ -675,21 +748,30 @@ class BM25FallbackProvider:
 
 ### 2.2 Graceful Degradation
 
-When BM25 index build fails, the system MUST degrade gracefully to semantic-only search:
+When sparse keyword index initialization/search fails, the system MUST degrade gracefully to semantic-only search:
 
 ```python
 class HybridSearchExecutor:
-    def _build_bm25_index(self, documents: list[tuple[str, str]]) -> None:
-        """Build BM25 index with graceful degradation."""
+    def _build_keyword_index(self, documents: list[tuple[str, str]]) -> None:
+        """Build sparse keyword index with graceful degradation."""
         try:
-            self._bm25_index = BM25FallbackProvider()
-            self._bm25_index.build(documents)
+            if self.keyword_index_config.provider == "opensearch":
+                self._opensearch_index = OpenSearchKeywordProvider(
+                    endpoint=self.keyword_index_config.endpoint,
+                    index_name=self.keyword_index_config.index_name,
+                )
+                self._opensearch_index.build(documents)
+            else:
+                self._bm25_index = InMemoryBM25KeywordProvider()
+                self._bm25_index.build(documents)
         except Exception as e:
             import logging
+
             logging.warning(
-                f"BM25 index build failed, falling back to semantic-only: {e}"
+                f"Keyword index unavailable, falling back to semantic-only: {e}"
             )
-            self._bm25_index = None  # Semantic-only mode
+            self._opensearch_index = None
+            self._bm25_index = None
 ```
 
 ### 3. Reciprocal Rank Fusion
@@ -903,8 +985,10 @@ class HierarchicalDocumentChunk:
 ### Phase 2: Hybrid Search (P2 Stories)
 1. **Tiered keyword search module** (`keyword_search.py`):
    - Provider capability detection
-   - `BM25FallbackProvider` using rank_bm25
-   - `NativeHybridProvider` wrapper for azure-ai-search, weaviate, pinecone
+   - Configurable sparse fallback provider (`opensearch` or `in-memory`)
+   - `OpenSearchKeywordProvider` using opensearch-py endpoint
+   - `InMemoryBM25KeywordProvider` using rank_bm25
+   - `NativeHybridProvider` wrapper for azure-ai-search, weaviate, qdrant, mongodb, azure-cosmos-nosql
    - `NativeFullTextProvider` wrapper for postgres tsvector
 2. Exact match index (dict-based)
 3. RRF fusion logic (shared `hybrid_search.py` module)
@@ -923,7 +1007,7 @@ class HierarchicalDocumentChunk:
 ### Background
 
 The existing `src/holodeck/lib/tool_filter/index.py` contains a custom BM25 implementation (lines 207-428) and RRF fusion (lines 430-501). This should be refactored to use:
-1. The shared `keyword_search.py` module (with `BM25FallbackProvider`)
+1. The shared `keyword_search.py` module (with `InMemoryBM25KeywordProvider`)
 2. The shared `hybrid_search.py` module for RRF fusion
 
 Note: tool_filter is always in-memory (tools loaded from kernel), so it will always use the BM25 fallback strategy.
@@ -949,13 +1033,13 @@ class ToolIndex:
 
 ```python
 # Updated tool_filter/index.py uses shared modules
-from holodeck.lib.keyword_search import BM25FallbackProvider
+from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
 from holodeck.lib.hybrid_search import reciprocal_rank_fusion
 
 class ToolIndex:
     def __init__(self):
         self.tools: dict[str, ToolMetadata] = {}
-        self._keyword_provider = BM25FallbackProvider(k1=1.5, b=0.75)
+        self._keyword_provider = InMemoryBM25KeywordProvider(k1=1.5, b=0.75)
 
     def _build_bm25_index(self, documents: list[tuple[str, str]]) -> None:
         self._keyword_provider.build(documents)
@@ -982,9 +1066,9 @@ class ToolIndex:
 
 ### Benefits
 
-1. **Code reuse**: Single BM25 implementation for both tool filtering and document search
+1. **Code reuse**: Shared keyword search abstractions across tool filtering and document search
 2. **Consistency**: Same algorithm behavior across features
-3. **Maintainability**: rank_bm25 is well-tested; less custom code to maintain
+3. **Maintainability**: OpenSearch endpoint for prod + rank_bm25 fallback for local keeps complexity explicit
 4. **Performance**: rank_bm25 uses NumPy for efficient scoring
 5. **Extensibility**: If tool_filter ever moves to a persistent store, it can leverage native hybrid search
 
@@ -994,8 +1078,9 @@ class ToolIndex:
    - `KeywordSearchStrategy` enum (`NATIVE_HYBRID`, `FALLBACK_BM25`)
    - `NATIVE_HYBRID_PROVIDERS` set (azure-ai-search, weaviate, qdrant, mongodb, azure-cosmos-nosql)
    - `FALLBACK_BM25_PROVIDERS` set (postgres, pinecone, chromadb, faiss, in-memory, etc.)
-   - `BM25FallbackProvider` class (using rank_bm25)
-   - `HybridSearchExecutor` class (routes to native `hybrid_search()` or BM25 fallback)
+   - `InMemoryBM25KeywordProvider` class (using rank_bm25)
+   - `OpenSearchKeywordProvider` class (using opensearch-py endpoint)
+   - `HybridSearchExecutor` class (routes to native `hybrid_search()` or configured sparse fallback)
    - `get_keyword_search_strategy()` factory function
 2. Create `src/holodeck/lib/hybrid_search.py` with:
    - `reciprocal_rank_fusion()` function
@@ -1010,10 +1095,11 @@ class ToolIndex:
 ```toml
 # pyproject.toml
 [project.dependencies]
-rank-bm25 = "^0.2.2"  # BM25 sparse indexing (fallback for providers without native hybrid)
+opensearch-py = "^3.1.0"  # Production sparse keyword endpoint
+rank-bm25 = "^0.2.2"  # In-memory sparse fallback (dev/local)
 ```
 
-**Note**: `rank-bm25` is only used as a fallback for providers that don't support native hybrid search (in-memory, chromadb, faiss, qdrant). For azure-ai-search, weaviate, and pinecone, the native hybrid search capabilities are used instead.
+**Note**: For providers without native hybrid search, `keyword_index.provider=opensearch` is recommended for serve/deploy. `rank-bm25` remains available via `keyword_index.provider=in-memory` for local development and tests.
 
 ## Test Strategy
 

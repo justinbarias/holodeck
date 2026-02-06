@@ -24,10 +24,11 @@
 
 - plan.md:18-25 (Technical Context - Python 3.10+, dependencies)
 - plan.md:189-239 (Project Structure)
-- plan.md:887-895 (Dependencies to Add - rank-bm25)
+- plan.md:887-895 (Dependencies to Add - opensearch-py + rank-bm25)
 - research.md:487-494 (Technology Stack Summary)
 
 - [x] T001 Add `rank-bm25 = "^0.2.2"` to pyproject.toml dependencies per plan.md:887-895
+- [ ] T001a Add `opensearch-py` dependency to pyproject.toml for production sparse index endpoint support
 - [x] T002 [P] Create directory structure: `src/holodeck/lib/structured_chunker.py`, `keyword_search.py`, `hybrid_search.py`, `definition_extractor.py`, `llm_context_generator.py` per plan.md:216-221
 - [x] T003 [P] Create directory structure: `src/holodeck/tools/hierarchical_document_tool.py` per plan.md:212
 - [x] T004 [P] Create test fixtures directory: `tests/fixtures/hierarchical_documents/` with sample files per plan.md:236-239
@@ -168,6 +169,10 @@
 - plan.md:449-614 (Tiered Keyword Search Strategy)
 - research.md:108-234 (Keyword Search Strategy - Tiered)
 - plan.md:299-326 (Keyword Index Strategy - Tiered)
+- OpenSearch Python client docs: https://opensearch.org/docs/latest/clients/python-low-level/
+
+**Phase 4 Decision Update**:
+- For providers without native hybrid search, production fallback SHOULD use an OpenSearch endpoint (`keyword_index.provider=opensearch`); in-memory BM25 remains an optional local/dev fallback.
 
 ### TDD: Write Tests First
 
@@ -183,6 +188,9 @@
   - Test exact section ID query returns as TOP result (SC-002 validation)
   - Test native hybrid search via `collection.hybrid_search()` mock
   - Test graceful degradation when BM25 build fails
+  - Test OpenSearch keyword provider config validation (endpoint/index/auth)
+  - Test OpenSearch keyword search call and result mapping
+  - Test fallback to semantic-only when OpenSearch is unavailable
 
 ### Implementation: Keyword Search Module (Tiered Strategy)
 
@@ -195,6 +203,12 @@
 - [x] T049a [US2] Ensure BM25FallbackProvider.build() uses chunk.contextualized_content (not raw content) per plan.md:170-171
 - [x] T050 [US2] Implement `BM25FallbackProvider.search()` returning (doc_id, score) tuples per plan.md:604-609
 - [x] T051 [US2] Implement `_tokenize()` using regex `[a-zA-Z0-9]+` lowercase per plan.md:611-613
+- [ ] T051a [US2] Add `KeywordIndexProvider` config model to src/holodeck/models/tool.py with providers `in-memory` and `opensearch` (vectorstore-style configuration)
+- [ ] T051b [US2] Add `keyword_index` field to `HierarchicalDocumentToolConfig` in src/holodeck/models/tool.py with validation for provider-specific required fields
+- [ ] T051c [US2] Create `OpenSearchKeywordProvider` in src/holodeck/lib/keyword_search.py using `opensearch-py` endpoint/index API
+- [ ] T051d [US2] Refactor `BM25FallbackProvider` to explicit in-memory provider (`InMemoryBM25KeywordProvider`) while preserving rank_bm25 fallback for local/dev
+- [ ] T051e [US2] Implement provider router in `HybridSearchExecutor` to select keyword fallback backend from config (`in-memory` vs `opensearch`)
+- [ ] T051f [US2] Add OpenTelemetry spans and graceful degradation for OpenSearch keyword search failures (fallback to semantic-only)
 
 ### Implementation: Exact Match Index
 
@@ -214,7 +228,7 @@
 
 ### Implementation: Tool Integration
 
-- [x] T058 [US2] Update `HierarchicalDocumentTool._ingest_documents()` to build BM25 index for fallback providers per plan.md:161-164
+- [x] T058 [US2] Update `HierarchicalDocumentTool._ingest_documents()` to build keyword index for fallback providers per plan.md:161-164
 - [ ] T059 [US2] Update `HierarchicalDocumentTool.search()` to support keyword and exact modes per spec.md:46-49
 
 **Checkpoint**: Exact match and keyword search working - can find precise section references and technical terms. All US2 unit tests pass.
@@ -623,7 +637,7 @@ Each phase follows the Red-Green-Refactor cycle:
 | Advanced     | T089-T105      | Definitions + reranking          | US1-8 unit tests pass |
 | Complete     | T106-T118      | All features + integration tests | All tests pass        |
 
-**Note**: Total task count is 118
+**Note**: Total task count is 125
 
 ---
 
