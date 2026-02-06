@@ -176,7 +176,7 @@
 
 ### TDD: Write Tests First
 
-- [ ] T043 [TDD][US2] Create tests/unit/lib/test_keyword_search.py with test cases per plan.md:228:
+- [x] T043 [TDD][US2] Create tests/unit/lib/test_keyword_search.py with test cases per plan.md:228:
   - Test `KeywordSearchStrategy` enum values
   - Test `get_keyword_search_strategy()` returns correct strategy per provider
   - Test `NATIVE_HYBRID_PROVIDERS` contains expected providers
@@ -205,7 +205,7 @@
 - [x] T051 [US2] Implement `_tokenize()` using regex `[a-zA-Z0-9]+` lowercase per plan.md:611-613
 - [x] T051a [US2] Add `KeywordIndexProvider` config model to src/holodeck/models/tool.py with providers `in-memory` and `opensearch` (vectorstore-style configuration)
 - [x] T051b [US2] Add `keyword_index` field to `HierarchicalDocumentToolConfig` in src/holodeck/models/tool.py with validation for provider-specific required fields
-- [ ] T051c [US2] Create `OpenSearchKeywordProvider` in src/holodeck/lib/keyword_search.py using `opensearch-py` endpoint/index API
+- [x] T051c [US2] Create `OpenSearchKeywordProvider` in src/holodeck/lib/keyword_search.py using `opensearch-py` endpoint/index API
 - [ ] T051d [US2] Refactor `BM25FallbackProvider` to explicit in-memory provider (`InMemoryBM25KeywordProvider`) while preserving rank_bm25 fallback for local/dev
 - [ ] T051e [US2] Implement provider router in `HybridSearchExecutor` to select keyword fallback backend from config (`in-memory` vs `opensearch`)
 - [ ] T051f [US2] Add OpenTelemetry spans and graceful degradation for OpenSearch keyword search failures (fallback to semantic-only)
@@ -221,7 +221,7 @@
 - [x] T055 [US2] Create `HybridSearchExecutor` class in src/holodeck/lib/keyword_search.py per plan.md:520-586
 - [x] T056 [US2] Implement `_native_hybrid_search()` using SK `collection.hybrid_search()` per plan.md:543-562 and research.md:173-216
 - [x] T057 [US2] Implement `_fallback_hybrid_search()` running vector + BM25 separately per plan.md:563-586
-- [ ] T057a [US2] Add OpenTelemetry spans for BM25FallbackProvider.search() with query and result_count attributes per Constitution Principle IV
+- [x] T057a [US2] Add OpenTelemetry spans for BM25FallbackProvider.search() with query and result_count attributes per Constitution Principle IV
 - [x] T057b [US2] Add OpenTelemetry spans for HybridSearchExecutor.search() with search_mode and provider attributes per Constitution Principle IV
 - [ ] T057c [US2] Implement exact match boosting to ensure top-result position per spec SC-002 (exact matches get score boost before RRF)
 - [x] T057d [US2] Implement graceful degradation when BM25 build fails (log warning, fall back to semantic-only)

@@ -185,6 +185,11 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 
+[[tool.mypy.overrides]]
+module = "google.*"
+ignore_missing_imports = true
+ignore_errors = true
+
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]

@@ -3,14 +3,17 @@
 This module tests the tiered keyword search implementation including:
 - KeywordSearchStrategy enum
 - Provider capability detection
-- BM25 fallback implementation
-- Hybrid search executor
+- KeywordSearchProvider protocol
+- InMemoryBM25KeywordProvider implementation
+- OpenSearchKeywordProvider implementation
+- HybridSearchExecutor with provider router
 - OpenTelemetry instrumentation
+- Graceful degradation
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -164,30 +167,30 @@ class TestGetKeywordSearchStrategy:
         assert result == KeywordSearchStrategy.FALLBACK_BM25
 
 
-class TestBM25FallbackProvider:
+class TestInMemoryBM25KeywordProvider:
     """Test BM25 fallback implementation."""
 
     def test_init_with_default_params(self) -> None:
-        """Test BM25FallbackProvider initializes with default k1 and b."""
-        from holodeck.lib.keyword_search import BM25FallbackProvider
+        """Test InMemoryBM25KeywordProvider initializes with default k1 and b."""
+        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
 
-        provider = BM25FallbackProvider()
+        provider = InMemoryBM25KeywordProvider()
         assert provider.k1 == 1.5
         assert provider.b == 0.75
 
     def test_init_with_custom_params(self) -> None:
-        """Test BM25FallbackProvider accepts custom k1 and b."""
-        from holodeck.lib.keyword_search import BM25FallbackProvider
+        """Test InMemoryBM25KeywordProvider accepts custom k1 and b."""
+        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
 
-        provider = BM25FallbackProvider(k1=2.0, b=0.5)
+        provider = InMemoryBM25KeywordProvider(k1=2.0, b=0.5)
         assert provider.k1 == 2.0
         assert provider.b == 0.5
 
     def test_build_indexes_documents(self) -> None:
         """Test build() creates index from documents."""
-        from holodeck.lib.keyword_search import BM25FallbackProvider
+        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
 
-        provider = BM25FallbackProvider()
+        provider = InMemoryBM25KeywordProvider()
         documents = [
             ("doc1", "the quick brown fox"),
             ("doc2", "jumps over the lazy dog"),
@@ -200,9 +203,9 @@ class TestBM25FallbackProvider:
 
     def test_build_uses_contextualized_content(self) -> None:
         """Test build() indexes the contextualized_content field."""
-        from holodeck.lib.keyword_search import BM25FallbackProvider
+        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
 
-        provider = BM25FallbackProvider()
+        provider = InMemoryBM25KeywordProvider()
         # Second element is contextualized_content (not raw content)
         # Use more documents to make BM25 scoring work properly
         documents = [
@@ -223,9 +226,9 @@ class TestBM25FallbackProvider:
 
     def test_search_returns_ranked_results(self) -> None:
         """Test search() returns (doc_id, score) tuples sorted by score."""
-        from holodeck.lib.keyword_search import BM25FallbackProvider
+        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
 
-        provider = BM25FallbackProvider()
+        provider = InMemoryBM25KeywordProvider()
         documents = [
             ("doc1", "the quick brown fox"),
             ("doc2", "jumps over the lazy dog"),
@@ -247,9 +250,9 @@ class TestBM25FallbackProvider:
 
     def test_search_respects_top_k(self) -> None:
         """Test search() returns at most top_k results."""
-        from holodeck.lib.keyword_search import BM25FallbackProvider
+        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
 
-        provider = BM25FallbackProvider()
+        provider = InMemoryBM25KeywordProvider()
         documents = [
             ("doc1", "the quick brown fox"),
             ("doc2", "jumps over the lazy dog"),
@@ -264,9 +267,9 @@ class TestBM25FallbackProvider:
 
     def test_search_returns_empty_if_no_index(self) -> None:
         """Test search() returns empty list if index not built."""
-        from holodeck.lib.keyword_search import BM25FallbackProvider
+        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
 
-        provider = BM25FallbackProvider()
+        provider = InMemoryBM25KeywordProvider()
         results = provider.search("test query", top_k=5)
         assert results == []
 
@@ -348,8 +351,8 @@ class TestHybridSearchExecutor:
 
         assert executor.strategy == KeywordSearchStrategy.FALLBACK_BM25
 
-    def test_build_bm25_index_creates_index(self) -> None:
-        """Test build_bm25_index() creates BM25 index and chunk map."""
+    def test_build_keyword_index_creates_index(self) -> None:
+        """Test build_keyword_index() creates keyword index and chunk map."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import DocumentChunk
 
@@ -372,9 +375,9 @@ class TestHybridSearchExecutor:
                 contextualized_content="Content about compliance",
             ),
         ]
-        executor.build_bm25_index(chunks)
+        executor.build_keyword_index(chunks)
 
-        assert executor._bm25_index is not None
+        assert executor._keyword_index is not None
         assert executor.get_chunk("chunk1") is chunks[0]
         assert executor.get_chunk("chunk2") is chunks[1]
         assert executor.get_chunk("nonexistent") is None
@@ -429,10 +432,8 @@ class TestHybridSearchExecutor:
 
         executor = HybridSearchExecutor("in-memory", mock_collection)
 
-        # Try to build with invalid data that causes BM25 to fail
-        with patch.object(executor, "_bm25_index", None):
-            # This simulates BM25 not being available
-            executor._bm25_index = None
+        # Simulate keyword index not being available
+        executor._keyword_index = None
 
         # Search should still work (semantic only)
         results = await executor.search("test query", [0.1, 0.2, 0.3], top_k=5)
@@ -445,10 +446,10 @@ class TestOpenTelemetry:
     """Test OpenTelemetry instrumentation."""
 
     def test_bm25_search_emits_span(self) -> None:
-        """Test BM25FallbackProvider.search() emits OpenTelemetry span."""
-        from holodeck.lib.keyword_search import BM25FallbackProvider
+        """Test InMemoryBM25KeywordProvider.search() emits OpenTelemetry span."""
+        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
 
-        provider = BM25FallbackProvider()
+        provider = InMemoryBM25KeywordProvider()
         documents = [("doc1", "test content")]
         provider.build(documents)
 
@@ -466,7 +467,7 @@ class TestOpenTelemetry:
             # Verify span was started with correct name
             mock_tracer.start_as_current_span.assert_called_once()
             call_args = mock_tracer.start_as_current_span.call_args
-            assert "bm25.search" in str(call_args)
+            assert "keyword.search.in_memory_bm25" in str(call_args)
 
     @pytest.mark.asyncio
     async def test_hybrid_executor_emits_span(self) -> None:
@@ -606,3 +607,540 @@ class TestReciprocalRankFusion:
         # All scores should be in 0-1 range
         for _, score in result:
             assert 0.0 <= score <= 1.0
+
+
+class TestOpenSearchKeywordProvider:
+    """Test OpenSearch keyword search provider."""
+
+    def _make_provider(self, **kwargs: Any) -> Any:
+        """Create an OpenSearchKeywordProvider with mocked OpenSearch client."""
+        with patch("opensearchpy.OpenSearch") as mock_cls:
+            mock_cls.return_value = MagicMock()
+            from holodeck.lib.keyword_search import OpenSearchKeywordProvider
+
+            defaults: dict[str, Any] = {
+                "endpoint": "https://search.example.com:9200",
+                "index_name": "test-index",
+            }
+            defaults.update(kwargs)
+            provider = OpenSearchKeywordProvider(**defaults)
+        return provider
+
+    def test_init_with_basic_auth(self) -> None:
+        """Test constructor passes http_auth for basic auth credentials."""
+        with patch("opensearchpy.OpenSearch") as mock_os_cls:
+            from holodeck.lib.keyword_search import OpenSearchKeywordProvider
+
+            OpenSearchKeywordProvider(
+                endpoint="https://host:9200",
+                index_name="idx",
+                username="admin",
+                password="secret",  # noqa: S106
+            )
+
+            call_kwargs = mock_os_cls.call_args[1]
+            assert call_kwargs["http_auth"] == ("admin", "secret")
+
+    def test_init_with_api_key(self) -> None:
+        """Test constructor passes Authorization header for API key auth."""
+        with patch("opensearchpy.OpenSearch") as mock_os_cls:
+            from holodeck.lib.keyword_search import OpenSearchKeywordProvider
+
+            OpenSearchKeywordProvider(
+                endpoint="https://host:9200",
+                index_name="idx",
+                api_key="my-api-key",
+            )
+
+            call_kwargs = mock_os_cls.call_args[1]
+            assert call_kwargs["headers"] == {"Authorization": "ApiKey my-api-key"}
+
+    def test_init_verify_certs_false(self) -> None:
+        """Test constructor sets ssl_show_warn=False when verify_certs is False."""
+        with patch("opensearchpy.OpenSearch") as mock_os_cls:
+            from holodeck.lib.keyword_search import OpenSearchKeywordProvider
+
+            OpenSearchKeywordProvider(
+                endpoint="https://host:9200",
+                index_name="idx",
+                verify_certs=False,
+            )
+
+            call_kwargs = mock_os_cls.call_args[1]
+            assert call_kwargs["verify_certs"] is False
+            assert call_kwargs["ssl_show_warn"] is False
+
+    def test_build_creates_index_if_not_exists(self) -> None:
+        """Test build() creates the index when it doesn't exist."""
+        provider = self._make_provider()
+        provider._client.indices.exists.return_value = False
+
+        with patch("opensearchpy.helpers.bulk", return_value=(2, [])):
+            provider.build([("doc1", "content1"), ("doc2", "content2")])
+
+        provider._client.indices.create.assert_called_once_with(
+            index="test-index",
+            body=provider._INDEX_MAPPING,
+        )
+
+    def test_build_clears_existing_docs(self) -> None:
+        """Test build() clears existing documents when index already exists."""
+        provider = self._make_provider()
+        provider._client.indices.exists.return_value = True
+
+        with patch("opensearchpy.helpers.bulk", return_value=(1, [])):
+            provider.build([("doc1", "content1")])
+
+        provider._client.delete_by_query.assert_called_once_with(
+            index="test-index",
+            body={"query": {"match_all": {}}},
+            refresh=True,
+        )
+
+    def test_build_bulk_indexes_documents(self) -> None:
+        """Test build() sends correct bulk actions structure."""
+        provider = self._make_provider()
+        provider._client.indices.exists.return_value = False
+
+        with patch("opensearchpy.helpers.bulk", return_value=(2, [])) as mock_bulk:
+            provider.build([("doc1", "hello world"), ("doc2", "foo bar")])
+
+            actions = mock_bulk.call_args[0][1]
+            assert len(actions) == 2
+            assert actions[0]["_id"] == "doc1"
+            assert actions[0]["_source"]["chunk_id"] == "doc1"
+            assert actions[0]["_source"]["content"] == "hello world"
+            assert actions[1]["_id"] == "doc2"
+            assert actions[1]["_source"]["content"] == "foo bar"
+
+    def test_build_propagates_exceptions(self) -> None:
+        """Test build() propagates exceptions from bulk indexing."""
+        provider = self._make_provider()
+        provider._client.indices.exists.return_value = False
+
+        with (
+            patch(
+                "opensearchpy.helpers.bulk",
+                side_effect=RuntimeError("bulk failed"),
+            ),
+            pytest.raises(RuntimeError, match="bulk failed"),
+        ):
+            provider.build([("doc1", "content")])
+
+    def test_search_returns_ranked_results(self) -> None:
+        """Test search() returns (chunk_id, score) tuples from hits."""
+        provider = self._make_provider()
+        provider._client.indices.exists.return_value = True
+        provider._client.search.return_value = {
+            "hits": {
+                "hits": [
+                    {"_source": {"chunk_id": "doc1"}, "_score": 5.0},
+                    {"_source": {"chunk_id": "doc2"}, "_score": 3.2},
+                ]
+            }
+        }
+
+        results = provider.search("test query", top_k=5)
+
+        assert results == [("doc1", 5.0), ("doc2", 3.2)]
+
+    def test_search_returns_empty_if_index_missing(self) -> None:
+        """Test search() returns [] when the index does not exist."""
+        provider = self._make_provider()
+        provider._client.indices.exists.return_value = False
+
+        results = provider.search("test query")
+
+        assert results == []
+
+    def test_search_uses_match_query(self) -> None:
+        """Test search() sends correct match query DSL."""
+        provider = self._make_provider()
+        provider._client.indices.exists.return_value = True
+        provider._client.search.return_value = {"hits": {"hits": []}}
+
+        provider.search("my query", top_k=7)
+
+        provider._client.search.assert_called_once_with(
+            index="test-index",
+            body={
+                "query": {
+                    "match": {
+                        "content": {
+                            "query": "my query",
+                            "operator": "or",
+                        }
+                    }
+                },
+                "size": 7,
+            },
+        )
+
+    def test_search_propagates_connection_errors(self) -> None:
+        """Test search() propagates connection errors from the client."""
+        provider = self._make_provider()
+        provider._client.indices.exists.return_value = True
+        provider._client.search.side_effect = ConnectionError("timeout")
+
+        with pytest.raises(ConnectionError, match="timeout"):
+            provider.search("query")
+
+    def test_build_emits_otel_span(self) -> None:
+        """Test build() emits an OpenTelemetry span with correct attributes."""
+        provider = self._make_provider()
+        provider._client.indices.exists.return_value = False
+
+        with (
+            patch("opensearchpy.helpers.bulk", return_value=(1, [])),
+            patch("holodeck.lib.keyword_search.tracer") as mock_tracer,
+        ):
+            mock_span = MagicMock()
+            mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+                return_value=None
+            )
+
+            provider.build([("doc1", "content")])
+
+            mock_tracer.start_as_current_span.assert_called_once()
+            call_args = mock_tracer.start_as_current_span.call_args
+            assert call_args[0][0] == "opensearch.build"
+            attrs = call_args[1]["attributes"]
+            assert attrs["opensearch.document_count"] == 1
+            mock_span.set_attribute.assert_called_with("opensearch.indexed_count", 1)
+
+    def test_search_emits_otel_span(self) -> None:
+        """Test search() emits an OpenTelemetry span with correct attributes."""
+        provider = self._make_provider()
+        provider._client.indices.exists.return_value = True
+        provider._client.search.return_value = {
+            "hits": {
+                "hits": [
+                    {"_source": {"chunk_id": "doc1"}, "_score": 2.0},
+                ]
+            }
+        }
+
+        with patch("holodeck.lib.keyword_search.tracer") as mock_tracer:
+            mock_span = MagicMock()
+            mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+                return_value=None
+            )
+
+            provider.search("test", top_k=3)
+
+            mock_tracer.start_as_current_span.assert_called_once()
+            call_args = mock_tracer.start_as_current_span.call_args
+            assert call_args[0][0] == "opensearch.search"
+            attrs = call_args[1]["attributes"]
+            assert attrs["opensearch.query"] == "test"
+            assert attrs["opensearch.top_k"] == 3
+            mock_span.set_attribute.assert_called_with("opensearch.result_count", 1)
+
+
+class TestKeywordSearchProviderProtocol:
+    """Test KeywordSearchProvider protocol satisfaction."""
+
+    def test_in_memory_bm25_satisfies_protocol(self) -> None:
+        """Test InMemoryBM25KeywordProvider satisfies KeywordSearchProvider."""
+        from holodeck.lib.keyword_search import (
+            InMemoryBM25KeywordProvider,
+            KeywordSearchProvider,
+        )
+
+        provider = InMemoryBM25KeywordProvider()
+        assert isinstance(provider, KeywordSearchProvider)
+
+    def test_opensearch_satisfies_protocol(self) -> None:
+        """Test OpenSearchKeywordProvider satisfies KeywordSearchProvider."""
+        from holodeck.lib.keyword_search import (
+            KeywordSearchProvider,
+            OpenSearchKeywordProvider,
+        )
+
+        with patch("opensearchpy.OpenSearch"):
+            provider = OpenSearchKeywordProvider(
+                endpoint="https://host:9200",
+                index_name="idx",
+            )
+        assert isinstance(provider, KeywordSearchProvider)
+
+    def test_protocol_is_runtime_checkable(self) -> None:
+        """Test KeywordSearchProvider is runtime_checkable."""
+        from holodeck.lib.keyword_search import KeywordSearchProvider
+
+        # A non-conforming object should not satisfy the protocol
+        assert not isinstance("not a provider", KeywordSearchProvider)
+
+
+class TestProviderRouter:
+    """Test provider routing in HybridSearchExecutor.build_keyword_index."""
+
+    def test_default_config_uses_in_memory(self) -> None:
+        """Test None config defaults to InMemoryBM25KeywordProvider."""
+        from holodeck.lib.keyword_search import (
+            HybridSearchExecutor,
+            InMemoryBM25KeywordProvider,
+        )
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        mock_collection = MagicMock()
+        executor = HybridSearchExecutor("in-memory", mock_collection)
+
+        chunks = [
+            DocumentChunk(
+                id="chunk1",
+                source_path="/test.md",
+                chunk_index=0,
+                content="Test content",
+                contextualized_content="Test content",
+            ),
+        ]
+        executor.build_keyword_index(chunks)
+
+        assert isinstance(executor._keyword_index, InMemoryBM25KeywordProvider)
+
+    def test_explicit_in_memory_config_uses_in_memory(self) -> None:
+        """Test explicit in-memory config uses InMemoryBM25KeywordProvider."""
+        from holodeck.lib.keyword_search import (
+            HybridSearchExecutor,
+            InMemoryBM25KeywordProvider,
+        )
+        from holodeck.lib.structured_chunker import DocumentChunk
+        from holodeck.models.tool import KeywordIndexConfig
+
+        config = KeywordIndexConfig(provider="in-memory")
+        mock_collection = MagicMock()
+        executor = HybridSearchExecutor(
+            "in-memory", mock_collection, keyword_index_config=config
+        )
+
+        chunks = [
+            DocumentChunk(
+                id="chunk1",
+                source_path="/test.md",
+                chunk_index=0,
+                content="Test content",
+                contextualized_content="Test content",
+            ),
+        ]
+        executor.build_keyword_index(chunks)
+
+        assert isinstance(executor._keyword_index, InMemoryBM25KeywordProvider)
+
+    def test_opensearch_config_creates_opensearch_provider(self) -> None:
+        """Test opensearch config creates OpenSearchKeywordProvider."""
+        from holodeck.lib.keyword_search import (
+            HybridSearchExecutor,
+            OpenSearchKeywordProvider,
+        )
+        from holodeck.lib.structured_chunker import DocumentChunk
+        from holodeck.models.tool import KeywordIndexConfig
+
+        config = KeywordIndexConfig(
+            provider="opensearch",
+            endpoint="https://search.example.com:9200",
+            index_name="test-index",
+        )
+        mock_collection = MagicMock()
+
+        with patch("opensearchpy.OpenSearch") as mock_os_cls:
+            mock_client = MagicMock()
+            mock_os_cls.return_value = mock_client
+            mock_client.indices.exists.return_value = False
+
+            with patch("opensearchpy.helpers.bulk", return_value=(1, [])):
+                executor = HybridSearchExecutor(
+                    "in-memory", mock_collection, keyword_index_config=config
+                )
+                chunks = [
+                    DocumentChunk(
+                        id="chunk1",
+                        source_path="/test.md",
+                        chunk_index=0,
+                        content="Test content",
+                        contextualized_content="Test content",
+                    ),
+                ]
+                executor.build_keyword_index(chunks)
+
+        assert isinstance(executor._keyword_index, OpenSearchKeywordProvider)
+
+
+class TestKeywordIndexBuildOTel:
+    """Test OTel instrumentation on build_keyword_index."""
+
+    def test_build_emits_span_on_success(self) -> None:
+        """Test build_keyword_index emits span with correct attrs on success."""
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        mock_collection = MagicMock()
+        executor = HybridSearchExecutor("in-memory", mock_collection)
+
+        chunks = [
+            DocumentChunk(
+                id="chunk1",
+                source_path="/test.md",
+                chunk_index=0,
+                content="Test content",
+                contextualized_content="Test content",
+            ),
+        ]
+
+        with patch("holodeck.lib.keyword_search.tracer") as mock_tracer:
+            mock_span = MagicMock()
+            mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+                return_value=None
+            )
+
+            executor.build_keyword_index(chunks)
+
+            # Verify span name and attributes
+            call_args = mock_tracer.start_as_current_span.call_args
+            assert call_args[0][0] == "keyword_index.build"
+            attrs = call_args[1]["attributes"]
+            assert attrs["keyword_index.provider"] == "in-memory"
+            assert attrs["keyword_index.document_count"] == 1
+
+            # Verify success status
+            mock_span.set_attribute.assert_any_call("keyword_index.status", "success")
+
+    def test_build_records_exception_on_failure(self) -> None:
+        """Test build_keyword_index records exception in span on failure."""
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+        from holodeck.lib.structured_chunker import DocumentChunk
+        from holodeck.models.tool import KeywordIndexConfig
+
+        config = KeywordIndexConfig(
+            provider="opensearch",
+            endpoint="https://search.example.com:9200",
+            index_name="test-index",
+        )
+        mock_collection = MagicMock()
+
+        with patch("holodeck.lib.keyword_search.tracer") as mock_tracer:
+            mock_span = MagicMock()
+            mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+                return_value=None
+            )
+
+            # Make OpenSearch constructor raise
+            with patch(
+                "opensearchpy.OpenSearch",
+                side_effect=ConnectionError("connect failed"),
+            ):
+                executor = HybridSearchExecutor(
+                    "in-memory", mock_collection, keyword_index_config=config
+                )
+                chunks = [
+                    DocumentChunk(
+                        id="chunk1",
+                        source_path="/test.md",
+                        chunk_index=0,
+                        content="Test",
+                        contextualized_content="Test",
+                    ),
+                ]
+                executor.build_keyword_index(chunks)
+
+            # Verify failure status and exception recording
+            mock_span.set_attribute.assert_any_call("keyword_index.status", "failed")
+            mock_span.record_exception.assert_called_once()
+            assert executor._keyword_index is None
+
+
+class TestOpenSearchGracefulDegradation:
+    """Test graceful degradation when OpenSearch operations fail."""
+
+    def test_keyword_search_returns_empty_on_provider_error(self) -> None:
+        """Test keyword_search() returns [] when provider search raises."""
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+
+        mock_collection = MagicMock()
+        executor = HybridSearchExecutor("in-memory", mock_collection)
+
+        # Set up a mock keyword index that raises on search
+        mock_index = MagicMock()
+        mock_index.search.side_effect = RuntimeError("search failed")
+        executor._keyword_index = mock_index
+
+        results = executor.keyword_search("test query", top_k=5)
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_fallback_hybrid_returns_semantic_only_on_keyword_failure(
+        self,
+    ) -> None:
+        """Test _fallback_hybrid_search returns semantic-only on keyword error."""
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+
+        mock_collection = MagicMock()
+        mock_coll_instance = AsyncMock()
+
+        async def mock_results():
+            yield MagicMock(record=MagicMock(id="chunk1"), score=0.9)
+
+        mock_search_results = MagicMock()
+        mock_search_results.results = mock_results()
+        mock_coll_instance.search = AsyncMock(return_value=mock_search_results)
+
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_coll_instance)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        executor = HybridSearchExecutor("in-memory", mock_collection)
+
+        # Set up a mock keyword index that raises on search
+        mock_index = MagicMock()
+        mock_index.search.side_effect = RuntimeError("search failed")
+        executor._keyword_index = mock_index
+
+        results = await executor.search("test query", [0.1, 0.2, 0.3], top_k=5)
+
+        # Should still return semantic results
+        assert len(results) > 0
+        assert results[0][0] == "chunk1"
+
+    def test_opensearch_build_failure_sets_keyword_index_none(self) -> None:
+        """Test OpenSearch build failure sets _keyword_index to None."""
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+        from holodeck.lib.structured_chunker import DocumentChunk
+        from holodeck.models.tool import KeywordIndexConfig
+
+        config = KeywordIndexConfig(
+            provider="opensearch",
+            endpoint="https://search.example.com:9200",
+            index_name="test-index",
+        )
+        mock_collection = MagicMock()
+
+        with patch(
+            "opensearchpy.OpenSearch",
+            side_effect=ConnectionError("connect failed"),
+        ):
+            executor = HybridSearchExecutor(
+                "in-memory", mock_collection, keyword_index_config=config
+            )
+            chunks = [
+                DocumentChunk(
+                    id="chunk1",
+                    source_path="/test.md",
+                    chunk_index=0,
+                    content="Test",
+                    contextualized_content="Test",
+                ),
+            ]
+            executor.build_keyword_index(chunks)
+
+        assert executor._keyword_index is None

@@ -135,6 +135,49 @@ tools:
     top_k: 20
 ```
 
+### Keyword Index: In-Memory BM25 (Default)
+
+By default, keyword search uses an in-memory BM25 index via `rank_bm25`. No extra configuration needed -- this is the default when `keyword_index` is omitted or set to `in-memory`.
+
+```yaml
+tools:
+  - name: docs_search
+    type: hierarchical_document
+    description: "Search with in-memory BM25 keyword index"
+    source: "./docs/"
+    search_mode: hybrid
+    keyword_index:
+      provider: in-memory  # Optional -- this is the default
+```
+
+### Keyword Index: OpenSearch (Production)
+
+For production workloads, use an external OpenSearch cluster for the keyword index. This offloads BM25 scoring to a dedicated search engine, suitable for large corpora and multi-instance deployments.
+
+```yaml
+tools:
+  - name: docs_search
+    type: hierarchical_document
+    description: "Search with OpenSearch keyword backend"
+    source: "./docs/"
+    search_mode: hybrid
+    keyword_index:
+      provider: opensearch
+      endpoint: "https://search.example.com:9200"
+      index_name: "my-keyword-index"
+      username: "${OPENSEARCH_USERNAME}"
+      password: "${OPENSEARCH_PASSWORD}"
+      verify_certs: true
+      timeout_seconds: 10
+```
+
+> **Docker quickstart**: To run OpenSearch locally via Docker:
+> ```bash
+> docker run -d -p 9200:9200 -e "discovery.type=single-node" \
+>   -e "DISABLE_SECURITY_PLUGIN=true" opensearchproject/opensearch:latest
+> ```
+> Then use `endpoint: "http://localhost:9200"` with no auth.
+
 ### MongoDB Atlas with Native Hybrid Search
 
 ```yaml

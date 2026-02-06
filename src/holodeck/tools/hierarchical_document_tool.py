@@ -773,10 +773,11 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             semantic_weight=self.config.semantic_weight,
             keyword_weight=self.config.keyword_weight,
             rrf_k=self.config.rrf_k,
+            keyword_index_config=self.config.keyword_index,
         )
 
-        # Build BM25 index (executor now owns chunk data)
-        self._hybrid_executor.build_bm25_index(self._chunks)
+        # Build keyword index (executor now owns chunk data)
+        self._hybrid_executor.build_keyword_index(self._chunks)
 
         logger.info(
             f"Built hybrid search indices: {len(self._chunks)} documents indexed"
