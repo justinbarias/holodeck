@@ -110,6 +110,13 @@ class DocumentDomain(str, Enum):
     LEGAL_CONTRACT = "legal_contract"
 
 
+class KeywordIndexProvider(str, Enum):
+    """Keyword index backend provider for sparse/BM25 search."""
+
+    IN_MEMORY = "in-memory"
+    OPENSEARCH = "opensearch"
+
+
 class Tool(BaseModel):
     """Base tool model with discriminated union for subtypes."""
 
@@ -189,6 +196,34 @@ class DatabaseConfig(BaseModel):
         if v is not None and not v.strip():
             raise ValueError("connection_string must be non-empty if provided")
         return v
+
+
+class KeywordIndexConfig(BaseModel):
+    """Keyword index configuration for sparse/BM25 search backend.
+
+    Two providers:
+    - in-memory: rank_bm25 in-process (default, dev/local)
+    - opensearch: OpenSearch endpoint (production)
+
+    When provider='opensearch', endpoint and index_name are required
+    (validated by HierarchicalDocumentToolConfig).
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    provider: Literal["in-memory", "opensearch"] = Field(
+        default="in-memory",
+        description="Keyword index backend: 'in-memory' or 'opensearch'",
+    )
+    endpoint: str | None = Field(default=None, description="OpenSearch endpoint URL")
+    index_name: str | None = Field(default=None, description="OpenSearch index name")
+    username: str | None = Field(default=None, description="Basic auth username")
+    password: str | None = Field(default=None, description="Basic auth password")
+    api_key: str | None = Field(default=None, description="API key auth (alt to basic)")
+    verify_certs: bool = Field(default=True, description="Verify TLS certificates")
+    timeout_seconds: int = Field(
+        default=10, ge=1, le=120, description="Connection timeout (1-120s)"
+    )
 
 
 class VectorstoreTool(BaseModel):
@@ -743,6 +778,13 @@ class HierarchicalDocumentToolConfig(BaseModel):
             "- None for in-memory storage"
         ),
     )
+    keyword_index: KeywordIndexConfig | None = Field(
+        default=None,
+        description=(
+            "Keyword index configuration for sparse/BM25 search. "
+            "If None, defaults to in-memory BM25."
+        ),
+    )
     defer_loading: bool = Field(
         default=True,
         description=(
@@ -797,6 +839,25 @@ class HierarchicalDocumentToolConfig(BaseModel):
         """Validate reranker_model is provided when enable_reranking=True."""
         if self.enable_reranking and self.reranker_model is None:
             raise ValueError("reranker_model is required when enable_reranking=True")
+        return self
+
+    @model_validator(mode="after")
+    def validate_keyword_index(self) -> "HierarchicalDocumentToolConfig":
+        """Validate keyword_index provider-specific required fields."""
+        if (
+            self.keyword_index is not None
+            and self.keyword_index.provider == "opensearch"
+        ):
+            if not self.keyword_index.endpoint:
+                raise ValueError(
+                    "keyword_index.endpoint is required when "
+                    "keyword_index.provider is 'opensearch'"
+                )
+            if not self.keyword_index.index_name:
+                raise ValueError(
+                    "keyword_index.index_name is required when "
+                    "keyword_index.provider is 'opensearch'"
+                )
         return self
 
 

@@ -28,7 +28,7 @@
 - research.md:487-494 (Technology Stack Summary)
 
 - [x] T001 Add `rank-bm25 = "^0.2.2"` to pyproject.toml dependencies per plan.md:887-895
-- [ ] T001a Add `opensearch-py` dependency to pyproject.toml for production sparse index endpoint support
+- [x] T001a Add `opensearch-py` dependency to pyproject.toml for production sparse index endpoint support
 - [x] T002 [P] Create directory structure: `src/holodeck/lib/structured_chunker.py`, `keyword_search.py`, `hybrid_search.py`, `definition_extractor.py`, `llm_context_generator.py` per plan.md:216-221
 - [x] T003 [P] Create directory structure: `src/holodeck/tools/hierarchical_document_tool.py` per plan.md:212
 - [x] T004 [P] Create test fixtures directory: `tests/fixtures/hierarchical_documents/` with sample files per plan.md:236-239
@@ -203,8 +203,8 @@
 - [x] T049a [US2] Ensure BM25FallbackProvider.build() uses chunk.contextualized_content (not raw content) per plan.md:170-171
 - [x] T050 [US2] Implement `BM25FallbackProvider.search()` returning (doc_id, score) tuples per plan.md:604-609
 - [x] T051 [US2] Implement `_tokenize()` using regex `[a-zA-Z0-9]+` lowercase per plan.md:611-613
-- [ ] T051a [US2] Add `KeywordIndexProvider` config model to src/holodeck/models/tool.py with providers `in-memory` and `opensearch` (vectorstore-style configuration)
-- [ ] T051b [US2] Add `keyword_index` field to `HierarchicalDocumentToolConfig` in src/holodeck/models/tool.py with validation for provider-specific required fields
+- [x] T051a [US2] Add `KeywordIndexProvider` config model to src/holodeck/models/tool.py with providers `in-memory` and `opensearch` (vectorstore-style configuration)
+- [x] T051b [US2] Add `keyword_index` field to `HierarchicalDocumentToolConfig` in src/holodeck/models/tool.py with validation for provider-specific required fields
 - [ ] T051c [US2] Create `OpenSearchKeywordProvider` in src/holodeck/lib/keyword_search.py using `opensearch-py` endpoint/index API
 - [ ] T051d [US2] Refactor `BM25FallbackProvider` to explicit in-memory provider (`InMemoryBM25KeywordProvider`) while preserving rank_bm25 fallback for local/dev
 - [ ] T051e [US2] Implement provider router in `HybridSearchExecutor` to select keyword fallback backend from config (`in-memory` vs `opensearch`)
