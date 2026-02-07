@@ -2435,7 +2435,7 @@ class TestKeywordSearch:
         tool = HierarchicalDocumentTool(config)
 
         mock_executor = MagicMock()
-        mock_executor.keyword_search.return_value = []
+        mock_executor.keyword_search = AsyncMock(return_value=[])
         tool._hybrid_executor = mock_executor
 
         results = await tool._keyword_search("test query", top_k=10)
@@ -2460,10 +2460,14 @@ class TestKeywordSearch:
         mock_chunk.section_id = "1.1"
         mock_chunk.subsection_ids = []
 
-        # Set up mock executor with public keyword_search and get_chunk
+        # Set up mock executor with async keyword_search and sync get_chunk
         mock_executor = MagicMock()
-        mock_executor.keyword_search.return_value = [("chunk_0", 5.5)]
-        mock_executor.get_chunk.return_value = mock_chunk
+        mock_executor.keyword_search = AsyncMock(
+            return_value=[("chunk_0", 5.5), ("chunk_1", 2.75)]
+        )
+        mock_executor.get_chunk.side_effect = lambda cid: (
+            mock_chunk if cid == "chunk_0" else None
+        )
         tool._hybrid_executor = mock_executor
 
         results = await tool._keyword_search("test query", top_k=10)
@@ -2471,9 +2475,9 @@ class TestKeywordSearch:
         assert len(results) == 1
         assert results[0].chunk_id == "chunk_0"
         assert results[0].keyword_score == 5.5
-        # Normalized score should be min(1.0, 5.5/10.0) = 0.55
-        assert results[0].fused_score == 0.55
-        mock_executor.get_chunk.assert_called_with("chunk_0")
+        # Max-score normalization: 5.5 / max(5.5, 2.75) = 1.0
+        assert results[0].fused_score == 1.0
+        mock_executor.get_chunk.assert_any_call("chunk_0")
 
 
 class TestSearchModeRouting:

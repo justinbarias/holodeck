@@ -777,7 +777,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         )
 
         # Build keyword index (executor now owns chunk data)
-        self._hybrid_executor.build_keyword_index(self._chunks)
+        await self._hybrid_executor.build_keyword_index(self._chunks)
 
         logger.info(
             f"Built hybrid search indices: {len(self._chunks)} documents indexed"
@@ -857,7 +857,10 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             return []
 
         # Get BM25 results via public API
-        bm25_results = self._hybrid_executor.keyword_search(query, top_k)
+        bm25_results = await self._hybrid_executor.keyword_search(query, top_k)
+
+        # Normalize BM25 scores using max-score normalization
+        max_score = max((s for _, s in bm25_results), default=0.0)
 
         # Convert to SearchResult objects
         results: list[SearchResult] = []
@@ -867,8 +870,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             if chunk is None:
                 continue
 
-            # Normalize BM25 score to 0-1 range (approximate)
-            normalized_score = min(1.0, score / 10.0) if score > 0 else 0.0
+            normalized_score = score / max_score if max_score > 0 else 0.0
 
             results.append(
                 SearchResult(

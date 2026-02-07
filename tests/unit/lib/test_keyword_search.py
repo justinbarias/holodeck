@@ -351,7 +351,8 @@ class TestHybridSearchExecutor:
 
         assert executor.strategy == KeywordSearchStrategy.FALLBACK_BM25
 
-    def test_build_keyword_index_creates_index(self) -> None:
+    @pytest.mark.asyncio
+    async def test_build_keyword_index_creates_index(self) -> None:
         """Test build_keyword_index() creates keyword index and chunk map."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import DocumentChunk
@@ -375,7 +376,7 @@ class TestHybridSearchExecutor:
                 contextualized_content="Content about compliance",
             ),
         ]
-        executor.build_keyword_index(chunks)
+        await executor.build_keyword_index(chunks)
 
         assert executor._keyword_index is not None
         assert executor.get_chunk("chunk1") is chunks[0]
@@ -881,7 +882,8 @@ class TestKeywordSearchProviderProtocol:
 class TestProviderRouter:
     """Test provider routing in HybridSearchExecutor.build_keyword_index."""
 
-    def test_default_config_uses_in_memory(self) -> None:
+    @pytest.mark.asyncio
+    async def test_default_config_uses_in_memory(self) -> None:
         """Test None config defaults to InMemoryBM25KeywordProvider."""
         from holodeck.lib.keyword_search import (
             HybridSearchExecutor,
@@ -901,11 +903,12 @@ class TestProviderRouter:
                 contextualized_content="Test content",
             ),
         ]
-        executor.build_keyword_index(chunks)
+        await executor.build_keyword_index(chunks)
 
         assert isinstance(executor._keyword_index, InMemoryBM25KeywordProvider)
 
-    def test_explicit_in_memory_config_uses_in_memory(self) -> None:
+    @pytest.mark.asyncio
+    async def test_explicit_in_memory_config_uses_in_memory(self) -> None:
         """Test explicit in-memory config uses InMemoryBM25KeywordProvider."""
         from holodeck.lib.keyword_search import (
             HybridSearchExecutor,
@@ -929,11 +932,12 @@ class TestProviderRouter:
                 contextualized_content="Test content",
             ),
         ]
-        executor.build_keyword_index(chunks)
+        await executor.build_keyword_index(chunks)
 
         assert isinstance(executor._keyword_index, InMemoryBM25KeywordProvider)
 
-    def test_opensearch_config_creates_opensearch_provider(self) -> None:
+    @pytest.mark.asyncio
+    async def test_opensearch_config_creates_opensearch_provider(self) -> None:
         """Test opensearch config creates OpenSearchKeywordProvider."""
         from holodeck.lib.keyword_search import (
             HybridSearchExecutor,
@@ -967,7 +971,7 @@ class TestProviderRouter:
                         contextualized_content="Test content",
                     ),
                 ]
-                executor.build_keyword_index(chunks)
+                await executor.build_keyword_index(chunks)
 
         assert isinstance(executor._keyword_index, OpenSearchKeywordProvider)
 
@@ -975,7 +979,8 @@ class TestProviderRouter:
 class TestKeywordIndexBuildOTel:
     """Test OTel instrumentation on build_keyword_index."""
 
-    def test_build_emits_span_on_success(self) -> None:
+    @pytest.mark.asyncio
+    async def test_build_emits_span_on_success(self) -> None:
         """Test build_keyword_index emits span with correct attrs on success."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import DocumentChunk
@@ -1002,7 +1007,7 @@ class TestKeywordIndexBuildOTel:
                 return_value=None
             )
 
-            executor.build_keyword_index(chunks)
+            await executor.build_keyword_index(chunks)
 
             # Verify span name and attributes
             call_args = mock_tracer.start_as_current_span.call_args
@@ -1014,7 +1019,8 @@ class TestKeywordIndexBuildOTel:
             # Verify success status
             mock_span.set_attribute.assert_any_call("keyword_index.status", "success")
 
-    def test_build_records_exception_on_failure(self) -> None:
+    @pytest.mark.asyncio
+    async def test_build_records_exception_on_failure(self) -> None:
         """Test build_keyword_index records exception in span on failure."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import DocumentChunk
@@ -1053,7 +1059,7 @@ class TestKeywordIndexBuildOTel:
                         contextualized_content="Test",
                     ),
                 ]
-                executor.build_keyword_index(chunks)
+                await executor.build_keyword_index(chunks)
 
             # Verify failure status and exception recording
             mock_span.set_attribute.assert_any_call("keyword_index.status", "failed")
@@ -1064,7 +1070,8 @@ class TestKeywordIndexBuildOTel:
 class TestOpenSearchGracefulDegradation:
     """Test graceful degradation when OpenSearch operations fail."""
 
-    def test_keyword_search_returns_empty_on_provider_error(self) -> None:
+    @pytest.mark.asyncio
+    async def test_keyword_search_returns_empty_on_provider_error(self) -> None:
         """Test keyword_search() returns [] when provider search raises."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
 
@@ -1076,7 +1083,7 @@ class TestOpenSearchGracefulDegradation:
         mock_index.search.side_effect = RuntimeError("search failed")
         executor._keyword_index = mock_index
 
-        results = executor.keyword_search("test query", top_k=5)
+        results = await executor.keyword_search("test query", top_k=5)
         assert results == []
 
     @pytest.mark.asyncio
@@ -1112,7 +1119,8 @@ class TestOpenSearchGracefulDegradation:
         assert len(results) > 0
         assert results[0][0] == "chunk1"
 
-    def test_opensearch_build_failure_sets_keyword_index_none(self) -> None:
+    @pytest.mark.asyncio
+    async def test_opensearch_build_failure_sets_keyword_index_none(self) -> None:
         """Test OpenSearch build failure sets _keyword_index to None."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import DocumentChunk
@@ -1141,6 +1149,6 @@ class TestOpenSearchGracefulDegradation:
                     contextualized_content="Test",
                 ),
             ]
-            executor.build_keyword_index(chunks)
+            await executor.build_keyword_index(chunks)
 
         assert executor._keyword_index is None

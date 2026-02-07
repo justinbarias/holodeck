@@ -33,6 +33,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from enum import Enum
@@ -523,14 +524,14 @@ class HybridSearchExecutor:
             f"rrf_k={rrf_k}"
         )
 
-    def build_keyword_index(self, chunks: list[DocumentChunk]) -> None:
+    async def build_keyword_index(self, chunks: list[DocumentChunk]) -> None:
         """Build keyword index with graceful degradation.
 
         Creates the keyword search index from the provided chunks and stores
         a chunk map for ID-based lookups. Routes to the appropriate backend
         based on keyword_index_config:
-        - 'opensearch': OpenSearchKeywordProvider
-        - 'in-memory' or None: InMemoryBM25KeywordProvider
+        - 'opensearch': OpenSearchKeywordProvider (I/O offloaded via asyncio.to_thread)
+        - 'in-memory' or None: InMemoryBM25KeywordProvider (called directly)
 
         If index build fails, logs a warning and continues with
         semantic-only search.
@@ -540,7 +541,7 @@ class HybridSearchExecutor:
                 contextualized_content (or content fallback) is indexed.
 
         Example:
-            >>> executor.build_keyword_index(chunks)
+            >>> await executor.build_keyword_index(chunks)
         """
         # Store chunk map for ID-based lookups
         self._chunk_map = {c.id: c for c in chunks}
@@ -578,7 +579,11 @@ class HybridSearchExecutor:
                 else:
                     provider_inst = InMemoryBM25KeywordProvider(k1=1.5, b=0.75)
 
-                provider_inst.build(docs)
+                # Offload OpenSearch I/O to thread; call in-memory directly
+                if isinstance(provider_inst, OpenSearchKeywordProvider):
+                    await asyncio.to_thread(provider_inst.build, docs)
+                else:
+                    provider_inst.build(docs)
                 self._keyword_index = provider_inst
                 span.set_attribute("keyword_index.status", "success")
                 logger.debug(f"Built keyword index with {len(chunks)} documents")
@@ -601,7 +606,9 @@ class HybridSearchExecutor:
         """
         return self._chunk_map.get(chunk_id)
 
-    def keyword_search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
+    async def keyword_search(
+        self, query: str, top_k: int = 10
+    ) -> list[tuple[str, float]]:
         """Perform keyword-only search.
 
         Args:
@@ -615,6 +622,9 @@ class HybridSearchExecutor:
         if self._keyword_index is None:
             return []
         try:
+            # Offload OpenSearch I/O to thread; call in-memory directly
+            if isinstance(self._keyword_index, OpenSearchKeywordProvider):
+                return await asyncio.to_thread(self._keyword_index.search, query, top_k)
             return self._keyword_index.search(query, top_k)
         except Exception as e:
             logger.warning(f"Keyword search failed, returning empty results: {e}")
@@ -743,7 +753,7 @@ class HybridSearchExecutor:
         bm25_results: list[tuple[str, float]] = []
         if self._keyword_index is not None:
             try:
-                bm25_results = self._keyword_index.search(query, top_k=top_k)
+                bm25_results = await self.keyword_search(query, top_k=top_k)
             except Exception as e:
                 logger.warning(
                     f"Keyword search failed in hybrid mode, "

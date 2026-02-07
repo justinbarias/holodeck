@@ -206,7 +206,7 @@ class KeywordIndexConfig(BaseModel):
     - opensearch: OpenSearch endpoint (production)
 
     When provider='opensearch', endpoint and index_name are required
-    (validated by HierarchicalDocumentToolConfig).
+    (validated at model construction time).
     """
 
     model_config = ConfigDict(extra="allow")
@@ -224,6 +224,16 @@ class KeywordIndexConfig(BaseModel):
     timeout_seconds: int = Field(
         default=10, ge=1, le=120, description="Connection timeout (1-120s)"
     )
+
+    @model_validator(mode="after")
+    def validate_opensearch_fields(self) -> "KeywordIndexConfig":
+        """Validate that endpoint and index_name are set for opensearch provider."""
+        if self.provider == "opensearch":
+            if not self.endpoint:
+                raise ValueError("endpoint is required when provider is 'opensearch'")
+            if not self.index_name:
+                raise ValueError("index_name is required when provider is 'opensearch'")
+        return self
 
 
 class VectorstoreTool(BaseModel):
@@ -839,25 +849,6 @@ class HierarchicalDocumentToolConfig(BaseModel):
         """Validate reranker_model is provided when enable_reranking=True."""
         if self.enable_reranking and self.reranker_model is None:
             raise ValueError("reranker_model is required when enable_reranking=True")
-        return self
-
-    @model_validator(mode="after")
-    def validate_keyword_index(self) -> "HierarchicalDocumentToolConfig":
-        """Validate keyword_index provider-specific required fields."""
-        if (
-            self.keyword_index is not None
-            and self.keyword_index.provider == "opensearch"
-        ):
-            if not self.keyword_index.endpoint:
-                raise ValueError(
-                    "keyword_index.endpoint is required when "
-                    "keyword_index.provider is 'opensearch'"
-                )
-            if not self.keyword_index.index_name:
-                raise ValueError(
-                    "keyword_index.index_name is required when "
-                    "keyword_index.provider is 'opensearch'"
-                )
         return self
 
 

@@ -1493,6 +1493,27 @@ class TestKeywordIndexConfig:
         assert config.endpoint is None
         assert config.index_name is None
 
+    def test_opensearch_missing_endpoint_raises(self) -> None:
+        """Test that opensearch without endpoint raises ValidationError."""
+        with pytest.raises(ValidationError, match="endpoint is required"):
+            KeywordIndexConfig(
+                provider="opensearch",
+                index_name="my_index",
+            )
+
+    def test_opensearch_missing_index_name_raises(self) -> None:
+        """Test that opensearch without index_name raises ValidationError."""
+        with pytest.raises(ValidationError, match="index_name is required"):
+            KeywordIndexConfig(
+                provider="opensearch",
+                endpoint="https://search.example.com:9200",
+            )
+
+    def test_opensearch_missing_both_raises(self) -> None:
+        """Test that opensearch without both fields raises on endpoint first."""
+        with pytest.raises(ValidationError, match="endpoint is required"):
+            KeywordIndexConfig(provider="opensearch")
+
 
 class TestHierarchicalDocumentToolConfigKeywordIndex:
     """Tests for keyword_index field on HierarchicalDocumentToolConfig."""
@@ -1534,41 +1555,35 @@ class TestHierarchicalDocumentToolConfigKeywordIndex:
         assert config.keyword_index.endpoint == "https://search.example.com:9200"
 
     def test_opensearch_missing_endpoint_raises(self) -> None:
-        """Test that opensearch without endpoint raises ValidationError."""
+        """Test that opensearch without endpoint raises ValidationError.
+
+        Validation now occurs on KeywordIndexConfig itself via model_validator.
+        """
         with pytest.raises(ValidationError, match="endpoint is required"):
-            HierarchicalDocumentToolConfig(
-                name="test",
-                description="Test tool",
-                source="./docs/",
-                keyword_index=KeywordIndexConfig(
-                    provider="opensearch",
-                    index_name="docs_index",
-                ),
+            KeywordIndexConfig(
+                provider="opensearch",
+                index_name="docs_index",
             )
 
     def test_opensearch_missing_index_name_raises(self) -> None:
-        """Test that opensearch without index_name raises ValidationError."""
+        """Test that opensearch without index_name raises ValidationError.
+
+        Validation now occurs on KeywordIndexConfig itself via model_validator.
+        """
         with pytest.raises(ValidationError, match="index_name is required"):
-            HierarchicalDocumentToolConfig(
-                name="test",
-                description="Test tool",
-                source="./docs/",
-                keyword_index=KeywordIndexConfig(
-                    provider="opensearch",
-                    endpoint="https://search.example.com:9200",
-                ),
+            KeywordIndexConfig(
+                provider="opensearch",
+                endpoint="https://search.example.com:9200",
             )
 
     def test_opensearch_missing_both_raises(self) -> None:
-        """Test that opensearch without endpoint and index_name raises."""
+        """Test that opensearch without endpoint and index_name raises.
+
+        Validation now occurs on KeywordIndexConfig itself via model_validator.
+        """
         with pytest.raises(ValidationError, match="endpoint is required"):
-            HierarchicalDocumentToolConfig(
-                name="test",
-                description="Test tool",
-                source="./docs/",
-                keyword_index=KeywordIndexConfig(
-                    provider="opensearch",
-                ),
+            KeywordIndexConfig(
+                provider="opensearch",
             )
 
     def test_keyword_index_from_dict(self) -> None:
