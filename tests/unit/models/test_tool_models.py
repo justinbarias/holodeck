@@ -9,6 +9,8 @@ from holodeck.models.tool import (
     DocumentDomain,
     FunctionTool,
     HierarchicalDocumentToolConfig,
+    KeywordIndexConfig,
+    KeywordIndexProvider,
     MCPTool,
     PromptTool,
     Tool,
@@ -1379,3 +1381,262 @@ class TestHierarchicalDocumentToolConfigDomainFields:
         assert config.document_domain == DocumentDomain.US_LEGISLATIVE
         assert config.max_subsection_depth == 4
         assert config.max_chunk_tokens == 800
+
+
+class TestKeywordIndexProvider:
+    """Tests for KeywordIndexProvider enum."""
+
+    def test_enum_values(self) -> None:
+        """Test that enum members have expected values."""
+        assert KeywordIndexProvider.IN_MEMORY.value == "in-memory"
+        assert KeywordIndexProvider.OPENSEARCH.value == "opensearch"
+
+    def test_only_two_providers(self) -> None:
+        """Test that exactly two providers are defined."""
+        assert len(KeywordIndexProvider) == 2
+
+    def test_is_str_enum(self) -> None:
+        """Test that KeywordIndexProvider values are strings."""
+        for provider in KeywordIndexProvider:
+            assert isinstance(provider.value, str)
+
+
+class TestKeywordIndexConfig:
+    """Tests for KeywordIndexConfig model."""
+
+    def test_default_provider_is_in_memory(self) -> None:
+        """Test that default provider is 'in-memory'."""
+        config = KeywordIndexConfig()
+        assert config.provider == "in-memory"
+
+    def test_opensearch_provider_valid(self) -> None:
+        """Test valid opensearch provider with endpoint and index_name."""
+        config = KeywordIndexConfig(
+            provider="opensearch",
+            endpoint="https://search.example.com:9200",
+            index_name="my_index",
+        )
+        assert config.provider == "opensearch"
+        assert config.endpoint == "https://search.example.com:9200"
+        assert config.index_name == "my_index"
+
+    def test_invalid_provider_rejected(self) -> None:
+        """Test that invalid provider value is rejected."""
+        with pytest.raises(ValidationError):
+            KeywordIndexConfig(provider="elasticsearch")
+
+    def test_default_verify_certs_true(self) -> None:
+        """Test that verify_certs defaults to True."""
+        config = KeywordIndexConfig()
+        assert config.verify_certs is True
+
+    def test_default_timeout_seconds(self) -> None:
+        """Test that timeout_seconds defaults to 10."""
+        config = KeywordIndexConfig()
+        assert config.timeout_seconds == 10
+
+    def test_timeout_min_boundary(self) -> None:
+        """Test that timeout_seconds accepts minimum value of 1."""
+        config = KeywordIndexConfig(timeout_seconds=1)
+        assert config.timeout_seconds == 1
+
+    def test_timeout_max_boundary(self) -> None:
+        """Test that timeout_seconds accepts maximum value of 120."""
+        config = KeywordIndexConfig(timeout_seconds=120)
+        assert config.timeout_seconds == 120
+
+    def test_timeout_below_min_rejected(self) -> None:
+        """Test that timeout_seconds below 1 is rejected."""
+        with pytest.raises(ValidationError):
+            KeywordIndexConfig(timeout_seconds=0)
+
+    def test_timeout_above_max_rejected(self) -> None:
+        """Test that timeout_seconds above 120 is rejected."""
+        with pytest.raises(ValidationError):
+            KeywordIndexConfig(timeout_seconds=121)
+
+    def test_opensearch_with_basic_auth(self) -> None:
+        """Test opensearch config with basic auth credentials."""
+        config = KeywordIndexConfig(
+            provider="opensearch",
+            endpoint="https://search.example.com:9200",
+            index_name="my_index",
+            username="admin",
+            password="secret",  # noqa: S106
+        )
+        assert config.username == "admin"
+        assert config.password == "secret"  # noqa: S105
+
+    def test_opensearch_with_api_key_auth(self) -> None:
+        """Test opensearch config with API key authentication."""
+        config = KeywordIndexConfig(
+            provider="opensearch",
+            endpoint="https://search.example.com:9200",
+            index_name="my_index",
+            api_key="my-api-key-123",
+        )
+        assert config.api_key == "my-api-key-123"
+
+    def test_extra_fields_allowed(self) -> None:
+        """Test that extra provider-specific fields are allowed."""
+        config = KeywordIndexConfig(
+            provider="opensearch",
+            endpoint="https://search.example.com:9200",
+            index_name="my_index",
+            use_ssl=True,
+        )
+        assert config.use_ssl is True  # type: ignore[attr-defined]
+
+    def test_in_memory_no_endpoint_needed(self) -> None:
+        """Test that in-memory provider does not require endpoint."""
+        config = KeywordIndexConfig(provider="in-memory")
+        assert config.endpoint is None
+        assert config.index_name is None
+
+    def test_opensearch_missing_endpoint_raises(self) -> None:
+        """Test that opensearch without endpoint raises ValidationError."""
+        with pytest.raises(ValidationError, match="endpoint is required"):
+            KeywordIndexConfig(
+                provider="opensearch",
+                index_name="my_index",
+            )
+
+    def test_opensearch_missing_index_name_raises(self) -> None:
+        """Test that opensearch without index_name raises ValidationError."""
+        with pytest.raises(ValidationError, match="index_name is required"):
+            KeywordIndexConfig(
+                provider="opensearch",
+                endpoint="https://search.example.com:9200",
+            )
+
+    def test_opensearch_missing_both_raises(self) -> None:
+        """Test that opensearch without both fields raises on endpoint first."""
+        with pytest.raises(ValidationError, match="endpoint is required"):
+            KeywordIndexConfig(provider="opensearch")
+
+
+class TestHierarchicalDocumentToolConfigKeywordIndex:
+    """Tests for keyword_index field on HierarchicalDocumentToolConfig."""
+
+    def test_keyword_index_default_none(self) -> None:
+        """Test that keyword_index defaults to None."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+        )
+        assert config.keyword_index is None
+
+    def test_keyword_index_in_memory(self) -> None:
+        """Test keyword_index with in-memory provider."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            keyword_index=KeywordIndexConfig(provider="in-memory"),
+        )
+        assert config.keyword_index is not None
+        assert config.keyword_index.provider == "in-memory"
+
+    def test_keyword_index_opensearch_valid(self) -> None:
+        """Test keyword_index with valid opensearch config."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            keyword_index=KeywordIndexConfig(
+                provider="opensearch",
+                endpoint="https://search.example.com:9200",
+                index_name="docs_index",
+            ),
+        )
+        assert config.keyword_index is not None
+        assert config.keyword_index.provider == "opensearch"
+        assert config.keyword_index.endpoint == "https://search.example.com:9200"
+
+    def test_opensearch_missing_endpoint_raises(self) -> None:
+        """Test that opensearch without endpoint raises ValidationError.
+
+        Validation now occurs on KeywordIndexConfig itself via model_validator.
+        """
+        with pytest.raises(ValidationError, match="endpoint is required"):
+            KeywordIndexConfig(
+                provider="opensearch",
+                index_name="docs_index",
+            )
+
+    def test_opensearch_missing_index_name_raises(self) -> None:
+        """Test that opensearch without index_name raises ValidationError.
+
+        Validation now occurs on KeywordIndexConfig itself via model_validator.
+        """
+        with pytest.raises(ValidationError, match="index_name is required"):
+            KeywordIndexConfig(
+                provider="opensearch",
+                endpoint="https://search.example.com:9200",
+            )
+
+    def test_opensearch_missing_both_raises(self) -> None:
+        """Test that opensearch without endpoint and index_name raises.
+
+        Validation now occurs on KeywordIndexConfig itself via model_validator.
+        """
+        with pytest.raises(ValidationError, match="endpoint is required"):
+            KeywordIndexConfig(
+                provider="opensearch",
+            )
+
+    def test_keyword_index_from_dict(self) -> None:
+        """Test that keyword_index can be set from a dict (YAML coercion)."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            keyword_index={"provider": "in-memory"},  # type: ignore[arg-type]
+        )
+        assert config.keyword_index is not None
+        assert config.keyword_index.provider == "in-memory"
+
+    def test_does_not_affect_weight_validation(self) -> None:
+        """Test that keyword_index does not interfere with hybrid weight validation."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            search_mode="hybrid",
+            semantic_weight=0.5,
+            keyword_weight=0.3,
+            exact_weight=0.2,
+            keyword_index=KeywordIndexConfig(provider="in-memory"),
+        )
+        assert config.keyword_index is not None
+        assert config.semantic_weight == 0.5
+
+    def test_full_opensearch_config(self) -> None:
+        """Test complete production opensearch configuration."""
+        config = HierarchicalDocumentToolConfig(
+            name="prod_search",
+            description="Production search tool",
+            source="./docs/",
+            search_mode="hybrid",
+            semantic_weight=0.5,
+            keyword_weight=0.3,
+            exact_weight=0.2,
+            keyword_index=KeywordIndexConfig(
+                provider="opensearch",
+                endpoint="https://vpc-prod.us-east-1.es.amazonaws.com",
+                index_name="holodeck_docs",
+                username="admin",
+                password="secret",  # noqa: S106
+                verify_certs=True,
+                timeout_seconds=30,
+            ),
+        )
+        assert config.keyword_index is not None
+        assert config.keyword_index.provider == "opensearch"
+        assert config.keyword_index.endpoint == (
+            "https://vpc-prod.us-east-1.es.amazonaws.com"
+        )
+        assert config.keyword_index.index_name == "holodeck_docs"
+        assert config.keyword_index.username == "admin"
+        assert config.keyword_index.timeout_seconds == 30

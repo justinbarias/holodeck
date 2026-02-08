@@ -2,7 +2,7 @@
 
 **Comprehensive Documentation for AI Agents Working on HoloDeck**
 
-This file provides detailed guidance for AI agents (like Claude) working with the HoloDeck codebase. It covers architecture, patterns, conventions, and quality standards.
+This file provides detailed guidance for AI agents working with the HoloDeck codebase. It covers architecture, patterns, conventions, and quality standards.
 
 ---
 
@@ -328,39 +328,29 @@ DATADOG_API_KEY=...
 
 ### Testing
 
+**IMPORTANT**: Always run tests with parallel execution (`-n auto`) for faster results.
+
 ```bash
-# Run all tests
-make test
-# or: uv run pytest -v --tb=short
+make test                # Run all tests (parallel)
+make test-unit          # Unit tests only (parallel)
+make test-integration   # Integration tests only (parallel)
+make test-coverage      # With coverage report (htmlcov/index.html)
+make test-failed        # Re-run failed tests only
+make test-parallel      # Parallel execution (same as make test)
 
-# Run unit tests only
-make test-unit
-# or: uv run pytest tests/unit -v --tb=short
-
-# Run integration tests only
-make test-integration
-# or: uv run pytest tests/integration -v --tb=short
-
-# Run tests with coverage
-make test-coverage
-# Coverage report: htmlcov/index.html
-
-# Re-run failed tests only
-make test-failed
-# or: uv run pytest --lf
-
-# Run tests in parallel (requires pytest-xdist)
-make test-parallel
-# or: uv run pytest -n auto
+# When running pytest directly, ALWAYS use -n auto:
+pytest tests/unit/ -n auto              # Run unit tests in parallel
+pytest tests/unit/lib/ -n auto -v       # Verbose with parallel
+pytest tests/ -n auto -q                # Quiet mode with parallel
 
 # Run specific test file
-uv run pytest tests/unit/test_config.py -v
+pytest tests/unit/test_config.py -n auto -v
 
 # Run specific test function
-uv run pytest tests/unit/test_config.py::test_load_yaml -v
+pytest tests/unit/test_config.py::test_load_yaml -v
 
 # Run tests matching pattern
-uv run pytest -k "test_agent" -v
+pytest -k "test_agent" -n auto -v
 ```
 
 ### Code Quality
@@ -1830,3 +1820,9 @@ When working on HoloDeck, always:
 - Consult VISION.md for feature specifications
 
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
+
+## Active Technologies
+- N/A (stateless CLI tool, uses cloud provider state) (019-deploy-command)
+
+## Recent Changes
+- 019-deploy-command: Added Python 3.10+

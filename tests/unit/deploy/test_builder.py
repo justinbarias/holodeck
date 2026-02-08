@@ -139,6 +139,7 @@ class TestContainerBuilderInit:
     def test_init_docker_not_available(self) -> None:
         """Test initialization when Docker is not available."""
         from docker.errors import DockerException
+
         from holodeck.deploy.builder import ContainerBuilder
         from holodeck.lib.errors import DockerNotAvailableError
 
@@ -151,6 +152,7 @@ class TestContainerBuilderInit:
     def test_init_docker_connection_refused(self) -> None:
         """Test initialization when Docker daemon is not running."""
         from docker.errors import DockerException
+
         from holodeck.deploy.builder import ContainerBuilder
         from holodeck.lib.errors import DockerNotAvailableError
 
@@ -279,6 +281,7 @@ class TestContainerBuilderBuild:
     ) -> None:
         """Test build error is wrapped in DeploymentError."""
         from docker.errors import BuildError
+
         from holodeck.lib.errors import DeploymentError
 
         build_dir = tmp_path / "build"

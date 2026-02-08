@@ -15,6 +15,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2026-02-07
+
+### Added
+
+- **HierarchicalDocumentTool** — Structure-aware document search with hierarchy preservation (#255)
+  - Markdown heading chain tracking (H1-H6 parent chains)
+  - Domain-aware subsection recognition (US legislative, AU legislative, academic, technical, legal contracts, financial, medical, patent, general)
+  - LLM-based contextual embeddings (Anthropic approach, ~49% improved retrieval accuracy)
+  - Incremental ingestion with mtime-based tracking and `--force-ingest` override
+  - Hybrid search combining semantic + keyword with configurable weights
+  - Full YAML configuration — no code required
+- **Tiered Keyword Search with RRF Fusion** — Automatic strategy selection based on provider capabilities
+  - NATIVE_HYBRID for providers with built-in hybrid search (azure-ai-search, weaviate, qdrant, mongodb, azure-cosmos-nosql)
+  - FALLBACK_BM25 using rank_bm25 + Reciprocal Rank Fusion (k=60) for other providers (postgres, pinecone, chromadb, faiss, in-memory, sql-server)
+- **KeywordSearchProvider Protocol** — Pluggable keyword search backend interface with two implementations:
+  - `InMemoryBM25KeywordProvider` — rank_bm25 in-process for development and local workloads
+  - `OpenSearchKeywordProvider` — external OpenSearch cluster for production, with configurable auth (basic/API key), TLS, and timeouts
+- **KeywordIndexConfig Model** — YAML-configurable keyword search backend selection (`in-memory` or `opensearch`) with Pydantic validation
+- **Keyword Search Provider Router** — Automatic backend routing with OpenTelemetry span instrumentation for search observability
+- **Shared Tool Utilities** (#257) — Extracted reusable infrastructure into `lib/tools/`:
+  - `common.py`: file discovery, source path resolution, placeholder embedding generation
+  - `base_tool.py`: `EmbeddingServiceMixin` and `DatabaseConfigMixin` for tool code reuse
+- **Shared Terminal UI Utilities** (#256) — Consolidated duplicate code into `lib/ui/`:
+  - `terminal.py`: TTY detection
+  - `spinner.py`: `SpinnerMixin` for progress animation
+  - `colors.py`: `ANSIColors` and `colorize()` function
+  - Chat history extraction utilities shared between chat and test_runner
+- **HierarchicalDocumentTool Specification** (#242) — Full spec-kit artifacts:
+  - spec.md with 8 user stories (P1-P3 priorities)
+  - Implementation plan, data model documentation, quickstart guide
+  - 110+ implementation tasks organized by priority
+
+### Changed
+
+- **BM25 Score Normalization** — Replaced hardcoded `/10.0` divisor with max-score normalization; the top result always scores 1.0, others are proportional to the maximum
+- **Async OpenSearch I/O** — `HybridSearchExecutor.build_keyword_index()` and `keyword_search()` are now async; OpenSearch calls offloaded via `asyncio.to_thread()`, in-memory BM25 remains direct with zero overhead
+- **KeywordIndexConfig Self-Validation** — OpenSearch field validation (`endpoint`, `index_name`) moved from parent `HierarchicalDocumentToolConfig` into `KeywordIndexConfig` itself via `@model_validator`, enabling validation regardless of construction context
+- **Chunk Ownership Architecture** — `HybridSearchExecutor` now owns chunk data via internal `_chunk_map`, eliminating chunk duplication and improving lookup performance
+- **Search Mode Routing** — Tool supports KEYWORD, SEMANTIC, and HYBRID search modes with graceful degradation to semantic-only on keyword failure
+- **CLI Error Handling** — Extracted error handling into reusable context manager
+
+### Removed
+
+- **ExactMatchIndex** — Removed unused class, `SearchMode.EXACT` enum value, `_exact_search()` method, and exact match routing logic (~485 lines) in favor of unified keyword search
+
+### Fixed
+
+- **Hybrid Weight Validation** — Enforce `semantic_weight + keyword_weight > 0` for hybrid search mode, rejecting invalid weight combinations
+
+### Security
+
+- **aiohttp** 3.13.2 &rarr; 3.13.3 — fixes 8 CVEs:
+  - CVE-2025-47364 (CRLF injection in redirects)
+  - CVE-2025-49109 (DoS via keepalive infinite loop)
+  - CVE-2025-49110 (DoS via `Transfer-Encoding` header)
+  - CVE-2025-49111 (DoS via invalid chunk extensions)
+  - CVE-2025-49112 (Proxy header injection)
+  - CVE-2025-49113 (DoS via `Content-Length`/`Transfer-Encoding` conflict)
+  - CVE-2025-69229 (DoS via excessive chunked messages)
+  - CVE-2025-69230 (DoS via Cookie header logging)
+- **werkzeug** 3.1.4 &rarr; 3.1.5
+- **python-multipart** 0.0.20 &rarr; 0.0.22
+- **authlib** 1.6.5 &rarr; 1.6.6
+- **pypdf** 6.4.0 &rarr; 6.6.2
+- **protobuf** 5.29.5 &rarr; 5.29.6
+- **semantic-kernel** 1.39.0 &rarr; 1.39.3
+- **wheel** 0.45.1 &rarr; 0.46.2
+
+### Documentation
+
+- Hierarchical Document Tools section in tools reference guide
+- HierarchicalDocumentTool spec, plan, data model, and quickstart artifacts (#242)
+- Standardized parallel test execution (`-n auto`) across CLAUDE.md and AGENTS.md
+
+### Testing
+
+- **HierarchicalDocumentTool** coverage increased from 79% to 97% (26 new test cases)
+- Comprehensive keyword search test suite: KeywordSearchProvider protocol, InMemoryBM25, OpenSearchKeywordProvider, HybridSearchExecutor, provider routing, OTel spans, graceful degradation
+- KeywordIndexConfig and HierarchicalDocumentToolConfig model validation tests
+- Consolidated and removed trivial unit tests for cleaner test suite
+
+---
+
+## [0.3.5] - 2026-01-28
+
+### Added
+
+- **Azure Container Apps Deployment** (#234)
+  - `holodeck deploy run/status/destroy` commands with Azure deployer
+  - Typed `BaseDeployer` interface with deployment state tracking via Pydantic models
+  - Strongly typed result models and configurable health checks
+  - CLI error handling extracted into reusable context manager
+- **Cross-Architecture Container Builds** (#241)
+  - Configurable `platform` field on deployment config (default: `linux/amd64`)
+  - Support for building containers on ARM machines (e.g., Apple Silicon) targeting amd64 deployment
+  - Always-fetch base image variant via `pull=True`
+
+### Fixed
+
+- Dockerfile user permissions for proper file operations in containers
+- Default base image updated to published `ghcr.io/justinbarias/holodeck-base:latest`
+- Removed unused helper functions from deployment module
+
+### Testing
+
+- Deploy build command unit tests
+- Azure deployer behavior and platform configuration validation tests
+
+### Documentation
+
+- Deployment guide updates for Azure Container Apps
+
+---
+
 ## [0.3.4] - 2026-01-24
 
 ### Added
@@ -472,7 +586,7 @@ None reported in 0.0.1.
 - [x] **v0.1** - Core agent engine + CLI
 - [x] **v0.2** - Evaluation framework
 - [x] **v0.3** - API deployment (serve + deploy build)
-- [ ] **v0.4** - Multi-agent orchestration & workflows
+- [x] **v0.4** - Hierarchical document search & tiered keyword search
 - [ ] **v0.5** - Web UI (no-code editor)
 - [ ] **v0.6** - Enterprise features (SSO, audit logs, RBAC)
 - [ ] **v1.0** - Production-ready release
@@ -527,7 +641,9 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 
 ---
 
-[unreleased]: https://github.com/justinbarias/holodeck/compare/0.3.4...HEAD
+[unreleased]: https://github.com/justinbarias/holodeck/compare/0.4.0...HEAD
+[0.4.0]: https://github.com/justinbarias/holodeck/compare/0.3.5...0.4.0
+[0.3.5]: https://github.com/justinbarias/holodeck/compare/0.3.4...0.3.5
 [0.3.4]: https://github.com/justinbarias/holodeck/compare/0.3.3...0.3.4
 [0.3.3]: https://github.com/justinbarias/holodeck/compare/0.3.2...0.3.3
 [0.3.2]: https://github.com/justinbarias/holodeck/compare/0.3.1...0.3.2

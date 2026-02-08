@@ -24,10 +24,11 @@
 
 - plan.md:18-25 (Technical Context - Python 3.10+, dependencies)
 - plan.md:189-239 (Project Structure)
-- plan.md:887-895 (Dependencies to Add - rank-bm25)
+- plan.md:887-895 (Dependencies to Add - opensearch-py + rank-bm25)
 - research.md:487-494 (Technology Stack Summary)
 
 - [x] T001 Add `rank-bm25 = "^0.2.2"` to pyproject.toml dependencies per plan.md:887-895
+- [x] T001a Add `opensearch-py` dependency to pyproject.toml for production sparse index endpoint support
 - [x] T002 [P] Create directory structure: `src/holodeck/lib/structured_chunker.py`, `keyword_search.py`, `hybrid_search.py`, `definition_extractor.py`, `llm_context_generator.py` per plan.md:216-221
 - [x] T003 [P] Create directory structure: `src/holodeck/tools/hierarchical_document_tool.py` per plan.md:212
 - [x] T004 [P] Create test fixtures directory: `tests/fixtures/hierarchical_documents/` with sample files per plan.md:236-239
@@ -168,29 +169,46 @@
 - plan.md:449-614 (Tiered Keyword Search Strategy)
 - research.md:108-234 (Keyword Search Strategy - Tiered)
 - plan.md:299-326 (Keyword Index Strategy - Tiered)
+- OpenSearch Python client docs: https://opensearch.org/docs/latest/clients/python-low-level/
+
+**Phase 4 Decision Update**:
+- For providers without native hybrid search, production fallback SHOULD use an OpenSearch endpoint (`keyword_index.provider=opensearch`); in-memory BM25 remains an optional local/dev fallback.
 
 ### TDD: Write Tests First
 
-- [ ] T043 [TDD][US2] Create tests/unit/lib/test_keyword_search.py with test cases per plan.md:228:
+- [x] T043 [TDD][US2] Create tests/unit/lib/test_keyword_search.py with test cases per plan.md:228:
   - Test `KeywordSearchStrategy` enum values
   - Test `get_keyword_search_strategy()` returns correct strategy per provider
   - Test `NATIVE_HYBRID_PROVIDERS` contains expected providers
-  - Test `FALLBACK_BM25_PROVIDERS` contains expected providers
-  - Test `BM25FallbackProvider.build()` indexes documents
+  - Test `FALLBACK_BM25_PROVIDERS` contains expected providers (6 providers, NOT azure-cosmos-mongo)
+  - Test `BM25FallbackProvider.build()` indexes documents using contextualized_content
   - Test `BM25FallbackProvider.search()` returns ranked results
   - Test `_tokenize()` handles edge cases (empty, special chars)
   - Test `HybridSearchExecutor` routing to correct strategy
+  - Test exact section ID query returns as TOP result (SC-002 validation)
+  - Test native hybrid search via `collection.hybrid_search()` mock
+  - Test graceful degradation when BM25 build fails
+  - Test OpenSearch keyword provider config validation (endpoint/index/auth)
+  - Test OpenSearch keyword search call and result mapping
+  - Test fallback to semantic-only when OpenSearch is unavailable
 
 ### Implementation: Keyword Search Module (Tiered Strategy)
 
-- [ ] T044 [US2] Create `KeywordSearchStrategy` enum (NATIVE_HYBRID, FALLBACK_BM25) in src/holodeck/lib/keyword_search.py per plan.md:485-491
-- [ ] T045 [US2] Define `NATIVE_HYBRID_PROVIDERS` set (azure-ai-search, weaviate, qdrant, mongodb, azure-cosmos-nosql) per plan.md:495-501 and research.md:113-119
-- [ ] T046 [US2] Define `FALLBACK_BM25_PROVIDERS` set (postgres, pinecone, chromadb, faiss, in-memory, sql-server, azure-cosmos-mongo) per plan.md:503-511 and research.md:120-124
-- [ ] T047 [US2] Implement `get_keyword_search_strategy()` factory function per plan.md:514-518
-- [ ] T048 [US2] Create `BM25FallbackProvider` class using rank_bm25.BM25Okapi per plan.md:588-614 and research.md:137-166
-- [ ] T049 [US2] Implement `BM25FallbackProvider.build()` from (doc_id, contextualized_text) tuples per plan.md:597-602
-- [ ] T050 [US2] Implement `BM25FallbackProvider.search()` returning (doc_id, score) tuples per plan.md:604-609
-- [ ] T051 [US2] Implement `_tokenize()` using regex `[a-zA-Z0-9]+` lowercase per plan.md:611-613
+- [x] T044 [US2] Create `KeywordSearchStrategy` enum (NATIVE_HYBRID, FALLBACK_BM25) in src/holodeck/lib/keyword_search.py per plan.md:485-491
+- [x] T045 [US2] Define `NATIVE_HYBRID_PROVIDERS` set (azure-ai-search, weaviate, qdrant, mongodb, azure-cosmos-nosql) per plan.md:495-501 and research.md:113-119
+- [x] T046 [US2] Define `FALLBACK_BM25_PROVIDERS` set (postgres, pinecone, chromadb, faiss, in-memory, sql-server) per plan.md:503-511 and research.md:120-124 (NOTE: azure-cosmos-mongo excluded - does NOT support hybrid search)
+- [x] T047 [US2] Implement `get_keyword_search_strategy()` factory function per plan.md:514-518
+- [x] T048 [US2] Create `BM25FallbackProvider` class using rank_bm25.BM25Okapi per plan.md:588-614 and research.md:137-166
+- [x] T049 [US2] Implement `BM25FallbackProvider.build()` from (doc_id, contextualized_text) tuples per plan.md:597-602
+- [x] T049a [US2] Ensure BM25FallbackProvider.build() uses chunk.contextualized_content (not raw content) per plan.md:170-171
+- [x] T050 [US2] Implement `BM25FallbackProvider.search()` returning (doc_id, score) tuples per plan.md:604-609
+- [x] T051 [US2] Implement `_tokenize()` using regex `[a-zA-Z0-9]+` lowercase per plan.md:611-613
+- [x] T051a [US2] Add `KeywordIndexProvider` config model to src/holodeck/models/tool.py with providers `in-memory` and `opensearch` (vectorstore-style configuration)
+- [x] T051b [US2] Add `keyword_index` field to `HierarchicalDocumentToolConfig` in src/holodeck/models/tool.py with validation for provider-specific required fields
+- [x] T051c [US2] Create `OpenSearchKeywordProvider` in src/holodeck/lib/keyword_search.py using `opensearch-py` endpoint/index API
+- [ ] T051d [US2] Refactor `BM25FallbackProvider` to explicit in-memory provider (`InMemoryBM25KeywordProvider`) while preserving rank_bm25 fallback for local/dev
+- [ ] T051e [US2] Implement provider router in `HybridSearchExecutor` to select keyword fallback backend from config (`in-memory` vs `opensearch`)
+- [ ] T051f [US2] Add OpenTelemetry spans and graceful degradation for OpenSearch keyword search failures (fallback to semantic-only)
 
 ### Implementation: Exact Match Index
 
@@ -200,13 +218,17 @@
 
 ### Implementation: Hybrid Search Executor
 
-- [ ] T055 [US2] Create `HybridSearchExecutor` class in src/holodeck/lib/keyword_search.py per plan.md:520-586
-- [ ] T056 [US2] Implement `_native_hybrid_search()` using SK `collection.hybrid_search()` per plan.md:543-562 and research.md:173-216
-- [ ] T057 [US2] Implement `_fallback_hybrid_search()` running vector + BM25 separately per plan.md:563-586
+- [x] T055 [US2] Create `HybridSearchExecutor` class in src/holodeck/lib/keyword_search.py per plan.md:520-586
+- [x] T056 [US2] Implement `_native_hybrid_search()` using SK `collection.hybrid_search()` per plan.md:543-562 and research.md:173-216
+- [x] T057 [US2] Implement `_fallback_hybrid_search()` running vector + BM25 separately per plan.md:563-586
+- [x] T057a [US2] Add OpenTelemetry spans for BM25FallbackProvider.search() with query and result_count attributes per Constitution Principle IV
+- [x] T057b [US2] Add OpenTelemetry spans for HybridSearchExecutor.search() with search_mode and provider attributes per Constitution Principle IV
+- [ ] T057c [US2] Implement exact match boosting to ensure top-result position per spec SC-002 (exact matches get score boost before RRF)
+- [x] T057d [US2] Implement graceful degradation when BM25 build fails (log warning, fall back to semantic-only)
 
 ### Implementation: Tool Integration
 
-- [ ] T058 [US2] Update `HierarchicalDocumentTool._ingest_documents()` to build BM25 index for fallback providers per plan.md:161-164
+- [x] T058 [US2] Update `HierarchicalDocumentTool._ingest_documents()` to build keyword index for fallback providers per plan.md:161-164
 - [ ] T059 [US2] Update `HierarchicalDocumentTool.search()` to support keyword and exact modes per spec.md:46-49
 
 **Checkpoint**: Exact match and keyword search working - can find precise section references and technical terms. All US2 unit tests pass.
@@ -228,7 +250,7 @@
 
 ### TDD: Write Tests First
 
-- [ ] T060 [TDD][US3] Add test cases to tests/unit/lib/test_structured_chunker.py for structure enhancements:
+- [x] T060 [TDD][US3] Add test cases to tests/unit/lib/test_structured_chunker.py for structure enhancements:
   - Test normalized section_id generation (e.g., "sec_1_2_3")
   - Test heading level tracking (1-6 for H1-H6, 0 for body)
   - Test chunk_type classification from heading keywords
@@ -236,19 +258,19 @@
 
 ### Implementation: Enhanced Structure Parsing
 
-- [ ] T061 [US3] Enhance `StructuredChunker` to generate normalized section_id from heading text (e.g., "sec_1_2_3") per data-model.md:36-37
-- [ ] T062 [US3] Implement heading level tracking (1-6 for H1-H6, 0 for body content) per data-model.md:39
-- [ ] T063 [US3] Implement chunk_type classification based on heading keywords and content patterns per data-model.md:37-38
+- [x] T061 [US3] Enhance `StructuredChunker` to generate normalized section_id from heading text (e.g., "sec_1_2_3") per data-model.md:36-37
+- [x] T062 [US3] Implement heading level tracking (1-6 for H1-H6, 0 for body content) per data-model.md:39
+- [x] T063 [US3] Implement chunk_type classification based on heading keywords and content patterns per data-model.md:37-38
 
 ### Implementation: Markitdown Integration
 
-- [ ] T064 [US3] Integrate with existing markitdown for PDF/Word/HTML → Markdown conversion per plan.md:73-79
-- [ ] T065 [US3] Ensure heading levels from converted documents map correctly to hierarchical depth per spec.md:63
+- [x] T064 [US3] Integrate with existing markitdown for PDF/Word/HTML → Markdown conversion per plan.md:73-79
+- [x] T065 [US3] Ensure heading levels from converted documents map correctly to hierarchical depth per spec.md:63
 
 ### Implementation: Parent Chain Metadata
 
-- [ ] T066 [US3] Store parent_chain as JSON string in vector store record per data-model.md:479
-- [ ] T067 [US3] Include parent_chain in SearchResult for display per data-model.md:95
+- [x] T066 [US3] Store parent_chain as JSON string in vector store record per data-model.md:479
+- [x] T067 [US3] Include parent_chain in SearchResult for display per data-model.md:95
 
 **Checkpoint**: Structure-aware ingestion working - chunks retain full hierarchical context. All US3 unit tests pass.
 
@@ -317,7 +339,7 @@
 
 ### Implementation: Context Application to BM25
 
-- [x] T077 [US5] Ensure BM25 index uses contextualized_content (not raw content) per plan.md:170-171 and research.md:88-93 _(Moved to Phase 4 - requires BM25 implementation)_
+- [x] T077 [US5] ~~Ensure BM25 index uses contextualized_content (not raw content)~~ **MOVED to Phase 4 as T049a** - BM25 contextualized_content requirement is co-located with BM25 implementation
 - [x] T078 [US5] Store both original `content` and `contextualized_content` in vector store record per research.md:54-55
 
 ### Implementation: Configurable Context Generation
@@ -615,7 +637,7 @@ Each phase follows the Red-Green-Refactor cycle:
 | Advanced     | T089-T105      | Definitions + reranking          | US1-8 unit tests pass |
 | Complete     | T106-T118      | All features + integration tests | All tests pass        |
 
-**Note**: Total task count is 118
+**Note**: Total task count is 125
 
 ---
 

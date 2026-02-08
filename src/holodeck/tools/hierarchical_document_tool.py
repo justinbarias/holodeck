@@ -47,6 +47,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from holodeck.lib.keyword_search import HybridSearchExecutor
+
 if TYPE_CHECKING:
     from holodeck.lib.definition_extractor import DefinitionEntry
     from holodeck.lib.llm_context_generator import LLMContextGenerator
@@ -130,6 +132,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self._collection: Any = None
         self._provider: str = "in-memory"
         self._embedding_dimensions: int | None = None
+
+        # Hybrid search executor (initialized during ingestion)
+        self._hybrid_executor: HybridSearchExecutor | None = None
 
     # set_embedding_service is inherited from EmbeddingServiceMixin
 
@@ -301,6 +306,84 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         return deleted_count
 
+    async def _load_chunks_from_store(self) -> list[DocumentChunk]:
+        """Load all document chunks from the vector store.
+
+        Reconstructs DocumentChunk objects from stored records, enabling
+        BM25 index rebuild on startup when files are unchanged (skipped
+        via mtime check). This is necessary because the BM25 index is
+        in-memory only and does not survive restarts.
+
+        Returns:
+            List of reconstructed DocumentChunk objects, or empty list
+            if collection doesn't exist or an error occurs.
+        """
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        if self._collection is None:
+            return []
+
+        try:
+            async with self._collection as collection:
+                if not await collection.collection_exists():
+                    return []
+
+                records = await collection.get(top=10000)
+
+                if not records:
+                    return []
+
+                chunks: list[DocumentChunk] = []
+                for record in records:
+                    # Parse JSON fields with graceful fallback
+                    try:
+                        parent_chain = json.loads(record.parent_chain)
+                    except (json.JSONDecodeError, TypeError):
+                        parent_chain = []
+
+                    try:
+                        cross_references = json.loads(record.cross_references)
+                    except (json.JSONDecodeError, TypeError):
+                        cross_references = []
+
+                    try:
+                        subsection_ids = json.loads(record.subsection_ids)
+                    except (json.JSONDecodeError, TypeError):
+                        subsection_ids = []
+
+                    # Map chunk_type string to ChunkType enum
+                    try:
+                        chunk_type = ChunkType(record.chunk_type)
+                    except (ValueError, KeyError):
+                        chunk_type = ChunkType.CONTENT
+
+                    chunks.append(
+                        DocumentChunk(
+                            id=record.id,
+                            source_path=record.source_path,
+                            chunk_index=record.chunk_index,
+                            content=record.content,
+                            parent_chain=parent_chain,
+                            section_id=record.section_id,
+                            chunk_type=chunk_type,
+                            cross_references=cross_references,
+                            heading_level=0,
+                            contextualized_content=record.contextualized_content or "",
+                            mtime=float(record.mtime),
+                            defined_term=record.defined_term or "",
+                            defined_term_normalized=record.defined_term_normalized
+                            or "",
+                            subsection_ids=subsection_ids,
+                        )
+                    )
+
+                logger.info(f"Loaded {len(chunks)} chunks from vector store")
+                return chunks
+
+        except Exception as e:
+            logger.warning(f"Failed to load chunks from store: {e}")
+            return []
+
     async def _convert_to_markdown(self, file_path: str) -> str:
         """Convert a file to markdown using FileProcessor.
 
@@ -351,7 +434,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         domain_key = self.config.document_domain.value
         return DOMAIN_PATTERNS.get(domain_key)
 
-    async def _ingest_documents(self, force_ingest: bool = False) -> None:
+    async def _ingest_documents(self, force_ingest: bool = False) -> int:
         """Ingest all configured documents through the ingestion pipeline.
 
         Pipeline stages:
@@ -367,6 +450,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Args:
             force_ingest: If True, re-ingest all files regardless of modification
                 time. Existing records will be deleted before re-ingestion.
+
+        Returns:
+            Number of files skipped (unchanged since last ingestion).
 
         Raises:
             FileNotFoundError: If source path does not exist.
@@ -404,7 +490,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 f"Supported extensions: {SUPPORTED_EXTENSIONS}"
             )
             # Still mark as initialized even with no files
-            return
+            return 0
 
         logger.info(f"Discovered {len(files)} files for ingestion")
 
@@ -487,6 +573,12 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             f"Ingestion complete: {ingested_files} files processed, "
             f"{skipped_files} skipped (up-to-date), {len(self._chunks)} total chunks"
         )
+
+        # Build hybrid search indices if we have chunks
+        if self._chunks:
+            await self._build_hybrid_indices()
+
+        return skipped_files
 
     async def _embed_chunks(self, chunks: list[DocumentChunk]) -> None:
         """Generate embeddings for document chunks.
@@ -661,6 +753,143 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         results.sort(key=lambda r: r.fused_score, reverse=True)
         return results
 
+    async def _build_hybrid_indices(self) -> None:
+        """Build hybrid search indices (BM25 and exact match).
+
+        Creates the HybridSearchExecutor with BM25 fallback index
+        and exact match index from the stored chunks. This enables
+        keyword search, exact match, and hybrid search modes.
+        """
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+
+        if not self._chunks:
+            logger.debug("No chunks to build hybrid indices from")
+            return
+
+        # Create hybrid search executor with configured weights
+        self._hybrid_executor = HybridSearchExecutor(
+            self._provider,
+            self._collection,
+            semantic_weight=self.config.semantic_weight,
+            keyword_weight=self.config.keyword_weight,
+            rrf_k=self.config.rrf_k,
+            keyword_index_config=self.config.keyword_index,
+        )
+
+        # Build keyword index (executor now owns chunk data)
+        await self._hybrid_executor.build_keyword_index(self._chunks)
+
+        logger.info(
+            f"Built hybrid search indices: {len(self._chunks)} documents indexed"
+        )
+
+    async def _hybrid_search(
+        self,
+        query: str,
+        query_embedding: list[float],
+        top_k: int,
+    ) -> list[SearchResult]:
+        """Perform hybrid search combining semantic, keyword, and exact match.
+
+        Uses the HybridSearchExecutor to route to native hybrid search or
+        BM25 fallback based on provider capabilities.
+
+        Args:
+            query: Search query string.
+            query_embedding: Query embedding vector.
+            top_k: Number of results to return.
+
+        Returns:
+            List of SearchResult objects sorted by fused score.
+        """
+        if self._hybrid_executor is None:
+            # Fall back to semantic-only if hybrid executor not available
+            logger.warning("Hybrid executor not initialized, using semantic search")
+            return await self._semantic_search(query_embedding, top_k)
+
+        # Get fused results from hybrid executor
+        fused_results = await self._hybrid_executor.search(
+            query, query_embedding, top_k
+        )
+
+        # Convert to SearchResult objects via executor's chunk map
+        results: list[SearchResult] = []
+
+        for chunk_id, score in fused_results:
+            chunk = self._hybrid_executor.get_chunk(chunk_id)
+            if chunk is None:
+                continue
+
+            results.append(
+                SearchResult(
+                    chunk_id=chunk_id,
+                    content=chunk.content,
+                    fused_score=max(0.0, min(1.0, score)),
+                    source_path=chunk.source_path,
+                    parent_chain=chunk.parent_chain,
+                    section_id=chunk.section_id,
+                    subsection_ids=chunk.subsection_ids,
+                    semantic_score=None,  # Fused score combines all modalities
+                    keyword_score=None,
+                    exact_match=False,
+                    definitions_context=[],
+                )
+            )
+
+        return results
+
+    async def _keyword_search(
+        self,
+        query: str,
+        top_k: int,
+    ) -> list[SearchResult]:
+        """Perform keyword-only BM25 search.
+
+        Args:
+            query: Search query string.
+            top_k: Number of results to return.
+
+        Returns:
+            List of SearchResult objects sorted by BM25 score.
+        """
+        if self._hybrid_executor is None:
+            logger.warning("BM25 index not available, returning empty results")
+            return []
+
+        # Get BM25 results via public API
+        bm25_results = await self._hybrid_executor.keyword_search(query, top_k)
+
+        # Normalize BM25 scores using max-score normalization
+        max_score = max((s for _, s in bm25_results), default=0.0)
+
+        # Convert to SearchResult objects
+        results: list[SearchResult] = []
+
+        for chunk_id, score in bm25_results:
+            chunk = self._hybrid_executor.get_chunk(chunk_id)
+            if chunk is None:
+                continue
+
+            normalized_score = score / max_score if max_score > 0 else 0.0
+
+            results.append(
+                SearchResult(
+                    chunk_id=chunk_id,
+                    content=chunk.content,
+                    fused_score=normalized_score,
+                    source_path=chunk.source_path,
+                    parent_chain=chunk.parent_chain,
+                    section_id=chunk.section_id,
+                    subsection_ids=chunk.subsection_ids,
+                    semantic_score=None,
+                    keyword_score=score,
+                    exact_match=False,
+                    definitions_context=[],
+                )
+            )
+
+        return results
+
     async def initialize(
         self, force_ingest: bool = False, provider_type: str | None = None
     ) -> None:
@@ -695,7 +924,19 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self._setup_collection(provider_type)
 
         # Ingest all documents (with incremental check)
-        await self._ingest_documents(force_ingest=force_ingest)
+        skipped_files = await self._ingest_documents(force_ingest=force_ingest)
+
+        # Rebuild BM25 index from stored chunks when files were skipped.
+        # The BM25 index is in-memory only and doesn't survive restarts.
+        # For persistent providers (Qdrant, Postgres, etc.), we need to
+        # reload chunks from the store to rebuild keyword search indices.
+        # Skip for in-memory provider: collections don't survive restarts,
+        # so _needs_reingest() returns True for all files (nothing skipped).
+        if skipped_files > 0 and self._provider != "in-memory":
+            stored_chunks = await self._load_chunks_from_store()
+            if stored_chunks:
+                self._chunks = stored_chunks
+                await self._build_hybrid_indices()
 
         self._initialized = True
         logger.info(
@@ -732,15 +973,16 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         effective_top_k = top_k or self.config.top_k
 
-        # Generate query embedding
+        # Generate query embedding (needed for semantic and hybrid modes)
         query_embedding = await self._embed_query(query)
 
-        # For MVP, use semantic-only search
-        # Future: Support search_mode from config for hybrid/keyword/exact
-        if self.config.search_mode == SearchMode.SEMANTIC:
-            results = await self._semantic_search(query_embedding, effective_top_k)
+        # Route to appropriate search mode
+        if self.config.search_mode == SearchMode.KEYWORD:
+            results = await self._keyword_search(query, effective_top_k)
+        elif self.config.search_mode == SearchMode.HYBRID:
+            results = await self._hybrid_search(query, query_embedding, effective_top_k)
         else:
-            # Default to semantic for MVP
+            # SEMANTIC mode (default)
             results = await self._semantic_search(query_embedding, effective_top_k)
 
         # Filter by min_score if configured

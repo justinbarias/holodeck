@@ -174,6 +174,69 @@
       "additionalProperties": true,
       "description": "Vector database configuration"
     },
+    "KeywordIndexConfig": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["in-memory", "opensearch"],
+          "default": "in-memory",
+          "description": "Keyword index backend: 'in-memory' (rank_bm25) or 'opensearch'"
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "OpenSearch endpoint URL (required when provider is 'opensearch')"
+        },
+        "index_name": {
+          "type": "string",
+          "description": "OpenSearch index name (required when provider is 'opensearch')"
+        },
+        "username": {
+          "type": "string",
+          "description": "Basic auth username"
+        },
+        "password": {
+          "type": "string",
+          "description": "Basic auth password"
+        },
+        "api_key": {
+          "type": "string",
+          "description": "API key auth (alternative to basic auth)"
+        },
+        "verify_certs": {
+          "type": "boolean",
+          "default": true,
+          "description": "Verify TLS certificates"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120,
+          "default": 10,
+          "description": "Connection timeout in seconds (1-120)"
+        }
+      },
+      "description": "Keyword index configuration for sparse/BM25 search backend"
+    },
+    "SearchMode": {
+      "type": "string",
+      "enum": ["semantic", "keyword", "hybrid"],
+      "default": "hybrid",
+      "description": "Search modality: semantic (embeddings), keyword (BM25), or hybrid (combined)"
+    },
+    "ChunkingStrategy": {
+      "type": "string",
+      "enum": ["structure", "token"],
+      "default": "structure",
+      "description": "Document chunking approach: structure (markdown headings) or token (fixed splitting)"
+    },
+    "DocumentDomain": {
+      "type": "string",
+      "enum": ["none", "us_legislative", "au_legislative", "academic", "technical", "legal_contract"],
+      "default": "none",
+      "description": "Document structure domain for subsection detection"
+    },
     "Tool": {
       "type": "object",
       "required": ["type", "name", "description"],
@@ -422,9 +485,160 @@
               "description": "Model config override"
             }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "name", "description", "source"],
+          "properties": {
+            "type": {
+              "const": "hierarchical_document",
+              "description": "Hierarchical document search tool"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[0-9A-Za-z_]+$",
+              "description": "Tool identifier"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Tool description"
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Path to markdown document or directory"
+            },
+            "chunking_strategy": {
+              "$ref": "#/$defs/ChunkingStrategy",
+              "description": "Document chunking approach"
+            },
+            "max_chunk_tokens": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 2000,
+              "default": 800,
+              "description": "Maximum tokens per chunk (100-2000)"
+            },
+            "chunk_overlap": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 200,
+              "default": 50,
+              "description": "Token overlap between chunks (0-200)"
+            },
+            "document_domain": {
+              "$ref": "#/$defs/DocumentDomain",
+              "description": "Document structure domain for subsection detection"
+            },
+            "max_subsection_depth": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum subsection nesting depth"
+            },
+            "search_mode": {
+              "$ref": "#/$defs/SearchMode",
+              "description": "Search modality"
+            },
+            "top_k": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10,
+              "description": "Number of results to return (1-100)"
+            },
+            "min_score": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "description": "Minimum similarity score threshold"
+            },
+            "semantic_weight": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.5,
+              "description": "Weight for semantic search in hybrid mode"
+            },
+            "keyword_weight": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.3,
+              "description": "Weight for keyword search in hybrid mode"
+            },
+            "exact_weight": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0,
+              "default": 0.2,
+              "description": "Weight for exact search in hybrid mode"
+            },
+            "rrf_k": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 60,
+              "description": "Reciprocal Rank Fusion constant"
+            },
+            "contextual_embeddings": {
+              "type": "boolean",
+              "default": true,
+              "description": "Enable contextual embeddings with LLM context"
+            },
+            "context_max_tokens": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 200,
+              "default": 100,
+              "description": "Maximum tokens for context summary"
+            },
+            "context_concurrency": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10,
+              "description": "Concurrent context generation requests"
+            },
+            "extract_definitions": {
+              "type": "boolean",
+              "default": true,
+              "description": "Extract and index term definitions"
+            },
+            "extract_cross_references": {
+              "type": "boolean",
+              "default": true,
+              "description": "Extract and resolve cross-references"
+            },
+            "enable_reranking": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable LLM-based reranking"
+            },
+            "reranker_model": {
+              "$ref": "#/$defs/LLMProvider",
+              "description": "LLM for reranking (required when enable_reranking=true)"
+            },
+            "database": {
+              "oneOf": [
+                { "$ref": "#/$defs/DatabaseConfig" },
+                { "type": "string" }
+              ],
+              "description": "Vector DB config or reference name"
+            },
+            "keyword_index": {
+              "$ref": "#/$defs/KeywordIndexConfig",
+              "description": "Keyword index configuration for sparse/BM25 search backend"
+            },
+            "defer_loading": {
+              "type": "boolean",
+              "default": true,
+              "description": "Defer tool loading until needed"
+            }
+          }
         }
       ],
-      "description": "Agent tool (discriminated by 'type' field: vectorstore, function, mcp, or prompt)"
+      "description": "Agent tool (discriminated by 'type' field: vectorstore, function, mcp, prompt, or hierarchical_document)"
     },
     "RAGMetricType": {
       "type": "string",

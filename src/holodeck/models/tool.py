@@ -10,7 +10,7 @@ Tool types:
 - PromptTool: AI-powered semantic functions
 """
 
-import warnings
+import math
 from enum import Enum
 from typing import Annotated, Any, Literal
 
@@ -66,13 +66,11 @@ class SearchMode(str, Enum):
     Defines which search indices are used during query:
     - SEMANTIC: Dense embeddings only (conceptual similarity)
     - KEYWORD: BM25 sparse index only (term frequency)
-    - EXACT: Exact section ID or phrase match only
-    - HYBRID: All modalities combined with RRF fusion
+    - HYBRID: Keyword + semantic combined with RRF fusion
     """
 
     SEMANTIC = "semantic"
     KEYWORD = "keyword"
-    EXACT = "exact"
     HYBRID = "hybrid"
 
 
@@ -110,6 +108,13 @@ class DocumentDomain(str, Enum):
     ACADEMIC = "academic"
     TECHNICAL = "technical"
     LEGAL_CONTRACT = "legal_contract"
+
+
+class KeywordIndexProvider(str, Enum):
+    """Keyword index backend provider for sparse/BM25 search."""
+
+    IN_MEMORY = "in-memory"
+    OPENSEARCH = "opensearch"
 
 
 class Tool(BaseModel):
@@ -191,6 +196,44 @@ class DatabaseConfig(BaseModel):
         if v is not None and not v.strip():
             raise ValueError("connection_string must be non-empty if provided")
         return v
+
+
+class KeywordIndexConfig(BaseModel):
+    """Keyword index configuration for sparse/BM25 search backend.
+
+    Two providers:
+    - in-memory: rank_bm25 in-process (default, dev/local)
+    - opensearch: OpenSearch endpoint (production)
+
+    When provider='opensearch', endpoint and index_name are required
+    (validated at model construction time).
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    provider: Literal["in-memory", "opensearch"] = Field(
+        default="in-memory",
+        description="Keyword index backend: 'in-memory' or 'opensearch'",
+    )
+    endpoint: str | None = Field(default=None, description="OpenSearch endpoint URL")
+    index_name: str | None = Field(default=None, description="OpenSearch index name")
+    username: str | None = Field(default=None, description="Basic auth username")
+    password: str | None = Field(default=None, description="Basic auth password")
+    api_key: str | None = Field(default=None, description="API key auth (alt to basic)")
+    verify_certs: bool = Field(default=True, description="Verify TLS certificates")
+    timeout_seconds: int = Field(
+        default=10, ge=1, le=120, description="Connection timeout (1-120s)"
+    )
+
+    @model_validator(mode="after")
+    def validate_opensearch_fields(self) -> "KeywordIndexConfig":
+        """Validate that endpoint and index_name are set for opensearch provider."""
+        if self.provider == "opensearch":
+            if not self.endpoint:
+                raise ValueError("endpoint is required when provider is 'opensearch'")
+            if not self.index_name:
+                raise ValueError("index_name is required when provider is 'opensearch'")
+        return self
 
 
 class VectorstoreTool(BaseModel):
@@ -745,6 +788,13 @@ class HierarchicalDocumentToolConfig(BaseModel):
             "- None for in-memory storage"
         ),
     )
+    keyword_index: KeywordIndexConfig | None = Field(
+        default=None,
+        description=(
+            "Keyword index configuration for sparse/BM25 search. "
+            "If None, defaults to in-memory BM25."
+        ),
+    )
     defer_loading: bool = Field(
         default=True,
         description=(
@@ -769,17 +819,28 @@ class HierarchicalDocumentToolConfig(BaseModel):
             raise ValueError("min_score must be between 0.0 and 1.0")
         return v
 
+    @field_validator("semantic_weight", "keyword_weight", "exact_weight")
+    @classmethod
+    def validate_finite_weights(cls, v: float) -> float:
+        """Validate search weights are finite numeric values."""
+        if not math.isfinite(v):
+            raise ValueError("search weights must be finite numbers")
+        return v
+
     @model_validator(mode="after")
     def validate_weights(self) -> "HierarchicalDocumentToolConfig":
-        """Warn if hybrid weights don't sum to approximately 1.0."""
+        """Validate hybrid weights are well-formed for deterministic fusion."""
         if self.search_mode == SearchMode.HYBRID:
             total = self.semantic_weight + self.keyword_weight + self.exact_weight
-            if not (0.95 <= total <= 1.05):
-                warnings.warn(
-                    f"Hybrid search weights sum to {total:.2f}, not 1.0. "
-                    "Results may be unexpected.",
-                    UserWarning,
-                    stacklevel=2,
+            if not math.isclose(total, 1.0, rel_tol=0.0, abs_tol=1e-6):
+                raise ValueError(
+                    f"Hybrid search weights must sum to 1.0, got {total:.6f} "
+                    "(semantic_weight + keyword_weight + exact_weight)"
+                )
+
+            if (self.semantic_weight + self.keyword_weight) <= 0:
+                raise ValueError(
+                    "Hybrid search requires semantic_weight + keyword_weight > 0"
                 )
         return self
 

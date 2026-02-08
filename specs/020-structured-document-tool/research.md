@@ -107,7 +107,9 @@ Document (PDF/Word/etc)
 
 ### 2. Keyword Search Strategy (Tiered)
 
-**Decision**: Use Semantic Kernel's native `collection.hybrid_search()` when provider supports it; fall back to `rank_bm25` otherwise
+**Decision**: Use Semantic Kernel native `collection.hybrid_search()` when provider supports it; otherwise use a configurable sparse fallback provider:
+- `opensearch` endpoint (recommended for serve/deploy)
+- `in-memory` BM25 via `rank_bm25` (local/dev fallback)
 
 **Provider Capabilities** (based on Semantic Kernel Python support):
 | Provider | Native Hybrid | Strategy |
@@ -117,52 +119,74 @@ Document (PDF/Word/etc)
 | qdrant | ✅ Yes | Use `collection.hybrid_search()` |
 | mongodb | ✅ Yes | Use `collection.hybrid_search()` (MongoDB Atlas) |
 | azure-cosmos-nosql | ✅ Yes | Use `collection.hybrid_search()` |
-| postgres | ❌ No | Use rank_bm25 fallback + app-level RRF |
-| pinecone | ❌ No | Use rank_bm25 fallback + app-level RRF |
-| chromadb | ❌ No | Use rank_bm25 fallback + app-level RRF |
-| faiss | ❌ No | Use rank_bm25 fallback + app-level RRF |
-| in-memory | ❌ No | Use rank_bm25 fallback + app-level RRF |
+| postgres | ❌ No | Use configurable sparse fallback (`opensearch` preferred, `in-memory` optional) + app-level RRF |
+| pinecone | ❌ No | Use configurable sparse fallback (`opensearch` preferred, `in-memory` optional) + app-level RRF |
+| chromadb | ❌ No | Use configurable sparse fallback (`opensearch` preferred, `in-memory` optional) + app-level RRF |
+| faiss | ❌ No | Use configurable sparse fallback (`opensearch` preferred, `in-memory` optional) + app-level RRF |
+| in-memory | ❌ No | Use configurable sparse fallback (`opensearch` preferred, `in-memory` optional) + app-level RRF |
+| sql-server | ❌ No | Use configurable sparse fallback (`opensearch` preferred, `in-memory` optional) + app-level RRF |
+
+**Note**: Azure Cosmos MongoDB vCore (`azure-cosmos-mongo`) is **EXCLUDED** from both provider lists. It does NOT support hybrid search natively. MongoDB vCore uses a different API pattern and requires separate vector + text search API calls, which is not compatible with either the native hybrid strategy or the standard BM25 fallback approach. Use `mongodb` (MongoDB Atlas via MongoDBAtlasStore) for native hybrid search support.
 
 **Rationale**:
 - Native hybrid search is more efficient (single query, provider handles fusion)
 - Avoids maintaining separate BM25 index when provider already does it
 - Semantic Kernel's `is_full_text_indexed=True` field annotation enables native full-text on supporting providers
-- `rank_bm25` provides consistent fallback for providers without native support
-- **Unifies with existing codebase**: `tool_filter/index.py` has a custom BM25 implementation that will be refactored to use the shared `BM25FallbackProvider`
+- OpenSearch endpoint gives durable sparse indexing for production (multi-worker/process safe)
+- `rank_bm25` remains a simple in-memory fallback for local/dev and tests
+- **Unifies with existing codebase**: `tool_filter/index.py` can use the same in-memory provider class
 
-**Fallback Implementation** (for providers without native support):
+### 2.1 OpenSearch Python Client Selection
+
+**Decision**: Use `opensearch-py` as the OpenSearch client library.
+
+**Evidence**:
+- Official OpenSearch docs recommend `opensearch-py` as the low-level Python client.
+- Popularity signals (2026-02 snapshot):
+  - `opensearch-py`: ~70.7M downloads/month
+  - `opensearch-dsl`: ~0.53M downloads/month
+- Repository activity/footprint is materially higher for `opensearch-project/opensearch-py`.
+
+**Why not `opensearch-dsl`**:
+- Smaller ecosystem footprint and adds an extra abstraction layer we do not need for this service-style integration.
+
+**Sources**:
+- [OpenSearch Python client docs](https://opensearch.org/docs/latest/clients/python-low-level/)
+- [opensearch-py on PyPI](https://pypi.org/project/opensearch-py/)
+- [opensearch-dsl on PyPI](https://pypi.org/project/opensearch-dsl/)
+- [PyPIStats: opensearch-py](https://pypistats.org/packages/opensearch-py)
+- [PyPIStats: opensearch-dsl](https://pypistats.org/packages/opensearch-dsl)
+
+### 2.2 Fallback Implementation (for providers without native support)
 
 **Implementation**:
 ```python
-from rank_bm25 import BM25Okapi
+class OpenSearchKeywordProvider:
+    """Production sparse keyword provider backed by OpenSearch endpoint."""
 
-class BM25Index:
-    """Sparse index using BM25Okapi for keyword search."""
+    def __init__(self, endpoint: str, index_name: str, **kwargs: Any):
+        from opensearchpy import OpenSearch
 
-    def __init__(self, k1: float = 1.5, b: float = 0.75):
-        self.k1 = k1  # Term frequency saturation
-        self.b = b    # Document length normalization
-        self._bm25: BM25Okapi | None = None
-        self._chunks: list[DocumentChunk] = []
+        self._client = OpenSearch(hosts=[endpoint], **kwargs)
+        self._index_name = index_name
 
-    def build(self, chunks: list[DocumentChunk]) -> None:
-        tokenized = [self._tokenize(c.text) for c in chunks]
-        self._bm25 = BM25Okapi(tokenized, k1=self.k1, b=self.b)
-        self._chunks = chunks
+    def build(self, documents: list[tuple[str, str]]) -> None:
+        # Bulk upsert (chunk_id, contextualized_content)
+        ...
 
-    def search(self, query: str, top_k: int = 10) -> list[tuple[DocumentChunk, float]]:
-        if self._bm25 is None:
-            return []
-        tokenized_query = self._tokenize(query)
-        scores = self._bm25.get_scores(tokenized_query)
-        # Get top_k indices
-        top_indices = scores.argsort()[-top_k:][::-1]
-        return [(self._chunks[i], scores[i]) for i in top_indices if scores[i] > 0]
+    def search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
+        # OpenSearch BM25-style query DSL
+        ...
 
-    def _tokenize(self, text: str) -> list[str]:
-        # Simple whitespace + lowercase tokenization
-        # Could be enhanced with stemming, stopword removal
-        return text.lower().split()
+
+class InMemoryBM25KeywordProvider:
+    """Local/dev sparse fallback using rank_bm25."""
+
+    def build(self, documents: list[tuple[str, str]]) -> None:
+        ...
+
+    def search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
+        ...
 ```
 
 **Semantic Kernel Native Hybrid Search API**:
@@ -217,19 +241,20 @@ results = await native_hybrid_search(collection, "reporting requirements", embed
 
 **Persistence**:
 - **Native hybrid providers** (azure-ai-search, weaviate, qdrant, mongodb, azure-cosmos-nosql): Full-text index persisted by provider automatically
-- **Fallback (rank_bm25)**: In-memory only, rebuilt on startup from stored chunks
+- **Fallback (`opensearch`)**: Persisted in OpenSearch endpoint (recommended for production)
+- **Fallback (`in-memory`)**: Rebuilt on startup from stored chunks
 
 **Alternatives Considered**:
-- Elasticsearch/OpenSearch (overkill for embedded use case, but would provide native hybrid)
+- Elasticsearch client (`elasticsearch`) against OpenSearch clusters (works in some cases but not OpenSearch-first)
 - BM25S (faster but more complex dependencies)
 - Whoosh (full-text search engine, heavier)
 
 **Sources**:
+- [OpenSearch Python Client docs](https://opensearch.org/docs/latest/clients/python-low-level/)
+- [opensearch-py on PyPI](https://pypi.org/project/opensearch-py/)
 - [rank_bm25 PyPI](https://pypi.org/project/rank-bm25/)
-- [rank_bm25 GitHub](https://github.com/dorianbrown/rank_bm25)
 - [Azure AI Search Hybrid](https://learn.microsoft.com/en-us/azure/search/hybrid-search-overview)
 - [Weaviate Hybrid Search](https://weaviate.io/developers/weaviate/search/hybrid)
-- [Pinecone Hybrid Search](https://docs.pinecone.io/guides/data/understanding-hybrid-search)
 
 ---
 
@@ -239,7 +264,7 @@ results = await native_hybrid_search(collection, "reporting requirements", embed
 
 **When RRF is Used**:
 - **Native hybrid providers** (azure-ai-search, weaviate, qdrant, mongodb, azure-cosmos-nosql): Provider handles fusion internally via `hybrid_search()`, no app-level RRF needed for vector+keyword
-- **Fallback providers** (postgres, pinecone, chromadb, faiss, in-memory, sql-server): App-level RRF to merge vector + BM25 results
+- **Fallback providers** (postgres, pinecone, chromadb, faiss, in-memory, sql-server): App-level RRF to merge vector + sparse keyword results
 - **Exact match fusion**: Always app-level RRF to merge exact match results with hybrid results (both native and fallback)
 
 **Rationale**:
@@ -456,7 +481,7 @@ Definitions are persisted via the vector store chunk records and rebuilt on star
 3. **Benefits**:
    - Definitions survive vector store restarts (persistent storage)
    - Fast rebuilds from indexed fields vs. re-parsing documents
-   - Consistent with BM25 fallback rebuild strategy (both use stored chunk fields)
+   - Consistent with in-memory keyword fallback rebuild strategy (both use stored chunk fields)
 
 ---
 
@@ -486,7 +511,7 @@ Definitions are persisted via the vector store chunk records and rebuilt on star
 | Component | Technology | Rationale |
 |-----------|------------|-----------|
 | Dense Index | Semantic Kernel VectorStore | Existing pattern, multi-provider |
-| Sparse Index | rank_bm25 (BM25Okapi) | Simple, efficient, well-tested |
+| Sparse Index | opensearch-py (prod) + rank_bm25 (local fallback) | Durable in production, simple in dev |
 | Exact Match | Python dict lookup | Fastest for identifier matching |
 | Fusion | RRF (k=60) | Industry standard, robust |
 | Chunking | Custom StructuredChunker | Structure-aware, token-limited |
@@ -496,10 +521,10 @@ Definitions are persisted via the vector store chunk records and rebuilt on star
 ## Open Questions (Deferred)
 
 1. **Reranking models**: Which specific reranker models to support beyond cross-encoder? (User-provided via config for now)
-2. **Async BM25**: rank_bm25 is sync; may need thread pool for large corpora (>10K chunks)
+2. **OpenSearch schema evolution**: How aggressively should mappings/analyzers be customizable in v1?
 3. **Multi-language support**: Should we add language detection and model selection? (Defer to future iteration)
 
 ## Resolved Decisions
 
 1. **LLM-based contextual embedding**: ✅ RESOLVED - Using Claude Haiku (or configurable model) to generate 50-100 token context per chunk. Cost: ~$0.03 per 100-page document. Benefit: 49% retrieval improvement per Anthropic research.
-2. **Keyword search strategy**: ✅ RESOLVED - Tiered approach using native `hybrid_search()` for supported providers, BM25 fallback for others.
+2. **Keyword search strategy**: ✅ RESOLVED - Tiered approach using native `hybrid_search()` for supported providers; configurable sparse fallback (`opensearch` recommended, `in-memory` BM25 optional) for others.
