@@ -67,34 +67,17 @@ class TestCLIHelpText:
         # At minimum, should show basic usage
         assert "holodeck" in result.output
 
-    def test_template_option_documented(self):
-        """--template option should be documented with available choices."""
+    @pytest.mark.parametrize(
+        "option",
+        ["--template", "--description", "--author", "--force"],
+        ids=["template", "description", "author", "force"],
+    )
+    def test_option_documented(self, option: str):
+        """CLI options should be documented in help text."""
         runner = CliRunner()
         result = runner.invoke(cli, ["init", "--help"])
 
-        # Should mention template option
-        assert "--template" in result.output
-
-    def test_description_option_documented(self):
-        """--description option should be documented."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["init", "--help"])
-
-        assert "--description" in result.output
-
-    def test_author_option_documented(self):
-        """--author option should be documented."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["init", "--help"])
-
-        assert "--author" in result.output
-
-    def test_force_option_documented(self):
-        """--force option should be documented."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["init", "--help"])
-
-        assert "--force" in result.output
+        assert option in result.output
 
     def test_help_text_readable(self):
         """Help text should be formatted for readability."""

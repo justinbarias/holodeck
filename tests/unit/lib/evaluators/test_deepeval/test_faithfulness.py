@@ -28,32 +28,30 @@ class TestFaithfulnessEvaluatorInit:
         assert evaluator._include_reason is True
         assert evaluator._model_config.provider == ProviderEnum.OLLAMA
 
+    @pytest.mark.parametrize(
+        "param,value,attr,expected",
+        [
+            ("threshold", 0.8, "_threshold", 0.8),
+            ("include_reason", False, "_include_reason", False),
+            ("timeout", 120.0, "timeout", 120.0),
+        ],
+        ids=["threshold", "include_reason", "timeout"],
+    )
     @patch("deepeval.models.OllamaModel")
-    def test_custom_threshold(self, mock_ollama: MagicMock) -> None:
-        """Custom threshold should be set correctly."""
+    def test_custom_parameters(
+        self,
+        mock_ollama: MagicMock,
+        param: str,
+        value: float,
+        attr: str,
+        expected: float,
+    ) -> None:
+        """Custom parameters should be set correctly."""
         mock_ollama.return_value = MagicMock()
 
-        evaluator = FaithfulnessEvaluator(threshold=0.8)
+        evaluator = FaithfulnessEvaluator(**{param: value})
 
-        assert evaluator._threshold == 0.8
-
-    @patch("deepeval.models.OllamaModel")
-    def test_custom_include_reason_false(self, mock_ollama: MagicMock) -> None:
-        """include_reason=False should be honored."""
-        mock_ollama.return_value = MagicMock()
-
-        evaluator = FaithfulnessEvaluator(include_reason=False)
-
-        assert evaluator._include_reason is False
-
-    @patch("deepeval.models.OllamaModel")
-    def test_inherits_timeout_from_base(self, mock_ollama: MagicMock) -> None:
-        """Should inherit timeout from base class."""
-        mock_ollama.return_value = MagicMock()
-
-        evaluator = FaithfulnessEvaluator(timeout=120.0)
-
-        assert evaluator.timeout == 120.0
+        assert getattr(evaluator, attr) == expected
 
     @patch("deepeval.models.OllamaModel")
     def test_inherits_retry_config_from_base(self, mock_ollama: MagicMock) -> None:
@@ -285,56 +283,49 @@ class TestFaithfulnessEvaluation:
 class TestFaithfulnessProviderSupport:
     """Tests for multi-provider support."""
 
-    @patch("deepeval.models.GPTModel")
-    def test_openai_provider(self, mock_gpt: MagicMock) -> None:
-        """Should support OpenAI provider."""
-        mock_gpt.return_value = MagicMock()
+    @pytest.mark.parametrize(
+        "provider,mock_path,model_name,extra_config",
+        [
+            (ProviderEnum.OPENAI, "deepeval.models.GPTModel", "gpt-4o", {}),
+            (
+                ProviderEnum.ANTHROPIC,
+                "deepeval.models.AnthropicModel",
+                "claude-3-5-sonnet-latest",
+                {},
+            ),
+            (ProviderEnum.OLLAMA, "deepeval.models.OllamaModel", "llama3", {}),
+            (
+                ProviderEnum.AZURE_OPENAI,
+                "deepeval.models.AzureOpenAIModel",
+                "gpt-4o",
+                {
+                    "api_key": "test-key",
+                    "endpoint": "https://test.openai.azure.com/",
+                    "deployment_name": "test-deployment",
+                },
+            ),
+        ],
+        ids=["openai", "anthropic", "ollama", "azure_openai"],
+    )
+    def test_provider_support(
+        self,
+        provider: ProviderEnum,
+        mock_path: str,
+        model_name: str,
+        extra_config: dict,
+    ) -> None:
+        """Should support various LLM providers."""
+        with patch(mock_path) as mock_model:
+            mock_model.return_value = MagicMock()
 
-        config = DeepEvalModelConfig(
-            provider=ProviderEnum.OPENAI,
-            model_name="gpt-4o",
-        )
-        evaluator = FaithfulnessEvaluator(model_config=config)
+            config = DeepEvalModelConfig(
+                provider=provider,
+                model_name=model_name,
+                **extra_config,
+            )
+            evaluator = FaithfulnessEvaluator(model_config=config)
 
-        assert evaluator._model_config.provider == ProviderEnum.OPENAI
-
-    @patch("deepeval.models.AnthropicModel")
-    def test_anthropic_provider(self, mock_anthropic: MagicMock) -> None:
-        """Should support Anthropic provider."""
-        mock_anthropic.return_value = MagicMock()
-
-        config = DeepEvalModelConfig(
-            provider=ProviderEnum.ANTHROPIC,
-            model_name="claude-3-5-sonnet-latest",
-        )
-        evaluator = FaithfulnessEvaluator(model_config=config)
-
-        assert evaluator._model_config.provider == ProviderEnum.ANTHROPIC
-
-    @patch("deepeval.models.OllamaModel")
-    def test_ollama_provider_default(self, mock_ollama: MagicMock) -> None:
-        """Should support Ollama provider (default)."""
-        mock_ollama.return_value = MagicMock()
-
-        evaluator = FaithfulnessEvaluator()
-
-        assert evaluator._model_config.provider == ProviderEnum.OLLAMA
-
-    @patch("deepeval.models.AzureOpenAIModel")
-    def test_azure_openai_provider(self, mock_azure: MagicMock) -> None:
-        """Should support Azure OpenAI provider."""
-        mock_azure.return_value = MagicMock()
-
-        config = DeepEvalModelConfig(
-            provider=ProviderEnum.AZURE_OPENAI,
-            model_name="gpt-4o",
-            api_key="test-key",
-            endpoint="https://test.openai.azure.com/",
-            deployment_name="test-deployment",
-        )
-        evaluator = FaithfulnessEvaluator(model_config=config)
-
-        assert evaluator._model_config.provider == ProviderEnum.AZURE_OPENAI
+            assert evaluator._model_config.provider == provider
 
 
 class TestFaithfulnessRequiredInputs:

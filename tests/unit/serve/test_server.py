@@ -114,35 +114,26 @@ class TestAgentServerInit:
 class TestAgentServerProperties:
     """Tests for AgentServer properties."""
 
-    def test_is_ready_when_initializing(self, mock_agent_config: MagicMock) -> None:
-        """Test is_ready returns False when initializing."""
+    @pytest.mark.parametrize(
+        "state,expected_ready",
+        [
+            (ServerState.INITIALIZING, False),
+            (ServerState.READY, True),
+            (ServerState.RUNNING, True),
+            (ServerState.SHUTTING_DOWN, False),
+            (ServerState.STOPPED, False),
+        ],
+        ids=["initializing", "ready", "running", "shutting_down", "stopped"],
+    )
+    def test_is_ready_for_state(
+        self, mock_agent_config: MagicMock, state: ServerState, expected_ready: bool
+    ) -> None:
+        """Test is_ready returns expected value for each server state."""
         server = AgentServer(agent_config=mock_agent_config)
-        assert server.state == ServerState.INITIALIZING
-        assert server.is_ready is False
-
-    def test_is_ready_when_ready(self, mock_agent_config: MagicMock) -> None:
-        """Test is_ready returns True when ready."""
-        server = AgentServer(agent_config=mock_agent_config)
-        server.state = ServerState.READY
-        assert server.is_ready is True
-
-    def test_is_ready_when_running(self, mock_agent_config: MagicMock) -> None:
-        """Test is_ready returns True when running."""
-        server = AgentServer(agent_config=mock_agent_config)
-        server.state = ServerState.RUNNING
-        assert server.is_ready is True
-
-    def test_is_ready_when_shutting_down(self, mock_agent_config: MagicMock) -> None:
-        """Test is_ready returns False when shutting down."""
-        server = AgentServer(agent_config=mock_agent_config)
-        server.state = ServerState.SHUTTING_DOWN
-        assert server.is_ready is False
-
-    def test_is_ready_when_stopped(self, mock_agent_config: MagicMock) -> None:
-        """Test is_ready returns False when stopped."""
-        server = AgentServer(agent_config=mock_agent_config)
-        server.state = ServerState.STOPPED
-        assert server.is_ready is False
+        # For INITIALIZING, we check the default state
+        if state != ServerState.INITIALIZING:
+            server.state = state
+        assert server.is_ready is expected_ready
 
     def test_uptime_seconds_before_start(self, mock_agent_config: MagicMock) -> None:
         """Test uptime_seconds returns 0 before server starts."""
