@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_exception, log_retry
+from holodeck.lib.pdf_processor import extract_pdf_pages, extract_pdf_with_headings
 from holodeck.models.test_case import FileInput
 from holodeck.models.test_result import ProcessedFileInput
 
@@ -358,6 +359,8 @@ class FileProcessor:
     def _preprocess_pdf_pages(self, file_path: Path, pages: list[int]) -> Path:
         """Extract specific pages from PDF into temporary file.
 
+        Delegates to holodeck.lib.pdf_processor.page_extractor.
+
         Args:
             file_path: Path to original PDF file
             pages: List of page numbers to extract (0-indexed)
@@ -368,48 +371,7 @@ class FileProcessor:
         Raises:
             ValueError: If page numbers are invalid or out of range
         """
-        try:
-            from pypdf import PdfReader, PdfWriter
-        except ImportError as e:
-            raise ImportError(
-                "pypdf is required for PDF page extraction. "
-                "Install with: pip install 'markitdown[all]'"
-            ) from e
-
-        logger.debug(f"Extracting pages {pages} from PDF: {file_path}")
-
-        try:
-            reader = PdfReader(str(file_path))
-            writer = PdfWriter()
-            total_pages = len(reader.pages)
-
-            # Validate page numbers
-            for page_num in pages:
-                if page_num < 0 or page_num >= total_pages:
-                    raise ValueError(
-                        f"Page {page_num} out of range (PDF has {total_pages} pages)"
-                    )
-
-            # Extract specified pages
-            for page_num in pages:
-                writer.add_page(reader.pages[page_num])
-
-            # Create temporary file
-            tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
-                suffix=".pdf", delete=False
-            )
-            tmp_path = Path(tmp.name)
-            writer.write(tmp)
-            tmp.close()
-
-            logger.debug(
-                f"Extracted {len(pages)} pages from PDF to temp file: {tmp_path}"
-            )
-            return tmp_path
-
-        except Exception as e:
-            logger.error(f"PDF page extraction failed: {e}")
-            raise
+        return extract_pdf_pages(file_path, pages)
 
     def _extract_pdf_with_headings(
         self,
@@ -418,8 +380,7 @@ class FileProcessor:
     ) -> str:
         """Extract PDF text with font-size-based heading detection.
 
-        Uses pdfminer to analyze font sizes and produces markdown with proper
-        heading markers based on font size thresholds.
+        Delegates to holodeck.lib.pdf_processor.heading_extractor.
 
         Args:
             file_path: Path to PDF file
@@ -432,47 +393,7 @@ class FileProcessor:
         Raises:
             Exception: If PDF parsing fails (caller should handle fallback).
         """
-        from pdfminer.high_level import extract_pages
-        from pdfminer.layout import LTChar, LTTextContainer, LTTextLine
-
-        if heading_thresholds is None:
-            heading_thresholds = {14.0: 1, 12.0: 2}
-
-        # Sort thresholds descending for proper matching
-        sorted_thresholds = sorted(heading_thresholds.items(), reverse=True)
-        lines: list[str] = []
-
-        for page_layout in extract_pages(str(file_path)):
-            for element in page_layout:
-                if isinstance(element, LTTextContainer):
-                    for text_line in element:
-                        if isinstance(text_line, LTTextLine):
-                            line_text = text_line.get_text().strip()
-                            if not line_text:
-                                continue
-
-                            # Get font size from first character
-                            font_size: float | None = None
-                            for char in text_line:
-                                if isinstance(char, LTChar):
-                                    font_size = char.size
-                                    break
-
-                            # Determine heading level based on font size
-                            heading_level = 0
-                            if font_size:
-                                for threshold, level in sorted_thresholds:
-                                    if font_size >= threshold:
-                                        heading_level = level
-                                        break
-
-                            # Format line with heading markers if applicable
-                            if heading_level > 0:
-                                lines.append(f"{'#' * heading_level} {line_text}")
-                            else:
-                                lines.append(line_text)
-
-        return "\n".join(lines)
+        return extract_pdf_with_headings(file_path, heading_thresholds)
 
     def _preprocess_excel_sheet_range(
         self, file_path: Path, sheet: str | None, range_spec: str | None
