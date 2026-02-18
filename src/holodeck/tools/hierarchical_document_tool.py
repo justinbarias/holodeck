@@ -891,7 +891,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         return results
 
     async def initialize(
-        self, force_ingest: bool = False, provider_type: str | None = None
+        self, force_ingest: bool = True, provider_type: str | None = None
     ) -> None:
         """Initialize the tool by processing all configured documents.
 

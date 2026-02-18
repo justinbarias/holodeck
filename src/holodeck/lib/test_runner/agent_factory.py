@@ -814,8 +814,10 @@ class AgentFactory:
         @kernel_function_decorator(name=tool_name, description=tool_description)
         async def search_wrapper(query: str) -> str:
             """Search the knowledge base for relevant content."""
-            result = await tool.search(query)
-            return str(result)
+            results: str = await tool.search(query)
+            if not results:
+                return "No results found."
+            return results
 
         return KernelFunctionFromMethod(
             method=search_wrapper,

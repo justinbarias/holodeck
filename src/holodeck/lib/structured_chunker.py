@@ -679,19 +679,33 @@ technological advancement, including AI proliferation."
 
         headings: list[tuple[int, str, int]] = []
 
+        # Build pattern list once for reuse (if configured)
+        patterns_to_check: list[SubsectionPattern] = []
+        if self._subsection_patterns:
+            patterns_to_check = self._subsection_patterns[: self._max_subsection_depth]
+
         # Extract markdown headings
         for match in self.HEADING_PATTERN.finditer(masked):
             level = len(match.group(1))
             title = match.group(2).strip()
             position = match.start()
+
+            # When subsection patterns are active, check if the heading title
+            # matches a pattern and use the pattern's level instead of the
+            # markdown # count. This corrects font-size-based PDF extraction
+            # where e.g. CHAPTER and TITLE both get # (h1) due to similar
+            # font sizes, but the pattern knows CHAPTER should be level 2.
+            if patterns_to_check:
+                for pattern_config in patterns_to_check:
+                    if pattern_config.pattern.match(title):
+                        level = pattern_config.level
+                        break
+
             headings.append((level, title, position))
 
         # Extract subsection patterns if configured
-        if self._subsection_patterns:
-            # Limit patterns by max_subsection_depth
-            patterns_to_use = self._subsection_patterns[: self._max_subsection_depth]
-
-            for pattern_config in patterns_to_use:
+        if patterns_to_check:
+            for pattern_config in patterns_to_check:
                 for match in pattern_config.pattern.finditer(markdown):
                     position = match.start()
 
@@ -767,8 +781,10 @@ technological advancement, including AI proliferation."
             # Normalize paragraphs
             full_content = self._normalize_paragraphs(full_content)
             # Track all headings as subsection_ids (using level for prefix)
+            # No parent context available for inline-only headings
             subsection_ids = [
-                self._generate_section_id(title, 0, lvl) for lvl, title, _ in headings
+                self._generate_section_id(title, 0, lvl, [])
+                for lvl, title, _ in headings
             ]
             sections.append(
                 _Section(
@@ -807,8 +823,9 @@ technological advancement, including AI proliferation."
             ]
 
             # Generate subsection_ids for inline markers (using level for prefix)
+            # Include parent_chain + current title as hierarchy context
             subsection_ids = [
-                self._generate_section_id(sub_title, 0, lvl)
+                self._generate_section_id(sub_title, 0, lvl, parent_chain + [title])
                 for lvl, sub_title, _ in inline_subsections
             ]
 
@@ -974,7 +991,9 @@ technological advancement, including AI proliferation."
         chunk_id = f"{source_name}_chunk_{chunk_index}"
 
         # Generate section ID
-        section_id = self._generate_section_id(heading_title, chunk_index)
+        section_id = self._generate_section_id(
+            heading_title, chunk_index, heading_level, parent_chain
+        )
 
         # Classify chunk type
         chunk_type = self._classify_chunk_type(
@@ -1026,14 +1045,22 @@ technological advancement, including AI proliferation."
         return {1: "h1", 2: "h2", 3: "h3", 4: "h4", 5: "h5", 6: "h6"}.get(level, "sec")
 
     def _generate_section_id(
-        self, heading_title: str, chunk_index: int, level: int = 0
+        self,
+        heading_title: str,
+        chunk_index: int,
+        level: int = 0,
+        parent_chain: list[str] | None = None,
     ) -> str:
-        """Generate a normalized section ID from heading.
+        """Generate a normalized, fully-qualified section ID from heading.
+
+        Builds a hierarchical ID by normalizing each ancestor in parent_chain
+        and joining them with the current heading title.
 
         Args:
             heading_title: The heading text.
             chunk_index: Chunk index for fallback.
             level: Optional heading level for appropriate prefix.
+            parent_chain: List of ancestor heading titles for hierarchy.
 
         Returns:
             Normalized section ID (lowercase, underscores).
@@ -1041,21 +1068,33 @@ technological advancement, including AI proliferation."
         if not heading_title:
             return f"chunk_{chunk_index}"
 
-        # Lowercase and replace non-alphanumeric with underscores
-        normalized = heading_title.lower()
-        normalized = self.SECTION_ID_CLEANUP.sub("_", normalized)
-        # Remove leading/trailing underscores and collapse multiples
-        normalized = re.sub(r"_+", "_", normalized).strip("_")
+        def _normalize(text: str) -> str:
+            """Normalize a single heading title to an ID segment."""
+            seg = text.lower()
+            seg = self.SECTION_ID_CLEANUP.sub("_", seg)
+            return re.sub(r"_+", "_", seg).strip("_")
 
-        if not normalized:
+        # Build hierarchical segments from parent_chain + current heading
+        segments: list[str] = []
+        if parent_chain:
+            for ancestor in parent_chain:
+                norm = _normalize(ancestor)
+                if norm:
+                    segments.append(norm)
+
+        current = _normalize(heading_title)
+        if current:
+            segments.append(current)
+
+        if not segments:
             return f"chunk_{chunk_index}"
 
         # Use level-appropriate prefix if level is provided
         if level > 0:
             prefix = self._get_level_prefix(level)
-            return f"{prefix}_{normalized}"
+            return f"{prefix}_{'_'.join(segments)}"
 
-        return f"sec_{normalized}"
+        return f"sec_{'_'.join(segments)}"
 
     def _classify_chunk_type(
         self,

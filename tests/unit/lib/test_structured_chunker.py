@@ -761,6 +761,47 @@ class TestSectionIdGeneration:
         has_content = len(section_id) > 0
         assert has_intro or has_short_intro or has_content
 
+    def test_section_id_hierarchical_multi_level(self) -> None:
+        """Test that section IDs include ancestor headings for hierarchy."""
+        chunker = StructuredChunker()
+        markdown = (
+            "# Title I\n\n"
+            "Preamble.\n\n"
+            "## Chapter 2\n\n"
+            "Chapter content.\n\n"
+            "### Section 1\n\n"
+            "Section content."
+        )
+        chunks = chunker.parse(markdown, "test.md")
+        # Find the deepest chunk (### Section 1)
+        deepest = [c for c in chunks if "Section content" in c.content]
+        assert len(deepest) == 1
+        section_id = deepest[0].section_id
+        # Should contain ancestor segments in order
+        assert "title_i" in section_id
+        assert "chapter_2" in section_id
+        assert "section_1" in section_id
+        # Verify ordering: title_i comes before chapter_2 comes before section_1
+        idx_title = section_id.index("title_i")
+        idx_chapter = section_id.index("chapter_2")
+        idx_section = section_id.index("section_1")
+        assert idx_title < idx_chapter < idx_section
+
+    def test_section_id_no_parent_for_top_level(self) -> None:
+        """Test that top-level headings have no parent prefix."""
+        chunker = StructuredChunker()
+        markdown = "# Top Level\n\nContent."
+        chunks = chunker.parse(markdown, "test.md")
+        assert len(chunks) >= 1
+        section_id = chunks[0].section_id
+        # Should just be the heading text with prefix, no extra ancestors
+        assert "top_level" in section_id
+        # Should not have duplicated or spurious segments
+        parts = section_id.split("_")
+        # First part is the level prefix (h1), rest is the heading
+        assert parts[0] == "h1"
+        assert "_".join(parts[1:]) == "top_level"
+
 
 class TestMtimeTracking:
     """Tests for file modification time tracking."""
