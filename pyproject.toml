@@ -19,7 +19,7 @@ dependencies = [
     "jsonschema>=4.0.0,<5.0.0",
     "semantic-kernel>=1.37.1,<2.0.0",
     "markitdown[all]>=0.1.4,<0.2.0",
-    "pypdf>=6.3.0,<7.0.0",
+    "pypdf>=6.6.0",
     "azure-ai-evaluation>=1.13.0,<2.0.0",
     "evaluate>=0.4.6,<0.5.0",
     "aiofiles>=25.1.0,<26.0.0",
@@ -36,7 +36,7 @@ dependencies = [
     "fastapi>=0.115.0,<1.0.0",
     "uvicorn[standard]>=0.34.0,<1.0.0",
     "ag-ui-protocol>=0.1.10,<1.0.0",
-    "werkzeug>=3.1.4",
+    "werkzeug>=3.1.5",
     # OpenTelemetry core (P1 - always installed)
     "opentelemetry-sdk>=1.20.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0,<2.0.0",
@@ -45,6 +45,8 @@ dependencies = [
     "opensearch-py>=2.0.0,<3.0.0",  # OpenSearch client for production keyword index
     "tiktoken>=0.12.0",
     "aiohttp>=3.13.3",
+    "authlib>=1.6.6",
+    "azure-core>=1.38.0",
 ]
 
 [project.scripts]
@@ -217,5 +219,7 @@ output-dir = "docs/api"
 
 [dependency-groups]
 dev = [
+    "pyasn1>=0.6.2",
     "types-requests>=2.32.4.20250913",
+    "virtualenv>=20.36.1",
 ]
