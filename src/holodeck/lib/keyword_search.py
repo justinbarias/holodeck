@@ -13,6 +13,7 @@ Key Features:
 - KeywordSearchProvider protocol for pluggable backends
 - InMemoryBM25KeywordProvider: rank_bm25 in-process (dev/local)
 - OpenSearchKeywordProvider: external OpenSearch cluster (production)
+- Multi-field indexing (content, parent_chain, section_id, defined_term, source_file)
 - Hybrid search executor with strategy routing and provider routing
 - OpenTelemetry instrumentation for observability
 - Graceful degradation when keyword index build fails
@@ -37,7 +38,7 @@ import asyncio
 import logging
 import re
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict, runtime_checkable
 
 from opentelemetry import trace
 
@@ -134,6 +135,145 @@ def _tokenize(text: str) -> list[str]:
     return re.findall(r"[a-zA-Z0-9]+", text.lower())
 
 
+class _KeywordDocumentRequired(TypedDict):
+    """Required fields for KeywordDocument."""
+
+    id: str
+    content: str
+
+
+class KeywordDocument(_KeywordDocumentRequired, total=False):
+    """Structured document for multi-field keyword indexing.
+
+    Contains the content and metadata fields extracted from DocumentChunk
+    that are relevant for keyword-based retrieval. Fields are used for
+    multi-field indexing with per-field boosting.
+
+    Required Attributes:
+        id: Unique chunk identifier.
+        content: Primary text content (contextualized_content or content fallback).
+
+    Optional Attributes:
+        parent_chain: Ancestor heading chain joined with " > "
+            (e.g., "Chapter 1 > Definitions").
+        section_id: Document section identifier (e.g., "1.2.3", "203(a)").
+        defined_term: The term being defined (if chunk_type is definition).
+        chunk_type: Classification of content type
+            (content, definition, requirement, etc.).
+        source_file: Source filename extracted from source_path.
+    """
+
+    parent_chain: str
+    section_id: str
+    defined_term: str
+    chunk_type: str
+    source_file: str
+
+
+def _build_bm25_document(doc: KeywordDocument) -> str:
+    """Build composite text for BM25 indexing with implicit field boosting.
+
+    Concatenates multiple fields into a single text string for BM25 indexing.
+    Fields with higher retrieval value are repeated to simulate boosting
+    (since BM25Okapi doesn't support per-field weights natively).
+
+    Boost levels:
+        - content: 1x (base)
+        - parent_chain: 2x (enables heading-based navigation queries)
+        - section_id: 2x (enables section number lookups)
+        - defined_term: 3x (enables definition term lookups)
+        - source_file: 1x (enables filename-based filtering)
+
+    Args:
+        doc: KeywordDocument with fields to index.
+
+    Returns:
+        Composite text with repeated fields for implicit boosting.
+
+    Example:
+        >>> doc = KeywordDocument(
+        ...     id="chunk1",
+        ...     content="Force Majeure means any event beyond...",
+        ...     parent_chain="Chapter 1 > Definitions",
+        ...     section_id="1.2",
+        ...     defined_term="Force Majeure",
+        ...     source_file="contract.pdf",
+        ... )
+        >>> text = _build_bm25_document(doc)
+        >>> "Force Majeure" in text
+        True
+        >>> text.count("Force Majeure")  # 3x boost
+        3
+    """
+    parts: list[str] = []
+
+    # Primary content (1x weight — base)
+    content = doc.get("content", "")
+    if content:
+        parts.append(content)
+
+    # Parent chain headings (2x boost — enables "Chapter 3" or "Definitions" queries)
+    parent_chain = doc.get("parent_chain", "")
+    if parent_chain:
+        parts.extend([parent_chain, parent_chain])
+
+    # Section ID (2x boost — enables "Section 203(a)" or "1.2.3" queries)
+    section_id = doc.get("section_id", "")
+    if section_id:
+        parts.extend([section_id, section_id])
+
+    # Defined term (3x boost — highest priority for definition lookups)
+    defined_term = doc.get("defined_term", "")
+    if defined_term:
+        parts.extend([defined_term] * 3)
+
+    # Source filename (1x — useful for multi-document corpus search)
+    source_file = doc.get("source_file", "")
+    if source_file:
+        parts.append(source_file)
+
+    return " ".join(parts)
+
+
+def _chunk_to_keyword_document(chunk: DocumentChunk) -> KeywordDocument:
+    """Convert a DocumentChunk to a KeywordDocument for indexing.
+
+    Extracts the filename from source_path, joins parent_chain with " > ",
+    and maps chunk_type enum to string.
+
+    Args:
+        chunk: DocumentChunk to convert.
+
+    Returns:
+        KeywordDocument with fields extracted from the chunk.
+    """
+    source_file = ""
+    if chunk.source_path:
+        source_file = chunk.source_path.rsplit("/", 1)[-1]
+
+    parent_chain = ""
+    if chunk.parent_chain:
+        parent_chain = " > ".join(chunk.parent_chain)
+
+    chunk_type = ""
+    if chunk.chunk_type:
+        chunk_type = (
+            chunk.chunk_type.value
+            if hasattr(chunk.chunk_type, "value")
+            else str(chunk.chunk_type)
+        )
+
+    return KeywordDocument(
+        id=chunk.id,
+        content=chunk.contextualized_content or chunk.content,
+        parent_chain=parent_chain,
+        section_id=chunk.section_id,
+        defined_term=chunk.defined_term,
+        chunk_type=chunk_type,
+        source_file=source_file,
+    )
+
+
 @runtime_checkable
 class KeywordSearchProvider(Protocol):
     """Protocol for keyword search backends.
@@ -147,11 +287,11 @@ class KeywordSearchProvider(Protocol):
         search: Search indexed documents and return ranked results.
     """
 
-    def build(self, documents: list[tuple[str, str]]) -> None:
+    def build(self, documents: list[KeywordDocument]) -> None:
         """Build keyword index from documents.
 
         Args:
-            documents: List of (doc_id, content) tuples to index.
+            documents: List of KeywordDocument dicts with structured fields.
         """
         ...
 
@@ -169,10 +309,12 @@ class KeywordSearchProvider(Protocol):
 
 
 class InMemoryBM25KeywordProvider:
-    """In-memory BM25 keyword search provider.
+    """In-memory BM25 keyword search provider with multi-field indexing.
 
     Provides keyword-based search using the BM25Okapi algorithm from
-    the rank_bm25 library. Suitable for development and local workloads.
+    the rank_bm25 library. Indexes multiple document fields (content,
+    parent_chain, section_id, defined_term, source_file) with implicit
+    boosting via field repetition.
 
     Attributes:
         k1: BM25 term frequency saturation parameter (default 1.5)
@@ -181,8 +323,8 @@ class InMemoryBM25KeywordProvider:
     Example:
         >>> provider = InMemoryBM25KeywordProvider()
         >>> provider.build([
-        ...     ("doc1", "The quick brown fox"),
-        ...     ("doc2", "The lazy dog"),
+        ...     KeywordDocument(id="doc1", content="The quick brown fox"),
+        ...     KeywordDocument(id="doc2", content="The lazy dog"),
         ... ])
         >>> results = provider.search("brown fox", top_k=2)
         >>> print(results[0])  # (doc_id, score) tuple
@@ -203,30 +345,34 @@ class InMemoryBM25KeywordProvider:
         self._bm25: Any = None  # BM25Okapi instance
         self._doc_ids: list[str] = []
 
-    def build(self, documents: list[tuple[str, str]]) -> None:
-        """Build BM25 index from documents.
+    def build(self, documents: list[KeywordDocument]) -> None:
+        """Build BM25 index from structured keyword documents.
 
-        Indexes the provided documents for keyword search. The second
-        element of each tuple should be the contextualized content
-        (context + original chunk) for best results.
+        Builds a composite text from each KeywordDocument's fields with
+        implicit boosting (defined_term 3x, parent_chain 2x, section_id 2x,
+        content 1x, source_file 1x), then indexes via BM25Okapi.
 
         Args:
-            documents: List of (doc_id, contextualized_content) tuples.
-                The contextualized_content is tokenized and indexed.
+            documents: List of KeywordDocument dicts with structured fields.
 
         Raises:
             ImportError: If rank_bm25 is not installed.
 
         Example:
             >>> provider.build([
-            ...     ("chunk1", "Context: About foxes. The quick brown fox."),
-            ...     ("chunk2", "Context: About dogs. The lazy dog."),
+            ...     KeywordDocument(
+            ...         id="chunk1",
+            ...         content="Force Majeure means any event...",
+            ...         parent_chain="Chapter 1 > Definitions",
+            ...         section_id="1.2",
+            ...         defined_term="Force Majeure",
+            ...     ),
             ... ])
         """
         from rank_bm25 import BM25Okapi
 
-        self._doc_ids = [doc_id for doc_id, _ in documents]
-        tokenized = [_tokenize(text) for _, text in documents]
+        self._doc_ids = [doc["id"] for doc in documents]
+        tokenized = [_tokenize(_build_bm25_document(doc)) for doc in documents]
         self._bm25 = BM25Okapi(tokenized, k1=self.k1, b=self.b)
 
         logger.debug(f"Built BM25 index with {len(documents)} documents")
@@ -274,11 +420,19 @@ class InMemoryBM25KeywordProvider:
 
 
 class OpenSearchKeywordProvider:
-    """OpenSearch-backed keyword search provider for production workloads.
+    """OpenSearch-backed keyword search provider with multi-field indexing.
 
     Uses the opensearch-py low-level client to index and search documents
     via BM25 scoring on an external OpenSearch cluster. Implements the
     KeywordSearchProvider protocol.
+
+    Indexes multiple fields from KeywordDocument with per-field boosting:
+    - content: Primary text (standard analyzer)
+    - parent_chain: Heading hierarchy (standard analyzer, 2x boost)
+    - section_id: Section identifiers (simple analyzer, 2x boost)
+    - defined_term: Definition terms (standard analyzer, 3x boost)
+    - chunk_type: Content classification (keyword type, filterable)
+    - source_file: Source filename (simple analyzer)
 
     Attributes:
         endpoint: OpenSearch endpoint URL.
@@ -293,7 +447,7 @@ class OpenSearchKeywordProvider:
         ...     username="admin",
         ...     password="secret",
         ... )
-        >>> provider.build([("doc1", "The quick brown fox")])
+        >>> provider.build([KeywordDocument(id="doc1", content="The quick brown fox")])
         >>> results = provider.search("brown fox", top_k=5)
         >>> print(results[0])  # (chunk_id, score) tuple
         ('doc1', 3.456)
@@ -308,10 +462,24 @@ class OpenSearchKeywordProvider:
             "properties": {
                 "chunk_id": {"type": "keyword"},
                 "content": {"type": "text", "analyzer": "standard"},
+                "parent_chain": {"type": "text", "analyzer": "standard"},
+                "section_id": {"type": "text", "analyzer": "simple"},
+                "defined_term": {"type": "text", "analyzer": "standard"},
+                "chunk_type": {"type": "keyword"},
+                "source_file": {"type": "text", "analyzer": "simple"},
             }
         },
     }
-    """Index mapping with single shard, keyword chunk_id, and text content."""
+    """Multi-field index mapping for structured document search."""
+
+    _SEARCH_FIELDS: list[str] = [
+        "content",
+        "parent_chain^2",
+        "section_id^2",
+        "defined_term^3",
+        "source_file",
+    ]
+    """Fields to search with per-field boost factors for multi_match queries."""
 
     def __init__(
         self,
@@ -359,15 +527,18 @@ class OpenSearchKeywordProvider:
 
         self._client: opensearchpy.OpenSearch = opensearchpy.OpenSearch(**client_kwargs)
 
-    def build(self, documents: list[tuple[str, str]]) -> None:
-        """Build OpenSearch index from documents.
+    def build(self, documents: list[KeywordDocument]) -> None:
+        """Build OpenSearch index from structured keyword documents.
 
         Creates the index if it does not exist. If the index already
         exists, clears all existing documents before re-indexing.
         Uses bulk indexing with refresh=True for immediate searchability.
 
+        Each KeywordDocument's fields are indexed into separate OpenSearch
+        fields with per-field boosting applied at query time via multi_match.
+
         Args:
-            documents: List of (chunk_id, content) tuples to index.
+            documents: List of KeywordDocument dicts with structured fields.
 
         Raises:
             opensearchpy.OpenSearchException: On connection or indexing errors.
@@ -400,13 +571,18 @@ class OpenSearchKeywordProvider:
             actions = [
                 {
                     "_index": self.index_name,
-                    "_id": chunk_id,
+                    "_id": doc["id"],
                     "_source": {
-                        "chunk_id": chunk_id,
-                        "content": content,
+                        "chunk_id": doc["id"],
+                        "content": doc.get("content", ""),
+                        "parent_chain": doc.get("parent_chain", ""),
+                        "section_id": doc.get("section_id", ""),
+                        "defined_term": doc.get("defined_term", ""),
+                        "chunk_type": doc.get("chunk_type", ""),
+                        "source_file": doc.get("source_file", ""),
                     },
                 }
-                for chunk_id, content in documents
+                for doc in documents
             ]
 
             success_count, _ = os_helpers.bulk(self._client, actions, refresh=True)
@@ -418,7 +594,11 @@ class OpenSearchKeywordProvider:
             )
 
     def search(self, query: str, top_k: int = 10) -> list[tuple[str, float]]:
-        """Search indexed documents using BM25 scoring.
+        """Search indexed documents using multi-field BM25 scoring.
+
+        Uses a multi_match query across all indexed fields with per-field
+        boost factors (defined_term^3, parent_chain^2, section_id^2,
+        content, source_file).
 
         Args:
             query: Search query string.
@@ -447,11 +627,11 @@ class OpenSearchKeywordProvider:
                 index=self.index_name,
                 body={
                     "query": {
-                        "match": {
-                            "content": {
-                                "query": query,
-                                "operator": "or",
-                            }
+                        "multi_match": {
+                            "query": query,
+                            "fields": self._SEARCH_FIELDS,
+                            "type": "best_fields",
+                            "operator": "or",
                         }
                     },
                     "size": top_k,
@@ -533,12 +713,17 @@ class HybridSearchExecutor:
         - 'opensearch': OpenSearchKeywordProvider (I/O offloaded via asyncio.to_thread)
         - 'in-memory' or None: InMemoryBM25KeywordProvider (called directly)
 
+        Each chunk is converted to a KeywordDocument with multiple fields
+        (content, parent_chain, section_id, defined_term, source_file) for
+        multi-field indexing with per-field boosting.
+
         If index build fails, logs a warning and continues with
         semantic-only search.
 
         Args:
-            chunks: List of DocumentChunk objects. The chunk's
-                contextualized_content (or content fallback) is indexed.
+            chunks: List of DocumentChunk objects. All relevant fields
+                (content, parent_chain, section_id, defined_term, etc.)
+                are indexed for keyword search.
 
         Example:
             >>> await executor.build_keyword_index(chunks)
@@ -546,7 +731,8 @@ class HybridSearchExecutor:
         # Store chunk map for ID-based lookups
         self._chunk_map = {c.id: c for c in chunks}
 
-        docs = [(c.id, c.contextualized_content or c.content) for c in chunks]
+        # Convert chunks to structured keyword documents
+        docs = [_chunk_to_keyword_document(c) for c in chunks]
 
         config = self.keyword_index_config
         provider_name = config.provider if config is not None else "in-memory"

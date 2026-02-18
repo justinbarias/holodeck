@@ -2,9 +2,14 @@
 
 This package provides PDF-specific file processing operations:
 
-- **Heading Extraction**: Font-size-aware text extraction using pdfminer
-  that produces markdown with proper heading markers (##) based on
-  configurable font-size thresholds.
+- **Heading Extraction**: Text extraction using pdfminer that produces
+  markdown with proper heading markers (##). Supports two strategies:
+
+  - **Bookmark-based detection** (preferred): Uses PDF outline/bookmark
+    entries to identify headings and their hierarchy. More reliable when
+    bookmarks are present.
+  - **Font-size-based detection** (fallback): Analyzes font sizes against
+    configurable thresholds. Used when bookmarks are absent or disabled.
 
 - **Page Extraction**: Extract specific pages from PDF files using pypdf,
   producing temporary PDF files with the selected pages.
@@ -15,14 +20,17 @@ beyond what markitdown offers natively.
 Example:
     from holodeck.lib.pdf_processor import extract_pdf_with_headings, extract_pdf_pages
 
-    # Extract text with heading detection
+    # Extract text with heading detection (bookmarks preferred, font-size fallback)
     markdown = extract_pdf_with_headings(Path("document.pdf"))
+
+    # Force font-size-only detection
+    markdown = extract_pdf_with_headings(Path("document.pdf"), use_bookmarks=False)
 
     # Extract specific pages
     temp_path = extract_pdf_pages(Path("document.pdf"), pages=[0, 1, 2])
 
 Functions:
-    extract_pdf_with_headings: Extract PDF text with font-size heading detection
+    extract_pdf_with_headings: Extract PDF text with heading detection
     extract_pdf_pages: Extract specific pages from a PDF file
 """
 

@@ -3,9 +3,10 @@
 This module tests the tiered keyword search implementation including:
 - KeywordSearchStrategy enum
 - Provider capability detection
+- KeywordDocument and composite text building
 - KeywordSearchProvider protocol
-- InMemoryBM25KeywordProvider implementation
-- OpenSearchKeywordProvider implementation
+- InMemoryBM25KeywordProvider multi-field implementation
+- OpenSearchKeywordProvider multi-field implementation
 - HybridSearchExecutor with provider router
 - OpenTelemetry instrumentation
 - Graceful degradation
@@ -167,8 +168,269 @@ class TestGetKeywordSearchStrategy:
         assert result == KeywordSearchStrategy.FALLBACK_BM25
 
 
+class TestKeywordDocument:
+    """Test KeywordDocument TypedDict structure."""
+
+    def test_required_fields_only(self) -> None:
+        """Test KeywordDocument can be created with only required fields."""
+        from holodeck.lib.keyword_search import KeywordDocument
+
+        doc = KeywordDocument(id="doc1", content="hello world")
+        assert doc["id"] == "doc1"
+        assert doc["content"] == "hello world"
+
+    def test_all_fields(self) -> None:
+        """Test KeywordDocument with all optional fields."""
+        from holodeck.lib.keyword_search import KeywordDocument
+
+        doc = KeywordDocument(
+            id="doc1",
+            content="Force Majeure means...",
+            parent_chain="Chapter 1 > Definitions",
+            section_id="1.2",
+            defined_term="Force Majeure",
+            chunk_type="definition",
+            source_file="contract.pdf",
+        )
+        assert doc["parent_chain"] == "Chapter 1 > Definitions"
+        assert doc["section_id"] == "1.2"
+        assert doc["defined_term"] == "Force Majeure"
+        assert doc["chunk_type"] == "definition"
+        assert doc["source_file"] == "contract.pdf"
+
+
+class TestBuildBm25Document:
+    """Test _build_bm25_document composite text builder."""
+
+    def test_content_only(self) -> None:
+        """Test composite text with only content field."""
+        from holodeck.lib.keyword_search import KeywordDocument, _build_bm25_document
+
+        doc = KeywordDocument(id="doc1", content="hello world")
+        result = _build_bm25_document(doc)
+        assert result == "hello world"
+
+    def test_parent_chain_boosted_2x(self) -> None:
+        """Test parent_chain appears twice in composite text."""
+        from holodeck.lib.keyword_search import KeywordDocument, _build_bm25_document
+
+        doc = KeywordDocument(
+            id="doc1",
+            content="some content",
+            parent_chain="Chapter 1 > Definitions",
+        )
+        result = _build_bm25_document(doc)
+        assert result.count("Chapter 1 > Definitions") == 2
+
+    def test_section_id_boosted_2x(self) -> None:
+        """Test section_id appears twice in composite text."""
+        from holodeck.lib.keyword_search import KeywordDocument, _build_bm25_document
+
+        doc = KeywordDocument(
+            id="doc1",
+            content="some content",
+            section_id="203(a)",
+        )
+        result = _build_bm25_document(doc)
+        assert result.count("203(a)") == 2
+
+    def test_defined_term_boosted_3x(self) -> None:
+        """Test defined_term appears three times in composite text."""
+        from holodeck.lib.keyword_search import KeywordDocument, _build_bm25_document
+
+        doc = KeywordDocument(
+            id="doc1",
+            content="Force Majeure means any event beyond...",
+            defined_term="Force Majeure",
+        )
+        result = _build_bm25_document(doc)
+        # Content has "Force Majeure" once, defined_term adds 3 more
+        assert result.count("Force Majeure") == 4
+
+    def test_source_file_included(self) -> None:
+        """Test source_file appears in composite text."""
+        from holodeck.lib.keyword_search import KeywordDocument, _build_bm25_document
+
+        doc = KeywordDocument(
+            id="doc1",
+            content="some content",
+            source_file="contract.pdf",
+        )
+        result = _build_bm25_document(doc)
+        assert "contract.pdf" in result
+
+    def test_empty_optional_fields_excluded(self) -> None:
+        """Test empty optional fields don't add extra text."""
+        from holodeck.lib.keyword_search import KeywordDocument, _build_bm25_document
+
+        doc = KeywordDocument(
+            id="doc1",
+            content="just content",
+            parent_chain="",
+            section_id="",
+            defined_term="",
+            source_file="",
+        )
+        result = _build_bm25_document(doc)
+        assert result == "just content"
+
+    def test_all_fields_combined(self) -> None:
+        """Test all fields produce expected composite text."""
+        from holodeck.lib.keyword_search import KeywordDocument, _build_bm25_document
+
+        doc = KeywordDocument(
+            id="doc1",
+            content="Definition text",
+            parent_chain="Ch1 > Defs",
+            section_id="1.2",
+            defined_term="Term",
+            source_file="doc.pdf",
+        )
+        result = _build_bm25_document(doc)
+
+        # Verify presence and boost counts
+        assert "Definition text" in result
+        assert result.count("Ch1 > Defs") == 2
+        assert result.count("1.2") == 2
+        assert result.count("Term") >= 3  # 3x from defined_term
+        assert "doc.pdf" in result
+
+
+class TestChunkToKeywordDocument:
+    """Test _chunk_to_keyword_document converter."""
+
+    def test_basic_conversion(self) -> None:
+        """Test basic DocumentChunk to KeywordDocument conversion."""
+        from holodeck.lib.keyword_search import _chunk_to_keyword_document
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        chunk = DocumentChunk(
+            id="chunk1",
+            source_path="/docs/contract.pdf",
+            chunk_index=0,
+            content="Test content",
+            contextualized_content="Contextualized test content",
+        )
+
+        doc = _chunk_to_keyword_document(chunk)
+
+        assert doc["id"] == "chunk1"
+        assert doc["content"] == "Contextualized test content"
+        assert doc["source_file"] == "contract.pdf"
+
+    def test_prefers_contextualized_content(self) -> None:
+        """Test prefers contextualized_content over content."""
+        from holodeck.lib.keyword_search import _chunk_to_keyword_document
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        chunk = DocumentChunk(
+            id="chunk1",
+            source_path="/test.md",
+            chunk_index=0,
+            content="raw content",
+            contextualized_content="better content with context",
+        )
+
+        doc = _chunk_to_keyword_document(chunk)
+        assert doc["content"] == "better content with context"
+
+    def test_falls_back_to_content(self) -> None:
+        """Test falls back to content when contextualized_content is empty."""
+        from holodeck.lib.keyword_search import _chunk_to_keyword_document
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        chunk = DocumentChunk(
+            id="chunk1",
+            source_path="/test.md",
+            chunk_index=0,
+            content="raw content",
+        )
+
+        doc = _chunk_to_keyword_document(chunk)
+        assert doc["content"] == "raw content"
+
+    def test_parent_chain_joined(self) -> None:
+        """Test parent_chain list is joined with ' > '."""
+        from holodeck.lib.keyword_search import _chunk_to_keyword_document
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        chunk = DocumentChunk(
+            id="chunk1",
+            source_path="/test.md",
+            chunk_index=0,
+            content="Test",
+            parent_chain=["Chapter 1", "Section 1.1", "Definitions"],
+        )
+
+        doc = _chunk_to_keyword_document(chunk)
+        assert doc["parent_chain"] == "Chapter 1 > Section 1.1 > Definitions"
+
+    def test_section_id_preserved(self) -> None:
+        """Test section_id is preserved in output."""
+        from holodeck.lib.keyword_search import _chunk_to_keyword_document
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        chunk = DocumentChunk(
+            id="chunk1",
+            source_path="/test.md",
+            chunk_index=0,
+            content="Test",
+            section_id="203(a)(1)",
+        )
+
+        doc = _chunk_to_keyword_document(chunk)
+        assert doc["section_id"] == "203(a)(1)"
+
+    def test_defined_term_preserved(self) -> None:
+        """Test defined_term is preserved in output."""
+        from holodeck.lib.keyword_search import _chunk_to_keyword_document
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        chunk = DocumentChunk(
+            id="chunk1",
+            source_path="/test.md",
+            chunk_index=0,
+            content="Test",
+            defined_term="Force Majeure",
+        )
+
+        doc = _chunk_to_keyword_document(chunk)
+        assert doc["defined_term"] == "Force Majeure"
+
+    def test_chunk_type_enum_converted_to_string(self) -> None:
+        """Test ChunkType enum is converted to string value."""
+        from holodeck.lib.keyword_search import _chunk_to_keyword_document
+        from holodeck.lib.structured_chunker import ChunkType, DocumentChunk
+
+        chunk = DocumentChunk(
+            id="chunk1",
+            source_path="/test.md",
+            chunk_index=0,
+            content="Test",
+            chunk_type=ChunkType.DEFINITION,
+        )
+
+        doc = _chunk_to_keyword_document(chunk)
+        assert doc["chunk_type"] == "definition"
+
+    def test_source_file_extracted_from_path(self) -> None:
+        """Test filename is extracted from source_path."""
+        from holodeck.lib.keyword_search import _chunk_to_keyword_document
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        chunk = DocumentChunk(
+            id="chunk1",
+            source_path="/very/deep/path/to/document.pdf",
+            chunk_index=0,
+            content="Test",
+        )
+
+        doc = _chunk_to_keyword_document(chunk)
+        assert doc["source_file"] == "document.pdf"
+
+
 class TestInMemoryBM25KeywordProvider:
-    """Test BM25 fallback implementation."""
+    """Test BM25 fallback implementation with multi-field indexing."""
 
     def test_init_with_default_params(self) -> None:
         """Test InMemoryBM25KeywordProvider initializes with default k1 and b."""
@@ -187,78 +449,97 @@ class TestInMemoryBM25KeywordProvider:
         assert provider.b == 0.5
 
     def test_build_indexes_documents(self) -> None:
-        """Test build() creates index from documents."""
-        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
+        """Test build() creates index from KeywordDocument list."""
+        from holodeck.lib.keyword_search import (
+            InMemoryBM25KeywordProvider,
+            KeywordDocument,
+        )
 
         provider = InMemoryBM25KeywordProvider()
         documents = [
-            ("doc1", "the quick brown fox"),
-            ("doc2", "jumps over the lazy dog"),
-            ("doc3", "the brown dog is quick"),
+            KeywordDocument(id="doc1", content="the quick brown fox"),
+            KeywordDocument(id="doc2", content="jumps over the lazy dog"),
+            KeywordDocument(id="doc3", content="the brown dog is quick"),
         ]
         provider.build(documents)
 
         assert provider._bm25 is not None
         assert provider._doc_ids == ["doc1", "doc2", "doc3"]
 
-    def test_build_uses_contextualized_content(self) -> None:
-        """Test build() indexes the contextualized_content field."""
-        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
+    def test_build_uses_composite_text(self) -> None:
+        """Test build() indexes composite text with all fields."""
+        from holodeck.lib.keyword_search import (
+            InMemoryBM25KeywordProvider,
+            KeywordDocument,
+        )
 
         provider = InMemoryBM25KeywordProvider()
-        # Second element is contextualized_content (not raw content)
-        # Use more documents to make BM25 scoring work properly
         documents = [
-            ("doc1", "Context: Section about foxes. The quick brown fox jumps."),
-            ("doc2", "Context: Section about dogs. The lazy dog sleeps here."),
-            ("doc3", "Context: Section about cats. The small cat plays nicely."),
-            ("doc4", "Context: Section about birds. The blue bird sings daily."),
-            ("doc5", "Context: Section about fish. The gold fish swims around."),
+            KeywordDocument(
+                id="doc1",
+                content="Context: Section about foxes. The quick brown fox jumps.",
+            ),
+            KeywordDocument(
+                id="doc2",
+                content="Context: Section about dogs. The lazy dog sleeps here.",
+            ),
+            KeywordDocument(
+                id="doc3",
+                content="Context: Section about cats. The small cat plays nicely.",
+            ),
+            KeywordDocument(
+                id="doc4",
+                content="Context: Section about birds. The blue bird sings daily.",
+            ),
+            KeywordDocument(
+                id="doc5",
+                content="Context: Section about fish. The gold fish swims around.",
+            ),
         ]
         provider.build(documents)
 
-        # Search for terms that appear across documents to get proper BM25 scoring
-        # "quick" appears only in doc1
         results = provider.search("quick jumps", top_k=5)
         assert len(results) > 0
-        # First result should be doc1 which contains both "quick" and "jumps"
         assert results[0][0] == "doc1"
 
     def test_search_returns_ranked_results(self) -> None:
         """Test search() returns (doc_id, score) tuples sorted by score."""
-        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
+        from holodeck.lib.keyword_search import (
+            InMemoryBM25KeywordProvider,
+            KeywordDocument,
+        )
 
         provider = InMemoryBM25KeywordProvider()
         documents = [
-            ("doc1", "the quick brown fox"),
-            ("doc2", "jumps over the lazy dog"),
-            ("doc3", "the brown dog is quick"),
+            KeywordDocument(id="doc1", content="the quick brown fox"),
+            KeywordDocument(id="doc2", content="jumps over the lazy dog"),
+            KeywordDocument(id="doc3", content="the brown dog is quick"),
         ]
         provider.build(documents)
 
         results = provider.search("brown fox", top_k=3)
 
-        # Should return list of (doc_id, score) tuples
         assert len(results) > 0
         assert all(isinstance(r, tuple) for r in results)
         assert all(len(r) == 2 for r in results)
         assert all(isinstance(r[0], str) for r in results)
         assert all(isinstance(r[1], int | float) for r in results)
-
-        # First result should be doc1 (best match for "brown fox")
         assert results[0][0] == "doc1"
 
     def test_search_respects_top_k(self) -> None:
         """Test search() returns at most top_k results."""
-        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
+        from holodeck.lib.keyword_search import (
+            InMemoryBM25KeywordProvider,
+            KeywordDocument,
+        )
 
         provider = InMemoryBM25KeywordProvider()
         documents = [
-            ("doc1", "the quick brown fox"),
-            ("doc2", "jumps over the lazy dog"),
-            ("doc3", "the brown dog is quick"),
-            ("doc4", "another document here"),
-            ("doc5", "yet another one"),
+            KeywordDocument(id="doc1", content="the quick brown fox"),
+            KeywordDocument(id="doc2", content="jumps over the lazy dog"),
+            KeywordDocument(id="doc3", content="the brown dog is quick"),
+            KeywordDocument(id="doc4", content="another document here"),
+            KeywordDocument(id="doc5", content="yet another one"),
         ]
         provider.build(documents)
 
@@ -272,6 +553,96 @@ class TestInMemoryBM25KeywordProvider:
         provider = InMemoryBM25KeywordProvider()
         results = provider.search("test query", top_k=5)
         assert results == []
+
+    def test_defined_term_boosting_ranks_definitions_higher(self) -> None:
+        """Test defined_term boosting makes definition chunks rank higher."""
+        from holodeck.lib.keyword_search import (
+            InMemoryBM25KeywordProvider,
+            KeywordDocument,
+        )
+
+        provider = InMemoryBM25KeywordProvider()
+        documents = [
+            KeywordDocument(
+                id="regular",
+                content="Force Majeure events may delay delivery per the contract",
+            ),
+            KeywordDocument(
+                id="definition",
+                content="means any event beyond reasonable control",
+                defined_term="Force Majeure",
+            ),
+            KeywordDocument(id="filler1", content="unrelated document about pricing"),
+            KeywordDocument(id="filler2", content="another unrelated topic entirely"),
+            KeywordDocument(id="filler3", content="yet more filler content here"),
+        ]
+        provider.build(documents)
+
+        results = provider.search("Force Majeure", top_k=3)
+        result_ids = [r[0] for r in results]
+
+        # The definition chunk should rank first due to 3x boost
+        assert result_ids[0] == "definition"
+
+    def test_parent_chain_boosting_ranks_headings_higher(self) -> None:
+        """Test parent_chain boosting helps section-based queries."""
+        from holodeck.lib.keyword_search import (
+            InMemoryBM25KeywordProvider,
+            KeywordDocument,
+        )
+
+        provider = InMemoryBM25KeywordProvider()
+        documents = [
+            KeywordDocument(
+                id="in_definitions",
+                content="This term refers to contractual obligations",
+                parent_chain="Chapter 3 > Definitions",
+            ),
+            KeywordDocument(
+                id="mentions_definitions",
+                content="Definitions are provided in the glossary section",
+            ),
+            KeywordDocument(id="filler1", content="unrelated pricing information"),
+            KeywordDocument(id="filler2", content="delivery schedule details"),
+            KeywordDocument(id="filler3", content="contact information section"),
+        ]
+        provider.build(documents)
+
+        results = provider.search("Definitions", top_k=3)
+        result_ids = [r[0] for r in results]
+
+        # The chunk with "Definitions" in parent_chain (2x boost) should rank first
+        assert result_ids[0] == "in_definitions"
+
+    def test_section_id_boosting_enables_section_lookup(self) -> None:
+        """Test section_id boosting enables section number queries."""
+        from holodeck.lib.keyword_search import (
+            InMemoryBM25KeywordProvider,
+            KeywordDocument,
+        )
+
+        provider = InMemoryBM25KeywordProvider()
+        documents = [
+            KeywordDocument(
+                id="section_203",
+                content="This section describes reporting obligations",
+                section_id="203",
+            ),
+            KeywordDocument(
+                id="mentions_203",
+                content="As described in section 203 of this agreement",
+            ),
+            KeywordDocument(id="filler1", content="unrelated filler content"),
+            KeywordDocument(id="filler2", content="more unrelated content here"),
+            KeywordDocument(id="filler3", content="yet another filler document"),
+        ]
+        provider.build(documents)
+
+        results = provider.search("203", top_k=3)
+        result_ids = [r[0] for r in results]
+
+        # The chunk with section_id="203" (2x boost) should rank first
+        assert result_ids[0] == "section_203"
 
 
 class TestTokenize:
@@ -384,6 +755,58 @@ class TestHybridSearchExecutor:
         assert executor.get_chunk("nonexistent") is None
 
     @pytest.mark.asyncio
+    async def test_build_keyword_index_with_structured_fields(self) -> None:
+        """Test build_keyword_index indexes parent_chain, section_id, etc."""
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+        from holodeck.lib.structured_chunker import ChunkType, DocumentChunk
+
+        mock_collection = MagicMock()
+        executor = HybridSearchExecutor("in-memory", mock_collection)
+
+        chunks = [
+            DocumentChunk(
+                id="def_chunk",
+                source_path="/contract.pdf",
+                chunk_index=0,
+                content="means any event beyond reasonable control",
+                parent_chain=["Chapter 1", "Definitions"],
+                section_id="1.2",
+                chunk_type=ChunkType.DEFINITION,
+                defined_term="Force Majeure",
+            ),
+            DocumentChunk(
+                id="regular_chunk",
+                source_path="/contract.pdf",
+                chunk_index=1,
+                content="The parties agree to the following terms",
+            ),
+            DocumentChunk(
+                id="filler1",
+                source_path="/other.pdf",
+                chunk_index=0,
+                content="Completely unrelated pricing document",
+            ),
+            DocumentChunk(
+                id="filler2",
+                source_path="/other.pdf",
+                chunk_index=1,
+                content="Another filler document about logistics",
+            ),
+            DocumentChunk(
+                id="filler3",
+                source_path="/other.pdf",
+                chunk_index=2,
+                content="Supply chain management details",
+            ),
+        ]
+        await executor.build_keyword_index(chunks)
+
+        # Search for defined term should find the definition chunk
+        results = await executor.keyword_search("Force Majeure", top_k=3)
+        assert len(results) > 0
+        assert results[0][0] == "def_chunk"
+
+    @pytest.mark.asyncio
     async def test_search_routes_to_native_hybrid(self) -> None:
         """Test search() routes to native hybrid_search for supported providers."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
@@ -448,10 +871,13 @@ class TestOpenTelemetry:
 
     def test_bm25_search_emits_span(self) -> None:
         """Test InMemoryBM25KeywordProvider.search() emits OpenTelemetry span."""
-        from holodeck.lib.keyword_search import InMemoryBM25KeywordProvider
+        from holodeck.lib.keyword_search import (
+            InMemoryBM25KeywordProvider,
+            KeywordDocument,
+        )
 
         provider = InMemoryBM25KeywordProvider()
-        documents = [("doc1", "test content")]
+        documents = [KeywordDocument(id="doc1", content="test content")]
         provider.build(documents)
 
         with patch("holodeck.lib.keyword_search.tracer") as mock_tracer:
@@ -673,11 +1099,18 @@ class TestOpenSearchKeywordProvider:
 
     def test_build_creates_index_if_not_exists(self) -> None:
         """Test build() creates the index when it doesn't exist."""
+        from holodeck.lib.keyword_search import KeywordDocument
+
         provider = self._make_provider()
         provider._client.indices.exists.return_value = False
 
         with patch("opensearchpy.helpers.bulk", return_value=(2, [])):
-            provider.build([("doc1", "content1"), ("doc2", "content2")])
+            provider.build(
+                [
+                    KeywordDocument(id="doc1", content="content1"),
+                    KeywordDocument(id="doc2", content="content2"),
+                ]
+            )
 
         provider._client.indices.create.assert_called_once_with(
             index="test-index",
@@ -686,11 +1119,13 @@ class TestOpenSearchKeywordProvider:
 
     def test_build_clears_existing_docs(self) -> None:
         """Test build() clears existing documents when index already exists."""
+        from holodeck.lib.keyword_search import KeywordDocument
+
         provider = self._make_provider()
         provider._client.indices.exists.return_value = True
 
         with patch("opensearchpy.helpers.bulk", return_value=(1, [])):
-            provider.build([("doc1", "content1")])
+            provider.build([KeywordDocument(id="doc1", content="content1")])
 
         provider._client.delete_by_query.assert_called_once_with(
             index="test-index",
@@ -698,24 +1133,50 @@ class TestOpenSearchKeywordProvider:
             refresh=True,
         )
 
-    def test_build_bulk_indexes_documents(self) -> None:
-        """Test build() sends correct bulk actions structure."""
+    def test_build_bulk_indexes_multi_field_documents(self) -> None:
+        """Test build() sends correct multi-field bulk actions."""
+        from holodeck.lib.keyword_search import KeywordDocument
+
         provider = self._make_provider()
         provider._client.indices.exists.return_value = False
 
         with patch("opensearchpy.helpers.bulk", return_value=(2, [])) as mock_bulk:
-            provider.build([("doc1", "hello world"), ("doc2", "foo bar")])
+            provider.build(
+                [
+                    KeywordDocument(
+                        id="doc1",
+                        content="hello world",
+                        parent_chain="Chapter 1 > Intro",
+                        section_id="1.1",
+                        defined_term="Greeting",
+                        chunk_type="definition",
+                        source_file="doc.pdf",
+                    ),
+                    KeywordDocument(id="doc2", content="foo bar"),
+                ]
+            )
 
             actions = mock_bulk.call_args[0][1]
             assert len(actions) == 2
+            # Check first doc has all fields
             assert actions[0]["_id"] == "doc1"
             assert actions[0]["_source"]["chunk_id"] == "doc1"
             assert actions[0]["_source"]["content"] == "hello world"
+            assert actions[0]["_source"]["parent_chain"] == "Chapter 1 > Intro"
+            assert actions[0]["_source"]["section_id"] == "1.1"
+            assert actions[0]["_source"]["defined_term"] == "Greeting"
+            assert actions[0]["_source"]["chunk_type"] == "definition"
+            assert actions[0]["_source"]["source_file"] == "doc.pdf"
+            # Check second doc has defaults for missing fields
             assert actions[1]["_id"] == "doc2"
             assert actions[1]["_source"]["content"] == "foo bar"
+            assert actions[1]["_source"]["parent_chain"] == ""
+            assert actions[1]["_source"]["defined_term"] == ""
 
     def test_build_propagates_exceptions(self) -> None:
         """Test build() propagates exceptions from bulk indexing."""
+        from holodeck.lib.keyword_search import KeywordDocument
+
         provider = self._make_provider()
         provider._client.indices.exists.return_value = False
 
@@ -726,7 +1187,7 @@ class TestOpenSearchKeywordProvider:
             ),
             pytest.raises(RuntimeError, match="bulk failed"),
         ):
-            provider.build([("doc1", "content")])
+            provider.build([KeywordDocument(id="doc1", content="content")])
 
     def test_search_returns_ranked_results(self) -> None:
         """Test search() returns (chunk_id, score) tuples from hits."""
@@ -754,8 +1215,8 @@ class TestOpenSearchKeywordProvider:
 
         assert results == []
 
-    def test_search_uses_match_query(self) -> None:
-        """Test search() sends correct match query DSL."""
+    def test_search_uses_multi_match_query(self) -> None:
+        """Test search() sends correct multi_match query DSL."""
         provider = self._make_provider()
         provider._client.indices.exists.return_value = True
         provider._client.search.return_value = {"hits": {"hits": []}}
@@ -766,16 +1227,43 @@ class TestOpenSearchKeywordProvider:
             index="test-index",
             body={
                 "query": {
-                    "match": {
-                        "content": {
-                            "query": "my query",
-                            "operator": "or",
-                        }
+                    "multi_match": {
+                        "query": "my query",
+                        "fields": [
+                            "content",
+                            "parent_chain^2",
+                            "section_id^2",
+                            "defined_term^3",
+                            "source_file",
+                        ],
+                        "type": "best_fields",
+                        "operator": "or",
                     }
                 },
                 "size": 7,
             },
         )
+
+    def test_index_mapping_has_multi_field_properties(self) -> None:
+        """Test index mapping includes all expected field properties."""
+        provider = self._make_provider()
+        props = provider._INDEX_MAPPING["mappings"]["properties"]
+
+        assert "chunk_id" in props
+        assert props["chunk_id"]["type"] == "keyword"
+        assert "content" in props
+        assert props["content"]["type"] == "text"
+        assert "parent_chain" in props
+        assert props["parent_chain"]["type"] == "text"
+        assert "section_id" in props
+        assert props["section_id"]["type"] == "text"
+        assert props["section_id"]["analyzer"] == "simple"
+        assert "defined_term" in props
+        assert props["defined_term"]["type"] == "text"
+        assert "chunk_type" in props
+        assert props["chunk_type"]["type"] == "keyword"
+        assert "source_file" in props
+        assert props["source_file"]["type"] == "text"
 
     def test_search_propagates_connection_errors(self) -> None:
         """Test search() propagates connection errors from the client."""
@@ -788,6 +1276,8 @@ class TestOpenSearchKeywordProvider:
 
     def test_build_emits_otel_span(self) -> None:
         """Test build() emits an OpenTelemetry span with correct attributes."""
+        from holodeck.lib.keyword_search import KeywordDocument
+
         provider = self._make_provider()
         provider._client.indices.exists.return_value = False
 
@@ -803,7 +1293,7 @@ class TestOpenSearchKeywordProvider:
                 return_value=None
             )
 
-            provider.build([("doc1", "content")])
+            provider.build([KeywordDocument(id="doc1", content="content")])
 
             mock_tracer.start_as_current_span.assert_called_once()
             call_args = mock_tracer.start_as_current_span.call_args
