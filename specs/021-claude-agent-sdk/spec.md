@@ -15,7 +15,7 @@ HoloDeck currently uses a third-party agent orchestration framework (Semantic Ke
 
 This subprocess boundary has critical implications:
 
-- **Tool registration**: HoloDeck's vectorstore and hierarchical document tools are exposed as callable tool definitions at subprocess initialization — they are not invoked as in-process Python functions by the SK kernel. The tool's `search()` results are returned to the subprocess via an inter-process communication boundary.
+- **Tool registration**: HoloDeck's vectorstore and hierarchical document tools are wrapped using the Claude Agent SDK's `@tool` decorator and registered at subprocess initialization. When the subprocess calls a tool, the SDK routes the invocation back to HoloDeck's parent process transparently — HoloDeck does not implement any custom IPC server. The tool's `search()` method executes in the parent process and the result is returned to the subprocess via the SDK's built-in communication layer.
 - **MCP tools**: The Claude Agent SDK has its own native MCP client. MCP server processes are started by the Claude Code subprocess, not by HoloDeck's SK-based MCP plugin factory. HoloDeck translates MCP tool configuration from `agent.yaml` into the SDK's MCP server specification format.
 - **Hooks and callbacks** (`can_use_tool`, pre/post hooks): These are communicated to the subprocess as configuration at startup, not as live Python callables invoked across the process boundary.
 - **Permission modes**: Enforced inside the Claude Code subprocess, not in HoloDeck's Python process. HoloDeck passes the configured mode at startup.
@@ -154,7 +154,6 @@ A user or team configures the autonomy level of their Claude-native agent via `a
 1. **Given** an agent configured with `permission_mode: manual`, **When** the agent attempts any action (file write, bash command, tool call), **Then** the user is prompted to approve or deny before execution proceeds.
 2. **Given** an agent configured with `permission_mode: acceptEdits`, **When** the agent performs a file edit, **Then** it proceeds without prompting; when it attempts a bash command, **Then** it pauses for approval.
 3. **Given** an agent configured with `permission_mode: acceptAll`, **When** the agent performs any permitted action, **Then** it proceeds without prompting.
-4. **Given** a `can_use_tool` callback configured for a specific tool, **When** the agent attempts to call that tool, **Then** the callback is invoked and the tool call proceeds only if the callback approves.
 
 ---
 
@@ -177,6 +176,21 @@ A user configures their Claude-native agent's authentication method via `agent.y
 7. **Given** an agent with `auth_provider: foundry` and valid Azure credentials, **When** the agent runs, **Then** it authenticates via Azure AI Foundry and responds correctly.
 8. **Given** any auth provider configured but the required credentials missing or invalid, **When** the agent starts, **Then** the system displays a specific error identifying the missing credential and how to provide it.
 
+### User Story 10 - Structured Output from Claude-Native Agents (Priority: P4)
+
+A user configures a Claude-native agent with a `response_format` schema in `agent.yaml`. The agent's response is returned as a validated, typed JSON object matching the schema — not free-form text. This enables downstream code (evaluations, pipelines, integrations) to consume agent output programmatically without parsing.
+
+**Why this priority**: Structured output is critical for agents embedded in automated pipelines where downstream code must consume the response. Free-form text is unusable in those contexts. The Claude Agent SDK supports this natively, so there is no reason to leave it out of scope.
+
+**Independent Test**: Configure an agent with a `response_format` defining a schema with at least two typed fields. Run a test case. Verify the response is a validated object matching the schema, not a plain text string.
+
+**Acceptance Scenarios**:
+
+1. **Given** an agent with `response_format` defining a JSON schema, **When** the agent completes a turn, **Then** the response is returned as a structured object validated against that schema.
+2. **Given** a structured response is produced, **When** the test runner evaluates it, **Then** NLP and G-Eval metrics operate on the serialised text representation, and the structured object is also preserved in the result for downstream use.
+3. **Given** an agent response that does not conform to the configured schema, **When** the result is returned, **Then** the system surfaces a clear validation error identifying the schema violation rather than silently returning malformed output.
+4. **Given** a `response_format` schema is configured, **When** the agent runs in streaming mode, **Then** the structured output is emitted as a complete object once the turn finishes, not as partial streaming tokens.
+
 ---
 
 ### Edge Cases
@@ -189,11 +203,13 @@ A user configures their Claude-native agent's authentication method via `agent.y
 - How does the system handle agents that have both Anthropic and non-Anthropic tool dependencies?
 - **CLAUDE.md collision**: The Claude Agent SDK subprocess automatically loads `CLAUDE.md` from the configured working directory. If the user sets `working_directory` to the HoloDeck project root (or any directory containing a `CLAUDE.md` not intended for the agent), that file's contents become part of the agent's context. The system MUST warn the user at startup if the working directory's `CLAUDE.md` appears to be a project-level developer file rather than an agent instruction file. Guidance must direct users to set a more specific working directory or provide instructions via `agent.yaml`'s `instructions` field instead.
 - **Embedding provider absent with vectorstore tools**: If `provider: anthropic` is set alongside vectorstore or hierarchical document tools but no `embedding_provider` is configured, the system MUST raise a clear validation error at startup — not a runtime failure mid-search.
-- **`response_format` configured on Anthropic agent**: Structured output via `response_format` is not supported in the Claude-native backend. If `response_format` is set alongside `provider: anthropic`, the system MUST emit a warning and ignore the field rather than crashing silently.
+- **Structured output schema incompatible with SDK**: If the schema provided in `response_format` cannot be serialised to a valid JSON Schema (e.g. uses unsupported Pydantic field types), the system MUST raise a clear validation error at startup identifying the incompatible field, rather than passing a malformed schema to the subprocess.
 - **Tool filtering configured on Anthropic agent**: The `tool_filtering` semantic search capability depends on SK's kernel and is not supported in the Claude-native backend. If `tool_filtering` is configured alongside `provider: anthropic`, the system MUST emit a warning and skip tool filtering rather than crashing.
 - **`max_turns` cap reached mid-task**: When the agent hits the `max_turns` limit before completing a task, the test case is marked as failed with a reason of "max_turns limit reached" rather than as an execution error. Partial results accumulated before the cap are preserved in the result output.
 - **OTLP endpoint unreachable**: If the configured OTLP endpoint is unavailable, the agent session continues normally. Telemetry is silently dropped per standard OTel SDK behaviour. HoloDeck MUST NOT fail agent startup or abort a session due to an unreachable observability endpoint.
+- **Subprocess terminates unexpectedly**: If the Claude Code subprocess exits mid-session due to an OS-level kill (OOM, SIGKILL), an unhandled internal error, or any other unexpected cause, HoloDeck MUST detect the termination, surface a clear "agent session terminated unexpectedly" error to the user, mark any in-progress test case as failed (not as an evaluation failure), and release all associated resources (tool indexes, open handles).
 - **No credentials found for any auth method**: If `auth_provider: api_key` (or default) is used but `ANTHROPIC_API_KEY` is absent, and `auth_provider: oauth_token` is used but `CLAUDE_CODE_OAUTH_TOKEN` is absent, the system MUST detect the missing credential at startup and surface a specific, actionable error — not a cryptic subprocess failure after the agent loop starts.
+- **Node.js not installed**: The Claude Agent SDK requires Node.js as a host runtime. If Node.js is not found on `PATH` at agent startup, the system MUST surface a clear error identifying Node.js as a missing prerequisite and directing the user to install it, rather than failing with a cryptic subprocess spawn error.
 
 ## Requirements *(mandatory)*
 
@@ -210,15 +226,23 @@ A user configures their Claude-native agent's authentication method via `agent.y
 - **FR-007**: System MUST deliver streaming responses from Claude-native agents to the `holodeck chat` terminal interface.
 - **FR-008**: System MUST execute all configured evaluation metrics (NLP, G-Eval, RAG) against Claude-native agent responses in the test runner.
 - **FR-009**: System MUST provide specific, actionable error messages when Claude-native agent execution fails (credential issues, unavailable models, tool failures).
-- **FR-013**: System MUST retry failed Anthropic API calls (rate limit, 5xx, timeout) with exponential backoff for up to 3 attempts before surfacing a clear error to the user.
+- **FR-009a**: System MUST verify Node.js is available on `PATH` before attempting to start any Claude-native agent session. If Node.js is absent, the system MUST raise a clear startup error identifying Node.js as a required runtime and providing installation guidance. The Claude Agent SDK bundles the `claude` CLI and does not require it to be separately installed — Node.js is the only host-level prerequisite.
+- **FR-009b**: System MUST monitor the Claude Code subprocess for unexpected termination during a session. If the subprocess exits with a non-zero code or is killed by the OS, HoloDeck MUST detect the termination promptly, surface a clear user-facing error distinguishing subprocess crash from a normal agent error, mark any in-progress test case as failed with reason "subprocess terminated unexpectedly", and release all associated resources cleanly without leaving dangling processes or open file handles.
+- **FR-013**: System MUST retry failed Anthropic API calls (rate limit, 5xx, timeout) with exponential backoff for up to 3 attempts before surfacing a clear error to the user. **Note**: If the Claude Agent SDK subprocess handles API-level retries internally, HoloDeck MUST NOT add a second retry layer on top — doing so would produce up to 9 effective attempts (3 × 3) and unpredictable wait times. During implementation, the SDK's built-in retry behaviour MUST be verified; if the SDK already retries, HoloDeck's retry logic for the Claude-native path MUST be limited to session-level failures (e.g., subprocess crash, spawn failure) only. **Note**: The current `AgentThreadRun._invoke_with_retry()` catches only `ConnectionError` and `TimeoutError`. `anthropic.RateLimitError` (HTTP 429) is not a subclass of either and currently falls into the non-retryable branch, raising immediately. The Claude-native retry implementation MUST explicitly include `RateLimitError` (and any SDK-equivalent rate limit exception) in its retryable exception set.
 - **FR-010**: All existing `agent.yaml` configurations using non-Anthropic providers MUST continue to work without any modification.
 - **FR-011**: When `provider: anthropic` is specified in `agent.yaml`, the system MUST route execution exclusively through the Claude-native backend. The existing Semantic Kernel execution layer MUST NOT be used for Anthropic-provider agents.
 - **FR-012**: System MUST initialize vectorstore and hierarchical document tool indexes at agent startup, exactly as the existing backend does, ensuring the tools are ready before the first query.
-- **FR-012a**: Because the Claude Agent SDK does not generate text embeddings, the `Agent` configuration model MUST support specifying a separate `embedding_provider` (provider + model) independently of the chat `provider`. When a Claude-native agent uses vectorstore or hierarchical document tools, an `embedding_provider` MUST be configured (e.g., OpenAI or Azure OpenAI). If vectorstore tools are present and no `embedding_provider` is configured, the system MUST raise a clear validation error at startup rather than attempting to use the Anthropic provider for embeddings.
+- **FR-012a**: Because the Claude Agent SDK does not generate text embeddings, the `Agent` configuration model MUST be extended with a top-level optional `embedding_provider` field of type `LLMProvider` (the same type as the existing `model:` field). This field configures the provider used exclusively for embedding generation (e.g., OpenAI or Azure OpenAI) independently of the chat `provider`. When a Claude-native agent uses vectorstore or hierarchical document tools, `embedding_provider` MUST be configured. If vectorstore tools are present and no `embedding_provider` is configured, the system MUST raise a clear validation error at startup rather than attempting to use the Anthropic provider for embeddings. **Note**: The current `AgentFactory._register_embedding_service()` method explicitly raises `AgentFactoryError` for `provider: anthropic` — this is the immediate blocker for US-2. When the Claude-native backend is active, this code path MUST be bypassed entirely; embedding service registration MUST use `embedding_provider` credentials instead of the chat provider credentials.
 
 #### Abstract Execution Layer
 
-- **FR-012b**: HoloDeck MUST define a provider-agnostic execution result interface that both the SK backend and the Claude-native backend implement. This interface captures: the agent's final text response, tool calls made during the turn, tool results, and token usage. All downstream consumers (chat executor, test executor, evaluation pipeline) MUST depend on this interface rather than on SK-specific types (`ChatHistory`, `ChatMessageContent`, etc.). This is a prerequisite for the Claude-native backend to integrate with the existing test runner and chat layer without forking those components.
+- **FR-012b**: HoloDeck MUST define a provider-agnostic execution result interface that both the SK backend and the Claude-native backend implement. This interface captures: the agent's final text response, tool calls made during the turn, tool results, and token usage. All downstream consumers (chat executor, test executor, evaluation pipeline) MUST depend on this interface rather than on SK-specific types (`ChatHistory`, `ChatMessageContent`, etc.). This is a prerequisite for the Claude-native backend to integrate with the existing test runner and chat layer without forking those components. **⚠ Prerequisite**: This FR MUST be implemented and verified before any other FR in this feature can be tested end-to-end. All other FRs depend on both backends producing a result that the existing `TestExecutor` and `AgentExecutor` can consume without modification.
+
+#### Structured Output
+
+- **FR-039**: System MUST support structured output for Claude-native agents via the existing `response_format` field in `agent.yaml`. When `response_format` is configured alongside `provider: anthropic`, HoloDeck MUST translate the schema into the Claude Agent SDK's `output_format` parameter (`{"type": "json_schema", "schema": <json_schema>}`) before spawning the subprocess. **Note**: The existing SK/OpenAI response format wrapper (`_wrap_response_format`) produces a structurally different format (`{"type": "json_schema", "json_schema": {"name": ..., "schema": ..., "strict": true}}`) and MUST NOT be reused for the Claude-native path. A separate translation function is required.
+- **FR-039a**: The structured output returned by the subprocess MUST be validated against the configured schema and surfaced as a typed object in both the chat interface and the test runner result. The serialised text representation of the object MUST also be available so that evaluation metrics (NLP, G-Eval) can operate on it normally.
+- **FR-039b**: If the agent's response does not conform to the configured schema, the system MUST surface a clear validation error identifying the schema violation. It MUST NOT silently return malformed or unvalidated output.
 
 #### Agent Loop Controls
 
@@ -239,18 +263,11 @@ A user configures their Claude-native agent's authentication method via `agent.y
 #### Command Execution
 
 - **FR-021**: System MUST allow Claude-native agents to execute shell commands within a configurable sandbox, supporting explicit lists of excluded commands and permitted unsafe commands.
-- **FR-022**: System MUST allow Claude-native agents to execute Jupyter-style notebook cells for data analysis and code experimentation workflows.
 
 #### Tool System
 
-- **FR-023**: HoloDeck MUST internally wrap its existing tool implementations (vectorstore search, hierarchical document search) as Claude Agent SDK-compatible tool definitions using the SDK's decorator/registration mechanism. This is an internal implementation concern — users do NOT write Python decorators. Users continue to configure tools via `agent.yaml` exactly as today; HoloDeck generates the tool definitions from that configuration automatically.
-- **FR-024**: HoloDeck MUST package its internally-registered tools into an in-process tool server that the Claude Agent SDK subprocess can discover and invoke across the process boundary. Users are not required to write or configure any Python code to enable this.
-- **FR-025**: System MUST support a `can_use_tool` callback configuration in `agent.yaml` that intercepts tool calls before execution. In the Claude-native subprocess model, this configuration is passed to the subprocess at startup; it does not execute as a live Python callback in HoloDeck's process.
+- **FR-023**: HoloDeck MUST internally wrap its existing tool implementations (vectorstore search, hierarchical document search) as Claude Agent SDK-compatible tool definitions using the SDK's `@tool` decorator/registration mechanism. The SDK manages all subprocess↔parent communication for tool invocation internally — HoloDeck does not build any custom IPC server. This is an internal implementation concern — users do NOT write Python decorators. Users continue to configure tools via `agent.yaml` exactly as today; HoloDeck generates the tool definitions from that configuration automatically.
 - **FR-026**: System MUST support an `allowed_tools` list in `agent.yaml` specifying which tools the agent is permitted to access. This is communicated to the subprocess at startup.
-
-#### Hooks
-
-- **FR-027**: System MUST support configuring Python functions as pre- and post-execution hooks that run at defined points in the agent loop, enabling logging, guardrails, and deterministic post-processing.
 
 #### Configuration
 
@@ -315,9 +332,10 @@ A user configures their Claude-native agent's authentication method via `agent.y
 - **SC-010**: Shell commands executed by agents with bash access run within the configured sandbox; 100% of explicitly excluded commands are blocked without crashing the session.
 - **SC-011**: In `manual` permission mode, 100% of agent actions trigger an approval prompt before execution — no action proceeds silently.
 - **SC-012**: An agent configured with any supported auth method (`api_key`, `oauth_token`, `bedrock`, `vertex`, or `foundry`) runs a complete test case successfully using the corresponding credentials. For cloud providers (Bedrock, Vertex, Foundry), no Anthropic API key is required.
-- **SC-013**: A custom Python function registered as a tool via the decorator pattern is callable by the agent and returns correct results in 100% of valid invocations.
-- **SC-014**: Pre- and post-execution hooks fire at their configured points in 100% of agent loop iterations where they are defined.
+- **SC-013**: A tool configured in `agent.yaml` is callable by the Claude-native agent and returns correct results in 100% of valid invocations where the tool is correctly configured and the input is within the tool's expected parameters.
+- **SC-014**: When an `allowed_tools` list is configured, 100% of tool calls to tools not on the list are blocked by the subprocess without crashing the session.
 - **SC-015**: When observability is enabled for a Claude-native agent, token usage metrics, API request events, and tool result events are exported to the configured OTLP endpoint within 30 seconds of agent activity, verifiable via the OTLP backend.
+- **SC-016**: When `response_format` is configured for a Claude-native agent, 100% of successful agent responses are returned as validated structured objects matching the schema. Evaluation metrics receive a serialised text representation and produce scores normally.
 
 ## Clarifications
 
@@ -332,13 +350,14 @@ A user configures their Claude-native agent's authentication method via `agent.y
 ## Assumptions
 
 - The Claude Agent SDK is stable enough for the use cases in this spec (interactive chat, test execution, tool calling). Known alpha limitations are documented but do not block delivery.
-- Vectorstore and hierarchical document tools continue to use SK-powered embedding services for index generation, even when the agent conversation loop uses the Claude-native backend. The Claude Agent SDK subprocess does not generate embeddings — HoloDeck initializes all tool indexes in-process before the subprocess starts. A separate `embedding_provider` field in `agent.yaml` is required to configure which provider generates embeddings for Anthropic agents with vectorstore tools.
+- The Claude Agent SDK bundles the `claude` CLI as a package dependency — it does not need to be separately installed. However, **Node.js must be present on the host machine** as a runtime prerequisite for the SDK. HoloDeck MUST verify Node.js availability at agent startup and surface a clear error with installation guidance if it is absent.
+- Vectorstore and hierarchical document tools continue to use SK-powered embedding services for index generation, even when the agent conversation loop uses the Claude-native backend. The Claude Agent SDK subprocess does not generate embeddings — HoloDeck initializes all tool indexes in-process before the subprocess starts. A top-level `embedding_provider: LLMProvider` field in `agent.yaml` configures which provider generates embeddings for Anthropic agents with vectorstore tools (e.g., `provider: openai`, `name: text-embedding-3-small`).
 - MCP tools using stdio transport are the initial scope. SSE, WebSocket, and HTTP transports remain out of scope for this feature (as they are for the existing backend). For Anthropic agents, the Claude Code subprocess manages MCP server processes directly using its native MCP client — HoloDeck does not use SK's `MCPStdioPlugin` for these agents.
 - Evaluation metrics operate on the agent's final text response, which both backends produce. The evaluation pipeline requires a provider-agnostic execution result interface (FR-012b) to extract responses without depending on SK's `ChatHistory` type.
 - Users will have valid credentials for their chosen auth method configured via environment variable or `.env` file: `ANTHROPIC_API_KEY` for direct API access, `CLAUDE_CODE_OAUTH_TOKEN` for OAuth token auth (obtained via `claude setup-token`), or standard cloud provider environment credentials for Bedrock, Vertex, or Foundry. HoloDeck validates credential presence at startup, before the subprocess is spawned.
 - The Claude Agent SDK's native context compaction handles conversation history management automatically; no custom truncation or summarization logic is required in HoloDeck.
 - The existing `chat/executor.py` non-streaming architecture requires restructuring to consume an async event stream. This is treated as a prerequisite internal to this feature, not a separate feature. The streaming change is implemented as part of US-5 delivery.
-- Tool filtering (`tool_filtering`) and structured output (`response_format`) are gracefully disabled for `provider: anthropic` with user-visible warnings, not silent failures.
+- Tool filtering (`tool_filtering`) is gracefully disabled for `provider: anthropic` with a user-visible warning, not a silent failure.
 - The Claude Code subprocess has built-in OTel support activated entirely via environment variables set before spawn. HoloDeck does not need to instrument the subprocess directly — it only needs to translate `agent.yaml` observability config into the correct env vars. The SK-based OTel decorators used for non-Anthropic backends do not apply here and are not used.
 
 ## Out of Scope
@@ -350,6 +369,8 @@ A user configures their Claude-native agent's authentication method via `agent.y
 - Changes to evaluation metric logic or scoring algorithms.
 - A GUI or web-based approval interface for `manual` permission mode (terminal prompt only for this spec).
 - Removing Semantic Kernel from the project dependency tree (SK remains installed; only the agent conversation loop is replaced for Anthropic providers).
-- **Structured output (`response_format`) for Claude-native agents**: The `response_format` field is not supported for `provider: anthropic` in this feature. A warning is emitted and the field is ignored. Future support may be added when the Claude Agent SDK exposes a stable structured output interface.
 - **Semantic tool filtering (`tool_filtering`) for Claude-native agents**: The `tool_filtering` capability depends on SK's in-process kernel and is not compatible with the subprocess model. It is silently disabled with a warning for `provider: anthropic`. A follow-up spec will address tool filtering for the Claude-native backend.
 - **Streaming for non-Anthropic backends**: Streaming is introduced in this feature via the Claude Agent SDK's event stream. Backporting streaming to the SK-based backend (OpenAI, Azure, Ollama) is a separate effort not in scope here.
+
+- **`can_use_tool` callback interception**: Python callables cannot be serialized across the subprocess boundary. Implementing `can_use_tool` requires an IPC round-trip (subprocess emits permission request → parent evaluates → subprocess receives approve/deny). This is deferred to a follow-up spec.
+- **Pre/post execution hooks (Python callables)**: Same subprocess boundary constraint as `can_use_tool`. Live Python hook execution within the Claude Code agent loop is not achievable in this model without a defined IPC protocol. Deferred to a follow-up spec.
