@@ -11,6 +11,12 @@ from holodeck.lib.backends.base import (
 )
 from holodeck.lib.backends.selector import BackendSelector
 from holodeck.lib.backends.sk_backend import SKBackend, SKSession
+from holodeck.lib.backends.tool_adapters import (
+    HierarchicalDocToolAdapter,
+    VectorStoreToolAdapter,
+    build_holodeck_sdk_server,
+    create_tool_adapters,
+)
 
 __all__ = [
     "ExecutionResult",
@@ -23,4 +29,8 @@ __all__ = [
     "BackendSelector",
     "SKBackend",
     "SKSession",
+    "HierarchicalDocToolAdapter",
+    "VectorStoreToolAdapter",
+    "build_holodeck_sdk_server",
+    "create_tool_adapters",
 ]
