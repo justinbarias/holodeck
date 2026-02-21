@@ -37,6 +37,7 @@ from semantic_kernel.functions.kernel_function_from_method import (
 )
 
 from holodeck.config.schema import SchemaValidator
+from holodeck.lib.errors import AgentFactoryError
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
 from holodeck.lib.tool_filter import ToolFilterManager
@@ -95,12 +96,6 @@ class AgentExecutionResult:
     tool_results: list[dict[str, Any]]
     chat_history: ChatHistory
     token_usage: TokenUsage | None = None
-
-
-class AgentFactoryError(Exception):
-    """Error raised during agent bridge operations."""
-
-    pass
 
 
 class AgentThreadRun:
