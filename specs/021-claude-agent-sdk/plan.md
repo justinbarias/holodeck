@@ -479,16 +479,17 @@ class BackendSelector:
 **FR**: FR-008, FR-012b, FR-013
 
 **9.1** — Update `lib/test_runner/executor.py`:
-- Replace `AgentFactory(config).create_thread_run()` with `BackendSelector.create(agent, tools)`
+- Replace `AgentFactory(config).create_thread_run()` with `BackendSelector.select(agent, tools)`
 - Replace `AgentExecutionResult` with `ExecutionResult` (from `backends.base`)
 - Remove all `ChatHistory`, `FunctionCallContent`, `FunctionResultContent` imports
+- Skip `_create_agent_factory()` when `_backend` is set (BackendSelector handles tool init). Note: remove `_create_agent_factory()` entirely after chat migration in Phase 10.
 - `max_turns` exceeded: check `result.is_error and result.error_reason == "max_turns limit reached"` → mark test as failed (not evaluation error)
 - Subprocess crash: `result.is_error and "subprocess terminated"` → mark as execution error, continue test suite
 
 **9.2** — Update `lib/test_runner/agent_factory.py`:
 - Thin facade: `AgentFactory` delegates to `BackendSelector`
 - Preserves public API for any code that imports `AgentFactory` directly
-- `AgentExecutionResult` re-exported from `backends.base.ExecutionResult` for backward compat
+- `AgentExecutionResult` kept as-is for backward compat (separate dataclass, not re-exported from `ExecutionResult`); add deprecation comment directing new code to use `ExecutionResult`
 
 **9.3** — Add `--allow-side-effects` flag to the `holodeck test` CLI command:
 - When absent (default): `ClaudeBackend` disables bash and file_system access for Anthropic-provider test runs (even if `bash.enabled: true` or `file_system.write: true` is in the YAML).
