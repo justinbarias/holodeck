@@ -7,9 +7,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from semantic_kernel.contents import ChatHistory
-
-from holodeck.lib.chat_history_utils import extract_last_assistant_content
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentThreadRun
 from holodeck.models.agent import Agent
@@ -120,8 +117,8 @@ class AgentExecutor:
             result = await self._thread_run.invoke(message)
             elapsed = time.time() - start_time
 
-            # Extract content from chat history
-            content = extract_last_assistant_content(result.chat_history)
+            # Extract content from execution result
+            content = result.response
 
             # Convert tool calls to ToolExecution models
             tool_executions = self._convert_tool_calls(result.tool_calls)
@@ -151,15 +148,23 @@ class AgentExecutor:
             logger.error(f"Agent execution failed: {e}", exc_info=True)
             raise RuntimeError(f"Agent execution failed: {e}") from e
 
-    def get_history(self) -> ChatHistory:
+    def get_history(self) -> list[dict[str, Any]]:
         """Get current conversation history.
 
         Returns:
-            Current ChatHistory from the thread run, or empty if not initialized.
+            Serialized conversation history as a list of dicts, or empty list.
         """
         if self._thread_run is not None:
-            return self._thread_run.chat_history
-        return ChatHistory()
+            return [
+                {
+                    "role": (
+                        msg.role.value if hasattr(msg.role, "value") else str(msg.role)
+                    ),
+                    "content": str(msg.content) if msg.content else "",
+                }
+                for msg in self._thread_run.chat_history.messages
+            ]
+        return []
 
     def clear_history(self) -> None:
         """Clear conversation history by discarding current thread run.

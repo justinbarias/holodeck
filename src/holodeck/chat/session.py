@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from semantic_kernel.contents import ChatHistory
-
 from holodeck.chat.executor import AgentExecutor, AgentResponse
 from holodeck.chat.message import MessageValidator
 from holodeck.lib.logging_config import get_logger
@@ -69,10 +67,9 @@ class ChatSessionManager:
             )
 
             # Create chat session with empty history
-            history = ChatHistory()
             self.session = ChatSession(
                 agent_config=self.agent_config,
-                history=history,
+                history=[],
                 state=SessionState.ACTIVE,
             )
 

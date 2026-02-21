@@ -6,7 +6,6 @@ from unittest import mock
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from semantic_kernel.contents import ChatHistory
 
 from holodeck.chat.executor import AgentExecutor, AgentResponse
 from holodeck.lib.test_runner.agent_factory import AgentExecutionResult, AgentFactory
@@ -90,14 +89,13 @@ class TestAgentExecutorExecution:
         # Create mock AgentFactory and thread run
         mock_factory = MagicMock()
         mock_thread_run = AsyncMock()
-        mock_history = ChatHistory()
-        mock_history.add_user_message("Hello")
-        mock_history.add_assistant_message("Hi there!")
+        mock_history = MagicMock()
 
         mock_thread_run.invoke.return_value = AgentExecutionResult(
             tool_calls=[],
             tool_results=[],
             chat_history=mock_history,
+            response="Hi there!",
         )
         mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
         mock_factory.shutdown = AsyncMock()
@@ -120,9 +118,7 @@ class TestAgentExecutorExecution:
 
         mock_factory = MagicMock()
         mock_thread_run = AsyncMock()
-        mock_history = ChatHistory()
-        mock_history.add_user_message("Use the search tool")
-        mock_history.add_assistant_message("Searching...")
+        mock_history = MagicMock()
 
         mock_thread_run.invoke.return_value = AgentExecutionResult(
             tool_calls=[
@@ -133,6 +129,7 @@ class TestAgentExecutorExecution:
             ],
             tool_results=[],
             chat_history=mock_history,
+            response="Searching...",
         )
         mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
         mock_factory.shutdown = AsyncMock()
@@ -153,14 +150,13 @@ class TestAgentExecutorExecution:
 
         mock_factory = MagicMock()
         mock_thread_run = AsyncMock()
-        mock_history = ChatHistory()
-        mock_history.add_user_message("Test")
-        mock_history.add_assistant_message("Response")
+        mock_history = MagicMock()
 
         mock_thread_run.invoke.return_value = AgentExecutionResult(
             tool_calls=[],
             tool_results=[],
             chat_history=mock_history,
+            response="Response",
         )
         mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
         mock_factory.shutdown = AsyncMock()
@@ -193,10 +189,8 @@ class TestAgentExecutorHistory:
         )
 
     @mock.patch("holodeck.chat.executor.AgentFactory")
-    def test_get_history_returns_chat_history(
-        self, mock_factory_class: MagicMock
-    ) -> None:
-        """History accessible via getter."""
+    def test_get_history_returns_list(self, mock_factory_class: MagicMock) -> None:
+        """History returns a list when no thread run initialized."""
         agent_config = self._make_agent()
         mock_factory = MagicMock(spec=AgentFactory)
         mock_factory.agent = MagicMock()
@@ -205,7 +199,7 @@ class TestAgentExecutorHistory:
         executor = AgentExecutor(agent_config)
         history = executor.get_history()
 
-        assert history is not None
+        assert isinstance(history, list)
 
     @mock.patch("holodeck.chat.executor.AgentFactory")
     def test_clear_history(self, mock_factory_class: MagicMock) -> None:
@@ -213,9 +207,6 @@ class TestAgentExecutorHistory:
         agent_config = self._make_agent()
 
         mock_factory = MagicMock(spec=AgentFactory)
-        mock_history = ChatHistory()
-        mock_history.add_user_message("Test")
-        mock_history.add_assistant_message("Response")
 
         mock_factory_class.return_value = mock_factory
 

@@ -29,10 +29,7 @@ from typing import Any, Protocol
 
 from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
-from holodeck.lib.chat_history_utils import (
-    extract_last_assistant_content,
-    extract_tool_names,
-)
+from holodeck.lib.chat_history_utils import extract_tool_names
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.evaluators.azure_ai import (
     CoherenceEvaluator,
@@ -548,7 +545,7 @@ class TestExecutor:
             result = await thread_run.invoke(agent_input)
             invoke_elapsed = time.time() - invoke_start
 
-            agent_response = extract_last_assistant_content(result.chat_history)
+            agent_response = result.response
             tool_calls = extract_tool_names(result.tool_calls)
             tool_results = result.tool_results
 

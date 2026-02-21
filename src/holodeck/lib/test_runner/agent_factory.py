@@ -96,6 +96,7 @@ class AgentExecutionResult:
     tool_results: list[dict[str, Any]]
     chat_history: ChatHistory
     token_usage: TokenUsage | None = None
+    response: str = ""
 
 
 class AgentThreadRun:
@@ -263,6 +264,24 @@ class AgentThreadRun:
             f"Agent invocation failed after {self.max_retries} attempts: {last_error}"
         ) from last_error
 
+    def _extract_response_from_history(self) -> str:
+        """Extract the last assistant message content from chat history.
+
+        Returns:
+            Content of the last assistant message, or empty string if not found.
+        """
+        if not self.chat_history or not self.chat_history.messages:
+            return ""
+        for message in reversed(self.chat_history.messages):
+            if (
+                hasattr(message, "role")
+                and message.role == "assistant"
+                and hasattr(message, "content")
+            ):
+                content = message.content
+                return str(content) if content else ""
+        return ""
+
     async def _invoke_agent_impl(self) -> AgentExecutionResult:
         """Internal implementation of agent invocation.
 
@@ -337,6 +356,7 @@ class AgentThreadRun:
                 tool_results=tool_results,
                 chat_history=self.chat_history,
                 token_usage=token_usage,
+                response=self._extract_response_from_history(),
             )
 
         except Exception as e:

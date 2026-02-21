@@ -249,19 +249,13 @@ class TestExecutorMainFlow:
             llm_timeout=60
         )
 
-        # Mock chat history with assistant response
-        # Use Mock instead of MagicMock to allow direct attribute assignment
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "The answer is 4"
-        mock_chat_history.messages = [mock_message]
-
         # Mock agent execution result
+        mock_chat_history = Mock()
         mock_result = AgentExecutionResult(
             tool_calls=[],
             tool_results=[],
             chat_history=mock_chat_history,
+            response="The answer is 4",
         )
 
         # Mock agent factory with thread run pattern
@@ -385,6 +379,7 @@ class TestFileProcessing:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -456,6 +451,7 @@ class TestFileProcessing:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -654,6 +650,7 @@ class TestFileContentInAgent:
             mock_message.content = "Analysis complete"
             mock_chat_history.messages = [mock_message]
             mock_result.chat_history = mock_chat_history
+            mock_result.response = "Analysis complete"
             return mock_result
 
         mock_thread_run = Mock(spec=AgentThreadRun)
@@ -722,6 +719,7 @@ class TestChatHistoryHandling:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = None  # Empty chat history
+        mock_result.response = ""
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
         mock_factory = Mock(spec=AgentFactory)
@@ -878,6 +876,7 @@ class TestEvaluationMetrics:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = response
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -961,6 +960,7 @@ class TestEvaluationMetrics:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1050,6 +1050,7 @@ class TestToolCallValidationInExecution:
             {"name": "calculator"},
         ]
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Result"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1140,6 +1141,7 @@ class TestContextInEvaluation:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response based on context"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1228,6 +1230,7 @@ class TestNoMetricsConfigured:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1321,6 +1324,7 @@ class TestReportGeneration:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1400,6 +1404,7 @@ class TestReportGeneration:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1508,6 +1513,7 @@ class TestPerTestMetricResolution:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response based on context"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1600,6 +1606,7 @@ class TestPerTestMetricResolution:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1733,6 +1740,7 @@ class TestPerTestMetricResolution:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1834,6 +1842,7 @@ class TestPerTestMetricResolution:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1912,6 +1921,7 @@ class TestProgressCallbackIntegration:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -1979,6 +1989,7 @@ class TestProgressCallbackIntegration:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -2041,6 +2052,7 @@ class TestProgressCallbackIntegration:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Test Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -2114,6 +2126,7 @@ class TestProgressCallbackIntegration:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -2183,6 +2196,7 @@ class TestProgressCallbackIntegration:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -2287,18 +2301,6 @@ class TestExecutorComponentCreation:
         )
 
         assert "rouge" in executor.evaluators
-
-    @pytest.mark.asyncio
-    async def test_extract_response_text_empty_history(self):
-        """Test extract_last_assistant_content with empty chat history.
-
-        Note: This tests the shared utility function from chat_history_utils.
-        """
-        from holodeck.lib.chat_history_utils import extract_last_assistant_content
-
-        # Test with None chat history
-        result = extract_last_assistant_content(None)  # type: ignore
-        assert result == ""
 
     @pytest.mark.asyncio
     async def test_extract_tool_names_malformed(self):
@@ -2431,6 +2433,7 @@ class TestOnTestStartCallback:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -2705,6 +2708,7 @@ class TestChatHistoryEdgeCases:
         mock_chat_history = Mock()
         mock_chat_history.messages = []  # Empty messages list
         mock_result.chat_history = mock_chat_history
+        mock_result.response = ""
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
         mock_factory = Mock(spec=AgentFactory)
@@ -2783,6 +2787,7 @@ class TestUnconfiguredMetrics:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Answer"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -3096,6 +3101,7 @@ class TestDynamicRetrievalContext:
             }
         ]
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "AI is artificial intelligence."
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -3220,6 +3226,7 @@ class TestDynamicRetrievalContext:
             }
         ]
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "AI is artificial intelligence."
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)

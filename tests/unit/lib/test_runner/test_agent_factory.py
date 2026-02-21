@@ -13,6 +13,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from semantic_kernel.contents import ChatHistory
 from semantic_kernel.functions import KernelArguments
 
 from holodeck.lib.test_runner.agent_factory import (
@@ -3394,3 +3395,44 @@ class TestMiscellaneousCoverage:
             # Should return empty since all messages are skipped
             assert tool_calls == []
             assert tool_results == []
+
+
+class TestAgentExecutionResultResponseField:
+    """Tests for the `response` field on AgentExecutionResult (T029).
+
+    Expected failures until Phase 4B adds response: str = "" to the dataclass:
+      - test_default_response_is_empty_string  → AttributeError (field absent)
+      - test_explicit_response_stored          → TypeError (unexpected kwarg)
+      - test_backward_compat_chat_history_accessible → TypeError (unexpected kwarg)
+    """
+
+    def test_default_response_is_empty_string(self) -> None:
+        """Without an explicit response kwarg, response defaults to empty string."""
+        result = AgentExecutionResult(
+            tool_calls=[], tool_results=[], chat_history=ChatHistory()
+        )
+        # Fails with AttributeError until the `response` field is added.
+        assert result.response == ""
+
+    def test_explicit_response_stored(self) -> None:
+        """Explicit response= kwarg is stored correctly on the dataclass."""
+        # Fails with TypeError until the `response` field is added.
+        result = AgentExecutionResult(
+            tool_calls=[],
+            tool_results=[],
+            chat_history=ChatHistory(),
+            response="Hello",
+        )
+        assert result.response == "Hello"
+
+    def test_backward_compat_chat_history_accessible(self) -> None:
+        """chat_history field is still accessible alongside the new response field."""
+        history = ChatHistory()
+        # Fails with TypeError until the `response` field is added.
+        result = AgentExecutionResult(
+            tool_calls=[],
+            tool_results=[],
+            chat_history=history,
+            response="Hi",
+        )
+        assert result.chat_history is history

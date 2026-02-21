@@ -51,23 +51,23 @@
 
 ### Tests for `sk_backend.py`
 
-- [ ] T024 [P] Write unit tests for `_extract_response()` private function in `tests/unit/lib/backends/test_sk_backend.py`: (1) extracts last assistant message content from a `ChatHistory` with multiple messages; (2) returns empty string for empty `ChatHistory`; (3) returns empty string for `ChatHistory` with no assistant messages; (4) returns empty string for `ChatHistory` where last assistant message has `None` content. Mock `ChatHistory` using `semantic_kernel.contents.ChatHistory` directly in the test (this is the one place outside `sk_backend.py` where ChatHistory is used — in tests that verify the SK-specific implementation). (plan.md:L276, research.md:L295-306, quickstart.md:L362-366)
+- [x] T024 [P] Write unit tests for `_extract_response()` private function in `tests/unit/lib/backends/test_sk_backend.py`: (1) extracts last assistant message content from a `ChatHistory` with multiple messages; (2) returns empty string for empty `ChatHistory`; (3) returns empty string for `ChatHistory` with no assistant messages; (4) returns empty string for `ChatHistory` where last assistant message has `None` content. Mock `ChatHistory` using `semantic_kernel.contents.ChatHistory` directly in the test (this is the one place outside `sk_backend.py` where ChatHistory is used — in tests that verify the SK-specific implementation). (plan.md:L276, research.md:L295-306, quickstart.md:L362-366)
 
-- [ ] T025 [P] Write unit tests for `SKBackend` implementing `AgentBackend` Protocol in `tests/unit/lib/backends/test_sk_backend.py`: (1) `SKBackend` passes `isinstance(backend, AgentBackend)` runtime check; (2) `initialize()` calls `_ensure_tools_initialized()` on the underlying factory; (3) `invoke_once(message)` returns `ExecutionResult` with non-empty `response` field (mock the underlying SK agent invocation); (4) `invoke_once()` correctly maps `tool_calls` from `AgentExecutionResult` to `ExecutionResult.tool_calls`; (5) `invoke_once()` correctly maps `tool_results` from `AgentExecutionResult` to `ExecutionResult.tool_results`; (6) `invoke_once()` correctly maps `TokenUsage` from `AgentExecutionResult` to `ExecutionResult.token_usage`; (7) `invoke_once()` populates `response` via `_extract_response()` — never returns empty string when ChatHistory has an assistant message; (8) `teardown()` calls `shutdown()` on the underlying factory. Use mocks/patches for the SK Kernel, Agent, and ChatHistory — do NOT make real LLM calls. (plan.md:L269-277, data-model.md:L297-338, contracts/execution-result.md:L100-110)
+- [x] T025 [P] Write unit tests for `SKBackend` implementing `AgentBackend` Protocol in `tests/unit/lib/backends/test_sk_backend.py`: (1) `SKBackend` passes `isinstance(backend, AgentBackend)` runtime check; (2) `initialize()` calls `_ensure_tools_initialized()` on the underlying factory; (3) `invoke_once(message)` returns `ExecutionResult` with non-empty `response` field (mock the underlying SK agent invocation); (4) `invoke_once()` correctly maps `tool_calls` from `AgentExecutionResult` to `ExecutionResult.tool_calls`; (5) `invoke_once()` correctly maps `tool_results` from `AgentExecutionResult` to `ExecutionResult.tool_results`; (6) `invoke_once()` correctly maps `TokenUsage` from `AgentExecutionResult` to `ExecutionResult.token_usage`; (7) `invoke_once()` populates `response` via `_extract_response()` — never returns empty string when ChatHistory has an assistant message; (8) `teardown()` calls `shutdown()` on the underlying factory. Use mocks/patches for the SK Kernel, Agent, and ChatHistory — do NOT make real LLM calls. (plan.md:L269-277, data-model.md:L297-338, contracts/execution-result.md:L100-110)
 
-- [ ] T026 [P] Write unit tests for `SKSession` implementing `AgentSession` Protocol in `tests/unit/lib/backends/test_sk_backend.py`: (1) `SKSession` passes `isinstance(session, AgentSession)` runtime check; (2) `send(message)` returns `ExecutionResult` with populated `response`; (3) `send(message)` preserves conversation state across multiple calls (multi-turn); (4) `send_streaming(message)` is an async generator that yields the complete response as a single chunk (no-op streaming — plan.md:L274); (5) `close()` succeeds without error. Mock the underlying `AgentThreadRun` — do NOT make real LLM calls. (plan.md:L271-275, data-model.md:L260-293, contracts/execution-result.md:L86-96)
+- [x] T026 [P] Write unit tests for `SKSession` implementing `AgentSession` Protocol in `tests/unit/lib/backends/test_sk_backend.py`: (1) `SKSession` passes `isinstance(session, AgentSession)` runtime check; (2) `send(message)` returns `ExecutionResult` with populated `response`; (3) `send(message)` preserves conversation state across multiple calls (multi-turn); (4) `send_streaming(message)` is an async generator that yields the complete response as a single chunk (no-op streaming — plan.md:L274); (5) `close()` succeeds without error. Mock the underlying `AgentThreadRun` — do NOT make real LLM calls. (plan.md:L271-275, data-model.md:L260-293, contracts/execution-result.md:L86-96)
 
 ### Tests for `selector.py`
 
-- [ ] T027 [P] Write unit tests for `BackendSelector.create()` routing logic in `tests/unit/lib/backends/test_selector.py`: (1) `provider=openai` returns `SKBackend` instance; (2) `provider=azure_openai` returns `SKBackend` instance; (3) `provider=ollama` returns `SKBackend` instance; (4) `provider=anthropic` raises `BackendInitError` with message indicating Claude backend is not yet implemented (placeholder until Phase 8); (5) returned backend has `initialize()` called automatically by `create()`. Mock the SKBackend constructor to avoid real kernel creation. Create `tests/unit/lib/backends/test_selector.py` (new file). (plan.md:L448-464, research.md:L295-306)
+- [x] T027 [P] Write unit tests for `BackendSelector.create()` routing logic in `tests/unit/lib/backends/test_selector.py`: (1) `provider=openai` returns `SKBackend` instance; (2) `provider=azure_openai` returns `SKBackend` instance; (3) `provider=ollama` returns `SKBackend` instance; (4) `provider=anthropic` raises `BackendInitError` with message indicating Claude backend is not yet implemented (placeholder until Phase 8); (5) returned backend has `initialize()` called automatically by `create()`. Mock the SKBackend constructor to avoid real kernel creation. Create `tests/unit/lib/backends/test_selector.py` (new file). (plan.md:L448-464, research.md:L295-306)
 
 ### Tests for `models/chat.py` update
 
-- [ ] T028 [P] Write unit tests for updated `ChatSession.history` type in `tests/unit/models/test_chat_models.py` (existing file — add new test class `TestChatSessionHistoryType`): (1) `ChatSession` construction with default `history=[]` succeeds; (2) `ChatSession` construction with pre-populated `history=[{"role": "user", "content": "hi"}]` succeeds; (3) other `ChatSession` fields (`session_id`, `agent_config`, `started_at`, `message_count`, `state`, `metadata`) are unchanged; (4) `ChatSession` no longer requires `arbitrary_types_allowed` in `model_config` (since `list[dict]` is a native Pydantic type). Note: these tests will fail initially because `ChatSession.history` is still typed as `ChatHistory`. (plan.md:L285-288, data-model.md:L179-198)
+- [x] T028 [P] Write unit tests for updated `ChatSession.history` type in `tests/unit/models/test_chat_models.py` (existing file — add new test class `TestChatSessionHistoryType`): (1) `ChatSession` construction with default `history=[]` succeeds; (2) `ChatSession` construction with pre-populated `history=[{"role": "user", "content": "hi"}]` succeeds; (3) other `ChatSession` fields (`session_id`, `agent_config`, `started_at`, `message_count`, `state`, `metadata`) are unchanged; (4) `ChatSession` no longer requires `arbitrary_types_allowed` in `model_config` (since `list[dict]` is a native Pydantic type). Note: these tests will fail initially because `ChatSession.history` is still typed as `ChatHistory`. (plan.md:L285-288, data-model.md:L179-198)
 
 ### Tests for caller updates
 
-- [ ] T029 [P] Write unit tests for `AgentExecutionResult.response` field in `tests/unit/lib/test_runner/test_agent_factory.py` (existing file — add new test class or functions): (1) `AgentExecutionResult` accepts a `response: str` field with default `""`; (2) when `AgentThreadRun.invoke()` completes, `result.response` is populated with the last assistant message content (not empty); (3) backward compat: `result.chat_history` is still accessible (not removed in Phase 4 — removed in Phase 9). This tests the transition strategy: callers can use `result.response` immediately and Phase 9 removes `chat_history`. (plan.md:L276-277, contracts/execution-result.md:L150-156)
+- [x] T029 [P] Write unit tests for `AgentExecutionResult.response` field in `tests/unit/lib/test_runner/test_agent_factory.py` (existing file — add new test class or functions): (1) `AgentExecutionResult` accepts a `response: str` field with default `""`; (2) when `AgentThreadRun.invoke()` completes, `result.response` is populated with the last assistant message content (not empty); (3) backward compat: `result.chat_history` is still accessible (not removed in Phase 4 — removed in Phase 9). This tests the transition strategy: callers can use `result.response` immediately and Phase 9 removes `chat_history`. (plan.md:L276-277, contracts/execution-result.md:L150-156)
 
 **Checkpoint**: All test tasks written. Run `pytest tests/unit/lib/backends/test_sk_backend.py tests/unit/lib/backends/test_selector.py -n auto` — all MUST fail.
 
@@ -77,7 +77,7 @@
 
 ### Core: `sk_backend.py`
 
-- [ ] T030 Create `src/holodeck/lib/backends/sk_backend.py` implementing: (plan.md:L269-277, data-model.md:L297-338, contracts/execution-result.md:L86-128, quickstart.md:L362-378)
+- [x] T030 Create `src/holodeck/lib/backends/sk_backend.py` implementing: (plan.md:L269-277, data-model.md:L297-338, contracts/execution-result.md:L86-128, quickstart.md:L362-378)
 
   **Private function: `_extract_response(history: ChatHistory) -> str`**
   - Moved from `chat_history_utils.py:extract_last_assistant_content()`
@@ -101,7 +101,7 @@
 
 ### Core: `selector.py`
 
-- [ ] T031 Create `src/holodeck/lib/backends/selector.py` implementing: (plan.md:L448-464, research.md:L295-306)
+- [x] T031 Create `src/holodeck/lib/backends/selector.py` implementing: (plan.md:L448-464, research.md:L295-306)
 
   **Class: `BackendSelector`**
   - `@staticmethod async def create(agent: Agent, tool_instances: list | None = None, mode: Literal["test", "chat"] = "test", execution_config: ExecutionConfig | None = None, force_ingest: bool = False) -> AgentBackend`
@@ -112,13 +112,13 @@
 
 ### Refactor: `chat_history_utils.py`
 
-- [ ] T032 Update `src/holodeck/lib/chat_history_utils.py`: (plan.md:L279-283)
+- [x] T032 Update `src/holodeck/lib/chat_history_utils.py`: (plan.md:L279-283)
   - **Remove** `extract_last_assistant_content()` function entirely — it has been moved to `sk_backend.py` as `_extract_response()`
   - **Remove** `from semantic_kernel.contents import ChatHistory` import — no SK types remain in this module
   - **Keep** `extract_tool_names(tool_calls: list[dict[str, Any]]) -> list[str]` — this function is SK-free and used by the test runner
   - Update module docstring to reflect the remaining function only
 
-- [ ] T032b Update `tests/unit/lib/test_chat_history_utils.py` to reflect the removed function: (plan.md:L279-283)
+- [x] T032b Update `tests/unit/lib/test_chat_history_utils.py` to reflect the removed function: (plan.md:L279-283)
   - **Remove** the entire `TestExtractLastAssistantContent` class (7 tests) — the function it tests has been moved to `sk_backend.py` and is now covered by T024's tests for `_extract_response()`
   - **Remove** `from holodeck.lib.chat_history_utils import extract_last_assistant_content` import
   - **Remove** `from semantic_kernel.contents import ChatHistory` import (if present)
@@ -127,21 +127,21 @@
 
 ### Update: `models/chat.py`
 
-- [ ] T033 Update `src/holodeck/models/chat.py`: (plan.md:L285-288, data-model.md:L179-198)
+- [x] T033 Update `src/holodeck/models/chat.py`: (plan.md:L285-288, data-model.md:L179-198)
   - **Change** `ChatSession.history: ChatHistory` → `history: list[dict[str, Any]] = Field(default_factory=list)`
   - **Remove** `from semantic_kernel.contents import ChatHistory` import
   - **Remove** `arbitrary_types_allowed=True` from `ChatSession.model_config` (no longer needed — `list[dict]` is a native Pydantic type; change to `model_config = ConfigDict()` or remove the line if no other config is needed)
   - Add docstring to `history` field: `"""Conversation history as provider-agnostic dicts. Format: {"role": "user"|"assistant", "content": str}. SK backend serializes ChatHistory internally. Claude backend leaves empty (state in subprocess)."""`
   - Verify all other `ChatSession` fields remain unchanged
 
-- [ ] T033b Update `tests/unit/models/test_chat_models.py` to match the updated `ChatSession.history` type: (plan.md:L285-288)
+- [x] T033b Update `tests/unit/models/test_chat_models.py` to match the updated `ChatSession.history` type: (plan.md:L285-288)
   - **Remove** `from semantic_kernel.contents import ChatHistory` import
   - **Replace** all `ChatSession(history=ChatHistory(), ...)` constructions with `ChatSession(history=[], ...)` (2 occurrences: `test_session_started_at_in_future` at L60-63 and `test_session_defaults` at L68)
   - **Verify** all existing `ChatSession` assertions still pass with the `list[dict]` type
 
 ### Update: `agent_factory.py` (Thin Facade)
 
-- [ ] T034 Update `src/holodeck/lib/test_runner/agent_factory.py`: (plan.md:L290-294, contracts/execution-result.md:L150-156)
+- [x] T034 Update `src/holodeck/lib/test_runner/agent_factory.py`: (plan.md:L290-294, contracts/execution-result.md:L150-156)
   - **Add** `response: str = ""` field to `AgentExecutionResult` dataclass **after** `token_usage` (last field, with default — all existing positional constructions continue to work). This provides a transition path so callers can use `result.response` instead of `extract_last_assistant_content(result.chat_history)`
   - **Update** `AgentThreadRun._invoke_agent_impl()` to populate `response` field: after extracting tool calls and before returning, call `_extract_response_from_history(self.chat_history)` (a new private method on `AgentThreadRun` that calls the same logic as `_extract_response` from `sk_backend.py`) and set `response=extracted_content` in the returned `AgentExecutionResult`
   - **Add** private method `AgentThreadRun._extract_response_from_history(self, history: ChatHistory) -> str` that extracts the last assistant message — identical logic to `sk_backend._extract_response()`. This avoids importing from sk_backend (which would create a bidirectional dependency). The duplication is intentional and temporary — Phase 9 removes `AgentExecutionResult` entirely in favour of `ExecutionResult`.
@@ -152,7 +152,7 @@
 
 ### Update: `chat/executor.py` (Remove ChatHistory)
 
-- [ ] T035 Update `src/holodeck/chat/executor.py` to remove all `ChatHistory` imports and usage: (plan.md:L277)
+- [x] T035 Update `src/holodeck/chat/executor.py` to remove all `ChatHistory` imports and usage: (plan.md:L277)
   - **Remove** `from semantic_kernel.contents import ChatHistory` (L10)
   - **Remove** `from holodeck.lib.chat_history_utils import extract_last_assistant_content` (L12)
   - **Update** `execute_turn()` (L124): replace `content = extract_last_assistant_content(result.chat_history)` with `content = result.response` — uses the new `AgentExecutionResult.response` field populated by T034
@@ -160,7 +160,7 @@
   - **Update** `clear_history()` (L164): no changes needed (already just sets `_thread_run = None`)
   - **Verify** no other ChatHistory references remain in the file
 
-- [ ] T035b Update `tests/unit/agent/test_executor.py` to match the updated `AgentExecutionResult` and `chat/executor.py` changes: (plan.md:L277)
+- [x] T035b Update `tests/unit/agent/test_executor.py` to match the updated `AgentExecutionResult` and `chat/executor.py` changes: (plan.md:L277)
   - **Remove** `from semantic_kernel.contents import ChatHistory` import (L9)
   - **Update** all mocked `AgentExecutionResult` constructions (4+ occurrences) to include `response="<expected content>"` — e.g., `AgentExecutionResult(tool_calls=[], tool_results=[], chat_history=mock_history, response="Hi there!")`. Without this, `result.response` will be `""` after T035 changes executor to read `result.response` instead of extracting from `chat_history`
   - **Update** `test_get_history_returns_chat_history` (L196): rename to `test_get_history_returns_list` and update assertions to expect `list[dict]` return type instead of `ChatHistory`
@@ -168,7 +168,7 @@
 
 ### Update: `chat/session.py` (Remove ChatHistory)
 
-- [ ] T036 Update `src/holodeck/chat/session.py` to remove all `ChatHistory` imports and usage: (plan.md:L277, data-model.md:L179-198)
+- [x] T036 Update `src/holodeck/chat/session.py` to remove all `ChatHistory` imports and usage: (plan.md:L277, data-model.md:L179-198)
   - **Remove** `from semantic_kernel.contents import ChatHistory` (L8)
   - **Update** `start()` (L72): replace `history = ChatHistory()` with `history: list[dict[str, Any]] = []` — matches the updated `ChatSession.history` type from T033
   - **Update** `ChatSession` construction (L73-77): pass `history=history` (which is now `[]`)
@@ -176,13 +176,13 @@
 
 ### Update: `test_runner/executor.py` (Remove `extract_last_assistant_content`)
 
-- [ ] T037 Update `src/holodeck/lib/test_runner/executor.py` to use `result.response` instead of `extract_last_assistant_content`: (plan.md:L277)
+- [x] T037 Update `src/holodeck/lib/test_runner/executor.py` to use `result.response` instead of `extract_last_assistant_content`: (plan.md:L277)
   - **Update** import (L32-35): remove `extract_last_assistant_content` from `from holodeck.lib.chat_history_utils import (...)`. Keep `extract_tool_names`.
   - **Update** `_execute_single_test()` (L551): replace `agent_response = extract_last_assistant_content(result.chat_history)` with `agent_response = result.response` — uses the new `AgentExecutionResult.response` field from T034
   - **Verify** no other `extract_last_assistant_content` or `ChatHistory` references remain in the file
   - **Note**: `extract_tool_names(result.tool_calls)` (L552) remains unchanged — `extract_tool_names` is SK-free and stays in `chat_history_utils.py`
 
-- [ ] T037b Update `tests/unit/lib/test_runner/test_executor.py` to remove stale `extract_last_assistant_content` references: (plan.md:L277)
+- [x] T037b Update `tests/unit/lib/test_runner/test_executor.py` to remove stale `extract_last_assistant_content` references: (plan.md:L277)
   - **Remove** the local import of `extract_last_assistant_content` from `chat_history_utils` at L2297 (inside `test_extract_response_text_empty_history`)
   - **Remove or rewrite** the `test_extract_response_text_empty_history` test — the function it tests no longer exists in `chat_history_utils.py` (moved to `sk_backend.py` as `_extract_response()`, covered by T024)
   - **Update** any mocked `AgentExecutionResult` constructions (L261-264) to include `response="<expected content>"` — without this, `result.response` will be `""` after T037 changes executor to read `result.response`
@@ -190,7 +190,7 @@
 
 ### Update: `backends/__init__.py` exports
 
-- [ ] T038 Update `src/holodeck/lib/backends/__init__.py` to export key types for convenient imports: (plan.md:L185)
+- [x] T038 Update `src/holodeck/lib/backends/__init__.py` to export key types for convenient imports: (plan.md:L185)
   - Export from `base`: `ExecutionResult`, `AgentSession`, `AgentBackend`, `BackendError`, `BackendInitError`, `BackendSessionError`, `BackendTimeoutError`
   - Export from `selector`: `BackendSelector`
   - Export from `sk_backend`: `SKBackend`, `SKSession`
@@ -202,12 +202,12 @@
 
 ## Phase 4C: Verification & Quality
 
-- [ ] T039 Run full existing unit test suite: `make test-unit` — zero regressions. If any test fails, the failure is in the refactor (not the test) and MUST be fixed before proceeding. Pay special attention to: (plan.md:L299)
+- [x] T039 Run full existing unit test suite: `make test-unit` — zero regressions. If any test fails, the failure is in the refactor (not the test) and MUST be fixed before proceeding. Pay special attention to: (plan.md:L299)
   - `tests/unit/lib/test_runner/` — agent factory tests
   - `tests/unit/models/` — chat model tests
   - `tests/unit/chat/` — chat executor/session tests (if they exist)
 
-- [ ] T040 Run code quality checks — all MUST pass: (plan.md:L553-560)
+- [x] T040 Run code quality checks — all MUST pass: (plan.md:L553-560)
   ```bash
   make format         # Black + Ruff formatting
   make lint-fix       # Auto-fix linting issues
