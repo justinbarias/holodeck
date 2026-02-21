@@ -812,9 +812,3 @@ When generating commit messages:
 - [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
 
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
-
-## Active Technologies
-- N/A (stateless CLI tool, uses cloud provider state) (019-deploy-command)
-
-## Recent Changes
-- 019-deploy-command: Added Python 3.10+
