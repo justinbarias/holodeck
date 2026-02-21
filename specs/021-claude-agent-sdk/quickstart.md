@@ -60,38 +60,44 @@ src/holodeck/lib/backends/
 # Goal: confirm actual API vs. assumed API; update research.md §2 with results
 
 from claude_agent_sdk import (
-    ClaudeAgentOptions,   # [ASSUMED] — confirm class name
-    PermissionMode,        # [ASSUMED] — confirm enum vs string literal
-    query,                 # [ASSUMED] — confirm async generator at module level
-    ResultMessage,         # [ASSUMED] — confirm fields: structured_output, num_turns, usage
-    AssistantMessage,      # [ASSUMED] — confirm field: content (list of blocks)
+    ClaudeAgentOptions,   # ✓ Confirmed class name
+    PermissionMode,        # ✓ Confirmed — Literal type alias, NOT an Enum. Use string literals.
+    query,                 # ✓ Confirmed — keyword-only arg: query(prompt=..., options=...)
+    ResultMessage,         # ✓ Confirmed — fields: structured_output, num_turns, usage, session_id
+    AssistantMessage,      # ✓ Confirmed — field: content (list[TextBlock|ThinkingBlock|ToolUseBlock|ToolResultBlock])
 )
 
 # Verify tool decorator and server factory
-from claude_agent_sdk import tool, create_sdk_mcp_server  # [ASSUMED]
+from claude_agent_sdk import tool, create_sdk_mcp_server  # ✓ Confirmed
 
-@tool("test_tool", "A test tool", {"query": str})
+@tool("test_tool", "A test tool", {"query": str})  # Third param: input_schema (NOT schema_dict)
 async def my_tool(args: dict) -> dict:
     return {"content": [{"type": "text", "text": "ok"}]}
 
 server = create_sdk_mcp_server(name="test_server", tools=[my_tool])
 
-# Verify stateful multi-turn — does ClaudeSDKClient track session automatically?
-from claude_agent_sdk import ClaudeSDKClient  # [ASSUMED] — confirm class name
+# Multi-turn state is OPT-IN — NOT automatic.
+# Each query() call starts a fresh session unless continue_conversation=True is passed.
+from claude_agent_sdk import ClaudeSDKClient  # ✓ Confirmed class name
 
 async def verify_multiturn():
-    options = ClaudeAgentOptions(...)
-    async with ClaudeSDKClient(options=options) as client:
-        await client.query("What is 2+2?")
-        async for msg in client.receive_response():
-            ...
-        # Second turn — verify the client remembers turn 1 without extra params
-        await client.query("What did I just ask you?")
-        async for msg in client.receive_response():
-            ...
+    # Turn 1 — fresh session
+    opts_1 = ClaudeAgentOptions(permission_mode="bypassPermissions", max_turns=1)
+    async for event in query(prompt="What is 2+2?", options=opts_1):
+        if isinstance(event, ResultMessage):
+            session_id = event.session_id
 
-# After running: replace all [ASSUMED] markers in research.md §2 with confirmed names.
-# If any name is wrong, update plan.md, data-model.md, quickstart.md before Phase 1.
+    # Turn 2 — OPT-IN continuation (continue_conversation=True + resume required)
+    opts_2 = ClaudeAgentOptions(
+        permission_mode="bypassPermissions",
+        max_turns=1,
+        continue_conversation=True,  # Required — state is NOT automatic
+        resume=session_id,
+    )
+    async for event in query(prompt="What did I just ask you?", options=opts_2):
+        ...
+
+# Phase 0 complete: all [ASSUMED] markers replaced. See research.md §2 for full verification table.
 ```
 
 ### 1. Registering HoloDeck Tools with Claude SDK
@@ -115,7 +121,7 @@ def build_sdk_tools_server(
     # Factory function required — Python closures capture by reference, not value.
     # A bare for-loop would cause all closures to share the last loop variable.
     def make_search_fn(t: VectorStoreTool, name: str) -> SdkMcpTool:
-        @tool(name, f"Search {t.config.name}", {"query": str})
+        @tool(name, f"Search {t.config.name}", {"query": str})  # input_schema arg
         async def search_fn(args: dict) -> dict:
             result = await t.search(args["query"])
             return {"content": [{"type": "text", "text": result}]}

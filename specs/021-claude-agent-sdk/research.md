@@ -25,7 +25,7 @@ uv add claude-agent-sdk
 
 ## 2. API Entry Points
 
-> **Note**: The class names and method signatures in this section were researched from SDK v0.1.39 documentation. They must be verified via Phase 0 smoke test before implementation begins. Names marked with `[ASSUMED]` are to be replaced with confirmed names after Phase 0 completes.
+> **Note**: All names in this section were verified against SDK v0.1.39 via the Phase 0 smoke test (`scripts/smoke_test_sdk.py`). Zero `[ASSUMED]` markers remain.
 
 **Decision**: Use `query()` for test runs (stateless), `ClaudeSDKClient` for chat sessions (stateful).
 
@@ -35,27 +35,69 @@ uv add claude-agent-sdk
 
 ```python
 # Test runs — stateless
-async for message in query(prompt=user_input, options=options):  # query [ASSUMED]
+async for message in query(prompt=user_input, options=options):
     ...
 
-# Chat sessions — stateful (ClaudeSDKClient [ASSUMED])
+# Chat sessions — stateful
 async with ClaudeSDKClient(options=options) as client:
     await client.query(user_input)
     async for message in client.receive_response():
         ...
 ```
 
-**Assumed names pending Phase 0 verification** (replace with confirmed names after smoke test):
-- `ClaudeSDKClient` — class name `[ASSUMED]`
-- `ClaudeAgentOptions` — constructor fields and types `[ASSUMED]`
-- `PermissionMode` — enum values and casing (e.g., `"bypassPermissions"`) `[ASSUMED]`
-- `create_sdk_mcp_server()` — function name and signature `[ASSUMED]`
-- `ResultMessage.structured_output` — field name `[ASSUMED]`
-- `@tool` decorator — signature `(name, description, schema_dict)` `[ASSUMED]`
+**Confirmed names (Phase 0 verified — `scripts/smoke_test_sdk.py`):**
 
-**Stateful (`ClaudeSDKClient`) — multi-turn state verification**:
+| Assumed Name | Confirmed Name | Notes |
+|---|---|---|
+| `ClaudeSDKClient` | `ClaudeSDKClient` | ✓ Confirmed |
+| `ClaudeAgentOptions` | `ClaudeAgentOptions` | ✓ Confirmed. Full field list in §2a below. |
+| `PermissionMode` | `PermissionMode` | ✓ Confirmed. **`Literal` type alias, NOT an Enum class.** Use string literals: `"default"`, `"acceptEdits"`, `"plan"`, `"bypassPermissions"` |
+| `create_sdk_mcp_server()` | `create_sdk_mcp_server()` | ✓ Confirmed. Signature: `(name: str, version: str = '1.0.0', tools: list[SdkMcpTool] \| None = None) -> McpSdkServerConfig` |
+| `ResultMessage.structured_output` | `ResultMessage.structured_output` | ✓ Confirmed. Type: `Any` |
+| `@tool(name, description, schema_dict)` | `@tool(name, description, input_schema)` | **CORRECTED**: third param is `input_schema`, not `schema_dict`. Returns `SdkMcpTool`, not the function. |
 
-Multi-turn state mechanism requires Phase 0 verification. The key question: does each `.query()` call on the same `ClaudeSDKClient` instance automatically continue the conversation (tracking `session_id` internally), or must `continue_conversation=True` be passed to `ClaudeAgentOptions`? The 2-turn Phase 0 smoke test answers this. Phase 8 `ClaudeSession` implementation is written based on the verified answer.
+**Multi-turn state (Phase 0 verified):**
+
+Multi-turn state is **OPT-IN** — it is NOT automatic. Each `query()` call starts a fresh session unless `continue_conversation=True` is explicitly passed to `ClaudeAgentOptions`. To resume a specific prior session, additionally pass `resume=session_id`.
+
+```python
+# Turn 1 — fresh session
+opts_1 = ClaudeAgentOptions(permission_mode="bypassPermissions", max_turns=1)
+async for event in query(prompt="What is 2+2?", options=opts_1):
+    if isinstance(event, ResultMessage):
+        session_id = event.session_id
+
+# Turn 2 — continues previous session (OPT-IN via continue_conversation + resume)
+opts_2 = ClaudeAgentOptions(
+    permission_mode="bypassPermissions",
+    max_turns=1,
+    continue_conversation=True,  # Required — state is NOT automatic
+    resume=session_id,           # Resume specific session by ID
+)
+async for event in query(prompt="And what is that times 3?", options=opts_2):
+    ...
+```
+
+**Phase 8 `ClaudeSession` implementation implication**: The session wrapper must pass `continue_conversation=True` and track `session_id` across turns. Do not assume automatic context carry-over.
+
+### §2a — `ClaudeAgentOptions` Key Fields
+
+Full signature verified via smoke test. Key fields for HoloDeck use:
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `permission_mode` | `Literal['default','acceptEdits','plan','bypassPermissions'] \| None` | `None` | Autonomy level |
+| `continue_conversation` | `bool` | `False` | **Set True for multi-turn** |
+| `resume` | `str \| None` | `None` | Resume by session_id |
+| `mcp_servers` | `dict[str, McpStdioServerConfig \| McpSSEServerConfig \| McpHttpServerConfig \| McpSdkServerConfig] \| str \| Path` | `{}` | MCP server registrations |
+| `allowed_tools` | `list[str]` | `[]` | Tool allowlist |
+| `system_prompt` | `str \| SystemPromptPreset \| None` | `None` | Override system prompt |
+| `model` | `str \| None` | `None` | Model override |
+| `env` | `dict[str, str]` | `{}` | Subprocess env vars (auth, etc.) |
+| `cwd` | `str \| Path \| None` | `None` | Working directory |
+| `max_turns` | `int \| None` | `None` | Turn limit |
+| `include_partial_messages` | `bool` | `False` | Enable `StreamEvent` token deltas |
+| `output_format` | `dict[str, Any] \| None` | `None` | Structured output schema |
 
 **Alternatives considered**: Using `ClaudeSDKClient` for all modes (adds unnecessary session overhead for tests), using raw `anthropic` SDK (loses tool-calling, MCP, permission model).
 

@@ -146,7 +146,7 @@ The class names, method signatures, and module paths in the spec were researched
 
 - `ClaudeAgentOptions` (or actual class name) — confirm constructor fields and types
 - `PermissionMode` — confirm it's an enum or string literal; confirm `"bypassPermissions"` casing exactly
-- `@tool` decorator — confirm decorator signature `(name, description, schema_dict)` and that it returns a callable
+- `@tool` decorator — signature confirmed: `(name, description, input_schema)` (third param is `input_schema`, not `schema_dict`); returns `SdkMcpTool`
 - `create_sdk_mcp_server()` — confirm function exists and its signature `(name, tools)` → server config object
 - `ResultMessage.structured_output` — confirm field name exists and type
 - `ClaudeSDKClient` — confirm class name (vs alternative stateful API shape)
@@ -167,7 +167,7 @@ async with ClaudeSDKClient(options=options) as client:
 
 Confirm whether `continue_conversation=True` in `ClaudeAgentOptions` is required, or whether `ClaudeSDKClient` tracks the `session_id` internally across calls. Record the verified mechanism.
 
-**0.3** — Output: Document all confirmed class/method names in `research.md` §2 ("API Entry Points"), replacing `[ASSUMED]` markers with confirmed names.
+**0.3** — Output: Document all confirmed class/method names in `research.md` §2 ("API Entry Points"). **Phase 0 complete** — zero `[ASSUMED]` markers remain in `research.md §2`. See `scripts/smoke_test_sdk.py` for full verification output.
 
 **Gate**: If any API detail differs from spec assumptions, update the relevant sections of `plan.md`, `data-model.md`, `quickstart.md`, and `research.md` before proceeding to Phase 1.
 
