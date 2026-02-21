@@ -9,6 +9,8 @@ from holodeck.lib.backends.base import (
     BackendTimeoutError,
     ExecutionResult,
 )
+from holodeck.lib.backends.mcp_bridge import build_claude_mcp_configs
+from holodeck.lib.backends.otel_bridge import translate_observability
 from holodeck.lib.backends.selector import BackendSelector
 from holodeck.lib.backends.sk_backend import SKBackend, SKSession
 from holodeck.lib.backends.tool_adapters import (
@@ -31,6 +33,8 @@ __all__ = [
     "SKSession",
     "HierarchicalDocToolAdapter",
     "VectorStoreToolAdapter",
+    "build_claude_mcp_configs",
     "build_holodeck_sdk_server",
     "create_tool_adapters",
+    "translate_observability",
 ]

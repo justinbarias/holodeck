@@ -29,37 +29,37 @@
 
 ### Tests for Phase 6 (TDD — write first, verify they FAIL)
 
-- [ ] T001 [P] [US3] Write unit tests for `build_claude_mcp_configs()` happy path (single stdio MCP tool) in `tests/unit/lib/backends/test_mcp_bridge.py`
+- [x] T001 [P] [US3] Write unit tests for `build_claude_mcp_configs()` happy path (single stdio MCP tool) in `tests/unit/lib/backends/test_mcp_bridge.py`
   - **Ref**: `plan.md:372` ("Unit tests for config translation")
   - Construct `MCPTool(name="my_server", description="test", transport=TransportType.STDIO, command=CommandType.NPX, args=["server"], env={"KEY": "val"})`. Note: `command` is `CommandType` enum, `transport` is `TransportType` enum — use enum constructors, not strings.
   - Assert output is a typed `McpStdioServerConfig` (imported from `claude_agent_sdk.types`), keyed by `tool.name`.
   - Assert output dict value has `type="stdio"`, `command="npx"` (string from `.value`), `args=["server"]`, `env={"KEY": "val"}`.
 
-- [ ] T002 [P] [US3] Write unit tests for `build_claude_mcp_configs()` with multiple MCP tools in `tests/unit/lib/backends/test_mcp_bridge.py`
+- [x] T002 [P] [US3] Write unit tests for `build_claude_mcp_configs()` with multiple MCP tools in `tests/unit/lib/backends/test_mcp_bridge.py`
   - **Ref**: `plan.md:372`, `spec.md:61` (US3 — multiple MCP tools)
   - Test with 2+ stdio MCP tools → output dict has one entry per tool keyed by `tool.name`.
   - Verify no key collisions when tools have unique names.
 
-- [ ] T003 [P] [US3] Write unit tests for env var resolution in MCP bridge in `tests/unit/lib/backends/test_mcp_bridge.py`
+- [x] T003 [P] [US3] Write unit tests for env var resolution in MCP bridge in `tests/unit/lib/backends/test_mcp_bridge.py`
   - **Ref**: `plan.md:369` ("Resolve env vars using existing `_resolve_mcp_env()` logic"), `research.md:188`
   - Test that `${VAR}` patterns in `tool.env` values are resolved from the process environment.
   - Test that `env_file` contents are loaded and merged (lower precedence than explicit `env`).
   - Test that `config` dict is passed through as `MCP_CONFIG` JSON env var.
 
-- [ ] T004 [P] [US3] Write unit tests for non-stdio transport warning in `tests/unit/lib/backends/test_mcp_bridge.py`
+- [x] T004 [P] [US3] Write unit tests for non-stdio transport warning in `tests/unit/lib/backends/test_mcp_bridge.py`
   - **Ref**: `plan.md:366` ("non-stdio tools emit a warning and are skipped"), `spec.md:373` (Out of Scope — SSE/WebSocket/HTTP)
   - Test that an MCP tool with `transport=TransportType.SSE` emits a warning log and is excluded from the output dict.
   - Test that an MCP tool with `transport=TransportType.WEBSOCKET` is similarly skipped.
   - Test that a mix of stdio + non-stdio tools returns only the stdio entries.
 
-- [ ] T005 [P] [US3] Write unit test for empty MCP tool list and `command=None` edge case in `tests/unit/lib/backends/test_mcp_bridge.py`
+- [x] T005 [P] [US3] Write unit test for empty MCP tool list and `command=None` edge case in `tests/unit/lib/backends/test_mcp_bridge.py`
   - **Ref**: `plan.md:362` (function signature accepts `list[MCPTool]`), `factory.py:128` (default to "npx")
   - Test that passing an empty list returns an empty dict (no error).
   - Test that an `MCPTool` with `command=None` produces `"command": "npx"` in the output (matching existing `factory.py` default behavior).
 
 ### Implementation for Phase 6
 
-- [ ] T006 [US3] Create `src/holodeck/lib/backends/mcp_bridge.py` with `build_claude_mcp_configs()` function
+- [x] T006 [US3] Create `src/holodeck/lib/backends/mcp_bridge.py` with `build_claude_mcp_configs()` function
   - **Ref**: `plan.md:359–373`, `research.md:177–196`, `quickstart.md:326–358`
   - Import `MCPTool`, `TransportType`, `CommandType` from `holodeck.models.tool`.
   - Import `McpStdioServerConfig` from `claude_agent_sdk.types` for typed output.
@@ -73,16 +73,16 @@
   - For non-stdio tools: emit `logger.warning(...)` with transport type and tool name, then skip.
   - Return the aggregated dict keyed by `tool.name`.
 
-- [ ] T007 [US3] Export `build_claude_mcp_configs` from `src/holodeck/lib/backends/__init__.py`
+- [x] T007 [US3] Export `build_claude_mcp_configs` from `src/holodeck/lib/backends/__init__.py`
   - **Ref**: `plan.md:97` (mcp_bridge.py in backends package)
   - Add import to `__init__.py` so ClaudeBackend (Phase 8) can import it cleanly.
 
-- [ ] T008 [US3] Run Phase 6 tests and verify all pass in `tests/unit/lib/backends/test_mcp_bridge.py`
+- [x] T008 [US3] Run Phase 6 tests and verify all pass in `tests/unit/lib/backends/test_mcp_bridge.py`
   - **Ref**: `plan.md:372` ("Test: Unit tests for config translation, env var resolution, and non-stdio warning")
   - Run: `pytest tests/unit/lib/backends/test_mcp_bridge.py -n auto -v`
   - All T001–T005 tests must pass.
 
-- [ ] T009 [US3] Run code quality checks for Phase 6
+- [x] T009 [US3] Run code quality checks for Phase 6
   - **Ref**: `plan.md:553–561` (Phase 12 — run after each phase)
   - Run: `make format && make lint-fix && make type-check`
   - Fix any issues in `mcp_bridge.py` and `test_mcp_bridge.py`.
@@ -105,27 +105,27 @@
 
 ### Tests for Phase 7 (TDD — write first, verify they FAIL)
 
-- [ ] T010 [P] Write unit test for `translate_observability()` with OTLP exporter enabled in `tests/unit/lib/backends/test_otel_bridge.py`
+- [x] T010 [P] Write unit test for `translate_observability()` with OTLP exporter enabled in `tests/unit/lib/backends/test_otel_bridge.py`
   - **Ref**: `plan.md:383–391` (env var mapping list), `spec.md:287` (FR-036)
   - Test with `ObservabilityConfig(enabled=True, exporters=ExportersConfig(otlp=OTLPExporterConfig(enabled=True, endpoint="http://collector:4317", protocol=OTLPProtocol.GRPC)))`. Note: `protocol` is `OTLPProtocol` enum, not a string.
   - Assert output contains: `CLAUDE_CODE_ENABLE_TELEMETRY=1`, `OTEL_METRICS_EXPORTER=otlp`, `OTEL_LOGS_EXPORTER=otlp`, `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`, `OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317`.
 
-- [ ] T011 [P] Write unit test for `translate_observability()` with custom metrics export interval in `tests/unit/lib/backends/test_otel_bridge.py`
+- [x] T011 [P] Write unit test for `translate_observability()` with custom metrics export interval in `tests/unit/lib/backends/test_otel_bridge.py`
   - **Ref**: `plan.md:390` (`OTEL_METRIC_EXPORT_INTERVAL`, `OTEL_LOGS_EXPORT_INTERVAL`)
   - Test with `ObservabilityConfig(enabled=True, metrics=MetricsConfig(export_interval_ms=10000), exporters=ExportersConfig(otlp=OTLPExporterConfig(enabled=True)))`.
   - Assert `OTEL_METRIC_EXPORT_INTERVAL=10000` is in output.
   - Assert `OTEL_LOGS_EXPORT_INTERVAL=10000` is also in output (C2 — both share the same interval since `LogsConfig` has no separate `export_interval_ms`).
 
-- [ ] T012 [P] Write unit test for `translate_observability()` privacy controls (default off) in `tests/unit/lib/backends/test_otel_bridge.py`
+- [x] T012 [P] Write unit test for `translate_observability()` privacy controls (default off) in `tests/unit/lib/backends/test_otel_bridge.py`
   - **Ref**: `plan.md:391` (`OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_TOOL_DETAILS`), `spec.md:289` (FR-038 — both default to off)
   - Test with default `ObservabilityConfig(enabled=True)` → assert `OTEL_LOG_USER_PROMPTS` is NOT in output (or is `"false"`).
   - Test with `traces.capture_content=True` → assert `OTEL_LOG_USER_PROMPTS=true`.
 
-- [ ] T013 [P] Write unit test for `translate_observability()` with observability disabled in `tests/unit/lib/backends/test_otel_bridge.py`
+- [x] T013 [P] Write unit test for `translate_observability()` with observability disabled in `tests/unit/lib/backends/test_otel_bridge.py`
   - **Ref**: `plan.md:383` (env var mapping only when enabled)
   - Test with `ObservabilityConfig(enabled=False)` → assert output is an empty dict.
 
-- [ ] T014 [P] Write unit test for unmapped field warnings in `tests/unit/lib/backends/test_otel_bridge.py`
+- [x] T014 [P] Write unit test for unmapped field warnings in `tests/unit/lib/backends/test_otel_bridge.py`
   - **Ref**: `plan.md:393–403` (unsupported fields list), `research.md:330–351` (§15)
   - Test with `ObservabilityConfig(enabled=True, exporters=ExportersConfig(azure_monitor=AzureMonitorExporterConfig(enabled=True, connection_string="InstrumentationKey=...")))`.
   - Assert a single consolidated warning is emitted listing `azure_monitor`.
@@ -134,18 +134,18 @@
   - Test with `traces.sample_rate=0.5` → assert warning includes `sample_rate`.
   - Test with `logs.filter_namespaces=["my_ns"]` → assert warning includes `filter_namespaces`.
 
-- [ ] T015 [P] Write unit test for `translate_observability()` with HTTP protocol in `tests/unit/lib/backends/test_otel_bridge.py`
+- [x] T015 [P] Write unit test for `translate_observability()` with HTTP protocol in `tests/unit/lib/backends/test_otel_bridge.py`
   - **Ref**: `plan.md:389` (`OTEL_EXPORTER_OTLP_PROTOCOL`)
   - Test with `OTLPExporterConfig(enabled=True, protocol=OTLPProtocol.HTTP)` — use `OTLPProtocol` enum, not string.
   - Assert `OTEL_EXPORTER_OTLP_PROTOCOL == "http/protobuf"` (Claude Code expects `"http/protobuf"`, not bare `"http"`).
 
-- [ ] T016 [P] Write unit test for `translate_observability()` logs export interval in `tests/unit/lib/backends/test_otel_bridge.py`
+- [x] T016 [P] Write unit test for `translate_observability()` logs export interval in `tests/unit/lib/backends/test_otel_bridge.py`
   - **Ref**: `plan.md:390` (`OTEL_LOGS_EXPORT_INTERVAL`)
   - Test that when `logs.enabled=True` the `OTEL_LOGS_EXPORTER=otlp` is set when OTLP is configured.
 
 ### Implementation for Phase 7
 
-- [ ] T017 Create `src/holodeck/lib/backends/otel_bridge.py` with `translate_observability()` function
+- [x] T017 Create `src/holodeck/lib/backends/otel_bridge.py` with `translate_observability()` function
   - **Ref**: `plan.md:376–407`, `research.md:330–351`, `quickstart.md:168–172`
   - Import `ObservabilityConfig` from `holodeck.models.observability`.
   - Function signature: `def translate_observability(config: ObservabilityConfig) -> dict[str, str]`
@@ -164,7 +164,7 @@
     - **Note (I7)**: Both env vars map to the same `traces.capture_content` field because `ObservabilityConfig` has no separate tool-detail toggle. This is a deliberate simplification — the Claude subprocess treats them as independent controls, but HoloDeck exposes a single "capture content" toggle.
   - **Note (I8)**: `OTEL_LOGS_EXPORT_INTERVAL` reuses `metrics.export_interval_ms` because `LogsConfig` has no separate export interval field. This is intentional per `plan.md:390`.
 
-- [ ] T018 Implement unmapped field warning logic in `src/holodeck/lib/backends/otel_bridge.py`
+- [x] T018 Implement unmapped field warning logic in `src/holodeck/lib/backends/otel_bridge.py`
   - **Ref**: `plan.md:393–403` (unmapped fields), `research.md:334–349`
   - Collect a list of unsupported field names that have non-default values:
     - `exporters.azure_monitor` (enabled) → `"exporters.azure_monitor"`
@@ -175,16 +175,16 @@
   - If any unsupported fields are present, emit a single consolidated `logger.warning()`:
     `"The following observability settings are not supported by the Claude-native backend and will be ignored: {field_list}. Use a non-Anthropic provider or remove these fields."`
 
-- [ ] T019 Export `translate_observability` from `src/holodeck/lib/backends/__init__.py`
+- [x] T019 Export `translate_observability` from `src/holodeck/lib/backends/__init__.py`
   - **Ref**: `plan.md:98` (otel_bridge.py in backends package)
   - Add import to `__init__.py` so ClaudeBackend (Phase 8) can import it cleanly.
 
-- [ ] T020 Run Phase 7 tests and verify all pass in `tests/unit/lib/backends/test_otel_bridge.py`
+- [x] T020 Run Phase 7 tests and verify all pass in `tests/unit/lib/backends/test_otel_bridge.py`
   - **Ref**: `plan.md:406` ("Test: Unit tests for each mapping, default-off privacy controls, and unmapped-field warning emission")
   - Run: `pytest tests/unit/lib/backends/test_otel_bridge.py -n auto -v`
   - All T010–T016 tests must pass.
 
-- [ ] T021 Run code quality checks for Phase 7
+- [x] T021 Run code quality checks for Phase 7
   - **Ref**: `plan.md:553–561` (Phase 12 — run after each phase)
   - Run: `make format && make lint-fix && make type-check`
   - Fix any issues in `otel_bridge.py` and `test_otel_bridge.py`.
