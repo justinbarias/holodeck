@@ -25,11 +25,11 @@ Phases 4–12 will be in `tasks.md` once generated via `/speckit.tasks`.
 
 > **TDD note**: Phase 0 is exploratory verification, not production code. There are no failing unit tests to write first — the smoke test script *is* the test.
 
-- [ ] T001 Add `claude-agent-sdk>=0.1.39,<0.2.0` to `pyproject.toml` dependencies and run `uv sync` to verify resolution — **must run before T002; the smoke test cannot import the SDK until this completes** (plan.md:L180-183, research.md:L11-13)
-- [ ] T002 Create `scripts/smoke_test_sdk.py` importing and exercising `ClaudeAgentOptions`, `PermissionMode`, `@tool`, `create_sdk_mcp_server`, `ResultMessage`, `ClaudeSDKClient`, and `query` to confirm actual class/function names (plan.md:L144-154, quickstart.md:L57-94, research.md:L48-55)
-- [ ] T003 Extend `scripts/smoke_test_sdk.py` with a 2-turn conversation using `ClaudeSDKClient` to confirm whether multi-turn state is automatic or requires `continue_conversation=True` in `ClaudeAgentOptions` (plan.md:L155-168, research.md:L56-58)
-- [ ] T004 Update `research.md §2` replacing every `[ASSUMED]` marker with the confirmed API name from T002–T003 (plan.md:L170-172, research.md:L27-58)
-- [ ] T005 Update `plan.md`, `data-model.md`, and `quickstart.md` where any assumed API name proved incorrect in T002–T003 (plan.md:L172-173)
+- [x] T001 Add `claude-agent-sdk>=0.1.39,<0.2.0` to `pyproject.toml` dependencies and run `uv sync` to verify resolution — **must run before T002; the smoke test cannot import the SDK until this completes** (plan.md:L180-183, research.md:L11-13)
+- [x] T002 Create `scripts/smoke_test_sdk.py` importing and exercising `ClaudeAgentOptions`, `PermissionMode`, `@tool`, `create_sdk_mcp_server`, `ResultMessage`, `ClaudeSDKClient`, and `query` to confirm actual class/function names (plan.md:L144-154, quickstart.md:L57-94, research.md:L48-55)
+- [x] T003 Extend `scripts/smoke_test_sdk.py` with a 2-turn conversation using `ClaudeSDKClient` to confirm whether multi-turn state is automatic or requires `continue_conversation=True` in `ClaudeAgentOptions` (plan.md:L155-168, research.md:L56-58)
+- [x] T004 Update `research.md §2` replacing every `[ASSUMED]` marker with the confirmed API name from T002–T003 (plan.md:L170-172, research.md:L27-58)
+- [x] T005 Update `plan.md`, `data-model.md`, and `quickstart.md` where any assumed API name proved incorrect in T002–T003 (plan.md:L172-173)
 
 **Checkpoint**: All `[ASSUMED]` markers in `research.md §2` resolved. After T004/T005, scan all line number references in T006–T023b and update any that shifted due to doc edits before starting Phase 1.
 
@@ -43,13 +43,13 @@ Phases 4–12 will be in `tasks.md` once generated via `/speckit.tasks`.
 
 ### Tests for Phase 1 (write these first — they MUST fail before T008)
 
-- [ ] T006 [P] Write unit tests for `ExecutionResult` construction, field defaults, and all error condition scenarios (`max_turns`, subprocess crash, tool failure, timeout) in `tests/unit/lib/backends/test_base.py`. Use `TokenUsage.zero()` (not `TokenUsage()`) for the default token_usage field. Import `TokenUsage` from `holodeck.models.token_usage`. (plan.md:L193, contracts/execution-result.md:L17-72)
+- [x] T006 [P] Write unit tests for `ExecutionResult` construction, field defaults, and all error condition scenarios (`max_turns`, subprocess crash, tool failure, timeout) in `tests/unit/lib/backends/test_base.py`. Use `TokenUsage.zero()` (not `TokenUsage()`) for the default token_usage field. Import `TokenUsage` from `holodeck.models.token_usage`. (plan.md:L193, contracts/execution-result.md:L17-72)
 
 ### Implementation for Phase 1
 
-- [ ] T007 [P] Create `src/holodeck/lib/backends/__init__.py` (empty package marker) (plan.md:L185)
-- [ ] T007b Create `tests/unit/lib/backends/__init__.py` (empty init required for pytest package discovery — all test files T006, T017–T022 live in this package and will not be discovered without it)
-- [ ] T008 Create `src/holodeck/lib/backends/base.py` with:
+- [x] T007 [P] Create `src/holodeck/lib/backends/__init__.py` (empty package marker) (plan.md:L185)
+- [x] T007b Create `tests/unit/lib/backends/__init__.py` (empty init required for pytest package discovery — all test files T006, T017–T022 live in this package and will not be discovered without it)
+- [x] T008 Create `src/holodeck/lib/backends/base.py` with:
   - `ExecutionResult` dataclass (all fields from contract; `token_usage: TokenUsage = field(default_factory=TokenUsage.zero)` — import `TokenUsage` from `holodeck.models.token_usage`, NOT from `holodeck.models.test_result` which does not exist)
   - `AgentSession` Protocol with `send`, `send_streaming`, and `close` — **type `send_streaming` as `AsyncGenerator[str, None]` (async generator with `yield` inside), not `-> AsyncIterator[str]` (which implies returning an external iterator object; these are not the same in Python's type system)**
   - `AgentBackend` Protocol with `initialize`, `invoke_once`, `create_session`, `teardown`
