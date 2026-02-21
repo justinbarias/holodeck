@@ -1,19 +1,15 @@
-"""Unit tests for holodeck.lib.backends.selector (Phase 4A TDD).
-
-All tests fail with ImportError until Phase 4B creates selector.py.
+"""Unit tests for holodeck.lib.backends.selector (Phase 4A + Phase 8B TDD).
 
 Class:
-    TestBackendSelector (T027): 5 tests for BackendSelector routing logic.
+    TestBackendSelector: 7 tests for BackendSelector routing logic.
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from holodeck.lib.backends.base import BackendInitError
-
-# ImportError expected until Phase 4B creates this module.
 from holodeck.lib.backends.selector import BackendSelector
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.llm import LLMProvider, ProviderEnum
@@ -40,13 +36,13 @@ def _make_agent(provider: ProviderEnum, **model_overrides: Any) -> Agent:
 
 
 # ---------------------------------------------------------------------------
-# T027 — BackendSelector
+# TestBackendSelector
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestBackendSelector:
-    """Tests for BackendSelector.select() provider routing (T027)."""
+    """Tests for BackendSelector.select() provider routing."""
 
     @pytest.mark.asyncio
     @patch("holodeck.lib.backends.selector.SKBackend")
@@ -85,9 +81,52 @@ class TestBackendSelector:
         assert backend is mock_backend
 
     @pytest.mark.asyncio
-    async def test_anthropic_raises_backend_init_error(self) -> None:
-        """provider=anthropic raises BackendInitError (no SK backend support)."""
+    @patch("holodeck.lib.backends.selector.ClaudeBackend")
+    async def test_anthropic_returns_claude_backend(self, mock_claude_cls: Any) -> None:
+        """T023: provider=anthropic routes to ClaudeBackend."""
+        mock_backend = AsyncMock()
+        mock_claude_cls.return_value = mock_backend
+
         agent = _make_agent(ProviderEnum.ANTHROPIC)
+        backend = await BackendSelector.select(agent)
+
+        mock_claude_cls.assert_called_once()
+        assert backend is mock_backend
+        mock_backend.initialize.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch("holodeck.lib.backends.selector.ClaudeBackend")
+    async def test_anthropic_passes_tool_instances_and_mode(
+        self, mock_claude_cls: Any
+    ) -> None:
+        """T024: selector passes tool_instances/mode to ClaudeBackend."""
+        mock_backend = AsyncMock()
+        mock_claude_cls.return_value = mock_backend
+
+        agent = _make_agent(ProviderEnum.ANTHROPIC)
+        mock_tool = MagicMock()
+
+        await BackendSelector.select(
+            agent,
+            tool_instances={"kb": mock_tool},
+            mode="chat",
+            allow_side_effects=True,
+        )
+
+        mock_claude_cls.assert_called_once_with(
+            agent=agent,
+            tool_instances={"kb": mock_tool},
+            mode="chat",
+            allow_side_effects=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_unsupported_provider_raises_backend_init_error(self) -> None:
+        """T025: Unsupported provider raises BackendInitError."""
+        # Use a known provider but manipulate to simulate unsupported
+        agent = _make_agent(ProviderEnum.OPENAI)
+        # Monkey-patch to simulate an unsupported provider
+        agent.model.provider = "unsupported_provider"  # type: ignore[assignment]
 
         with pytest.raises(BackendInitError):
             await BackendSelector.select(agent)

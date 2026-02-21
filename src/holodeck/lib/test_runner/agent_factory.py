@@ -1189,8 +1189,8 @@ class AgentFactory:
     def _load_instructions(self) -> str:
         """Load agent instructions from config.
 
-        Uses agent_base_dir context variable to resolve relative file paths.
-        If agent_base_dir is not set, falls back to current working directory.
+        Delegates to the shared ``resolve_instructions`` utility, which uses
+        the ``agent_base_dir`` context variable to resolve relative file paths.
 
         Returns:
             Instruction text for the agent
@@ -1198,29 +1198,10 @@ class AgentFactory:
         Raises:
             AgentFactoryError: If instructions cannot be loaded
         """
+        from holodeck.lib.instruction_resolver import resolve_instructions
+
         try:
-            instructions = self.agent_config.instructions
-
-            if instructions.inline:
-                return instructions.inline
-            elif instructions.file:
-                from pathlib import Path
-
-                from holodeck.config.context import agent_base_dir
-
-                # Resolve file path relative to agent_base_dir context
-                base_dir = agent_base_dir.get()
-                if base_dir:
-                    file_path = Path(base_dir) / instructions.file
-                else:
-                    file_path = Path(instructions.file)
-
-                if not file_path.exists():
-                    raise FileNotFoundError(f"Instructions file not found: {file_path}")
-                return file_path.read_text()
-            else:
-                raise AgentFactoryError("No instructions provided (file or inline)")
-
+            return resolve_instructions(self.agent_config.instructions)
         except Exception as e:
             raise AgentFactoryError(f"Failed to load instructions: {e}") from e
 

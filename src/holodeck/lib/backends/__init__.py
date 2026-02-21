@@ -9,6 +9,7 @@ from holodeck.lib.backends.base import (
     BackendTimeoutError,
     ExecutionResult,
 )
+from holodeck.lib.backends.claude_backend import ClaudeBackend, ClaudeSession
 from holodeck.lib.backends.mcp_bridge import build_claude_mcp_configs
 from holodeck.lib.backends.otel_bridge import translate_observability
 from holodeck.lib.backends.selector import BackendSelector
@@ -29,6 +30,8 @@ __all__ = [
     "BackendSessionError",
     "BackendTimeoutError",
     "BackendSelector",
+    "ClaudeBackend",
+    "ClaudeSession",
     "SKBackend",
     "SKSession",
     "HierarchicalDocToolAdapter",
