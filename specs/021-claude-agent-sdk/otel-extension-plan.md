@@ -4,13 +4,22 @@
 
 The Claude Agent SDK spawns a subprocess that generates its own OTel traces with independent trace IDs. These traces appear as separate root spans in the OTel dashboard — not as children of HoloDeck's `holodeck.cli.test` span. The fix: use the SDK's hooks API (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`) to create OTel spans from HoloDeck's own `TracerProvider`, so all Claude operations nest under the existing application spans.
 
-Key finding: `query()` DOES support hooks (via `InternalClient.process_query()` at `_internal/client.py:107`), so `invoke_once()` does NOT need to switch to `ClaudeSDKClient`.
+**Key finding (verified via `scripts/test_hooks_query.py`)**: Hooks only work with
+`ClaudeSDKClient` (streaming input mode), NOT with `query()` (single message mode).
+Although `InternalClient.process_query()` wires `options.hooks` through at `_internal/client.py:107`,
+the hook callbacks fail with `Stream closed` — the bidirectional `sendRequest` channel that hooks
+depend on is torn down before callbacks can execute. The official docs confirm this limitation:
+single message mode does not support hook integration.
+
+**Consequence**: `invoke_once()` must switch from `query()` to `ClaudeSDKClient` to support
+OTel hook-based tracing. Each stateless test invocation wraps a short-lived `ClaudeSDKClient`
+session (connect → send → receive → disconnect). This is a net-new change to `claude_backend.py`.
 
 ## Span Hierarchy (when observability enabled)
 
 ```
 holodeck.cli.test                       (existing — test.py)
-  └── holodeck.claude.invoke            (NEW — wraps _invoke_query / session.send)
+  └── holodeck.claude.invoke            (NEW — wraps ClaudeSDKClient session / session.send)
         ├── holodeck.claude.tool        (NEW — from PreToolUse/PostToolUse hooks)
         ├── holodeck.claude.tool        (NEW — per tool call)
         └── holodeck.claude.tool        (NEW — per tool call)
@@ -54,9 +63,29 @@ After step 7 (OTel env vars), before step 8 (build options):
 - If enabled: create `ClaudeOtelHookFactory`, call `build_hooks()`, pass to `build_options()`
 - Store factory as `self._otel_hook_factory` for cleanup
 
-### Step 4: Add wrapper span in `_invoke_query()`
+### Step 4: Switch `invoke_once()` from `query()` to `ClaudeSDKClient`
 
-Wrap entire method body in `holodeck.claude.invoke` span using existing `nullcontext()` pattern:
+**Why**: `query()` does not support hooks (see Key Finding above). `invoke_once()` must use
+`ClaudeSDKClient` to get OTel hook callbacks.
+
+**Change in `claude_backend.py`**: Replace the current `_invoke_query()` implementation that
+iterates over `query(prompt=message, options=self._options)` with a short-lived
+`ClaudeSDKClient` session:
+
+```python
+async def _invoke_with_client(self, message: str) -> ExecutionResult:
+    async with ClaudeSDKClient(self._options) as client:
+        await client.query(message)
+        async for msg in client.receive_response():
+            # Same message processing as current _invoke_query()
+            ...
+```
+
+Each test invocation opens and closes its own session. This is equivalent to the current
+`query()` behavior (fresh session per call) but enables the hooks bidirectional channel.
+
+**Wrapper span**: Wrap entire method body in `holodeck.claude.invoke` span using existing
+`nullcontext()` pattern:
 - Attributes: `holodeck.input_length`, `holodeck.num_turns`, `holodeck.token_usage.prompt`, `holodeck.token_usage.completion`, `holodeck.tool_calls_count`
 
 ### Step 5: Add wrapper span in `ClaudeSession.send()`
@@ -107,10 +136,16 @@ Call `self._otel_hook_factory.cleanup_orphaned_spans()` if factory exists.
 | `tool.response` | `tool` | str | Tool response (opt-in) |
 | `tool.error` | `tool` | str | Error message (failures) |
 
+## What Changes (beyond OTel)
+
+- `invoke_once()` switches from `query()` to `ClaudeSDKClient` — same observable behavior
+  (fresh session per call), but enables hooks. This is required regardless of OTel; it also
+  fixes a latent issue where `query()` cannot support future hook-dependent features.
+
 ## What Does NOT Change
 
 - `otel_bridge.py` (subprocess env vars) — complementary, not replaced
-- `query()` function signature/behavior
+- `ClaudeSession` (chat path) — already uses `ClaudeSDKClient`, hooks work as-is
 - `ObservabilityConfig` model
 - CLI commands (test.py, chat.py)
 - SK backend path (agent_factory.py)
