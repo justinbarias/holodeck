@@ -64,7 +64,7 @@ def validate_credentials(model: LLMProvider) -> dict[str, str]:
                 "ANTHROPIC_API_KEY environment variable is not set. "
                 "Set it with: export ANTHROPIC_API_KEY=sk-ant-...",
             )
-        return {}
+        return {"ANTHROPIC_API_KEY": key}
 
     if auth == AuthProvider.oauth_token:
         token = get_env_var("CLAUDE_CODE_OAUTH_TOKEN")
@@ -74,7 +74,7 @@ def validate_credentials(model: LLMProvider) -> dict[str, str]:
                 "CLAUDE_CODE_OAUTH_TOKEN environment variable is not set. "
                 "Run `claude setup-token` to authenticate with OAuth.",
             )
-        return {}
+        return {"CLAUDE_CODE_OAUTH_TOKEN": token}
 
     if auth == AuthProvider.bedrock:
         return {"CLAUDE_CODE_USE_BEDROCK": "1"}

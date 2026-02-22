@@ -480,6 +480,7 @@ class TestClaudeBackendInvokeOnce:
         assert len(result.tool_results) == 1
         assert result.tool_results[0] == {
             "call_id": "toolu_01",
+            "name": "kb_search",
             "result": "30-day guarantee",
             "is_error": False,
         }

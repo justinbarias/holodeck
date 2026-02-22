@@ -32,7 +32,7 @@
 
 ### Tests for Phase 9A (TDD — write first, verify they FAIL)
 
-- [ ] T001 [P] [US4] Write unit test for `TestExecutor` using `BackendSelector` instead of `AgentFactory` in `tests/unit/lib/test_runner/test_executor.py`
+- [x] T001 [P] [US4] Write unit test for `TestExecutor` using `BackendSelector` instead of `AgentFactory` in `tests/unit/lib/test_runner/test_executor.py`
   - **Ref**: `plan.md:481–484` ("Replace AgentFactory(config).create_thread_run() with BackendSelector.select(agent, tools)")
   - Mock `BackendSelector.select()` to return a mock `AgentBackend`.
   - Mock `backend.invoke_once()` to return an `ExecutionResult(response="test response", tool_calls=[], tool_results=[])`.
@@ -40,28 +40,28 @@
   - Assert the agent response is correctly extracted from `ExecutionResult.response`.
   - Assert no imports of `ChatHistory`, `FunctionCallContent`, or `FunctionResultContent` exist in `executor.py`.
 
-- [ ] T002 [P] [US4] Write unit test for `ExecutionResult` error handling in test executor in `tests/unit/lib/test_runner/test_executor.py`
+- [x] T002 [P] [US4] Write unit test for `ExecutionResult` error handling in test executor in `tests/unit/lib/test_runner/test_executor.py`
   - **Ref**: `plan.md:485–486` ("max_turns exceeded → mark test as failed, not evaluation error"), `contracts/execution-result.md:66–72`
   - Mock `backend.invoke_once()` to return `ExecutionResult(response="partial", is_error=True, error_reason="max_turns limit reached")`.
   - Assert test result has `passed=False`.
   - Assert errors list contains "max_turns limit reached".
   - Assert agent_response is preserved ("partial") for possible evaluation.
 
-- [ ] T003 [P] [US4] Write unit test for subprocess crash error handling in test executor in `tests/unit/lib/test_runner/test_executor.py`
+- [x] T003 [P] [US4] Write unit test for subprocess crash error handling in test executor in `tests/unit/lib/test_runner/test_executor.py`
   - **Ref**: `plan.md:486` ("Subprocess crash → mark as execution error, continue test suite"), `contracts/execution-result.md:69`
   - Mock `backend.invoke_once()` to return `ExecutionResult(response="", is_error=True, error_reason="subprocess terminated unexpectedly")`.
   - Assert test result has `passed=False`.
   - Assert errors list contains "subprocess terminated unexpectedly".
   - Assert the test suite continues to execute subsequent test cases (not aborted).
 
-- [ ] T004 [P] [US4] Write unit test for `BackendSessionError` exception handling in test executor in `tests/unit/lib/test_runner/test_executor.py`
+- [x] T004 [P] [US4] Write unit test for `BackendSessionError` exception handling in test executor in `tests/unit/lib/test_runner/test_executor.py`
   - **Ref**: `plan.md:486`, `contracts/execution-result.md:134–146` (BackendSessionError)
   - Mock `backend.invoke_once()` to raise `BackendSessionError("subprocess crashed")`.
   - Assert test result has `passed=False`.
   - Assert errors list contains the exception message.
   - Assert subsequent test cases still execute.
 
-- [ ] T005 [P] [US4] Write unit test for tool call extraction from `ExecutionResult` in `tests/unit/lib/test_runner/test_executor.py`
+- [x] T005 [P] [US4] Write unit test for tool call extraction from `ExecutionResult` in `tests/unit/lib/test_runner/test_executor.py`
   - **Ref**: `plan.md:483` ("Remove all ChatHistory, FunctionCallContent imports"), `contracts/execution-result.md:36–52`
   - Mock `backend.invoke_once()` to return `ExecutionResult(response="found it", tool_calls=[{"name": "kb_search", "arguments": {"query": "refund"}, "call_id": "t01"}], tool_results=[{"call_id": "t01", "result": "30-day policy", "is_error": False}])`.
   - Assert `extract_tool_names(result.tool_calls)` returns `["kb_search"]`.
@@ -69,14 +69,14 @@
   - Assert tool results are correctly passed to evaluation.
   - Assert `validate_tool_calls()` works with `expected_tools=["kb_search"]`.
 
-- [ ] T006 [P] [US4] Write unit test for backend lifecycle (initialize + invoke + teardown) in `tests/unit/lib/test_runner/test_executor.py`
+- [x] T006 [P] [US4] Write unit test for backend lifecycle (initialize + invoke + teardown) in `tests/unit/lib/test_runner/test_executor.py`
   - **Ref**: `contracts/execution-result.md:114–128` (AgentBackend Lifecycle)
   - Mock `BackendSelector.select()` to return a mock backend.
   - Run `execute_tests()` with 2 test cases.
   - Assert `backend.invoke_once()` is called exactly 2 times (one per test case).
   - Assert `backend.teardown()` is called during `executor.shutdown()`.
 
-- [ ] T007 [P] [US4] Write unit test for token usage extraction from `ExecutionResult` in `tests/unit/lib/test_runner/test_executor.py`
+- [x] T007 [P] [US4] Write unit test for token usage extraction from `ExecutionResult` in `tests/unit/lib/test_runner/test_executor.py`
   - **Ref**: `data-model.md:231–238` (token_usage field), `contracts/execution-result.md:54–60`
   - Mock `backend.invoke_once()` returning `ExecutionResult` with `token_usage=TokenUsage(prompt_tokens=100, completion_tokens=50, total_tokens=150)`.
   - Assert `result.token_usage` is accessible and correctly populated on `ExecutionResult`.
@@ -84,7 +84,7 @@
 
 ### Implementation for Phase 9A
 
-- [ ] T008 [US4] Refactor `TestExecutor.__init__()` to accept `AgentBackend` instead of `AgentFactory` in `src/holodeck/lib/test_runner/executor.py`
+- [x] T008 [US4] Refactor `TestExecutor.__init__()` to accept `AgentBackend` instead of `AgentFactory` in `src/holodeck/lib/test_runner/executor.py`
   - **Ref**: `plan.md:481` ("Replace AgentFactory(config) with BackendSelector.select(agent, tools)")
   - Add optional `backend: AgentBackend | None = None` parameter to `__init__()`.
   - Keep `agent_factory` parameter for backward compatibility (deprecated, emit warning if used).
@@ -93,14 +93,14 @@
   - Note: `_create_agent_factory()` is kept for the legacy `agent_factory` injection path only. It will be removed entirely after chat migration in Phase 10.
   - The actual switch to `BackendSelector` happens in T010 (the `_execute_single_test` method).
 
-- [ ] T009 [US4] Add `BackendSelector` import and remove SK-specific type imports from `src/holodeck/lib/test_runner/executor.py`
+- [x] T009 [US4] Add `BackendSelector` import and remove SK-specific type imports from `src/holodeck/lib/test_runner/executor.py`
   - **Ref**: `plan.md:483–484` ("Remove all ChatHistory, FunctionCallContent, FunctionResultContent imports")
   - Add: `from holodeck.lib.backends import BackendSelector, ExecutionResult, BackendSessionError`
   - Remove: Any direct imports of `ChatHistory`, `FunctionCallContent`, `FunctionResultContent` (verify none exist in current executor.py — they may be indirect via `agent_factory`).
   - Keep: `from holodeck.lib.chat_history_utils import extract_tool_names` (this is SK-free).
   - Keep: `from holodeck.lib.test_runner.agent_factory import AgentFactory` (for backward compat in T012).
 
-- [ ] T010 [US4] Refactor `TestExecutor._execute_single_test()` to use `BackendSelector` + `ExecutionResult` in `src/holodeck/lib/test_runner/executor.py`
+- [x] T010 [US4] Refactor `TestExecutor._execute_single_test()` to use `BackendSelector` + `ExecutionResult` in `src/holodeck/lib/test_runner/executor.py`
   - **Ref**: `plan.md:481–486`, `contracts/execution-result.md:114–128`
   - Replace the current invocation block (lines 543–551):
     ```python
@@ -127,7 +127,7 @@
   - Add subprocess crash detection: if `result.is_error and "subprocess terminated" in (result.error_reason or "")` → append to errors as execution error, continue test suite.
   - Wrap invocation in `try/except BackendSessionError` for unexpected backend failures.
 
-- [ ] T011 [US4] Add async backend initialization to `TestExecutor` in `src/holodeck/lib/test_runner/executor.py`
+- [x] T011 [US4] Add async backend initialization to `TestExecutor` in `src/holodeck/lib/test_runner/executor.py`
   - **Ref**: `contracts/execution-result.md:118–120` ("backend.initialize() → Tool index setup, credential validation")
   - Add `async _ensure_backend_initialized()` method that:
     1. If `_backend` is already set, return immediately.
@@ -140,7 +140,7 @@
     - Claude path: `BackendSelector.select()` → `ClaudeBackend` builds tool adapters via `build_holodeck_sdk_server()` internally during `initialize()`.
     - Executor never needs to know about provider-specific tool init.
 
-- [ ] T012 [US4] Update `TestExecutor._create_agent_factory()` for backward compatibility in `src/holodeck/lib/test_runner/executor.py`
+- [x] T012 [US4] Update `TestExecutor._create_agent_factory()` for backward compatibility in `src/holodeck/lib/test_runner/executor.py`
   - **Ref**: `plan.md:488–491` ("Thin facade: AgentFactory delegates to BackendSelector, preserves public API")
   - Add private method `_invoke_via_legacy_factory(self, agent_input: str) -> ExecutionResult` that:
     1. Calls `self.agent_factory.create_thread_run()`.
@@ -150,7 +150,7 @@
   - In `_execute_single_test()`: if `self._backend` is set, use `self._backend.invoke_once()`; else if `self.agent_factory` is set, use `self._invoke_via_legacy_factory()`.
   - This ensures existing unit tests that mock `AgentFactory` continue to work during transition.
 
-- [ ] T013 [US4] Add `_allow_side_effects` instance variable to `TestExecutor` in `src/holodeck/lib/test_runner/executor.py`
+- [x] T013 [US4] Add `_allow_side_effects` instance variable to `TestExecutor` in `src/holodeck/lib/test_runner/executor.py`
   - **Ref**: `plan.md:493–496` ("--allow-side-effects flag")
   - Add `allow_side_effects: bool = False` parameter to `__init__()`.
   - Store as `self._allow_side_effects`.
@@ -172,12 +172,12 @@
 
 ### Tests for Phase 9B (TDD — write first, verify they FAIL)
 
-- [ ] T014 [P] [US1] Write unit test verifying `AgentExecutionResult` is re-exported from `agent_factory.py` in `tests/unit/lib/test_runner/test_agent_factory.py`
+- [x] T014 [P] [US1] Write unit test verifying `AgentExecutionResult` is re-exported from `agent_factory.py` in `tests/unit/lib/test_runner/test_agent_factory.py`
   - **Ref**: `plan.md:490` ("AgentExecutionResult re-exported from backends.base.ExecutionResult for backward compat")
   - Assert `from holodeck.lib.test_runner.agent_factory import AgentExecutionResult` still works.
   - Assert `AgentExecutionResult` fields are a superset of `ExecutionResult` fields (response, tool_calls, tool_results, token_usage).
 
-- [ ] T015 [P] [US1] Write unit test verifying existing `AgentFactory.create_thread_run()` still works for non-Anthropic providers in `tests/unit/lib/test_runner/test_agent_factory.py`
+- [x] T015 [P] [US1] Write unit test verifying existing `AgentFactory.create_thread_run()` still works for non-Anthropic providers in `tests/unit/lib/test_runner/test_agent_factory.py`
   - **Ref**: `plan.md:489` ("Preserves public API for any code that imports AgentFactory directly")
   - Use existing test fixtures for OpenAI/Azure/Ollama agents.
   - Assert `AgentFactory(config).create_thread_run()` returns an `AgentThreadRun`.
@@ -186,13 +186,13 @@
 
 ### Implementation for Phase 9B
 
-- [ ] T016 [US1] Ensure `AgentExecutionResult` backward compatibility in `src/holodeck/lib/test_runner/agent_factory.py`
+- [x] T016 [US1] Ensure `AgentExecutionResult` backward compatibility in `src/holodeck/lib/test_runner/agent_factory.py`
   - **Ref**: `plan.md:490`
   - `AgentExecutionResult` already exists as a separate dataclass in `agent_factory.py`. It stays as-is (NOT re-exported from `ExecutionResult` — they are separate classes with different fields; `AgentExecutionResult` has `chat_history`).
   - Add a deprecation comment noting it is kept for backward compatibility and new code should use `ExecutionResult` from `backends.base`.
   - **No functional changes needed** — `AgentExecutionResult` is already the return type of `AgentThreadRun.invoke()`. The SK backend path is unchanged.
 
-- [ ] T017 [US1] Verify all existing `AgentFactory` tests pass without modification in `tests/unit/lib/test_runner/test_agent_factory.py`
+- [x] T017 [US1] Verify all existing `AgentFactory` tests pass without modification in `tests/unit/lib/test_runner/test_agent_factory.py`
   - **Ref**: `plan.md:498` ("Run full existing test suite; zero regressions on non-Anthropic agents")
   - Run: `pytest tests/unit/lib/test_runner/test_agent_factory.py -n auto -v`
   - No test modifications expected. If any fail, fix the regression before proceeding.
@@ -213,14 +213,14 @@
 
 ### Tests for Phase 9C (TDD — write first, verify they FAIL)
 
-- [ ] T018 [P] [US8] Write unit test for `--allow-side-effects` flag parsing in `tests/unit/cli/test_test_cmd.py`
+- [x] T018 [P] [US8] Write unit test for `--allow-side-effects` flag parsing in `tests/unit/cli/test_test_cmd.py`
   - **Ref**: `plan.md:493–496`
   - **Note**: `tests/unit/cli/test_test_cmd.py` is a new file — create it with standard pytest imports, Click CliRunner setup, and necessary mocks.
   - Use Click's `CliRunner` to invoke the test command.
   - Assert `--allow-side-effects` is parsed as `True` when present.
   - Assert default is `False` when absent.
 
-- [ ] T019 [P] [US8] Write unit test verifying `allow_side_effects` is passed to `TestExecutor` in `tests/unit/cli/test_test_cmd.py`
+- [x] T019 [P] [US8] Write unit test verifying `allow_side_effects` is passed to `TestExecutor` in `tests/unit/cli/test_test_cmd.py`
   - **Ref**: `plan.md:494` ("When absent (default): ClaudeBackend disables bash and file_system access")
   - Mock `TestExecutor.__init__` to capture the `allow_side_effects` argument.
   - Invoke `holodeck test agent.yaml --allow-side-effects` → assert `allow_side_effects=True` passed.
@@ -228,7 +228,7 @@
 
 ### Implementation for Phase 9C
 
-- [ ] T020 [US8] Add `--allow-side-effects` option to `holodeck test` command in `src/holodeck/cli/commands/test.py`
+- [x] T020 [US8] Add `--allow-side-effects` option to `holodeck test` command in `src/holodeck/cli/commands/test.py`
   - **Ref**: `plan.md:493–496`, `research.md:106–118`
   - Add Click option:
     ```python
@@ -246,7 +246,7 @@
     "Warning: --allow-side-effects enabled. Test run may modify files or execute shell commands."
     ```
 
-- [ ] T021 [US8] Pass `allow_side_effects` through `TestExecutor` to `BackendSelector.select()` in `src/holodeck/lib/test_runner/executor.py`
+- [x] T021 [US8] Pass `allow_side_effects` through `TestExecutor` to `BackendSelector.select()` in `src/holodeck/lib/test_runner/executor.py`
   - **Ref**: `plan.md:494–496`, `selector.py:24` (allow_side_effects parameter)
   - Ensure `_ensure_backend_initialized()` (from T011) passes `self._allow_side_effects` to `BackendSelector.select()`.
   - The `ClaudeBackend` already handles the force-disable logic (implemented in Phase 8, T018/T020).
@@ -261,24 +261,24 @@
 
 **Plan Reference**: `plan.md` lines 551–561 (Phase 12: Code Quality — run after each phase)
 
-- [ ] T022 Run `make format` to apply Black + Ruff formatting to all new/modified files
+- [x] T022 Run `make format` to apply Black + Ruff formatting to all new/modified files
   - **Ref**: `plan.md:556`
   - Files: `src/holodeck/lib/test_runner/executor.py`, `src/holodeck/lib/test_runner/agent_factory.py`, `src/holodeck/cli/commands/test.py`, test files.
 
-- [ ] T023 Run `make lint-fix` to auto-fix linting issues in new/modified files
+- [x] T023 Run `make lint-fix` to auto-fix linting issues in new/modified files
   - **Ref**: `plan.md:557`
 
-- [ ] T024 Run `make type-check` to verify MyPy strict mode passes for all modified code
+- [x] T024 Run `make type-check` to verify MyPy strict mode passes for all modified code
   - **Ref**: `plan.md:558`
   - Ensure `executor.py` type hints reference `AgentBackend` and `ExecutionResult` (not SK types).
 
-- [ ] T025 Run `make test-unit` to verify zero regressions across the full unit test suite
+- [x] T025 Run `make test-unit` to verify zero regressions across the full unit test suite
   - **Ref**: `plan.md:559`, `plan.md:498` ("Run full existing test suite; zero regressions")
   - Run: `pytest tests/unit/ -n auto -v`
   - All existing tests from Phases 1–8 must still pass.
   - All new Phase 9 tests must pass.
 
-- [ ] T026 Run `make security` to verify Bandit + Safety + detect-secrets pass
+- [x] T026 Run `make security` to verify Bandit + Safety + detect-secrets pass
   - **Ref**: `plan.md:560`
   - No new security warnings allowed in modified files.
 

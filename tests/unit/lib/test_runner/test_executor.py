@@ -8,6 +8,7 @@ Tests cover:
 - File processing and error handling
 - Agent invocation with timeout and exceptions
 - Evaluation metrics with different types and errors
+- BackendSelector integration (T001-T007)
 """
 
 from unittest.mock import AsyncMock, Mock, patch
@@ -15,6 +16,10 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from holodeck.config.loader import ConfigLoader
+from holodeck.lib.backends.base import (
+    BackendSessionError,
+    ExecutionResult,
+)
 from holodeck.lib.file_processor import FileProcessor
 from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentThreadRun
 from holodeck.lib.test_runner.executor import TestExecutor
@@ -22,6 +27,7 @@ from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.test_case import FileInput, TestCaseModel
 from holodeck.models.test_result import ProcessedFileInput, TestResult
+from holodeck.models.token_usage import TokenUsage
 
 
 class TestToolCallValidation:
@@ -3322,3 +3328,304 @@ class TestEmptyEvaluationsConfig:
 
         # Should return empty list
         assert metrics == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 9A — BackendSelector integration tests (T001-T007)
+# ---------------------------------------------------------------------------
+
+
+def _make_agent_config(
+    test_cases: list[TestCaseModel] | None = None,
+) -> Agent:
+    """Helper to build a minimal Agent config for backend tests."""
+    from holodeck.models.agent import Instructions
+    from holodeck.models.llm import LLMProvider, ProviderEnum
+
+    default_test_case = TestCaseModel(
+        name="backend_test",
+        input="Hello",
+        expected_tools=None,
+        ground_truth=None,
+        files=None,
+        evaluations=None,
+    )
+    return Agent(
+        name="backend_test_agent",
+        description="Agent for backend integration tests",
+        model=LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-4",
+            api_key="test-key",
+        ),
+        instructions=Instructions(inline="You are a test agent"),
+        test_cases=test_cases or [default_test_case],
+        evaluations=None,
+        execution=None,
+    )
+
+
+def _make_executor(
+    agent_config: Agent,
+    backend: object,
+) -> TestExecutor:
+    """Build a TestExecutor wired to a mock backend (no AgentFactory)."""
+    mock_loader = Mock(spec=ConfigLoader)
+    mock_loader.load_agent_yaml.return_value = agent_config
+    mock_loader.resolve_execution_config.return_value = ExecutionConfig(llm_timeout=60)
+
+    return TestExecutor(
+        agent_config_path="test.yaml",
+        config_loader=mock_loader,
+        file_processor=Mock(spec=FileProcessor),
+        backend=backend,
+    )
+
+
+class TestBackendSelectorIntegration:
+    """T001: Basic backend integration — invoke_once returns ExecutionResult."""
+
+    @pytest.mark.asyncio
+    async def test_basic_invoke_once_response(self):
+        """Backend invoke_once result is extracted as agent response."""
+        agent_config = _make_agent_config()
+        mock_backend = AsyncMock()
+        mock_backend.invoke_once = AsyncMock(
+            return_value=ExecutionResult(
+                response="test response",
+                tool_calls=[],
+                tool_results=[],
+            )
+        )
+
+        executor = _make_executor(agent_config, mock_backend)
+        report = await executor.execute_tests()
+
+        assert report.summary.total_tests == 1
+        assert report.results[0].agent_response == "test response"
+        assert report.results[0].passed is True
+        mock_backend.invoke_once.assert_called_once()
+
+
+class TestExecutionResultErrorHandling:
+    """T002: ExecutionResult with is_error=True marks test as failed."""
+
+    @pytest.mark.asyncio
+    async def test_is_error_marks_failed(self):
+        """is_error=True propagates as a test failure with error_reason."""
+        agent_config = _make_agent_config()
+        mock_backend = AsyncMock()
+        mock_backend.invoke_once = AsyncMock(
+            return_value=ExecutionResult(
+                response="partial",
+                is_error=True,
+                error_reason="max_turns limit reached",
+            )
+        )
+
+        executor = _make_executor(agent_config, mock_backend)
+        report = await executor.execute_tests()
+
+        result = report.results[0]
+        assert result.passed is False
+        assert any("max_turns limit reached" in e for e in result.errors)
+        assert result.agent_response == "partial"
+
+
+class TestSubprocessCrashHandling:
+    """T003: ExecutionResult from subprocess crash is recorded."""
+
+    @pytest.mark.asyncio
+    async def test_subprocess_crash_error(self):
+        """Subprocess crash is reported as error, suite continues."""
+        crash_case = TestCaseModel(
+            name="crash_test",
+            input="Crash",
+            expected_tools=None,
+            ground_truth=None,
+            files=None,
+            evaluations=None,
+        )
+        ok_case = TestCaseModel(
+            name="ok_test",
+            input="Hello",
+            expected_tools=None,
+            ground_truth=None,
+            files=None,
+            evaluations=None,
+        )
+        agent_config = _make_agent_config(test_cases=[crash_case, ok_case])
+
+        crash_result = ExecutionResult(
+            response="",
+            is_error=True,
+            error_reason="subprocess terminated unexpectedly",
+        )
+        ok_result = ExecutionResult(response="hello back")
+
+        mock_backend = AsyncMock()
+        mock_backend.invoke_once = AsyncMock(side_effect=[crash_result, ok_result])
+
+        executor = _make_executor(agent_config, mock_backend)
+        report = await executor.execute_tests()
+
+        assert report.summary.total_tests == 2
+        assert report.results[0].passed is False
+        assert "subprocess terminated unexpectedly" in report.results[0].errors[0]
+        assert report.results[1].passed is True
+        assert report.results[1].agent_response == "hello back"
+
+
+class TestBackendSessionErrorHandling:
+    """T004: BackendSessionError raised by invoke_once is caught."""
+
+    @pytest.mark.asyncio
+    async def test_backend_session_error_caught(self):
+        """BackendSessionError is caught, recorded, subsequent tests run."""
+        case1 = TestCaseModel(
+            name="error_test",
+            input="fail",
+            expected_tools=None,
+            ground_truth=None,
+            files=None,
+            evaluations=None,
+        )
+        case2 = TestCaseModel(
+            name="ok_test",
+            input="ok",
+            expected_tools=None,
+            ground_truth=None,
+            files=None,
+            evaluations=None,
+        )
+        agent_config = _make_agent_config(test_cases=[case1, case2])
+
+        mock_backend = AsyncMock()
+        mock_backend.invoke_once = AsyncMock(
+            side_effect=[
+                BackendSessionError("subprocess crashed"),
+                ExecutionResult(response="all good"),
+            ]
+        )
+
+        executor = _make_executor(agent_config, mock_backend)
+        report = await executor.execute_tests()
+
+        assert report.results[0].passed is False
+        assert "subprocess crashed" in report.results[0].errors[0]
+        assert report.results[1].passed is True
+        assert report.results[1].agent_response == "all good"
+
+
+class TestBackendToolCallExtraction:
+    """T005: Tool calls from ExecutionResult are extracted correctly."""
+
+    @pytest.mark.asyncio
+    async def test_tool_calls_extracted(self):
+        """extract_tool_names works on ExecutionResult.tool_calls."""
+        case = TestCaseModel(
+            name="tool_test",
+            input="Search for refund policy",
+            expected_tools=["kb_search"],
+            ground_truth=None,
+            files=None,
+            evaluations=None,
+        )
+        agent_config = _make_agent_config(test_cases=[case])
+
+        mock_backend = AsyncMock()
+        mock_backend.invoke_once = AsyncMock(
+            return_value=ExecutionResult(
+                response="Refund policy is...",
+                tool_calls=[
+                    {
+                        "name": "kb_search",
+                        "arguments": {"query": "refund"},
+                        "call_id": "t01",
+                    }
+                ],
+                tool_results=[
+                    {"name": "kb_search", "result": "30-day money-back guarantee"}
+                ],
+            )
+        )
+
+        executor = _make_executor(agent_config, mock_backend)
+        report = await executor.execute_tests()
+
+        result = report.results[0]
+        assert result.tool_calls == ["kb_search"]
+        assert result.tools_matched is True
+        assert result.passed is True
+
+
+class TestBackendLifecycle:
+    """T006: Backend lifecycle — invoke_once per test, teardown on shutdown."""
+
+    @pytest.mark.asyncio
+    async def test_invoke_called_per_test_and_teardown(self):
+        """invoke_once called once per test; teardown called on shutdown."""
+        case1 = TestCaseModel(
+            name="test_a",
+            input="A",
+            expected_tools=None,
+            ground_truth=None,
+            files=None,
+            evaluations=None,
+        )
+        case2 = TestCaseModel(
+            name="test_b",
+            input="B",
+            expected_tools=None,
+            ground_truth=None,
+            files=None,
+            evaluations=None,
+        )
+        agent_config = _make_agent_config(test_cases=[case1, case2])
+
+        mock_backend = AsyncMock()
+        mock_backend.invoke_once = AsyncMock(
+            return_value=ExecutionResult(response="ok")
+        )
+        mock_backend.teardown = AsyncMock()
+
+        executor = _make_executor(agent_config, mock_backend)
+        await executor.execute_tests()
+
+        assert mock_backend.invoke_once.call_count == 2
+        # Teardown not yet called
+        mock_backend.teardown.assert_not_called()
+
+        # Now shut down
+        await executor.shutdown()
+        mock_backend.teardown.assert_called_once()
+
+
+class TestTokenUsageExtraction:
+    """T007: Token usage from ExecutionResult is accessible."""
+
+    @pytest.mark.asyncio
+    async def test_token_usage_accessible(self):
+        """TokenUsage on ExecutionResult is correctly populated."""
+        agent_config = _make_agent_config()
+        usage = TokenUsage(prompt_tokens=100, completion_tokens=50, total_tokens=150)
+
+        mock_backend = AsyncMock()
+        mock_backend.invoke_once = AsyncMock(
+            return_value=ExecutionResult(
+                response="answer",
+                token_usage=usage,
+            )
+        )
+
+        executor = _make_executor(agent_config, mock_backend)
+        report = await executor.execute_tests()
+
+        # The response should be captured correctly
+        assert report.results[0].agent_response == "answer"
+        assert report.results[0].passed is True
+        # Verify the backend was called (token usage flows through ExecutionResult)
+        call_result = mock_backend.invoke_once.return_value
+        assert call_result.token_usage.prompt_tokens == 100
+        assert call_result.token_usage.completion_tokens == 50
+        assert call_result.token_usage.total_tokens == 150

@@ -14,13 +14,10 @@ from collections.abc import AsyncGenerator
 from typing import Any, cast
 
 import jsonschema
-from claude_agent_sdk import (
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    ProcessError,
-    query,
-)
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, ProcessError, query
+from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
 from claude_agent_sdk.types import McpSdkServerConfig
+from exceptiongroup import BaseExceptionGroup
 
 from holodeck.lib.backends.base import (
     BackendInitError,
@@ -45,7 +42,8 @@ from holodeck.lib.instruction_resolver import resolve_instructions
 from holodeck.models.agent import Agent
 from holodeck.models.claude_config import PermissionMode
 from holodeck.models.token_usage import TokenUsage
-from holodeck.models.tool import MCPTool
+from holodeck.models.tool import HierarchicalDocumentToolConfig, MCPTool
+from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +53,45 @@ _BACKOFF_BASE_SECONDS = 1
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+
+async def _wrap_prompt(message: str) -> AsyncGenerator[dict[str, Any], None]:
+    """Wrap a string prompt as an async iterable of user message dicts.
+
+    The Claude Agent SDK ``query()`` function treats string prompts differently
+    from async-iterable prompts: strings trigger an immediate ``end_input()``
+    which closes stdin.  When SDK MCP servers are configured, the subprocess
+    needs stdin kept open for bidirectional tool-call communication.  Passing
+    an async iterable instead routes through ``stream_input()``, which keeps
+    stdin open until the first result arrives.
+    """
+    yield {
+        "type": "user",
+        "session_id": "",
+        "message": {"role": "user", "content": message},
+        "parent_tool_use_id": None,
+    }
+
+
+def _enrich_tool_results(
+    tool_calls: list[dict[str, Any]],
+    tool_results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Add ``name`` to each tool result by matching ``call_id`` to tool calls.
+
+    The SDK yields tool names only in ``ToolUseBlock`` (inside
+    ``AssistantMessage``), while tool results (``ToolResultBlock`` inside
+    ``UserMessage``) only carry ``call_id``.  Downstream consumers like
+    ``build_retrieval_context_from_tools`` expect a ``name`` key on each
+    result dict.
+    """
+    id_to_name: dict[str, str] = {
+        tc["call_id"]: tc["name"] for tc in tool_calls if "call_id" in tc
+    }
+    for tr in tool_results:
+        if "name" not in tr and tr.get("call_id") in id_to_name:
+            tr["name"] = id_to_name[tr["call_id"]]
+    return tool_results
 
 
 def _extract_result_text(content: list[Any]) -> str:
@@ -79,16 +116,17 @@ def _extract_result_text(content: list[Any]) -> str:
     return "".join(parts)
 
 
-def _process_assistant(
+def _process_message(
     msg: Any,
     text_parts: list[str],
     tool_calls: list[dict[str, Any]],
     tool_results: list[dict[str, Any]],
 ) -> tuple[list[str], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Extract text, tool calls, and tool results from an AssistantMessage.
+    """Extract text, tool calls, and tool results from SDK messages.
 
+    Handles both ``AssistantMessage`` (text + tool-use blocks) and
+    ``UserMessage`` (tool-result blocks from MCP tool execution).
     Mutates the provided lists in-place and also returns them for convenience.
-    Skips non-AssistantMessage types.
 
     Args:
         msg: A message from the SDK response stream.
@@ -99,7 +137,8 @@ def _process_assistant(
     Returns:
         The (text_parts, tool_calls, tool_results) tuple.
     """
-    if msg.__class__.__name__ != "AssistantMessage":
+    msg_type = msg.__class__.__name__
+    if msg_type not in ("AssistantMessage", "UserMessage"):
         return text_parts, tool_calls, tool_results
 
     for block in msg.content:
@@ -303,9 +342,10 @@ class ClaudeSession:
         self._turn_count: int = 0
 
     async def _ensure_client(self) -> ClaudeSDKClient:
-        """Lazily create and return the SDK client."""
+        """Lazily create, connect, and return the SDK client."""
         if self._client is None:
             self._client = ClaudeSDKClient(options=self._base_options)
+            await self._client.connect()
         return self._client
 
     def _build_turn_options(self) -> ClaudeAgentOptions | None:
@@ -351,7 +391,7 @@ class ClaudeSession:
             num_turns = 1
 
             async for msg in client.receive_response():
-                text_parts, tool_calls, tool_results = _process_assistant(
+                text_parts, tool_calls, tool_results = _process_message(
                     msg, text_parts, tool_calls, tool_results
                 )
                 if msg.__class__.__name__ == "ResultMessage":
@@ -376,7 +416,7 @@ class ClaudeSession:
                 token_usage=token_usage,
                 num_turns=num_turns,
             )
-        except ProcessError as exc:
+        except (ProcessError, CLIConnectionError) as exc:
             raise BackendSessionError(
                 f"subprocess terminated unexpectedly: {exc}"
             ) from exc
@@ -411,7 +451,7 @@ class ClaudeSession:
                     rm = cast(Any, msg)
                     self._session_id = rm.session_id
                     self._turn_count += 1
-        except ProcessError as exc:
+        except (ProcessError, CLIConnectionError) as exc:
             raise BackendSessionError(
                 f"subprocess terminated unexpectedly: {exc}"
             ) from exc
@@ -455,11 +495,12 @@ class ClaudeBackend:
             allow_side_effects: Allow bash/file_system.write in test mode.
         """
         self._agent = agent
-        self._tool_instances = tool_instances
+        self._tool_instances = tool_instances or {}
         self._mode = mode
         self._allow_side_effects = allow_side_effects
         self._initialized = False
         self._options: ClaudeAgentOptions | None = None
+        self._owned_tools: list[Any] = []  # Tools created during initialize()
 
     async def _ensure_initialized(self) -> None:
         """Lazy-init guard — call ``initialize()`` if not yet done."""
@@ -493,10 +534,13 @@ class ClaudeBackend:
             # 4. Tool filtering (warning only)
             validate_tool_filtering(agent)
 
+            # 4b. Auto-initialize vectorstore/hierarchical-doc tools if needed
+            await self._initialize_tools()
+
             # 5. Tool adapters
             adapters = create_tool_adapters(
                 tool_configs=agent.tools or [],
-                tool_instances=self._tool_instances or {},
+                tool_instances=self._tool_instances,
             )
             tool_server, tool_names = build_holodeck_sdk_server(adapters)
 
@@ -557,23 +601,26 @@ class ClaudeBackend:
         """
         await self._ensure_initialized()
 
-        last_error: Exception | None = None
+        last_error: BaseException | None = None
         for attempt in range(_MAX_RETRIES):
             try:
                 return await self._invoke_query(message)
-            except ProcessError as exc:
+            except (ProcessError, CLIConnectionError, MessageParseError) as exc:
                 last_error = exc
-                if attempt < _MAX_RETRIES - 1:
-                    backoff = _BACKOFF_BASE_SECONDS * (2**attempt)
-                    logger.warning(
-                        "Claude subprocess error (attempt %d/%d), "
-                        "retrying in %ds: %s",
-                        attempt + 1,
-                        _MAX_RETRIES,
-                        backoff,
-                        exc,
-                    )
-                    await asyncio.sleep(backoff)
+            except BaseExceptionGroup as exc:
+                # anyio TaskGroup wraps subprocess errors in ExceptionGroup
+                last_error = exc
+
+            if attempt < _MAX_RETRIES - 1:
+                backoff = _BACKOFF_BASE_SECONDS * (2**attempt)
+                logger.warning(
+                    "Claude subprocess error (attempt %d/%d), " "retrying in %ds: %s",
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    backoff,
+                    last_error,
+                )
+                await asyncio.sleep(backoff)
 
         raise BackendSessionError(
             f"Claude subprocess failed after {_MAX_RETRIES} retries: {last_error}"
@@ -595,8 +642,9 @@ class ClaudeBackend:
         num_turns = 1
         structured_output: Any = None
 
-        async for msg in query(prompt=message, options=self._options):
-            text_parts, tool_calls, tool_results = _process_assistant(
+        prompt_iter = _wrap_prompt(message)
+        async for msg in query(prompt=prompt_iter, options=self._options):
+            text_parts, tool_calls, tool_results = _process_message(
                 msg, text_parts, tool_calls, tool_results
             )
             if msg.__class__.__name__ == "ResultMessage":
@@ -611,6 +659,9 @@ class ClaudeBackend:
                 )
                 num_turns = rm.num_turns
                 structured_output = rm.structured_output
+
+        # Enrich tool results with names from tool calls
+        _enrich_tool_results(tool_calls, tool_results)
 
         response_text = "".join(text_parts)
 
@@ -704,7 +755,49 @@ class ClaudeBackend:
             raise BackendInitError("Backend options not set after initialization")
         return ClaudeSession(options=self._options)
 
+    async def _initialize_tools(self) -> None:
+        """Initialize vectorstore/hierarchical-doc tools using shared module.
+
+        Populates ``self._tool_instances`` so ``create_tool_adapters()`` can
+        find them. Skips if no tools require initialization.
+        """
+        if not self._agent.tools:
+            return
+
+        has_vs = any(isinstance(t, VectorstoreToolConfig) for t in self._agent.tools)
+        has_hd = any(
+            isinstance(t, HierarchicalDocumentToolConfig) for t in self._agent.tools
+        )
+        if not has_vs and not has_hd:
+            return
+
+        from holodeck.config.context import agent_base_dir
+        from holodeck.lib.tool_initializer import ToolInitializerError, initialize_tools
+
+        try:
+            instances = await initialize_tools(
+                agent=self._agent,
+                force_ingest=True,
+                execution_config=None,
+                base_dir=agent_base_dir.get(),
+            )
+            self._tool_instances = instances
+            self._owned_tools = list(instances.values())
+        except ToolInitializerError:
+            raise
+        except Exception as exc:
+            raise BackendInitError(f"Failed to initialize tools: {exc}") from exc
+
     async def teardown(self) -> None:
         """Reset backend state, releasing any built options."""
+        # Cleanup owned tools
+        for tool_inst in self._owned_tools:
+            if hasattr(tool_inst, "cleanup"):
+                try:
+                    await tool_inst.cleanup()
+                except Exception as exc:
+                    logger.warning("Error cleaning up tool: %s", exc)
+        self._owned_tools = []
+        self._tool_instances = {}
         self._initialized = False
         self._options = None

@@ -23,9 +23,7 @@ from semantic_kernel.agents import Agent as SKAgent
 from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
 from semantic_kernel.connectors.ai.open_ai import (
     AzureChatCompletion,
-    AzureTextEmbedding,
     OpenAIChatCompletion,
-    OpenAITextEmbedding,
 )
 from semantic_kernel.connectors.ai.prompt_execution_settings import (
     PromptExecutionSettings,
@@ -69,11 +67,6 @@ try:
 except ImportError:
     OllamaChatCompletion = None  # type: ignore[misc,assignment]
 
-# Try to import Ollama embedding support (optional dependency)
-try:
-    from semantic_kernel.connectors.ai.ollama import OllamaTextEmbedding
-except ImportError:
-    OllamaTextEmbedding = None  # type: ignore[misc,assignment]
 
 logger = get_logger(__name__)
 
@@ -737,70 +730,36 @@ class AgentFactory:
         return False
 
     def _get_embedding_model(self) -> str:
-        """Get embedding model from first vectorstore tool or use provider default.
+        """Get embedding model from agent config via shared module.
 
         Returns:
             Embedding model name to use for TextEmbedding service.
         """
-        # Check if any vectorstore tool has explicit embedding_model
-        if self.agent_config.tools:
-            for tool in self.agent_config.tools:
-                if isinstance(tool, VectorstoreTool) and tool.embedding_model:
-                    return tool.embedding_model
+        from holodeck.lib.tool_initializer import resolve_embedding_model
 
-        # Return provider-specific default
-        if self.agent_config.model.provider == ProviderEnum.OLLAMA:
-            return "nomic-embed-text:latest"
-        else:
-            # OpenAI/Azure OpenAI default
-            return "text-embedding-3-small"
+        return resolve_embedding_model(self.agent_config)
 
     def _register_embedding_service(self) -> None:
         """Register TextEmbedding service on kernel for vectorstore tools.
 
-        Supports OpenAI and Azure OpenAI embedding providers. Uses the same
-        credentials as the chat model configured in agent_config.model.
+        Delegates to the shared ``tool_initializer.create_embedding_service()``
+        and registers the result on the SK kernel.
 
         Raises:
             AgentFactoryError: If provider doesn't support embeddings.
         """
-        model_config = self.agent_config.model
-        embedding_model = self._get_embedding_model()
-
-        logger.debug(
-            f"Registering embedding service: model={embedding_model}, "
-            f"provider={model_config.provider}"
+        from holodeck.lib.tool_initializer import (
+            ToolInitializerError,
+            create_embedding_service,
         )
 
-        if model_config.provider == ProviderEnum.OPENAI:
-            self._embedding_service = OpenAITextEmbedding(
-                ai_model_id=embedding_model,
-                api_key=model_config.api_key,
-            )
-        elif model_config.provider == ProviderEnum.AZURE_OPENAI:
-            self._embedding_service = AzureTextEmbedding(
-                deployment_name=embedding_model,
-                endpoint=model_config.endpoint,
-                api_key=model_config.api_key,
-            )
-        elif model_config.provider == ProviderEnum.OLLAMA:
-            if OllamaTextEmbedding is None:
-                raise AgentFactoryError(
-                    "Ollama provider requires 'ollama' package. "
-                    "Install with: pip install ollama"
-                )
-            self._embedding_service = OllamaTextEmbedding(
-                ai_model_id=embedding_model,
-                host=model_config.endpoint if model_config.endpoint else None,
-            )
-        else:
-            raise AgentFactoryError(
-                f"Embedding service not supported for provider: "
-                f"{model_config.provider}. "
-                "Vectorstore tools require OpenAI, Azure OpenAI, or Ollama provider."
-            )
+        try:
+            self._embedding_service = create_embedding_service(self.agent_config)
+        except ToolInitializerError as exc:
+            raise AgentFactoryError(str(exc)) from exc
 
         self.kernel.add_service(self._embedding_service)
+        embedding_model = self._get_embedding_model()
         logger.debug(f"Embedding service registered: {embedding_model}")
 
     def _create_search_kernel_function(

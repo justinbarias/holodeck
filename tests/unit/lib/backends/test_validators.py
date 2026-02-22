@@ -58,7 +58,7 @@ class TestValidateCredentials:
 
     @patch("holodeck.lib.backends.validators.get_env_var")
     def test_api_key_present(self, mock_get_env: object) -> None:
-        """Returns dict when ANTHROPIC_API_KEY is set."""
+        """Returns dict with ANTHROPIC_API_KEY when set."""
         mock_get_env.return_value = "sk-ant-test-key"  # type: ignore[union-attr]
         model = LLMProvider(
             provider=ProviderEnum.ANTHROPIC,
@@ -66,7 +66,7 @@ class TestValidateCredentials:
             auth_provider=AuthProvider.api_key,
         )
         result = validate_credentials(model)
-        assert isinstance(result, dict)
+        assert result == {"ANTHROPIC_API_KEY": "sk-ant-test-key"}
 
     @patch("holodeck.lib.backends.validators.get_env_var")
     def test_api_key_missing_raises(self, mock_get_env: object) -> None:
@@ -91,11 +91,11 @@ class TestValidateCredentials:
             auth_provider=None,
         )
         result = validate_credentials(model)
-        assert isinstance(result, dict)
+        assert result == {"ANTHROPIC_API_KEY": "sk-ant-test-key"}
 
     @patch("holodeck.lib.backends.validators.get_env_var")
     def test_oauth_token_present(self, mock_get_env: object) -> None:
-        """No exception when CLAUDE_CODE_OAUTH_TOKEN is set."""
+        """Returns dict with CLAUDE_CODE_OAUTH_TOKEN when set."""
         mock_get_env.return_value = "oauth-test-token"  # type: ignore[union-attr]
         model = LLMProvider(
             provider=ProviderEnum.ANTHROPIC,
@@ -103,7 +103,7 @@ class TestValidateCredentials:
             auth_provider=AuthProvider.oauth_token,
         )
         result = validate_credentials(model)
-        assert isinstance(result, dict)
+        assert result == {"CLAUDE_CODE_OAUTH_TOKEN": "oauth-test-token"}
 
     @patch("holodeck.lib.backends.validators.get_env_var")
     def test_oauth_token_missing_raises(self, mock_get_env: object) -> None:

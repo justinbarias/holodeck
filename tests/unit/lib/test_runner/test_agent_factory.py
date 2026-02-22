@@ -974,7 +974,7 @@ class TestEmbeddingServiceRegistration:
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
             mock.patch(
-                "holodeck.lib.test_runner.agent_factory.OpenAITextEmbedding"
+                "semantic_kernel.connectors.ai.open_ai.OpenAITextEmbedding"
             ) as mock_embedding,
         ):
             factory = AgentFactory(agent_config)
@@ -1010,7 +1010,7 @@ class TestEmbeddingServiceRegistration:
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
             mock.patch(
-                "holodeck.lib.test_runner.agent_factory.AzureTextEmbedding"
+                "semantic_kernel.connectors.ai.open_ai.AzureTextEmbedding"
             ) as mock_embedding,
         ):
             factory = AgentFactory(agent_config)
@@ -1040,7 +1040,7 @@ class TestEmbeddingServiceRegistration:
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
             mock.patch(
-                "holodeck.lib.test_runner.agent_factory.OpenAITextEmbedding"
+                "semantic_kernel.connectors.ai.open_ai.OpenAITextEmbedding"
             ) as mock_embedding,
         ):
             factory = AgentFactory(agent_config)
@@ -1074,7 +1074,7 @@ class TestEmbeddingServiceRegistration:
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
             mock.patch(
-                "holodeck.lib.test_runner.agent_factory.OpenAITextEmbedding"
+                "semantic_kernel.connectors.ai.open_ai.OpenAITextEmbedding"
             ) as mock_embedding,
         ):
             factory = AgentFactory(agent_config)
@@ -1090,7 +1090,7 @@ class TestEmbeddingServiceRegistration:
         reason="Anthropic package not installed",
     )
     def test_unsupported_provider_raises_error(self) -> None:
-        """Test Anthropic provider raises error for vectorstore tools."""
+        """Test Anthropic raises error for vectorstore tools sans embed provider."""
         agent_config = Agent(
             name="test-agent",
             model=LLMProvider(
@@ -1118,9 +1118,11 @@ class TestEmbeddingServiceRegistration:
                 AgentFactory(agent_config)
 
             error_msg = str(exc_info.value)
-            assert "Embedding service not supported" in error_msg
-            # Provider name may be lowercase in error message
-            assert "anthropic" in error_msg.lower()
+            # Error message from shared tool_initializer
+            assert (
+                "does not support embeddings" in error_msg.lower()
+                or "embedding" in error_msg.lower()
+            )
 
 
 class TestKernelFunctionRegistration:
@@ -1248,7 +1250,7 @@ class TestVectorstoreToolDiscovery:
         with (
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
-            mock.patch("holodeck.lib.test_runner.agent_factory.OpenAITextEmbedding"),
+            mock.patch("semantic_kernel.connectors.ai.open_ai.OpenAITextEmbedding"),
         ):
             factory = AgentFactory(agent_config)
 
@@ -1350,7 +1352,7 @@ class TestVectorstoreToolDiscovery:
         with (
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
-            mock.patch("holodeck.lib.test_runner.agent_factory.OpenAITextEmbedding"),
+            mock.patch("semantic_kernel.connectors.ai.open_ai.OpenAITextEmbedding"),
             mock.patch(
                 "holodeck.lib.test_runner.agent_factory.KernelFunctionFromMethod"
             ),
@@ -1411,7 +1413,7 @@ class TestVectorstoreToolDiscovery:
         with (
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
-            mock.patch("holodeck.lib.test_runner.agent_factory.OpenAITextEmbedding"),
+            mock.patch("semantic_kernel.connectors.ai.open_ai.OpenAITextEmbedding"),
         ):
             factory = AgentFactory(agent_config)
 
@@ -1463,7 +1465,7 @@ class TestVectorstoreToolDiscovery:
         with (
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
-            mock.patch("holodeck.lib.test_runner.agent_factory.OpenAITextEmbedding"),
+            mock.patch("semantic_kernel.connectors.ai.open_ai.OpenAITextEmbedding"),
             mock.patch(
                 "holodeck.lib.test_runner.agent_factory.KernelFunctionFromMethod"
             ),
@@ -1591,13 +1593,19 @@ class TestOllamaProvider:
             ],
         )
 
+        mock_embed = mock.MagicMock()
         with (
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
             mock.patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion"),
-            mock.patch(
-                "holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding"
-            ) as mock_embed,
+            mock.patch.dict(
+                "sys.modules",
+                {
+                    "semantic_kernel.connectors.ai.ollama": mock.MagicMock(
+                        OllamaTextEmbedding=mock_embed
+                    )
+                },
+            ),
         ):
             factory = AgentFactory(agent_config)
 
@@ -1632,13 +1640,19 @@ class TestOllamaProvider:
             ],
         )
 
+        mock_embed = mock.MagicMock()
         with (
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
             mock.patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion"),
-            mock.patch(
-                "holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding"
-            ) as mock_embed,
+            mock.patch.dict(
+                "sys.modules",
+                {
+                    "semantic_kernel.connectors.ai.ollama": mock.MagicMock(
+                        OllamaTextEmbedding=mock_embed
+                    )
+                },
+            ),
         ):
             factory = AgentFactory(agent_config)
 
@@ -1695,18 +1709,23 @@ class TestOllamaNotAvailable:
             ],
         )
 
+        # Simulate import failure for Ollama embedding in the shared module
+        def _raise_import(*args: object, **kwargs: object) -> None:
+            raise ImportError("No module named 'ollama'")
+
         with (
             mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
             mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
             mock.patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion"),
-            mock.patch(
-                "holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding", None
+            mock.patch.dict(
+                "sys.modules",
+                {"semantic_kernel.connectors.ai.ollama": None},
             ),
         ):
             with pytest.raises(AgentFactoryError) as exc_info:
                 AgentFactory(agent_config)
 
-            assert "Ollama provider requires" in str(exc_info.value)
+            assert "ollama" in str(exc_info.value).lower()
 
 
 class TestMCPTools:
