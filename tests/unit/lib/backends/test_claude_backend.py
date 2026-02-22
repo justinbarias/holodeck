@@ -686,7 +686,7 @@ class TestClaudeSessionSend:
 
     @pytest.mark.asyncio
     async def test_send_multi_turn_state_tracking(self) -> None:
-        """T014: Multi-turn state tracking with continue_conversation."""
+        """T014: Multi-turn state tracking passes session_id on turn 2+."""
         mock_client = MagicMock()
         mock_client.query = AsyncMock()
 
@@ -703,29 +703,30 @@ class TestClaudeSessionSend:
         session = ClaudeSession(options=base_options)
         session._client = mock_client
 
-        with patch(f"{_SDK_MODULE}.ClaudeAgentOptions") as mock_opts_cls:
-            await session.send("Turn 1")
+        await session.send("Turn 1")
 
-            # After first turn, session_id should be captured
-            assert session._session_id == "sess-001"
-            assert session._turn_count == 1
+        # After first turn, session_id should be captured
+        assert session._session_id == "sess-001"
+        assert session._turn_count == 1
 
-            # Second turn
-            result_msg_2 = _make_result_message(session_id="sess-002")
-            turn2_items = [_make_assistant_message(), result_msg_2]
+        # First turn uses default session_id
+        mock_client.query.assert_called_with("Turn 1", session_id="default")
 
-            def mock_receive_turn2():
-                return _async_iter(turn2_items)
+        # Second turn
+        result_msg_2 = _make_result_message(session_id="sess-002")
+        turn2_items = [_make_assistant_message(), result_msg_2]
 
-            mock_client.receive_response = mock_receive_turn2
+        def mock_receive_turn2():
+            return _async_iter(turn2_items)
 
-            await session.send("Turn 2")
+        mock_client.receive_response = mock_receive_turn2
 
-            # Second turn should create new options with continue_conversation
-            mock_opts_cls.assert_called()
-            turn2_kwargs = mock_opts_cls.call_args[1]
-            assert turn2_kwargs["continue_conversation"] is True
-            assert turn2_kwargs["resume"] == "sess-001"
+        await session.send("Turn 2")
+
+        # Second turn should pass captured session_id
+        mock_client.query.assert_called_with("Turn 2", session_id="sess-001")
+        assert session._session_id == "sess-002"
+        assert session._turn_count == 2
 
 
 # ---------------------------------------------------------------------------

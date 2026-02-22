@@ -348,20 +348,15 @@ class ClaudeSession:
             await self._client.connect()
         return self._client
 
-    def _build_turn_options(self) -> ClaudeAgentOptions | None:
-        """Build options for the current turn.
+    def _get_session_id(self) -> str:
+        """Return the session ID for the current query.
 
-        Turn 1 returns ``None`` (use base options). Turn 2+ returns a NEW
-        ``ClaudeAgentOptions`` with ``continue_conversation=True`` and
-        ``resume=session_id``.
+        SDK 0.1.37 uses the ``session_id`` parameter on ``client.query()``
+        to maintain multi-turn conversation state.  The first turn uses the
+        default ``"default"``; subsequent turns reuse the session ID returned
+        by the ``ResultMessage``.
         """
-        if self._turn_count == 0:
-            return None  # Use base options
-
-        return ClaudeAgentOptions(
-            continue_conversation=True,
-            resume=self._session_id,
-        )
+        return self._session_id or "default"
 
     async def send(self, message: str) -> ExecutionResult:
         """Send a message and collect the full response.
@@ -377,12 +372,7 @@ class ClaudeSession:
         """
         try:
             client = await self._ensure_client()
-            turn_opts = self._build_turn_options()
-
-            if turn_opts is not None:
-                await client.query(message, options=turn_opts)  # type: ignore[call-arg]
-            else:
-                await client.query(message)
+            await client.query(message, session_id=self._get_session_id())
 
             text_parts: list[str] = []
             tool_calls: list[dict[str, Any]] = []
@@ -435,12 +425,7 @@ class ClaudeSession:
         """
         try:
             client = await self._ensure_client()
-            turn_opts = self._build_turn_options()
-
-            if turn_opts is not None:
-                await client.query(message, options=turn_opts)  # type: ignore[call-arg]
-            else:
-                await client.query(message)
+            await client.query(message, session_id=self._get_session_id())
 
             async for msg in client.receive_response():
                 if msg.__class__.__name__ == "AssistantMessage":
@@ -614,7 +599,7 @@ class ClaudeBackend:
             if attempt < _MAX_RETRIES - 1:
                 backoff = _BACKOFF_BASE_SECONDS * (2**attempt)
                 logger.warning(
-                    "Claude subprocess error (attempt %d/%d), " "retrying in %ds: %s",
+                    "Claude subprocess error (attempt %d/%d), retrying in %ds: %s",
                     attempt + 1,
                     _MAX_RETRIES,
                     backoff,
@@ -738,7 +723,7 @@ class ClaudeBackend:
                 "structured_output": output,
                 "is_error": True,
                 "error_reason": (
-                    "Structured output schema validation failed: " f"{exc.message}"
+                    f"Structured output schema validation failed: {exc.message}"
                 ),
             }
 
