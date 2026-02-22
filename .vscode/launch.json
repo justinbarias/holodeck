@@ -52,7 +52,7 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}/sample/legal-assistant",
+            "cwd": "${workspaceFolder}/sample/legal-assistant/claude",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }

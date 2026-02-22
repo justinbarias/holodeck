@@ -17,6 +17,8 @@ import pytest
 
 from holodeck.lib.tool_initializer import (
     ToolInitializerError,
+    _create_chat_service_from_config,
+    _resolve_context_model_config,
     create_embedding_service,
     initialize_tools,
     resolve_embedding_model,
@@ -68,7 +70,10 @@ def _make_vectorstore_tool(
     )
 
 
-def _make_hierarchical_doc_tool(name: str = "doc_search") -> Any:
+def _make_hierarchical_doc_tool(
+    name: str = "doc_search",
+    context_model: LLMProvider | None = None,
+) -> Any:
     """Create a HierarchicalDocumentToolConfig fixture."""
     from holodeck.models.tool import HierarchicalDocumentToolConfig
 
@@ -76,6 +81,7 @@ def _make_hierarchical_doc_tool(name: str = "doc_search") -> Any:
         name=name,
         description=f"Search {name}",
         source="./data/docs",
+        context_model=context_model,
     )
 
 
@@ -423,3 +429,190 @@ class TestInitializeAllTools:
             pytest.raises(ToolInitializerError, match="embedding service"),
         ):
             await initialize_tools(agent)
+
+
+# ===================================================================
+# T006: TestResolveContextModelConfig
+# ===================================================================
+
+
+class TestResolveContextModelConfig:
+    """Tests for _resolve_context_model_config() resolution chain."""
+
+    def test_tool_context_model_takes_priority(self) -> None:
+        """Per-tool context_model wins over agent-level configs."""
+        tool_context = LLMProvider(
+            provider=ProviderEnum.OLLAMA,
+            name="llama3",
+            api_key="key",
+        )
+        embedding_provider = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="text-embedding-3-small",
+            api_key="key",
+        )
+        tool = _make_hierarchical_doc_tool(context_model=tool_context)
+        agent = _make_agent(
+            ProviderEnum.ANTHROPIC,
+            tools=[tool],
+            embedding_provider=embedding_provider,
+        )
+        result = _resolve_context_model_config(agent, tool)
+        assert result.provider == ProviderEnum.OLLAMA
+        assert result.name == "llama3"
+
+    def test_falls_back_to_embedding_provider(self) -> None:
+        """No tool context_model → uses agent.embedding_provider."""
+        embedding_provider = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-4o-mini",
+            api_key="key",
+        )
+        tool = _make_hierarchical_doc_tool()  # no context_model
+        agent = _make_agent(
+            ProviderEnum.ANTHROPIC,
+            tools=[tool],
+            embedding_provider=embedding_provider,
+        )
+        result = _resolve_context_model_config(agent, tool)
+        assert result.provider == ProviderEnum.OPENAI
+        assert result.name == "gpt-4o-mini"
+
+    def test_falls_back_to_agent_model(self) -> None:
+        """No tool context_model, no embedding_provider → uses agent.model."""
+        tool = _make_hierarchical_doc_tool()  # no context_model
+        agent = _make_agent(ProviderEnum.OPENAI, tools=[tool])
+        result = _resolve_context_model_config(agent, tool)
+        assert result.provider == ProviderEnum.OPENAI
+        assert result.name == "gpt-4o"
+
+
+# ===================================================================
+# T007: TestContextModelWiring
+# ===================================================================
+
+
+class TestContextModelWiring:
+    """Tests that context_model override is wired into tool initialization."""
+
+    @pytest.mark.asyncio
+    async def test_context_model_creates_chat_service(self) -> None:
+        """Tool with context_model and no caller chat_service → auto-creates one."""
+        tool_context = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-4o-mini",
+            api_key="test-key",
+        )
+        tool = _make_hierarchical_doc_tool(name="ctx_tool", context_model=tool_context)
+        agent = _make_agent(tools=[tool])
+
+        mock_hd = MagicMock()
+        mock_instance = MagicMock()
+        mock_instance.set_embedding_service = MagicMock()
+        mock_instance.set_chat_service = MagicMock()
+        mock_instance.initialize = AsyncMock()
+        mock_hd.return_value = mock_instance
+
+        mock_chat_cls = MagicMock()
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.hierarchical_document_tool.HierarchicalDocumentTool",
+                mock_hd,
+            ),
+            patch(
+                "semantic_kernel.connectors.ai.open_ai.OpenAIChatCompletion",
+                mock_chat_cls,
+            ),
+        ):
+            result = await initialize_tools(agent, chat_service=None)
+            assert "ctx_tool" in result
+            mock_instance.set_chat_service.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_caller_chat_service_used_when_provided(self) -> None:
+        """Caller-provided chat_service takes precedence even with context_model."""
+        tool_context = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-4o-mini",
+            api_key="test-key",
+        )
+        tool = _make_hierarchical_doc_tool(name="ctx_tool", context_model=tool_context)
+        agent = _make_agent(tools=[tool])
+
+        mock_hd = MagicMock()
+        mock_instance = MagicMock()
+        mock_instance.set_embedding_service = MagicMock()
+        mock_instance.set_chat_service = MagicMock()
+        mock_instance.initialize = AsyncMock()
+        mock_hd.return_value = mock_instance
+
+        caller_chat = MagicMock()
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.hierarchical_document_tool.HierarchicalDocumentTool",
+                mock_hd,
+            ),
+        ):
+            await initialize_tools(agent, chat_service=caller_chat)
+            mock_instance.set_chat_service.assert_called_once_with(caller_chat)
+
+    @pytest.mark.asyncio
+    async def test_no_context_model_no_chat_service(self) -> None:
+        """No context_model and no chat_service → set_chat_service not called."""
+        tool = _make_hierarchical_doc_tool(name="plain_tool")
+        agent = _make_agent(tools=[tool])
+
+        mock_hd = MagicMock()
+        mock_instance = MagicMock()
+        mock_instance.set_embedding_service = MagicMock()
+        mock_instance.set_chat_service = MagicMock()
+        mock_instance.initialize = AsyncMock()
+        mock_hd.return_value = mock_instance
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.hierarchical_document_tool.HierarchicalDocumentTool",
+                mock_hd,
+            ),
+        ):
+            await initialize_tools(agent, chat_service=None)
+            mock_instance.set_chat_service.assert_not_called()
+
+
+# ===================================================================
+# T008: TestCreateChatServiceFromConfig
+# ===================================================================
+
+
+class TestCreateChatServiceFromConfig:
+    """Tests for _create_chat_service_from_config()."""
+
+    @patch("semantic_kernel.connectors.ai.open_ai.OpenAIChatCompletion")
+    def test_openai_provider(self, mock_cls: MagicMock) -> None:
+        """OpenAI provider → returns OpenAIChatCompletion."""
+        config = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-4o-mini",
+            api_key="key",
+        )
+        result = _create_chat_service_from_config(config)
+        assert result is not None
+        mock_cls.assert_called_once()
+
+    @patch("semantic_kernel.connectors.ai.open_ai.AzureChatCompletion")
+    def test_azure_openai_provider(self, mock_cls: MagicMock) -> None:
+        """Azure OpenAI provider → returns AzureChatCompletion."""
+        config = LLMProvider(
+            provider=ProviderEnum.AZURE_OPENAI,
+            name="gpt-4o",
+            api_key="key",
+            endpoint="https://test.openai.azure.com",
+        )
+        result = _create_chat_service_from_config(config)
+        assert result is not None
+        mock_cls.assert_called_once()

@@ -314,6 +314,100 @@ async def _initialize_vectorstore_tools(
     return instances
 
 
+def _resolve_context_model_config(
+    agent: Agent,
+    tool_config: Any,
+) -> Any:
+    """Resolve LLMProvider for contextual embedding generation.
+
+    Resolution chain (highest to lowest priority):
+    1. ``tool_config.context_model`` — explicit per-tool override
+    2. ``agent.embedding_provider`` — for Anthropic agents
+    3. ``agent.model`` — fallback to the main agent model
+
+    Args:
+        agent: Agent configuration.
+        tool_config: HierarchicalDocumentToolConfig instance.
+
+    Returns:
+        LLMProvider instance for context generation.
+    """
+    from holodeck.models.llm import LLMProvider as LLMProviderModel
+
+    context_model = getattr(tool_config, "context_model", None)
+    if isinstance(context_model, LLMProviderModel) and context_model is not None:
+        return context_model
+
+    if agent.embedding_provider is not None:
+        return agent.embedding_provider
+
+    return agent.model
+
+
+def _create_chat_service_from_config(model_config: Any) -> Any:
+    """Create an SK ChatCompletion service from an LLMProvider config.
+
+    Args:
+        model_config: LLMProvider instance.
+
+    Returns:
+        An initialized ChatCompletion service.
+
+    Raises:
+        ToolInitializerError: If provider is unsupported.
+    """
+    from semantic_kernel.connectors.ai.open_ai import (
+        AzureChatCompletion,
+        OpenAIChatCompletion,
+    )
+
+    if model_config.provider == ProviderEnum.AZURE_OPENAI:
+        return AzureChatCompletion(
+            deployment_name=model_config.name,
+            endpoint=model_config.endpoint,
+            api_key=model_config.api_key,
+        )
+
+    if model_config.provider == ProviderEnum.OPENAI:
+        return OpenAIChatCompletion(
+            ai_model_id=model_config.name,
+            api_key=model_config.api_key,
+        )
+
+    if model_config.provider == ProviderEnum.ANTHROPIC:
+        try:
+            from semantic_kernel.connectors.ai.anthropic import (
+                AnthropicChatCompletion,
+            )
+        except ImportError as exc:
+            raise ToolInitializerError(
+                "Anthropic provider requires 'anthropic' package. "
+                "Install with: pip install anthropic"
+            ) from exc
+        return AnthropicChatCompletion(
+            ai_model_id=model_config.name,
+            api_key=model_config.api_key,
+        )
+
+    if model_config.provider == ProviderEnum.OLLAMA:
+        try:
+            from semantic_kernel.connectors.ai.ollama import OllamaChatCompletion
+        except ImportError as exc:
+            raise ToolInitializerError(
+                "Ollama provider requires 'ollama' package. "
+                "Install with: pip install ollama"
+            ) from exc
+        return OllamaChatCompletion(
+            ai_model_id=model_config.name,
+            host=model_config.endpoint if model_config.endpoint else None,
+        )
+
+    raise ToolInitializerError(
+        f"Chat service not supported for provider: {model_config.provider}. "
+        "Context model requires OpenAI, Azure OpenAI, Anthropic, or Ollama provider."
+    )
+
+
 async def _initialize_hierarchical_doc_tools(
     agent: Agent,
     embedding_service: Any,
@@ -350,8 +444,27 @@ async def _initialize_hierarchical_doc_tools(
         try:
             tool = HierarchicalDocumentTool(tool_config, base_dir=base_dir)
             tool.set_embedding_service(embedding_service)
-            if chat_service is not None:
-                tool.set_chat_service(chat_service)
+
+            # Resolve chat service: use explicit context_model if provided,
+            # otherwise fall back to the caller-provided chat_service.
+            effective_chat_service = chat_service
+            if chat_service is None and tool_config.context_model is not None:
+                context_llm = _resolve_context_model_config(agent, tool_config)
+                effective_chat_service = _create_chat_service_from_config(context_llm)
+                logger.debug(
+                    "Created context chat service for tool '%s': provider=%s, model=%s",
+                    tool_config.name,
+                    context_llm.provider,
+                    context_llm.name,
+                )
+            elif chat_service is None and tool_config.context_model is None:
+                # No explicit chat_service and no context_model — check if we
+                # can create one from agent-level config for context generation.
+                pass
+
+            if effective_chat_service is not None:
+                tool.set_chat_service(effective_chat_service)
+
             await tool.initialize(
                 force_ingest=force_ingest, provider_type=provider_type
             )

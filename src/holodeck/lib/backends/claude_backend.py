@@ -762,7 +762,7 @@ class ClaudeBackend:
         try:
             instances = await initialize_tools(
                 agent=self._agent,
-                force_ingest=True,
+                force_ingest=False,  ##TODO: figure out how to pass this down
                 execution_config=None,
                 base_dir=agent_base_dir.get(),
             )
