@@ -400,3 +400,62 @@ ExecutionResult (both backends produce this)
 - Subprocess crash during [Processing]: → `[Closed]`, raises `AgentSessionError`
 - Tool failure during [Processing]: → continues; `ExecutionResult.tool_results[n].is_error = True`
 - `max_turns` reached: → returns `ExecutionResult(is_error=True, error_reason="max_turns limit reached")`
+
+---
+
+## 9. Chat Layer Integration
+
+The chat layer (`chat/executor.py`, `chat/session.py`) uses the same backend abstraction
+as the test runner but through a different entry point:
+
+- **Test runner**: `AgentBackend.invoke_once()` — stateless, fresh session per test case
+- **Chat executor**: `AgentBackend.create_session()` → `AgentSession.send()` / `send_streaming()` — stateful multi-turn
+
+### Chat Executor → AgentSession Mapping
+
+| Current (Pre-Phase 10) | After Phase 10 |
+|---|---|
+| `AgentFactory(agent_config)` | `BackendSelector.select(agent, mode="chat")` |
+| `_factory.create_thread_run()` | `_backend.create_session()` |
+| `_thread_run.invoke(message)` → `AgentExecutionResult` | `_session.send(message)` → `ExecutionResult` |
+| `_thread_run.chat_history.messages` | `self._history` (executor-local `list[dict]`) |
+| `_factory.shutdown()` | `_session.close()` + `_backend.teardown()` |
+
+### Conversation History Strategy
+
+History is tracked locally in `AgentExecutor._history: list[dict[str, Any]]` as
+`{"role": "user" | "assistant", "content": str}` dicts. This is backend-agnostic:
+
+- **SK sessions**: `SKSession` internally maintains `ChatHistory` for the SK agent loop.
+  The executor does NOT read from it — it records messages from its own call/response pairs.
+- **Claude sessions**: `ClaudeSession` tracks `session_id` for multi-turn state.
+  Conversation context lives in the SDK subprocess. The executor's local history is for
+  display/export only.
+
+This approach avoids extending the `AgentSession` protocol with a `get_history()` method,
+keeping the protocol minimal (send, send_streaming, close).
+
+### Streaming Architecture
+
+```
+User Input (CLI)
+    │
+    ▼
+ChatSessionManager.process_message_streaming()
+    │
+    ▼
+AgentExecutor.execute_turn_streaming()
+    │
+    ▼
+AgentSession.send_streaming()
+    │
+    ├── ClaudeSession: real token-by-token via ClaudeSDKClient
+    └── SKSession: complete response as single yield (fallback)
+    │
+    ▼
+CLI: sys.stdout.write(chunk) per chunk → progressive terminal display
+```
+
+Token usage and tool call details are NOT available during the streaming path.
+The CLI tracks only the full response text for display. Token accumulation
+continues to work through the non-streaming `process_message()` path if needed.

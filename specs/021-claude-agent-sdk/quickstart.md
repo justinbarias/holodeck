@@ -366,10 +366,72 @@ def build_claude_mcp_configs(mcp_tools: list[MCPTool]) -> dict[str, Any]:
 - `lib/backends/selector.py` — provider routing
 - `lib/backends/claude_backend.py` — Claude-native implementation
 
-### `chat/executor.py` — add streaming path:
-- Current: `AgentExecutor.execute_turn() → str` (blocking, SK only)
-- New: `AgentExecutor.execute_turn_streaming() → AsyncIterator[str]`
-- Route to `ClaudeSession.send_streaming()` for Claude, return complete response for SK
+### `chat/executor.py` — full decoupling + streaming:
+
+**Decoupling** (same pattern as `test_runner/executor.py` in Phase 9):
+
+```python
+# BEFORE (coupled to AgentFactory)
+from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentThreadRun
+
+class AgentExecutor:
+    def __init__(self, agent_config):
+        self._factory = AgentFactory(agent_config)
+        self._thread_run = None
+
+    async def execute_turn(self, message):
+        if self._thread_run is None:
+            self._thread_run = await self._factory.create_thread_run()
+        result = await self._thread_run.invoke(message)  # SK-only
+        return AgentResponse(content=result.response, ...)
+
+# AFTER (provider-agnostic via BackendSelector)
+from holodeck.lib.backends.base import AgentBackend, AgentSession, BackendSelector
+
+class AgentExecutor:
+    def __init__(self, agent_config, backend=None):
+        self._backend = backend
+        self._session = None
+        self._history = []
+
+    async def _ensure_backend_and_session(self):
+        if self._session is not None:
+            return
+        if self._backend is None:
+            self._backend = await BackendSelector.select(
+                self.agent_config, mode="chat"
+            )
+        self._session = await self._backend.create_session()
+
+    async def execute_turn(self, message):
+        await self._ensure_backend_and_session()
+        exec_result = await self._session.send(message)  # Works with both backends
+        self._history.append({"role": "user", "content": message})
+        self._history.append({"role": "assistant", "content": exec_result.response})
+        return AgentResponse(content=exec_result.response, ...)
+```
+
+**Streaming** (net-new capability):
+
+```python
+    async def execute_turn_streaming(self, message):
+        await self._ensure_backend_and_session()
+        collected = []
+        async for chunk in self._session.send_streaming(message):
+            collected.append(chunk)
+            yield chunk
+        self._history.append({"role": "user", "content": message})
+        self._history.append({"role": "assistant", "content": "".join(collected)})
+```
+
+### `chat/session.py` — add streaming method:
+- New: `ChatSessionManager.process_message_streaming()` → yields chunks from executor
+- Existing `process_message()` unchanged (non-streaming path preserved)
+- `start()` simplified — constructor no longer does I/O
+
+### `cli/commands/chat.py` — streaming REPL:
+- Replace spinner thread with progressive text output: `sys.stdout.write(chunk)` per chunk
+- Both backends work: Claude gets real streaming, SK gets single-chunk (identical to current)
 
 ### `lib/test_runner/executor.py` — remove SK type dependencies:
 - Replace `AgentExecutionResult` references with `ExecutionResult`

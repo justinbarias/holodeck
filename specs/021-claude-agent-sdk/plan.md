@@ -500,27 +500,121 @@ class BackendSelector:
 
 ---
 
-### Phase 10: Streaming Chat Refactor
+### Phase 10: Chat Layer Decoupling + Streaming
 
 **FR**: FR-007, FR-012b
 
-**10.1** — Update `src/holodeck/chat/executor.py`:
-- Add `execute_turn_streaming(message: str) -> AsyncIterator[str]` method
-- Internally calls `session.send_streaming(message)` → yields text chunks
-- Falls back to `session.send(message)` → yield complete response for SK backend
-- Replace `get_history() -> ChatHistory` with two methods:
-  - `get_message_count() -> int` — satisfiable by both backends
-  - `get_history() -> list[dict[str, Any]]` — returns empty list for Claude sessions (state lives in the subprocess); returns serialised SK history for SK sessions
+Phase 10 applies the same decoupling pattern as Phase 9 (test runner) to the chat layer.
+After this phase, no module in `src/holodeck/chat/` imports `AgentFactory`, `AgentThreadRun`,
+or any Semantic Kernel type. The chat executor uses `BackendSelector` → `AgentBackend.create_session()`
+→ `AgentSession` for multi-turn chat.
 
-**10.2** — Update `src/holodeck/chat/session.py`:
-- `process_message()` uses `execute_turn_streaming()` when available
-- Updates token usage from `ExecutionResult` after stream completes
-- Any caller reading `session.history` must expect `list[dict[str, Any]]` (not `ChatHistory`)
+**Files modified in this phase**:
+- `chat/executor.py` (major refactor)
+- `chat/session.py` (updated)
+- `cli/commands/chat.py` (updated)
 
-**10.3** — Update `src/holodeck/chat/streaming.py`:
-- Add handlers for SDK message types where needed
+**10.1** — Refactor `src/holodeck/chat/executor.py`:
 
-**Test**: Unit tests with mocked `ClaudeSession.send_streaming()` verifying chunks arrive progressively.
+Remove all imports of `AgentFactory`, `AgentThreadRun`, `ExecutionConfig` from `test_runner.agent_factory`.
+Add imports of `AgentBackend`, `AgentSession`, `BackendSelector`, `ExecutionResult`, `BackendSessionError`,
+`BackendInitError` from `lib.backends`.
+
+**Constructor**: Add `backend: AgentBackend | None = None` parameter for dependency injection.
+Remove `self._factory = AgentFactory(...)` and `self._thread_run: AgentThreadRun | None`.
+Replace with `self._backend`, `self._session: AgentSession | None`, `self._history: list[dict]`.
+Constructor stores config only — no I/O, no factory creation. This is a full cutover (no dual-path
+with legacy factory), since no external consumer injects `AgentFactory` into the chat executor.
+
+**`_ensure_backend_and_session()`** (new private method):
+```python
+async def _ensure_backend_and_session(self) -> None:
+    if self._session is not None:
+        return
+    if self._backend is None:
+        self._backend = await BackendSelector.select(
+            self.agent_config, tool_instances=None, mode="chat",
+        )
+    self._session = await self._backend.create_session()
+```
+
+Passes `mode="chat"` so `ClaudeBackend` respects the YAML `permission_mode` (does NOT force
+`bypassPermissions` as in test mode).
+
+**`execute_turn(message)`**: Replace `_thread_run.invoke(message)` with `_session.send(message)`.
+Convert `ExecutionResult` → `AgentResponse`. Track history locally:
+`self._history.append({"role": "user", "content": message})` and
+`self._history.append({"role": "assistant", "content": content})`.
+Catch `BackendSessionError` / `BackendInitError` → wrap in `RuntimeError` for backward compat.
+
+**`get_history()`**: Return `list(self._history)` instead of reading `_thread_run.chat_history.messages`.
+This removes the last SK `ChatHistory` dependency from the chat layer.
+
+**`clear_history()`**: Changes from sync to async. Calls `session.close()`, sets `self._session = None`,
+clears `self._history`. Next `execute_turn()` creates a fresh session. (Not called anywhere today —
+signature change is safe.)
+
+**`shutdown()`**: Replace `_factory.shutdown()` with `session.close()` + `backend.teardown()`.
+
+**10.2** — Add `execute_turn_streaming()` to `AgentExecutor`:
+
+New async generator method:
+```python
+async def execute_turn_streaming(self, message: str) -> AsyncGenerator[str, None]:
+    await self._ensure_backend_and_session()
+    collected: list[str] = []
+    async for chunk in self._session.send_streaming(message):
+        collected.append(chunk)
+        yield chunk
+    # Update history after stream completes
+    self._history.append({"role": "user", "content": message})
+    self._history.append({"role": "assistant", "content": "".join(collected)})
+```
+
+Claude backend: real token-by-token streaming via `ClaudeSession.send_streaming()`.
+SK backend: yields complete response as single chunk via `SKSession.send_streaming()`.
+
+Limitation: tool call details and token usage are not available from the streaming path.
+This is acceptable for interactive chat. A follow-up can add metadata extraction from
+`ResultMessage` at end of stream.
+
+**10.3** — Update `src/holodeck/chat/session.py`:
+
+Add `process_message_streaming(message) -> AsyncGenerator[str, None]` method to
+`ChatSessionManager`. Validates message, calls `_executor.execute_turn_streaming()`,
+yields chunks, increments `session.message_count` after stream completes.
+
+Simplify `start()`: remove `try/except` around `AgentExecutor()` since constructor no longer
+does I/O. Initialization errors now surface on first turn (lazy-init pattern).
+
+`process_message()` and `terminate()` unchanged.
+
+**10.4** — Update `src/holodeck/cli/commands/chat.py`:
+
+Replace spinner-based blocking pattern with streaming text output:
+- Remove `ChatSpinnerThread` usage from the REPL loop
+- Write `"Agent: "` prefix, then `sys.stdout.write(chunk)` + `sys.stdout.flush()` for each chunk
+- After stream completes, build minimal `AgentResponse` for progress tracking
+- Keep `ChatSpinnerThread` class definition for potential fallback use
+
+Both backends work: Claude gets progressive text, SK gets single-chunk display (identical to current).
+
+**10.5** — Update tests:
+
+Rewrite `tests/unit/agent/test_executor.py`: replace all `@mock.patch("holodeck.chat.executor.AgentFactory")`
+with mock `AgentBackend`/`AgentSession` injected via `backend=` constructor parameter. Remove `AgentExecutionResult`
+and `AgentFactory` imports from test files.
+
+New test cases: `test_execute_turn_uses_session_send`, `test_execute_turn_streaming_yields_chunks`,
+`test_auto_select_backend`, `test_get_history_tracks_messages`, `test_clear_history_closes_session`,
+`test_shutdown_closes_session_and_backend`, `test_backend_error_wrapped`.
+
+Update `tests/unit/agent/test_session.py`: add `test_process_message_streaming_yields_chunks`,
+`test_process_message_streaming_validates_message`.
+
+**10.6** — Update spec documents (plan.md, data-model.md, quickstart.md, research.md).
+
+**Test**: Run full existing test suite after refactor. Verify zero imports of `AgentFactory`/`AgentThreadRun`/`ChatHistory` in `src/holodeck/chat/`.
 
 ---
 
@@ -584,7 +678,13 @@ Phase 4 (SK backend refactor) ← must be stable + tested first
                                        │
                                    Phase 9 (test runner + --allow-side-effects)
                                        │
-                                   Phase 10 (streaming chat + get_history fix)
+                                   Phase 10 (chat decoupling + streaming)
+                                       ├── 10.1: Refactor chat/executor.py
+                                       ├── 10.2: Add execute_turn_streaming()  [depends on 10.1]
+                                       ├── 10.3: Update chat/session.py        [depends on 10.2]
+                                       ├── 10.4: Update CLI chat command       [depends on 10.3]
+                                       ├── 10.5: Update tests                  [parallel with 10.2+]
+                                       └── 10.6: Update spec docs              [independent]
                                        │
                                    Phase 11 (tests)
                                        │

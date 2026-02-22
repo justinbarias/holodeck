@@ -350,3 +350,41 @@ and will be ignored: {field_list}. Use a non-Anthropic provider or remove these 
 This is a named warning, not an error — the session proceeds normally. The listed fields are collected at startup before subprocess spawn and emitted as a single consolidated warning (not one per field).
 
 **Rationale**: Silently ignoring these fields without any warning would create a confusing debugging experience for users who configure observability expecting it to take effect. A named warning makes the limitation explicit without blocking the agent from running.
+
+---
+
+## 16. Chat Layer Decoupling Architecture
+
+**Decision**: Decouple `chat/executor.py` from `AgentFactory`/`AgentThreadRun` using the same
+`BackendSelector` → `AgentBackend` → `AgentSession` pattern applied to the test runner in Phase 9.
+Full cutover (no dual-path with legacy factory).
+
+**Rationale**: The chat executor currently imports `AgentFactory` and `AgentThreadRun` directly,
+making `holodeck chat` impossible for Claude-native agents. The test runner was decoupled in Phase 9
+using a dual-path approach (backend + legacy factory). The chat executor uses a full cutover instead
+because no external consumer injects `AgentFactory` into it — only the CLI and `ChatSessionManager`
+call it.
+
+**Key architectural differences from test runner decoupling**:
+
+| Aspect | Test Runner (Phase 9) | Chat Executor (Phase 10) |
+|---|---|---|
+| Entry point | `AgentBackend.invoke_once()` | `AgentBackend.create_session()` → `AgentSession.send()` |
+| State model | Stateless (fresh per test) | Stateful (multi-turn, history preserved) |
+| Dual-path | Yes (backend + legacy factory) | No (full cutover) |
+| Mode | `mode="test"` | `mode="chat"` |
+| Streaming | N/A | `AgentSession.send_streaming()` (net-new) |
+| Permission mode | Forced `bypassPermissions` | Respects YAML `permission_mode` |
+
+**History tracking**: The executor maintains a local `list[dict]` of `{role, content}` dicts.
+This avoids extending the `AgentSession` protocol. Both backends handle conversation state
+internally (SK via `ChatHistory`, Claude via subprocess `session_id`) — the executor's local
+history is for display/export only.
+
+**Streaming architecture**: `AgentSession.send_streaming()` is already defined in the protocol
+(`backends/base.py`). `ClaudeSession` yields real text chunks from the subprocess event stream.
+`SKSession` falls back to yielding the complete response as a single chunk. The chat CLI writes
+chunks directly to stdout for progressive display.
+
+**Alternatives considered**: Dual-path approach matching test runner (rejected — unnecessary
+complexity since no external consumer injects `AgentFactory` into the chat executor).
