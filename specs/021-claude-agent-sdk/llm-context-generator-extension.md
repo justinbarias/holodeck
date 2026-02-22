@@ -1,118 +1,184 @@
-# Plan: Decouple `LLMContextGenerator` from Semantic Kernel
+# Plan: Decouple Context Generator — Full ABC Refactor with Claude SDK Backend
 
 ## Context
 
-`LLMContextGenerator` generates short context snippets for document chunks (Anthropic's contextual retrieval approach). It is currently hardwired to Semantic Kernel's `ChatCompletionClientBase`, meaning:
+`LLMContextGenerator` generates short context snippets for document chunks (Anthropic's contextual retrieval approach, improving retrieval by 35-49%). It's hardwired to Semantic Kernel's `ChatCompletionClientBase`. The Claude backend calls `initialize_tools()` **without** a `chat_service`, so contextual embeddings silently degrade to no-op for all Anthropic agents.
 
-1. It **cannot work** with the Claude backend — `ClaudeBackend` calls `initialize_tools()` without a `chat_service`, so contextual embeddings silently degrade to no-op.
-2. All SK-specific types (`ChatHistory`, `OpenAIChatPromptExecutionSettings`, `get_chat_message_contents()`) are embedded directly in `_call_llm()`.
+**The key motivation:** Claude backend users authenticate via `CLAUDE_CODE_OAUTH_TOKEN` — no API keys in YAML. We should leverage this for context generation by using the Claude Agent SDK directly with Haiku (cheap/fast), rather than requiring users to configure separate API keys for a `context_model`.
 
-Since the 021-claude-agent-sdk spec introduced a second backend, we need a lightweight provider-agnostic protocol for one-shot LLM calls.
-
-## Approach
-
-Introduce a `ChatCompletionService` protocol (single `complete(prompt) -> str` method), adapter implementations for **all four providers** (OpenAI, Azure OpenAI, Anthropic, Ollama), and auto-creation logic so contextual embeddings work for **any** backend without manual wiring.
+**Design:** Introduce a `ContextGenerator` protocol with two implementations:
+- `LLMContextGenerator` (existing, for SK backend)
+- `ClaudeSDKContextGenerator` (new, uses `query()` with batched chunks + concurrent sessions)
 
 ---
 
-## Step 1 — Add `ChatCompletionService` protocol to `base.py`
+## Step 1 — Add `ContextGenerator` protocol
 
 **File:** `src/holodeck/lib/backends/base.py`
 
-Add after `AgentBackend`:
+Add after `AgentBackend` protocol (~line 133):
 
 ```python
 @runtime_checkable
-class ChatCompletionService(Protocol):
-    """Lightweight one-shot text-in/text-out LLM call.
+class ContextGenerator(Protocol):
+    """Backend-agnostic contextual embedding generation."""
 
-    Unlike AgentBackend/AgentSession (multi-turn agent conversations),
-    this is for utility LLM calls: contextual embedding generation,
-    reranking, summarization, etc.
-    """
-
-    async def complete(self, prompt: str) -> str: ...
+    async def contextualize_batch(
+        self,
+        chunks: list["DocumentChunk"],
+        document_text: str,
+        concurrency: int | None = None,
+    ) -> list[str]: ...
 ```
 
-Also export it from `src/holodeck/lib/backends/__init__.py`.
+Guard `DocumentChunk` import under `TYPE_CHECKING`. Export from `src/holodeck/lib/backends/__init__.py`.
 
 ---
 
-## Step 2 — Create adapter implementations
-
-**New file:** `src/holodeck/lib/chat_completion_adapters.py`
-
-### `SKChatCompletionAdapter`
-Wraps an existing SK `ChatCompletionClientBase` — extracts the current `_call_llm()` body into an adapter:
-- Constructor: `(chat_service, execution_settings=None)`
-- `complete()`: Creates `ChatHistory`, calls `get_chat_message_contents()`, returns stripped text
-
-### `OpenAIDirectChatCompletionAdapter`
-Uses `openai` SDK directly (already a transitive dependency via SK):
-- Constructor: `(model, api_key, endpoint=None, temperature=0.0, max_tokens=150)`
-- Handles both standard OpenAI (`AsyncOpenAI`) and Azure OpenAI (`AsyncAzureOpenAI`)
-- `complete()`: Calls `client.chat.completions.create()`, returns stripped text
-
-### `AnthropicDirectChatCompletionAdapter`
-Uses `anthropic` SDK directly (`anthropic>=0.72.0` is already a production dependency):
-- Constructor: `(model, api_key=None, auth_provider=AuthProvider.api_key, temperature=0.0, max_tokens=150)`
-- Routes to the correct client class based on `auth_provider`:
-  - `api_key` / `oauth_token` → `AsyncAnthropic(api_key=...)`
-  - `bedrock` → `AsyncAnthropicBedrock()` (uses AWS credentials from env)
-  - `vertex` → `AsyncAnthropicVertex()` (uses GCP credentials from env)
-- `complete()`: Calls `client.messages.create()`, extracts `response.content[0].text`, returns stripped text
-
-### `create_chat_completion_service(provider_config: LLMProvider) -> ChatCompletionService`
-Factory that routes by `provider_config.provider`:
-- `openai` → `OpenAIDirectChatCompletionAdapter`
-- `azure_openai` → `OpenAIDirectChatCompletionAdapter` (with endpoint)
-- `anthropic` → `AnthropicDirectChatCompletionAdapter` (with auth_provider routing)
-- `ollama` → `OpenAIDirectChatCompletionAdapter` using OpenAI-compatible endpoint (Ollama serves an OpenAI-compatible API at `{endpoint}/v1`)
-
----
-
-## Step 3 — Refactor `LLMContextGenerator`
+## Step 2 — Verify `LLMContextGenerator` conforms (no structural changes)
 
 **File:** `src/holodeck/lib/llm_context_generator.py`
 
-### Constructor
-- Change `chat_service` type from `ChatCompletionClientBase` to `ChatCompletionService`
-- **Remove** `execution_settings` parameter (now internal to the adapter)
-
-### `_call_llm()`
-Replace entire SK-specific body with:
-```python
-async def _call_llm(self, prompt: str) -> str:
-    return await self._chat_service.complete(prompt)
-```
-
-### Imports
-- Remove all `TYPE_CHECKING` imports of SK types
-- Add `TYPE_CHECKING` import of `ChatCompletionService` from `backends.base`
-
-Everything else (retry logic, concurrency, truncation, batch processing) stays identical.
+The existing `contextualize_batch()` signature already matches the protocol exactly. Add a `TYPE_CHECKING` conformance assertion and update the class docstring. No method changes needed.
 
 ---
 
-## Step 4 — Auto-create service in `tool_initializer.py`
+## Step 3 — Create `ClaudeSDKContextGenerator`
+
+**New file:** `src/holodeck/lib/claude_context_generator.py`
+
+Uses `query()` (stateless one-shot, one subprocess per call). For 100 chunks with batch_size=10, that's 10 subprocess spawns — manageable at ingestion time.
+
+### Batch strategy
+- Group chunks into batches (default 10 per prompt)
+- Each batch prompt includes the document + N numbered chunks
+- Ask for JSON array of N context strings
+- If JSON parsing fails, fall back to individual per-chunk calls
+
+### Concurrency
+- `asyncio.Semaphore(concurrency)` limits concurrent `query()` calls (default 5)
+- Each batch runs as an async task
+
+### Key class outline
+
+```python
+@dataclass
+class ClaudeContextConfig:
+    model: str = "claude-haiku-4-5-20251001"
+    batch_size: int = 10
+    concurrency: int = 5
+    max_retries: int = 3
+    base_delay: float = 1.0
+    max_document_tokens: int = 8000
+
+class ClaudeSDKContextGenerator:
+    def __init__(self, config=None, max_context_tokens=100)
+
+    # Batch prompt: document + N chunks → JSON array of N context strings
+    def _build_batch_prompt(chunks, document_text) -> str
+    def _build_single_prompt(chunk_text, document_text) -> str  # fallback
+    def _parse_batch_response(response, expected_count) -> list[str] | None
+
+    # SDK interaction
+    async def _query_claude(prompt) -> str  # wraps query() with minimal options
+
+    # Processing
+    async def _process_batch(chunks, document_text) -> list[str]  # try batch, fallback individual
+    async def contextualize_batch(chunks, document_text, concurrency=None) -> list[str]
+```
+
+`_query_claude` uses:
+```python
+ClaudeAgentOptions(
+    model=self._config.model,
+    system_prompt="You are a context generation assistant...",
+    permission_mode="bypassPermissions",
+    max_turns=1,
+)
+```
+
+Auth: inherited `CLAUDE_CODE_OAUTH_TOKEN` from environment — zero config.
+
+---
+
+## Step 4 — Update `HierarchicalDocumentTool`
+
+**File:** `src/holodeck/tools/hierarchical_document_tool.py`
+
+### 4a. Widen type of `_context_generator` (line 124)
+
+```python
+# Before
+self._context_generator: LLMContextGenerator | None = None
+# After
+self._context_generator: ContextGenerator | None = None
+```
+
+Add `ContextGenerator` to `TYPE_CHECKING` imports.
+
+### 4b. Add `set_context_generator()` method
+
+```python
+def set_context_generator(self, generator: Any) -> None:
+    """Set the context generator for contextual embeddings.
+
+    Accepts any ContextGenerator protocol implementation.
+    """
+    self._context_generator = generator
+```
+
+### 4c. Keep `set_chat_service()` as backward-compat shim
+
+No deprecation warning (all callers are internal). Internally wraps the SK service in `LLMContextGenerator` and stores it as `_context_generator`, same as today.
+
+### 4d. Simplify guard in `_ingest_documents()` (line 533-536)
+
+Remove the `and self._chat_service is not None` check:
+
+```python
+# Before
+if (self.config.contextual_embeddings
+    and self._context_generator is not None
+    and self._chat_service is not None):
+
+# After
+if (self.config.contextual_embeddings
+    and self._context_generator is not None):
+```
+
+Also remove the `"no chat service available"` reason branch (line 554-555) since `_context_generator` is now the single source of truth.
+
+---
+
+## Step 5 — Update `tool_initializer.py`
 
 **File:** `src/holodeck/lib/tool_initializer.py`
 
-### Add `_create_context_chat_service(agent) -> ChatCompletionService | None`
-Private helper that creates a `ChatCompletionService` from agent config:
-- For Anthropic agents with `embedding_provider`: uses `embedding_provider` config
-- For Anthropic agents **without** `embedding_provider`: uses `agent.model` directly (Anthropic model for context generation)
-- For OpenAI/Azure/Ollama agents: uses `agent.model`
-- Returns `None` on failure (logs warning, graceful degradation)
+### 5a. Add `context_generator` parameter to `initialize_tools()` and `_initialize_hierarchical_doc_tools()`
 
-### Update `initialize_tools()`
-When `chat_service is None` and hierarchical doc tools exist, auto-create via `_create_context_chat_service(agent)`. This means `ClaudeBackend` (which passes no `chat_service`) will automatically get a working service.
+### 5b. New priority chain in `_initialize_hierarchical_doc_tools()`
+
+```
+1. Explicit context_generator arg    → tool.set_context_generator(it)
+2. chat_service arg (SK path)        → tool.set_context_generator(LLMContextGenerator(chat_service))
+3. tool_config.context_model set     → create SK chat service → LLMContextGenerator
+4. agent.model.provider == anthropic → auto-create ClaudeSDKContextGenerator
+5. None of the above                 → no context generation (graceful degradation)
+```
+
+The LLMContextGenerator wrapping (cases 2-3) is constructed with `tool_config.context_max_tokens` and `tool_config.context_concurrency`.
+
+Case 4 auto-creates `ClaudeSDKContextGenerator` with `ClaudeContextConfig(concurrency=tool_config.context_concurrency)`.
+
+### 5c. Clean up existing `_create_chat_service_from_config()` and `_resolve_context_model_config()`
+
+These stay for case 3 (explicit `context_model` with API key). The recently added code from the previous PR is preserved.
 
 ---
 
-## Step 5 — Wrap SK service in `agent_factory.py`
+## Step 6 — Update `agent_factory.py` (SK backend)
 
-**File:** `src/holodeck/lib/test_runner/agent_factory.py` (line ~978)
+**File:** `src/holodeck/lib/test_runner/agent_factory.py` (line 978-979)
 
 Change:
 ```python
@@ -122,39 +188,39 @@ if self._llm_service:
 To:
 ```python
 if self._llm_service:
-    from holodeck.lib.chat_completion_adapters import SKChatCompletionAdapter
-    tool.set_chat_service(SKChatCompletionAdapter(self._llm_service))
+    from holodeck.lib.llm_context_generator import LLMContextGenerator
+    tool.set_context_generator(
+        LLMContextGenerator(
+            chat_service=self._llm_service,
+            max_context_tokens=tool_config.context_max_tokens,
+            concurrency=tool_config.context_concurrency,
+        )
+    )
 ```
 
 ---
 
-## Step 6 — Update `HierarchicalDocumentTool.set_chat_service()` docstring
+## Step 7 — Tests
 
-**File:** `src/holodeck/tools/hierarchical_document_tool.py` (line 141)
-
-Update docstring from "Semantic Kernel ChatCompletion service instance" to "ChatCompletionService protocol-compatible instance". No logic changes needed — the method already accepts `Any`.
-
----
-
-## Step 7 — Update tests
-
-### `tests/unit/lib/test_llm_context_generator.py`
-- Replace `mock_service.get_chat_message_contents = AsyncMock(...)` pattern with `mock_service.complete = AsyncMock(return_value="...")`
-- Remove assertions about `ChatHistory` objects
-- Tests become simpler and no longer reference SK types
-
-### New: `tests/unit/lib/test_chat_completion_adapters.py`
-- Protocol compliance tests (`isinstance` checks) for all 4 adapters
-- `SKChatCompletionAdapter.complete()` delegates to SK service correctly
-- `OpenAIDirectChatCompletionAdapter.complete()` delegates to `openai` SDK
-- `AnthropicDirectChatCompletionAdapter.complete()` delegates to `anthropic` SDK
-- `AnthropicDirectChatCompletionAdapter` auth routing: `api_key` → `AsyncAnthropic`, `bedrock` → `AsyncAnthropicBedrock`, `vertex` → `AsyncAnthropicVertex`
-- `create_chat_completion_service()` routes correctly per provider (including `anthropic`)
+### New: `tests/unit/lib/test_claude_context_generator.py`
+- `ClaudeContextConfig` defaults
+- Batch prompt construction (all chunks present, document truncation)
+- JSON response parsing (valid, markdown-fenced, wrong count, invalid)
+- `contextualize_batch()` — empty input, batch success, fallback to individual
+- Protocol conformance: `isinstance(gen, ContextGenerator)`
 
 ### Update: `tests/unit/lib/test_tool_initializer.py`
-- Test `_create_context_chat_service()` for each provider
-- Test `initialize_tools()` auto-creates service when `chat_service=None`
-- Test Anthropic agent without `embedding_provider` falls back to main model
+- Explicit `context_generator` param takes priority
+- Anthropic provider auto-creates `ClaudeSDKContextGenerator`
+- SK chat_service wraps in `LLMContextGenerator`
+- `context_model` override creates SK service → `LLMContextGenerator`
+
+### Update: `tests/unit/lib/test_llm_context_generator.py`
+- Protocol conformance: `isinstance(gen, ContextGenerator)`
+
+### Update: `tests/unit/tools/test_hierarchical_document_tool.py`
+- `set_context_generator()` stores generator
+- `_ingest_documents()` uses generator without `_chat_service` check
 
 ---
 
@@ -162,29 +228,25 @@ Update docstring from "Semantic Kernel ChatCompletion service instance" to "Chat
 
 | File | Change |
 |------|--------|
-| `src/holodeck/lib/backends/base.py` | Add `ChatCompletionService` protocol |
-| `src/holodeck/lib/backends/__init__.py` | Export `ChatCompletionService` |
-| `src/holodeck/lib/chat_completion_adapters.py` | **New** — 4 adapters + factory |
-| `src/holodeck/lib/llm_context_generator.py` | Remove SK coupling, use protocol |
-| `src/holodeck/lib/tool_initializer.py` | Auto-create service for any backend |
-| `src/holodeck/lib/test_runner/agent_factory.py` | Wrap SK service in adapter |
-| `src/holodeck/tools/hierarchical_document_tool.py` | Docstring update only |
-| `tests/unit/lib/test_llm_context_generator.py` | Update mocks to protocol |
-| `tests/unit/lib/test_chat_completion_adapters.py` | **New** — adapter tests |
-| `tests/unit/lib/test_tool_initializer.py` | Add auto-creation tests |
+| `src/holodeck/lib/backends/base.py` | Add `ContextGenerator` protocol |
+| `src/holodeck/lib/backends/__init__.py` | Export `ContextGenerator` |
+| `src/holodeck/lib/llm_context_generator.py` | Conformance assertion, docstring |
+| `src/holodeck/lib/claude_context_generator.py` | **New** — `ClaudeSDKContextGenerator` |
+| `src/holodeck/tools/hierarchical_document_tool.py` | Add `set_context_generator()`, widen type, simplify guard |
+| `src/holodeck/lib/tool_initializer.py` | Add `context_generator` param, auto-detection logic |
+| `src/holodeck/lib/test_runner/agent_factory.py` | Use `set_context_generator()` |
+| `tests/unit/lib/test_claude_context_generator.py` | **New** |
+| `tests/unit/lib/test_tool_initializer.py` | New wiring tests |
+| `tests/unit/lib/test_llm_context_generator.py` | Protocol conformance |
 
 ## Verification
 
 ```bash
-# Unit tests (all existing + new)
-pytest tests/unit/lib/test_llm_context_generator.py tests/unit/lib/test_chat_completion_adapters.py tests/unit/lib/test_tool_initializer.py -n auto -v
+# Targeted tests
+pytest tests/unit/lib/test_claude_context_generator.py tests/unit/lib/test_tool_initializer.py tests/unit/lib/test_llm_context_generator.py -n auto -v
 
-# Full suite to catch regressions
+# Full suite
 make test
-
-# Type checking
 make type-check
-
-# Lint
 make lint
 ```
