@@ -6,12 +6,17 @@ This module defines the core abstractions that all agent execution backends
 interfaces — no provider-specific types leak through.
 """
 
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from holodeck.lib.errors import HoloDeckError
 from holodeck.models.token_usage import TokenUsage
+
+if TYPE_CHECKING:
+    from holodeck.lib.structured_chunker import DocumentChunk
 
 
 @dataclass
@@ -170,3 +175,32 @@ class BackendTimeoutError(BackendError):
     """
 
     pass
+
+
+@runtime_checkable
+class ContextGenerator(Protocol):
+    """Backend-agnostic contextual embedding generation.
+
+    Implementations produce situating context for document chunks by
+    summarising each chunk's role within the larger document. Both the
+    existing Semantic Kernel generator and future Claude SDK generator
+    should satisfy this protocol.
+    """
+
+    async def contextualize_batch(
+        self,
+        chunks: list[DocumentChunk],
+        document_text: str,
+        concurrency: int | None = None,
+    ) -> list[str]:
+        """Generate contextual descriptions for a batch of chunks.
+
+        Args:
+            chunks: Document chunks to contextualize.
+            document_text: Full text of the source document.
+            concurrency: Maximum number of concurrent LLM calls.
+
+        Returns:
+            A list of contextual description strings, one per chunk.
+        """
+        ...

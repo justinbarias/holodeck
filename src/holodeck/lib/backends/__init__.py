@@ -7,6 +7,7 @@ from holodeck.lib.backends.base import (
     BackendInitError,
     BackendSessionError,
     BackendTimeoutError,
+    ContextGenerator,
     ExecutionResult,
 )
 from holodeck.lib.backends.claude_backend import ClaudeBackend, ClaudeSession
@@ -29,6 +30,7 @@ __all__ = [
     "BackendInitError",
     "BackendSessionError",
     "BackendTimeoutError",
+    "ContextGenerator",
     "BackendSelector",
     "ClaudeBackend",
     "ClaudeSession",
