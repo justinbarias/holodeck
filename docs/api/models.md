@@ -19,6 +19,9 @@ Core agent configuration and instruction models.
         - tools
         - evaluations
         - test_cases
+        - embedding_provider
+        - claude
+        - tool_filtering
 
 ::: holodeck.models.agent.Instructions
     options:
@@ -43,9 +46,59 @@ Language model provider configuration for OpenAI, Azure OpenAI, and Anthropic.
         - max_tokens
         - top_p
 
+## Claude Agent SDK Models
+
+Configuration models for the Claude Agent SDK integration.
+
+::: holodeck.models.claude_config.AuthProvider
+    options:
+      docstring_style: google
+
+::: holodeck.models.claude_config.PermissionMode
+    options:
+      docstring_style: google
+
+::: holodeck.models.claude_config.ClaudeConfig
+    options:
+      docstring_style: google
+      show_source: true
+
+::: holodeck.models.claude_config.ExtendedThinkingConfig
+    options:
+      docstring_style: google
+
+::: holodeck.models.claude_config.BashConfig
+    options:
+      docstring_style: google
+
+::: holodeck.models.claude_config.FileSystemConfig
+    options:
+      docstring_style: google
+
+::: holodeck.models.claude_config.SubagentConfig
+    options:
+      docstring_style: google
+
+## Backend Abstraction Models
+
+Protocol types for the multi-backend architecture.
+
+::: holodeck.lib.backends.base.AgentBackend
+    options:
+      docstring_style: google
+
+::: holodeck.lib.backends.base.AgentSession
+    options:
+      docstring_style: google
+
+::: holodeck.lib.backends.base.ExecutionResult
+    options:
+      docstring_style: google
+      show_source: true
+
 ## Tool Models
 
-Five types of tools are supported: vectorstore, function, MCP, prompt, and plugins.
+Six types of tools are supported: vectorstore, hierarchical document, function, MCP, prompt, and plugins.
 
 ::: holodeck.models.tool.Tool
     options:
@@ -159,6 +212,10 @@ HoloDeck exception hierarchy for error handling.
       docstring_style: google
 
 ::: holodeck.lib.errors.FileNotFoundError
+    options:
+      docstring_style: google
+
+::: holodeck.lib.backends.base.BackendError
     options:
       docstring_style: google
 

@@ -15,7 +15,7 @@ HoloDeck supports multiple LLM providers, allowing you to choose the best model 
 |----------|-------------|------------------|
 | `openai` | OpenAI API (GPT-4o, GPT-4o-mini, etc.) | Yes |
 | `azure_openai` | Azure OpenAI Service | Yes + Endpoint |
-| `anthropic` | Anthropic Claude models | Yes |
+| `anthropic` | Anthropic Claude models (native Claude Agent SDK) | Yes (multiple auth methods) |
 | `ollama` | Local models via Ollama | No (Endpoint required) |
 
 ---
@@ -31,6 +31,21 @@ name: my-agent
 model:
   provider: openai
   name: gpt-4o
+
+instructions:
+  inline: "You are a helpful assistant."
+```
+
+### Minimal Claude Agent
+
+```yaml
+# agent.yaml
+name: my-claude-agent
+
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+  auth_provider: oauth_token  # Uses CLAUDE_CODE_OAUTH_TOKEN env var
 
 instructions:
   inline: "You are a helpful assistant."
@@ -356,13 +371,78 @@ evaluations:
 
 ## Anthropic
 
-Anthropic provides the Claude family of models known for safety and helpfulness.
+Anthropic provides the Claude family of models through the native Claude Agent SDK backend. Claude is a first-class citizen in HoloDeck with deep integration for agentic capabilities.
 
 ### Prerequisites
 
-1. Create an account at [console.anthropic.com](https://console.anthropic.com)
-2. Generate an API key in the Console
-3. Set up billing
+1. Create an account at [console.anthropic.com](https://console.anthropic.com) or obtain a Claude Code OAuth token
+2. **Node.js 18+** — required for the Claude Agent SDK subprocess. Check with `node --version`
+3. Set up authentication (see below)
+
+### Authentication Methods
+
+The `auth_provider` field on the model config selects how HoloDeck authenticates with Anthropic. Defaults to `api_key` if not specified.
+
+#### API Key (Default)
+
+```yaml
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+  auth_provider: api_key  # Default, can be omitted
+```
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+#### OAuth Token (Recommended)
+
+Recommended for Claude Code users. Uses the same OAuth token as the Claude Code CLI.
+
+```yaml
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+  auth_provider: oauth_token
+```
+
+```bash
+export CLAUDE_CODE_OAUTH_TOKEN="your-oauth-token"
+```
+
+#### AWS Bedrock
+
+```yaml
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+  auth_provider: bedrock
+```
+
+Requires standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`).
+
+#### Google Vertex AI
+
+```yaml
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+  auth_provider: vertex
+```
+
+Requires GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS`).
+
+#### Foundry
+
+```yaml
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+  auth_provider: foundry
+```
+
+Requires Foundry platform credentials.
 
 ### Configuration
 
@@ -388,6 +468,7 @@ name: claude-agent
 model:
   provider: anthropic
   name: claude-sonnet-4-20250514
+  auth_provider: oauth_token
   temperature: 0.5
   max_tokens: 4000
 
@@ -398,8 +479,13 @@ instructions:
 ### Environment Variables
 
 ```bash
-# .env
+# .env — choose one authentication method
+
+# API Key (default)
 ANTHROPIC_API_KEY=sk-ant-...
+
+# OAuth Token (recommended for Claude Code users)
+CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
 ```
 
 ### Available Models
@@ -412,6 +498,70 @@ ANTHROPIC_API_KEY=sk-ant-...
 | `claude-3-5-haiku-20241022` | Fast and cost-effective | 200K tokens |
 
 > **Note**: Model identifiers include version dates (e.g., `20250514`). Check [Anthropic's documentation](https://docs.anthropic.com/en/docs/about-claude/models) for the latest available models and their capabilities.
+
+### Claude Agent SDK Features
+
+The Claude backend supports advanced agentic capabilities configured via the `claude` section in `agent.yaml`. All capabilities default to disabled (least-privilege).
+
+**Extended Thinking** — Enable deep reasoning for complex tasks:
+
+```yaml
+claude:
+  extended_thinking:
+    enabled: true
+    budget_tokens: 10000  # 1,000 - 100,000
+```
+
+**Sub-agents** — Run parallel sub-agent tasks:
+
+```yaml
+claude:
+  subagents:
+    enabled: true
+    max_parallel: 8
+```
+
+**Web Search** — Built-in web search capability:
+
+```yaml
+claude:
+  web_search: true
+```
+
+**Bash & File System** — Shell and file access:
+
+```yaml
+claude:
+  bash:
+    enabled: true
+    excluded_commands: ["rm -rf"]
+  file_system:
+    read: true
+    write: true
+    edit: true
+```
+
+See the [Claude Agent SDK Settings](agent-configuration.md#claude-agent-sdk-settings) section in the Agent Configuration Guide for the full reference.
+
+### Embedding Provider Requirement
+
+!!! warning "Anthropic does not provide embedding models"
+    When using `model.provider: anthropic` with **vectorstore** or **hierarchical_document** tools, you **must** define an `embedding_provider` at the agent level. Anthropic cannot generate embeddings natively.
+
+```yaml
+# Required when using vectorstore/hierarchical_document tools with Anthropic
+embedding_provider:
+  provider: ollama
+  name: nomic-embed-text:latest
+  endpoint: http://localhost:11434
+
+# Or using OpenAI
+embedding_provider:
+  provider: openai
+  name: text-embedding-3-small
+```
+
+See [Embedding Provider](agent-configuration.md#embedding-provider) in the Agent Configuration Guide.
 
 ### Complete Example
 
@@ -430,21 +580,43 @@ providers:
 ```
 
 ```yaml
-# agent.yaml
+# agent.yaml — full Claude-native agent
 name: research-assistant
 description: Research assistant powered by Claude
 
 model:
   provider: anthropic
   name: claude-sonnet-4-20250514
+  auth_provider: oauth_token
   temperature: 0.3
   max_tokens: 8000
+
+# Required for vectorstore tools with Anthropic
+embedding_provider:
+  provider: ollama
+  name: nomic-embed-text:latest
+  endpoint: http://localhost:11434
 
 instructions:
   inline: |
     You are a research assistant.
     Provide thorough, well-sourced answers.
     Be accurate and cite relevant information.
+
+# Claude Agent SDK settings
+claude:
+  permission_mode: acceptAll
+  max_turns: 10
+  extended_thinking:
+    enabled: true
+    budget_tokens: 10000
+  web_search: true
+
+tools:
+  - name: knowledge-base
+    type: vectorstore
+    description: Search the research knowledge base
+    source: ./data/research/
 ```
 
 ---
@@ -832,7 +1004,8 @@ model:
 | `OPENAI_API_KEY` | OpenAI | API authentication key |
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI | Resource endpoint URL |
 | `AZURE_OPENAI_API_KEY` | Azure OpenAI | API authentication key |
-| `ANTHROPIC_API_KEY` | Anthropic | API authentication key |
+| `ANTHROPIC_API_KEY` | Anthropic | API authentication key (`auth_provider: api_key`) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Anthropic | OAuth token (`auth_provider: oauth_token`, recommended) |
 | `OLLAMA_ENDPOINT` | Ollama | Server endpoint (default: `http://localhost:11434`) |
 
 ---

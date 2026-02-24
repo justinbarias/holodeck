@@ -1,10 +1,10 @@
 # Tools Reference Guide
 
-This guide explains HoloDeck's five tool types that extend agent capabilities.
+This guide explains HoloDeck's six tool types that extend agent capabilities.
 
 ## Overview
 
-Tools are agent capabilities defined in `agent.yaml`. HoloDeck supports five tool types:
+Tools are agent capabilities defined in `agent.yaml`. HoloDeck supports six tool types:
 
 | Tool Type                        | Description                              | Status         |
 | -------------------------------- | ---------------------------------------- | -------------- |
@@ -130,6 +130,11 @@ tools:
 
 > **Status**: Fully implemented
 
+!!! warning "Anthropic Users: Embedding Provider Required"
+    Anthropic does not provide embedding models. When using `model.provider: anthropic`
+    with vectorstore tools, you **must** define `embedding_provider` at the agent level.
+    See [Embedding Provider](agent-configuration.md#embedding-provider).
+
 Semantic search over unstructured or structured data.
 
 ### When to Use
@@ -254,11 +259,16 @@ source: https://example.com/data.pdf
 - **Type**: String
 - **Purpose**: Which embedding model to use
 - **Default**: Provider-specific default
-- **Examples**: `text-embedding-3-small`, `text-embedding-ada-002`
+- **Examples**: `text-embedding-3-small`, `text-embedding-ada-002`, `nomic-embed-text:latest`
 
 ```yaml
 embedding_model: text-embedding-3-small
 ```
+
+> **Embedding provider behaviour by backend:**
+>
+> - **Semantic Kernel backend** (OpenAI, Azure OpenAI, Ollama): Uses the agent's own model provider for embeddings. The `embedding_model` field on the tool selects which embedding model to use from that provider.
+> - **Claude Agent SDK backend** (Anthropic): Anthropic does not offer embedding models. The agent-level `embedding_provider` is used instead, and the tool's `embedding_model` field selects the model within that provider.
 
 #### Vector Field
 
@@ -404,6 +414,11 @@ title,content,source
 
 > **Status**: Fully implemented
 
+!!! warning "Anthropic Users: Embedding Provider Required"
+    Anthropic does not provide embedding models. When using `model.provider: anthropic`
+    with hierarchical document tools, you **must** define `embedding_provider` at the agent level.
+    See [Embedding Provider](agent-configuration.md#embedding-provider).
+
 Structure-aware hybrid document search combining semantic, keyword, and exact match modalities with contextual embeddings for superior retrieval quality.
 
 ### When to Use
@@ -517,6 +532,11 @@ exact_weight: 0.2
 | `context_concurrency` | Integer | `10` | 1–50 | Parallel LLM context generation requests |
 
 Contextual embeddings prepend an LLM-generated summary to each chunk before embedding, yielding ~49% better retrieval accuracy (per Anthropic research). Uses Claude Haiku by default.
+
+> **Embedding provider behaviour by backend:**
+>
+> - **Semantic Kernel backend** (OpenAI, Azure OpenAI, Ollama): Uses the agent's own model provider for embeddings. The tool's `embedding_model` field (if set) selects the model within that provider.
+> - **Claude Agent SDK backend** (Anthropic): Anthropic does not offer embedding models. The agent-level `embedding_provider` is used instead for all embedding generation.
 
 ```yaml
 contextual_embeddings: true
