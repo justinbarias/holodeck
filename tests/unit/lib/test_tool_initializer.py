@@ -18,6 +18,7 @@ import pytest
 from holodeck.lib.tool_initializer import (
     ToolInitializerError,
     _create_chat_service_from_config,
+    _resolve_context_generator,
     _resolve_context_model_config,
     create_embedding_service,
     initialize_tools,
@@ -104,13 +105,18 @@ class TestCreateEmbeddingService:
             result = create_embedding_service(agent)
             assert result is not None
 
-    @patch("semantic_kernel.connectors.ai.open_ai.AzureTextEmbedding")
-    def test_azure_openai_provider(self, mock_cls: MagicMock) -> None:
+    def test_azure_openai_provider(self) -> None:
         """Azure OpenAI provider → returns AzureTextEmbedding instance."""
-        agent = _make_agent(ProviderEnum.AZURE_OPENAI)
-        result = create_embedding_service(agent)
-        assert result is not None
-        mock_cls.assert_called_once()
+        mock_cls = MagicMock()
+        mock_module = MagicMock(AzureTextEmbedding=mock_cls)
+        with patch.dict(
+            "sys.modules",
+            {"semantic_kernel.connectors.ai.open_ai": mock_module},
+        ):
+            agent = _make_agent(ProviderEnum.AZURE_OPENAI)
+            result = create_embedding_service(agent)
+            assert result is not None
+            mock_cls.assert_called_once()
 
     def test_ollama_provider(self) -> None:
         """Ollama provider → returns OllamaTextEmbedding instance."""
@@ -314,14 +320,14 @@ class TestInitializeHierarchicalDocTools:
 
     @pytest.mark.asyncio
     async def test_chat_service_injected(self) -> None:
-        """With chat_service provided → sets it on tool."""
+        """With chat_service provided, wraps in LLMContextGenerator."""
         tool = _make_hierarchical_doc_tool(name="doc_tool")
         agent = _make_agent(tools=[tool])
 
         mock_hd = MagicMock()
         mock_instance = MagicMock()
         mock_instance.set_embedding_service = MagicMock()
-        mock_instance.set_chat_service = MagicMock()
+        mock_instance.set_context_generator = MagicMock()
         mock_instance.initialize = AsyncMock()
         mock_hd.return_value = mock_instance
 
@@ -335,7 +341,7 @@ class TestInitializeHierarchicalDocTools:
             ),
         ):
             await initialize_tools(agent, chat_service=mock_chat)
-            mock_instance.set_chat_service.assert_called_once_with(mock_chat)
+            mock_instance.set_context_generator.assert_called_once()
 
 
 # ===================================================================
@@ -496,8 +502,9 @@ class TestContextModelWiring:
     """Tests that context_model override is wired into tool initialization."""
 
     @pytest.mark.asyncio
-    async def test_context_model_creates_chat_service(self) -> None:
-        """Tool with context_model and no caller chat_service → auto-creates one."""
+    async def test_context_model_creates_context_generator(self) -> None:
+        """Tool with context_model and no caller chat_service
+        auto-creates generator."""
         tool_context = LLMProvider(
             provider=ProviderEnum.OPENAI,
             name="gpt-4o-mini",
@@ -509,7 +516,7 @@ class TestContextModelWiring:
         mock_hd = MagicMock()
         mock_instance = MagicMock()
         mock_instance.set_embedding_service = MagicMock()
-        mock_instance.set_chat_service = MagicMock()
+        mock_instance.set_context_generator = MagicMock()
         mock_instance.initialize = AsyncMock()
         mock_hd.return_value = mock_instance
 
@@ -528,11 +535,11 @@ class TestContextModelWiring:
         ):
             result = await initialize_tools(agent, chat_service=None)
             assert "ctx_tool" in result
-            mock_instance.set_chat_service.assert_called_once()
+            mock_instance.set_context_generator.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_caller_chat_service_used_when_provided(self) -> None:
-        """Caller-provided chat_service takes precedence even with context_model."""
+    async def test_caller_chat_service_wraps_in_generator(self) -> None:
+        """Caller-provided chat_service → wraps in LLMContextGenerator."""
         tool_context = LLMProvider(
             provider=ProviderEnum.OPENAI,
             name="gpt-4o-mini",
@@ -544,7 +551,7 @@ class TestContextModelWiring:
         mock_hd = MagicMock()
         mock_instance = MagicMock()
         mock_instance.set_embedding_service = MagicMock()
-        mock_instance.set_chat_service = MagicMock()
+        mock_instance.set_context_generator = MagicMock()
         mock_instance.initialize = AsyncMock()
         mock_hd.return_value = mock_instance
 
@@ -558,18 +565,18 @@ class TestContextModelWiring:
             ),
         ):
             await initialize_tools(agent, chat_service=caller_chat)
-            mock_instance.set_chat_service.assert_called_once_with(caller_chat)
+            mock_instance.set_context_generator.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_no_context_model_no_chat_service(self) -> None:
-        """No context_model and no chat_service → set_chat_service not called."""
+        """No context_model and no chat_service → set_context_generator not called."""
         tool = _make_hierarchical_doc_tool(name="plain_tool")
         agent = _make_agent(tools=[tool])
 
         mock_hd = MagicMock()
         mock_instance = MagicMock()
         mock_instance.set_embedding_service = MagicMock()
-        mock_instance.set_chat_service = MagicMock()
+        mock_instance.set_context_generator = MagicMock()
         mock_instance.initialize = AsyncMock()
         mock_hd.return_value = mock_instance
 
@@ -581,7 +588,7 @@ class TestContextModelWiring:
             ),
         ):
             await initialize_tools(agent, chat_service=None)
-            mock_instance.set_chat_service.assert_not_called()
+            mock_instance.set_context_generator.assert_not_called()
 
 
 # ===================================================================
@@ -592,27 +599,142 @@ class TestContextModelWiring:
 class TestCreateChatServiceFromConfig:
     """Tests for _create_chat_service_from_config()."""
 
-    @patch("semantic_kernel.connectors.ai.open_ai.OpenAIChatCompletion")
-    def test_openai_provider(self, mock_cls: MagicMock) -> None:
+    def test_openai_provider(self) -> None:
         """OpenAI provider → returns OpenAIChatCompletion."""
-        config = LLMProvider(
+        mock_cls = MagicMock()
+        mock_module = MagicMock(OpenAIChatCompletion=mock_cls)
+        with patch.dict(
+            "sys.modules",
+            {"semantic_kernel.connectors.ai.open_ai": mock_module},
+        ):
+            config = LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o-mini",
+                api_key="key",
+            )
+            result = _create_chat_service_from_config(config)
+            assert result is not None
+            mock_cls.assert_called_once()
+
+    def test_azure_openai_provider(self) -> None:
+        """Azure OpenAI provider → returns AzureChatCompletion."""
+        mock_cls = MagicMock()
+        mock_module = MagicMock(AzureChatCompletion=mock_cls)
+        with patch.dict(
+            "sys.modules",
+            {"semantic_kernel.connectors.ai.open_ai": mock_module},
+        ):
+            config = LLMProvider(
+                provider=ProviderEnum.AZURE_OPENAI,
+                name="gpt-4o",
+                api_key="key",
+                endpoint="https://test.openai.azure.com",
+            )
+            result = _create_chat_service_from_config(config)
+            assert result is not None
+            mock_cls.assert_called_once()
+
+
+# ===================================================================
+# T009: TestResolveContextGenerator
+# ===================================================================
+
+
+class TestResolveContextGenerator:
+    """Tests for _resolve_context_generator() 5-tier priority chain."""
+
+    def test_priority_1_caller_provided_generator(self) -> None:
+        """Caller-provided context_generator wins over all other sources."""
+        tool = _make_hierarchical_doc_tool()
+        agent = _make_agent(tools=[tool])
+        mock_gen = MagicMock()
+
+        result = _resolve_context_generator(
+            agent=agent,
+            tool_config=tool,
+            context_generator=mock_gen,
+            chat_service=MagicMock(),  # Should be ignored
+        )
+        assert result is mock_gen
+
+    def test_priority_2_chat_service_wraps_in_llm_generator(self) -> None:
+        """Caller chat_service → wraps in LLMContextGenerator."""
+        tool = _make_hierarchical_doc_tool()
+        agent = _make_agent(tools=[tool])
+        mock_chat = MagicMock()
+
+        with patch(
+            "holodeck.lib.llm_context_generator.LLMContextGenerator"
+        ) as mock_llm_gen:
+            result = _resolve_context_generator(
+                agent=agent,
+                tool_config=tool,
+                context_generator=None,
+                chat_service=mock_chat,
+            )
+            mock_llm_gen.assert_called_once()
+            assert result is mock_llm_gen.return_value
+
+    @patch("semantic_kernel.connectors.ai.open_ai.OpenAIChatCompletion")
+    def test_priority_3_context_model_creates_generator(
+        self, mock_chat_cls: MagicMock
+    ) -> None:
+        """tool_config.context_model → creates chat service → LLMContextGenerator."""
+        tool_context = LLMProvider(
             provider=ProviderEnum.OPENAI,
             name="gpt-4o-mini",
-            api_key="key",
+            api_key="test-key",
         )
-        result = _create_chat_service_from_config(config)
-        assert result is not None
-        mock_cls.assert_called_once()
+        tool = _make_hierarchical_doc_tool(context_model=tool_context)
+        agent = _make_agent(tools=[tool])
 
-    @patch("semantic_kernel.connectors.ai.open_ai.AzureChatCompletion")
-    def test_azure_openai_provider(self, mock_cls: MagicMock) -> None:
-        """Azure OpenAI provider → returns AzureChatCompletion."""
-        config = LLMProvider(
-            provider=ProviderEnum.AZURE_OPENAI,
-            name="gpt-4o",
+        with patch(
+            "holodeck.lib.llm_context_generator.LLMContextGenerator"
+        ) as mock_llm_gen:
+            result = _resolve_context_generator(
+                agent=agent,
+                tool_config=tool,
+                context_generator=None,
+                chat_service=None,
+            )
+            mock_llm_gen.assert_called_once()
+            assert result is mock_llm_gen.return_value
+
+    def test_priority_4_anthropic_creates_claude_generator(self) -> None:
+        """Anthropic agent provider → ClaudeSDKContextGenerator."""
+        embedding_provider = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="text-embedding-3-small",
             api_key="key",
-            endpoint="https://test.openai.azure.com",
         )
-        result = _create_chat_service_from_config(config)
-        assert result is not None
-        mock_cls.assert_called_once()
+        tool = _make_hierarchical_doc_tool()
+        agent = _make_agent(
+            ProviderEnum.ANTHROPIC,
+            tools=[tool],
+            embedding_provider=embedding_provider,
+        )
+
+        with patch(
+            "holodeck.lib.claude_context_generator.ClaudeSDKContextGenerator"
+        ) as mock_claude_gen:
+            result = _resolve_context_generator(
+                agent=agent,
+                tool_config=tool,
+                context_generator=None,
+                chat_service=None,
+            )
+            mock_claude_gen.assert_called_once()
+            assert result is mock_claude_gen.return_value
+
+    def test_priority_5_none_when_no_sources(self) -> None:
+        """No generator, no chat_service, no context_model, non-Anthropic → None."""
+        tool = _make_hierarchical_doc_tool()
+        agent = _make_agent(ProviderEnum.OPENAI, tools=[tool])
+
+        result = _resolve_context_generator(
+            agent=agent,
+            tool_config=tool,
+            context_generator=None,
+            chat_service=None,
+        )
+        assert result is None

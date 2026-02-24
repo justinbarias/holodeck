@@ -131,6 +131,7 @@ async def initialize_tools(
     execution_config: ExecutionConfig | None = None,
     chat_service: Any | None = None,
     base_dir: str | None = None,
+    context_generator: Any | None = None,
 ) -> dict[str, Any]:
     """Initialize all vectorstore and hierarchical-doc tools for an agent.
 
@@ -144,6 +145,8 @@ async def initialize_tools(
         chat_service: Optional chat service for hierarchical doc tools.
         base_dir: Base directory for resolving relative source paths.
             If None, falls back to agent_base_dir context variable.
+        context_generator: Optional pre-built ContextGenerator instance.
+            When provided, takes highest priority for contextual embeddings.
 
     Returns:
         Dict mapping tool name to initialized tool instance.
@@ -207,6 +210,7 @@ async def initialize_tools(
             force_ingest=force_ingest,
             provider_type=provider_type,
             base_dir=effective_base_dir,
+            context_generator=context_generator,
         )
         instances.update(hd_instances)
 
@@ -408,6 +412,98 @@ def _create_chat_service_from_config(model_config: Any) -> Any:
     )
 
 
+def _resolve_context_generator(
+    agent: Agent,
+    tool_config: Any,
+    context_generator: Any | None = None,
+    chat_service: Any | None = None,
+) -> Any | None:
+    """Resolve the ContextGenerator for a hierarchical document tool.
+
+    Implements a 5-tier priority chain:
+
+    1. Caller-provided ``context_generator`` (highest priority)
+    2. Caller-provided ``chat_service`` → wrap in LLMContextGenerator
+    3. ``tool_config.context_model`` → create chat service → LLMContextGenerator
+    4. Anthropic agent provider → ClaudeSDKContextGenerator
+    5. None (graceful degradation)
+
+    Args:
+        agent: Agent configuration.
+        tool_config: HierarchicalDocumentToolConfig instance.
+        context_generator: Pre-built ContextGenerator, if any.
+        chat_service: Pre-built SK ChatCompletion service, if any.
+
+    Returns:
+        A ContextGenerator instance, or None if none could be resolved.
+    """
+    # Priority 1: caller-provided context generator
+    if context_generator is not None:
+        logger.debug(
+            "Using caller-provided context generator for tool '%s'",
+            tool_config.name,
+        )
+        return context_generator
+
+    # Priority 2: caller-provided chat service → wrap in LLMContextGenerator
+    if chat_service is not None:
+        from holodeck.lib.llm_context_generator import LLMContextGenerator
+
+        logger.debug(
+            "Wrapping caller chat service in LLMContextGenerator for tool '%s'",
+            tool_config.name,
+        )
+        return LLMContextGenerator(
+            chat_service=chat_service,
+            max_context_tokens=tool_config.context_max_tokens,
+            concurrency=tool_config.context_concurrency,
+        )
+
+    # Priority 3: tool_config.context_model → create chat service → LLMContextGenerator
+    if tool_config.context_model is not None:
+        from holodeck.lib.llm_context_generator import LLMContextGenerator
+
+        context_llm = _resolve_context_model_config(agent, tool_config)
+        svc = _create_chat_service_from_config(context_llm)
+        logger.debug(
+            "Created LLMContextGenerator from context_model for tool '%s': "
+            "provider=%s, model=%s",
+            tool_config.name,
+            context_llm.provider,
+            context_llm.name,
+        )
+        return LLMContextGenerator(
+            chat_service=svc,
+            max_context_tokens=tool_config.context_max_tokens,
+            concurrency=tool_config.context_concurrency,
+        )
+
+    # Priority 4: Anthropic agent → ClaudeSDKContextGenerator
+    if agent.model.provider == ProviderEnum.ANTHROPIC:
+        from holodeck.lib.claude_context_generator import (
+            ClaudeContextConfig,
+            ClaudeSDKContextGenerator,
+        )
+
+        logger.debug(
+            "Creating ClaudeSDKContextGenerator for Anthropic agent tool '%s'",
+            tool_config.name,
+        )
+        return ClaudeSDKContextGenerator(
+            config=ClaudeContextConfig(
+                concurrency=tool_config.context_concurrency,
+            ),
+            max_context_tokens=tool_config.context_max_tokens,
+        )
+
+    # Priority 5: no generator available
+    logger.debug(
+        "No context generator available for tool '%s'",
+        tool_config.name,
+    )
+    return None
+
+
 async def _initialize_hierarchical_doc_tools(
     agent: Agent,
     embedding_service: Any,
@@ -415,6 +511,7 @@ async def _initialize_hierarchical_doc_tools(
     force_ingest: bool,
     provider_type: str,
     base_dir: str | None = None,
+    context_generator: Any | None = None,
 ) -> dict[str, Any]:
     """Initialize all hierarchical document tools from agent config.
 
@@ -425,6 +522,7 @@ async def _initialize_hierarchical_doc_tools(
         force_ingest: Force re-ingestion of source files.
         provider_type: Provider type string for dimension resolution.
         base_dir: Base directory for resolving relative source paths.
+        context_generator: Optional pre-built ContextGenerator instance.
 
     Returns:
         Dict mapping tool name to initialized HierarchicalDocumentTool instance.
@@ -445,25 +543,15 @@ async def _initialize_hierarchical_doc_tools(
             tool = HierarchicalDocumentTool(tool_config, base_dir=base_dir)
             tool.set_embedding_service(embedding_service)
 
-            # Resolve chat service: use explicit context_model if provided,
-            # otherwise fall back to the caller-provided chat_service.
-            effective_chat_service = chat_service
-            if chat_service is None and tool_config.context_model is not None:
-                context_llm = _resolve_context_model_config(agent, tool_config)
-                effective_chat_service = _create_chat_service_from_config(context_llm)
-                logger.debug(
-                    "Created context chat service for tool '%s': provider=%s, model=%s",
-                    tool_config.name,
-                    context_llm.provider,
-                    context_llm.name,
-                )
-            elif chat_service is None and tool_config.context_model is None:
-                # No explicit chat_service and no context_model — check if we
-                # can create one from agent-level config for context generation.
-                pass
-
-            if effective_chat_service is not None:
-                tool.set_chat_service(effective_chat_service)
+            # Resolve context generator via 5-tier priority chain
+            resolved_generator = _resolve_context_generator(
+                agent=agent,
+                tool_config=tool_config,
+                context_generator=context_generator,
+                chat_service=chat_service,
+            )
+            if resolved_generator is not None:
+                tool.set_context_generator(resolved_generator)
 
             await tool.initialize(
                 force_ingest=force_ingest, provider_type=provider_type
