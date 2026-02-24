@@ -65,6 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Credential Validation** — `validate_credentials` now returns actual credential values in env dict instead of empty dict
 - **Tool Result Enrichment** — `_enrich_tool_results` correlates tool names from `tool_calls` to `tool_results` via `call_id` for evaluation `retrieval_context`
 
+### Security
+
+- **orjson** 3.11.4 &rarr; 3.11.7 — fixes CVE-2025-67221 (DoS via missing recursion depth limits)
+- **wheel** 0.45.1 &rarr; 0.46.3 — fixes CVE-2026-24049 (path traversal via extracted file permissions)
+
 ### Dependencies
 
 - **claude-agent-sdk** 0.1.37 — Native Claude Agent SDK integration (new)
@@ -72,6 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **pypdf** 6.3.0 &rarr; 6.6.0+ (removed upper bound)
 - **werkzeug** 3.1.4 &rarr; 3.1.5+
 - **azure-core** &ge;1.38.0 (new)
+- **orjson** 3.11.4 &rarr; 3.11.7
+- **wheel** 0.45.1 &rarr; 0.46.3
 
 ### Documentation
 
