@@ -18,13 +18,16 @@ This file provides detailed guidance for AI agents working with the HoloDeck cod
 - Agent execution engine: **Complete**
 - Evaluation framework: **Complete**
 - Chat interface: **Complete**
+- Multi-backend abstraction layer: **Complete**
 - Deployment engine: **Planned**
 
 **Technology Stack:**
 
 - **Language:** Python 3.10+
 - **Package Manager:** UV (fast, modern replacement for pip/Poetry)
-- **Framework:** Microsoft Semantic Kernel (agent framework)
+- **Agent Backends:** Multi-backend architecture
+  - Semantic Kernel (OpenAI, Azure OpenAI, Ollama)
+  - Claude Agent SDK (native Anthropic — first-class citizen)
 - **CLI:** Click
 - **Configuration:** Pydantic v2 + YAML
 - **Testing:** Pytest with async support
@@ -56,19 +59,27 @@ This file provides detailed guidance for AI agents working with the HoloDeck cod
 ┌─────────────────────────────────────────────────────────────┐
 │                 Pydantic Models (Schema)                     │
 │  ├─ AgentConfig: Agent configuration schema                  │
-│  ├─ LLMProvider: LLM provider settings (OpenAI, Azure, etc.) │
-│  ├─ ToolUnion: Tool definitions (5 types)                    │
+│  ├─ LLMProvider: LLM provider settings (all providers)       │
+│  ├─ ClaudeConfig: Claude Agent SDK settings                  │
+│  ├─ ToolUnion: Tool definitions (6 types)                    │
 │  ├─ EvaluationConfig: Metrics and thresholds                 │
 │  └─ TestCaseModel: Test cases with multimodal file support   │
 └─────────────────────────────────────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                   Agent Engine (Semantic Kernel)             │
-│  ├─ LLM Execution: Multi-provider support                    │
-│  ├─ Tool Execution: MCP, function, vectorstore, prompt       │
-│  ├─ Memory Management: Conversation history                  │
-│  └─ Streaming: Real-time response streaming                  │
-└─────────────────────────────────────────────────────────────┘
+│           Backend Abstraction Layer (auto-routed)            │
+│  ├─ BackendSelector: Routes by model.provider                │
+│  ├─ AgentBackend / AgentSession: Provider-agnostic protocols │
+│  ├─ ExecutionResult: Unified response model                  │
+│  └─ ContextGenerator: Contextual embeddings protocol         │
+├─────────────────────────────┬───────────────────────────────┤
+│   SK Backend                │   Claude Backend              │
+│   (OpenAI, Azure, Ollama)   │   (Anthropic — first-class)   │
+│  ├─ ChatCompletionAgent     │  ├─ Claude Agent SDK          │
+│  ├─ SK Tool Plugins         │  ├─ Tool Adapters + MCP Bridge│
+│  └─ SK Memory / History     │  ├─ OTel Bridge               │
+│                             │  └─ Startup Validators        │
+└─────────────────────────────┴───────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              Evaluation Framework                            │
@@ -89,23 +100,35 @@ This file provides detailed guidance for AI agents working with the HoloDeck cod
 
 **2. Plugin Architecture**
 
-- Tool system supports 5 types: vectorstore, function, MCP, prompt, plugin
+- Tool system supports 6 types: vectorstore, function, MCP, prompt, plugin, hierarchical_document
 - MCP protocol for standardized integrations (design decision: APIs use MCP, not custom types)
+- Claude tool adapter bridge wraps HoloDeck tools as SDK-compatible MCP tools
 - Dynamic tool loading from configuration
 
-**3. Multimodal Testing**
+**3. Multi-Backend Abstraction**
+
+- Protocol-driven: `AgentBackend`, `AgentSession`, `ContextGenerator` define provider-agnostic interfaces
+- `BackendSelector.select()` auto-routes by `model.provider`:
+  - OpenAI / Azure OpenAI / Ollama → `SKBackend` (Semantic Kernel)
+  - Anthropic → `ClaudeBackend` (Claude Agent SDK — first-class citizen)
+- Tool adapters bridge HoloDeck tools (VectorStore, HierarchicalDocument) to SDK MCP format
+- MCP bridge translates HoloDeck MCP configs to Claude SDK subprocess configs
+- OTel bridge translates observability config to subprocess environment variables
+- Startup validators surface configuration errors before spawning Claude subprocess
+
+**4. Multimodal Testing**
 
 - File processor handles images (OCR), PDFs, Office documents
 - Test cases can include multiple files with metadata
 - MarkItDown library for document-to-markdown conversion
 
-**4. Evaluation Flexibility**
+**5. Evaluation Flexibility**
 
 - Three-level model configuration: global, per-evaluation, per-metric
 - Support for AI-powered metrics (Azure AI, DeepEval) and NLP metrics
 - Async evaluation execution for performance
 
-**5. Streaming Architecture**
+**6. Streaming Architecture**
 
 - Real-time streaming for chat interface
 - Progress indicators for test execution
@@ -145,7 +168,8 @@ holodeck/
 │   │   ├── config.py               # Base configuration models
 │   │   ├── agent.py                # Agent configuration model
 │   │   ├── llm.py                  # LLM provider models
-│   │   ├── tool.py                 # Tool configuration models
+│   │   ├── tool.py                 # Tool configuration models (6 types)
+│   │   ├── claude_config.py        # Claude Agent SDK configuration models
 │   │   ├── evaluation.py           # Evaluation metrics models
 │   │   ├── test_case.py            # Test case models
 │   │   ├── test_result.py          # Test result models
@@ -167,6 +191,21 @@ holodeck/
 │   │   ├── validation.py           # Validation utilities
 │   │   ├── logging_config.py       # Logging configuration
 │   │   ├── logging_utils.py        # Logging utilities
+│   │   ├── tool_initializer.py     # Shared tool init (both backends)
+│   │   ├── instruction_resolver.py # Shared instruction loading
+│   │   ├── claude_context_generator.py  # Claude SDK context generation
+│   │   ├── llm_context_generator.py     # Generic LLM context generation
+│   │   │
+│   │   ├── backends/               # Multi-backend abstraction layer
+│   │   │   ├── __init__.py         # Public API exports
+│   │   │   ├── base.py             # Protocols: AgentBackend, AgentSession, ContextGenerator
+│   │   │   ├── selector.py         # BackendSelector (routes by provider)
+│   │   │   ├── sk_backend.py       # Semantic Kernel backend (OpenAI/Azure/Ollama)
+│   │   │   ├── claude_backend.py   # Claude Agent SDK backend (Anthropic)
+│   │   │   ├── tool_adapters.py    # Wraps HD tools as SDK MCP tools
+│   │   │   ├── mcp_bridge.py       # Translates MCP configs for Claude SDK
+│   │   │   ├── otel_bridge.py      # Translates OTel config for Claude subprocess
+│   │   │   └── validators.py       # Startup validators (Node.js, credentials, etc.)
 │   │   │
 │   │   ├── evaluators/             # Evaluation framework
 │   │   │   ├── __init__.py         # Evaluator exports
@@ -220,6 +259,16 @@ holodeck/
 │
 ├── tests/
 │   ├── unit/                       # Unit tests (isolated, fast)
+│   │   └── lib/
+│   │       └── backends/           # Backend abstraction tests
+│   │           ├── test_base.py            # ExecutionResult, protocol tests
+│   │           ├── test_claude_backend.py  # ClaudeBackend tests
+│   │           ├── test_sk_backend.py      # SKBackend tests
+│   │           ├── test_selector.py        # BackendSelector routing tests
+│   │           ├── test_tool_adapters.py   # Tool adapter tests
+│   │           ├── test_mcp_bridge.py      # MCP bridge tests
+│   │           ├── test_otel_bridge.py     # OTel bridge tests
+│   │           └── test_validators.py      # Validator tests
 │   ├── integration/                # Integration tests (cross-component)
 │   ├── fixtures/                   # Test fixtures and sample data
 │   └── conftest.py                 # Pytest configuration
@@ -851,6 +900,55 @@ file_config = FileInputConfig(
 content = await processor.process_file(file_config)
 ```
 
+### 8. Backend Selection Pattern
+
+Use `BackendSelector` to route agents to the correct backend — never instantiate backends directly:
+
+```python
+from holodeck.lib.backends import BackendSelector, ExecutionResult
+
+# Auto-routes by model.provider (anthropic → Claude, others → SK)
+backend = await BackendSelector.select(agent, tool_instances, mode="test")
+await backend.initialize()
+
+# Single-turn (test runner)
+result: ExecutionResult = await backend.invoke_once("What is our refund policy?")
+
+# Multi-turn (chat)
+session = await backend.create_session()
+r1 = await session.send("Hello")
+r2 = await session.send("Tell me more")
+await session.close()
+
+await backend.teardown()
+```
+
+### 9. Claude Backend Initialization Flow
+
+`ClaudeBackend.initialize()` performs these steps in order:
+
+1. **Node.js validation** — `validate_nodejs()` checks `node` is on PATH
+2. **Credentials validation** — `validate_credentials()` checks API key / OAuth / Bedrock / Vertex / Foundry
+3. **Embedding provider validation** — `validate_embedding_provider()` ensures external embedding config when using vectorstore tools
+4. **Tool filtering warning** — `validate_tool_filtering()` warns if tool_filtering set (Claude SDK manages selection natively)
+5. **Tool initialization** — `tool_initializer.initialize_tools()` creates vectorstore/hierarchical-doc tool instances
+6. **Tool adapters** — `create_tool_adapters()` wraps HoloDeck tools as SDK-compatible MCP tools
+7. **SDK server** — `build_holodeck_sdk_server()` bundles adapters into in-process MCP server
+8. **External MCP** — `build_claude_mcp_configs()` translates MCP tool configs to SDK format
+9. **OTel env vars** — `translate_observability()` configures OpenTelemetry for subprocess
+10. **Build options** — `build_options()` assembles `ClaudeAgentOptions` from all above
+11. **Working directory / response format validation**
+
+### 10. ContextGenerator Resolution Chain
+
+When initializing hierarchical document tools, the context generator is resolved via a 5-tier priority chain:
+
+1. **Caller-provided** `context_generator` (highest priority)
+2. **Caller-provided** `chat_service` → wrapped in `LLMContextGenerator`
+3. **Tool config** `context_model` → creates chat service → `LLMContextGenerator`
+4. **Anthropic provider** → `ClaudeSDKContextGenerator` (uses `claude-haiku-4-5` via SDK `query()`)
+5. **None** → graceful degradation (chunks without contextual embeddings)
+
 ---
 
 ## Agent Configuration Schema
@@ -865,13 +963,19 @@ author: string # Optional: Agent author
 
 model: # Required: LLM provider configuration
   provider: openai | azure_openai | anthropic | ollama
-  name: string # Model name (e.g., "gpt-4o")
+  name: string # Model name (e.g., "gpt-4o", "claude-sonnet-4-20250514")
   temperature: float # 0.0 to 2.0 (default: 0.7)
   max_tokens: int # Max output tokens (optional)
   top_p: float # Nucleus sampling (optional)
+  auth_provider: string # Anthropic only: api_key | oauth_token | bedrock | vertex | foundry
   # Provider-specific fields
   endpoint: string # Azure OpenAI endpoint (azure_openai only)
   api_version: string # Azure API version (azure_openai only)
+
+embedding_provider: # Required when provider=anthropic + vectorstore/hierarchical_document tools
+  provider: openai | azure_openai | ollama
+  name: string # Embedding model name
+  # Provider-specific fields (endpoint, api_version, etc.)
 
 instructions: # Required: System instructions
   file: path # Path to instruction file (exclusive with inline)
@@ -929,6 +1033,27 @@ tools: # Optional: List of tools
       provider: openai
       name: gpt-4o-mini
       temperature: 0.3
+
+claude: # Optional: Claude Agent SDK configuration (anthropic provider only)
+  working_directory: path # Scope file access; subprocess cwd
+  permission_mode: manual | acceptEdits | acceptAll  # Default: manual
+  max_turns: int # Max agent loop iterations
+  extended_thinking: # Deep reasoning
+    enabled: boolean
+    budget_tokens: int # 1000-100000
+  web_search: boolean # Built-in web search (default: false)
+  bash: # Shell command execution
+    enabled: boolean
+    excluded_commands: [string]
+    allow_unsafe: boolean
+  file_system: # File access settings
+    read: boolean
+    write: boolean
+    edit: boolean
+  subagents: # Parallel sub-agent execution
+    enabled: boolean
+    max_parallel: int # 1-16
+  allowed_tools: [string] # Explicit tool allowlist (null = all configured)
 
 evaluations: # Optional: Evaluation configuration
   default_model: # Optional: Global model for all metrics
@@ -1107,6 +1232,147 @@ execution:
   timeout_ms: 10000
   retry_on_failure: 1
 ```
+
+### Example: Claude-Native Agent (Minimal)
+
+```yaml
+name: "claude-support-agent"
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+
+instructions:
+  inline: "You are a helpful customer support agent."
+
+claude:
+  permission_mode: manual
+```
+
+### Example: Claude-Native Agent (Full)
+
+```yaml
+name: "claude-research-agent"
+description: "Research assistant powered by Claude with extended thinking"
+
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+  temperature: 0.3
+  auth_provider: api_key  # api_key | oauth_token | bedrock | vertex | foundry
+
+# Anthropic cannot generate embeddings — external provider required for vectorstore tools
+embedding_provider:
+  provider: ollama
+  name: nomic-embed-text:latest
+
+instructions:
+  file: instructions/system-prompt.md
+
+claude:
+  working_directory: ./workspace
+  permission_mode: manual
+  max_turns: 25
+  extended_thinking:
+    enabled: true
+    budget_tokens: 10000
+  web_search: true
+  bash:
+    enabled: false
+  file_system:
+    read: true
+    write: false
+    edit: false
+  subagents:
+    enabled: true
+    max_parallel: 4
+  allowed_tools: null  # null = all configured tools
+
+tools:
+  - name: search_knowledge
+    type: vectorstore
+    source: data/knowledge_base/
+    description: "Search the knowledge base"
+    database:
+      provider: chromadb
+      connection_string: http://localhost:8000
+
+  - name: brave_search
+    type: mcp
+    description: "Web search via Brave"
+    command: npx
+    args: ["-y", "@brave/brave-search-mcp-server"]
+```
+
+**Authentication Methods:**
+
+| `auth_provider` | Credential Source                          |
+| --------------- | ------------------------------------------ |
+| `api_key`       | `ANTHROPIC_API_KEY` env var (default)      |
+| `oauth_token`   | `CLAUDE_CODE_OAUTH_TOKEN` env var          |
+| `bedrock`       | AWS Bedrock — sets `CLAUDE_CODE_USE_BEDROCK=1` |
+| `vertex`        | Google Vertex — sets `CLAUDE_CODE_USE_VERTEX=1`|
+| `foundry`       | Anthropic Foundry — sets `CLAUDE_CODE_USE_FOUNDRY=1` |
+
+**Prerequisites for Claude Backend:**
+
+- Node.js 18+ on PATH (Claude Agent SDK runs as a subprocess)
+- `ANTHROPIC_API_KEY` or equivalent credential
+- Separate `embedding_provider` when using vectorstore or hierarchical_document tools
+
+---
+
+### Adding a New Backend
+
+To add a new backend (e.g., for a new LLM provider):
+
+1. **Implement the protocols** in `src/holodeck/lib/backends/my_backend.py`:
+
+```python
+from holodeck.lib.backends.base import AgentBackend, AgentSession, ExecutionResult
+
+class MySession:
+    """Stateful multi-turn session."""
+
+    async def send(self, message: str) -> ExecutionResult:
+        # Implement single-turn invocation
+        ...
+
+    async def send_streaming(self, message: str):
+        # Implement streaming response
+        ...
+
+    async def close(self) -> None:
+        # Release session resources
+        ...
+
+class MyBackend:
+    """Backend for MyProvider."""
+
+    async def initialize(self) -> None:
+        # Validate config, prepare resources
+        ...
+
+    async def invoke_once(self, message, context=None) -> ExecutionResult:
+        # Stateless single-turn invocation
+        ...
+
+    async def create_session(self) -> MySession:
+        # Create new stateful session
+        ...
+
+    async def teardown(self) -> None:
+        # Release all resources
+        ...
+```
+
+2. **Register in `BackendSelector`** (`src/holodeck/lib/backends/selector.py`):
+
+```python
+elif agent.model.provider == "my_provider":
+    return MyBackend(agent, tool_instances, mode, allow_side_effects)
+```
+
+3. **Add tests** in `tests/unit/lib/backends/test_my_backend.py`
 
 ---
 
@@ -1510,7 +1776,11 @@ tags:
 9. **DO use MCP for API integrations**
    - Design decision: External APIs should use MCP, not custom types
 
-10. **DO run code quality checks before committing**
+10. **DO use `BackendSelector` for provider routing**
+    - Never instantiate backends directly
+    - Use protocol types (`AgentBackend`, `AgentSession`, `ExecutionResult`) in function signatures
+
+11. **DO run code quality checks before committing**
     - `make format`, `make lint`, `make type-check`
     - Pre-commit hooks enforce this automatically
 
@@ -1752,10 +2022,12 @@ uv sync --all-extras
 ## Key Design Constraints
 
 1. **No-Code First**: Users configure agents via YAML, not Python
-2. **MCP for APIs**: External API integrations must use MCP servers, not custom API tool types
-3. **OpenTelemetry Native**: Observability follows GenAI semantic conventions
-4. **Evaluation Flexibility**: Support model configuration at global, run, and metric levels
-5. **Multimodal Testing**: First-class support for images, PDFs, Office docs
+2. **Claude Code First-Class Citizen**: Native backend via Claude Agent SDK; future development prioritizes Claude-native capabilities (hooks, tools, subagents)
+3. **Protocol-Driven Backends**: All backends implement `AgentBackend`/`AgentSession` protocols; consumers never depend on provider-specific types
+4. **MCP for APIs**: External API integrations must use MCP servers, not custom API tool types
+5. **OpenTelemetry Native**: Observability follows GenAI semantic conventions
+6. **Evaluation Flexibility**: Support model configuration at global, run, and metric levels
+7. **Multimodal Testing**: First-class support for images, PDFs, Office docs
 
 ---
 
@@ -1771,6 +2043,7 @@ uv sync --all-extras
 ### External References
 
 - [Semantic Kernel Documentation](https://learn.microsoft.com/en-us/semantic-kernel/)
+- [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/claude-code-sdk-docs)
 - [Pydantic Documentation](https://docs.pydantic.dev/)
 - [Click Documentation](https://click.palletsprojects.com/)
 - [Azure AI Evaluation](https://learn.microsoft.com/en-us/azure/ai-studio/how-to/develop/evaluate-sdk)
@@ -1782,6 +2055,7 @@ uv sync --all-extras
 
 - **UV**: https://astral.sh/uv (package manager)
 - **Semantic Kernel**: https://github.com/microsoft/semantic-kernel
+- **Claude Agent SDK**: https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/claude-code-sdk-docs
 - **Pydantic**: https://docs.pydantic.dev/
 - **Click**: https://click.palletsprojects.com/
 - **Pytest**: https://docs.pytest.org/
@@ -1822,7 +2096,10 @@ When working on HoloDeck, always:
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
 
 ## Active Technologies
-- N/A (stateless CLI tool, uses cloud provider state) (019-deploy-command)
+- Claude Agent SDK (Node.js subprocess, native Anthropic backend)
+- Semantic Kernel (Python, OpenAI/Azure/Ollama backend)
+- Node.js 18+ (required for Claude Agent SDK subprocess)
 
 ## Recent Changes
+- 021-claude-agent-sdk: Multi-backend abstraction layer with Claude Agent SDK as first-class citizen. Added `lib/backends/` package (8 modules), `models/claude_config.py`, `tool_initializer.py`, `instruction_resolver.py`, `claude_context_generator.py`. Protocol-driven architecture with `AgentBackend`/`AgentSession`/`ContextGenerator` interfaces, auto-routing via `BackendSelector`, tool adapters, MCP/OTel bridges, startup validators.
 - 019-deploy-command: Added Python 3.10+

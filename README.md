@@ -13,9 +13,11 @@ HoloDeck is an open-source experimentation platform that enables teams to create
 ## ✨ Features
 
 - **🎯 No-Code Agent Definition** - Define agents using simple YAML configuration
+- **🧠 Claude Code Native** - First-class Anthropic integration with extended thinking, subagents, and native tool bridging
+- **🔀 Multi-Backend Architecture** - Seamless provider routing between Semantic Kernel (OpenAI/Azure/Ollama) and Claude Agent SDK (Anthropic)
 - **🧪 Hypothesis-Driven Testing** - Test agent behaviors against structured test cases
 - **📊 Integrated Evaluations** - DeepEval LLM-as-judge metrics (GEval, RAG) plus NLP metrics (F1, BLEU, ROUGE)
-- **🔌 Tool Ecosystem** - Extend agents with MCP servers and vector store search
+- **🔌 Tool Ecosystem** - Extend agents with MCP servers, vector store search, and hierarchical document tools
 - **💾 RAG Support** - Native vector database integration (ChromaDB, Qdrant, PostgreSQL, Pinecone)
 - **🤖 Open-Source First** - Designed to work with Ollama for local, free inference
 
@@ -125,6 +127,57 @@ test_cases:
   - input: "What are the latest trends in AI research?"
     expected_tools: ["brave_search"]
     ground_truth: "Should summarize current AI research trends"
+```
+
+### Define a Claude-Native Agent
+
+HoloDeck auto-selects the Claude Agent SDK backend when `model.provider` is `anthropic`. No code changes needed — just configure via YAML:
+
+> **Prerequisites:** Node.js 18+, `ANTHROPIC_API_KEY` environment variable, and a separate `embedding_provider` for vectorstore tools (Anthropic does not provide embeddings).
+
+```yaml
+name: "claude-research-agent"
+description: "Research assistant powered by Claude"
+
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+  temperature: 0.3
+
+# Anthropic can't generate embeddings — specify an external embedding provider
+embedding_provider:
+  provider: ollama
+  name: nomic-embed-text:latest
+
+instructions:
+  file: instructions/system-prompt.md
+
+claude:
+  permission_mode: manual # manual | acceptEdits | acceptAll
+  extended_thinking:
+    enabled: true
+    budget_tokens: 10000
+  web_search: true # Built-in web search capability
+  bash:
+    enabled: false
+  file_system:
+    read: true
+    write: false
+
+tools:
+  - name: search_papers
+    type: vectorstore
+    source: data/papers_index.json
+    description: "Search research papers"
+    database:
+      provider: chromadb
+      connection_string: http://localhost:8000
+
+  - name: brave_search
+    type: mcp
+    description: "Search the web using Brave Search"
+    command: npx
+    args: ["-y", "@brave/brave-search-mcp-server"]
 ```
 
 ### Test Your Agent
@@ -262,7 +315,7 @@ For detailed development instructions, commit message format, PR workflow, and t
 
 ### Agent Definition
 
-Agents are defined using declarative YAML configuration:
+Agents are defined using declarative YAML configuration. HoloDeck automatically selects the correct backend based on `model.provider` — Semantic Kernel for OpenAI/Azure/Ollama, Claude Agent SDK for Anthropic:
 
 ```yaml
 name: "research-agent"
@@ -457,14 +510,20 @@ test_cases:
         ┌──────────────────┼──────────────────┐
         ▼                  ▼                  ▼
 ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│   Agent      │  │  Evaluation  │  │  Deployment  │
-│   Engine     │  │  Framework   │  │  (Planned)   │
+│  Backend     │  │  Evaluation  │  │  Deployment  │
+│  Abstraction │  │  Framework   │  │  & Serving   │
 └──────────────┘  └──────────────┘  └──────────────┘
-        │                  │                  │
-        ├─ LLM Providers   ├─ DeepEval       ├─ FastAPI
-        ├─ MCP Tools       ├─ NLP Metrics    ├─ Docker
-        ├─ Vectorstore     ├─ Custom GEval   ├─ Cloud Deploy
-        └─ Memory          └─ Reporting      └─ Monitoring
+   ┌────┴────┐         │                  │
+   ▼         ▼         │                  │
+┌──────┐ ┌──────┐      │                  │
+│  SK  │ │Claude│      ├─ DeepEval       ├─ FastAPI
+│Backend││Backend│      ├─ NLP Metrics    ├─ Docker
+└──────┘ └──────┘      ├─ Custom GEval   ├─ Cloud Deploy
+   │         │         └─ Reporting      └─ Monitoring
+   ├─OpenAI  ├─ Claude Agent SDK
+   ├─Azure   ├─ Tool Adapters
+   ├─Ollama  ├─ MCP Bridge
+   └─MCP     └─ OTel Bridge
 ```
 
 ---
@@ -600,7 +659,7 @@ observability:
 
 - [x] **v0.1** - Core agent engine + CLI
 - [x] **v0.2** - Evaluation framework (DeepEval, NLP), Tools (MCP, Vectorstore)
-- [x] **v0.3** - API deployment, OpenTelemetry observability
+- [x] **v0.3** - Claude Agent SDK native backend, multi-backend abstraction, API deployment, OpenTelemetry observability
 - [ ] **v0.4** - Web UI (no-code editor)
 - [ ] **v0.5** - Multi-agent orchestration
 - [ ] **v0.6** - Enterprise features (SSO, audit logs, RBAC)
@@ -633,7 +692,8 @@ MIT License - see [LICENSE](LICENSE) for details
 
 Built with:
 
-- [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Agent framework
+- [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Agent framework (OpenAI/Azure/Ollama)
+- [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/claude-code-sdk-docs) - Native Anthropic agent framework
 - [DeepEval](https://github.com/confident-ai/deepeval) - LLM evaluation framework
 - [markitdown](https://github.com/microsoft/markitdown) - Document cracking into markdown for LLMs
 - [FastAPI](https://fastapi.tiangolo.com/) - API deployment (planned)
