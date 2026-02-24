@@ -950,9 +950,9 @@ class AgentFactory:
     async def _register_hierarchical_document_tools(self) -> None:
         """Register hierarchical document tools from agent config.
 
-        Iterates through agent_config.tools, finds hierarchical document tools,
-        creates HierarchicalDocumentTool instances, initializes them, and
-        registers their search methods as KernelFunctions.
+        Delegates tool initialization (embedding, context generation, ingestion)
+        to the shared tool_initializer, then registers search methods as
+        KernelFunctions.
 
         Raises:
             AgentFactoryError: If tool initialization fails.
@@ -963,54 +963,45 @@ class AgentFactory:
         if not self._has_hierarchical_document_tools():
             return
 
-        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+        from holodeck.lib.tool_initializer import (
+            ToolInitializerError,
+            initialize_hierarchical_doc_tools,
+        )
 
-        for tool_config in self.agent_config.tools:
-            if not isinstance(tool_config, HierarchicalDocumentToolConfig):
-                continue
+        provider_type = self.agent_config.model.provider.value
 
-            try:
-                # Create tool instance
-                tool = HierarchicalDocumentTool(tool_config)
+        try:
+            instances = await initialize_hierarchical_doc_tools(
+                agent=self.agent_config,
+                embedding_service=self._embedding_service,
+                chat_service=self._llm_service,
+                force_ingest=self._force_ingest,
+                provider_type=provider_type,
+            )
+        except ToolInitializerError as e:
+            raise AgentFactoryError(
+                f"Failed to initialize hierarchical document tools: {e}"
+            ) from e
 
-                # Inject services
-                tool.set_embedding_service(self._embedding_service)
-                if self._llm_service:
-                    tool.set_chat_service(self._llm_service)
+        for tool_name, tool in instances.items():
+            tool_config = next(
+                tc
+                for tc in self.agent_config.tools
+                if hasattr(tc, "name") and tc.name == tool_name
+            )
 
-                # Get provider type from agent config for dimension resolution
-                provider_type = self.agent_config.model.provider.value
+            kernel_function = self._create_search_kernel_function(
+                tool=tool,
+                tool_name=tool_config.name,
+                tool_description=tool_config.description,
+            )
 
-                # Initialize (processes documents, generates embeddings)
-                await tool.initialize(
-                    force_ingest=self._force_ingest, provider_type=provider_type
-                )
+            self.kernel.add_function(
+                plugin_name="hierarchical_document", function=kernel_function
+            )
+            self._hierarchical_document_tools.append(tool)
 
-                # Create and register KernelFunction
-                kernel_function = self._create_search_kernel_function(
-                    tool=tool,
-                    tool_name=tool_config.name,
-                    tool_description=tool_config.description,
-                )
-
-                self.kernel.add_function(
-                    plugin_name="hierarchical_document", function=kernel_function
-                )
-                self._hierarchical_document_tools.append(tool)
-
-                logger.info(
-                    f"Registered hierarchical document tool: {tool_config.name}"
-                )
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to initialize hierarchical document tool "
-                    f"{tool_config.name}: {e}"
-                )
-                raise AgentFactoryError(
-                    f"Failed to initialize hierarchical document tool "
-                    f"{tool_config.name}: {e}"
-                ) from e
+            logger.info(f"Registered hierarchical document tool: {tool_config.name}")
 
     async def _ensure_tools_initialized(self) -> None:
         """Ensure all tools are initialized (called before first invoke).

@@ -203,7 +203,7 @@ async def initialize_tools(
 
     # Initialize hierarchical document tools
     if has_hd:
-        hd_instances = await _initialize_hierarchical_doc_tools(
+        hd_instances = await initialize_hierarchical_doc_tools(
             agent=agent,
             embedding_service=embedding_service,
             chat_service=chat_service,
@@ -504,7 +504,7 @@ def _resolve_context_generator(
     return None
 
 
-async def _initialize_hierarchical_doc_tools(
+async def initialize_hierarchical_doc_tools(
     agent: Agent,
     embedding_service: Any,
     chat_service: Any | None,

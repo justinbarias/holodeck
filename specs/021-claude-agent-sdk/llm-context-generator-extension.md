@@ -154,9 +154,9 @@ Also remove the `"no chat service available"` reason branch (line 554-555) since
 
 **File:** `src/holodeck/lib/tool_initializer.py`
 
-### 5a. Add `context_generator` parameter to `initialize_tools()` and `_initialize_hierarchical_doc_tools()`
+### 5a. Add `context_generator` parameter to `initialize_tools()` and `initialize_hierarchical_doc_tools()`
 
-### 5b. New priority chain in `_initialize_hierarchical_doc_tools()`
+### 5b. New priority chain in `initialize_hierarchical_doc_tools()`
 
 ```
 1. Explicit context_generator arg    → tool.set_context_generator(it)
@@ -190,7 +190,7 @@ The current `_register_hierarchical_document_tools()` (line 950-1013) duplicates
 | Anthropic auto-detection | Auto-creates `ClaudeSDKContextGenerator` | **No** — always uses main agent model |
 | Explicit `context_generator` | Supported (Step 5) | **No** |
 
-### Solution: Delegate to `tool_initializer._initialize_hierarchical_doc_tools()`
+### Solution: Delegate to `tool_initializer.initialize_hierarchical_doc_tools()`
 
 Replace the inline tool initialization loop with a call to the shared function. This gives AgentFactory the same 5-tier priority chain as the Claude backend path.
 
@@ -210,11 +210,11 @@ async def _register_hierarchical_document_tools(self) -> None:
     if not self._has_hierarchical_document_tools():
         return
 
-    from holodeck.lib.tool_initializer import _initialize_hierarchical_doc_tools
+    from holodeck.lib.tool_initializer import initialize_hierarchical_doc_tools
 
     provider_type = self.agent_config.model.provider.value
 
-    instances = await _initialize_hierarchical_doc_tools(
+    instances = await initialize_hierarchical_doc_tools(
         agent=self.agent_config,
         embedding_service=self._embedding_service,
         chat_service=self._llm_service,
@@ -250,9 +250,9 @@ async def _register_hierarchical_document_tools(self) -> None:
 4. **Eliminates dead code** — the inline `tool.set_chat_service(self._llm_service)` / `tool.set_embedding_service()` / `tool.initialize()` sequence is replaced by one function call
 5. **Future-proof** — any new context generator strategies added to `tool_initializer.py` automatically benefit both backends
 
-### 6c. Impact on `_initialize_hierarchical_doc_tools()` (minor)
+### 6c. Impact on `initialize_hierarchical_doc_tools()` (minor)
 
-The `tool_initializer._initialize_hierarchical_doc_tools()` function already accepts `chat_service` as a parameter. For the SK path, `agent_factory` will pass `self._llm_service` (the main SK chat service). The priority chain in Step 5 then resolves:
+The `tool_initializer.initialize_hierarchical_doc_tools()` function already accepts `chat_service` as a parameter. For the SK path, `agent_factory` will pass `self._llm_service` (the main SK chat service). The priority chain in Step 5 then resolves:
 
 ```
 1. Explicit context_generator arg       → (not used from AgentFactory)
@@ -295,8 +295,8 @@ For the typical SK case (OpenAI/Azure agent, no `context_model`), path 2 fires �
 - `_ingest_documents()` uses generator without `_chat_service` check
 
 ### Update: `tests/unit/lib/test_runner/test_agent_factory.py`
-- `_register_hierarchical_document_tools()` delegates to `_initialize_hierarchical_doc_tools()`
-- Verify `_initialize_hierarchical_doc_tools()` called with correct args (agent, embedding_service, chat_service, force_ingest, provider_type)
+- `_register_hierarchical_document_tools()` delegates to `initialize_hierarchical_doc_tools()`
+- Verify `initialize_hierarchical_doc_tools()` called with correct args (agent, embedding_service, chat_service, force_ingest, provider_type)
 - Verify returned tool instances are registered as KernelFunctions
 - Verify `context_model` override works through the delegation path
 
@@ -312,7 +312,7 @@ For the typical SK case (OpenAI/Azure agent, no `context_model`), path 2 fires �
 | `src/holodeck/lib/claude_context_generator.py` | **New** — `ClaudeSDKContextGenerator` |
 | `src/holodeck/tools/hierarchical_document_tool.py` | Add `set_context_generator()`, widen type, simplify guard |
 | `src/holodeck/lib/tool_initializer.py` | Add `context_generator` param, auto-detection logic, unified priority chain |
-| `src/holodeck/lib/test_runner/agent_factory.py` | Delegate to `tool_initializer._initialize_hierarchical_doc_tools()` |
+| `src/holodeck/lib/test_runner/agent_factory.py` | Delegate to `tool_initializer.initialize_hierarchical_doc_tools()` |
 | `tests/unit/lib/test_claude_context_generator.py` | **New** |
 | `tests/unit/lib/test_tool_initializer.py` | New wiring tests |
 | `tests/unit/lib/test_llm_context_generator.py` | Protocol conformance |

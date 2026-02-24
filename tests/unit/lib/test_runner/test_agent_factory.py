@@ -3455,3 +3455,149 @@ class TestAgentExecutionResultResponseField:
             response="Hi",
         )
         assert result.chat_history is history
+
+
+class TestRegisterHierarchicalDocumentToolsDelegation:
+    """Tests for hierarchical doc tool delegation to tool_initializer."""
+
+    def _make_factory(
+        self,
+        tools: list[Any] | None = None,
+    ) -> AgentFactory:
+        """Create an AgentFactory with mocked kernel/agent for testing."""
+
+        agent_config = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o",
+                endpoint="https://api.openai.com",
+                api_key="sk-test",
+            ),
+            instructions=Instructions(inline="Test"),
+            tools=tools,
+        )
+
+        with (
+            mock.patch("holodeck.lib.test_runner.agent_factory.Kernel"),
+            mock.patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent"),
+        ):
+            factory = AgentFactory(agent_config)
+        return factory
+
+    @pytest.mark.asyncio
+    async def test_delegates_to_tool_initializer(self) -> None:
+        """initialize_hierarchical_doc_tools is called with correct args."""
+        from holodeck.models.tool import HierarchicalDocumentToolConfig
+
+        tool_cfg = HierarchicalDocumentToolConfig(
+            name="hdtool",
+            type="hierarchical_document",
+            description="test hd tool",
+            source="docs/",
+        )
+        factory = self._make_factory(tools=[tool_cfg])
+
+        mock_tool = mock.MagicMock()
+        mock_tool.search = mock.AsyncMock(return_value="result")
+
+        with mock.patch(
+            "holodeck.lib.tool_initializer.initialize_hierarchical_doc_tools",
+            new_callable=mock.AsyncMock,
+            return_value={"hdtool": mock_tool},
+        ) as mock_init:
+            await factory._register_hierarchical_document_tools()
+
+            mock_init.assert_called_once_with(
+                agent=factory.agent_config,
+                embedding_service=factory._embedding_service,
+                chat_service=factory._llm_service,
+                force_ingest=factory._force_ingest,
+                provider_type="openai",
+            )
+
+    @pytest.mark.asyncio
+    async def test_registers_kernel_functions(self) -> None:
+        """Returned tool instances are wrapped as KernelFunctions on kernel."""
+        from holodeck.models.tool import HierarchicalDocumentToolConfig
+
+        tool_cfg = HierarchicalDocumentToolConfig(
+            name="hdtool",
+            type="hierarchical_document",
+            description="test hd tool",
+            source="docs/",
+        )
+        factory = self._make_factory(tools=[tool_cfg])
+
+        mock_tool = mock.MagicMock()
+        mock_tool.search = mock.AsyncMock(return_value="result")
+
+        with mock.patch(
+            "holodeck.lib.tool_initializer.initialize_hierarchical_doc_tools",
+            new_callable=mock.AsyncMock,
+            return_value={"hdtool": mock_tool},
+        ):
+            await factory._register_hierarchical_document_tools()
+
+        # Kernel.add_function should have been called
+        factory.kernel.add_function.assert_called_once()
+        call_kwargs = factory.kernel.add_function.call_args
+        assert call_kwargs[1]["plugin_name"] == "hierarchical_document"
+        assert mock_tool in factory._hierarchical_document_tools
+
+    @pytest.mark.asyncio
+    async def test_wraps_tool_initializer_error(self) -> None:
+        """ToolInitializerError is wrapped as AgentFactoryError."""
+        from holodeck.lib.tool_initializer import ToolInitializerError
+        from holodeck.models.tool import HierarchicalDocumentToolConfig
+
+        tool_cfg = HierarchicalDocumentToolConfig(
+            name="hdtool",
+            type="hierarchical_document",
+            description="test hd tool",
+            source="docs/",
+        )
+        factory = self._make_factory(tools=[tool_cfg])
+
+        with (
+            mock.patch(
+                "holodeck.lib.tool_initializer.initialize_hierarchical_doc_tools",
+                new_callable=mock.AsyncMock,
+                side_effect=ToolInitializerError("boom"),
+            ),
+            pytest.raises(AgentFactoryError, match="boom"),
+        ):
+            await factory._register_hierarchical_document_tools()
+
+    @pytest.mark.asyncio
+    async def test_early_exit_no_tools(self) -> None:
+        """tools=None means initialize_hierarchical_doc_tools is never called."""
+        factory = self._make_factory(tools=None)
+
+        with mock.patch(
+            "holodeck.lib.tool_initializer.initialize_hierarchical_doc_tools",
+            new_callable=mock.AsyncMock,
+        ) as mock_init:
+            await factory._register_hierarchical_document_tools()
+            mock_init.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_early_exit_no_hd_tools(self) -> None:
+        """Only non-hierarchical tools means delegation is skipped."""
+        from holodeck.models.tool import MCPTool
+
+        mcp_tool = MCPTool(
+            name="mcp_tool",
+            type="mcp",
+            description="an mcp tool",
+            command="npx",
+            args=["server"],
+        )
+        factory = self._make_factory(tools=[mcp_tool])
+
+        with mock.patch(
+            "holodeck.lib.tool_initializer.initialize_hierarchical_doc_tools",
+            new_callable=mock.AsyncMock,
+        ) as mock_init:
+            await factory._register_hierarchical_document_tools()
+            mock_init.assert_not_called()
