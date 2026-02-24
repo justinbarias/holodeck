@@ -3270,7 +3270,7 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "1.25.0"
+version = "1.26.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -3288,9 +3288,9 @@ dependencies = [
     { name = "typing-inspection" },
     { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/2d/649d80a0ecf6a1f82632ca44bec21c0461a9d9fc8934d38cb5b319f2db5e/mcp-1.25.0.tar.gz", hash = "sha256:56310361ebf0364e2d438e5b45f7668cbb124e158bb358333cd06e49e83a6802", size = 605387, upload-time = "2025-12-19T10:19:56.985Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/6d/62e76bbb8144d6ed86e202b5edd8a4cb631e7c8130f3f4893c3f90262b10/mcp-1.26.0.tar.gz", hash = "sha256:db6e2ef491eecc1a0d93711a76f28dec2e05999f93afd48795da1c1137142c66", size = 608005, upload-time = "2026-01-24T19:40:32.468Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/fc/6dc7659c2ae5ddf280477011f4213a74f806862856b796ef08f028e664bf/mcp-1.25.0-py3-none-any.whl", hash = "sha256:b37c38144a666add0862614cc79ec276e97d72aa8ca26d622818d4e278b9721a", size = 233076, upload-time = "2025-12-19T10:19:55.416Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/d9/eaa1f80170d2b7c5ba23f3b59f766f3a0bb41155fbc32a69adfa1adaaef9/mcp-1.26.0-py3-none-any.whl", hash = "sha256:904a21c33c25aa98ddbeb47273033c435e595bbacfdb177f4bd87f6dceebe1ca", size = 233615, upload-time = "2026-01-24T19:40:30.652Z" },
 ]
 
 [[package]]
@@ -6753,7 +6753,7 @@ wheels = [
 
 [[package]]
 name = "semantic-kernel"
-version = "1.39.0"
+version = "1.39.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -6764,6 +6764,7 @@ dependencies = [
     { name = "cloudevents" },
     { name = "defusedxml" },
     { name = "jinja2" },
+    { name = "mcp" },
     { name = "nest-asyncio" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -6781,9 +6782,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/a3/d5c82be3b9d91e94cf5fd5f9581e0ca75ac597139280d0b8347977c67eb3/semantic_kernel-1.39.0.tar.gz", hash = "sha256:734aebbea115b84e4a9bcf182c65ff84d647be4bf2b1e16a61178516277ea17c", size = 586232, upload-time = "2025-11-26T02:49:33.009Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/dc/a915e90d755fe601831406f7f77bfa3b44cb7eaacd60aca2722a8414b96a/semantic_kernel-1.39.4.tar.gz", hash = "sha256:9f629919346216f3b48c1ea6da56fa3d1bffd546a6be8fe5b7893a097f0dc798", size = 602392, upload-time = "2026-02-10T10:09:49.223Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4c/54/d835f986ced9db035ea8b6c89e4f22ed166a03ec0cdb41dafdc6ab253e7f/semantic_kernel-1.39.0-py3-none-any.whl", hash = "sha256:3557406805c4f87baff9e73913bf27ed22bfeeb9bb278c3fc0724a2b8156d194", size = 897268, upload-time = "2025-11-26T02:49:31.162Z" },
+    { url = "https://files.pythonhosted.org/packages/03/38/edd944f3a5781573a8c965de8940339e0dc90f3fe088a0ca405af676a438/semantic_kernel-1.39.4-py3-none-any.whl", hash = "sha256:a10833e493485f59e22e988975396f234871a4103a424c30ac9569591b43870d", size = 914347, upload-time = "2026-02-10T10:09:47.014Z" },
 ]
 
 [[package]]
