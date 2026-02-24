@@ -11,6 +11,9 @@ HoloDeck provides two deployment approaches:
 
 Both approaches create OCI-compliant container images that run your agent as an HTTP server.
 
+!!! warning "Claude Agent SDK Not Yet Supported"
+    Container deployment currently supports **Semantic Kernel backends only** (OpenAI, Azure OpenAI, Ollama). Agents configured with `provider: anthropic` cannot be deployed as containers yet because `holodeck serve` — which the container entrypoint relies on — does not yet support the Claude Agent SDK backend. Claude agent deployment is planned for a future release.
+
 ## Quick Start
 
 ```bash

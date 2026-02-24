@@ -11,7 +11,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Deployment Engine**: Registry push (`holodeck deploy push`) and cloud deployment (`holodeck deploy run`)
 - **Plugin System**: Pre-built plugin packages for common integrations
-- **Agent Framework Migration**: Plans to migrate away from Semantic Kernel to another agent framework (either Agents Framework, or Google ADK, alternatively support for Claude Agent SDK)
+
+---
+
+## [0.5.0] - 2026-02-24
+
+### Added
+
+- **Claude Agent SDK Backend** — Native Anthropic provider support as a first-class backend (#021)
+  - `ClaudeBackend` and `ClaudeSession` implementing provider-agnostic `AgentBackend`/`AgentSession` protocols
+  - `BackendSelector` auto-routes agents by `model.provider` (anthropic → Claude SDK, openai/azure/ollama → Semantic Kernel)
+  - `ClaudeConfig` Pydantic model with extended thinking, web search, bash, file system, subagents, and permission mode settings
+  - `AuthProvider` enum supporting `api_key`, `oauth_token`, `bedrock`, `vertex`, `foundry` credential flows
+  - Subprocess retry with exponential backoff (3 attempts) and `max_turns` exceeded detection
+  - Structured output validation via JSON schema (file or inline)
+- **Multi-Backend Abstraction Layer** — Protocol-driven architecture decoupling all consumers from provider-specific types
+  - `AgentBackend`, `AgentSession`, `ContextGenerator` protocols in `lib/backends/base.py`
+  - `ExecutionResult` dataclass with response, tool calls/results, token usage, structured output, and error tracking
+  - `SKBackend`/`SKSession` wrapping existing Semantic Kernel infrastructure behind the same protocols
+- **Claude Tool Adapters** — Bridge HoloDeck tools to Claude Agent SDK via in-process MCP server
+  - `VectorStoreToolAdapter` and `HierarchicalDocToolAdapter` wrapping initialized tool instances as `@tool`-decorated handlers
+  - `build_holodeck_sdk_server()` factory bundling adapters into `McpSdkServerConfig`
+- **MCP Bridge** (`mcp_bridge.py`) — Translates HoloDeck `MCPTool` configs to Claude SDK `McpStdioServerConfig` with env var resolution
+- **OTel Bridge** (`otel_bridge.py`) — Maps `ObservabilityConfig` to Claude subprocess environment variables (OTLP exporter, protocol, privacy controls)
+- **Startup Validators** — 6 pre-flight checks called during `ClaudeBackend.initialize()`: Node.js presence, credential validation, embedding provider validation, tool filtering warnings, working directory collision detection, response format schema validation
+- **ClaudeSDKContextGenerator** — `ContextGenerator` protocol implementation using Claude Agent SDK `query()` for contextual embeddings with batch prompts, JSON parsing, single-chunk fallback, retry logic, and concurrency control
+- **Shared Tool Initializer** (`tool_initializer.py`) — Provider-agnostic tool initialization used by both SK and Claude backends with 5-tier context generator resolution chain
+- **Shared Instruction Resolver** (`instruction_resolver.py`) — Extracted instruction loading (file or inline) from AgentFactory for cross-backend reuse
+- **`embedding_provider` field on Agent model** — Required when using `provider: anthropic` with vectorstore/hierarchical_document tools (Anthropic has no native embedding API)
+- **`context_model` field on HierarchicalDocumentToolConfig** — Dedicated LLM for contextual embedding generation, separate from the main agent model
+- **`embedding_model` field on VectorstoreTool and HierarchicalDocumentToolConfig** — Explicit embedding model override with cross-tool conflict detection
+- **PDF Processor Package** (`lib/pdf_processor/`) — Extracted PDF operations into dedicated package (#265)
+  - `heading_extractor.py`: Dual-strategy heading detection — bookmark-based (preferred) with font-size fallback and fuzzy matching
+  - `page_extractor.py`: Page-range extraction using pypdf with bounds validation
+- **Multi-Field Keyword Search** — Per-field boosting for keyword-based retrieval (#265)
+  - Indexed fields: `content` (1x), `parent_chain` (2x), `section_id` (2x), `defined_term` (3x), `source_file` (1x)
+  - Enables structure-aware queries (e.g., "Section 203(a)", "Force Majeure")
+
+### Changed
+
+- **Chat Layer Decoupled from Semantic Kernel** — `AgentExecutor` and `ChatSessionManager` now use `BackendSelector` + `AgentSession` abstractions; zero `AgentFactory`/`ChatHistory` imports remain in the chat layer
+- **Chat Streaming** — New `execute_turn_streaming` async generator and `process_message_streaming` for token-by-token output; CLI REPL shows spinner until first chunk arrives
+- **Test Runner Decoupled** — `TestExecutor` uses `BackendSelector` + `ExecutionResult` instead of direct `AgentFactory`; `allow_side_effects` flag plumbed through to backend selection
+- **AgentFactory Refactored** — Now a backward-compatible facade; HierarchicalDocumentTool initialization delegated to shared `tool_initializer`
+- **Chat History Model** — `ChatSessionManager.history` changed from SK `ChatHistory` to plain `list[dict]` for provider neutrality
+- **ContextGenerator Protocol** — `HierarchicalDocumentTool` accepts any `ContextGenerator` implementation via `set_context_generator()`, decoupled from `LLMContextGenerator` and SK chat service
+
+### Fixed
+
+- **Context Model YAML Overrides** — Fixed silent ignoring of `context_model` YAML overrides in the SK path by unifying initialization through `tool_initializer`
+- **Claude Multi-Turn Sessions** — Use `session_id` parameter (SDK 0.1.37 compat) for proper conversation continuity
+- **MCP Tool Communication** — Wrap prompts as `AsyncIterable` to keep stdin open for bidirectional MCP tool communication (fixes `ProcessTransport` error)
+- **Credential Validation** — `validate_credentials` now returns actual credential values in env dict instead of empty dict
+- **Tool Result Enrichment** — `_enrich_tool_results` correlates tool names from `tool_calls` to `tool_results` via `call_id` for evaluation `retrieval_context`
+
+### Dependencies
+
+- **claude-agent-sdk** 0.1.37 — Native Claude Agent SDK integration (new)
+- **authlib** 1.6.5 &rarr; 1.6.6
+- **pypdf** 6.3.0 &rarr; 6.6.0+ (removed upper bound)
+- **werkzeug** 3.1.4 &rarr; 3.1.5+
+- **azure-core** &ge;1.38.0 (new)
+
+### Documentation
+
+- Claude Agent SDK configuration guide (`docs/guides/agent-configuration.md`, `docs/guides/llm-providers.md`)
+- Example Claude agent YAML (`docs/examples/claude_agent.yaml`)
+- Updated API models reference, README, and AGENTS.md for multi-backend architecture
+- Agent JSON schema updated (`schemas/agent.schema.json`)
+
+### Known Limitations
+
+- **`holodeck serve` does not support Claude agents** — The server command (`holodeck serve`) only supports Semantic Kernel backends (OpenAI, Azure OpenAI, Ollama). Agents with `provider: anthropic` work via `holodeck test` and `holodeck chat` but cannot be deployed as HTTP servers yet. Claude agent server/deployment support is planned for a future release.
 
 ---
 
@@ -392,7 +463,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Core Features
 
 - **Agent Configuration Schema**: Complete YAML-based agent configuration with Pydantic validation
-
   - Agent metadata (name, description)
   - LLM provider configuration (OpenAI, Azure OpenAI, Anthropic)
   - Model parameters (temperature, max_tokens)
@@ -402,7 +472,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Evaluation metrics with flexible model configuration
 
 - **Configuration Loading & Validation** (`ConfigLoader`):
-
   - Load and parse agent.yaml files
   - Validate against Pydantic schema with user-friendly error messages
   - File path resolution (relative to agent.yaml directory)
@@ -418,7 +487,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Data Models
 
 - **LLMProvider Model**:
-
   - Multi-provider support (openai, azure_openai, anthropic)
   - Model selection and parameter configuration
   - Temperature range validation (0-2)
@@ -426,7 +494,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Azure-specific endpoint configuration
 
 - **Tool Models** (Discriminated Union):
-
   - **VectorstoreTool**: Vector search with source, embedding model, chunk size/overlap
   - **FunctionTool**: Python function tools with parameters schema
   - **MCPTool**: Model Context Protocol server integration
@@ -434,20 +501,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Tool type validation and discrimination
 
 - **Evaluation Models**:
-
   - Metric configuration with name, threshold, enabled flag
   - Per-metric model override for flexible configuration
   - AI-powered and NLP metrics support
 
 - **TestCase Model**:
-
   - Test inputs with expected behaviors
   - Ground truth for validation
   - Expected tool usage tracking
   - Evaluation metrics per test
 
 - **Agent Model**:
-
   - Complete agent definition
   - All field validations and constraints
   - Tool and evaluation composition
@@ -460,7 +524,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Error Handling
 
 - **Custom Exception Hierarchy**:
-
   - `HoloDeckError`: Base exception
   - `ConfigError`: Configuration-specific errors
   - `ValidationError`: Schema validation errors with field details
@@ -475,21 +538,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Infrastructure & Tooling
 
 - **Development Setup**:
-
   - Makefile with 30+ development commands
   - Poetry dependency management
   - Pre-commit hooks (black, ruff, mypy, detect-secrets)
   - Python 3.10+ support
 
 - **Testing**:
-
   - Unit test suite with 11 test files covering all models
   - Integration test suite for end-to-end workflows
   - 80%+ code coverage requirement
   - Test execution: `make test`, `make test-coverage`, `make test-parallel`
 
 - **Code Quality**:
-
   - Black code formatting (88 char line length)
   - Ruff linting (pycodestyle, pyflakes, isort, flake8-bugbear, pyupgrade, pep8-naming, flake8-simplify, bandit)
   - MyPy type checking with strict settings
@@ -641,7 +701,8 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 
 ---
 
-[unreleased]: https://github.com/justinbarias/holodeck/compare/0.4.0...HEAD
+[unreleased]: https://github.com/justinbarias/holodeck/compare/0.4.1...HEAD
+[0.4.1]: https://github.com/justinbarias/holodeck/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/justinbarias/holodeck/compare/0.3.5...0.4.0
 [0.3.5]: https://github.com/justinbarias/holodeck/compare/0.3.4...0.3.5
 [0.3.4]: https://github.com/justinbarias/holodeck/compare/0.3.3...0.3.4
