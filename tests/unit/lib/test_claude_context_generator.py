@@ -44,7 +44,7 @@ class TestClaudeContextConfig:
     def test_default_values(self) -> None:
         """Test ClaudeContextConfig default values."""
         config = ClaudeContextConfig()
-        assert config.model == "claude-haiku-4-5-20251001"
+        assert config.model == "claude-haiku-4-5"
         assert config.batch_size == 10
         assert config.concurrency == 5
         assert config.max_retries == 3
@@ -75,7 +75,7 @@ class TestClaudeSDKContextGeneratorInit:
     def test_default_config(self) -> None:
         """Test initialization with default config."""
         gen = ClaudeSDKContextGenerator()
-        assert gen._config.model == "claude-haiku-4-5-20251001"
+        assert gen._config.model == "claude-haiku-4-5"
         assert gen._config.batch_size == 10
 
     def test_custom_config(self) -> None:
