@@ -784,6 +784,10 @@ class HierarchicalDocumentToolConfig(BaseModel):
             "Overrides the default model used by LLMContextGenerator."
         ),
     )
+    embedding_model: str | None = Field(
+        default=None,
+        description="Custom embedding model (defaults to provider default)",
+    )
 
     # Storage configuration
     database: DatabaseConfig | str | None = Field(

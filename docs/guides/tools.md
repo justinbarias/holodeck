@@ -270,6 +270,12 @@ embedding_model: text-embedding-3-small
 > - **Semantic Kernel backend** (OpenAI, Azure OpenAI, Ollama): Uses the agent's own model provider for embeddings. The `embedding_model` field on the tool selects which embedding model to use from that provider.
 > - **Claude Agent SDK backend** (Anthropic): Anthropic does not offer embedding models. The agent-level `embedding_provider` is used instead, and the tool's `embedding_model` field selects the model within that provider.
 
+!!! danger "Mismatched embedding models across tools"
+    If your agent defines both **vectorstore** and **hierarchical_document** tools with
+    **different** `embedding_model` values, HoloDeck will raise a validation error at
+    startup. All embedding-based tools in an agent must use the same embedding model
+    because they share a single embedding provider instance.
+
 #### Vector Field
 
 - **Type**: String or List of strings

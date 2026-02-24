@@ -74,6 +74,7 @@ def _make_vectorstore_tool(
 def _make_hierarchical_doc_tool(
     name: str = "doc_search",
     context_model: LLMProvider | None = None,
+    embedding_model: str | None = None,
 ) -> Any:
     """Create a HierarchicalDocumentToolConfig fixture."""
     from holodeck.models.tool import HierarchicalDocumentToolConfig
@@ -83,6 +84,7 @@ def _make_hierarchical_doc_tool(
         description=f"Search {name}",
         source="./data/docs",
         context_model=context_model,
+        embedding_model=embedding_model,
     )
 
 
@@ -175,6 +177,53 @@ class TestResolveEmbeddingModel:
         agent = _make_agent(tools=[tool])
         assert resolve_embedding_model(agent) == "my-custom-model"
 
+    def test_explicit_model_on_hierarchical_doc_tool(self) -> None:
+        """Explicit embedding_model on HD tool config → returned as-is."""
+        tool = _make_hierarchical_doc_tool(embedding_model="hd-custom-model")
+        agent = _make_agent(tools=[tool])
+        assert resolve_embedding_model(agent) == "hd-custom-model"
+
+    def test_explicit_model_matches_across_tool_types(self) -> None:
+        """Matching explicit models across tool types are accepted."""
+        vs_tool = _make_vectorstore_tool(
+            name="vs_search",
+            embedding_model="shared-embedding-model",
+        )
+        hd_tool = _make_hierarchical_doc_tool(
+            name="hd_search",
+            embedding_model="shared-embedding-model",
+        )
+        agent = _make_agent(tools=[vs_tool, hd_tool])
+        assert resolve_embedding_model(agent) == "shared-embedding-model"
+
+    def test_conflicting_models_between_tool_types_raise(self) -> None:
+        """Conflicting explicit models across tool types raises error."""
+        vs_tool = _make_vectorstore_tool(
+            name="vs_search",
+            embedding_model="embed-model-a",
+        )
+        hd_tool = _make_hierarchical_doc_tool(
+            name="hd_search",
+            embedding_model="embed-model-b",
+        )
+        agent = _make_agent(tools=[vs_tool, hd_tool])
+        with pytest.raises(ToolInitializerError, match="Conflicting embedding_model"):
+            resolve_embedding_model(agent)
+
+    def test_conflicting_models_between_hd_tools_raise(self) -> None:
+        """Conflicting explicit models across HD tools raises error."""
+        hd_tool_a = _make_hierarchical_doc_tool(
+            name="hd_search_a",
+            embedding_model="embed-model-a",
+        )
+        hd_tool_b = _make_hierarchical_doc_tool(
+            name="hd_search_b",
+            embedding_model="embed-model-b",
+        )
+        agent = _make_agent(tools=[hd_tool_a, hd_tool_b])
+        with pytest.raises(ToolInitializerError, match="Conflicting embedding_model"):
+            resolve_embedding_model(agent)
+
     def test_openai_default(self) -> None:
         """No explicit model + OpenAI provider → text-embedding-3-small."""
         agent = _make_agent(ProviderEnum.OPENAI)
@@ -215,6 +264,21 @@ class TestResolveEmbeddingModel:
             embedding_provider=embedding_provider,
         )
         assert resolve_embedding_model(agent) == "nomic-embed-text:latest"
+
+    def test_anthropic_with_hd_explicit_model_uses_explicit(self) -> None:
+        """Anthropic + embedding_provider + HD explicit embedding_model -> explicit."""
+        embedding_provider = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="text-embedding-3-small",
+            api_key="key",
+        )
+        hd_tool = _make_hierarchical_doc_tool(embedding_model="hd-specific-model")
+        agent = _make_agent(
+            ProviderEnum.ANTHROPIC,
+            tools=[hd_tool],
+            embedding_provider=embedding_provider,
+        )
+        assert resolve_embedding_model(agent) == "hd-specific-model"
 
 
 # ===================================================================

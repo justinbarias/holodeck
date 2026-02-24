@@ -29,29 +29,49 @@ class ToolInitializerError(HoloDeckError):
 def resolve_embedding_model(agent: Agent) -> str:
     """Resolve embedding model name from agent config.
 
-    Checks vectorstore tool configs for explicit ``embedding_model`` first,
-    then falls back to provider defaults.
+    Checks vectorstore and hierarchical-doc tool configs for explicit
+    ``embedding_model`` values first. If explicit values conflict across tools,
+    raises an error because embedding services are shared per agent. Falls back
+    to provider defaults when no explicit value is configured.
 
     Args:
         agent: Agent configuration.
 
     Returns:
         Embedding model name string.
+
+    Raises:
+        ToolInitializerError: If explicit embedding_model values conflict.
     """
     from holodeck.models.tool import (
         HierarchicalDocumentToolConfig,
         VectorstoreTool,
     )
 
-    # Check if any vectorstore/hierarchical-doc tool has explicit embedding_model
+    explicit_models: dict[str, str] = {}
     if agent.tools:
         for tool in agent.tools:
-            if isinstance(tool, VectorstoreTool) and tool.embedding_model:
-                return tool.embedding_model
-            if isinstance(tool, HierarchicalDocumentToolConfig):
-                emb_model = getattr(tool, "embedding_model", None)
-                if emb_model:
-                    return str(emb_model)
+            model_name: str | None = None
+            if isinstance(tool, VectorstoreTool | HierarchicalDocumentToolConfig):
+                model_name = tool.embedding_model
+
+            if model_name:
+                explicit_models[tool.name] = model_name
+
+    if explicit_models:
+        unique_models = sorted(set(explicit_models.values()))
+        if len(unique_models) > 1:
+            configured_models = ", ".join(
+                f"{tool_name}={model_name}"
+                for tool_name, model_name in sorted(explicit_models.items())
+            )
+            raise ToolInitializerError(
+                "Conflicting embedding_model values detected across vectorstore/"
+                "hierarchical_document tools. A single shared embedding service "
+                "is used per agent, so explicit embedding_model values must match. "
+                f"Found: {configured_models}"
+            )
+        return unique_models[0]
 
     # Determine which provider to use for defaults
     provider = _resolve_embedding_provider(agent)

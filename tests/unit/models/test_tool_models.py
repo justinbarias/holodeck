@@ -1696,3 +1696,26 @@ class TestHierarchicalDocumentToolConfigContextModel:
         assert config.reranker_model.name == "gpt-4o"
         assert config.context_model is not None
         assert config.context_model.name == "llama3"
+
+
+class TestHierarchicalDocumentToolConfigEmbeddingModel:
+    """Tests for embedding_model field on HierarchicalDocumentToolConfig."""
+
+    def test_embedding_model_default_none(self) -> None:
+        """Test that embedding_model defaults to None."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+        )
+        assert config.embedding_model is None
+
+    def test_embedding_model_accepts_string(self) -> None:
+        """Test that embedding_model accepts a custom model string."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            embedding_model="text-embedding-3-large",
+        )
+        assert config.embedding_model == "text-embedding-3-large"
