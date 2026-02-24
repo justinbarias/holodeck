@@ -22,8 +22,9 @@ description: Agent description    # Optional: What this agent does
 author: "Your Name"               # Optional: Who created this agent
 
 model:                            # Required: LLM configuration
-  provider: openai                # Required: openai|azure_openai|anthropic
-  name: gpt-4o                    # Required: Model identifier
+  provider: anthropic             # Required: openai|azure_openai|anthropic|ollama
+  name: claude-sonnet-4-20250514  # Required: Model identifier
+  auth_provider: oauth_token      # Optional: Uses CLAUDE_CODE_OAUTH_TOKEN env var
   temperature: 0.7                # Optional: 0.0-2.0
   max_tokens: 2000                # Optional: Maximum generation tokens
 
@@ -37,6 +38,8 @@ evaluations:                      # Optional: Quality metrics
   metrics: []
 test_cases: []                    # Optional: Test scenarios
 ```
+
+> **Backend auto-selection**: HoloDeck automatically selects the execution backend based on the `provider` field. `anthropic` routes to the Claude Agent SDK backend; all other providers route to the Semantic Kernel backend.
 
 ## Agent Name
 
@@ -87,11 +90,12 @@ Defines which LLM provider and model to use.
 - **Options**:
   - `openai` - OpenAI API (GPT-4o, GPT-4o-mini, etc.)
   - `azure_openai` - Azure OpenAI Service
-  - `anthropic` - Anthropic Claude
+  - `anthropic` - Anthropic Claude (native Claude Agent SDK backend)
+  - `ollama` - Local models via Ollama
 
 ```yaml
 model:
-  provider: openai
+  provider: anthropic
 ```
 
 ### Model Name
@@ -102,7 +106,8 @@ model:
 - **Examples by Provider**:
   - OpenAI: `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`
   - Azure: `gpt-4`, `gpt-4-32k`
-  - Anthropic: `claude-3-opus`, `claude-3-sonnet`, `claude-3-haiku`
+  - Anthropic: `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-5-haiku-20241022`
+  - Ollama: `llama3.2`, `mistral`, `codellama`
 
 ```yaml
 model:
@@ -148,6 +153,151 @@ model:
 model:
   top_p: 0.9
 ```
+
+### Authentication Provider
+
+- **Optional**: Yes (defaults to `api_key`)
+- **Type**: String (Enum)
+- **Applies to**: `anthropic` provider only (ignored for other providers)
+- **Purpose**: Select the authentication method for Claude Agent SDK
+
+| Method | Env Variable | Use Case |
+|--------|-------------|----------|
+| `api_key` | `ANTHROPIC_API_KEY` | Direct API access (default) |
+| `oauth_token` | `CLAUDE_CODE_OAUTH_TOKEN` | Claude Code OAuth (recommended) |
+| `bedrock` | AWS credentials (`AWS_ACCESS_KEY_ID`, etc.) | AWS Bedrock |
+| `vertex` | GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS`) | Google Vertex AI |
+| `foundry` | Foundry credentials | Foundry platform |
+
+```yaml
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+  auth_provider: oauth_token  # Uses CLAUDE_CODE_OAUTH_TOKEN env var
+```
+
+## Embedding Provider
+
+When using `model.provider: anthropic` with **vectorstore** or **hierarchical_document** tools, you **must** define an `embedding_provider` at the agent level. This is because Anthropic does not provide embedding models — a separate provider is needed to generate embeddings for semantic search.
+
+- **Required**: When `provider: anthropic` AND using vectorstore/hierarchical_document tools
+- **Type**: LLM provider configuration object
+
+```yaml
+# Using Ollama for embeddings (local, free)
+embedding_provider:
+  provider: ollama
+  name: nomic-embed-text:latest
+  endpoint: http://localhost:11434
+
+# Or using OpenAI for embeddings
+embedding_provider:
+  provider: openai
+  name: text-embedding-3-small
+```
+
+> **Note**: `embedding_provider` is ignored when using `openai`, `azure_openai`, or `ollama` as the main provider, since those providers can generate embeddings natively.
+
+## Claude Agent SDK Settings
+
+When using `model.provider: anthropic`, you can configure Claude Agent SDK-specific capabilities via the `claude` section. All capabilities default to disabled (least-privilege).
+
+### Permission Mode
+
+| Value | Description |
+|-------|-------------|
+| `manual` | Requires manual approval for all actions (default, safest) |
+| `acceptEdits` | Auto-approve file edits, manual approval for other actions |
+| `acceptAll` | Auto-approve all tool calls and actions |
+
+### Configuration Reference
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `permission_mode` | Enum | `manual` | Level of autonomous action |
+| `working_directory` | String | None | Scope file access to this path; subprocess cwd |
+| `max_turns` | Integer (>=1) | None (SDK default) | Maximum agent loop iterations |
+| `extended_thinking` | Object | None | Extended reasoning configuration |
+| `web_search` | Boolean | `false` | Enable built-in web search |
+| `bash` | Object | None | Shell command execution settings |
+| `file_system` | Object | None | File read/write/edit access |
+| `subagents` | Object | None | Parallel sub-agent execution |
+| `allowed_tools` | List[String] | None (all tools) | Explicit tool allowlist |
+
+### Extended Thinking
+
+Enable deep reasoning for complex tasks:
+
+```yaml
+claude:
+  extended_thinking:
+    enabled: true
+    budget_tokens: 10000  # 1,000 - 100,000
+```
+
+### Bash Access
+
+```yaml
+claude:
+  bash:
+    enabled: true
+    excluded_commands: ["rm", "shutdown"]  # Commands to block
+    allow_unsafe: false                    # Dangerous commands require explicit opt-in
+```
+
+### File System Access
+
+```yaml
+claude:
+  file_system:
+    read: true
+    write: true
+    edit: true
+```
+
+### Sub-agents
+
+```yaml
+claude:
+  subagents:
+    enabled: true
+    max_parallel: 4  # 1-16 parallel sub-agents
+```
+
+### Full Annotated Example
+
+```yaml
+claude:
+  permission_mode: acceptAll       # Auto-approve actions
+  working_directory: ./workspace   # Restrict file access
+  max_turns: 15                    # Limit agent loop iterations
+
+  extended_thinking:
+    enabled: true
+    budget_tokens: 20000           # Deep reasoning token budget
+
+  web_search: true                 # Enable web search
+
+  bash:
+    enabled: true
+    excluded_commands: ["rm -rf", "shutdown"]
+    allow_unsafe: false
+
+  file_system:
+    read: true
+    write: true
+    edit: true
+
+  subagents:
+    enabled: true
+    max_parallel: 8
+
+  allowed_tools:                   # Only expose these tools to the agent
+    - knowledge-base
+    - web-search
+```
+
+> **Note**: The `claude` section is ignored when using non-Anthropic providers.
 
 ## Instructions
 
@@ -677,7 +827,7 @@ test_cases:
 
 ### Error: "Invalid model provider"
 
-- Use valid provider: `openai`, `azure_openai`, or `anthropic`
+- Use valid provider: `openai`, `azure_openai`, `anthropic`, or `ollama`
 
 ### Error: "Tool name must be unique"
 

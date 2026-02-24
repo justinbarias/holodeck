@@ -777,6 +777,17 @@ class HierarchicalDocumentToolConfig(BaseModel):
         default=None,
         description=("LLM for reranking results. Required when enable_reranking=True."),
     )
+    context_model: LLMProvider | None = Field(
+        default=None,
+        description=(
+            "LLM for contextual embedding generation. "
+            "Overrides the default model used by LLMContextGenerator."
+        ),
+    )
+    embedding_model: str | None = Field(
+        default=None,
+        description="Custom embedding model (defaults to provider default)",
+    )
 
     # Storage configuration
     database: DatabaseConfig | str | None = Field(

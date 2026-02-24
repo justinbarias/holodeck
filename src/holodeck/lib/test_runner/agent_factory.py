@@ -23,9 +23,7 @@ from semantic_kernel.agents import Agent as SKAgent
 from semantic_kernel.agents import ChatCompletionAgent, ChatHistoryAgentThread
 from semantic_kernel.connectors.ai.open_ai import (
     AzureChatCompletion,
-    AzureTextEmbedding,
     OpenAIChatCompletion,
-    OpenAITextEmbedding,
 )
 from semantic_kernel.connectors.ai.prompt_execution_settings import (
     PromptExecutionSettings,
@@ -37,6 +35,7 @@ from semantic_kernel.functions.kernel_function_from_method import (
 )
 
 from holodeck.config.schema import SchemaValidator
+from holodeck.lib.errors import AgentFactoryError
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_retry
 from holodeck.lib.tool_filter import ToolFilterManager
@@ -68,11 +67,6 @@ try:
 except ImportError:
     OllamaChatCompletion = None  # type: ignore[misc,assignment]
 
-# Try to import Ollama embedding support (optional dependency)
-try:
-    from semantic_kernel.connectors.ai.ollama import OllamaTextEmbedding
-except ImportError:
-    OllamaTextEmbedding = None  # type: ignore[misc,assignment]
 
 logger = get_logger(__name__)
 
@@ -95,12 +89,7 @@ class AgentExecutionResult:
     tool_results: list[dict[str, Any]]
     chat_history: ChatHistory
     token_usage: TokenUsage | None = None
-
-
-class AgentFactoryError(Exception):
-    """Error raised during agent bridge operations."""
-
-    pass
+    response: str = ""
 
 
 class AgentThreadRun:
@@ -268,6 +257,24 @@ class AgentThreadRun:
             f"Agent invocation failed after {self.max_retries} attempts: {last_error}"
         ) from last_error
 
+    def _extract_response_from_history(self) -> str:
+        """Extract the last assistant message content from chat history.
+
+        Returns:
+            Content of the last assistant message, or empty string if not found.
+        """
+        if not self.chat_history or not self.chat_history.messages:
+            return ""
+        for message in reversed(self.chat_history.messages):
+            if (
+                hasattr(message, "role")
+                and message.role == "assistant"
+                and hasattr(message, "content")
+            ):
+                content = message.content
+                return str(content) if content else ""
+        return ""
+
     async def _invoke_agent_impl(self) -> AgentExecutionResult:
         """Internal implementation of agent invocation.
 
@@ -342,6 +349,7 @@ class AgentThreadRun:
                 tool_results=tool_results,
                 chat_history=self.chat_history,
                 token_usage=token_usage,
+                response=self._extract_response_from_history(),
             )
 
         except Exception as e:
@@ -722,70 +730,36 @@ class AgentFactory:
         return False
 
     def _get_embedding_model(self) -> str:
-        """Get embedding model from first vectorstore tool or use provider default.
+        """Get embedding model from agent config via shared module.
 
         Returns:
             Embedding model name to use for TextEmbedding service.
         """
-        # Check if any vectorstore tool has explicit embedding_model
-        if self.agent_config.tools:
-            for tool in self.agent_config.tools:
-                if isinstance(tool, VectorstoreTool) and tool.embedding_model:
-                    return tool.embedding_model
+        from holodeck.lib.tool_initializer import resolve_embedding_model
 
-        # Return provider-specific default
-        if self.agent_config.model.provider == ProviderEnum.OLLAMA:
-            return "nomic-embed-text:latest"
-        else:
-            # OpenAI/Azure OpenAI default
-            return "text-embedding-3-small"
+        return resolve_embedding_model(self.agent_config)
 
     def _register_embedding_service(self) -> None:
         """Register TextEmbedding service on kernel for vectorstore tools.
 
-        Supports OpenAI and Azure OpenAI embedding providers. Uses the same
-        credentials as the chat model configured in agent_config.model.
+        Delegates to the shared ``tool_initializer.create_embedding_service()``
+        and registers the result on the SK kernel.
 
         Raises:
             AgentFactoryError: If provider doesn't support embeddings.
         """
-        model_config = self.agent_config.model
-        embedding_model = self._get_embedding_model()
-
-        logger.debug(
-            f"Registering embedding service: model={embedding_model}, "
-            f"provider={model_config.provider}"
+        from holodeck.lib.tool_initializer import (
+            ToolInitializerError,
+            create_embedding_service,
         )
 
-        if model_config.provider == ProviderEnum.OPENAI:
-            self._embedding_service = OpenAITextEmbedding(
-                ai_model_id=embedding_model,
-                api_key=model_config.api_key,
-            )
-        elif model_config.provider == ProviderEnum.AZURE_OPENAI:
-            self._embedding_service = AzureTextEmbedding(
-                deployment_name=embedding_model,
-                endpoint=model_config.endpoint,
-                api_key=model_config.api_key,
-            )
-        elif model_config.provider == ProviderEnum.OLLAMA:
-            if OllamaTextEmbedding is None:
-                raise AgentFactoryError(
-                    "Ollama provider requires 'ollama' package. "
-                    "Install with: pip install ollama"
-                )
-            self._embedding_service = OllamaTextEmbedding(
-                ai_model_id=embedding_model,
-                host=model_config.endpoint if model_config.endpoint else None,
-            )
-        else:
-            raise AgentFactoryError(
-                f"Embedding service not supported for provider: "
-                f"{model_config.provider}. "
-                "Vectorstore tools require OpenAI, Azure OpenAI, or Ollama provider."
-            )
+        try:
+            self._embedding_service = create_embedding_service(self.agent_config)
+        except ToolInitializerError as exc:
+            raise AgentFactoryError(str(exc)) from exc
 
         self.kernel.add_service(self._embedding_service)
+        embedding_model = self._get_embedding_model()
         logger.debug(f"Embedding service registered: {embedding_model}")
 
     def _create_search_kernel_function(
@@ -976,9 +950,9 @@ class AgentFactory:
     async def _register_hierarchical_document_tools(self) -> None:
         """Register hierarchical document tools from agent config.
 
-        Iterates through agent_config.tools, finds hierarchical document tools,
-        creates HierarchicalDocumentTool instances, initializes them, and
-        registers their search methods as KernelFunctions.
+        Delegates tool initialization (embedding, context generation, ingestion)
+        to the shared tool_initializer, then registers search methods as
+        KernelFunctions.
 
         Raises:
             AgentFactoryError: If tool initialization fails.
@@ -989,54 +963,45 @@ class AgentFactory:
         if not self._has_hierarchical_document_tools():
             return
 
-        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+        from holodeck.lib.tool_initializer import (
+            ToolInitializerError,
+            initialize_hierarchical_doc_tools,
+        )
 
-        for tool_config in self.agent_config.tools:
-            if not isinstance(tool_config, HierarchicalDocumentToolConfig):
-                continue
+        provider_type = self.agent_config.model.provider.value
 
-            try:
-                # Create tool instance
-                tool = HierarchicalDocumentTool(tool_config)
+        try:
+            instances = await initialize_hierarchical_doc_tools(
+                agent=self.agent_config,
+                embedding_service=self._embedding_service,
+                chat_service=self._llm_service,
+                force_ingest=self._force_ingest,
+                provider_type=provider_type,
+            )
+        except ToolInitializerError as e:
+            raise AgentFactoryError(
+                f"Failed to initialize hierarchical document tools: {e}"
+            ) from e
 
-                # Inject services
-                tool.set_embedding_service(self._embedding_service)
-                if self._llm_service:
-                    tool.set_chat_service(self._llm_service)
+        for tool_name, tool in instances.items():
+            tool_config = next(
+                tc
+                for tc in self.agent_config.tools
+                if hasattr(tc, "name") and tc.name == tool_name
+            )
 
-                # Get provider type from agent config for dimension resolution
-                provider_type = self.agent_config.model.provider.value
+            kernel_function = self._create_search_kernel_function(
+                tool=tool,
+                tool_name=tool_config.name,
+                tool_description=tool_config.description,
+            )
 
-                # Initialize (processes documents, generates embeddings)
-                await tool.initialize(
-                    force_ingest=self._force_ingest, provider_type=provider_type
-                )
+            self.kernel.add_function(
+                plugin_name="hierarchical_document", function=kernel_function
+            )
+            self._hierarchical_document_tools.append(tool)
 
-                # Create and register KernelFunction
-                kernel_function = self._create_search_kernel_function(
-                    tool=tool,
-                    tool_name=tool_config.name,
-                    tool_description=tool_config.description,
-                )
-
-                self.kernel.add_function(
-                    plugin_name="hierarchical_document", function=kernel_function
-                )
-                self._hierarchical_document_tools.append(tool)
-
-                logger.info(
-                    f"Registered hierarchical document tool: {tool_config.name}"
-                )
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to initialize hierarchical document tool "
-                    f"{tool_config.name}: {e}"
-                )
-                raise AgentFactoryError(
-                    f"Failed to initialize hierarchical document tool "
-                    f"{tool_config.name}: {e}"
-                ) from e
+            logger.info(f"Registered hierarchical document tool: {tool_config.name}")
 
     async def _ensure_tools_initialized(self) -> None:
         """Ensure all tools are initialized (called before first invoke).
@@ -1174,8 +1139,8 @@ class AgentFactory:
     def _load_instructions(self) -> str:
         """Load agent instructions from config.
 
-        Uses agent_base_dir context variable to resolve relative file paths.
-        If agent_base_dir is not set, falls back to current working directory.
+        Delegates to the shared ``resolve_instructions`` utility, which uses
+        the ``agent_base_dir`` context variable to resolve relative file paths.
 
         Returns:
             Instruction text for the agent
@@ -1183,29 +1148,10 @@ class AgentFactory:
         Raises:
             AgentFactoryError: If instructions cannot be loaded
         """
+        from holodeck.lib.instruction_resolver import resolve_instructions
+
         try:
-            instructions = self.agent_config.instructions
-
-            if instructions.inline:
-                return instructions.inline
-            elif instructions.file:
-                from pathlib import Path
-
-                from holodeck.config.context import agent_base_dir
-
-                # Resolve file path relative to agent_base_dir context
-                base_dir = agent_base_dir.get()
-                if base_dir:
-                    file_path = Path(base_dir) / instructions.file
-                else:
-                    file_path = Path(instructions.file)
-
-                if not file_path.exists():
-                    raise FileNotFoundError(f"Instructions file not found: {file_path}")
-                return file_path.read_text()
-            else:
-                raise AgentFactoryError("No instructions provided (file or inline)")
-
+            return resolve_instructions(self.agent_config.instructions)
         except Exception as e:
             raise AgentFactoryError(f"Failed to load instructions: {e}") from e
 

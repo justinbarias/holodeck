@@ -50,8 +50,8 @@ from typing import TYPE_CHECKING, Any
 from holodeck.lib.keyword_search import HybridSearchExecutor
 
 if TYPE_CHECKING:
+    from holodeck.lib.backends.base import ContextGenerator
     from holodeck.lib.definition_extractor import DefinitionEntry
-    from holodeck.lib.llm_context_generator import LLMContextGenerator
     from holodeck.lib.structured_chunker import (
         DocumentChunk,
         StructuredChunker,
@@ -121,7 +121,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self._base_dir = base_dir
         self._chunker: StructuredChunker | None = None
         self._searcher: Any = None  # HybridSearcher (future)
-        self._context_generator: LLMContextGenerator | None = None
+        self._context_generator: ContextGenerator | None = None
         self._glossary: dict[str, DefinitionEntry] | None = None
         self._chunks: list[DocumentChunk] = []
         self._initialized = False
@@ -137,6 +137,17 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self._hybrid_executor: HybridSearchExecutor | None = None
 
     # set_embedding_service is inherited from EmbeddingServiceMixin
+
+    def set_context_generator(self, generator: Any) -> None:
+        """Set the context generator for contextual embeddings.
+
+        Accepts any ContextGenerator protocol implementation
+        (LLMContextGenerator, ClaudeSDKContextGenerator, etc.).
+
+        Args:
+            generator: A ContextGenerator protocol implementation.
+        """
+        self._context_generator = generator
 
     def set_chat_service(self, service: Any) -> None:
         """Set the chat service for LLM context generation.
@@ -529,11 +540,10 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 )
                 continue
 
-            # 4. Context generation (if enabled and chat service available)
+            # 4. Context generation (if enabled and generator available)
             if (
                 self.config.contextual_embeddings
                 and self._context_generator is not None
-                and self._chat_service is not None
             ):
                 logger.info(
                     f"Using contextual embeddings for {file_path} "
@@ -549,10 +559,8 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 # Fall back to original content
                 if not self.config.contextual_embeddings:
                     reason = "disabled in config"
-                elif self._context_generator is None:
-                    reason = "no context generator configured"
                 else:
-                    reason = "no chat service available"
+                    reason = "no context generator configured"
                 logger.info(
                     f"Skipping contextual embeddings for {file_path} ({reason})"
                 )

@@ -25,6 +25,20 @@
     "model": {
       "$ref": "#/$defs/LLMProvider"
     },
+    "embedding_provider": {
+      "oneOf": [
+        { "$ref": "#/$defs/LLMProvider" },
+        { "type": "null" }
+      ],
+      "description": "Provider for embedding generation. Required when provider: anthropic + vectorstore/hierarchical tools. Supports openai and azure_openai only."
+    },
+    "claude": {
+      "oneOf": [
+        { "$ref": "#/$defs/ClaudeConfig" },
+        { "type": "null" }
+      ],
+      "description": "Claude Agent SDK-specific settings. Applicable only when model.provider: anthropic."
+    },
     "instructions": {
       "$ref": "#/$defs/Instructions"
     },
@@ -66,6 +80,147 @@
       "enum": ["openai", "azure_openai", "anthropic", "ollama"],
       "description": "LLM provider type"
     },
+    "AuthProvider": {
+      "type": "string",
+      "enum": ["api_key", "oauth_token", "bedrock", "vertex", "foundry"],
+      "description": "Authentication provider for Anthropic models"
+    },
+    "PermissionMode": {
+      "type": "string",
+      "enum": ["manual", "acceptEdits", "acceptAll"],
+      "default": "manual",
+      "description": "Permission level for agent autonomy"
+    },
+    "ExtendedThinkingConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable extended thinking (deep reasoning)"
+        },
+        "budget_tokens": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 100000,
+          "default": 10000,
+          "description": "Token budget for extended thinking"
+        }
+      },
+      "description": "Extended reasoning (deep thinking) configuration"
+    },
+    "BashConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable shell command execution"
+        },
+        "excluded_commands": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "List of disallowed commands"
+        },
+        "allow_unsafe": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow unsafe commands to execute"
+        }
+      },
+      "description": "Shell command execution settings"
+    },
+    "FileSystemConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "read": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable file read access"
+        },
+        "write": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable file write access"
+        },
+        "edit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable file edit (find-and-replace) access"
+        }
+      },
+      "description": "File read/write/edit access settings"
+    },
+    "SubagentConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable parallel sub-agent execution"
+        },
+        "max_parallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16,
+          "default": 4,
+          "description": "Maximum parallel sub-agents (1-16)"
+        }
+      },
+      "description": "Parallel sub-agent execution settings"
+    },
+    "ClaudeConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "working_directory": {
+          "type": ["string", "null"],
+          "description": "Scope agent file access to this path. Becomes subprocess cwd."
+        },
+        "permission_mode": {
+          "$ref": "#/$defs/PermissionMode",
+          "default": "manual",
+          "description": "Level of autonomous action: manual (safest), acceptEdits, or acceptAll"
+        },
+        "max_turns": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Maximum agent loop iterations (null = SDK default)"
+        },
+        "extended_thinking": {
+          "$ref": "#/$defs/ExtendedThinkingConfig",
+          "description": "Extended reasoning (deep thinking) configuration"
+        },
+        "web_search": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable built-in web search capability"
+        },
+        "bash": {
+          "$ref": "#/$defs/BashConfig",
+          "description": "Shell command execution settings"
+        },
+        "file_system": {
+          "$ref": "#/$defs/FileSystemConfig",
+          "description": "File read/write/edit access settings"
+        },
+        "subagents": {
+          "$ref": "#/$defs/SubagentConfig",
+          "description": "Parallel sub-agent execution settings"
+        },
+        "allowed_tools": {
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "description": "Explicit tool allowlist (null = all configured tools)"
+        }
+      },
+      "description": "Claude Agent SDK-specific settings. All capabilities default to disabled (least-privilege)."
+    },
     "LLMProvider": {
       "type": "object",
       "required": ["provider", "name"],
@@ -103,6 +258,10 @@
         "api_key": {
           "type": "string",
           "description": "API key for LLM provider"
+        },
+        "auth_provider": {
+          "$ref": "#/$defs/AuthProvider",
+          "description": "Authentication method for Anthropic provider. Defaults to api_key. Ignored for non-Anthropic providers."
         }
       },
       "description": "LLM provider configuration"
@@ -618,6 +777,10 @@
             "reranker_model": {
               "$ref": "#/$defs/LLMProvider",
               "description": "LLM for reranking (required when enable_reranking=true)"
+            },
+            "context_model": {
+              "$ref": "#/$defs/LLMProvider",
+              "description": "LLM for contextual embedding generation. Overrides the default model used by LLMContextGenerator."
             },
             "database": {
               "oneOf": [

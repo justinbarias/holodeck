@@ -6,7 +6,6 @@ from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
-from semantic_kernel.contents import ChatHistory
 
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.chat import ChatConfig, ChatSession, Message, MessageRole
@@ -59,13 +58,13 @@ class TestChatSession:
         with pytest.raises(ValidationError):
             ChatSession(
                 agent_config=_make_agent(),
-                history=ChatHistory(),
+                history=[],
                 started_at=future,
             )
 
     def test_session_defaults(self) -> None:
         """Defaults populate ids and counters."""
-        session = ChatSession(agent_config=_make_agent(), history=ChatHistory())
+        session = ChatSession(agent_config=_make_agent(), history=[])
         assert isinstance(session.session_id, UUID)
         assert session.message_count == 0
         assert session.state.value == "initializing"
@@ -105,3 +104,45 @@ class TestTokenAndTools:
         """Failed tool calls must include an error message."""
         with pytest.raises(ValidationError):
             ToolExecution(tool_name="echo", status=ToolStatus.FAILED)
+
+
+class TestChatSessionHistoryType:
+    """Tests that ChatSession.history accepts list[dict] instead of ChatHistory (T028).
+
+    Expected failure until Phase 4B changes history: ChatHistory to history: list[dict].
+    Currently fails with pydantic.ValidationError because the field rejects list values.
+    """
+
+    def test_empty_list_is_accepted(self) -> None:
+        """ChatSession can be constructed with an empty list for history."""
+        session = ChatSession(agent_config=_make_agent(), history=[])
+
+        assert session.history == []
+
+    def test_list_of_message_dicts_is_accepted(self) -> None:
+        """ChatSession accepts a list of message dicts as history."""
+        session = ChatSession(
+            agent_config=_make_agent(),
+            history=[{"role": "user", "content": "hi"}],
+        )
+
+        assert len(session.history) == 1
+
+    def test_other_fields_unchanged_with_list_history(self) -> None:
+        """Standard ChatSession fields remain correctly typed with list history."""
+        session = ChatSession(agent_config=_make_agent(), history=[])
+
+        assert isinstance(session.session_id, UUID)
+        assert session.message_count == 0
+        assert session.state.value == "initializing"
+        assert session.metadata == {}
+
+    def test_no_arbitrary_types_needed_for_list_dict_history(self) -> None:
+        """list[dict] history needs no arbitrary_types_allowed config.
+
+        A plain list[dict] is a standard Pydantic type and needs no
+        special model_config configuration.
+        """
+        session = ChatSession(agent_config=_make_agent(), history=[])
+
+        assert session is not None

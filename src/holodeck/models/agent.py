@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from holodeck.lib.tool_filter.models import ToolFilterConfig
+from holodeck.models.claude_config import ClaudeConfig
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.deployment import DeploymentConfig
 from holodeck.models.evaluation import EvaluationConfig
@@ -101,6 +102,20 @@ class Agent(BaseModel):
     )
     deployment: DeploymentConfig | None = Field(
         default=None, description="Deployment configuration for containerization"
+    )
+    embedding_provider: LLMProvider | None = Field(
+        default=None,
+        description=(
+            "Provider for embedding generation. Required when "
+            "provider: anthropic + vectorstore tools."
+        ),
+    )
+    claude: ClaudeConfig | None = Field(
+        default=None,
+        description=(
+            "Claude Agent SDK-specific settings. "
+            "Applicable only when model.provider: anthropic."
+        ),
     )
 
     @field_validator("name")

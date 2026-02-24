@@ -7,10 +7,12 @@ and error handling with exponential backoff.
 """
 
 import asyncio
+import inspect
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from holodeck.lib.backends.base import ContextGenerator
 from holodeck.lib.llm_context_generator import (
     CONTEXT_PROMPT_TEMPLATE,
     LLMContextGenerator,
@@ -647,3 +649,20 @@ class TestDocumentTruncation:
         assert received_prompt is not None
         assert "BEGINNING_MARKER" in received_prompt
         assert "END_MARKER" in received_prompt
+
+
+class TestProtocolConformance:
+    """Tests that LLMContextGenerator conforms to the ContextGenerator protocol."""
+
+    def test_is_context_generator(self) -> None:
+        """Test that LLMContextGenerator is recognized as a ContextGenerator."""
+        mock_service = MagicMock()
+        gen = LLMContextGenerator(chat_service=mock_service)
+        assert isinstance(gen, ContextGenerator)
+
+    def test_has_contextualize_batch_method(self) -> None:
+        """Test that contextualize_batch method exists and is async."""
+        mock_service = MagicMock()
+        gen = LLMContextGenerator(chat_service=mock_service)
+        assert hasattr(gen, "contextualize_batch")
+        assert inspect.iscoroutinefunction(gen.contextualize_batch)

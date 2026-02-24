@@ -4,9 +4,14 @@ This module defines the LLMProvider model used in agent.yaml configuration
 and global configuration files.
 """
 
+import logging
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from holodeck.models.claude_config import AuthProvider
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderEnum(str, Enum):
@@ -37,6 +42,13 @@ class LLMProvider(BaseModel):
         None, description="API endpoint (required for Azure OpenAI and Ollama)"
     )
     api_key: str | None = Field(None, description="API Key for LLM Provider")
+    auth_provider: AuthProvider | None = Field(
+        default=None,
+        description=(
+            "Authentication method for Anthropic provider. "
+            "Defaults to api_key. Ignored for non-Anthropic providers."
+        ),
+    )
 
     @field_validator("name")
     @classmethod
@@ -77,4 +89,16 @@ class LLMProvider(BaseModel):
             not self.endpoint or not self.endpoint.strip()
         ):
             raise ValueError(f"endpoint is required for {self.provider.value} provider")
+        return self
+
+    @model_validator(mode="after")
+    def check_auth_provider_relevance(self) -> "LLMProvider":
+        """Warn when auth_provider is set for non-Anthropic providers."""
+        if self.auth_provider is not None and self.provider != ProviderEnum.ANTHROPIC:
+            logger.warning(
+                "auth_provider '%s' is only relevant for Anthropic provider; "
+                "it will be ignored for provider '%s'",
+                self.auth_provider.value,
+                self.provider.value,
+            )
         return self

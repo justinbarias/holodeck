@@ -28,16 +28,17 @@
             "module": "holodeck.cli.main",
             "args": [
                 "test",
-                "hitchhikers_agent.yaml",
-                "--verbose"
+                "agent.yaml",
+                "--verbose",
+                "--force-ingest"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}/sample",
+            "cwd": "${workspaceFolder}/sample/content-moderation/claude",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             },
-            "envFile": "${workspaceFolder}/sample/.env"
+            "envFile": "${workspaceFolder}/sample/content-moderation/claude/.env"
         },
         {
             "name": "HoloDeck: Chat Agent",
@@ -51,7 +52,7 @@
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}/sample/legal-assistant",
+            "cwd": "${workspaceFolder}/sample/legal-assistant/claude",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }

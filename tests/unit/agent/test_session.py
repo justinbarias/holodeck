@@ -12,9 +12,15 @@ import pytest
 from holodeck.chat.executor import AgentExecutor, AgentResponse
 from holodeck.chat.message import MessageValidator
 from holodeck.chat.session import ChatSessionManager
+from holodeck.lib.backends.base import (
+    AgentBackend,
+    AgentSession,
+    ExecutionResult,
+)
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.chat import ChatConfig, SessionState
 from holodeck.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.token_usage import TokenUsage
 
 
 class TestChatSessionManagerInitialization:
@@ -47,42 +53,29 @@ class TestChatSessionManagerInitialization:
             max_messages=50,
         )
 
-    @mock.patch("holodeck.chat.session.AgentExecutor")
-    def test_session_manager_initialization(
-        self, mock_executor_class: MagicMock
-    ) -> None:
+    def test_session_manager_initialization(self) -> None:
         """SessionManager initializes with config."""
         agent_config = self._make_agent()
         config = self._make_config()
 
-        # Should initialize without error
-        with mock.patch("holodeck.chat.session.MessageValidator"):
-            manager = ChatSessionManager(agent_config, config)
-            assert manager is not None
+        manager = ChatSessionManager(agent_config, config)
+        assert manager is not None
 
-    @mock.patch("holodeck.chat.session.AgentExecutor")
-    def test_session_manager_stores_config(
-        self, mock_executor_class: MagicMock
-    ) -> None:
+    def test_session_manager_stores_config(self) -> None:
         """SessionManager stores configuration."""
         agent_config = self._make_agent()
         config = self._make_config()
 
-        with mock.patch("holodeck.chat.session.MessageValidator"):
-            manager = ChatSessionManager(agent_config, config)
-            assert manager.config == config
+        manager = ChatSessionManager(agent_config, config)
+        assert manager.config == config
 
-    @mock.patch("holodeck.chat.session.AgentExecutor")
-    def test_session_manager_stores_agent_config(
-        self, mock_executor_class: MagicMock
-    ) -> None:
+    def test_session_manager_stores_agent_config(self) -> None:
         """SessionManager stores agent configuration."""
         agent_config = self._make_agent()
         config = self._make_config()
 
-        with mock.patch("holodeck.chat.session.MessageValidator"):
-            manager = ChatSessionManager(agent_config, config)
-            assert manager.agent_config == agent_config
+        manager = ChatSessionManager(agent_config, config)
+        assert manager.agent_config == agent_config
 
 
 class TestChatSessionLifecycle:
@@ -353,3 +346,123 @@ class TestContextLimitWarning:
 
         should_warn = manager.should_warn_context_limit()
         assert should_warn is True
+
+
+class TestSessionStreamingSupport:
+    """Test streaming support through ChatSessionManager (T008-T009)."""
+
+    def _make_agent(self) -> Agent:
+        """Create a minimal Agent instance for tests."""
+        return Agent(
+            name="test-agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4o-mini",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Be helpful."),
+        )
+
+    def _make_config(self, agent_config_path: Path | None = None) -> ChatConfig:
+        """Create a minimal ChatConfig for tests."""
+        if agent_config_path is None:
+            with NamedTemporaryFile(suffix=".yaml", delete=False) as f:
+                agent_config_path = Path(f.name)
+
+        return ChatConfig(
+            agent_config_path=agent_config_path,
+            verbose=False,
+            enable_observability=False,
+            max_messages=50,
+        )
+
+    def _make_mock_backend(self) -> tuple[AsyncMock, AsyncMock]:
+        """Create mock AgentBackend/AgentSession pair."""
+        mock_session = AsyncMock(spec=AgentSession)
+
+        async def _stream_chunks(message: str):
+            for chunk in ["Streamed", " ", "response"]:
+                yield chunk
+
+        mock_session.send_streaming = _stream_chunks
+        mock_session.send.return_value = ExecutionResult(
+            response="Streamed response",
+            tool_calls=[],
+            token_usage=TokenUsage(
+                prompt_tokens=10, completion_tokens=5, total_tokens=15
+            ),
+        )
+
+        mock_backend = AsyncMock(spec=AgentBackend)
+        mock_backend.create_session.return_value = mock_session
+        return mock_backend, mock_session
+
+    @pytest.mark.asyncio
+    async def test_process_message_streaming_yields_chunks(self) -> None:
+        """T008: process_message_streaming() yields chunks, increments message_count."""
+        agent_config = self._make_agent()
+        config = self._make_config()
+        mock_backend, _ = self._make_mock_backend()
+
+        mock_validator = MagicMock(spec=MessageValidator)
+        mock_validator.validate.return_value = (True, None)
+        with mock.patch(
+            "holodeck.chat.session.MessageValidator", return_value=mock_validator
+        ):
+            manager = ChatSessionManager(agent_config, config)
+
+        # Inject a mock executor that has streaming support
+        mock_executor = AsyncMock(spec=AgentExecutor)
+
+        async def _stream_exec(message: str):
+            for chunk in ["Streamed", " ", "response"]:
+                yield chunk
+
+        mock_executor.execute_turn_streaming = _stream_exec
+        manager._executor = mock_executor
+
+        # Create session manually so we can test
+        from holodeck.models.chat import ChatSession
+
+        manager.session = ChatSession(
+            agent_config=agent_config,
+            history=[],
+            state=SessionState.ACTIVE,
+        )
+
+        initial_count = manager.session.message_count
+        chunks: list[str] = []
+        async for chunk in manager.process_message_streaming("Hello"):
+            chunks.append(chunk)
+
+        assert chunks == ["Streamed", " ", "response"]
+        assert manager.session.message_count > initial_count
+
+    @pytest.mark.asyncio
+    async def test_process_message_streaming_validates_message(self) -> None:
+        """T009: Empty message → ValueError before streaming starts."""
+        agent_config = self._make_agent()
+        config = self._make_config()
+
+        mock_validator = MagicMock(spec=MessageValidator)
+        mock_validator.validate.return_value = (False, "Message cannot be empty")
+
+        with mock.patch(
+            "holodeck.chat.session.MessageValidator", return_value=mock_validator
+        ):
+            manager = ChatSessionManager(agent_config, config)
+
+        # Create session manually
+        from holodeck.models.chat import ChatSession
+
+        manager.session = ChatSession(
+            agent_config=agent_config,
+            history=[],
+            state=SessionState.ACTIVE,
+        )
+        manager._executor = AsyncMock(spec=AgentExecutor)
+
+        with pytest.raises(ValueError, match="Message cannot be empty"):
+            async for _ in manager.process_message_streaming(""):
+                pass

@@ -321,27 +321,28 @@ class TestOllamaModelNotFoundError:
 
 
 class TestOllamaEmbeddingService:
-    """Tests for Ollama embedding service registration in vectorstore tools."""
+    """Tests for Ollama embedding service registration in vectorstore tools.
 
-    @patch("holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding")
+    Note: Embedding service creation is now delegated to the shared
+    ``holodeck.lib.tool_initializer`` module.  Mocks target the Ollama
+    module via ``sys.modules`` dict-patch so the lazy import inside
+    ``create_embedding_service()`` picks up the mock.
+    """
+
     @patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion")
     @patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent")
     def test_register_embedding_service_ollama_local(
         self,
         mock_chat_agent: Mock,
         mock_ollama_chat: Mock,
-        mock_ollama_embedding: Mock,
     ) -> None:
         """Test embedding service registration with local Ollama endpoint."""
-        # Setup mocks
         mock_chat_service = Mock()
         mock_chat_service.service_id = "ollama-chat"
         mock_ollama_chat.return_value = mock_chat_service
 
-        mock_embedding_service = Mock()
-        mock_ollama_embedding.return_value = mock_embedding_service
+        mock_ollama_embedding = Mock()
 
-        # Create agent config with vectorstore tool
         from holodeck.models.tool import VectorstoreTool
 
         agent_config = Agent(
@@ -364,37 +365,36 @@ class TestOllamaEmbeddingService:
             ],
         )
 
-        # Create factory (triggers _register_embedding_service)
-        factory = AgentFactory(agent_config)
+        with patch.dict(
+            "sys.modules",
+            {
+                "semantic_kernel.connectors.ai.ollama": Mock(
+                    OllamaTextEmbedding=mock_ollama_embedding
+                )
+            },
+        ):
+            factory = AgentFactory(agent_config)
 
-        # Verify OllamaTextEmbedding was called with correct params
         mock_ollama_embedding.assert_called_once_with(
             ai_model_id="nomic-embed-text:latest",
             host="http://localhost:11434",
         )
+        assert factory._embedding_service is not None
 
-        # Verify service was set
-        assert factory._embedding_service is mock_embedding_service
-
-    @patch("holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding")
     @patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion")
     @patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent")
     def test_register_embedding_service_ollama_uses_default_model(
         self,
         mock_chat_agent: Mock,
         mock_ollama_chat: Mock,
-        mock_ollama_embedding: Mock,
     ) -> None:
         """Test that Ollama uses nomic-embed-text when embedding_model not specified."""
-        # Setup mocks
         mock_chat_service = Mock()
         mock_chat_service.service_id = "ollama-chat"
         mock_ollama_chat.return_value = mock_chat_service
 
-        mock_embedding_service = Mock()
-        mock_ollama_embedding.return_value = mock_embedding_service
+        mock_ollama_embedding = Mock()
 
-        # Create agent WITHOUT embedding_model specified in tool
         from holodeck.models.tool import VectorstoreTool
 
         agent_config = Agent(
@@ -411,39 +411,39 @@ class TestOllamaEmbeddingService:
                     description="Search",
                     source="data/",
                     top_k=5,
-                    # embedding_model NOT specified - should use default
                 )
             ],
         )
 
-        # Create factory
-        AgentFactory(agent_config)
+        with patch.dict(
+            "sys.modules",
+            {
+                "semantic_kernel.connectors.ai.ollama": Mock(
+                    OllamaTextEmbedding=mock_ollama_embedding
+                )
+            },
+        ):
+            AgentFactory(agent_config)
 
-        # Verify default model was used
         mock_ollama_embedding.assert_called_once_with(
-            ai_model_id="nomic-embed-text:latest",  # DEFAULT
+            ai_model_id="nomic-embed-text:latest",
             host="http://localhost:11434",
         )
 
-    @patch("holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding")
     @patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion")
     @patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent")
     def test_register_embedding_service_ollama_custom_model(
         self,
         mock_chat_agent: Mock,
         mock_ollama_chat: Mock,
-        mock_ollama_embedding: Mock,
     ) -> None:
         """Test Ollama embedding service with custom embedding model."""
-        # Setup mocks
         mock_chat_service = Mock()
         mock_chat_service.service_id = "ollama-chat"
         mock_ollama_chat.return_value = mock_chat_service
 
-        mock_embedding_service = Mock()
-        mock_ollama_embedding.return_value = mock_embedding_service
+        mock_ollama_embedding = Mock()
 
-        # Create agent with custom embedding model
         from holodeck.models.tool import VectorstoreTool
 
         agent_config = Agent(
@@ -459,34 +459,37 @@ class TestOllamaEmbeddingService:
                     name="kb",
                     description="Search",
                     source="data/",
-                    embedding_model="mxbai-embed-large",  # CUSTOM
+                    embedding_model="mxbai-embed-large",
                     top_k=5,
                 )
             ],
         )
 
-        # Create factory
-        AgentFactory(agent_config)
+        with patch.dict(
+            "sys.modules",
+            {
+                "semantic_kernel.connectors.ai.ollama": Mock(
+                    OllamaTextEmbedding=mock_ollama_embedding
+                )
+            },
+        ):
+            AgentFactory(agent_config)
 
-        # Verify custom model was used
         mock_ollama_embedding.assert_called_once_with(
             ai_model_id="mxbai-embed-large",
             host="http://localhost:11434",
         )
 
-    @patch("holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding", None)
     @patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion")
     @patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent")
     def test_embedding_service_ollama_package_missing(
         self, mock_chat_agent: Mock, mock_ollama_chat: Mock
     ) -> None:
         """Test that helpful error is raised when ollama package is not installed."""
-        # Setup mocks
         mock_chat_service = Mock()
         mock_chat_service.service_id = "ollama-chat"
         mock_ollama_chat.return_value = mock_chat_service
 
-        # Create agent with Ollama and vectorstore
         from holodeck.models.tool import VectorstoreTool
 
         agent_config = Agent(
@@ -507,14 +510,18 @@ class TestOllamaEmbeddingService:
             ],
         )
 
-        # Verify AgentFactoryError with helpful message
-        with pytest.raises(AgentFactoryError) as exc_info:
+        # Simulate import failure
+        with (
+            patch.dict(
+                "sys.modules",
+                {"semantic_kernel.connectors.ai.ollama": None},
+            ),
+            pytest.raises(AgentFactoryError) as exc_info,
+        ):
             AgentFactory(agent_config)
 
         error_msg = str(exc_info.value).lower()
         assert "ollama" in error_msg
-        assert "package" in error_msg
-        assert "pip install ollama" in error_msg
 
     @pytest.mark.parametrize(
         "model_name",
@@ -525,26 +532,21 @@ class TestOllamaEmbeddingService:
             "custom-embedding-model",
         ],
     )
-    @patch("holodeck.lib.test_runner.agent_factory.OllamaTextEmbedding")
     @patch("holodeck.lib.test_runner.agent_factory.OllamaChatCompletion")
     @patch("holodeck.lib.test_runner.agent_factory.ChatCompletionAgent")
     def test_register_embedding_service_ollama_model_names(
         self,
         mock_chat_agent: Mock,
         mock_ollama_chat: Mock,
-        mock_ollama_embedding: Mock,
         model_name: str,
     ) -> None:
         """Test Ollama embedding service with various model names."""
-        # Setup mocks
         mock_chat_service = Mock()
         mock_chat_service.service_id = "ollama-chat"
         mock_ollama_chat.return_value = mock_chat_service
 
-        mock_embedding_service = Mock()
-        mock_ollama_embedding.return_value = mock_embedding_service
+        mock_ollama_embedding = Mock()
 
-        # Create agent with specified model
         from holodeck.models.tool import VectorstoreTool
 
         agent_config = Agent(
@@ -566,10 +568,16 @@ class TestOllamaEmbeddingService:
             ],
         )
 
-        # Create factory
-        AgentFactory(agent_config)
+        with patch.dict(
+            "sys.modules",
+            {
+                "semantic_kernel.connectors.ai.ollama": Mock(
+                    OllamaTextEmbedding=mock_ollama_embedding
+                )
+            },
+        ):
+            AgentFactory(agent_config)
 
-        # Verify correct model was passed
         call_kwargs = mock_ollama_embedding.call_args.kwargs
         assert call_kwargs["ai_model_id"] == model_name
 

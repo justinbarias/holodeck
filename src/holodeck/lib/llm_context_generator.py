@@ -19,7 +19,7 @@ References:
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import tiktoken
 
@@ -30,6 +30,11 @@ if TYPE_CHECKING:
     from semantic_kernel.connectors.ai.prompt_execution_settings import (
         PromptExecutionSettings,
     )
+
+    from holodeck.lib.backends.base import ContextGenerator
+
+    # Protocol conformance — verified at type-check time only
+    _: ContextGenerator = cast("LLMContextGenerator", None)
 
 from holodeck.lib.structured_chunker import DocumentChunk
 
@@ -70,6 +75,9 @@ class RetryConfig:
 
 class LLMContextGenerator:
     """Generate contextual embeddings using LLM (Anthropic approach).
+
+    Conforms to the ``ContextGenerator`` protocol defined in
+    ``holodeck.lib.backends.base``.
 
     This class generates short context snippets for document chunks to improve
     semantic search retrieval. It follows Anthropic's contextual retrieval

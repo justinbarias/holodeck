@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from semantic_kernel.contents import ChatHistory
-
-from holodeck.lib.chat_history_utils import extract_last_assistant_content
+from holodeck.lib.backends.base import (
+    AgentBackend,
+    AgentSession,
+    BackendInitError,
+    BackendSessionError,
+    ExecutionResult,
+)
+from holodeck.lib.backends.selector import BackendSelector
 from holodeck.lib.logging_config import get_logger
-from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentThreadRun
 from holodeck.models.agent import Agent
-from holodeck.models.config import ExecutionConfig
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool_execution import ToolExecution, ToolStatus
 
@@ -37,56 +40,58 @@ class AgentResponse:
 class AgentExecutor:
     """Coordinates agent execution for chat sessions.
 
-    Wraps AgentFactory to provide a clean interface for executing
-    user messages and managing conversation history.
+    Uses the provider-agnostic AgentBackend/AgentSession abstractions
+    to execute user messages and manage conversation history.
     """
 
     def __init__(
         self,
         agent_config: Agent,
-        enable_observability: bool = False,
-        timeout: float | None = 60.0,
-        max_retries: int = 3,
+        backend: AgentBackend | None = None,
         on_execution_start: Callable[[str], None] | None = None,
         on_execution_complete: Callable[[AgentResponse], None] | None = None,
-        force_ingest: bool = False,
     ) -> None:
         """Initialize executor with agent configuration.
 
+        No I/O is performed during construction — backend and session
+        are lazily created on the first ``execute_turn()`` call.
+
         Args:
             agent_config: Agent configuration with model and instructions.
-            enable_observability: Enable OpenTelemetry tracing (TODO: Phase 5).
-            timeout: Timeout for agent invocation in seconds.
-            max_retries: Maximum retry attempts for transient failures.
+            backend: Optional pre-initialized backend (bypasses BackendSelector).
             on_execution_start: Optional callback before agent execution.
             on_execution_complete: Optional callback after agent execution.
-            force_ingest: Force re-ingestion of vector store source files.
-
-        Raises:
-            RuntimeError: If agent factory initialization fails.
         """
         self.agent_config = agent_config
-        self._observability_enabled = enable_observability
+        self._backend: AgentBackend | None = backend
+        self._session: AgentSession | None = None
+        self._history: list[dict[str, Any]] = []
         self.on_execution_start = on_execution_start
         self.on_execution_complete = on_execution_complete
 
-        try:
-            # Create ExecutionConfig from timeout parameter for AgentFactory
-            execution_config = ExecutionConfig(
-                llm_timeout=int(timeout) if timeout else 60
+        logger.info(f"AgentExecutor initialized for agent: {agent_config.name}")
+
+    async def _ensure_backend_and_session(self) -> None:
+        """Lazily initialize backend and session on first use.
+
+        If no backend was injected via the constructor, uses
+        ``BackendSelector.select()`` to auto-select one based on the
+        agent's LLM provider.
+
+        Raises:
+            BackendInitError: If backend selection or initialization fails.
+            BackendSessionError: If session creation fails.
+        """
+        if self._session is not None:
+            return
+        if self._backend is None:
+            self._backend = await BackendSelector.select(
+                self.agent_config,
+                tool_instances=None,
+                mode="chat",
+                allow_side_effects=False,
             )
-            self._factory = AgentFactory(
-                agent_config=agent_config,
-                max_retries=max_retries,
-                force_ingest=force_ingest,
-                execution_config=execution_config,
-            )
-            # Thread run is lazily initialized on first execute_turn()
-            self._thread_run: AgentThreadRun | None = None
-            logger.info(f"AgentExecutor initialized for agent: {agent_config.name}")
-        except Exception as e:
-            logger.error(f"Failed to initialize AgentExecutor: {e}", exc_info=True)
-            raise RuntimeError(f"Failed to initialize agent: {e}") from e
+        self._session = await self._backend.create_session()
 
     async def execute_turn(self, message: str) -> AgentResponse:
         """Execute a single turn of agent conversation.
@@ -112,27 +117,30 @@ class AgentExecutor:
             if self.on_execution_start:
                 self.on_execution_start(message)
 
-            # Lazy initialize thread run (preserves conversation history across turns)
-            if self._thread_run is None:
-                self._thread_run = await self._factory.create_thread_run()
+            # Lazy initialize backend and session
+            await self._ensure_backend_and_session()
 
-            # Invoke agent using the persistent thread run
-            result = await self._thread_run.invoke(message)
+            # Invoke agent via backend session
+            result: ExecutionResult = await self._session.send(message)  # type: ignore[union-attr]
             elapsed = time.time() - start_time
 
-            # Extract content from chat history
-            content = extract_last_assistant_content(result.chat_history)
+            # Extract content from execution result
+            content = result.response
 
             # Convert tool calls to ToolExecution models
             tool_executions = self._convert_tool_calls(result.tool_calls)
 
-            # Extract token usage from factory result
+            # Extract token usage (always a TokenUsage, never None)
             tokens_used = result.token_usage
 
             logger.debug(
                 f"Turn executed successfully: content={len(content)} chars, "
                 f"tools={len(tool_executions)}, time={elapsed:.2f}s"
             )
+
+            # Track history
+            self._history.append({"role": "user", "content": message})
+            self._history.append({"role": "assistant", "content": content})
 
             response = AgentResponse(
                 content=content,
@@ -147,40 +155,73 @@ class AgentExecutor:
 
             return response
 
+        except (BackendSessionError, BackendInitError) as e:
+            logger.error(f"Agent execution failed: {e}", exc_info=True)
+            raise RuntimeError(f"Agent execution failed: {e}") from e
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.error(f"Agent execution failed: {e}", exc_info=True)
             raise RuntimeError(f"Agent execution failed: {e}") from e
 
-    def get_history(self) -> ChatHistory:
+    async def execute_turn_streaming(self, message: str) -> AsyncGenerator[str, None]:
+        """Stream agent response token by token.
+
+        Args:
+            message: User message to send to the agent.
+
+        Yields:
+            Successive string chunks of the agent response.
+
+        Raises:
+            RuntimeError: If agent execution fails.
+        """
+        try:
+            await self._ensure_backend_and_session()
+            collected: list[str] = []
+            async for chunk in self._session.send_streaming(message):  # type: ignore[union-attr]
+                collected.append(chunk)
+                yield chunk
+            # Update history after stream completes
+            self._history.append({"role": "user", "content": message})
+            self._history.append({"role": "assistant", "content": "".join(collected)})
+        except (BackendSessionError, BackendInitError) as e:
+            raise RuntimeError(f"Agent streaming failed: {e}") from e
+
+    def get_history(self) -> list[dict[str, Any]]:
         """Get current conversation history.
 
         Returns:
-            Current ChatHistory from the thread run, or empty if not initialized.
+            Serialized conversation history as a list of dicts, or empty list.
         """
-        if self._thread_run is not None:
-            return self._thread_run.chat_history
-        return ChatHistory()
+        return list(self._history)
 
-    def clear_history(self) -> None:
-        """Clear conversation history by discarding current thread run.
+    async def clear_history(self) -> None:
+        """Clear conversation history and close the current session.
 
         Resets the agent's chat history to start fresh conversation.
-        The next execute_turn() will create a new thread run with fresh history.
+        The next ``execute_turn()`` will create a new session.
         """
-        logger.debug("Clearing chat history by discarding thread run")
-        self._thread_run = None
+        logger.debug("Clearing chat history and closing session")
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
+        self._history = []
 
     async def shutdown(self) -> None:
         """Cleanup executor resources.
 
         Called when ending a chat session to release any held resources.
-        Must be called from the same task context where the executor was used
-        to properly cleanup MCP plugins.
+        Closes the session and tears down the backend.
         """
         try:
             logger.debug("AgentExecutor shutting down")
-            # Shutdown the underlying factory (cleans up MCP plugins, vectorstores)
-            await self._factory.shutdown()
+            if self._session is not None:
+                await self._session.close()
+                self._session = None
+            if self._backend is not None:
+                await self._backend.teardown()
+                self._backend = None
             logger.debug("AgentExecutor shutdown complete")
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
@@ -191,7 +232,7 @@ class AgentExecutor:
         """Convert tool call dicts to ToolExecution models.
 
         Args:
-            tool_calls: List of tool call dicts from AgentFactory.
+            tool_calls: List of tool call dicts from backend execution.
 
         Returns:
             List of ToolExecution models.

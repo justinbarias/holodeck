@@ -11,6 +11,9 @@ This guide explains how to deploy HoloDeck agents as HTTP servers using the `hol
 
 Both protocols support streaming responses, session management, multimodal file uploads, and health checks.
 
+!!! warning "Claude Agent SDK Not Yet Supported"
+    `holodeck serve` currently supports **Semantic Kernel backends only** (OpenAI, Azure OpenAI, Ollama). Agents configured with `provider: anthropic` cannot be served via this command yet. Claude Agent SDK server support is planned for a future release.
+
 ## Quick Start
 
 ```bash
@@ -111,8 +114,11 @@ Accepts `RunAgentInput` from the AG-UI specification and streams protocol events
              ▼
 ┌─────────────────────────┐
 │  Agent Execution        │
-│  (Semantic Kernel)      │
+│  (SK backend only*)     │
 └─────────────────────────┘
+
+*Claude Agent SDK backend support for serve is planned for a future release.
+
 ```
 
 ### Thread/Session Mapping

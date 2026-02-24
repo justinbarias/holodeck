@@ -15,6 +15,7 @@ from typing import Any
 import click
 
 from holodeck.chat import ChatSessionManager
+from holodeck.chat.executor import AgentResponse
 from holodeck.chat.progress import ChatProgressIndicator
 from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
@@ -332,39 +333,57 @@ async def _run_chat_session(
                     if not user_input:
                         continue
 
-                    # Start spinner (always show, regardless of quiet mode)
-                    spinner = None
-                    if sys.stdout.isatty():
+                    try:
+                        logger.debug(f"Processing user message: {user_input[:50]}...")
+
+                        # Show spinner while waiting for first token
                         spinner = ChatSpinnerThread(progress)
                         spinner.start()
 
-                    try:
-                        logger.debug(f"Processing user message: {user_input[:50]}...")
-                        response = await session_manager.process_message(user_input)
+                        start_time = time.time()
+                        chunks: list[str] = []
+                        first_chunk = True
+                        async for chunk in session_manager.process_message_streaming(
+                            user_input
+                        ):
+                            if first_chunk:
+                                spinner.stop()
+                                spinner.join()
+                                click.echo("Agent: ", nl=False)
+                                first_chunk = False
+                            sys.stdout.write(chunk)
+                            sys.stdout.flush()
+                            chunks.append(chunk)
+                        elapsed = time.time() - start_time
 
-                        # Stop spinner
-                        if spinner:
+                        # Stop spinner if no chunks arrived at all
+                        if first_chunk:
                             spinner.stop()
                             spinner.join()
+                            click.echo("Agent: ", nl=False)
 
-                        # Display agent response
-                        if response:
-                            # Update progress
-                            progress.update(response)
+                        click.echo()  # newline after streamed content
 
-                            # Display response with status
-                            if verbose:
-                                click.echo(progress.get_status_panel())
-                                click.echo(f"Agent: {response.content}\n")
-                            else:
-                                # Inline status
-                                status = progress.get_status_inline()
-                                click.echo(f"Agent: {response.content} {status}\n")
+                        # Build minimal AgentResponse for progress tracking.
+                        # Token usage and tool details unavailable via streaming.
+                        response = AgentResponse(
+                            content="".join(chunks),
+                            tool_executions=[],
+                            tokens_used=None,
+                            execution_time=elapsed,
+                        )
 
-                            logger.debug(
-                                f"Agent responded with {len(response.tool_executions)} "
-                                f"tool executions"
-                            )
+                        # Update progress
+                        progress.update(response)
+
+                        # Display status
+                        if verbose:
+                            click.echo(progress.get_status_panel())
+                        else:
+                            status = progress.get_status_inline()
+                            click.echo(f"{status}\n")
+
+                        logger.debug(f"Streamed response in {elapsed:.2f}s")
 
                         # Check for context limit warning
                         if session_manager.should_warn_context_limit():
@@ -375,11 +394,6 @@ async def _run_chat_session(
                             click.echo()
 
                     except Exception as e:
-                        # Stop spinner on error
-                        if spinner:
-                            spinner.stop()
-                            spinner.join()
-
                         # Display error but continue session (don't crash)
                         logger.warning(f"Error processing message: {e}")
                         click.secho(f"Error: {str(e)}", fg="red")

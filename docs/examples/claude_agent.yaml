@@ -1,0 +1,67 @@
+# Claude-native agent example using OAuth token authentication
+# Demonstrates: auth_provider, embedding_provider, Claude SDK settings
+
+name: claude-assistant
+description: A Claude-powered research assistant with extended thinking
+
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+  temperature: 0.3
+  max_tokens: 4000
+  auth_provider: oauth_token       # Uses CLAUDE_CODE_OAUTH_TOKEN env var
+
+# Required: Anthropic does not provide embedding models
+embedding_provider:
+  provider: ollama
+  name: nomic-embed-text:latest
+  endpoint: http://localhost:11434
+
+instructions:
+  inline: |
+    You are a knowledgeable research assistant.
+    Provide thorough, well-sourced answers.
+    Use the knowledge base to ground your responses in facts.
+
+# Claude Agent SDK settings
+claude:
+  permission_mode: acceptAll       # Auto-approve tool calls
+  max_turns: 10                    # Limit agent loop iterations
+  extended_thinking:
+    enabled: true
+    budget_tokens: 10000           # Deep reasoning token budget
+  web_search: true                 # Enable built-in web search
+
+tools:
+  - name: knowledge-base
+    type: vectorstore
+    description: Search the research knowledge base
+    source: ./data/research/
+    chunk_size: 512
+
+evaluations:
+  model:
+    provider: ollama
+    name: llama3.2:latest
+    temperature: 0.0
+  metrics:
+    - type: geval
+      name: Helpfulness
+      criteria: "Evaluate if the response provides actionable, helpful information"
+      evaluation_params: [actual_output, input]
+      threshold: 0.7
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.8
+
+test_cases:
+  - name: "RAG principles"
+    input: "What are the key principles of RAG?"
+    ground_truth: "RAG combines retrieval and generation to produce grounded answers using external knowledge sources."
+    retrieval_context:
+      - "RAG (Retrieval-Augmented Generation) combines document retrieval with language model generation."
+      - "Key principles include: relevant document retrieval, context injection, and grounded generation."
+
+  - name: "General knowledge"
+    input: "Explain the difference between supervised and unsupervised learning."
+    ground_truth: "Supervised learning uses labeled data for training, while unsupervised learning finds patterns in unlabeled data."

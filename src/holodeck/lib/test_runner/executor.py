@@ -29,10 +29,12 @@ from typing import Any, Protocol
 
 from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
-from holodeck.lib.chat_history_utils import (
-    extract_last_assistant_content,
-    extract_tool_names,
+from holodeck.lib.backends.base import (
+    AgentBackend,
+    BackendSessionError,
 )
+from holodeck.lib.backends.selector import BackendSelector
+from holodeck.lib.chat_history_utils import extract_tool_names
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.evaluators.azure_ai import (
     CoherenceEvaluator,
@@ -191,12 +193,19 @@ class TestExecutor:
         force_ingest: bool = False,
         agent_config: Agent | None = None,
         resolved_execution_config: ExecutionConfig | None = None,
+        backend: AgentBackend | None = None,
+        allow_side_effects: bool = False,
     ) -> None:
         """Initialize test executor with optional dependency injection.
 
         Follows dependency injection pattern for testability. Dependencies can be:
         - Injected explicitly (for testing with mocks)
         - Created automatically using factory methods (for normal usage)
+
+        When ``backend`` is provided, the executor uses the provider-agnostic
+        ``AgentBackend.invoke_once()`` path and skips ``AgentFactory`` creation.
+        When neither ``backend`` nor ``agent_factory`` is provided, the executor
+        can auto-select a backend via ``BackendSelector`` at execution time.
 
         Args:
             agent_config_path: Path to agent configuration file
@@ -211,6 +220,10 @@ class TestExecutor:
             agent_config: Optional pre-loaded Agent config (auto-loaded if None)
             resolved_execution_config: Optional pre-resolved execution config
                                        (auto-resolved if None)
+            backend: Optional AgentBackend instance. When provided, the executor
+                     uses invoke_once() instead of AgentFactory.
+            allow_side_effects: Allow bash/file_system.write in test mode
+                                (passed to BackendSelector when auto-selecting).
         """
         self.agent_config_path = agent_config_path
         self.cli_config = execution_config
@@ -218,6 +231,8 @@ class TestExecutor:
         self.progress_callback = progress_callback
         self.on_test_start = on_test_start
         self._force_ingest = force_ingest
+        self._backend: AgentBackend | None = backend
+        self._allow_side_effects = allow_side_effects
 
         logger.debug(f"Initializing TestExecutor for config: {agent_config_path}")
 
@@ -231,8 +246,22 @@ class TestExecutor:
         logger.debug("Initializing FileProcessor component")
         self.file_processor = file_processor or self._create_file_processor()
 
-        logger.debug("Initializing AgentFactory component")
-        self.agent_factory = agent_factory or self._create_agent_factory()
+        # Resolve agent invocation path:
+        # 1. Injected backend  → use it, skip AgentFactory
+        # 2. Injected factory  → use it (legacy / tests)
+        # 3. Neither injected  → defer to _ensure_backend_initialized()
+        if self._backend is not None:
+            logger.debug("Using injected AgentBackend — skipping AgentFactory creation")
+            self.agent_factory: AgentFactory | None = agent_factory
+        elif agent_factory is not None:
+            logger.debug("Using injected AgentFactory")
+            self.agent_factory = agent_factory
+        else:
+            logger.debug(
+                "No backend or agent_factory injected "
+                "— will auto-select via BackendSelector at execution time"
+            )
+            self.agent_factory = None
 
         logger.debug("Initializing Evaluators component")
         self.evaluators = evaluators or self._create_evaluators()
@@ -455,12 +484,33 @@ class TestExecutor:
 
         return evaluators
 
+    async def _ensure_backend_initialized(self) -> None:
+        """Auto-select a backend via BackendSelector if none was injected.
+
+        Only triggers when both ``_backend`` and ``agent_factory`` are None,
+        i.e. normal CLI usage where neither dependency was explicitly injected.
+        """
+        if self._backend is not None or self.agent_factory is not None:
+            return
+
+        logger.debug(
+            "No backend or agent_factory injected — auto-selecting via BackendSelector"
+        )
+        self._backend = await BackendSelector.select(
+            self.agent_config,
+            tool_instances=None,
+            mode="test",
+            allow_side_effects=self._allow_side_effects,
+        )
+
     async def execute_tests(self) -> TestReport:
         """Execute all test cases and generate report.
 
         Returns:
             TestReport with all results and summary statistics
         """
+        await self._ensure_backend_initialized()
+
         test_results: list[TestResult] = []
 
         # Execute each test case sequentially
@@ -543,19 +593,38 @@ class TestExecutor:
         logger.debug(f"Invoking agent for test: {test_case.name}")
         try:
             invoke_start = time.time()
-            # Create isolated thread run for this test case
-            thread_run = await self.agent_factory.create_thread_run()
-            result = await thread_run.invoke(agent_input)
+
+            if self._backend is not None:
+                # New path: provider-agnostic AgentBackend
+                exec_result = await self._backend.invoke_once(agent_input)
+                if exec_result.is_error:
+                    errors.append(f"Agent error: {exec_result.error_reason}")
+                agent_response = exec_result.response
+                tool_calls = extract_tool_names(exec_result.tool_calls)
+                tool_results = exec_result.tool_results
+            elif self.agent_factory is not None:
+                # Legacy path: AgentFactory / AgentThreadRun
+                thread_run = await self.agent_factory.create_thread_run()
+                legacy_result = await thread_run.invoke(agent_input)
+                agent_response = legacy_result.response
+                tool_calls = extract_tool_names(legacy_result.tool_calls)
+                tool_results = legacy_result.tool_results
+            else:
+                errors.append("No backend or agent_factory available")
+
             invoke_elapsed = time.time() - invoke_start
-
-            agent_response = extract_last_assistant_content(result.chat_history)
-            tool_calls = extract_tool_names(result.tool_calls)
-            tool_results = result.tool_results
-
             logger.debug(
                 f"Agent invocation completed in {invoke_elapsed:.2f}s, "
                 f"tools_called={len(tool_calls)}, tool_results={len(tool_results)}"
             )
+        except BackendSessionError as e:
+            log_exception(
+                logger,
+                "Backend session error",
+                e,
+                context={"test": test_case.name},
+            )
+            errors.append(f"Agent invocation error: {str(e)}")
         except TimeoutError:
             logger.error(
                 f"Agent invocation timeout after {self.config.llm_timeout}s "
@@ -843,8 +912,10 @@ class TestExecutor:
 
         for tool in self.agent_config.tools:
             if isinstance(tool, VectorstoreTool):
-                # Vectorstore tools include plugin prefix in name
+                # Semantic Kernel legacy naming
                 retrieval_tools.add(f"vectorstore-{tool.name}")
+                # Claude Agent SDK MCP naming
+                retrieval_tools.add(f"mcp__holodeck_tools__{tool.name}_search")
             elif isinstance(tool, MCPTool) and tool.is_retrieval:
                 # MCP tools use their configured name
                 retrieval_tools.add(tool.name)
@@ -915,8 +986,10 @@ class TestExecutor:
         """
         try:
             logger.debug("TestExecutor shutting down")
-            # Shutdown the agent factory (cleans up MCP plugins, vectorstores)
-            await self.agent_factory.shutdown()
+            if self._backend is not None:
+                await self._backend.teardown()
+            elif self.agent_factory is not None:
+                await self.agent_factory.shutdown()
             logger.debug("TestExecutor shutdown complete")
         except Exception as e:
             logger.error(f"Error during TestExecutor shutdown: {e}")

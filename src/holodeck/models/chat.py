@@ -8,8 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-from semantic_kernel.contents import ChatHistory
+from pydantic import BaseModel, Field, field_validator
 
 from holodeck.models.agent import Agent
 from holodeck.models.token_usage import TokenUsage
@@ -67,11 +66,9 @@ class Message(BaseModel):
 class ChatSession(BaseModel):
     """Interactive chat session model."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     session_id: UUID = Field(default_factory=uuid4)
     agent_config: Agent
-    history: ChatHistory
+    history: list[dict[str, Any]] = Field(default_factory=list)
     started_at: datetime = Field(default_factory=datetime.utcnow)
     message_count: int = Field(default=0, ge=0)
     state: SessionState = Field(default=SessionState.INITIALIZING)

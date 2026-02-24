@@ -447,6 +447,7 @@ class TestGEvalExecutionFlow:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Machine learning is a type of artificial intelligence."
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -554,6 +555,7 @@ class TestGEvalExecutionFlow:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "hola"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)
@@ -667,6 +669,7 @@ class TestGEvalExecutionFlow:
         mock_result.tool_calls = []
         mock_result.tool_results = []
         mock_result.chat_history = mock_chat_history
+        mock_result.response = "Response"
 
         mock_thread_run = Mock(spec=AgentThreadRun)
         mock_thread_run.invoke = AsyncMock(return_value=mock_result)

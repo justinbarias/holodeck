@@ -245,7 +245,7 @@ class AgentServer:
                     f"Creating AgentExecutor for session {session_id} "
                     f"with timeout={timeout}s"
                 )
-                executor = AgentExecutor(self.agent_config, timeout=timeout)
+                executor = AgentExecutor(self.agent_config)
                 session = self.sessions.create(executor, session_id=session_id)
 
             # Touch session to update last activity
@@ -303,7 +303,7 @@ class AgentServer:
                 logger.debug(
                     f"Creating AgentExecutor for new session with timeout={timeout}s"
                 )
-                executor = AgentExecutor(self.agent_config, timeout=timeout)
+                executor = AgentExecutor(self.agent_config)
                 session = self.sessions.create(executor, session_id=session_id)
 
             # Touch session to update last activity
@@ -338,7 +338,7 @@ class AgentServer:
                 logger.debug(
                     f"Creating AgentExecutor for new session with timeout={timeout}s"
                 )
-                executor = AgentExecutor(self.agent_config, timeout=timeout)
+                executor = AgentExecutor(self.agent_config)
                 session = self.sessions.create(executor, session_id=session_id)
 
             # Touch session to update last activity
@@ -403,7 +403,7 @@ class AgentServer:
                 logger.debug(
                     f"Creating AgentExecutor for new session with timeout={timeout}s"
                 )
-                executor = AgentExecutor(self.agent_config, timeout=timeout)
+                executor = AgentExecutor(self.agent_config)
                 session = self.sessions.create(executor, session_id=session_id)
 
             # Touch session to update last activity
@@ -463,7 +463,7 @@ class AgentServer:
                 logger.debug(
                     f"Creating AgentExecutor for new session with timeout={timeout}s"
                 )
-                executor = AgentExecutor(self.agent_config, timeout=timeout)
+                executor = AgentExecutor(self.agent_config)
                 session = self.sessions.create(executor, session_id=session_id)
 
             # Touch session to update last activity

@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.tool import (
     CommandType,
     DatabaseConfig,
@@ -1640,3 +1641,81 @@ class TestHierarchicalDocumentToolConfigKeywordIndex:
         assert config.keyword_index.index_name == "holodeck_docs"
         assert config.keyword_index.username == "admin"
         assert config.keyword_index.timeout_seconds == 30
+
+
+class TestHierarchicalDocumentToolConfigContextModel:
+    """Tests for context_model field on HierarchicalDocumentToolConfig."""
+
+    def test_context_model_default_none(self) -> None:
+        """Test that context_model defaults to None."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+        )
+        assert config.context_model is None
+
+    def test_context_model_accepts_llm_provider(self) -> None:
+        """Test that context_model accepts an LLMProvider instance."""
+        provider = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-4o-mini",
+            api_key="test-key",
+        )
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            context_model=provider,
+        )
+        assert config.context_model is not None
+        assert config.context_model.provider == ProviderEnum.OPENAI
+        assert config.context_model.name == "gpt-4o-mini"
+
+    def test_context_model_coexists_with_reranker_model(self) -> None:
+        """Test that context_model and reranker_model can be set independently."""
+        reranker = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-4o",
+            api_key="test-key",
+        )
+        context = LLMProvider(
+            provider=ProviderEnum.OLLAMA,
+            name="llama3",
+            api_key="key",
+        )
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            enable_reranking=True,
+            reranker_model=reranker,
+            context_model=context,
+        )
+        assert config.reranker_model is not None
+        assert config.reranker_model.name == "gpt-4o"
+        assert config.context_model is not None
+        assert config.context_model.name == "llama3"
+
+
+class TestHierarchicalDocumentToolConfigEmbeddingModel:
+    """Tests for embedding_model field on HierarchicalDocumentToolConfig."""
+
+    def test_embedding_model_default_none(self) -> None:
+        """Test that embedding_model defaults to None."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+        )
+        assert config.embedding_model is None
+
+    def test_embedding_model_accepts_string(self) -> None:
+        """Test that embedding_model accepts a custom model string."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="Test tool",
+            source="./docs/",
+            embedding_model="text-embedding-3-large",
+        )
+        assert config.embedding_model == "text-embedding-3-large"

@@ -1161,6 +1161,58 @@ class TestToolFactoryIntegration:
         assert hasattr(tool, "search")
 
 
+class TestSetContextGenerator:
+    """Tests for set_context_generator() method."""
+
+    def test_set_context_generator_stores_generator(self, tmp_path: Path) -> None:
+        """Test that set_context_generator stores the generator."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        mock_generator = MagicMock()
+        tool.set_context_generator(mock_generator)
+
+        assert tool._context_generator is mock_generator
+
+    def test_set_context_generator_overrides_previous(self, tmp_path: Path) -> None:
+        """Test that set_context_generator overrides a previous generator."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        gen1 = MagicMock()
+        gen2 = MagicMock()
+        tool.set_context_generator(gen1)
+        assert tool._context_generator is gen1
+
+        tool.set_context_generator(gen2)
+        assert tool._context_generator is gen2
+
+    @pytest.mark.asyncio
+    async def test_ingest_uses_context_generator_without_chat_service(
+        self, tmp_path: Path
+    ) -> None:
+        """Test _ingest_documents works with set_context_generator
+        when _chat_service is None."""
+        config = create_config(tmp_path, contextual_embeddings=True)
+        tool = HierarchicalDocumentTool(config)
+
+        # Set a mock context generator directly (no chat service)
+        mock_generator = AsyncMock()
+        mock_generator.contextualize_batch.return_value = ["Contextualized content"]
+        tool.set_context_generator(mock_generator)
+
+        assert tool._chat_service is None  # Confirm no chat service
+
+        with (
+            patch.object(tool, "_setup_collection"),
+            patch.object(tool, "_store_chunks", return_value=1),
+        ):
+            await tool.initialize()
+
+        # Context generator should have been called
+        mock_generator.contextualize_batch.assert_called()
+
+
 class TestSetChatServiceWithoutContextualEmbeddings:
     """Tests for set_chat_service when contextual_embeddings is disabled."""
 

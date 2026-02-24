@@ -10,6 +10,7 @@ This directory contains example agent.yaml files demonstrating different feature
 | [`with_tools.yaml`](#with-tools) | Real-world workflows | All 4 tool types: vectorstore, function, MCP, prompt |
 | [`with_evaluations.yaml`](#with-evaluations) | Quality assurance | DeepEval metrics, NLP metrics, per-metric model override |
 | [`with_global_config.yaml`](#with-global-config) | Multi-environment setups | Config precedence, env var substitution, inheritance |
+| [`claude_agent.yaml`](#claude-agent) | Claude-native agents | OAuth auth, embedding_provider, Claude SDK settings, extended thinking |
 
 ---
 
@@ -311,6 +312,57 @@ export ENV=production
 # Same agent.yaml works in all environments
 holodeck run with_global_config.yaml
 ```
+
+---
+
+### `claude_agent.yaml`
+
+**Purpose**: Claude-native agent with SDK-specific settings
+
+**Features**:
+- **OAuth token authentication**: Uses `CLAUDE_CODE_OAUTH_TOKEN` via `auth_provider: oauth_token`
+- **Embedding provider**: Required for vectorstore tools with Anthropic (uses Ollama)
+- **Claude SDK config**: Extended thinking, web search, permission mode
+- **Vectorstore tool**: Semantic search over research data
+- **Evaluations**: G-Eval and RAG faithfulness metrics
+
+**When to use**:
+- Building agents with Anthropic Claude models
+- Needing extended thinking for complex reasoning tasks
+- Using web search as a built-in capability
+- Leveraging native Claude Agent SDK features (subagents, bash, file system)
+
+**Prerequisites**:
+```bash
+# Node.js 18+ (required for Claude Agent SDK subprocess)
+node --version
+
+# Ollama running with embedding model (for vectorstore tools)
+ollama pull nomic-embed-text:latest
+ollama serve
+
+# Set OAuth token
+export CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
+```
+
+**Try it**:
+```bash
+# Create sample data directory
+mkdir -p ./data/research/
+echo "RAG combines retrieval and generation for grounded answers." > ./data/research/rag_basics.txt
+
+# Run the agent
+holodeck chat claude_agent.yaml
+
+# Run tests
+holodeck test claude_agent.yaml
+```
+
+**Key Concepts**:
+- `auth_provider` — Selects authentication method for Anthropic (`api_key`, `oauth_token`, `bedrock`, `vertex`, `foundry`)
+- `embedding_provider` — Required because Anthropic does not provide embedding models; must use a separate provider (Ollama, OpenAI) for vectorstore/hierarchical_document tools
+- `claude` section — SDK-specific settings: `permission_mode`, `max_turns`, `extended_thinking`, `web_search`, `bash`, `file_system`, `subagents`, `allowed_tools`
+- All Claude capabilities default to disabled (least-privilege)
 
 ---
 

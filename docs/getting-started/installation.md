@@ -6,6 +6,9 @@ Get HoloDeck installed and ready to build AI agents.
 
 - **Python 3.10+** (check with `python --version`)
 - **uv** - The fast Python package installer
+- **Node.js 18+** (required for Claude Agent SDK backend) — check with `node --version`
+
+> **Note**: Node.js is only required if you plan to use `provider: anthropic`. Other providers (OpenAI, Azure, Ollama) do not require it.
 
 ### Installing uv
 
@@ -122,8 +125,11 @@ export OPENAI_API_KEY="sk-..."
 export AZURE_OPENAI_API_KEY="your-key-here"
 export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
 
-# Anthropic
+# Anthropic (API Key)
 export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Anthropic (OAuth Token — recommended for Claude Code users)
+export CLAUDE_CODE_OAUTH_TOKEN="your-oauth-token"
 ```
 
 #### `.env` File
@@ -171,8 +177,14 @@ AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 
 ### Anthropic
 
+Claude models via the native Claude Agent SDK backend. Requires Node.js 18+.
+
 ```bash
+# Option 1: API Key
 ANTHROPIC_API_KEY=sk-ant-...
+
+# Option 2: OAuth Token (recommended for Claude Code users)
+CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
 ```
 
 ## Upgrading HoloDeck

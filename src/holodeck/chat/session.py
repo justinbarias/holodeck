@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
-
-from semantic_kernel.contents import ChatHistory
 
 from holodeck.chat.executor import AgentExecutor, AgentResponse
 from holodeck.chat.message import MessageValidator
@@ -56,31 +55,19 @@ class ChatSessionManager:
         Raises:
             RuntimeError: If session initialization fails.
         """
-        try:
-            logger.info(f"Starting chat session for agent: {self.agent_config.name}")
+        logger.info(f"Starting chat session for agent: {self.agent_config.name}")
 
-            # Create executor with resolved timeout
-            timeout = self.config.llm_timeout if self.config.llm_timeout else 60
-            self._executor = AgentExecutor(
-                self.agent_config,
-                enable_observability=self.config.enable_observability,
-                force_ingest=self.config.force_ingest,
-                timeout=timeout,
-            )
+        # Constructor does no I/O — errors surface on first turn (lazy-init)
+        self._executor = AgentExecutor(self.agent_config)
 
-            # Create chat session with empty history
-            history = ChatHistory()
-            self.session = ChatSession(
-                agent_config=self.agent_config,
-                history=history,
-                state=SessionState.ACTIVE,
-            )
+        # Create chat session with empty history
+        self.session = ChatSession(
+            agent_config=self.agent_config,
+            history=[],
+            state=SessionState.ACTIVE,
+        )
 
-            logger.info(f"Chat session started: session_id={self.session.session_id}")
-
-        except Exception as e:
-            logger.error(f"Failed to start chat session: {e}", exc_info=True)
-            raise RuntimeError(f"Failed to start chat session: {e}") from e
+        logger.info(f"Chat session started: session_id={self.session.session_id}")
 
     async def process_message(self, message: str) -> AgentResponse:
         """Process a user message through validation and execution.
@@ -132,6 +119,37 @@ class ChatSessionManager:
         except Exception as e:
             logger.error(f"Message processing failed: {e}", exc_info=True)
             raise RuntimeError(f"Message processing failed: {e}") from e
+
+    async def process_message_streaming(
+        self, message: str
+    ) -> AsyncGenerator[str, None]:
+        """Stream a user message through validation and agent execution.
+
+        Args:
+            message: User message to process.
+
+        Yields:
+            Successive string chunks of the agent response.
+
+        Raises:
+            RuntimeError: If session not started or execution fails.
+            ValueError: If message validation fails.
+        """
+        if self.session is None or self._executor is None:
+            raise RuntimeError("Session not started. Call start() first.")
+
+        # Validate message (same as process_message)
+        is_valid, error = self._validator.validate(message)
+        if not is_valid:
+            raise ValueError(f"Invalid message: {error}")
+
+        logger.debug(f"Streaming message ({len(message)} chars)")
+        async for chunk in self._executor.execute_turn_streaming(message):
+            yield chunk
+
+        # Increment message count after stream completes
+        self.session.message_count += 1
+        logger.debug(f"Streamed message: count={self.session.message_count}")
 
     def get_session(self) -> ChatSession | None:
         """Get current chat session.
