@@ -13,13 +13,13 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-dateutil>=2.8.0",
     "urllib3>=2.6.0,<3.0.0",
-    "cryptography>=46.0.2,<47.0.0",
+    "cryptography>=46.0.5,<47.0.0",
     "mkdocs-material>=9.6.22,<10.0.0",
     "twine>=6.2.0,<7.0.0",
     "jsonschema>=4.0.0,<5.0.0",
-    "semantic-kernel>=1.37.1,<2.0.0",
+    "semantic-kernel>=1.39.4,<2.0.0",
     "markitdown[all]>=0.1.4,<0.2.0",
-    "pypdf>=6.6.0",
+    "pypdf>=6.7.3",
     "azure-ai-evaluation>=1.13.0,<2.0.0",
     "evaluate>=0.4.6,<0.5.0",
     "aiofiles>=25.1.0,<26.0.0",
@@ -36,7 +36,7 @@ dependencies = [
     "fastapi>=0.115.0,<1.0.0",
     "uvicorn[standard]>=0.34.0,<1.0.0",
     "ag-ui-protocol>=0.1.10,<1.0.0",
-    "werkzeug>=3.1.5",
+    "werkzeug>=3.1.6",
     # OpenTelemetry core (P1 - always installed)
     "opentelemetry-sdk>=1.20.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0,<2.0.0",
@@ -67,8 +67,7 @@ dev = [
     "pre-commit>=3.3.0",
     "tox>=4.0.0",
     "bandit[toml]>=1.8.0",
-    "safety>=3.0.0",
-    "marshmallow>=4.2.1",  # CVE-2025-68480 fix (transitive dep of safety)
+    "pip-audit>=2.7.0",
     "detect-secrets>=1.4.0",
     "types-PyYAML>=6.0.12",
     "mkdocstrings[python]>=0.25.0",
@@ -141,6 +140,11 @@ prerelease = "allow"  # Allow pre-releases (required for azure-ai-agents via sem
 constraint-dependencies = [
     "sentry-sdk>=2.0.0,<3.0.0",  # Pin to stable; deepeval pulls alpha 3.0 which is deprecated
     "filelock>=3.20.3",  # CVE-2025-68146 fix
+    "jaraco-context>=6.1.0",  # CVE-2026-23949 fix
+    "nltk>=3.9.3",  # CVE-2025-14009 fix
+    "pillow>=12.1.1",  # CVE-2026-25990 fix
+    "protobuf>=5.29.6",  # CVE-2026-0994 fix
+    "python-multipart>=0.0.22",  # CVE-2026-24486 fix
 ]
 
 [tool.black]

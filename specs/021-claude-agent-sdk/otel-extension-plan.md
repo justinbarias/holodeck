@@ -54,7 +54,9 @@ New module with `ClaudeOtelHookFactory` class:
 
 ### Step 2: Update `build_options()` in `claude_backend.py`
 
-Add optional `hooks: dict[str, list[Any]] | None = None` parameter. Pass through to `ClaudeAgentOptions(**opts_kwargs)` when not None.
+Add optional `hooks: dict[HookEvent, list[HookMatcher]] | None = None` parameter
+(using SDK-native types from `claude_agent_sdk.types`). Pass through to
+`ClaudeAgentOptions(**opts_kwargs)` when not None.
 
 ### Step 3: Update `ClaudeBackend.initialize()` in `claude_backend.py`
 
@@ -145,7 +147,8 @@ Call `self._otel_hook_factory.cleanup_orphaned_spans()` if factory exists.
 ## What Does NOT Change
 
 - `otel_bridge.py` (subprocess env vars) — complementary, not replaced
-- `ClaudeSession` (chat path) — already uses `ClaudeSDKClient`, hooks work as-is
+- `ClaudeSession` core flow (chat path): no hook-specific control-flow changes required.
+  It will use hooks once `build_options()` injects them into shared `ClaudeAgentOptions`.
 - `ObservabilityConfig` model
 - CLI commands (test.py, chat.py)
 - SK backend path (agent_factory.py)
