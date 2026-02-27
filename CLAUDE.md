@@ -248,7 +248,7 @@ make format-check       # Check formatting (CI-safe)
 make lint               # Run Ruff + Bandit
 make lint-fix           # Auto-fix linting issues
 make type-check         # MyPy type checking
-make security           # Safety + Bandit + detect-secrets
+make security           # pip-audit + Bandit + detect-secrets
 make ci                 # Run complete CI pipeline locally
 ```
 
@@ -454,11 +454,11 @@ Consumers never interact with provider-specific types — only with protocols.
 
 ### Core Protocols
 
-| Protocol           | Methods                                                  | Purpose                                |
-| ------------------ | -------------------------------------------------------- | -------------------------------------- |
-| `AgentBackend`     | `initialize()`, `invoke_once()`, `create_session()`, `teardown()` | Lifecycle of a backend instance       |
-| `AgentSession`     | `send()`, `send_streaming()`, `close()`                  | Stateful multi-turn conversation       |
-| `ContextGenerator` | `contextualize_batch()`                                  | Contextual embeddings for chunks       |
+| Protocol           | Methods                                                           | Purpose                          |
+| ------------------ | ----------------------------------------------------------------- | -------------------------------- |
+| `AgentBackend`     | `initialize()`, `invoke_once()`, `create_session()`, `teardown()` | Lifecycle of a backend instance  |
+| `AgentSession`     | `send()`, `send_streaming()`, `close()`                           | Stateful multi-turn conversation |
+| `ContextGenerator` | `contextualize_batch()`                                           | Contextual embeddings for chunks |
 
 ### ExecutionResult
 
@@ -495,12 +495,12 @@ await backend.teardown()
 
 ### Claude-Specific Infrastructure
 
-| Module              | Purpose                                                     |
-| ------------------- | ----------------------------------------------------------- |
-| `tool_adapters.py`  | Wraps VectorStore/HierarchicalDoc tools as SDK MCP tools    |
-| `mcp_bridge.py`     | Translates HoloDeck MCP configs to Claude SDK format        |
-| `otel_bridge.py`    | Translates observability config to subprocess env vars      |
-| `validators.py`     | Pre-flight checks (Node.js, credentials, embedding provider)|
+| Module             | Purpose                                                      |
+| ------------------ | ------------------------------------------------------------ |
+| `tool_adapters.py` | Wraps VectorStore/HierarchicalDoc tools as SDK MCP tools     |
+| `mcp_bridge.py`    | Translates HoloDeck MCP configs to Claude SDK format         |
+| `otel_bridge.py`   | Translates observability config to subprocess env vars       |
+| `validators.py`    | Pre-flight checks (Node.js, credentials, embedding provider) |
 
 ## Agent Configuration Schema
 
@@ -532,7 +532,7 @@ tools: # Optional: List of tools
 
 claude: # Optional: Claude Agent SDK configuration (anthropic provider only)
   working_directory: path # Scope file access; subprocess cwd
-  permission_mode: manual | acceptEdits | acceptAll  # Default: manual
+  permission_mode: manual | acceptEdits | acceptAll # Default: manual
   max_turns: int # Max agent loop iterations
   extended_thinking: # Deep reasoning
     enabled: boolean

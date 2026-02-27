@@ -427,7 +427,7 @@ make type-check
 
 # Security scanning (Safety + Bandit + detect-secrets)
 make security
-# or: uv run safety check && uv run bandit -r src/ && uv run detect-secrets scan
+# or: uv run pip-audit && uv run bandit -r src/ && uv run detect-secrets scan
 
 # Run all code quality checks
 make ci

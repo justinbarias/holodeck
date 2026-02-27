@@ -77,4 +77,4 @@ jobs:
       - name: Security scan
         run: |
           uv run bandit -r src/
-          uv run safety check --ignore=80470
+          uv run pip-audit --progress-spinner=off
