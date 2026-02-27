@@ -226,7 +226,7 @@ class TestBuildOptions:
             tool_server=None,
             tool_names=[],
             mcp_configs={},
-            auth_env={"CLAUDE_CODE_USE_BEDROCK": "1"},
+            auth_env={"CLAUDE_CODE_USE_BEDROCK": "1", "AWS_REGION": "us-east-1"},
             otel_env={"CLAUDE_CODE_ENABLE_TELEMETRY": "1"},
             mode="test",
             allow_side_effects=False,
@@ -234,6 +234,7 @@ class TestBuildOptions:
 
         kwargs = mock_opts_cls.call_args[1]
         assert kwargs["env"]["CLAUDE_CODE_USE_BEDROCK"] == "1"
+        assert kwargs["env"]["AWS_REGION"] == "us-east-1"
         assert kwargs["env"]["CLAUDE_CODE_ENABLE_TELEMETRY"] == "1"
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")

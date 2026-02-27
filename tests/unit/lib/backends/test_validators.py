@@ -119,35 +119,183 @@ class TestValidateCredentials:
         assert exc_info.value.field == "CLAUDE_CODE_OAUTH_TOKEN"
         assert "setup-token" in exc_info.value.message
 
-    def test_bedrock_returns_env_dict(self) -> None:
-        """Bedrock auth returns correct env var dict without checking env vars."""
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_bedrock_returns_env_dict(self, mock_get_env: object) -> None:
+        """Bedrock auth returns env dict with routing vars."""
+        mock_get_env.side_effect = lambda key, default=None: {  # type: ignore[union-attr]
+            "AWS_REGION": "us-east-1",
+        }.get(
+            key, default
+        )
         model = LLMProvider(
             provider=ProviderEnum.ANTHROPIC,
             name="claude-sonnet-4-5",
             auth_provider=AuthProvider.bedrock,
         )
         result = validate_credentials(model)
-        assert result == {"CLAUDE_CODE_USE_BEDROCK": "1"}
+        assert result == {
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        }
 
-    def test_vertex_returns_env_dict(self) -> None:
-        """Vertex auth returns correct env var dict without checking env vars."""
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_bedrock_missing_region_raises(self, mock_get_env: object) -> None:
+        """ConfigError raised when AWS_REGION is missing for Bedrock."""
+        mock_get_env.return_value = None  # type: ignore[union-attr]
+        model = LLMProvider(
+            provider=ProviderEnum.ANTHROPIC,
+            name="claude-sonnet-4-5",
+            auth_provider=AuthProvider.bedrock,
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            validate_credentials(model)
+        assert exc_info.value.field == "AWS_REGION"
+
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_bedrock_accepts_aws_default_region(self, mock_get_env: object) -> None:
+        """Bedrock accepts AWS_DEFAULT_REGION when AWS_REGION is unset."""
+        mock_get_env.side_effect = lambda key, default=None: {  # type: ignore[union-attr]
+            "AWS_DEFAULT_REGION": "us-west-2",
+        }.get(
+            key, default
+        )
+        model = LLMProvider(
+            provider=ProviderEnum.ANTHROPIC,
+            name="claude-sonnet-4-5",
+            auth_provider=AuthProvider.bedrock,
+        )
+        result = validate_credentials(model)
+        assert result == {
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_DEFAULT_REGION": "us-west-2",
+        }
+
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_vertex_returns_env_dict(self, mock_get_env: object) -> None:
+        """Vertex auth returns env dict with region and project context."""
+        mock_get_env.side_effect = lambda key, default=None: {  # type: ignore[union-attr]
+            "CLOUD_ML_REGION": "us-east5",
+            "ANTHROPIC_VERTEX_PROJECT_ID": "my-gcp-project",
+        }.get(
+            key, default
+        )
         model = LLMProvider(
             provider=ProviderEnum.ANTHROPIC,
             name="claude-sonnet-4-5",
             auth_provider=AuthProvider.vertex,
         )
         result = validate_credentials(model)
-        assert result == {"CLAUDE_CODE_USE_VERTEX": "1"}
+        assert result == {
+            "CLAUDE_CODE_USE_VERTEX": "1",
+            "CLOUD_ML_REGION": "us-east5",
+            "ANTHROPIC_VERTEX_PROJECT_ID": "my-gcp-project",
+        }
 
-    def test_foundry_returns_env_dict(self) -> None:
-        """Foundry auth returns correct env var dict without checking env vars."""
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_vertex_accepts_gcloud_project_override(self, mock_get_env: object) -> None:
+        """Vertex accepts GCLOUD_PROJECT as project context."""
+        mock_get_env.side_effect = lambda key, default=None: {  # type: ignore[union-attr]
+            "CLOUD_ML_REGION": "us-east5",
+            "GCLOUD_PROJECT": "my-gcp-project",
+        }.get(
+            key, default
+        )
+        model = LLMProvider(
+            provider=ProviderEnum.ANTHROPIC,
+            name="claude-sonnet-4-5",
+            auth_provider=AuthProvider.vertex,
+        )
+        result = validate_credentials(model)
+        assert result == {
+            "CLAUDE_CODE_USE_VERTEX": "1",
+            "CLOUD_ML_REGION": "us-east5",
+            "GCLOUD_PROJECT": "my-gcp-project",
+        }
+
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_vertex_missing_region_raises(self, mock_get_env: object) -> None:
+        """ConfigError raised when CLOUD_ML_REGION is missing for Vertex."""
+        mock_get_env.side_effect = lambda key, default=None: {  # type: ignore[union-attr]
+            "ANTHROPIC_VERTEX_PROJECT_ID": "my-gcp-project",
+        }.get(
+            key, default
+        )
+        model = LLMProvider(
+            provider=ProviderEnum.ANTHROPIC,
+            name="claude-sonnet-4-5",
+            auth_provider=AuthProvider.vertex,
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            validate_credentials(model)
+        assert exc_info.value.field == "CLOUD_ML_REGION"
+
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_vertex_missing_project_context_raises(self, mock_get_env: object) -> None:
+        """ConfigError raised when Vertex project context is missing."""
+        mock_get_env.side_effect = lambda key, default=None: {  # type: ignore[union-attr]
+            "CLOUD_ML_REGION": "us-east5",
+        }.get(
+            key, default
+        )
+        model = LLMProvider(
+            provider=ProviderEnum.ANTHROPIC,
+            name="claude-sonnet-4-5",
+            auth_provider=AuthProvider.vertex,
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            validate_credentials(model)
+        assert exc_info.value.field == "ANTHROPIC_VERTEX_PROJECT_ID"
+
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_foundry_returns_env_dict(self, mock_get_env: object) -> None:
+        """Foundry auth returns env dict with target resource."""
+        mock_get_env.side_effect = lambda key, default=None: {  # type: ignore[union-attr]
+            "ANTHROPIC_FOUNDRY_RESOURCE": "my-foundry-resource",
+        }.get(
+            key, default
+        )
         model = LLMProvider(
             provider=ProviderEnum.ANTHROPIC,
             name="claude-sonnet-4-5",
             auth_provider=AuthProvider.foundry,
         )
         result = validate_credentials(model)
-        assert result == {"CLAUDE_CODE_USE_FOUNDRY": "1"}
+        assert result == {
+            "CLAUDE_CODE_USE_FOUNDRY": "1",
+            "ANTHROPIC_FOUNDRY_RESOURCE": "my-foundry-resource",
+        }
+
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_foundry_accepts_base_url(self, mock_get_env: object) -> None:
+        """Foundry accepts ANTHROPIC_FOUNDRY_BASE_URL target."""
+        mock_get_env.side_effect = lambda key, default=None: {  # type: ignore[union-attr]
+            "ANTHROPIC_FOUNDRY_BASE_URL": "https://example.services.ai.azure.com",
+        }.get(
+            key, default
+        )
+        model = LLMProvider(
+            provider=ProviderEnum.ANTHROPIC,
+            name="claude-sonnet-4-5",
+            auth_provider=AuthProvider.foundry,
+        )
+        result = validate_credentials(model)
+        assert result == {
+            "CLAUDE_CODE_USE_FOUNDRY": "1",
+            "ANTHROPIC_FOUNDRY_BASE_URL": "https://example.services.ai.azure.com",
+        }
+
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_foundry_missing_target_raises(self, mock_get_env: object) -> None:
+        """ConfigError raised when Foundry target env vars are missing."""
+        mock_get_env.return_value = None  # type: ignore[union-attr]
+        model = LLMProvider(
+            provider=ProviderEnum.ANTHROPIC,
+            name="claude-sonnet-4-5",
+            auth_provider=AuthProvider.foundry,
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            validate_credentials(model)
+        assert exc_info.value.field == "ANTHROPIC_FOUNDRY_RESOURCE"
 
 
 @pytest.mark.unit

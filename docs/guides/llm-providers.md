@@ -420,7 +420,13 @@ model:
   auth_provider: bedrock
 ```
 
-Requires standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`).
+Requires AWS auth context and region. At minimum:
+
+```bash
+export AWS_REGION=us-east-1
+# or: export AWS_DEFAULT_REGION=us-east-1
+# plus AWS credentials/profile (for example via env vars, ~/.aws/credentials, or IAM role)
+```
 
 #### Google Vertex AI
 
@@ -431,7 +437,13 @@ model:
   auth_provider: vertex
 ```
 
-Requires GCP credentials (`GOOGLE_APPLICATION_CREDENTIALS`).
+Requires Vertex project and region context. Recommended:
+
+```bash
+export CLOUD_ML_REGION=us-east5
+export ANTHROPIC_VERTEX_PROJECT_ID=your-gcp-project-id
+# plus Google credentials (for example GOOGLE_APPLICATION_CREDENTIALS or ADC)
+```
 
 #### Foundry
 
@@ -442,7 +454,26 @@ model:
   auth_provider: foundry
 ```
 
-Requires Foundry platform credentials.
+Requires a Foundry target via one of:
+
+```bash
+export ANTHROPIC_FOUNDRY_RESOURCE=your-foundry-resource
+# or
+export ANTHROPIC_FOUNDRY_BASE_URL=https://your-resource.services.ai.azure.com
+```
+
+Authentication can be provided via `ANTHROPIC_API_KEY` or Azure credential chain.
+
+### Cloud Auth Context (Bedrock/Vertex/Foundry)
+
+For `provider: anthropic`, cloud routing is driven by environment variables consumed by the Claude Code subprocess.
+
+- HoloDeck uses `auth_provider` to set the Claude Code mode flag:
+  - `bedrock` → `CLAUDE_CODE_USE_BEDROCK=1`
+  - `vertex` → `CLAUDE_CODE_USE_VERTEX=1`
+  - `foundry` → `CLAUDE_CODE_USE_FOUNDRY=1`
+- `model.endpoint` is **not** used for Anthropic cloud auth modes.
+- If required cloud routing variables are missing, HoloDeck fails fast at startup with a clear configuration error.
 
 ### Configuration
 
@@ -486,6 +517,20 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 # OAuth Token (recommended for Claude Code users)
 CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
+
+# AWS Bedrock (auth_provider: bedrock)
+AWS_REGION=us-east-1
+# AWS_DEFAULT_REGION also supported
+
+# Google Vertex AI (auth_provider: vertex)
+CLOUD_ML_REGION=us-east5
+ANTHROPIC_VERTEX_PROJECT_ID=your-gcp-project-id
+# Alternative project context vars: GCLOUD_PROJECT / GOOGLE_CLOUD_PROJECT
+
+# Azure AI Foundry (auth_provider: foundry)
+ANTHROPIC_FOUNDRY_RESOURCE=your-foundry-resource
+# or
+ANTHROPIC_FOUNDRY_BASE_URL=https://your-resource.services.ai.azure.com
 ```
 
 ### Available Models
@@ -950,6 +995,21 @@ OLLAMA_ENDPOINT=http://localhost:11434
 3. Ensure no extra whitespace in the key
 4. Regenerate the API key if needed
 
+### Anthropic Cloud Auth Context Missing
+
+**Error:** `AWS_REGION environment variable is not set for auth_provider: bedrock`
+**or:** `CLOUD_ML_REGION environment variable is not set for auth_provider: vertex`
+**or:** `Missing Foundry target for auth_provider: foundry`
+
+**Solutions:**
+
+1. Confirm `model.provider: anthropic` and the selected `auth_provider` are correct.
+2. Set the required routing env vars for your auth mode:
+   - Bedrock: `AWS_REGION`
+   - Vertex: `CLOUD_ML_REGION` plus project context (`ANTHROPIC_VERTEX_PROJECT_ID` recommended)
+   - Foundry: `ANTHROPIC_FOUNDRY_RESOURCE` or `ANTHROPIC_FOUNDRY_BASE_URL`
+3. Remember: `model.endpoint` is ignored for Anthropic cloud auth.
+
 ### Azure Endpoint Issues
 
 **Error:** `endpoint is required for azure_openai provider`
@@ -1006,6 +1066,15 @@ model:
 | `AZURE_OPENAI_API_KEY` | Azure OpenAI | API authentication key |
 | `ANTHROPIC_API_KEY` | Anthropic | API authentication key (`auth_provider: api_key`) |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Anthropic | OAuth token (`auth_provider: oauth_token`, recommended) |
+| `AWS_REGION` | Anthropic Bedrock | AWS Bedrock region (`auth_provider: bedrock`) |
+| `AWS_DEFAULT_REGION` | Anthropic Bedrock | Alternate AWS region variable |
+| `CLOUD_ML_REGION` | Anthropic Vertex | Vertex region (`auth_provider: vertex`) |
+| `ANTHROPIC_VERTEX_PROJECT_ID` | Anthropic Vertex | Vertex project ID (`auth_provider: vertex`) |
+| `GCLOUD_PROJECT` | Anthropic Vertex | Alternate Vertex project context |
+| `GOOGLE_CLOUD_PROJECT` | Anthropic Vertex | Alternate Vertex project context |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Anthropic Vertex | Service account credential file path (also accepted for project context) |
+| `ANTHROPIC_FOUNDRY_RESOURCE` | Anthropic Foundry | Foundry resource name (`auth_provider: foundry`) |
+| `ANTHROPIC_FOUNDRY_BASE_URL` | Anthropic Foundry | Alternate Foundry base URL (`auth_provider: foundry`) |
 | `OLLAMA_ENDPOINT` | Ollama | Server endpoint (default: `http://localhost:11434`) |
 
 ---
