@@ -11,10 +11,12 @@ Tests T001–T016 covering:
 from __future__ import annotations
 
 import json
+import sys
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from exceptiongroup import BaseExceptionGroup
 
 from holodeck.lib.backends.base import (
     AgentBackend,
@@ -25,7 +27,12 @@ from holodeck.lib.backends.base import (
 from holodeck.lib.backends.claude_backend import (
     ClaudeBackend,
     ClaudeSession,
+    _build_output_format,
     _build_permission_mode,
+    _enrich_tool_results,
+    _extract_result_text,
+    _process_message,
+    _wrap_prompt,
     build_options,
 )
 from holodeck.models.agent import Agent, Instructions
@@ -35,12 +42,18 @@ from holodeck.models.claude_config import (
     PermissionMode,
 )
 from holodeck.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.observability import (
+    MetricsConfig,
+    ObservabilityConfig,
+    TracingConfig,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 _SDK_MODULE = "holodeck.lib.backends.claude_backend"
+_CAS_MODULE = "claude_agent_sdk"
 
 
 def _make_agent(
@@ -48,6 +61,7 @@ def _make_agent(
     claude: ClaudeConfig | None = None,
     response_format: dict[str, Any] | str | None = None,
     tools: list[Any] | None = None,
+    observability: ObservabilityConfig | None = None,
 ) -> Agent:
     """Create a minimal Anthropic-provider Agent for testing."""
     return Agent(
@@ -57,6 +71,7 @@ def _make_agent(
         claude=claude,
         response_format=response_format,
         tools=tools,
+        observability=observability,
     )
 
 
@@ -260,6 +275,48 @@ class TestBuildOptions:
         assert "holodeck_tools" in kwargs["mcp_servers"]
         assert "ext_server" in kwargs["mcp_servers"]
 
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_web_search_adds_allowed_tool(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """web_search=True adds WebSearch to allowed_tools."""
+        claude = ClaudeConfig(web_search=True)
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "WebSearch" in kwargs["allowed_tools"]
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_web_search_false_omits_tool(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """web_search=False (default) does not add WebSearch."""
+        claude = ClaudeConfig(web_search=False)
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "WebSearch" not in kwargs["allowed_tools"]
+
 
 # ---------------------------------------------------------------------------
 # T002 — Permission mode mapping
@@ -436,7 +493,7 @@ class TestClaudeBackendInvokeOnce:
     """Tests for ClaudeBackend.invoke_once() — execution and result mapping."""
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_CAS_MODULE}.query")
     async def test_invoke_once_happy_path(self, mock_query: MagicMock) -> None:
         """T005: Mocked query() → correct ExecutionResult fields."""
         assistant = _make_assistant_message([_make_text_block("Hello world")])
@@ -457,7 +514,7 @@ class TestClaudeBackendInvokeOnce:
         assert result.num_turns == 1
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_CAS_MODULE}.query")
     async def test_invoke_once_tool_extraction(self, mock_query: MagicMock) -> None:
         """T006: Tool calls and results extracted from content blocks."""
         tool_use = _make_tool_use_block("toolu_01", "kb_search", {"query": "refund"})
@@ -487,7 +544,7 @@ class TestClaudeBackendInvokeOnce:
         }
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_CAS_MODULE}.query")
     async def test_invoke_once_structured_output(self, mock_query: MagicMock) -> None:
         """T007: Structured output returned and response set to JSON string."""
         structured = {"name": "Widget", "price": 9.99}
@@ -512,7 +569,7 @@ class TestClaudeBackendInvokeOnce:
         assert result.response == json.dumps(structured)
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_CAS_MODULE}.query")
     async def test_invoke_once_structured_output_schema_failure(
         self, mock_query: MagicMock
     ) -> None:
@@ -537,7 +594,7 @@ class TestClaudeBackendInvokeOnce:
         assert "schema validation" in result.error_reason.lower()
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_CAS_MODULE}.query")
     async def test_invoke_once_max_turns_exceeded(self, mock_query: MagicMock) -> None:
         """T008: max_turns exceeded → is_error=True with partial response."""
         assistant = _make_assistant_message([_make_text_block("Partial response")])
@@ -567,7 +624,7 @@ class TestClaudeBackendRetry:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.asyncio")
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_CAS_MODULE}.query")
     async def test_retry_on_process_error_then_success(
         self, mock_query: MagicMock, mock_asyncio: MagicMock
     ) -> None:
@@ -596,7 +653,7 @@ class TestClaudeBackendRetry:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.asyncio")
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_CAS_MODULE}.query")
     async def test_retry_all_failures_raises(
         self, mock_query: MagicMock, mock_asyncio: MagicMock
     ) -> None:
@@ -772,7 +829,7 @@ class TestClaudeBackendLazyInit:
     """Tests for lazy-init — auto-initialize on first use."""
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_CAS_MODULE}.query")
     async def test_invoke_once_auto_initializes(self, mock_query: MagicMock) -> None:
         """T015a: invoke_once() without explicit initialize() auto-inits."""
         mock_query.return_value = _async_iter(
@@ -809,7 +866,7 @@ class TestClaudeBackendLazyInit:
             assert isinstance(session, ClaudeSession)
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_CAS_MODULE}.query")
     async def test_no_double_init(self, mock_query: MagicMock) -> None:
         """T015c: Explicit initialize() + invoke_once() → no second init."""
         mock_query.return_value = _async_iter(
@@ -847,7 +904,7 @@ class TestClaudeBackendTeardown:
         assert backend._options is None
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_CAS_MODULE}.query")
     async def test_invoke_after_teardown_reinitializes(
         self, mock_query: MagicMock
     ) -> None:
@@ -871,3 +928,1086 @@ class TestClaudeBackendTeardown:
             mock_init.side_effect = side_effect
             await backend.invoke_once("Hello")
             mock_init.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# T006–T009 — ClaudeBackend instrumentation activation
+# ---------------------------------------------------------------------------
+
+
+def _mock_instrumentor_module():
+    """Create a mock ``opentelemetry.instrumentation.claude_agent_sdk`` module.
+
+    Returns:
+        (mock_module, mock_cls, mock_instrumentor_instance)
+    """
+    mock_instance = MagicMock()
+    mock_cls = MagicMock(return_value=mock_instance)
+    mock_module = MagicMock()
+    mock_module.ClaudeAgentSdkInstrumentor = mock_cls
+    return mock_module, mock_cls, mock_instance
+
+
+@pytest.mark.unit
+class TestClaudeBackendInstrumentation:
+    """Tests for GenAI instrumentation activation during initialize()."""
+
+    @pytest.mark.asyncio
+    @patch(f"{_SDK_MODULE}.validate_response_format")
+    @patch(f"{_SDK_MODULE}.validate_working_directory")
+    @patch(f"{_SDK_MODULE}.build_options", return_value=MagicMock())
+    @patch(f"{_SDK_MODULE}.translate_observability", return_value={})
+    @patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={})
+    @patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, []))
+    @patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[])
+    @patch(f"{_SDK_MODULE}.validate_tool_filtering")
+    @patch(f"{_SDK_MODULE}.validate_embedding_provider")
+    @patch(f"{_SDK_MODULE}.validate_credentials", return_value={})
+    @patch(f"{_SDK_MODULE}.validate_nodejs")
+    async def test_instrument_called_with_tracer_and_meter_providers(
+        self, *_mocks: MagicMock
+    ) -> None:
+        """T006: instrument() called with both providers when fully enabled."""
+        agent = _make_agent(
+            observability=ObservabilityConfig(
+                enabled=True,
+                traces=TracingConfig(enabled=True, capture_content=True),
+                metrics=MetricsConfig(enabled=True),
+            ),
+        )
+
+        mock_module, mock_cls, mock_instance = _mock_instrumentor_module()
+        mock_ctx = MagicMock()
+        mock_tp = MagicMock(name="tracer_provider")
+        mock_mp = MagicMock(name="meter_provider")
+        mock_ctx.tracer_provider = mock_tp
+        mock_ctx.meter_provider = mock_mp
+
+        backend = ClaudeBackend(agent=agent)
+
+        with (
+            patch(f"{_SDK_MODULE}.get_observability_context", return_value=mock_ctx),
+            patch.dict(
+                sys.modules,
+                {"opentelemetry.instrumentation.claude_agent_sdk": mock_module},
+            ),
+        ):
+            await backend.initialize()
+
+        mock_cls.assert_called_once()
+        mock_instance.instrument.assert_called_once_with(
+            tracer_provider=mock_tp,
+            meter_provider=mock_mp,
+            agent_name="test-agent",
+            capture_content=True,
+        )
+        assert backend._instrumentor is mock_instance
+
+    @pytest.mark.asyncio
+    @patch(f"{_SDK_MODULE}.validate_response_format")
+    @patch(f"{_SDK_MODULE}.validate_working_directory")
+    @patch(f"{_SDK_MODULE}.build_options", return_value=MagicMock())
+    @patch(f"{_SDK_MODULE}.translate_observability", return_value={})
+    @patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={})
+    @patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, []))
+    @patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[])
+    @patch(f"{_SDK_MODULE}.validate_tool_filtering")
+    @patch(f"{_SDK_MODULE}.validate_embedding_provider")
+    @patch(f"{_SDK_MODULE}.validate_credentials", return_value={})
+    @patch(f"{_SDK_MODULE}.validate_nodejs")
+    async def test_instrument_called_without_meter_provider_when_metrics_disabled(
+        self, *_mocks: MagicMock
+    ) -> None:
+        """T007: meter_provider=None when metrics disabled."""
+        agent = _make_agent(
+            observability=ObservabilityConfig(
+                enabled=True,
+                traces=TracingConfig(enabled=True, capture_content=False),
+                metrics=MetricsConfig(enabled=False),
+            ),
+        )
+
+        mock_module, mock_cls, mock_instance = _mock_instrumentor_module()
+        mock_ctx = MagicMock()
+        mock_tp = MagicMock(name="tracer_provider")
+        mock_mp = MagicMock(name="meter_provider")
+        mock_ctx.tracer_provider = mock_tp
+        mock_ctx.meter_provider = mock_mp
+
+        backend = ClaudeBackend(agent=agent)
+
+        with (
+            patch(f"{_SDK_MODULE}.get_observability_context", return_value=mock_ctx),
+            patch.dict(
+                sys.modules,
+                {"opentelemetry.instrumentation.claude_agent_sdk": mock_module},
+            ),
+        ):
+            await backend.initialize()
+
+        mock_instance.instrument.assert_called_once_with(
+            tracer_provider=mock_tp,
+            meter_provider=None,
+            agent_name="test-agent",
+            capture_content=False,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "obs_config",
+        [
+            ObservabilityConfig(enabled=False),
+            None,
+        ],
+        ids=["disabled", "absent"],
+    )
+    @patch(f"{_SDK_MODULE}.validate_response_format")
+    @patch(f"{_SDK_MODULE}.validate_working_directory")
+    @patch(f"{_SDK_MODULE}.build_options", return_value=MagicMock())
+    @patch(f"{_SDK_MODULE}.translate_observability", return_value={})
+    @patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={})
+    @patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, []))
+    @patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[])
+    @patch(f"{_SDK_MODULE}.validate_tool_filtering")
+    @patch(f"{_SDK_MODULE}.validate_embedding_provider")
+    @patch(f"{_SDK_MODULE}.validate_credentials", return_value={})
+    @patch(f"{_SDK_MODULE}.validate_nodejs")
+    async def test_instrument_not_called_when_observability_disabled(
+        self,
+        _m_nodejs: MagicMock,
+        _m_creds: MagicMock,
+        _m_embed: MagicMock,
+        _m_tool_filter: MagicMock,
+        _m_adapters: MagicMock,
+        _m_server: MagicMock,
+        _m_mcp: MagicMock,
+        _m_otel: MagicMock,
+        _m_opts: MagicMock,
+        _m_wd: MagicMock,
+        _m_rf: MagicMock,
+        obs_config: ObservabilityConfig | None,
+    ) -> None:
+        """T008: No instrumentation when observability disabled or absent."""
+        agent = _make_agent(observability=obs_config)
+        mock_module, mock_cls, _mock_instance = _mock_instrumentor_module()
+
+        backend = ClaudeBackend(agent=agent)
+
+        with patch.dict(
+            sys.modules,
+            {"opentelemetry.instrumentation.claude_agent_sdk": mock_module},
+        ):
+            await backend.initialize()
+
+        mock_cls.assert_not_called()
+        assert backend._instrumentor is None
+
+    @pytest.mark.asyncio
+    @patch(f"{_SDK_MODULE}.validate_response_format")
+    @patch(f"{_SDK_MODULE}.validate_working_directory")
+    @patch(f"{_SDK_MODULE}.build_options", return_value=MagicMock())
+    @patch(f"{_SDK_MODULE}.translate_observability", return_value={})
+    @patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={})
+    @patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, []))
+    @patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[])
+    @patch(f"{_SDK_MODULE}.validate_tool_filtering")
+    @patch(f"{_SDK_MODULE}.validate_embedding_provider")
+    @patch(f"{_SDK_MODULE}.validate_credentials", return_value={})
+    @patch(f"{_SDK_MODULE}.validate_nodejs")
+    async def test_instrument_not_called_when_traces_disabled(
+        self, *_mocks: MagicMock
+    ) -> None:
+        """T009: No instrumentation when traces disabled."""
+        agent = _make_agent(
+            observability=ObservabilityConfig(
+                enabled=True,
+                traces=TracingConfig(enabled=False),
+            ),
+        )
+        mock_module, mock_cls, _mock_instance = _mock_instrumentor_module()
+
+        backend = ClaudeBackend(agent=agent)
+
+        with patch.dict(
+            sys.modules,
+            {"opentelemetry.instrumentation.claude_agent_sdk": mock_module},
+        ):
+            await backend.initialize()
+
+        mock_cls.assert_not_called()
+        assert backend._instrumentor is None
+
+
+# ---------------------------------------------------------------------------
+# T017 — _patch_hooks_for_context_propagation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPatchHooksForContextPropagation:
+    """Tests for the ContextVar re-injection hook wrapper."""
+
+    @pytest.mark.asyncio
+    async def test_wrapper_sets_contextvar_from_instance(self) -> None:
+        """Hook wrapper re-injects ContextVar from client instance."""
+        from holodeck.lib.backends.claude_backend import (
+            _patch_hooks_for_context_propagation,
+        )
+
+        # Record what the original hook callback sees
+        seen_args: list[Any] = []
+
+        async def fake_hook(
+            input_data: Any,
+            tool_use_id: str | None = None,
+            context: Any = None,
+            **kwargs: Any,
+        ) -> dict[str, Any]:
+            seen_args.append(input_data)
+            return {}
+
+        # Build a mock client with HookMatcher-like objects
+        matcher = MagicMock()
+        matcher.hooks = [fake_hook]
+
+        mock_options = MagicMock()
+        mock_options.hooks = {"PreToolUse": [matcher]}
+
+        mock_client = MagicMock()
+        mock_client.options = mock_options
+
+        fake_invocation_ctx = MagicMock(name="InvocationContext")
+        mock_client._otel_invocation_ctx = fake_invocation_ctx
+
+        # Capture set_invocation_context calls
+        set_ctx_calls: list[Any] = []
+
+        with patch.dict(
+            sys.modules,
+            {
+                "opentelemetry.instrumentation.claude_agent_sdk._context": (
+                    MagicMock(
+                        set_invocation_context=lambda c: set_ctx_calls.append(c),
+                    )
+                ),
+            },
+        ):
+            _patch_hooks_for_context_propagation(mock_client)
+
+        # Hooks were replaced with wrappers
+        assert matcher.hooks != [fake_hook]
+        assert len(matcher.hooks) == 1
+
+        # Call the wrapped hook
+        await matcher.hooks[0]({"tool": "WebSearch"}, "toolu_01")
+
+        # Original hook was called with correct args
+        assert seen_args == [{"tool": "WebSearch"}]
+        # ContextVar was set from instance attribute
+        assert set_ctx_calls == [fake_invocation_ctx]
+
+    def test_noop_when_instrumentor_not_installed(self) -> None:
+        """No-op when otel-instrumentation-claude-agent-sdk is missing."""
+        from holodeck.lib.backends.claude_backend import (
+            _patch_hooks_for_context_propagation,
+        )
+
+        mock_client = MagicMock()
+        mock_client.options = MagicMock()
+        mock_client.options.hooks = {"PreToolUse": [MagicMock()]}
+
+        # Remove the module so ImportError fires
+        with patch.dict(
+            sys.modules,
+            {"opentelemetry.instrumentation.claude_agent_sdk._context": None},
+        ):
+            _patch_hooks_for_context_propagation(mock_client)
+
+    def test_noop_when_no_hooks(self) -> None:
+        """No-op when client has no hooks on options."""
+        from holodeck.lib.backends.claude_backend import (
+            _patch_hooks_for_context_propagation,
+        )
+
+        mock_client = MagicMock()
+        mock_client.options = MagicMock()
+        mock_client.options.hooks = None
+
+        _patch_hooks_for_context_propagation(mock_client)
+
+
+# ---------------------------------------------------------------------------
+# T018 — _wrap_prompt() async generator
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestWrapPrompt:
+    """Tests for _wrap_prompt() — wraps string as async iterable."""
+
+    @pytest.mark.asyncio
+    async def test_yields_user_message_dict(self) -> None:
+        """_wrap_prompt yields a single user-message dict."""
+        items = [item async for item in _wrap_prompt("Hello")]
+        assert len(items) == 1
+        assert items[0]["type"] == "user"
+        assert items[0]["message"]["role"] == "user"
+        assert items[0]["message"]["content"] == "Hello"
+        assert items[0]["session_id"] == ""
+        assert items[0]["parent_tool_use_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# T019 — _extract_result_text() branches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestExtractResultText:
+    """Tests for _extract_result_text() — multiple content block types."""
+
+    def test_text_block_extraction(self) -> None:
+        """TextBlock instances produce text."""
+        block = _make_text_block("hello")
+        assert _extract_result_text([block]) == "hello"
+
+    def test_dict_with_text_key(self) -> None:
+        """Dict blocks with 'text' key produce text."""
+        assert _extract_result_text([{"text": "from dict"}]) == "from dict"
+
+    def test_plain_string(self) -> None:
+        """Plain string blocks produce text."""
+        assert _extract_result_text(["plain"]) == "plain"
+
+    def test_mixed_content_blocks(self) -> None:
+        """Mixed block types are concatenated."""
+        blocks = [_make_text_block("A"), {"text": "B"}, "C"]
+        assert _extract_result_text(blocks) == "ABC"
+
+    def test_unknown_block_type_ignored(self) -> None:
+        """Unknown block types are silently skipped."""
+        unknown = MagicMock()
+        unknown.__class__.__name__ = "ImageBlock"
+        assert _extract_result_text([unknown]) == ""
+
+    def test_empty_content(self) -> None:
+        """Empty content list returns empty string."""
+        assert _extract_result_text([]) == ""
+
+
+# ---------------------------------------------------------------------------
+# T020 — _build_output_format() file path branch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuildOutputFormat:
+    """Tests for _build_output_format() — dict, file path, None."""
+
+    def test_none_returns_none(self) -> None:
+        """None input → None output."""
+        assert _build_output_format(None) is None
+
+    def test_dict_returns_json_schema_format(self) -> None:
+        """Dict input → wrapped in json_schema format."""
+        schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+        result = _build_output_format(schema)
+        assert result == {"type": "json_schema", "schema": schema}
+
+    def test_file_path_loads_schema(self, tmp_path) -> None:
+        """Valid file path → loads and wraps schema."""
+        schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+        schema_file = tmp_path / "schema.json"
+        schema_file.write_text(json.dumps(schema))
+
+        result = _build_output_format(str(schema_file))
+        assert result == {"type": "json_schema", "schema": schema}
+
+    def test_missing_file_path_returns_none(self) -> None:
+        """Non-existent file path → None."""
+        result = _build_output_format("/nonexistent/schema.json")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# T021 — _enrich_tool_results()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestEnrichToolResults:
+    """Tests for _enrich_tool_results() — name injection."""
+
+    def test_enriches_results_with_names(self) -> None:
+        """Adds name from tool_calls to matching tool_results."""
+        tool_calls = [{"call_id": "t1", "name": "search"}]
+        tool_results = [{"call_id": "t1", "result": "data"}]
+        _enrich_tool_results(tool_calls, tool_results)
+        assert tool_results[0]["name"] == "search"
+
+    def test_skips_already_named_results(self) -> None:
+        """Doesn't overwrite existing name."""
+        tool_calls = [{"call_id": "t1", "name": "search"}]
+        tool_results = [{"call_id": "t1", "result": "data", "name": "original"}]
+        _enrich_tool_results(tool_calls, tool_results)
+        assert tool_results[0]["name"] == "original"
+
+    def test_no_match_leaves_result_unchanged(self) -> None:
+        """Unmatched call_id leaves result without name."""
+        tool_calls = [{"call_id": "t1", "name": "search"}]
+        tool_results = [{"call_id": "t2", "result": "data"}]
+        _enrich_tool_results(tool_calls, tool_results)
+        assert "name" not in tool_results[0]
+
+
+# ---------------------------------------------------------------------------
+# T022 — _process_message() skips non-Assistant/UserMessage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestProcessMessage:
+    """Tests for _process_message() — unknown message types."""
+
+    def test_unknown_message_type_skipped(self) -> None:
+        """Non-AssistantMessage/UserMessage types are no-ops."""
+        msg = MagicMock()
+        msg.__class__.__name__ = "SystemMessage"
+        text, calls, results = _process_message(msg, [], [], [])
+        assert text == []
+        assert calls == []
+        assert results == []
+
+    def test_user_message_with_tool_result(self) -> None:
+        """UserMessage containing ToolResultBlock extracts results."""
+        tool_result_block = _make_tool_result_block("toolu_01", "answer", False)
+        msg = MagicMock()
+        msg.__class__.__name__ = "UserMessage"
+        msg.content = [tool_result_block]
+
+        text: list[str] = []
+        calls: list[dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
+        _process_message(msg, text, calls, results)
+
+        assert len(results) == 1
+        assert results[0]["call_id"] == "toolu_01"
+        assert results[0]["result"] == "answer"
+
+
+# ---------------------------------------------------------------------------
+# T023 — build_options() allowed_tools from claude.allowed_tools
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuildOptionsAllowedTools:
+    """Tests for build_options() — claude.allowed_tools merging."""
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_allowed_tools_merged(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """claude.allowed_tools extends allowed_tools list."""
+        claude = ClaudeConfig(allowed_tools=["Bash", "Read", "Write"])
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=["mcp__holodeck__search"],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "Bash" in kwargs["allowed_tools"]
+        assert "Read" in kwargs["allowed_tools"]
+        assert "Write" in kwargs["allowed_tools"]
+        assert "mcp__holodeck__search" in kwargs["allowed_tools"]
+
+
+# ---------------------------------------------------------------------------
+# T024 — _patch_hooks no-hooks early return (line 358)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestPatchHooksNoOptions:
+    """Test _patch_hooks_for_context_propagation early returns."""
+
+    def test_noop_when_options_is_none(self) -> None:
+        """No-op when client.options is None."""
+        from holodeck.lib.backends.claude_backend import (
+            _patch_hooks_for_context_propagation,
+        )
+
+        mock_client = MagicMock()
+        mock_client.options = None
+
+        with patch.dict(
+            sys.modules,
+            {
+                "opentelemetry.instrumentation.claude_agent_sdk._context": MagicMock(
+                    set_invocation_context=MagicMock(),
+                ),
+            },
+        ):
+            _patch_hooks_for_context_propagation(mock_client)
+
+    def test_noop_when_hooks_empty_dict(self) -> None:
+        """No-op when hooks is an empty dict."""
+        from holodeck.lib.backends.claude_backend import (
+            _patch_hooks_for_context_propagation,
+        )
+
+        mock_client = MagicMock()
+        mock_client.options.hooks = {}
+
+        with patch.dict(
+            sys.modules,
+            {
+                "opentelemetry.instrumentation.claude_agent_sdk._context": MagicMock(
+                    set_invocation_context=MagicMock(),
+                ),
+            },
+        ):
+            _patch_hooks_for_context_propagation(mock_client)
+
+    def test_noop_when_matchers_is_none(self) -> None:
+        """No-op when hooks value is None."""
+        from holodeck.lib.backends.claude_backend import (
+            _patch_hooks_for_context_propagation,
+        )
+
+        mock_client = MagicMock()
+        mock_client.options.hooks = {"PreToolUse": None}
+
+        with patch.dict(
+            sys.modules,
+            {
+                "opentelemetry.instrumentation.claude_agent_sdk._context": MagicMock(
+                    set_invocation_context=MagicMock(),
+                ),
+            },
+        ):
+            _patch_hooks_for_context_propagation(mock_client)
+
+
+# ---------------------------------------------------------------------------
+# T025 — ClaudeSession._ensure_client() lazy creation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestClaudeSessionEnsureClient:
+    """Tests for ClaudeSession._ensure_client() — lazy client creation."""
+
+    @pytest.mark.asyncio
+    async def test_ensure_client_creates_and_connects(self) -> None:
+        """First call creates client and connects."""
+        mock_client_instance = AsyncMock()
+        mock_sdk_module = MagicMock()
+        mock_sdk_module.ClaudeSDKClient.return_value = mock_client_instance
+
+        session = ClaudeSession(options=MagicMock())
+
+        with (
+            patch(f"{_SDK_MODULE}.claude_agent_sdk", mock_sdk_module),
+            patch(f"{_SDK_MODULE}._patch_hooks_for_context_propagation") as mock_patch,
+        ):
+            client = await session._ensure_client()
+
+        assert client is mock_client_instance
+        mock_client_instance.connect.assert_awaited_once()
+        mock_patch.assert_called_once_with(mock_client_instance)
+
+    @pytest.mark.asyncio
+    async def test_ensure_client_reuses_existing(self) -> None:
+        """Second call reuses existing client without reconnecting."""
+        existing_client = AsyncMock()
+        session = ClaudeSession(options=MagicMock())
+        session._client = existing_client
+
+        client = await session._ensure_client()
+
+        assert client is existing_client
+        existing_client.connect.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# T026 — Session send/send_streaming error handling
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestClaudeSessionErrorHandling:
+    """Tests for ClaudeSession error paths."""
+
+    @pytest.mark.asyncio
+    async def test_send_raises_on_process_error(self) -> None:
+        """send() wraps ProcessError in BackendSessionError."""
+        from claude_agent_sdk import ProcessError
+
+        mock_client = MagicMock()
+        mock_client.query = AsyncMock(side_effect=ProcessError("boom"))
+
+        session = ClaudeSession(options=MagicMock())
+        session._client = mock_client
+
+        with pytest.raises(BackendSessionError, match="subprocess terminated"):
+            await session.send("Hi")
+
+    @pytest.mark.asyncio
+    async def test_send_streaming_raises_on_cli_connection_error(self) -> None:
+        """send_streaming() wraps CLIConnectionError in BackendSessionError."""
+        from claude_agent_sdk._errors import CLIConnectionError
+
+        mock_client = MagicMock()
+        mock_client.query = AsyncMock(side_effect=CLIConnectionError("disconnected"))
+
+        session = ClaudeSession(options=MagicMock())
+        session._client = mock_client
+
+        with pytest.raises(BackendSessionError, match="subprocess terminated"):
+            chunks = []
+            async for chunk in session.send_streaming("Hi"):
+                chunks.append(chunk)
+
+
+# ---------------------------------------------------------------------------
+# T027 — initialize() wraps non-BackendInitError
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestClaudeBackendInitializeErrors:
+    """Tests for initialize() error wrapping."""
+
+    @pytest.mark.asyncio
+    @patch(f"{_SDK_MODULE}.validate_nodejs")
+    async def test_non_backend_init_error_wrapped(self, mock_nodejs: MagicMock) -> None:
+        """Non-BackendInitError exceptions are wrapped in BackendInitError."""
+        from holodeck.lib.backends.base import BackendInitError
+
+        mock_nodejs.side_effect = RuntimeError("node not found")
+
+        backend = ClaudeBackend(_make_agent())
+
+        with pytest.raises(BackendInitError, match="node not found"):
+            await backend.initialize()
+
+    @pytest.mark.asyncio
+    @patch(f"{_SDK_MODULE}.validate_nodejs")
+    async def test_backend_init_error_not_double_wrapped(
+        self, mock_nodejs: MagicMock
+    ) -> None:
+        """BackendInitError is re-raised without wrapping."""
+        from holodeck.lib.backends.base import BackendInitError
+
+        mock_nodejs.side_effect = BackendInitError("already an init error")
+
+        backend = ClaudeBackend(_make_agent())
+
+        with pytest.raises(BackendInitError, match="already an init error"):
+            await backend.initialize()
+
+
+# ---------------------------------------------------------------------------
+# T028 — invoke_once() BaseExceptionGroup handling
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestClaudeBackendExceptionGroup:
+    """Tests for invoke_once() BaseExceptionGroup retry."""
+
+    @pytest.mark.asyncio
+    @patch(f"{_SDK_MODULE}.asyncio")
+    @patch(f"{_CAS_MODULE}.query")
+    async def test_exception_group_triggers_retry(
+        self, mock_query: MagicMock, mock_asyncio: MagicMock
+    ) -> None:
+        """BaseExceptionGroup triggers retry logic."""
+        exc_group = BaseExceptionGroup(
+            "subprocess errors",
+            [RuntimeError("process died")],
+        )
+
+        assistant = _make_assistant_message()
+        result_msg = _make_result_message()
+
+        mock_query.side_effect = [
+            exc_group,
+            _async_iter([assistant, result_msg]),
+        ]
+        mock_asyncio.sleep = AsyncMock()
+
+        backend = ClaudeBackend(_make_agent())
+        backend._initialized = True
+        backend._options = MagicMock()
+
+        result = await backend.invoke_once("Hello")
+
+        assert result.response == "Hello world"
+        mock_asyncio.sleep.assert_awaited_once_with(1)
+
+    @pytest.mark.asyncio
+    @patch(f"{_SDK_MODULE}.asyncio")
+    @patch(f"{_CAS_MODULE}.query")
+    async def test_exception_group_all_retries_raises(
+        self, mock_query: MagicMock, mock_asyncio: MagicMock
+    ) -> None:
+        """BaseExceptionGroup on all retries → BackendSessionError."""
+        exc_group = BaseExceptionGroup(
+            "subprocess errors",
+            [RuntimeError("process died")],
+        )
+
+        mock_query.side_effect = [exc_group, exc_group, exc_group]
+        mock_asyncio.sleep = AsyncMock()
+
+        backend = ClaudeBackend(_make_agent())
+        backend._initialized = True
+        backend._options = MagicMock()
+
+        with pytest.raises(BackendSessionError, match="3 retries"):
+            await backend.invoke_once("Hello")
+
+
+# ---------------------------------------------------------------------------
+# T029 — _validate_structured_output() no-schema pass-through
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestValidateStructuredOutputNoSchema:
+    """Tests for _validate_structured_output() without a schema."""
+
+    def test_no_response_format_passes_through(self) -> None:
+        """When response_format is None, output passes through."""
+        backend = ClaudeBackend(_make_agent(response_format=None))
+        backend._initialized = True
+
+        result = backend._validate_structured_output({"key": "val"}, "fallback text")
+
+        assert result is not None
+        assert result["structured_output"] == {"key": "val"}
+        assert result["response"] == json.dumps({"key": "val"})
+        assert "is_error" not in result
+
+    def test_string_response_format_passes_through(self) -> None:
+        """When response_format is a string path, output passes through."""
+        backend = ClaudeBackend(_make_agent(response_format="/path/to/schema.json"))
+        backend._initialized = True
+
+        result = backend._validate_structured_output({"x": 1}, "text")
+
+        assert result is not None
+        assert result["structured_output"] == {"x": 1}
+
+
+# ---------------------------------------------------------------------------
+# T030 — create_session() raises when options is None
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCreateSessionError:
+    """Tests for create_session() when options not set."""
+
+    @pytest.mark.asyncio
+    async def test_raises_when_options_none_after_init(self) -> None:
+        """BackendInitError when _options is None after initialization."""
+        from holodeck.lib.backends.base import BackendInitError
+
+        backend = ClaudeBackend(_make_agent())
+        backend._initialized = True
+        backend._options = None
+
+        with pytest.raises(BackendInitError, match="options not set"):
+            await backend.create_session()
+
+
+# ---------------------------------------------------------------------------
+# T031 — _initialize_tools()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestInitializeTools:
+    """Tests for ClaudeBackend._initialize_tools()."""
+
+    @pytest.mark.asyncio
+    async def test_no_tools_is_noop(self) -> None:
+        """No tools configured → early return."""
+        agent = _make_agent(tools=None)
+        backend = ClaudeBackend(agent=agent)
+        await backend._initialize_tools()
+        assert backend._tool_instances == {}
+
+    @pytest.mark.asyncio
+    async def test_no_vs_or_hd_tools_is_noop(self) -> None:
+        """Only non-vectorstore/non-hierarchical-doc tools → skip init."""
+        # Use a mock tool that isinstance checks won't match VS or HD
+        mock_tool = MagicMock()
+        mock_tool.__class__ = type("SomeOtherTool", (), {})
+
+        agent = _make_agent()
+        backend = ClaudeBackend(agent=agent)
+        # Bypass Pydantic by setting tools directly
+        backend._agent = MagicMock()
+        backend._agent.tools = [mock_tool]
+
+        await backend._initialize_tools()
+        assert backend._owned_tools == []
+
+    @pytest.mark.asyncio
+    async def test_vectorstore_tool_triggers_init(self) -> None:
+        """VectorstoreTool in tools list triggers initialize_tools()."""
+        from holodeck.models.tool import VectorstoreTool
+
+        vs_tool = MagicMock(spec=VectorstoreTool)
+
+        agent = _make_agent()
+        backend = ClaudeBackend(agent=agent)
+        backend._agent = MagicMock()
+        backend._agent.tools = [vs_tool]
+
+        mock_instances = {"kb": MagicMock()}
+        with (
+            patch(
+                "holodeck.lib.tool_initializer.initialize_tools",
+                new_callable=AsyncMock,
+                return_value=mock_instances,
+            ),
+            patch("holodeck.config.context.agent_base_dir") as mock_ctx,
+        ):
+            mock_ctx.get.return_value = "/base"
+            await backend._initialize_tools()
+
+        assert backend._tool_instances == mock_instances
+        assert len(backend._owned_tools) == 1
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_doc_tool_triggers_init(self) -> None:
+        """HierarchicalDocumentToolConfig triggers initialize_tools()."""
+        from holodeck.models.tool import HierarchicalDocumentToolConfig
+
+        hd_tool = MagicMock(spec=HierarchicalDocumentToolConfig)
+
+        agent = _make_agent()
+        backend = ClaudeBackend(agent=agent)
+        backend._agent = MagicMock()
+        backend._agent.tools = [hd_tool]
+
+        mock_instances = {"hd": MagicMock()}
+        with (
+            patch(
+                "holodeck.lib.tool_initializer.initialize_tools",
+                new_callable=AsyncMock,
+                return_value=mock_instances,
+            ),
+            patch("holodeck.config.context.agent_base_dir") as mock_ctx,
+        ):
+            mock_ctx.get.return_value = "/base"
+            await backend._initialize_tools()
+
+        assert backend._tool_instances == mock_instances
+
+    @pytest.mark.asyncio
+    async def test_tool_init_generic_error_wrapped(self) -> None:
+        """Generic exception in initialize_tools → BackendInitError."""
+        from holodeck.lib.backends.base import BackendInitError
+        from holodeck.models.tool import VectorstoreTool
+
+        vs_tool = MagicMock(spec=VectorstoreTool)
+
+        agent = _make_agent()
+        backend = ClaudeBackend(agent=agent)
+        backend._agent = MagicMock()
+        backend._agent.tools = [vs_tool]
+
+        with (
+            patch(
+                "holodeck.lib.tool_initializer.initialize_tools",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("embedding failed"),
+            ),
+            patch("holodeck.config.context.agent_base_dir") as mock_ctx,
+            pytest.raises(BackendInitError, match="Failed to initialize tools"),
+        ):
+            mock_ctx.get.return_value = "/base"
+            await backend._initialize_tools()
+
+    @pytest.mark.asyncio
+    async def test_tool_initializer_error_reraised(self) -> None:
+        """ToolInitializerError is re-raised directly."""
+        from holodeck.lib.tool_initializer import ToolInitializerError
+        from holodeck.models.tool import VectorstoreTool
+
+        vs_tool = MagicMock(spec=VectorstoreTool)
+
+        agent = _make_agent()
+        backend = ClaudeBackend(agent=agent)
+        backend._agent = MagicMock()
+        backend._agent.tools = [vs_tool]
+
+        with (
+            patch("holodeck.config.context.agent_base_dir") as mock_ctx,
+            patch(
+                "holodeck.lib.tool_initializer.initialize_tools",
+                new_callable=AsyncMock,
+                side_effect=ToolInitializerError("bad tool config"),
+            ),
+            pytest.raises(ToolInitializerError, match="bad tool config"),
+        ):
+            mock_ctx.get.return_value = "/base"
+            await backend._initialize_tools()
+
+
+# ---------------------------------------------------------------------------
+# T032 — _activate_instrumentation() error branches
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestActivateInstrumentationErrors:
+    """Tests for _activate_instrumentation() failure modes."""
+
+    def test_import_error_logs_warning(self) -> None:
+        """ImportError → logs warning, no crash."""
+        agent = _make_agent(
+            observability=ObservabilityConfig(
+                enabled=True,
+                traces=TracingConfig(enabled=True),
+            ),
+        )
+        backend = ClaudeBackend(agent=agent)
+
+        # Remove the module so ImportError fires
+        with patch.dict(
+            sys.modules,
+            {"opentelemetry.instrumentation.claude_agent_sdk": None},
+        ):
+            backend._activate_instrumentation()
+
+        assert backend._instrumentor is None
+
+    def test_observability_context_none_logs_warning(self) -> None:
+        """get_observability_context() returning None → logs warning."""
+        agent = _make_agent(
+            observability=ObservabilityConfig(
+                enabled=True,
+                traces=TracingConfig(enabled=True),
+            ),
+        )
+        backend = ClaudeBackend(agent=agent)
+
+        mock_module, mock_cls, _instance = _mock_instrumentor_module()
+
+        with (
+            patch(f"{_SDK_MODULE}.get_observability_context", return_value=None),
+            patch.dict(
+                sys.modules,
+                {"opentelemetry.instrumentation.claude_agent_sdk": mock_module},
+            ),
+        ):
+            backend._activate_instrumentation()
+
+        mock_cls.assert_not_called()
+        assert backend._instrumentor is None
+
+    def test_instrument_exception_logs_warning(self) -> None:
+        """instrument() raising → logs warning, no crash."""
+        agent = _make_agent(
+            observability=ObservabilityConfig(
+                enabled=True,
+                traces=TracingConfig(enabled=True),
+            ),
+        )
+        backend = ClaudeBackend(agent=agent)
+
+        mock_module, mock_cls, mock_instance = _mock_instrumentor_module()
+        mock_instance.instrument.side_effect = RuntimeError("otel failed")
+
+        mock_ctx = MagicMock()
+        mock_ctx.tracer_provider = MagicMock()
+        mock_ctx.meter_provider = MagicMock()
+
+        with (
+            patch(f"{_SDK_MODULE}.get_observability_context", return_value=mock_ctx),
+            patch.dict(
+                sys.modules,
+                {"opentelemetry.instrumentation.claude_agent_sdk": mock_module},
+            ),
+        ):
+            backend._activate_instrumentation()
+
+        # Should not have stored the failed instrumentor
+        assert backend._instrumentor is None
+
+
+# ---------------------------------------------------------------------------
+# T033 — teardown() owned tool cleanup
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestClaudeBackendTeardownToolCleanup:
+    """Tests for teardown() cleaning up owned tools."""
+
+    @pytest.mark.asyncio
+    async def test_teardown_calls_cleanup_on_owned_tools(self) -> None:
+        """teardown() calls cleanup() on each owned tool."""
+        tool1 = AsyncMock()
+        tool1.cleanup = AsyncMock()
+        tool2 = AsyncMock()
+        tool2.cleanup = AsyncMock()
+
+        backend = ClaudeBackend(_make_agent())
+        backend._initialized = True
+        backend._options = MagicMock()
+        backend._owned_tools = [tool1, tool2]
+        backend._tool_instances = {"t1": tool1, "t2": tool2}
+
+        await backend.teardown()
+
+        tool1.cleanup.assert_awaited_once()
+        tool2.cleanup.assert_awaited_once()
+        assert backend._owned_tools == []
+        assert backend._tool_instances == {}
+
+    @pytest.mark.asyncio
+    async def test_teardown_tool_cleanup_error_logged_not_raised(self) -> None:
+        """Tool cleanup error is logged but doesn't crash teardown."""
+        tool = MagicMock()
+        tool.cleanup = AsyncMock(side_effect=RuntimeError("cleanup failed"))
+
+        backend = ClaudeBackend(_make_agent())
+        backend._initialized = True
+        backend._options = MagicMock()
+        backend._owned_tools = [tool]
+
+        # Should not raise
+        await backend.teardown()
+
+        assert backend._owned_tools == []
+        assert backend._initialized is False
+
+    @pytest.mark.asyncio
+    async def test_teardown_tool_without_cleanup_attr(self) -> None:
+        """Tools without cleanup attribute are silently skipped."""
+        tool = MagicMock(spec=[])  # No attributes at all
+
+        backend = ClaudeBackend(_make_agent())
+        backend._initialized = True
+        backend._options = MagicMock()
+        backend._owned_tools = [tool]
+
+        # Should not raise
+        await backend.teardown()
+
+        assert backend._owned_tools == []

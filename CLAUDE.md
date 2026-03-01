@@ -904,6 +904,28 @@ When generating commit messages:
 
 8. **DON'T skip docstrings** - all public functions need them
 
+## Code Navigation: LSP vs Grep
+
+Use **LSP** (Language Server Protocol) and **Grep** as complementary tools, choosing based on the task:
+
+### Prefer LSP when:
+- **Finding symbol references** — `findReferences` returns only real usages, excluding comments, strings, and unrelated name collisions
+- **Understanding types** — `hover` gives resolved type info and docstrings without reading the file
+- **Navigating definitions** — `goToDefinition` follows imports through re-exports reliably
+- **Exploring structure** — `documentSymbol` gives the full class/method hierarchy in one call
+- **Tracing call graphs** — `incomingCalls`/`outgoingCalls` map caller/callee relationships, which grep cannot do
+- **Finding implementations** — `goToImplementation` locates concrete implementations of protocols/abstract methods
+
+### Prefer Grep when:
+- **Searching across file types** — YAML configs, markdown docs, `.env` files, and other non-Python files
+- **Fuzzy/partial matching** — regex patterns like `claude.*session` or partial identifiers
+- **Pattern discovery** — "find all logger.error calls", "where is this config key used"
+- **Code with syntax errors** — LSP may fail on unparseable files; grep always works
+- **Simple text searches** — TODOs, feature flags, string literals, comments
+
+### Rule of thumb
+Use LSP for **semantic** questions ("who calls this?", "what type is this?", "where is this defined?") and Grep for **textual** questions ("where does this string appear?", "which files mention this config key?").
+
 ## Key Design Constraints
 
 1. **No-Code First**: Users configure agents via YAML, not Python
@@ -930,3 +952,6 @@ When generating commit messages:
 - [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
 
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
+
+## Recent Changes
+- 022-otel-genai-semconv: Added Python 3.10+

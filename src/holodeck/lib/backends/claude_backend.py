@@ -13,8 +13,9 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Any, cast
 
+import claude_agent_sdk
 import jsonschema
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, ProcessError, query
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, ProcessError
 from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
 from claude_agent_sdk.types import McpSdkServerConfig
 from exceptiongroup import BaseExceptionGroup
@@ -39,6 +40,7 @@ from holodeck.lib.backends.validators import (
     validate_working_directory,
 )
 from holodeck.lib.instruction_resolver import resolve_instructions
+from holodeck.lib.observability import get_observability_context
 from holodeck.models.agent import Agent
 from holodeck.models.claude_config import PermissionMode
 from holodeck.models.token_usage import TokenUsage
@@ -286,6 +288,10 @@ def build_options(
     if claude and claude.allowed_tools:
         allowed_tools.extend(claude.allowed_tools)
 
+    # Built-in capabilities
+    if claude and claude.web_search:
+        allowed_tools.append("WebSearch")
+
     # Output format
     output_format = _build_output_format(agent.response_format)
 
@@ -319,6 +325,64 @@ def build_options(
 # ---------------------------------------------------------------------------
 
 
+def _patch_hooks_for_context_propagation(client: ClaudeSDKClient) -> None:
+    """Wrap hook callbacks so they re-inject the ContextVar from the instance.
+
+    Works around a ContextVar timing mismatch in the OTel instrumentor:
+    ``connect()`` spawns a ``_read_messages`` background task *before*
+    ``_wrap_client_query`` sets the ``InvocationContext`` in the ContextVar.
+    asyncio copies ContextVars at task-creation time, so the background task
+    sees ``None`` forever.
+
+    The instrumentor's ``_wrap_client_query`` *does* store the context on the
+    instance as ``_otel_invocation_ctx``.  This function wraps each hook
+    callback so that, just before it runs, it reads from the instance attribute
+    and re-sets the ContextVar — bridging the gap.
+
+    No-op when the instrumentor package is not installed.
+    """
+    try:
+        from opentelemetry.instrumentation.claude_agent_sdk._context import (
+            set_invocation_context,
+        )
+    except ImportError:
+        return  # Instrumentor not installed — nothing to patch
+
+    options = getattr(client, "options", None)
+    hooks = getattr(options, "hooks", None) if options else None
+    if not hooks:
+        return
+
+    for matchers in hooks.values():
+        if not matchers:
+            continue
+        for matcher in matchers:
+            original_hooks = matcher.hooks if hasattr(matcher, "hooks") else []
+            wrapped: list[Any] = []
+            for hook_fn in original_hooks:
+
+                async def _ctx_wrapper(
+                    input_data: Any,
+                    tool_use_id: str | None = None,
+                    context: Any = None,
+                    *,
+                    _orig: Any = hook_fn,
+                    _cli: ClaudeSDKClient = client,
+                    **kwargs: Any,
+                ) -> dict[str, Any]:
+                    ctx = getattr(_cli, "_otel_invocation_ctx", None)
+                    if ctx is not None:
+                        set_invocation_context(ctx)
+                    result: dict[str, Any] = await _orig(
+                        input_data, tool_use_id, context, **kwargs
+                    )
+                    return result
+
+                wrapped.append(_ctx_wrapper)
+            if hasattr(matcher, "hooks"):
+                matcher.hooks = wrapped
+
+
 class ClaudeSession:
     """Stateful multi-turn session backed by ``ClaudeSDKClient``.
 
@@ -342,9 +406,21 @@ class ClaudeSession:
         self._turn_count: int = 0
 
     async def _ensure_client(self) -> ClaudeSDKClient:
-        """Lazily create, connect, and return the SDK client."""
+        """Lazily create, connect, and return the SDK client.
+
+        Uses ``claude_agent_sdk.ClaudeSDKClient`` (module-level attribute
+        access) instead of the locally-imported name so that wrapt
+        monkey-patches applied by the OTel instrumentor are resolved at
+        call time.
+
+        After ``__init__`` (which triggers the instrumentor's hook injection)
+        but before ``connect()`` (which spawns the ``_read_messages`` task),
+        we patch hook callbacks to re-inject the ContextVar from the instance.
+        See ``_patch_hooks_for_context_propagation`` for details.
+        """
         if self._client is None:
-            self._client = ClaudeSDKClient(options=self._base_options)
+            self._client = claude_agent_sdk.ClaudeSDKClient(options=self._base_options)
+            _patch_hooks_for_context_propagation(self._client)
             await self._client.connect()
         return self._client
 
@@ -486,6 +562,7 @@ class ClaudeBackend:
         self._initialized = False
         self._options: ClaudeAgentOptions | None = None
         self._owned_tools: list[Any] = []  # Tools created during initialize()
+        self._instrumentor: Any = None
 
     async def _ensure_initialized(self) -> None:
         """Lazy-init guard — call ``initialize()`` if not yet done."""
@@ -556,6 +633,9 @@ class ClaudeBackend:
 
             # 10. Response format validation
             validate_response_format(agent.response_format)
+
+            # 11. GenAI instrumentation (optional, non-blocking)
+            self._activate_instrumentation()
 
             self._initialized = True
 
@@ -628,7 +708,9 @@ class ClaudeBackend:
         structured_output: Any = None
 
         prompt_iter = _wrap_prompt(message)
-        async for msg in query(prompt=prompt_iter, options=self._options):
+        async for msg in claude_agent_sdk.query(
+            prompt=prompt_iter, options=self._options
+        ):
             text_parts, tool_calls, tool_results = _process_message(
                 msg, text_parts, tool_calls, tool_results
             )
@@ -772,6 +854,68 @@ class ClaudeBackend:
             raise
         except Exception as exc:
             raise BackendInitError(f"Failed to initialize tools: {exc}") from exc
+
+    def _activate_instrumentation(self) -> None:
+        """Activate GenAI semantic convention instrumentation if configured.
+
+        Lazily imports ``ClaudeAgentSdkInstrumentor`` from the optional
+        ``otel-instrumentation-claude-agent-sdk`` package. When observability
+        is enabled with traces, instruments the Claude Agent SDK so that
+        ``query()`` calls automatically emit GenAI-convention spans.
+
+        This method is synchronous (``instrument()`` does monkey-patching,
+        no I/O) and non-blocking — failures are logged as warnings without
+        crashing initialization.
+        """
+        obs = self._agent.observability
+        if obs is None or not obs.enabled or not obs.traces.enabled:
+            return
+
+        try:
+            from opentelemetry.instrumentation.claude_agent_sdk import (
+                ClaudeAgentSdkInstrumentor,
+            )
+        except ImportError:
+            logger.warning(
+                "otel-instrumentation-claude-agent-sdk not installed; "
+                "GenAI instrumentation disabled. "
+                "Install with: uv add holodeck[claude-otel]"
+            )
+            return
+
+        try:
+            ctx = get_observability_context()
+            if ctx is None:
+                logger.warning(
+                    "Observability context not initialized; "
+                    "GenAI instrumentation disabled"
+                )
+                return
+
+            meter_provider = ctx.meter_provider if obs.metrics.enabled else None
+
+            instrumentor = ClaudeAgentSdkInstrumentor()
+            already = instrumentor.is_instrumented_by_opentelemetry
+            logger.debug(
+                "GenAI instrumentor: already_instrumented=%s, "
+                "tracer_provider=%s, agent=%s",
+                already,
+                type(ctx.tracer_provider).__name__,
+                self._agent.name,
+            )
+            instrumentor.instrument(
+                tracer_provider=ctx.tracer_provider,
+                meter_provider=meter_provider,
+                agent_name=self._agent.name,
+                capture_content=obs.traces.capture_content,
+            )
+            self._instrumentor = instrumentor
+            logger.info(
+                "GenAI instrumentation activated for agent '%s'",
+                self._agent.name,
+            )
+        except Exception as exc:
+            logger.warning("Failed to activate GenAI instrumentation: %s", exc)
 
     async def teardown(self) -> None:
         """Reset backend state, releasing any built options."""

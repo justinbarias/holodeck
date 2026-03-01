@@ -47,7 +47,7 @@ dependencies = [
     "aiohttp>=3.13.3",
     "authlib>=1.6.6",
     "azure-core>=1.38.0",
-    "claude-agent-sdk==0.1.37",
+    "claude-agent-sdk==0.1.44",
 ]
 
 [project.scripts]
@@ -110,6 +110,9 @@ otel-all = [
     "prometheus-client>=0.17.0,<1.0.0",
     "azure-monitor-opentelemetry-exporter>=1.0.0b24,<2.0.0",
 ]
+
+# Claude GenAI instrumentation (OTel semantic conventions)
+claude-otel = ["otel-instrumentation-claude-agent-sdk>=0.0.3,<0.1.0"]
 
 # Deployment engine
 deploy = ["docker>=7.0.0"]

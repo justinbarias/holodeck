@@ -41,6 +41,7 @@ from holodeck.lib.observability.instrumentation import (
 from holodeck.lib.observability.providers import (
     ObservabilityContext,
     get_meter,
+    get_observability_context,
     get_tracer,
     initialize_observability,
     shutdown_observability,
@@ -52,6 +53,7 @@ __all__ = [
     "shutdown_observability",
     "get_tracer",
     "get_meter",
+    "get_observability_context",
     # Instrumentation
     "enable_semantic_kernel_telemetry",
     # Context
