@@ -215,6 +215,7 @@ def set_up_tracing(
             exporter,
             max_queue_size=config.traces.max_queue_size,
             max_export_batch_size=config.traces.max_export_batch_size,
+            schedule_delay_millis=config.traces.schedule_delay_millis,
         )
         tracer_provider.add_span_processor(processor)
 
