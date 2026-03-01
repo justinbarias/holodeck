@@ -392,6 +392,20 @@ def get_meter(name: str) -> Meter:
     return metrics.get_meter(name)
 
 
+def get_observability_context() -> ObservabilityContext | None:
+    """Return the current ObservabilityContext, or None if not initialized.
+
+    Thread-safety note: This accessor reads module-level state that is set
+    by ``initialize_observability()`` in the CLI layer's main thread, before
+    ``asyncio.run()`` is called. All async tasks (including
+    ``ClaudeBackend.initialize()``) run in the same thread, so no
+    synchronization is needed. If future code introduces background task
+    spawning that accesses this state, thread synchronization will be
+    required.
+    """
+    return _observability_context
+
+
 __all__ = [
     "ObservabilityContext",
     "create_resource",
@@ -402,4 +416,5 @@ __all__ = [
     "shutdown_observability",
     "get_tracer",
     "get_meter",
+    "get_observability_context",
 ]

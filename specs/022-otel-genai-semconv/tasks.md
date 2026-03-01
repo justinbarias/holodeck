@@ -22,10 +22,10 @@
 
 **Purpose**: Add optional dependency and create the observability accessor needed by all user stories.
 
-- [ ] T001 Add `otel-instrumentation-claude-agent-sdk>=0.0.3,<0.1.0` to `[claude-otel]` optional extras group in `pyproject.toml` and run `uv lock` to regenerate the lock file
-- [ ] T002 Add `get_observability_context() -> ObservabilityContext | None` accessor function to `src/holodeck/lib/observability/providers.py` that returns the module-level `_observability_context` variable (with thread-safety docstring per data-model.md). Also add `"get_observability_context"` to `providers.py`'s own `__all__` list (L395)
-- [ ] T003 Export `get_observability_context` from `src/holodeck/lib/observability/__init__.py` by adding it to `__all__` and the import list
-- [ ] T004 Add `_instrumentor` instance attribute (initialized to `None`) in `ClaudeBackend.__init__()` in `src/holodeck/lib/backends/claude_backend.py`
+- [x] T001 Add `otel-instrumentation-claude-agent-sdk>=0.0.3,<0.1.0` to `[claude-otel]` optional extras group in `pyproject.toml` and run `uv lock` to regenerate the lock file
+- [x] T002 Add `get_observability_context() -> ObservabilityContext | None` accessor function to `src/holodeck/lib/observability/providers.py` that returns the module-level `_observability_context` variable (with thread-safety docstring per data-model.md). Also add `"get_observability_context"` to `providers.py`'s own `__all__` list (L395)
+- [x] T003 Export `get_observability_context` from `src/holodeck/lib/observability/__init__.py` by adding it to `__all__` and the import list
+- [x] T004 Add `_instrumentor` instance attribute (initialized to `None`) in `ClaudeBackend.__init__()` in `src/holodeck/lib/backends/claude_backend.py`
 
 ---
 
@@ -35,7 +35,7 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T005 Create integration test file `tests/integration/test_claude_instrumentation.py` with imports, fixtures, and placeholder test class (to be filled in US4). Directory `tests/integration/` already exists — no new subdirectories needed
+- [x] T005 Create integration test file `tests/integration/test_claude_instrumentation.py` with imports, fixtures, and placeholder test class (to be filled in US4). Directory `tests/integration/` already exists — no new subdirectories needed
 
 **Checkpoint**: Foundation ready — user story implementation can now begin.
 

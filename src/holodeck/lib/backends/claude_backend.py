@@ -486,6 +486,7 @@ class ClaudeBackend:
         self._initialized = False
         self._options: ClaudeAgentOptions | None = None
         self._owned_tools: list[Any] = []  # Tools created during initialize()
+        self._instrumentor: Any = None
 
     async def _ensure_initialized(self) -> None:
         """Lazy-init guard — call ``initialize()`` if not yet done."""

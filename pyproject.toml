@@ -111,6 +111,9 @@ otel-all = [
     "azure-monitor-opentelemetry-exporter>=1.0.0b24,<2.0.0",
 ]
 
+# Claude GenAI instrumentation (OTel semantic conventions)
+claude-otel = ["otel-instrumentation-claude-agent-sdk>=0.0.3,<0.1.0"]
+
 # Deployment engine
 deploy = ["docker>=7.0.0"]
 deploy-aws = ["boto3>=1.42.0"]
