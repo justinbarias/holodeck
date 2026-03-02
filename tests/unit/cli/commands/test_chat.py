@@ -18,6 +18,7 @@ from click.testing import CliRunner
 
 from holodeck.chat.progress import ChatProgressIndicator
 from holodeck.models.agent import Agent
+from holodeck.models.config import ExecutionConfig
 
 
 def _create_agent() -> Agent:
@@ -59,13 +60,15 @@ class TestCLIArgumentParsing:
             Path("agent.yaml").write_text("")
 
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -78,7 +81,8 @@ class TestCLIArgumentParsing:
                 runner.invoke(chat, [], input="exit\n")
 
                 # Should use agent.yaml as default
-                mock_loader.load_agent_yaml.assert_called_once_with("agent.yaml")
+                mock_load.assert_called_once()
+                assert mock_load.call_args.args[0] == "agent.yaml"
 
     def test_agent_config_error_when_default_not_found(self):
         """Error when agent.yaml doesn't exist and no argument provided."""
@@ -105,13 +109,15 @@ class TestCLIArgumentParsing:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run"),
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -136,13 +142,15 @@ class TestCLIArgumentParsing:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run"),
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -166,13 +174,15 @@ class TestCLIArgumentParsing:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run"),
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -196,13 +206,15 @@ class TestCLIArgumentParsing:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run"),
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -226,13 +238,15 @@ class TestCLIArgumentParsing:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run"),
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -259,13 +273,15 @@ class TestCLIArgumentParsing:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run"),
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -293,13 +309,15 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -326,13 +344,15 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -359,14 +379,16 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
                 agent = _create_agent()
-                mock_loader.load_agent_yaml.return_value = agent
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    agent,
+                    ExecutionConfig(verbose=True),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -400,13 +422,15 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -423,7 +447,7 @@ class TestCLIHappyPath:
             Path(tmp_path).unlink(missing_ok=True)
 
     def test_config_loader_called_with_path(self):
-        """ConfigLoader is invoked with the agent config path."""
+        """load_agent_with_config is invoked with the agent config path."""
         from holodeck.cli.commands.chat import chat
 
         runner = CliRunner()
@@ -433,13 +457,15 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -450,10 +476,9 @@ class TestCLIHappyPath:
 
                 runner.invoke(chat, [tmp_path], input="exit\n")
 
-                # Verify ConfigLoader was called
-                mock_loader_class.assert_called_once()
-                # Verify load_agent_yaml was called with the path
-                mock_loader.load_agent_yaml.assert_called_once_with(tmp_path)
+                # Verify load_agent_with_config was called with the path
+                mock_load.assert_called_once()
+                assert mock_load.call_args.args[0] == tmp_path
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
@@ -468,13 +493,15 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -505,13 +532,15 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -541,13 +570,15 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(verbose=True),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -576,13 +607,15 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -611,13 +644,15 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -646,13 +681,15 @@ class TestCLIHappyPath:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
