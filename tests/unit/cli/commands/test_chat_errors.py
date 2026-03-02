@@ -21,6 +21,7 @@ from holodeck.lib.errors import (
     ExecutionError,
 )
 from holodeck.models.agent import Agent
+from holodeck.models.config import ExecutionConfig
 
 
 def _create_agent() -> Agent:
@@ -62,14 +63,10 @@ class TestConfigurationErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager"),
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.side_effect = ConfigError(
-                    "agent", "File not found"
-                )
-                mock_loader_class.return_value = mock_loader
+                mock_load.side_effect = ConfigError("agent", "File not found")
 
                 result = runner.invoke(chat, [tmp_path])
 
@@ -89,14 +86,10 @@ class TestConfigurationErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager"),
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.side_effect = ConfigError(
-                    "agent", "Invalid YAML syntax"
-                )
-                mock_loader_class.return_value = mock_loader
+                mock_load.side_effect = ConfigError("agent", "Invalid YAML syntax")
 
                 result = runner.invoke(chat, [tmp_path])
 
@@ -115,14 +108,12 @@ class TestConfigurationErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager"),
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.side_effect = ConfigError(
+                mock_load.side_effect = ConfigError(
                     "agent", "Missing required field: model"
                 )
-                mock_loader_class.return_value = mock_loader
 
                 result = runner.invoke(chat, [tmp_path])
 
@@ -141,14 +132,12 @@ class TestConfigurationErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager"),
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.side_effect = ConfigError(
+                mock_load.side_effect = ConfigError(
                     "agent", "Failed to load agent configuration"
                 )
-                mock_loader_class.return_value = mock_loader
 
                 result = runner.invoke(chat, [tmp_path])
 
@@ -172,12 +161,14 @@ class TestAgentInitializationErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 # Raise agent init error when creating session manager
                 mock_session.side_effect = AgentInitializationError(
@@ -201,12 +192,14 @@ class TestAgentInitializationErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 # Raise agent init error for invalid tools
                 mock_session.side_effect = AgentInitializationError(
@@ -230,12 +223,14 @@ class TestAgentInitializationErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 # Raise agent init error for LLM connection
                 mock_session.side_effect = AgentInitializationError(
@@ -259,12 +254,14 @@ class TestAgentInitializationErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session.side_effect = AgentInitializationError(
                     "test_agent", "Failed to initialize agent"
@@ -292,13 +289,15 @@ class TestValidationErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -336,13 +335,15 @@ class TestValidationErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -381,13 +382,15 @@ class TestKeyboardInterrupt:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -421,13 +424,15 @@ class TestKeyboardInterrupt:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -462,13 +467,15 @@ class TestRuntimeErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -502,13 +509,15 @@ class TestRuntimeErrors:
 
         try:
             with (
-                patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class,
+                patch("holodeck.config.loader.load_agent_with_config") as mock_load,
                 patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
                 patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
             ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent()
-                mock_loader_class.return_value = mock_loader
+                mock_load.return_value = (
+                    _create_agent(),
+                    ExecutionConfig(),
+                    MagicMock(),
+                )
 
                 mock_session_instance = AsyncMock()
                 mock_session_instance.start = AsyncMock()
@@ -541,13 +550,9 @@ class TestRuntimeErrors:
             tmp_path = tmp.name
 
         try:
-            with patch("holodeck.cli.commands.chat.ConfigLoader") as mock_loader_class:
-                mock_loader = MagicMock()
+            with patch("holodeck.config.loader.load_agent_with_config") as mock_load:
                 # Raise unexpected exception
-                mock_loader.load_agent_yaml.side_effect = RuntimeError(
-                    "Unexpected error"
-                )
-                mock_loader_class.return_value = mock_loader
+                mock_load.side_effect = RuntimeError("Unexpected error")
 
                 result = runner.invoke(chat, [tmp_path])
 

@@ -9,12 +9,10 @@ from __future__ import annotations
 import asyncio
 import sys
 from contextlib import nullcontext
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import click
 
-from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.observability import (
@@ -115,12 +113,10 @@ def serve(
     obs_context: ObservabilityContext | None = None
 
     try:
-        # Load agent configuration FIRST to check observability setting
-        from holodeck.config.context import agent_base_dir
-        from holodeck.config.loader import ConfigLoader
+        # Load agent config and resolve execution config in one call
+        from holodeck.config.loader import load_agent_with_config
 
-        loader = ConfigLoader()
-        agent = loader.load_agent_yaml(agent_config)
+        agent, resolved_config, _loader = load_agent_with_config(agent_config)
 
         # Determine logging strategy: OTel replaces setup_logging when enabled
         if agent.observability and agent.observability.enabled:
@@ -148,32 +144,6 @@ def serve(
         )
         logger.debug(f"Loading agent configuration from {agent_config}")
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
-
-        # Set the base directory context for resolving relative paths in tools
-        agent_dir = str(Path(agent_config).parent.resolve())
-        agent_base_dir.set(agent_dir)
-        logger.debug(f"Set agent_base_dir context: {agent_base_dir.get()}")
-
-        # Resolve execution config with 6-level priority hierarchy
-        # CLI flags > agent.yaml > project config > user config > env vars > defaults
-        # Note: serve command doesn't have CLI flags for execution config yet
-        cli_config = ExecutionConfig()  # Empty - no CLI overrides
-
-        # Load project-level config (same directory as agent.yaml)
-        project_config = loader.load_project_config(agent_dir)
-        project_execution = project_config.execution if project_config else None
-
-        # Load user-level config (~/.holodeck/)
-        user_config = loader.load_global_config()
-        user_execution = user_config.execution if user_config else None
-
-        resolved_config = loader.resolve_execution_config(
-            cli_config=cli_config,
-            yaml_config=agent.execution,
-            project_config=project_execution,
-            user_config=user_execution,
-            defaults=DEFAULT_EXECUTION_CONFIG,
-        )
 
         logger.debug(
             f"Resolved execution config: llm_timeout={resolved_config.llm_timeout}, "

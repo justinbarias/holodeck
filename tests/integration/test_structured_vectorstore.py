@@ -35,6 +35,9 @@ OLLAMA_ENDPOINT = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
 OLLAMA_EMBEDDING_MODEL = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text:latest")
 OLLAMA_EMBEDDING_DIMENSIONS = int(os.getenv("OLLAMA_EMBEDDING_DIMENSIONS", "768"))
 
+# Check if we should skip LLM integration tests globally
+SKIP_LLM_TESTS = os.getenv("SKIP_LLM_INTEGRATION_TESTS", "false").lower() == "true"
+
 # Check if we should skip tests requiring Ollama
 SKIP_OLLAMA_TESTS = os.getenv("SKIP_OLLAMA_TESTS", "false").lower() == "true"
 
@@ -51,12 +54,15 @@ def _is_ollama_available() -> bool:
 
 
 # Determine Ollama availability at module load time
-OLLAMA_AVAILABLE = _is_ollama_available() if not SKIP_OLLAMA_TESTS else False
+OLLAMA_AVAILABLE = (
+    _is_ollama_available() if not (SKIP_LLM_TESTS or SKIP_OLLAMA_TESTS) else False
+)
 
 # Skip marker for tests requiring Ollama
 skip_if_no_ollama = pytest.mark.skipif(
-    SKIP_OLLAMA_TESTS or not OLLAMA_AVAILABLE,
-    reason="Ollama not available or tests disabled (set SKIP_OLLAMA_TESTS=false)",
+    SKIP_LLM_TESTS or SKIP_OLLAMA_TESTS or not OLLAMA_AVAILABLE,
+    reason="Ollama not available or LLM tests disabled "
+    "(set SKIP_LLM_INTEGRATION_TESTS=false and SKIP_OLLAMA_TESTS=false)",
 )
 
 # Path to test fixtures
