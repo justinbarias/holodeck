@@ -902,76 +902,57 @@ class TestPydanticConfigValidation:
         assert config.search_mode.value == "hybrid"  # default
         assert config.defer_loading is True  # default
 
-    def test_invalid_name_pattern_raises_validation_error(self, tmp_path: Path) -> None:
-        """Test that invalid name pattern raises ValidationError (T085)."""
+    @pytest.mark.parametrize(
+        ("overrides", "expected_match"),
+        [
+            pytest.param(
+                {"name": "invalid-name-with-dash"},
+                "name",
+                id="invalid_name_pattern",
+            ),
+            pytest.param(
+                {"name": "test_tool", "source": "   "},
+                "source",
+                id="empty_source",
+            ),
+            pytest.param(
+                {"top_k": 0},
+                "top_k",
+                id="invalid_top_k_zero",
+            ),
+            pytest.param(
+                {"min_score": 1.5},
+                "min_score",
+                id="min_score_out_of_range",
+            ),
+            pytest.param(
+                {"enable_reranking": True},
+                "reranker_model",
+                id="reranker_required_when_enabled",
+            ),
+        ],
+    )
+    def test_invalid_config_raises_validation_error(
+        self,
+        tmp_path: Path,
+        overrides: dict[str, object],
+        expected_match: str,
+    ) -> None:
+        """Test that invalid config fields raise ValidationError."""
         from pydantic import ValidationError
 
         doc_file = tmp_path / "test.md"
         doc_file.write_text("# Test")
 
-        with pytest.raises(ValidationError, match="name"):
-            HierarchicalDocumentToolConfig(
-                name="invalid-name-with-dash",  # Only alphanumeric and _ allowed
-                description="Test tool",
-                source=str(doc_file),
-            )
+        defaults = {
+            "name": "test_tool",
+            "description": "Test tool",
+            "source": str(doc_file),
+        }
+        defaults.update(overrides)
 
-    def test_empty_source_raises_validation_error(self, tmp_path: Path) -> None:
-        """Test that empty source raises ValidationError (T085)."""
-        from pydantic import ValidationError
-
-        with pytest.raises(ValidationError, match="source"):
-            HierarchicalDocumentToolConfig(
-                name="test_tool",
-                description="Test tool",
-                source="   ",  # Empty/whitespace only
-            )
-
-    def test_invalid_top_k_raises_validation_error(self, tmp_path: Path) -> None:
-        """Test that invalid top_k raises ValidationError."""
-        from pydantic import ValidationError
-
-        doc_file = tmp_path / "test.md"
-        doc_file.write_text("# Test")
-
-        with pytest.raises(ValidationError, match="top_k"):
-            HierarchicalDocumentToolConfig(
-                name="test_tool",
-                description="Test tool",
-                source=str(doc_file),
-                top_k=0,  # Must be >= 1
-            )
-
-    def test_invalid_min_score_raises_validation_error(self, tmp_path: Path) -> None:
-        """Test that min_score out of range raises ValidationError."""
-        from pydantic import ValidationError
-
-        doc_file = tmp_path / "test.md"
-        doc_file.write_text("# Test")
-
-        with pytest.raises(ValidationError, match="min_score"):
-            HierarchicalDocumentToolConfig(
-                name="test_tool",
-                description="Test tool",
-                source=str(doc_file),
-                min_score=1.5,  # Must be <= 1.0
-            )
-
-    def test_reranker_required_when_enabled(self, tmp_path: Path) -> None:
-        """Test that reranker_model is required when enable_reranking=True."""
-        from pydantic import ValidationError
-
-        doc_file = tmp_path / "test.md"
-        doc_file.write_text("# Test")
-
-        with pytest.raises(ValidationError, match="reranker_model"):
-            HierarchicalDocumentToolConfig(
-                name="test_tool",
-                description="Test tool",
-                source=str(doc_file),
-                enable_reranking=True,  # Requires reranker_model
-                # reranker_model is missing
-            )
+        with pytest.raises(ValidationError, match=expected_match):
+            HierarchicalDocumentToolConfig(**defaults)
 
 
 class TestWeightValidation:
@@ -979,7 +960,6 @@ class TestWeightValidation:
 
     def test_weights_sum_to_one_no_warning(self, tmp_path: Path) -> None:
         """Test that weights summing to 1.0 are accepted."""
-
         doc_file = tmp_path / "test.md"
         doc_file.write_text("# Test")
 
@@ -994,65 +974,59 @@ class TestWeightValidation:
         )
         assert config.semantic_weight == 0.5
 
-    def test_weights_not_sum_to_one_raises_validation_error(
-        self, tmp_path: Path
+    @pytest.mark.parametrize(
+        ("weights", "expected_match"),
+        [
+            pytest.param(
+                {"semantic_weight": 0.5, "keyword_weight": 0.5, "exact_weight": 0.5},
+                "must sum to 1.0",
+                id="weights_not_sum_to_one",
+            ),
+            pytest.param(
+                {"semantic_weight": 0.0, "keyword_weight": 0.0, "exact_weight": 1.0},
+                r"semantic_weight \+ keyword_weight",
+                id="require_semantic_or_keyword",
+            ),
+            pytest.param(
+                {
+                    "semantic_weight": float("nan"),
+                    "keyword_weight": 0.3,
+                    "exact_weight": 0.7,
+                },
+                "",  # Any ValidationError
+                id="non_finite_weight",
+            ),
+        ],
+    )
+    def test_invalid_hybrid_weights_raise_validation_error(
+        self,
+        tmp_path: Path,
+        weights: dict[str, float],
+        expected_match: str,
     ) -> None:
-        """Test that hybrid weights must sum to exactly 1.0."""
+        """Test that invalid hybrid weight combinations raise ValidationError."""
         from pydantic import ValidationError
 
         doc_file = tmp_path / "test.md"
         doc_file.write_text("# Test")
 
-        with pytest.raises(ValidationError, match="must sum to 1.0"):
-            HierarchicalDocumentToolConfig(
-                name="test_tool",
-                description="Test tool",
-                source=str(doc_file),
-                search_mode="hybrid",
-                semantic_weight=0.5,
-                keyword_weight=0.5,
-                exact_weight=0.5,  # Sum = 1.5, not 1.0
-            )
+        kwargs = {
+            "name": "test_tool",
+            "description": "Test tool",
+            "source": str(doc_file),
+            "search_mode": "hybrid",
+            **weights,
+        }
 
-    def test_hybrid_weights_require_semantic_or_keyword(self, tmp_path: Path) -> None:
-        """Test that hybrid mode requires semantic+keyword weight > 0."""
-        from pydantic import ValidationError
-
-        doc_file = tmp_path / "test.md"
-        doc_file.write_text("# Test")
-
-        with pytest.raises(ValidationError, match=r"semantic_weight \+ keyword_weight"):
-            HierarchicalDocumentToolConfig(
-                name="test_tool",
-                description="Test tool",
-                source=str(doc_file),
-                search_mode="hybrid",
-                semantic_weight=0.0,
-                keyword_weight=0.0,
-                exact_weight=1.0,
-            )
-
-    def test_non_finite_weight_raises_validation_error(self, tmp_path: Path) -> None:
-        """Test that non-finite weights are rejected by validation."""
-        from pydantic import ValidationError
-
-        doc_file = tmp_path / "test.md"
-        doc_file.write_text("# Test")
-
-        with pytest.raises(ValidationError):
-            HierarchicalDocumentToolConfig(
-                name="test_tool",
-                description="Test tool",
-                source=str(doc_file),
-                search_mode="hybrid",
-                semantic_weight=float("nan"),
-                keyword_weight=0.3,
-                exact_weight=0.7,
-            )
+        if expected_match:
+            with pytest.raises(ValidationError, match=expected_match):
+                HierarchicalDocumentToolConfig(**kwargs)
+        else:
+            with pytest.raises(ValidationError):
+                HierarchicalDocumentToolConfig(**kwargs)
 
     def test_weights_ignored_for_non_hybrid_mode(self, tmp_path: Path) -> None:
         """Test that weight validation is skipped for non-hybrid modes."""
-
         doc_file = tmp_path / "test.md"
         doc_file.write_text("# Test")
 

@@ -10,6 +10,8 @@ Tests cover:
 
 from unittest.mock import patch
 
+import pytest
+
 from holodeck.chat.executor import AgentResponse
 from holodeck.chat.progress import ChatProgressIndicator
 from holodeck.models.token_usage import TokenUsage
@@ -18,32 +20,30 @@ from holodeck.models.token_usage import TokenUsage
 class TestChatProgressIndicatorInitialization:
     """Tests for ChatProgressIndicator initialization."""
 
-    def test_initialization_with_defaults(self) -> None:
-        """ChatProgressIndicator initializes with correct defaults."""
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
+    @pytest.mark.parametrize(
+        "max_messages, quiet, verbose",
+        [
+            pytest.param(50, False, False, id="defaults"),
+            pytest.param(100, True, False, id="quiet_mode"),
+            pytest.param(75, False, True, id="verbose_mode"),
+        ],
+    )
+    def test_initialization(
+        self, max_messages: int, quiet: bool, verbose: bool
+    ) -> None:
+        """ChatProgressIndicator initializes with correct settings."""
+        progress = ChatProgressIndicator(
+            max_messages=max_messages, quiet=quiet, verbose=verbose
+        )
 
-        assert progress.max_messages == 50
-        assert progress.quiet is False
-        assert progress.verbose is False
+        assert progress.max_messages == max_messages
+        assert progress.quiet is quiet
+        assert progress.verbose is verbose
         assert progress.current_messages == 0
         assert progress.last_response_time is None
         assert progress.total_tokens.prompt_tokens == 0
         assert progress.total_tokens.completion_tokens == 0
         assert progress.total_tokens.total_tokens == 0
-
-    def test_initialization_with_quiet_mode(self) -> None:
-        """ChatProgressIndicator respects quiet flag."""
-        progress = ChatProgressIndicator(max_messages=100, quiet=True, verbose=False)
-
-        assert progress.quiet is True
-        assert progress.max_messages == 100
-
-    def test_initialization_with_verbose_mode(self) -> None:
-        """ChatProgressIndicator respects verbose flag."""
-        progress = ChatProgressIndicator(max_messages=75, quiet=False, verbose=True)
-
-        assert progress.verbose is True
-        assert progress.max_messages == 75
 
 
 class TestSpinnerAnimation:
@@ -64,7 +64,7 @@ class TestSpinnerAnimation:
         with patch("sys.stdout.isatty", return_value=True):
             line = progress.get_spinner_line()
             assert "Thinking..." in line
-            assert line.startswith("⠋")  # First braille character
+            assert line.startswith("\u280b")  # First braille character
 
     def test_spinner_animation_cycles(self) -> None:
         """Spinner cycles through all animation frames."""
@@ -175,35 +175,26 @@ class TestProgressUpdate:
 class TestInlineStatus:
     """Tests for inline status display."""
 
-    def test_inline_status_format(self) -> None:
+    @pytest.mark.parametrize(
+        "current_messages, last_response_time, expected_status",
+        [
+            pytest.param(3, 1.2, "[3/50 | 1.2s]", id="with_execution_time"),
+            pytest.param(5, None, "[5/50]", id="without_execution_time"),
+            pytest.param(0, None, "[0/50]", id="zero_messages_no_time"),
+        ],
+    )
+    def test_inline_status_format(
+        self,
+        current_messages: int,
+        last_response_time: float | None,
+        expected_status: str,
+    ) -> None:
         """Inline status has correct format."""
         progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        progress.current_messages = 3
-        progress.last_response_time = 1.2
+        progress.current_messages = current_messages
+        progress.last_response_time = last_response_time
 
-        status = progress.get_status_inline()
-
-        assert status == "[3/50 | 1.2s]"
-
-    def test_inline_status_without_execution_time(self) -> None:
-        """Inline status without execution time."""
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        progress.current_messages = 5
-        progress.last_response_time = None
-
-        status = progress.get_status_inline()
-
-        assert status == "[5/50]"
-
-    def test_inline_status_with_message_count_only(self) -> None:
-        """Inline status shows message count even without execution time."""
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        progress.current_messages = 0
-        progress.last_response_time = None
-
-        status = progress.get_status_inline()
-
-        assert status == "[0/50]"
+        assert progress.get_status_inline() == expected_status
 
 
 class TestStatusPanel:
@@ -218,8 +209,8 @@ class TestStatusPanel:
         panel = progress.get_status_panel()
         lines = panel.split("\n")
 
-        assert lines[0].startswith("╭")
-        assert lines[-1].startswith("╰")
+        assert lines[0].startswith("\u256d")
+        assert lines[-1].startswith("\u2570")
 
     def test_panel_all_lines_same_width(self) -> None:
         """All panel lines have consistent width."""

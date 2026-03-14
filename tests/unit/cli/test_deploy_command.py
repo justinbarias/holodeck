@@ -219,18 +219,46 @@ class TestDeployCommandGroup:
         assert "Deploy HoloDeck agents" in result.output
 
 
+class TestSubcommandHelpText:
+    """Parameterized tests for help text across deploy subcommands."""
+
+    @pytest.mark.parametrize(
+        "command, expected_options",
+        [
+            pytest.param(
+                build,
+                ["--tag", "--no-cache", "--dry-run", "--verbose", "--quiet"],
+                id="build",
+            ),
+            pytest.param(
+                run,
+                ["--dry-run", "--verbose", "--quiet"],
+                id="run",
+            ),
+            pytest.param(
+                status,
+                ["--verbose", "--quiet"],
+                id="status",
+            ),
+            pytest.param(
+                destroy,
+                ["--force", "--verbose", "--quiet"],
+                id="destroy",
+            ),
+        ],
+    )
+    def test_command_help_shows_options(
+        self, runner: CliRunner, command, expected_options: list[str]
+    ) -> None:
+        """Test that command help shows all expected options."""
+        result = runner.invoke(command, ["--help"])
+        assert result.exit_code == 0
+        for option in expected_options:
+            assert option in result.output, f"Expected '{option}' in help output"
+
+
 class TestBuildCommandOptions:
     """Tests for build command options and parameters."""
-
-    def test_build_command_help(self, runner: CliRunner) -> None:
-        """Test build command help shows all options."""
-        result = runner.invoke(build, ["--help"])
-        assert result.exit_code == 0
-        assert "--tag" in result.output
-        assert "--no-cache" in result.output
-        assert "--dry-run" in result.output
-        assert "--verbose" in result.output
-        assert "--quiet" in result.output
 
     def test_build_command_file_not_found(self, runner: CliRunner) -> None:
         """Test build command with non-existent config file."""
@@ -758,14 +786,6 @@ class TestDisplayBuildSuccess:
 class TestRunCommand:
     """Tests for deploy run command."""
 
-    def test_run_command_help(self, runner: CliRunner) -> None:
-        """Test run command help shows all options."""
-        result = runner.invoke(run, ["--help"])
-        assert result.exit_code == 0
-        assert "--dry-run" in result.output
-        assert "--verbose" in result.output
-        assert "--quiet" in result.output
-
     @patch("holodeck.cli.commands.deploy.update_deployment_record")
     @patch("holodeck.cli.commands.deploy.compute_config_hash")
     @patch("holodeck.cli.commands.deploy.get_state_path")
@@ -954,13 +974,6 @@ class TestRunCommand:
 class TestStatusCommand:
     """Tests for deploy status command."""
 
-    def test_status_command_help(self, runner: CliRunner) -> None:
-        """Test status command help shows all options."""
-        result = runner.invoke(status, ["--help"])
-        assert result.exit_code == 0
-        assert "--verbose" in result.output
-        assert "--quiet" in result.output
-
     @patch("holodeck.cli.commands.deploy.update_deployment_record")
     @patch("holodeck.cli.commands.deploy.create_deployer")
     @patch("holodeck.cli.commands.deploy.get_deployment_record")
@@ -1089,14 +1102,6 @@ class TestStatusCommand:
 
 class TestDestroyCommand:
     """Tests for deploy destroy command."""
-
-    def test_destroy_command_help(self, runner: CliRunner) -> None:
-        """Test destroy command help shows all options."""
-        result = runner.invoke(destroy, ["--help"])
-        assert result.exit_code == 0
-        assert "--force" in result.output
-        assert "--verbose" in result.output
-        assert "--quiet" in result.output
 
     @patch("holodeck.cli.commands.deploy.update_deployment_record")
     @patch("holodeck.cli.commands.deploy.create_deployer")

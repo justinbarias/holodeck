@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from tempfile import NamedTemporaryFile
 from unittest import mock
 from unittest.mock import AsyncMock, MagicMock
 
@@ -17,95 +15,33 @@ from holodeck.lib.backends.base import (
     AgentSession,
     ExecutionResult,
 )
-from holodeck.models.agent import Agent, Instructions
-from holodeck.models.chat import ChatConfig, SessionState
-from holodeck.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.chat import SessionState
 from holodeck.models.token_usage import TokenUsage
 
 
 class TestChatSessionManagerInitialization:
     """Test ChatSessionManager initialization."""
 
-    def _make_agent(self) -> Agent:
-        """Create a minimal Agent instance for tests."""
-        return Agent(
-            name="test-agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4o-mini",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Be helpful."),
-        )
-
-    def _make_config(self, agent_config_path: Path | None = None) -> ChatConfig:
-        """Create a minimal ChatConfig for tests."""
-        if agent_config_path is None:
-            # Create a temp file for testing
-            with NamedTemporaryFile(suffix=".yaml", delete=False) as f:
-                agent_config_path = Path(f.name)
-
-        return ChatConfig(
-            agent_config_path=agent_config_path,
-            verbose=False,
-            enable_observability=False,
-            max_messages=50,
-        )
-
-    def test_session_manager_initialization(self) -> None:
+    def test_session_manager_initialization(self, make_agent, make_config) -> None:
         """SessionManager initializes with config."""
-        agent_config = self._make_agent()
-        config = self._make_config()
-
-        manager = ChatSessionManager(agent_config, config)
+        manager = ChatSessionManager(make_agent(), make_config())
         assert manager is not None
 
-    def test_session_manager_stores_config(self) -> None:
+    def test_session_manager_stores_config(self, make_agent, make_config) -> None:
         """SessionManager stores configuration."""
-        agent_config = self._make_agent()
-        config = self._make_config()
-
-        manager = ChatSessionManager(agent_config, config)
+        config = make_config()
+        manager = ChatSessionManager(make_agent(), config)
         assert manager.config == config
 
-    def test_session_manager_stores_agent_config(self) -> None:
+    def test_session_manager_stores_agent_config(self, make_agent, make_config) -> None:
         """SessionManager stores agent configuration."""
-        agent_config = self._make_agent()
-        config = self._make_config()
-
-        manager = ChatSessionManager(agent_config, config)
+        agent_config = make_agent()
+        manager = ChatSessionManager(agent_config, make_config())
         assert manager.agent_config == agent_config
 
 
 class TestChatSessionLifecycle:
     """Test session lifecycle (start, process, terminate)."""
-
-    def _make_agent(self) -> Agent:
-        """Create a minimal Agent instance for tests."""
-        return Agent(
-            name="test-agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4o-mini",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Be helpful."),
-        )
-
-    def _make_config(self, agent_config_path: Path | None = None) -> ChatConfig:
-        """Create a minimal ChatConfig for tests."""
-        if agent_config_path is None:
-            with NamedTemporaryFile(suffix=".yaml", delete=False) as f:
-                agent_config_path = Path(f.name)
-
-        return ChatConfig(
-            agent_config_path=agent_config_path,
-            verbose=False,
-            enable_observability=False,
-            max_messages=50,
-        )
 
     @pytest.mark.asyncio
     @mock.patch("holodeck.chat.session.AgentExecutor")
@@ -114,18 +50,16 @@ class TestChatSessionLifecycle:
         self,
         mock_validator_class: MagicMock,
         mock_executor_class: MagicMock,
+        make_agent,
+        make_config,
     ) -> None:
         """Session transitions to ACTIVE on start."""
-        agent_config = self._make_agent()
-        config = self._make_config()
-
         mock_executor = AsyncMock(spec=AgentExecutor)
         mock_executor_class.return_value = mock_executor
 
-        manager = ChatSessionManager(agent_config, config)
+        manager = ChatSessionManager(make_agent(), make_config())
         await manager.start()
 
-        # Session should be created and state should be ACTIVE
         assert manager.session is not None
         assert manager.session.state == SessionState.ACTIVE
 
@@ -136,11 +70,10 @@ class TestChatSessionLifecycle:
         self,
         mock_validator_class: MagicMock,
         mock_executor_class: MagicMock,
+        make_agent,
+        make_config,
     ) -> None:
         """Session processes messages and increments count."""
-        agent_config = self._make_agent()
-        config = self._make_config()
-
         mock_executor = AsyncMock(spec=AgentExecutor)
         mock_response = AgentResponse(
             content="Hello there!",
@@ -155,7 +88,7 @@ class TestChatSessionLifecycle:
         mock_validator.validate.return_value = (True, None)
         mock_validator_class.return_value = mock_validator
 
-        manager = ChatSessionManager(agent_config, config)
+        manager = ChatSessionManager(make_agent(), make_config())
         await manager.start()
 
         initial_count = manager.session.message_count
@@ -171,11 +104,10 @@ class TestChatSessionLifecycle:
         self,
         mock_validator_class: MagicMock,
         mock_executor_class: MagicMock,
+        make_agent,
+        make_config,
     ) -> None:
         """Session validates message before sending to executor."""
-        agent_config = self._make_agent()
-        config = self._make_config()
-
         mock_executor = AsyncMock(spec=AgentExecutor)
         mock_response = AgentResponse(
             content="Hello there!",
@@ -190,7 +122,7 @@ class TestChatSessionLifecycle:
         mock_validator.validate.return_value = (True, None)
         mock_validator_class.return_value = mock_validator
 
-        manager = ChatSessionManager(agent_config, config)
+        manager = ChatSessionManager(make_agent(), make_config())
         await manager.start()
         await manager.process_message("Test message")
 
@@ -203,11 +135,10 @@ class TestChatSessionLifecycle:
         self,
         mock_validator_class: MagicMock,
         mock_executor_class: MagicMock,
+        make_agent,
+        make_config,
     ) -> None:
         """Session rejects invalid messages."""
-        agent_config = self._make_agent()
-        config = self._make_config()
-
         mock_executor = AsyncMock(spec=AgentExecutor)
         mock_executor_class.return_value = mock_executor
 
@@ -215,7 +146,7 @@ class TestChatSessionLifecycle:
         mock_validator.validate.return_value = (False, "Message too long")
         mock_validator_class.return_value = mock_validator
 
-        manager = ChatSessionManager(agent_config, config)
+        manager = ChatSessionManager(make_agent(), make_config())
         await manager.start()
 
         with pytest.raises(ValueError):
@@ -228,15 +159,14 @@ class TestChatSessionLifecycle:
         self,
         mock_validator_class: MagicMock,
         mock_executor_class: MagicMock,
+        make_agent,
+        make_config,
     ) -> None:
         """Session transitions to TERMINATED on terminate."""
-        agent_config = self._make_agent()
-        config = self._make_config()
-
         mock_executor = AsyncMock(spec=AgentExecutor)
         mock_executor_class.return_value = mock_executor
 
-        manager = ChatSessionManager(agent_config, config)
+        manager = ChatSessionManager(make_agent(), make_config())
         await manager.start()
 
         assert manager.session.state == SessionState.ACTIVE
@@ -250,132 +180,42 @@ class TestChatSessionLifecycle:
 class TestContextLimitWarning:
     """Test context limit warning mechanism."""
 
-    def _make_agent(self) -> Agent:
-        """Create a minimal Agent instance for tests."""
-        return Agent(
-            name="test-agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4o-mini",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Be helpful."),
-        )
-
-    def _make_config(self, max_messages: int = 10) -> ChatConfig:
-        """Create a ChatConfig with specified max_messages."""
-        with NamedTemporaryFile(suffix=".yaml", delete=False) as f:
-            agent_config_path = Path(f.name)
-
-        return ChatConfig(
-            agent_config_path=agent_config_path,
-            verbose=False,
-            enable_observability=False,
-            max_messages=max_messages,
-        )
-
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "message_count, max_messages, expected_warn",
+        [
+            pytest.param(50, 100, False, id="50pct_below_threshold"),
+            pytest.param(80, 100, True, id="80pct_at_threshold"),
+            pytest.param(10, 10, True, id="100pct_at_max"),
+        ],
+    )
     @mock.patch("holodeck.chat.session.AgentExecutor")
     @mock.patch("holodeck.chat.session.MessageValidator")
-    async def test_should_warn_context_limit_below_threshold(
+    async def test_should_warn_context_limit(
         self,
         mock_validator_class: MagicMock,
         mock_executor_class: MagicMock,
+        message_count: int,
+        max_messages: int,
+        expected_warn: bool,
+        make_agent,
+        make_config,
     ) -> None:
-        """No warning when below 80% of message limit."""
-        agent_config = self._make_agent()
-        config = self._make_config(max_messages=100)
-
+        """Context limit warning fires at correct thresholds."""
+        config = make_config(max_messages=max_messages)
         mock_executor = AsyncMock(spec=AgentExecutor)
         mock_executor_class.return_value = mock_executor
 
-        manager = ChatSessionManager(agent_config, config)
+        manager = ChatSessionManager(make_agent(), config)
         await manager.start()
 
-        # Set message count below 80%
-        manager.session.message_count = 50
+        manager.session.message_count = message_count
 
-        should_warn = manager.should_warn_context_limit()
-        assert should_warn is False
-
-    @pytest.mark.asyncio
-    @mock.patch("holodeck.chat.session.AgentExecutor")
-    @mock.patch("holodeck.chat.session.MessageValidator")
-    async def test_should_warn_context_limit_above_threshold(
-        self,
-        mock_validator_class: MagicMock,
-        mock_executor_class: MagicMock,
-    ) -> None:
-        """Warning triggered at 80% of message limit."""
-        agent_config = self._make_agent()
-        config = self._make_config(max_messages=100)
-
-        mock_executor = AsyncMock(spec=AgentExecutor)
-        mock_executor_class.return_value = mock_executor
-
-        manager = ChatSessionManager(agent_config, config)
-        await manager.start()
-
-        # Set message count at 80%
-        manager.session.message_count = 80
-
-        should_warn = manager.should_warn_context_limit()
-        assert should_warn is True
-
-    @pytest.mark.asyncio
-    @mock.patch("holodeck.chat.session.AgentExecutor")
-    @mock.patch("holodeck.chat.session.MessageValidator")
-    async def test_should_warn_at_max_limit(
-        self,
-        mock_validator_class: MagicMock,
-        mock_executor_class: MagicMock,
-    ) -> None:
-        """Warning triggered at max message limit."""
-        agent_config = self._make_agent()
-        config = self._make_config(max_messages=10)
-
-        mock_executor = AsyncMock(spec=AgentExecutor)
-        mock_executor_class.return_value = mock_executor
-
-        manager = ChatSessionManager(agent_config, config)
-        await manager.start()
-
-        # Set message count at max
-        manager.session.message_count = 10
-
-        should_warn = manager.should_warn_context_limit()
-        assert should_warn is True
+        assert manager.should_warn_context_limit() is expected_warn
 
 
 class TestSessionStreamingSupport:
     """Test streaming support through ChatSessionManager (T008-T009)."""
-
-    def _make_agent(self) -> Agent:
-        """Create a minimal Agent instance for tests."""
-        return Agent(
-            name="test-agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4o-mini",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Be helpful."),
-        )
-
-    def _make_config(self, agent_config_path: Path | None = None) -> ChatConfig:
-        """Create a minimal ChatConfig for tests."""
-        if agent_config_path is None:
-            with NamedTemporaryFile(suffix=".yaml", delete=False) as f:
-                agent_config_path = Path(f.name)
-
-        return ChatConfig(
-            agent_config_path=agent_config_path,
-            verbose=False,
-            enable_observability=False,
-            max_messages=50,
-        )
 
     def _make_mock_backend(self) -> tuple[AsyncMock, AsyncMock]:
         """Create mock AgentBackend/AgentSession pair."""
@@ -399,10 +239,12 @@ class TestSessionStreamingSupport:
         return mock_backend, mock_session
 
     @pytest.mark.asyncio
-    async def test_process_message_streaming_yields_chunks(self) -> None:
+    async def test_process_message_streaming_yields_chunks(
+        self, make_agent, make_config
+    ) -> None:
         """T008: process_message_streaming() yields chunks, increments message_count."""
-        agent_config = self._make_agent()
-        config = self._make_config()
+        agent_config = make_agent()
+        config = make_config()
         mock_backend, _ = self._make_mock_backend()
 
         mock_validator = MagicMock(spec=MessageValidator)
@@ -440,10 +282,12 @@ class TestSessionStreamingSupport:
         assert manager.session.message_count > initial_count
 
     @pytest.mark.asyncio
-    async def test_process_message_streaming_validates_message(self) -> None:
-        """T009: Empty message → ValueError before streaming starts."""
-        agent_config = self._make_agent()
-        config = self._make_config()
+    async def test_process_message_streaming_validates_message(
+        self, make_agent, make_config
+    ) -> None:
+        """T009: Empty message raises ValueError before streaming starts."""
+        agent_config = make_agent()
+        config = make_config()
 
         mock_validator = MagicMock(spec=MessageValidator)
         mock_validator.validate.return_value = (False, "Message cannot be empty")

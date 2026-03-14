@@ -8,26 +8,6 @@ from holodeck.chat.streaming import ToolEvent, ToolEventType, ToolExecutionStrea
 from holodeck.models.tool_execution import ToolExecution, ToolStatus
 
 
-class TestToolEventType:
-    """Tests for ToolEventType enum."""
-
-    def test_event_type_started(self) -> None:
-        """STARTED event type exists."""
-        assert ToolEventType.STARTED is not None
-
-    def test_event_type_progress(self) -> None:
-        """PROGRESS event type exists."""
-        assert ToolEventType.PROGRESS is not None
-
-    def test_event_type_completed(self) -> None:
-        """COMPLETED event type exists."""
-        assert ToolEventType.COMPLETED is not None
-
-    def test_event_type_failed(self) -> None:
-        """FAILED event type exists."""
-        assert ToolEventType.FAILED is not None
-
-
 class TestToolEvent:
     """Tests for ToolEvent model."""
 
@@ -63,16 +43,18 @@ class TestToolEvent:
 class TestToolExecutionStream:
     """Tests for ToolExecutionStream."""
 
-    def test_stream_initialization(self) -> None:
-        """ToolExecutionStream initializes with verbosity."""
-        stream = ToolExecutionStream(verbose=False)
+    @pytest.mark.parametrize(
+        "verbose, expected_verbose",
+        [
+            pytest.param(False, False, id="non_verbose"),
+            pytest.param(True, True, id="verbose"),
+        ],
+    )
+    def test_stream_initialization(self, verbose: bool, expected_verbose: bool) -> None:
+        """ToolExecutionStream initializes with correct verbosity."""
+        stream = ToolExecutionStream(verbose=verbose)
         assert stream is not None
-        assert stream.verbose is False
-
-    def test_stream_verbose_mode(self) -> None:
-        """ToolExecutionStream stores verbose preference."""
-        stream = ToolExecutionStream(verbose=True)
-        assert stream.verbose is True
+        assert stream.verbose is expected_verbose
 
     def test_stream_default_not_verbose(self) -> None:
         """ToolExecutionStream defaults to non-verbose."""
@@ -138,9 +120,16 @@ class TestToolExecutionStream:
         assert all(e.tool_name == "my_special_tool" for e in events)
 
     @pytest.mark.asyncio
-    async def test_stream_execution_verbose_mode_includes_details(self) -> None:
-        """Verbose mode includes detailed execution info."""
-        stream = ToolExecutionStream(verbose=True)
+    @pytest.mark.parametrize(
+        "verbose",
+        [
+            pytest.param(True, id="verbose_mode"),
+            pytest.param(False, id="standard_mode"),
+        ],
+    )
+    async def test_stream_execution_emits_events(self, verbose: bool) -> None:
+        """Stream emits events in both verbose and standard modes."""
+        stream = ToolExecutionStream(verbose=verbose)
         tool_call = ToolExecution(
             tool_name="test_tool",
             parameters={"key": "value"},
@@ -153,24 +142,4 @@ class TestToolExecutionStream:
         async for event in stream.stream_execution(tool_call):
             events.append(event)
 
-        # Verbose mode should include parameters in data
-        assert len(events) > 0
-
-    @pytest.mark.asyncio
-    async def test_stream_execution_standard_mode_minimal_data(self) -> None:
-        """Standard mode includes only essential info."""
-        stream = ToolExecutionStream(verbose=False)
-        tool_call = ToolExecution(
-            tool_name="test_tool",
-            parameters={"key": "value"},
-            result="test result",
-            status=ToolStatus.SUCCESS,
-            execution_time=1.5,
-        )
-
-        events = []
-        async for event in stream.stream_execution(tool_call):
-            events.append(event)
-
-        # Standard mode should still include essential data
         assert len(events) > 0

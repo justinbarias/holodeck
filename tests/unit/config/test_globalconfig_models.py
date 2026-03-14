@@ -30,24 +30,6 @@ class TestVectorstoreConfig:
         assert config.provider == "postgres"
         assert config.connection_string == "postgresql://localhost/holodeck"
 
-    def test_vectorstore_config_provider_required(self) -> None:
-        """Test that provider is required."""
-        with pytest.raises(ValidationError):
-            VectorstoreConfig(connection_string="connection")
-
-    def test_vectorstore_config_connection_string_required(self) -> None:
-        """Test that connection_string is required."""
-        with pytest.raises(ValidationError):
-            VectorstoreConfig(provider="postgres")
-
-    def test_vectorstore_config_options_optional(self) -> None:
-        """Test that options are optional."""
-        config = VectorstoreConfig(
-            provider="redis",
-            connection_string="redis://localhost",
-        )
-        assert config.options is None or isinstance(config.options, dict)
-
     def test_vectorstore_config_with_options(self) -> None:
         """Test VectorstoreConfig with options."""
         config = VectorstoreConfig(
@@ -56,6 +38,32 @@ class TestVectorstoreConfig:
             options={"pool_size": 10, "timeout": 30},
         )
         assert config.options == {"pool_size": 10, "timeout": 30}
+
+    def test_vectorstore_config_options_default_none(self) -> None:
+        """Test that options default to None when omitted."""
+        config = VectorstoreConfig(
+            provider="redis",
+            connection_string="redis://localhost",
+        )
+        assert config.options is None or isinstance(config.options, dict)
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            pytest.param(
+                {"connection_string": "connection"},
+                id="missing_provider",
+            ),
+            pytest.param(
+                {"provider": "postgres"},
+                id="missing_connection_string",
+            ),
+        ],
+    )
+    def test_vectorstore_config_required_fields(self, kwargs: dict) -> None:
+        """Test that required fields raise ValidationError when missing."""
+        with pytest.raises(ValidationError):
+            VectorstoreConfig(**kwargs)
 
 
 class TestDeploymentConfig:
@@ -73,15 +81,23 @@ class TestDeploymentConfig:
         assert config.registry.repository == "org/agent"
         assert config.target.provider.value == "aws"
 
-    def test_deployment_config_registry_required(self) -> None:
-        """Test that registry is required."""
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            pytest.param(
+                {"target": {"provider": "aws", "aws": {"region": "us-east-1"}}},
+                id="missing_registry",
+            ),
+            pytest.param(
+                {"registry": {"url": "ghcr.io", "repository": "org/agent"}},
+                id="missing_target",
+            ),
+        ],
+    )
+    def test_deployment_config_required_fields(self, kwargs: dict) -> None:
+        """Test that required fields raise ValidationError when missing."""
         with pytest.raises(ValidationError):
-            DeploymentConfig(target={"provider": "aws", "aws": {"region": "us-east-1"}})
-
-    def test_deployment_config_target_required(self) -> None:
-        """Test that target is required."""
-        with pytest.raises(ValidationError):
-            DeploymentConfig(registry={"url": "ghcr.io", "repository": "org/agent"})
+            DeploymentConfig(**kwargs)
 
     def test_deployment_config_with_environment(self) -> None:
         """Test DeploymentConfig with environment variables."""
@@ -101,11 +117,6 @@ class TestGlobalConfig:
         assert config.vectorstores is None or isinstance(config.vectorstores, dict)
         assert config.deployment is None
 
-    def test_global_config_providers_optional(self) -> None:
-        """Test that providers dict is optional."""
-        config = GlobalConfig()
-        assert config.providers is None or isinstance(config.providers, dict)
-
     def test_global_config_with_providers(self) -> None:
         """Test GlobalConfig with providers."""
         provider = LLMProvider(
@@ -116,11 +127,6 @@ class TestGlobalConfig:
         assert "default" in config.providers
         assert config.providers["default"].provider == ProviderEnum.OPENAI
 
-    def test_global_config_vectorstores_optional(self) -> None:
-        """Test that vectorstores dict is optional."""
-        config = GlobalConfig()
-        assert config.vectorstores is None or isinstance(config.vectorstores, dict)
-
     def test_global_config_with_vectorstores(self) -> None:
         """Test GlobalConfig with vectorstores."""
         vectorstore = VectorstoreConfig(
@@ -130,11 +136,6 @@ class TestGlobalConfig:
         config = GlobalConfig(vectorstores={"knowledge_base": vectorstore})
         assert "knowledge_base" in config.vectorstores
         assert config.vectorstores["knowledge_base"].provider == "postgres"
-
-    def test_global_config_deployment_optional(self) -> None:
-        """Test that deployment is optional."""
-        config = GlobalConfig()
-        assert config.deployment is None
 
     def test_global_config_with_deployment(self) -> None:
         """Test GlobalConfig with deployment config."""

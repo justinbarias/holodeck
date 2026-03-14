@@ -37,126 +37,91 @@ class TestToolCallValidation:
     within at least one actual tool name. Extra tools are allowed.
     """
 
-    def test_exact_match_passes(self):
-        """Tool calls exactly matching expected tools passes validation."""
+    @pytest.mark.parametrize(
+        ("actual", "expected", "expected_result"),
+        [
+            pytest.param(
+                ["search_tool", "calculator"],
+                ["search_tool", "calculator"],
+                True,
+                id="exact_match_passes",
+            ),
+            pytest.param(
+                ["search_tool", "get_weather"],
+                ["search_tool", "calculator"],
+                False,
+                id="mismatch_fails",
+            ),
+            pytest.param(
+                ["search_tool"],
+                [],
+                True,
+                id="empty_expected_with_calls_passes",
+            ),
+            pytest.param(
+                [],
+                ["search_tool", "calculator"],
+                False,
+                id="empty_actual_with_expected_fails",
+            ),
+            pytest.param(
+                ["calculator", "search_tool"],
+                ["search_tool", "calculator"],
+                True,
+                id="order_independent_matching",
+            ),
+            pytest.param(
+                ["search_tool"],
+                ["search_tool", "calculator"],
+                False,
+                id="subset_of_expected_fails",
+            ),
+            pytest.param(
+                ["search_tool", "calculator", "extra_tool"],
+                ["search_tool", "calculator"],
+                True,
+                id="extra_tools_allowed",
+            ),
+            pytest.param(
+                ["vectorstore-search", "mcp-calculator"],
+                ["search", "calculator"],
+                True,
+                id="substring_match_with_prefix",
+            ),
+            pytest.param(
+                ["search_v2", "calculator_advanced"],
+                ["search", "calculator"],
+                True,
+                id="substring_match_with_suffix",
+            ),
+            pytest.param(
+                ["vectorstore-query", "mcp-math"],
+                ["search"],
+                False,
+                id="substring_match_partial_only_fails",
+            ),
+        ],
+    )
+    def test_tool_call_validation(
+        self,
+        actual: list[str],
+        expected: list[str],
+        expected_result: bool,
+    ) -> None:
+        """Tool call validation with substring matching and extra tools allowed."""
         from holodeck.lib.test_runner.executor import validate_tool_calls
-
-        actual = ["search_tool", "calculator"]
-        expected = ["search_tool", "calculator"]
 
         result = validate_tool_calls(actual, expected)
 
-        assert result is True
+        assert result is expected_result
 
-    def test_mismatch_fails(self):
-        """Tool calls not matching expected tools fails validation."""
+    def test_no_expected_tools_skips_validation(self) -> None:
+        """When expected_tools is None, validation is skipped (returns None)."""
         from holodeck.lib.test_runner.executor import validate_tool_calls
 
-        actual = ["search_tool", "get_weather"]
-        expected = ["search_tool", "calculator"]
-
-        result = validate_tool_calls(actual, expected)
-
-        assert result is False
-
-    def test_no_expected_tools_skips_validation(self):
-        """When expected_tools is None, validation is skipped."""
-        from holodeck.lib.test_runner.executor import validate_tool_calls
-
-        actual = ["search_tool", "calculator"]
-        expected = None
-
-        result = validate_tool_calls(actual, expected)
+        result = validate_tool_calls(["search_tool", "calculator"], None)
 
         assert result is None
-
-    def test_empty_expected_tools_with_calls_passes(self):
-        """Empty expected list passes (all zero expected tools are found)."""
-        from holodeck.lib.test_runner.executor import validate_tool_calls
-
-        actual: list[str] = ["search_tool"]
-        expected: list[str] = []
-
-        result = validate_tool_calls(actual, expected)
-
-        assert result is True
-
-    def test_empty_actual_with_expected_fails(self):
-        """Agent not calling expected tools fails validation."""
-        from holodeck.lib.test_runner.executor import validate_tool_calls
-
-        actual: list[str] = []
-        expected: list[str] = ["search_tool", "calculator"]
-
-        result = validate_tool_calls(actual, expected)
-
-        assert result is False
-
-    def test_order_independent_matching(self):
-        """Tool call order doesn't matter for validation."""
-        from holodeck.lib.test_runner.executor import validate_tool_calls
-
-        actual = ["calculator", "search_tool"]  # Different order
-        expected = ["search_tool", "calculator"]
-
-        result = validate_tool_calls(actual, expected)
-
-        assert result is True
-
-    def test_subset_of_expected_fails(self):
-        """Calling subset of expected tools fails validation."""
-        from holodeck.lib.test_runner.executor import validate_tool_calls
-
-        actual = ["search_tool"]  # Only one of two expected
-        expected = ["search_tool", "calculator"]
-
-        result = validate_tool_calls(actual, expected)
-
-        assert result is False
-
-    def test_extra_tools_allowed(self):
-        """Calling more tools than expected passes validation."""
-        from holodeck.lib.test_runner.executor import validate_tool_calls
-
-        actual = ["search_tool", "calculator", "extra_tool"]
-        expected = ["search_tool", "calculator"]
-
-        result = validate_tool_calls(actual, expected)
-
-        assert result is True
-
-    def test_substring_match_with_prefix(self):
-        """Expected tool found as substring in actual tool with prefix."""
-        from holodeck.lib.test_runner.executor import validate_tool_calls
-
-        actual = ["vectorstore-search", "mcp-calculator"]
-        expected = ["search", "calculator"]
-
-        result = validate_tool_calls(actual, expected)
-
-        assert result is True
-
-    def test_substring_match_with_suffix(self):
-        """Expected tool found as substring in actual tool with suffix."""
-        from holodeck.lib.test_runner.executor import validate_tool_calls
-
-        actual = ["search_v2", "calculator_advanced"]
-        expected = ["search", "calculator"]
-
-        result = validate_tool_calls(actual, expected)
-
-        assert result is True
-
-    def test_substring_match_partial_only_fails(self):
-        """Expected tool not found as substring in any actual tool fails."""
-        from holodeck.lib.test_runner.executor import validate_tool_calls
-
-        actual = ["vectorstore-query", "mcp-math"]
-        expected = ["search"]  # "search" not in any actual tool
-
-        result = validate_tool_calls(actual, expected)
-
-        assert result is False
 
 
 class TestExecutorMainFlow:

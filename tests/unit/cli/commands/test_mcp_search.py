@@ -23,12 +23,6 @@ from holodeck.models.registry import (
 
 
 @pytest.fixture
-def cli_runner() -> CliRunner:
-    """Provide a Click CLI test runner."""
-    return CliRunner()
-
-
-@pytest.fixture
 def sample_server() -> RegistryServer:
     """Create a sample RegistryServer for testing."""
     return RegistryServer(
@@ -138,25 +132,23 @@ class TestSearchOptions:
         assert result.exit_code == 0
         mock_instance.search.assert_called_once_with(query=None, limit=50)
 
-    def test_limit_option_validation_too_low(
+    @pytest.mark.parametrize(
+        "limit_value",
+        [
+            pytest.param("0", id="too_low"),
+            pytest.param("101", id="too_high"),
+        ],
+    )
+    def test_limit_option_validation_out_of_range(
         self,
         cli_runner: CliRunner,
+        limit_value: str,
     ) -> None:
-        """Test that limit below 1 is rejected."""
-        result = cli_runner.invoke(search, ["--limit", "0"])
+        """Test that limit '{limit_value}' is rejected as out of range."""
+        result = cli_runner.invoke(search, ["--limit", limit_value])
 
         assert result.exit_code != 0
-        assert "Invalid value" in result.output or "0" in result.output
-
-    def test_limit_option_validation_too_high(
-        self,
-        cli_runner: CliRunner,
-    ) -> None:
-        """Test that limit above 100 is rejected."""
-        result = cli_runner.invoke(search, ["--limit", "101"])
-
-        assert result.exit_code != 0
-        assert "Invalid value" in result.output or "101" in result.output
+        assert "Invalid value" in result.output or limit_value in result.output
 
     def test_json_flag_outputs_json(
         self,
@@ -333,40 +325,43 @@ class TestJSONFormatter:
 class TestErrorHandling:
     """Tests for error handling (T013e)."""
 
-    def test_network_timeout_error(
+    @pytest.mark.parametrize(
+        "error, expected_msg",
+        [
+            pytest.param(
+                RegistryConnectionError(
+                    url="https://registry.modelcontextprotocol.io",
+                    original_error=TimeoutError("Connection timed out"),
+                ),
+                "Registry unavailable",
+                id="network_timeout",
+            ),
+            pytest.param(
+                RegistryAPIError(
+                    url="https://registry.modelcontextprotocol.io",
+                    status_code=500,
+                    detail="Internal server error",
+                ),
+                "Registry service error",
+                id="api_error",
+            ),
+        ],
+    )
+    def test_registry_error_handling(
         self,
         cli_runner: CliRunner,
         mock_registry_client: tuple,
+        error: Exception,
+        expected_msg: str,
     ) -> None:
-        """Test that network timeout shows appropriate error message."""
+        """Test that registry errors show appropriate error message."""
         _, mock_instance = mock_registry_client
-        mock_instance.search.side_effect = RegistryConnectionError(
-            url="https://registry.modelcontextprotocol.io",
-            original_error=TimeoutError("Connection timed out"),
-        )
+        mock_instance.search.side_effect = error
 
         result = cli_runner.invoke(search, [])
 
         assert result.exit_code == 1
-        assert "Registry unavailable" in result.output
-
-    def test_api_error_handling(
-        self,
-        cli_runner: CliRunner,
-        mock_registry_client: tuple,
-    ) -> None:
-        """Test that API errors show appropriate error message."""
-        _, mock_instance = mock_registry_client
-        mock_instance.search.side_effect = RegistryAPIError(
-            url="https://registry.modelcontextprotocol.io",
-            status_code=500,
-            detail="Internal server error",
-        )
-
-        result = cli_runner.invoke(search, [])
-
-        assert result.exit_code == 1
-        assert "Registry service error" in result.output
+        assert expected_msg in result.output
 
     def test_empty_results_message(
         self,
