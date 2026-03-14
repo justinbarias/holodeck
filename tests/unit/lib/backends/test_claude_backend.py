@@ -11,6 +11,7 @@ Tests T001–T016 covering:
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1948,6 +1949,308 @@ class TestActivateInstrumentationErrors:
 
         # Should not have stored the failed instrumentor
         assert backend._instrumentor is None
+
+
+# ---------------------------------------------------------------------------
+# T013–T015 — Graceful degradation (US2: full lifecycle)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestGracefulDegradation:
+    """Tests proving ClaudeBackend degrades gracefully through initialize().
+
+    Unlike ``TestActivateInstrumentationErrors`` (which calls
+    ``_activate_instrumentation()`` directly), these tests exercise the full
+    ``initialize()`` lifecycle to prove no exception leaks to the caller.
+    """
+
+    @pytest.mark.asyncio
+    async def test_graceful_degradation_when_package_not_installed(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """T013: Missing instrumentation package → warning, no crash."""
+        agent = _make_agent(
+            observability=ObservabilityConfig(
+                enabled=True,
+                traces=TracingConfig(enabled=True),
+            ),
+        )
+        backend = ClaudeBackend(agent=agent)
+
+        with (
+            caplog.at_level(logging.WARNING),
+            patch(f"{_SDK_MODULE}.validate_nodejs"),
+            patch(f"{_SDK_MODULE}.validate_credentials", return_value={}),
+            patch(f"{_SDK_MODULE}.validate_embedding_provider"),
+            patch(f"{_SDK_MODULE}.validate_tool_filtering"),
+            patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[]),
+            patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, [])),
+            patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={}),
+            patch(f"{_SDK_MODULE}.translate_observability", return_value={}),
+            patch(f"{_SDK_MODULE}.build_options", return_value=MagicMock()),
+            patch(f"{_SDK_MODULE}.validate_working_directory"),
+            patch(f"{_SDK_MODULE}.validate_response_format"),
+            patch.dict(
+                sys.modules,
+                {"opentelemetry.instrumentation.claude_agent_sdk": None},
+            ),
+        ):
+            await backend.initialize()
+
+        assert backend._instrumentor is None
+        assert any("not installed" in msg for msg in caplog.messages)
+
+    @pytest.mark.asyncio
+    async def test_graceful_degradation_when_instrument_raises(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """T014: instrument() raising → warning, no crash."""
+        agent = _make_agent(
+            observability=ObservabilityConfig(
+                enabled=True,
+                traces=TracingConfig(enabled=True),
+            ),
+        )
+        backend = ClaudeBackend(agent=agent)
+
+        mock_module, _mock_cls, mock_instance = _mock_instrumentor_module()
+        mock_instance.instrument.side_effect = RuntimeError("version mismatch")
+
+        mock_ctx = MagicMock()
+        mock_ctx.tracer_provider = MagicMock()
+        mock_ctx.meter_provider = MagicMock()
+
+        with (
+            caplog.at_level(logging.WARNING),
+            patch(f"{_SDK_MODULE}.validate_nodejs"),
+            patch(f"{_SDK_MODULE}.validate_credentials", return_value={}),
+            patch(f"{_SDK_MODULE}.validate_embedding_provider"),
+            patch(f"{_SDK_MODULE}.validate_tool_filtering"),
+            patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[]),
+            patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, [])),
+            patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={}),
+            patch(f"{_SDK_MODULE}.translate_observability", return_value={}),
+            patch(f"{_SDK_MODULE}.build_options", return_value=MagicMock()),
+            patch(f"{_SDK_MODULE}.validate_working_directory"),
+            patch(f"{_SDK_MODULE}.validate_response_format"),
+            patch(f"{_SDK_MODULE}.get_observability_context", return_value=mock_ctx),
+            patch.dict(
+                sys.modules,
+                {"opentelemetry.instrumentation.claude_agent_sdk": mock_module},
+            ),
+        ):
+            await backend.initialize()
+
+        assert backend._instrumentor is None
+        assert any(
+            "Failed to activate" in msg or "version mismatch" in msg
+            for msg in caplog.messages
+        )
+
+    @pytest.mark.asyncio
+    async def test_backend_functional_without_instrumentation(self) -> None:
+        """T015: invoke_once() works even when instrumentation failed."""
+        agent = _make_agent(
+            observability=ObservabilityConfig(
+                enabled=True,
+                traces=TracingConfig(enabled=True),
+            ),
+        )
+        backend = ClaudeBackend(agent=agent)
+
+        with (
+            patch(f"{_SDK_MODULE}.validate_nodejs"),
+            patch(f"{_SDK_MODULE}.validate_credentials", return_value={}),
+            patch(f"{_SDK_MODULE}.validate_embedding_provider"),
+            patch(f"{_SDK_MODULE}.validate_tool_filtering"),
+            patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[]),
+            patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, [])),
+            patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={}),
+            patch(f"{_SDK_MODULE}.translate_observability", return_value={}),
+            patch(f"{_SDK_MODULE}.build_options", return_value=MagicMock()),
+            patch(f"{_SDK_MODULE}.validate_working_directory"),
+            patch(f"{_SDK_MODULE}.validate_response_format"),
+            patch.dict(
+                sys.modules,
+                {"opentelemetry.instrumentation.claude_agent_sdk": None},
+            ),
+        ):
+            await backend.initialize()
+
+        assert backend._instrumentor is None
+
+        # Set up query() to return a valid conversation
+        assistant_msg = _make_assistant_message([_make_text_block("Hello!")])
+        result_msg = _make_result_message()
+
+        with patch(
+            f"{_CAS_MODULE}.query",
+            return_value=_async_iter([assistant_msg, result_msg]),
+        ):
+            result = await backend.invoke_once("Hi")
+
+        assert isinstance(result, ExecutionResult)
+        assert result.is_error is False
+
+
+# ---------------------------------------------------------------------------
+# T017–T020 — teardown() uninstrumentation (US3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestTeardownUninstrumentation:
+    """Tests for uninstrument() cleanup during teardown()."""
+
+    @pytest.mark.asyncio
+    async def test_teardown_calls_uninstrument(self) -> None:
+        """T017: teardown() calls uninstrument() and clears _instrumentor."""
+        backend = ClaudeBackend(_make_agent())
+        backend._initialized = True
+        backend._options = MagicMock()
+
+        mock_instrumentor = MagicMock()
+        backend._instrumentor = mock_instrumentor
+
+        await backend.teardown()
+
+        mock_instrumentor.uninstrument.assert_called_once()
+        assert backend._instrumentor is None
+
+    @pytest.mark.asyncio
+    async def test_teardown_safe_without_instrumentation(self) -> None:
+        """T018: teardown() succeeds when _instrumentor is None."""
+        backend = ClaudeBackend(_make_agent())
+        backend._initialized = True
+        backend._options = MagicMock()
+        # _instrumentor is None by default
+
+        await backend.teardown()  # Should not raise
+
+        assert backend._instrumentor is None
+        assert backend._initialized is False
+
+    @pytest.mark.asyncio
+    async def test_sequential_init_teardown_no_leakage(self) -> None:
+        """T019: Sequential init/teardown cycles don't leak instrumentation."""
+        agent = _make_agent(
+            observability=ObservabilityConfig(
+                enabled=True,
+                traces=TracingConfig(enabled=True, capture_content=True),
+                metrics=MetricsConfig(enabled=True),
+            ),
+        )
+        backend = ClaudeBackend(agent=agent)
+
+        mock_module, _mock_cls, mock_instance = _mock_instrumentor_module()
+        mock_ctx = MagicMock()
+        mock_ctx.tracer_provider = MagicMock()
+        mock_ctx.meter_provider = MagicMock()
+
+        validator_stack = (
+            patch(f"{_SDK_MODULE}.validate_nodejs"),
+            patch(f"{_SDK_MODULE}.validate_credentials", return_value={}),
+            patch(f"{_SDK_MODULE}.validate_embedding_provider"),
+            patch(f"{_SDK_MODULE}.validate_tool_filtering"),
+            patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[]),
+            patch(
+                f"{_SDK_MODULE}.build_holodeck_sdk_server",
+                return_value=(None, []),
+            ),
+            patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={}),
+            patch(f"{_SDK_MODULE}.translate_observability", return_value={}),
+            patch(f"{_SDK_MODULE}.build_options", return_value=MagicMock()),
+            patch(f"{_SDK_MODULE}.validate_working_directory"),
+            patch(f"{_SDK_MODULE}.validate_response_format"),
+            patch(
+                f"{_SDK_MODULE}.get_observability_context",
+                return_value=mock_ctx,
+            ),
+            patch.dict(
+                sys.modules,
+                {"opentelemetry.instrumentation.claude_agent_sdk": mock_module},
+            ),
+        )
+
+        # Cycle 1: init → teardown
+        with (
+            validator_stack[0],
+            validator_stack[1],
+            validator_stack[2],
+            validator_stack[3],
+            validator_stack[4],
+            validator_stack[5],
+            validator_stack[6],
+            validator_stack[7],
+            validator_stack[8],
+            validator_stack[9],
+            validator_stack[10],
+            validator_stack[11],
+            validator_stack[12],
+        ):
+            await backend.initialize()
+
+        assert backend._instrumentor is not None
+        await backend.teardown()
+        mock_instance.uninstrument.assert_called_once()
+        assert backend._instrumentor is None
+
+        # Cycle 2: re-init → teardown
+        with (
+            patch(f"{_SDK_MODULE}.validate_nodejs"),
+            patch(f"{_SDK_MODULE}.validate_credentials", return_value={}),
+            patch(f"{_SDK_MODULE}.validate_embedding_provider"),
+            patch(f"{_SDK_MODULE}.validate_tool_filtering"),
+            patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[]),
+            patch(
+                f"{_SDK_MODULE}.build_holodeck_sdk_server",
+                return_value=(None, []),
+            ),
+            patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={}),
+            patch(f"{_SDK_MODULE}.translate_observability", return_value={}),
+            patch(f"{_SDK_MODULE}.build_options", return_value=MagicMock()),
+            patch(f"{_SDK_MODULE}.validate_working_directory"),
+            patch(f"{_SDK_MODULE}.validate_response_format"),
+            patch(
+                f"{_SDK_MODULE}.get_observability_context",
+                return_value=mock_ctx,
+            ),
+            patch.dict(
+                sys.modules,
+                {
+                    "opentelemetry.instrumentation.claude_agent_sdk": mock_module,
+                },
+            ),
+        ):
+            await backend.initialize()
+
+        assert mock_instance.instrument.call_count == 2
+        await backend.teardown()
+        assert mock_instance.uninstrument.call_count == 2
+        assert backend._instrumentor is None
+
+    @pytest.mark.asyncio
+    async def test_teardown_handles_uninstrument_exception(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """T020: uninstrument() error is logged, _instrumentor still cleared."""
+        backend = ClaudeBackend(_make_agent())
+        backend._initialized = True
+        backend._options = MagicMock()
+
+        mock_instrumentor = MagicMock()
+        mock_instrumentor.uninstrument.side_effect = RuntimeError("otel cleanup failed")
+        backend._instrumentor = mock_instrumentor
+
+        with caplog.at_level(logging.WARNING):
+            await backend.teardown()  # Should not raise
+
+        assert backend._instrumentor is None
+        assert any(
+            "deactivating" in msg.lower() or "otel cleanup failed" in msg
+            for msg in caplog.messages
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -126,49 +126,60 @@ class TestMCPToolValidConfig:
 class TestMCPToolInvalidConfig:
     """Test invalid MCPTool configurations."""
 
-    def test_stdio_without_command_raises(self) -> None:
-        """Stdio transport requires command field."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPTool(
-                name="test",
-                description="Test",
-                transport=TransportType.STDIO,
-                # command missing
-            )
-        assert "'command' is required for stdio transport" in str(exc_info.value)
-
-    def test_sse_without_url_raises(self) -> None:
-        """SSE transport requires url field."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPTool(
-                name="test",
-                description="Test",
-                transport=TransportType.SSE,
-                # url missing
-            )
-        assert "'url' is required for sse transport" in str(exc_info.value)
-
-    def test_websocket_without_url_raises(self) -> None:
-        """WebSocket transport requires url field."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPTool(
-                name="test",
-                description="Test",
-                transport=TransportType.WEBSOCKET,
-                # url missing
-            )
-        assert "'url' is required for websocket transport" in str(exc_info.value)
-
-    def test_http_without_url_raises(self) -> None:
-        """HTTP transport requires url field."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPTool(
-                name="test",
-                description="Test",
-                transport=TransportType.HTTP,
-                # url missing
-            )
-        assert "'url' is required for http transport" in str(exc_info.value)
+    @pytest.mark.parametrize(
+        ("kwargs", "expected_match"),
+        [
+            pytest.param(
+                {"transport": TransportType.STDIO},
+                "'command' is required for stdio transport",
+                id="stdio_without_command",
+            ),
+            pytest.param(
+                {"transport": TransportType.SSE},
+                "'url' is required for sse transport",
+                id="sse_without_url",
+            ),
+            pytest.param(
+                {"transport": TransportType.WEBSOCKET},
+                "'url' is required for websocket transport",
+                id="websocket_without_url",
+            ),
+            pytest.param(
+                {"transport": TransportType.HTTP},
+                "'url' is required for http transport",
+                id="http_without_url",
+            ),
+            pytest.param(
+                {
+                    "transport": TransportType.HTTP,
+                    "url": "http://remote-server.com/mcp",
+                },
+                "must use https://",
+                id="remote_http_requires_https",
+            ),
+            pytest.param(
+                {"command": CommandType.NPX, "request_timeout": -1},
+                "request_timeout must be positive",
+                id="negative_request_timeout",
+            ),
+            pytest.param(
+                {"command": CommandType.NPX, "request_timeout": 0},
+                "request_timeout must be positive",
+                id="zero_request_timeout",
+            ),
+            pytest.param(
+                {"transport": TransportType.HTTP, "url": "ftp://example.com/mcp"},
+                "must use https://",
+                id="invalid_url_scheme",
+            ),
+        ],
+    )
+    def test_invalid_config_raises_validation_error(
+        self, kwargs: dict, expected_match: str
+    ) -> None:
+        """Test that invalid MCPTool configurations raise ValidationError."""
+        with pytest.raises(ValidationError, match=expected_match):
+            MCPTool(name="test", description="Test", **kwargs)
 
     def test_invalid_command_type_raises(self) -> None:
         """Invalid command type is rejected."""
@@ -179,95 +190,27 @@ class TestMCPToolInvalidConfig:
                 command="bash",  # type: ignore[arg-type]
             )
 
-    def test_remote_http_url_requires_https(self) -> None:
-        """Remote HTTP URLs must use https:// scheme."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPTool(
-                name="test",
-                description="Test",
-                transport=TransportType.HTTP,
-                url="http://remote-server.com/mcp",
-            )
-        assert "must use https://" in str(exc_info.value)
-
-    def test_negative_request_timeout_raises(self) -> None:
-        """Negative request_timeout is rejected."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPTool(
-                name="test",
-                description="Test",
-                command=CommandType.NPX,
-                request_timeout=-1,
-            )
-        assert "request_timeout must be positive" in str(exc_info.value)
-
-    def test_zero_request_timeout_raises(self) -> None:
-        """Zero request_timeout is rejected."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPTool(
-                name="test",
-                description="Test",
-                command=CommandType.NPX,
-                request_timeout=0,
-            )
-        assert "request_timeout must be positive" in str(exc_info.value)
-
-    def test_invalid_url_scheme_raises(self) -> None:
-        """URLs with invalid schemes are rejected."""
-        with pytest.raises(ValidationError) as exc_info:
-            MCPTool(
-                name="test",
-                description="Test",
-                transport=TransportType.HTTP,
-                url="ftp://example.com/mcp",
-            )
-        assert "must use https://" in str(exc_info.value)
-
 
 class TestMCPToolDefaults:
     """Test default values for MCPTool."""
 
-    def test_default_transport_is_stdio(self) -> None:
-        """Default transport is stdio."""
+    @pytest.mark.parametrize(
+        ("field", "expected_value"),
+        [
+            pytest.param(
+                "transport", TransportType.STDIO, id="default_transport_stdio"
+            ),
+            pytest.param("load_tools", True, id="default_load_tools_true"),
+            pytest.param("load_prompts", True, id="default_load_prompts_true"),
+            pytest.param("request_timeout", 60, id="default_request_timeout_60"),
+            pytest.param("type", "mcp", id="default_type_mcp"),
+        ],
+    )
+    def test_default_values(self, field: str, expected_value: object) -> None:
+        """Test that MCPTool defaults are correct."""
         config = MCPTool(
             name="test",
             description="Test",
             command=CommandType.NPX,
         )
-        assert config.transport == TransportType.STDIO
-
-    def test_default_load_tools_is_true(self) -> None:
-        """Default load_tools is True."""
-        config = MCPTool(
-            name="test",
-            description="Test",
-            command=CommandType.NPX,
-        )
-        assert config.load_tools is True
-
-    def test_default_load_prompts_is_true(self) -> None:
-        """Default load_prompts is True."""
-        config = MCPTool(
-            name="test",
-            description="Test",
-            command=CommandType.NPX,
-        )
-        assert config.load_prompts is True
-
-    def test_default_request_timeout_is_60(self) -> None:
-        """Default request_timeout is 60 seconds."""
-        config = MCPTool(
-            name="test",
-            description="Test",
-            command=CommandType.NPX,
-        )
-        assert config.request_timeout == 60
-
-    def test_default_type_is_mcp(self) -> None:
-        """Default type is 'mcp'."""
-        config = MCPTool(
-            name="test",
-            description="Test",
-            command=CommandType.NPX,
-        )
-        assert config.type == "mcp"
+        assert getattr(config, field) == expected_value

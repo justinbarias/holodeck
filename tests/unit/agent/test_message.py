@@ -2,44 +2,39 @@
 
 from __future__ import annotations
 
+import pytest
+
 from holodeck.chat.message import MessageValidator
 
 
 class TestMessageValidator:
     """Unit tests for MessageValidator."""
 
-    def test_validator_initialization(self) -> None:
-        """Validator initializes with default max_length."""
-        validator = MessageValidator()
-        assert validator is not None
-
     def test_validator_custom_max_length(self) -> None:
         """Validator accepts custom max_length."""
         validator = MessageValidator(max_length=5000)
         assert validator is not None
 
-    def test_empty_message_rejected(self) -> None:
-        """Empty string messages fail validation."""
+    @pytest.mark.parametrize(
+        "message, error_substr",
+        [
+            pytest.param("", "empty", id="empty_string"),
+            pytest.param("   \t\n  ", "empty", id="whitespace_only"),
+            pytest.param(None, None, id="none_value"),
+            pytest.param("hello\x00world", "control", id="control_char_null_embedded"),
+            pytest.param("test\x00message", None, id="null_byte"),
+        ],
+    )
+    def test_invalid_message_rejected(
+        self, message: str | None, error_substr: str | None
+    ) -> None:
+        """Invalid messages fail validation."""
         validator = MessageValidator()
-        is_valid, error = validator.validate("")
+        is_valid, error = validator.validate(message)  # type: ignore[arg-type]
         assert not is_valid
         assert error is not None
-        assert "empty" in error.lower()
-
-    def test_whitespace_only_message_rejected(self) -> None:
-        """Whitespace-only messages fail validation."""
-        validator = MessageValidator()
-        is_valid, error = validator.validate("   \t\n  ")
-        assert not is_valid
-        assert error is not None
-        assert "empty" in error.lower()
-
-    def test_none_message_rejected(self) -> None:
-        """None messages fail validation."""
-        validator = MessageValidator()
-        is_valid, error = validator.validate(None)  # type: ignore
-        assert not is_valid
-        assert error is not None
+        if error_substr is not None:
+            assert error_substr in error.lower()
 
     def test_message_exceeds_size_limit(self) -> None:
         """Messages exceeding max_length are rejected."""
@@ -63,55 +58,20 @@ class TestMessageValidator:
         assert not is_valid
         assert error is not None
 
-    def test_control_characters_rejected(self) -> None:
-        """Messages with control characters are rejected."""
+    @pytest.mark.parametrize(
+        "message",
+        [
+            pytest.param("hello\tworld", id="tab_character"),
+            pytest.param("hello\nworld", id="newline_character"),
+            pytest.param("Hello 世界 🌍", id="unicode"),
+            pytest.param("hello world", id="simple_message"),
+            pytest.param("  hello world  ", id="leading_trailing_whitespace"),
+        ],
+    )
+    def test_valid_message_accepted(self, message: str) -> None:
+        """Valid messages pass validation."""
         validator = MessageValidator()
-        is_valid, error = validator.validate("hello\x00world")
-        assert not is_valid
-        assert error is not None
-        assert "control" in error.lower()
-
-    def test_null_byte_rejected(self) -> None:
-        """Messages with null bytes are rejected."""
-        validator = MessageValidator()
-        is_valid, error = validator.validate("test\x00message")
-        assert not is_valid
-
-    def test_tab_character_allowed(self) -> None:
-        """Tab characters (outside message) are handled correctly."""
-        validator = MessageValidator()
-        # Tabs in the middle of content should be stripped at edges
-        is_valid, error = validator.validate("hello\tworld")
-        assert is_valid
-        assert error is None
-
-    def test_newline_in_message_allowed(self) -> None:
-        """Newlines within message content are allowed."""
-        validator = MessageValidator()
-        is_valid, error = validator.validate("hello\nworld")
-        assert is_valid
-        assert error is None
-
-    def test_unicode_message_accepted(self) -> None:
-        """Valid UTF-8 Unicode messages are accepted."""
-        validator = MessageValidator()
-        is_valid, error = validator.validate("Hello 世界 🌍")
-        assert is_valid
-        assert error is None
-
-    def test_valid_simple_message(self) -> None:
-        """Normal messages pass validation."""
-        validator = MessageValidator()
-        is_valid, error = validator.validate("hello world")
-        assert is_valid
-        assert error is None
-
-    def test_leading_trailing_whitespace_stripped(self) -> None:
-        """Validation strips leading/trailing whitespace."""
-        validator = MessageValidator()
-        # Message with leading/trailing whitespace should be valid
-        # if the trimmed content is non-empty
-        is_valid, error = validator.validate("  hello world  ")
+        is_valid, error = validator.validate(message)
         assert is_valid
         assert error is None
 

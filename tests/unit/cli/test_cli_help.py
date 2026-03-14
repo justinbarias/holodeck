@@ -45,17 +45,21 @@ class TestCLIHelpText:
         # Should mention project name argument
         assert "name" in help_text or "project" in help_text
 
-    def test_help_includes_options(self):
-        """Help text should document available options."""
+    @pytest.mark.parametrize(
+        "option",
+        [
+            pytest.param("--template", id="template"),
+            pytest.param("--description", id="description"),
+            pytest.param("--author", id="author"),
+            pytest.param("--force", id="force"),
+        ],
+    )
+    def test_option_documented(self, option):
+        """'{option}' option should be documented in init help."""
         runner = CliRunner()
         result = runner.invoke(cli, ["init", "--help"])
 
-        help_text = result.output.lower()
-        # Should document key options
-        assert "--template" in result.output or "template" in help_text
-        assert "--description" in result.output or "description" in help_text
-        assert "--author" in result.output or "author" in help_text
-        assert "--force" in result.output or "force" in help_text
+        assert option in result.output
 
     def test_help_includes_examples(self):
         """Help text should include usage examples."""
@@ -66,35 +70,6 @@ class TestCLIHelpText:
         # This might be in the long help text or docstring
         # At minimum, should show basic usage
         assert "holodeck" in result.output
-
-    def test_template_option_documented(self):
-        """--template option should be documented with available choices."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["init", "--help"])
-
-        # Should mention template option
-        assert "--template" in result.output
-
-    def test_description_option_documented(self):
-        """--description option should be documented."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["init", "--help"])
-
-        assert "--description" in result.output
-
-    def test_author_option_documented(self):
-        """--author option should be documented."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["init", "--help"])
-
-        assert "--author" in result.output
-
-    def test_force_option_documented(self):
-        """--force option should be documented."""
-        runner = CliRunner()
-        result = runner.invoke(cli, ["init", "--help"])
-
-        assert "--force" in result.output
 
     def test_help_text_readable(self):
         """Help text should be formatted for readability."""

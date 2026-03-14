@@ -15,46 +15,49 @@ from holodeck.models.test_result import MetricResult, TestResult
 class TestTTYDetection:
     """Test TTY detection for progress display formatting."""
 
-    def test_tty_detection_with_tty(self) -> None:
-        """Test that spinner works when stdout is a terminal."""
-        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=True):
+    @pytest.mark.parametrize(
+        ("is_tty", "expect_content"),
+        [
+            pytest.param(True, True, id="tty_shows_spinner"),
+            pytest.param(False, False, id="non_tty_empty"),
+        ],
+    )
+    def test_tty_detection_spinner_line(
+        self, is_tty: bool, expect_content: bool
+    ) -> None:
+        """Test spinner line output based on TTY detection."""
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=is_tty):
             indicator = ProgressIndicator(total_tests=10)
             line = indicator.get_spinner_line()
-            assert line != ""
-            assert "Running..." in line
-
-    def test_tty_detection_without_tty(self) -> None:
-        """Test that spinner returns empty when not TTY (e.g., in CI/CD)."""
-        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
-            indicator = ProgressIndicator(total_tests=10)
-            line = indicator.get_spinner_line()
-            assert line == ""
-
-    def test_tty_detection_with_pipe(self) -> None:
-        """Test TTY detection when stdout is piped."""
-        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
-            indicator = ProgressIndicator(total_tests=10)
-            line = indicator.get_spinner_line()
-            assert line == ""
+            if expect_content:
+                assert line != ""
+                assert "Running..." in line
+            else:
+                assert line == ""
 
 
 class TestProgressDisplay:
     """Test progress indicator display formats."""
 
-    def test_progress_format_with_tty(self) -> None:
-        """Test that progress format includes interactive elements in TTY mode."""
-        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=True):
+    @pytest.mark.parametrize(
+        ("is_tty", "expect_content"),
+        [
+            pytest.param(True, True, id="tty_has_interactive_elements"),
+            pytest.param(False, False, id="non_tty_plain_text"),
+        ],
+    )
+    def test_progress_format_tty_behavior(
+        self, is_tty: bool, expect_content: bool
+    ) -> None:
+        """Test progress format based on TTY mode."""
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=is_tty):
             indicator = ProgressIndicator(total_tests=10)
             spinner_line = indicator.get_spinner_line()
-            assert spinner_line != ""
-            assert "Running..." in spinner_line
-
-    def test_progress_format_without_tty(self) -> None:
-        """Test that progress format is plain text in non-TTY mode."""
-        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
-            indicator = ProgressIndicator(total_tests=10)
-            spinner_line = indicator.get_spinner_line()
-            assert spinner_line == ""
+            if expect_content:
+                assert spinner_line != ""
+                assert "Running..." in spinner_line
+            else:
+                assert spinner_line == ""
 
     def test_initial_state(self) -> None:
         """Test that progress indicator initializes with correct state."""
@@ -125,67 +128,65 @@ class TestProgressFormat:
 
             assert indicator.current_test == 3
 
-    def test_checkmark_symbol_tty(self) -> None:
-        """Test checkmark symbol in TTY mode."""
-        with patch("sys.stdout.isatty", return_value=True):
+    @pytest.mark.parametrize(
+        ("is_tty", "passed", "pass_indicators", "fail_indicators"),
+        [
+            pytest.param(
+                True,
+                True,
+                ["✓", "✅", "PASS"],
+                [],
+                id="tty_pass_checkmark",
+            ),
+            pytest.param(
+                True,
+                False,
+                [],
+                ["✗", "❌", "FAIL"],
+                id="tty_fail_xmark",
+            ),
+            pytest.param(
+                False,
+                True,
+                ["PASS", "OK", "✓"],
+                [],
+                id="non_tty_pass_plain",
+            ),
+            pytest.param(
+                False,
+                False,
+                [],
+                ["FAIL", "ERROR", "✗"],
+                id="non_tty_fail_plain",
+            ),
+        ],
+    )
+    def test_pass_fail_symbol(
+        self,
+        is_tty: bool,
+        passed: bool,
+        pass_indicators: list[str],
+        fail_indicators: list[str],
+    ) -> None:
+        """Test pass/fail symbol display across TTY and non-TTY modes."""
+        with patch("sys.stdout.isatty", return_value=is_tty):
             indicator = ProgressIndicator(total_tests=2)
             result = MagicMock(spec=TestResult)
-            result.test_name = "Passing Test"
-            result.passed = True
+            result.test_name = "Test"
+            result.passed = passed
             result.execution_time_ms = None
 
             indicator.update(result)
             output = indicator.get_progress_line()
 
-            # Should contain checkmark or similar passing indicator
-            assert "✓" in output or "✅" in output or "PASS" in output.upper()
-
-    def test_fail_symbol_tty(self) -> None:
-        """Test fail symbol (X mark) in TTY mode."""
-        with patch("sys.stdout.isatty", return_value=True):
-            indicator = ProgressIndicator(total_tests=2)
-            result = MagicMock(spec=TestResult)
-            result.test_name = "Failing Test"
-            result.passed = False
-            result.execution_time_ms = None
-
-            indicator.update(result)
-            output = indicator.get_progress_line()
-
-            # Should contain X mark or similar failure indicator
-            assert "✗" in output or "❌" in output or "FAIL" in output.upper()
-
-    def test_plain_text_pass_indicator(self) -> None:
-        """Test plain text PASS indicator in non-TTY mode."""
-        with patch("sys.stdout.isatty", return_value=False):
-            indicator = ProgressIndicator(total_tests=2)
-            result = MagicMock(spec=TestResult)
-            result.test_name = "Passing Test"
-            result.passed = True
-            result.execution_time_ms = None
-
-            indicator.update(result)
-            output = indicator.get_progress_line()
-
-            # Should contain plain text indicator
-            assert "PASS" in output.upper() or "OK" in output.upper() or "✓" in output
-
-    def test_plain_text_fail_indicator(self) -> None:
-        """Test plain text FAIL indicator in non-TTY mode."""
-        with patch("sys.stdout.isatty", return_value=False):
-            indicator = ProgressIndicator(total_tests=2)
-            result = MagicMock(spec=TestResult)
-            result.test_name = "Failing Test"
-            result.passed = False
-            result.execution_time_ms = None
-
-            indicator.update(result)
-            output = indicator.get_progress_line()
-
-            # Should contain plain text failure indicator
-            assert (
-                "FAIL" in output.upper() or "ERROR" in output.upper() or "✗" in output
-            )
+            if pass_indicators:
+                assert any(
+                    ind in output or ind in output.upper() for ind in pass_indicators
+                )
+            if fail_indicators:
+                assert any(
+                    ind in output or ind in output.upper() for ind in fail_indicators
+                )
 
 
 class TestSummaryDisplay:
@@ -515,7 +516,7 @@ class TestSpinnerDisplay:
                 assert spinner_char in SpinnerMixin.SPINNER_CHARS
 
     def test_spinner_disabled_in_non_tty(self) -> None:
-        """Test that spinner line is empty in non-TTY environments."""
+        """Test spinner line is empty in non-TTY environments."""
         with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
             indicator = ProgressIndicator(total_tests=1)
             result = MagicMock(spec=TestResult)
@@ -526,7 +527,6 @@ class TestSpinnerDisplay:
             indicator.update(result)
             spinner_line = indicator.get_spinner_line()
 
-            # In non-TTY, spinner line should return empty string
             assert spinner_line == ""
 
     def test_spinner_not_shown_for_quick_tests(self) -> None:
@@ -580,35 +580,30 @@ class TestANSIColorOutput:
             # Plain text only
             assert isinstance(output, str)
 
-    def test_pass_symbol_colored(self) -> None:
-        """Test that pass symbol is properly colored in TTY."""
+    @pytest.mark.parametrize(
+        ("passed", "expected_indicators"),
+        [
+            pytest.param(True, ["✓", "\033[92m", "PASS"], id="pass_symbol_colored"),
+            pytest.param(False, ["✗", "\033[91m", "FAIL"], id="fail_symbol_colored"),
+        ],
+    )
+    def test_pass_fail_symbol_colored(
+        self, passed: bool, expected_indicators: list[str]
+    ) -> None:
+        """Test that pass/fail symbol is properly colored in TTY."""
         with patch("sys.stdout.isatty", return_value=True):
             indicator = ProgressIndicator(total_tests=1)
             result = MagicMock(spec=TestResult)
-            result.test_name = "Pass Color Test"
-            result.passed = True
+            result.test_name = "Color Test"
+            result.passed = passed
             result.execution_time_ms = 100
 
             indicator.update(result)
             output = indicator.get_progress_line()
 
-            # Pass symbol should be present
-            assert "✓" in output or "\033[92m" in output or "PASS" in output.upper()
-
-    def test_fail_symbol_colored(self) -> None:
-        """Test that fail symbol is properly colored in TTY."""
-        with patch("sys.stdout.isatty", return_value=True):
-            indicator = ProgressIndicator(total_tests=1)
-            result = MagicMock(spec=TestResult)
-            result.test_name = "Fail Color Test"
-            result.passed = False
-            result.execution_time_ms = 100
-
-            indicator.update(result)
-            output = indicator.get_progress_line()
-
-            # Fail symbol should be present
-            assert "✗" in output or "\033[91m" in output or "FAIL" in output.upper()
+            assert any(
+                ind in output or ind in output.upper() for ind in expected_indicators
+            )
 
     def test_color_reset_codes(self) -> None:
         """Test that color reset codes are present when colors are used."""
@@ -795,22 +790,26 @@ class TestStartTest:
 class TestGetSpinnerLine:
     """Tests for get_spinner_line method."""
 
-    def test_get_spinner_line_in_tty(self) -> None:
-        """Test get_spinner_line returns spinner in TTY mode."""
-        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=True):
+    @pytest.mark.parametrize(
+        ("is_tty", "expect_content"),
+        [
+            pytest.param(True, True, id="tty_shows_spinner"),
+            pytest.param(False, False, id="non_tty_empty"),
+        ],
+    )
+    def test_get_spinner_line_tty_behavior(
+        self, is_tty: bool, expect_content: bool
+    ) -> None:
+        """Test get_spinner_line based on TTY mode."""
+        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=is_tty):
             indicator = ProgressIndicator(total_tests=5)
             indicator.start_test("Running Test")
             line = indicator.get_spinner_line()
-            assert "Test 1/5" in line
-            assert "Running..." in line
-
-    def test_get_spinner_line_in_non_tty(self) -> None:
-        """Test get_spinner_line returns empty in non-TTY mode."""
-        with patch("holodeck.lib.test_runner.progress.is_tty", return_value=False):
-            indicator = ProgressIndicator(total_tests=5)
-            indicator.start_test("Running Test")
-            line = indicator.get_spinner_line()
-            assert line == ""
+            if expect_content:
+                assert "Test 1/5" in line
+                assert "Running..." in line
+            else:
+                assert line == ""
 
     def test_get_spinner_line_in_quiet_mode(self) -> None:
         """Test get_spinner_line returns empty in quiet mode."""

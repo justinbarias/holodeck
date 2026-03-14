@@ -68,30 +68,60 @@ def _create_agent_with_tests(num_test_cases: int = 0) -> Agent:
     )
 
 
-def _setup_test_mocks(num_test_cases: int = 0):
-    """Set up common test mocks (ConfigLoader, ProgressIndicator).
+def _make_test_result(name: str = "test_1", passed: bool = True) -> TestResult:
+    """Create a TestResult with minimal boilerplate."""
+    return TestResult(
+        test_name=name,
+        test_input="input",
+        processed_files=[],
+        agent_response="response",
+        tool_calls=[],
+        expected_tools=None,
+        tools_matched=None,
+        metric_results=[],
+        ground_truth=None,
+        passed=passed,
+        execution_time_ms=100,
+        errors=[],
+        timestamp="2024-01-01T00:00:00Z",
+    )
 
-    Args:
-        num_test_cases: Number of test cases for the agent
 
-    Returns:
-        Tuple of (config_loader_patch, progress_indicator_patch)
-    """
-    config_loader_patch = patch("holodeck.cli.commands.test.ConfigLoader")
-    progress_indicator_patch = patch("holodeck.cli.commands.test.ProgressIndicator")
+def _make_report(
+    agent_config_path: str,
+    results: list[TestResult] | None = None,
+    passed: int = 0,
+    failed: int = 0,
+) -> TestReport:
+    """Create a TestReport from results or pass/fail counts."""
+    if results is None:
+        results = []
+    total = passed + failed if (passed or failed) else len(results)
+    if not results and total > 0:
+        results = [_make_test_result(f"test_{i}", True) for i in range(passed)] + [
+            _make_test_result(f"test_fail_{i}", False) for i in range(failed)
+        ]
+    actual_passed = sum(1 for r in results if r.passed)
+    actual_failed = total - actual_passed
+    pass_rate = (actual_passed / total * 100.0) if total > 0 else 0.0
 
-    mock_loader_class = config_loader_patch.start()
-    mock_loader = MagicMock()
-    mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(num_test_cases)
-    mock_loader_class.return_value = mock_loader
-
-    mock_progress_class = progress_indicator_patch.start()
-    mock_progress = MagicMock()
-    mock_progress.get_progress_line.return_value = ""
-    mock_progress.get_summary.return_value = "Test summary"
-    mock_progress_class.return_value = mock_progress
-
-    return (config_loader_patch, progress_indicator_patch)
+    return TestReport(
+        agent_name="test_agent",
+        agent_config_path=agent_config_path,
+        results=results,
+        summary=ReportSummary(
+            total_tests=total,
+            passed=actual_passed,
+            failed=actual_failed,
+            pass_rate=pass_rate,
+            total_duration_ms=100 * total,
+            metrics_evaluated={},
+            average_scores={},
+        ),
+        timestamp="2024-01-01T00:00:00Z",
+        holodeck_version="0.1.0",
+        environment={},
+    )
 
 
 class TestCLIArgumentParsing:
@@ -169,8 +199,51 @@ class TestCLIArgumentParsing:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    def test_output_option_accepted(self):
-        """--output option is accepted for report file path."""
+    @pytest.mark.parametrize(
+        "cli_args, description",
+        [
+            pytest.param(
+                ["--output", "report.json"],
+                "output option",
+                id="output_option",
+            ),
+            pytest.param(
+                ["--format", "json"],
+                "format option",
+                id="format_option",
+            ),
+            pytest.param(
+                ["--verbose"],
+                "verbose flag",
+                id="verbose_flag",
+            ),
+            pytest.param(
+                ["--quiet"],
+                "quiet flag",
+                id="quiet_flag",
+            ),
+            pytest.param(
+                ["--timeout", "120"],
+                "timeout option",
+                id="timeout_option",
+            ),
+            pytest.param(
+                [
+                    "--output",
+                    "report.json",
+                    "--format",
+                    "json",
+                    "--verbose",
+                    "--timeout",
+                    "60",
+                ],
+                "multiple combined options",
+                id="multiple_options_combined",
+            ),
+        ],
+    )
+    def test_option_accepted(self, cli_args: list[str], description: str):
+        """CLI option '{description}' is accepted without error."""
         runner = CliRunner()
 
         with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
@@ -192,171 +265,9 @@ class TestCLIArgumentParsing:
                 )
                 mock_executor.return_value = mock_instance
 
-                result = runner.invoke(test, [tmp_path, "--output", "report.json"])
+                result = runner.invoke(test, [tmp_path] + cli_args)
 
                 # Should not complain about invalid option
-                assert "no such option" not in result.output.lower()
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_format_option_accepted(self):
-        """--format option is accepted for report format (json/markdown)."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch("holodeck.cli.commands.test.ProgressIndicator"),
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                mock_instance = MagicMock()
-                mock_instance.execute_tests = AsyncMock(
-                    return_value=_create_mock_report(tmp_path)
-                )
-                mock_executor.return_value = mock_instance
-
-                result = runner.invoke(test, [tmp_path, "--format", "json"])
-
-                # Should not complain about invalid option
-                assert "no such option" not in result.output.lower()
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_verbose_flag_accepted(self):
-        """--verbose flag is accepted for verbose output."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch("holodeck.cli.commands.test.ProgressIndicator"),
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                mock_instance = MagicMock()
-                mock_instance.execute_tests = AsyncMock(
-                    return_value=_create_mock_report(tmp_path)
-                )
-                mock_executor.return_value = mock_instance
-
-                result = runner.invoke(test, [tmp_path, "--verbose"])
-
-                # Should not complain about invalid option
-                assert "no such option" not in result.output.lower()
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_quiet_flag_accepted(self):
-        """--quiet flag is accepted to suppress progress output."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch("holodeck.cli.commands.test.ProgressIndicator"),
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                mock_instance = MagicMock()
-                mock_instance.execute_tests = AsyncMock(
-                    return_value=_create_mock_report(tmp_path)
-                )
-                mock_executor.return_value = mock_instance
-
-                result = runner.invoke(test, [tmp_path, "--quiet"])
-
-                # Should not complain about invalid option
-                assert "no such option" not in result.output.lower()
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_timeout_option_accepted(self):
-        """--timeout option is accepted for execution timeout configuration."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch("holodeck.cli.commands.test.ProgressIndicator"),
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                mock_instance = MagicMock()
-                mock_instance.execute_tests = AsyncMock(
-                    return_value=_create_mock_report(tmp_path)
-                )
-                mock_executor.return_value = mock_instance
-
-                result = runner.invoke(test, [tmp_path, "--timeout", "120"])
-
-                # Should not complain about invalid option
-                assert "no such option" not in result.output.lower()
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_multiple_options_combined(self):
-        """Multiple options can be combined in single command."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch("holodeck.cli.commands.test.ProgressIndicator"),
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                mock_instance = MagicMock()
-                mock_instance.execute_tests = AsyncMock(
-                    return_value=_create_mock_report(tmp_path)
-                )
-                mock_executor.return_value = mock_instance
-
-                result = runner.invoke(
-                    test,
-                    [
-                        tmp_path,
-                        "--output",
-                        "report.json",
-                        "--format",
-                        "json",
-                        "--verbose",
-                        "--timeout",
-                        "60",
-                    ],
-                )
-
-                # Should accept all combined options
                 assert "no such option" not in result.output.lower()
         finally:
             Path(tmp_path).unlink(missing_ok=True)
@@ -365,8 +276,36 @@ class TestCLIArgumentParsing:
 class TestCLIExitCodeLogic:
     """Tests for T069: Exit code logic."""
 
-    def test_exit_code_zero_on_success(self):
-        """Exit code 0 when all tests pass."""
+    @pytest.mark.parametrize(
+        "scenario, error_side_effect, report_kwargs, expected_exit_code",
+        [
+            pytest.param(
+                "all tests pass",
+                None,
+                {"passed": 1, "failed": 0},
+                0,
+                id="exit_0_all_pass",
+            ),
+            pytest.param(
+                "tests fail",
+                None,
+                {"passed": 0, "failed": 1},
+                1,
+                id="exit_1_test_failure",
+            ),
+            pytest.param(
+                "mixed pass/fail",
+                None,
+                {"passed": 1, "failed": 1},
+                1,
+                id="exit_1_mixed_pass_fail",
+            ),
+        ],
+    )
+    def test_exit_code_from_report(
+        self, scenario, error_side_effect, report_kwargs, expected_exit_code
+    ):
+        """Exit code {expected_exit_code} when {scenario}."""
         runner = CliRunner()
 
         with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
@@ -382,286 +321,82 @@ class TestCLIExitCodeLogic:
                 mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
                 mock_loader_class.return_value = mock_loader
 
-                # Create passing test results
-                test_result = TestResult(
-                    test_name="test_1",
-                    test_input="input",
-                    processed_files=[],
-                    agent_response="response",
-                    tool_calls=[],
-                    expected_tools=None,
-                    tools_matched=None,
-                    metric_results=[],
-                    ground_truth=None,
-                    passed=True,
-                    execution_time_ms=100,
-                    errors=[],
-                    timestamp="2024-01-01T00:00:00Z",
-                )
-
                 mock_instance = MagicMock()
                 mock_instance.execute_tests = AsyncMock(
-                    return_value=TestReport(
-                        agent_name="test_agent",
-                        agent_config_path=tmp_path,
-                        results=[test_result],
-                        summary=ReportSummary(
-                            total_tests=1,
-                            passed=1,
-                            failed=0,
-                            pass_rate=100.0,
-                            total_duration_ms=100,
-                            metrics_evaluated={},
-                            average_scores={},
-                        ),
-                        timestamp="2024-01-01T00:00:00Z",
-                        holodeck_version="0.1.0",
-                        environment={},
+                    return_value=_make_report(tmp_path, **report_kwargs)
+                )
+                mock_instance.shutdown = AsyncMock()
+                mock_executor.return_value = mock_instance
+
+                result = runner.invoke(test, [tmp_path])
+
+                assert result.exit_code == expected_exit_code
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    @pytest.mark.parametrize(
+        "error_class_path, error_args, expected_exit_code",
+        [
+            pytest.param(
+                "holodeck.lib.errors.ConfigError",
+                ("agent", "Invalid agent configuration"),
+                2,
+                id="exit_2_config_error",
+            ),
+            pytest.param(
+                "holodeck.lib.errors.ExecutionError",
+                ("Timeout executing agent",),
+                3,
+                id="exit_3_execution_error",
+            ),
+            pytest.param(
+                "holodeck.lib.errors.EvaluationError",
+                ("Failed to evaluate metrics",),
+                4,
+                id="exit_4_evaluation_error",
+            ),
+        ],
+    )
+    def test_exit_code_from_error(
+        self, error_class_path, error_args, expected_exit_code
+    ):
+        """Exit code {expected_exit_code} on {error_class_path}."""
+        import importlib
+
+        module_path, class_name = error_class_path.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        error_class = getattr(module, class_name)
+
+        runner = CliRunner()
+
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
+                mock_loader_class.return_value = mock_loader
+
+                if expected_exit_code == 2:
+                    # ConfigError raised during executor init
+                    mock_executor.side_effect = error_class(*error_args)
+                else:
+                    # Error raised during test execution
+                    mock_instance = MagicMock()
+                    mock_instance.execute_tests = AsyncMock(
+                        side_effect=error_class(*error_args)
                     )
-                )
-                mock_instance.shutdown = AsyncMock()
-                mock_executor.return_value = mock_instance
+                    mock_instance.shutdown = AsyncMock()
+                    mock_executor.return_value = mock_instance
 
                 result = runner.invoke(test, [tmp_path])
 
-                assert result.exit_code == 0
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_exit_code_one_on_test_failure(self):
-        """Exit code 1 when tests fail (but config and execution were valid)."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch("holodeck.cli.commands.test.ProgressIndicator"),
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                # Create failing test result
-                test_result = TestResult(
-                    test_name="test_1",
-                    test_input="input",
-                    processed_files=[],
-                    agent_response="response",
-                    tool_calls=[],
-                    expected_tools=None,
-                    tools_matched=None,
-                    metric_results=[],
-                    ground_truth=None,
-                    passed=False,
-                    execution_time_ms=100,
-                    errors=[],
-                    timestamp="2024-01-01T00:00:00Z",
-                )
-
-                mock_instance = MagicMock()
-                mock_instance.execute_tests = AsyncMock(
-                    return_value=TestReport(
-                        agent_name="test_agent",
-                        agent_config_path=tmp_path,
-                        results=[test_result],
-                        summary=ReportSummary(
-                            total_tests=1,
-                            passed=0,
-                            failed=1,
-                            pass_rate=0.0,
-                            total_duration_ms=100,
-                            metrics_evaluated={},
-                            average_scores={},
-                        ),
-                        timestamp="2024-01-01T00:00:00Z",
-                        holodeck_version="0.1.0",
-                        environment={},
-                    )
-                )
-                mock_instance.shutdown = AsyncMock()
-                mock_executor.return_value = mock_instance
-
-                result = runner.invoke(test, [tmp_path])
-
-                assert result.exit_code == 1
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_exit_code_two_on_config_error(self):
-        """Exit code 2 when configuration is invalid or file not found."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch("holodeck.cli.commands.test.ProgressIndicator"),
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                from holodeck.lib.errors import ConfigError
-
-                # Raise config error during initialization
-                mock_executor.side_effect = ConfigError(
-                    "agent", "Invalid agent configuration"
-                )
-
-                result = runner.invoke(test, [tmp_path])
-
-                assert result.exit_code == 2
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_exit_code_three_on_execution_error(self):
-        """Exit code 3 when execution fails (timeout, agent error, etc)."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch("holodeck.cli.commands.test.ProgressIndicator"),
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                from holodeck.lib.errors import ExecutionError
-
-                mock_instance = MagicMock()
-                # Raise execution error during test run
-                mock_instance.execute_tests = AsyncMock(
-                    side_effect=ExecutionError("Timeout executing agent")
-                )
-                mock_executor.return_value = mock_instance
-
-                result = runner.invoke(test, [tmp_path])
-
-                assert result.exit_code == 3
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_exit_code_four_on_evaluation_error(self):
-        """Exit code 4 when metric evaluation fails."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch("holodeck.cli.commands.test.ProgressIndicator"),
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                from holodeck.lib.errors import EvaluationError
-
-                mock_instance = MagicMock()
-                # Raise evaluation error during metric calculation
-                mock_instance.execute_tests = AsyncMock(
-                    side_effect=EvaluationError("Failed to evaluate metrics")
-                )
-                mock_instance.shutdown = AsyncMock()
-                mock_executor.return_value = mock_instance
-
-                result = runner.invoke(test, [tmp_path])
-
-                assert result.exit_code == 4
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_mixed_pass_fail_returns_exit_code_one(self):
-        """Exit code 1 when some tests pass and some fail."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch("holodeck.cli.commands.test.ProgressIndicator"),
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                # Create mixed results
-                passing_result = TestResult(
-                    test_name="test_1",
-                    test_input="input",
-                    processed_files=[],
-                    agent_response="response",
-                    tool_calls=[],
-                    expected_tools=None,
-                    tools_matched=None,
-                    metric_results=[],
-                    ground_truth=None,
-                    passed=True,
-                    execution_time_ms=100,
-                    errors=[],
-                    timestamp="2024-01-01T00:00:00Z",
-                )
-
-                failing_result = TestResult(
-                    test_name="test_2",
-                    test_input="input",
-                    processed_files=[],
-                    agent_response="response",
-                    tool_calls=[],
-                    expected_tools=None,
-                    tools_matched=None,
-                    metric_results=[],
-                    ground_truth=None,
-                    passed=False,
-                    execution_time_ms=100,
-                    errors=[],
-                    timestamp="2024-01-01T00:00:00Z",
-                )
-
-                mock_instance = MagicMock()
-                mock_instance.execute_tests = AsyncMock(
-                    return_value=TestReport(
-                        agent_name="test_agent",
-                        agent_config_path=tmp_path,
-                        results=[passing_result, failing_result],
-                        summary=ReportSummary(
-                            total_tests=2,
-                            passed=1,
-                            failed=1,
-                            pass_rate=50.0,
-                            total_duration_ms=200,
-                            metrics_evaluated={},
-                            average_scores={},
-                        ),
-                        timestamp="2024-01-01T00:00:00Z",
-                        holodeck_version="0.1.0",
-                        environment={},
-                    )
-                )
-                mock_instance.shutdown = AsyncMock()
-                mock_executor.return_value = mock_instance
-
-                result = runner.invoke(test, [tmp_path])
-
-                assert result.exit_code == 1
+                assert result.exit_code == expected_exit_code
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
@@ -688,50 +423,13 @@ class TestCLIProgressDisplay:
                 mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(3)
                 mock_loader_class.return_value = mock_loader
 
-                # Mock the executor to return 3 test results
-                test_results = [
-                    TestResult(
-                        test_name=f"test_{i}",
-                        test_input="input",
-                        processed_files=[],
-                        agent_response="response",
-                        tool_calls=[],
-                        expected_tools=None,
-                        tools_matched=None,
-                        metric_results=[],
-                        ground_truth=None,
-                        passed=True,
-                        execution_time_ms=100,
-                        errors=[],
-                        timestamp="2024-01-01T00:00:00Z",
-                    )
-                    for i in range(1, 4)
-                ]
-
                 mock_instance = MagicMock()
                 mock_instance.execute_tests = AsyncMock(
-                    return_value=TestReport(
-                        agent_name="test_agent",
-                        agent_config_path=tmp_path,
-                        results=test_results,
-                        summary=ReportSummary(
-                            total_tests=3,
-                            passed=3,
-                            failed=0,
-                            pass_rate=100.0,
-                            total_duration_ms=300,
-                            metrics_evaluated={},
-                            average_scores={},
-                        ),
-                        timestamp="2024-01-01T00:00:00Z",
-                        holodeck_version="0.1.0",
-                        environment={},
-                    )
+                    return_value=_make_report(tmp_path, passed=3, failed=0)
                 )
                 mock_instance.shutdown = AsyncMock()
                 mock_executor.return_value = mock_instance
 
-                # Mock progress indicator
                 mock_progress_instance = MagicMock()
                 mock_progress_class.return_value = mock_progress_instance
 
@@ -744,8 +442,15 @@ class TestCLIProgressDisplay:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
-    def test_progress_indicator_respects_quiet_flag(self):
-        """ProgressIndicator respects --quiet flag from CLI."""
+    @pytest.mark.parametrize(
+        "flag, kwarg_name, kwarg_value",
+        [
+            pytest.param("--quiet", "quiet", True, id="quiet_flag"),
+            pytest.param("--verbose", "verbose", True, id="verbose_flag"),
+        ],
+    )
+    def test_progress_indicator_respects_flag(self, flag, kwarg_name, kwarg_value):
+        """ProgressIndicator respects {flag} flag from CLI."""
         runner = CliRunner()
 
         with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
@@ -773,48 +478,10 @@ class TestCLIProgressDisplay:
                 mock_progress_instance = MagicMock()
                 mock_progress_class.return_value = mock_progress_instance
 
-                runner.invoke(test, [tmp_path, "--quiet"])
+                runner.invoke(test, [tmp_path, flag])
 
-                # Verify ProgressIndicator was initialized with quiet=True
                 call_kwargs = mock_progress_class.call_args.kwargs
-                assert call_kwargs["quiet"] is True
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_progress_indicator_respects_verbose_flag(self):
-        """ProgressIndicator respects --verbose flag from CLI."""
-        runner = CliRunner()
-
-        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
-            tmp_path = tmp.name
-
-        try:
-            with (
-                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
-                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
-                patch(
-                    "holodeck.cli.commands.test.ProgressIndicator"
-                ) as mock_progress_class,
-            ):
-                mock_loader = MagicMock()
-                mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
-                mock_loader_class.return_value = mock_loader
-
-                mock_instance = MagicMock()
-                mock_instance.execute_tests = AsyncMock(
-                    return_value=_create_mock_report(tmp_path)
-                )
-                mock_instance.shutdown = AsyncMock()
-                mock_executor.return_value = mock_instance
-
-                mock_progress_instance = MagicMock()
-                mock_progress_class.return_value = mock_progress_instance
-
-                runner.invoke(test, [tmp_path, "--verbose"])
-
-                # Verify ProgressIndicator was initialized with verbose=True
-                call_kwargs = mock_progress_class.call_args.kwargs
-                assert call_kwargs["verbose"] is True
+                assert call_kwargs[kwarg_name] is kwarg_value
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
@@ -870,22 +537,7 @@ class TestCLIProgressDisplay:
                 mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
                 mock_loader_class.return_value = mock_loader
 
-                # Create test result
-                test_result = TestResult(
-                    test_name="test_1",
-                    test_input="input",
-                    processed_files=[],
-                    agent_response="response",
-                    tool_calls=[],
-                    expected_tools=None,
-                    tools_matched=None,
-                    metric_results=[],
-                    ground_truth=None,
-                    passed=True,
-                    execution_time_ms=100,
-                    errors=[],
-                    timestamp="2024-01-01T00:00:00Z",
-                )
+                test_result = _make_test_result()
 
                 # Capture the callback function passed to executor
                 captured_callback = None
@@ -895,23 +547,7 @@ class TestCLIProgressDisplay:
                     captured_callback = kwargs.get("progress_callback")
                     mock_instance = MagicMock()
                     mock_instance.execute_tests = AsyncMock(
-                        return_value=TestReport(
-                            agent_name="test_agent",
-                            agent_config_path=tmp_path,
-                            results=[test_result],
-                            summary=ReportSummary(
-                                total_tests=1,
-                                passed=1,
-                                failed=0,
-                                pass_rate=100.0,
-                                total_duration_ms=100,
-                                metrics_evaluated={},
-                                average_scores={},
-                            ),
-                            timestamp="2024-01-01T00:00:00Z",
-                            holodeck_version="0.1.0",
-                            environment={},
-                        )
+                        return_value=_make_report(tmp_path, results=[test_result])
                     )
                     mock_instance.shutdown = AsyncMock()
                     return mock_instance
@@ -953,21 +589,7 @@ class TestCLIProgressDisplay:
                 mock_loader.load_agent_yaml.return_value = _create_agent_with_tests(0)
                 mock_loader_class.return_value = mock_loader
 
-                test_result = TestResult(
-                    test_name="test_1",
-                    test_input="input",
-                    processed_files=[],
-                    agent_response="response",
-                    tool_calls=[],
-                    expected_tools=None,
-                    tools_matched=None,
-                    metric_results=[],
-                    ground_truth=None,
-                    passed=True,
-                    execution_time_ms=100,
-                    errors=[],
-                    timestamp="2024-01-01T00:00:00Z",
-                )
+                test_result = _make_test_result()
 
                 captured_callback = None
 
@@ -976,23 +598,7 @@ class TestCLIProgressDisplay:
                     captured_callback = kwargs.get("progress_callback")
                     mock_instance = MagicMock()
                     mock_instance.execute_tests = AsyncMock(
-                        return_value=TestReport(
-                            agent_name="test_agent",
-                            agent_config_path=tmp_path,
-                            results=[test_result],
-                            summary=ReportSummary(
-                                total_tests=1,
-                                passed=1,
-                                failed=0,
-                                pass_rate=100.0,
-                                total_duration_ms=100,
-                                metrics_evaluated={},
-                                average_scores={},
-                            ),
-                            timestamp="2024-01-01T00:00:00Z",
-                            holodeck_version="0.1.0",
-                            environment={},
-                        )
+                        return_value=_make_report(tmp_path, results=[test_result])
                     )
                     mock_instance.shutdown = AsyncMock()
                     return mock_instance
@@ -1154,107 +760,57 @@ class TestSpinnerThread:
 class TestReportSaving:
     """Tests for report saving functionality."""
 
-    def test_save_report_json_format(self):
-        """Test _save_report with JSON format."""
+    @pytest.mark.parametrize(
+        "suffix, format_arg, verify_fn",
+        [
+            pytest.param(
+                ".json",
+                "json",
+                lambda content: __import__("json").loads(content)["agent_name"]
+                == "test_agent",
+                id="json_format",
+            ),
+            pytest.param(
+                ".md",
+                "markdown",
+                lambda content: "# Test Report:" in content and "test_agent" in content,
+                id="markdown_format",
+            ),
+            pytest.param(
+                ".json",
+                None,
+                lambda content: __import__("json").loads(content) is not None,
+                id="auto_detect_json",
+            ),
+            pytest.param(
+                ".md",
+                None,
+                lambda content: "# Test Report:" in content,
+                id="auto_detect_markdown",
+            ),
+            pytest.param(
+                ".txt",
+                None,
+                lambda content: __import__("json").loads(content) is not None,
+                id="default_to_json",
+            ),
+        ],
+    )
+    def test_save_report_format(self, suffix, format_arg, verify_fn):
+        """Test _save_report with format '{format_arg}' and suffix '{suffix}'."""
         from holodeck.cli.commands.test import _save_report
 
         report = _create_mock_report("test.yaml")
 
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as tmp:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False, mode="w") as tmp:
             tmp_path = tmp.name
 
         try:
-            _save_report(report, tmp_path, "json")
+            _save_report(report, tmp_path, format_arg)
 
-            # Verify file was created
             assert Path(tmp_path).exists()
-
-            # Verify content is valid JSON
             content = Path(tmp_path).read_text()
-            import json
-
-            data = json.loads(content)
-            assert data["agent_name"] == "test_agent"
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_save_report_markdown_format(self):
-        """Test _save_report with Markdown format."""
-        from holodeck.cli.commands.test import _save_report
-
-        report = _create_mock_report("test.yaml")
-
-        with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w") as tmp:
-            tmp_path = tmp.name
-
-        try:
-            _save_report(report, tmp_path, "markdown")
-
-            # Verify file was created
-            assert Path(tmp_path).exists()
-
-            # Verify content is markdown
-            content = Path(tmp_path).read_text()
-            assert "# Test Report:" in content
-            assert "test_agent" in content
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_save_report_auto_detect_json(self):
-        """Test _save_report auto-detects JSON from .json extension."""
-        from holodeck.cli.commands.test import _save_report
-
-        report = _create_mock_report("test.yaml")
-
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as tmp:
-            tmp_path = tmp.name
-
-        try:
-            _save_report(report, tmp_path, None)
-
-            # Verify JSON format was used
-            content = Path(tmp_path).read_text()
-            import json
-
-            json.loads(content)  # Should not raise
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_save_report_auto_detect_markdown(self):
-        """Test _save_report auto-detects Markdown from .md extension."""
-        from holodeck.cli.commands.test import _save_report
-
-        report = _create_mock_report("test.yaml")
-
-        with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w") as tmp:
-            tmp_path = tmp.name
-
-        try:
-            _save_report(report, tmp_path, None)
-
-            # Verify markdown format was used
-            content = Path(tmp_path).read_text()
-            assert "# Test Report:" in content
-        finally:
-            Path(tmp_path).unlink(missing_ok=True)
-
-    def test_save_report_default_to_json(self):
-        """Test _save_report defaults to JSON for unknown extensions."""
-        from holodeck.cli.commands.test import _save_report
-
-        report = _create_mock_report("test.yaml")
-
-        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w") as tmp:
-            tmp_path = tmp.name
-
-        try:
-            _save_report(report, tmp_path, None)
-
-            # Verify JSON format was used as default
-            content = Path(tmp_path).read_text()
-            import json
-
-            json.loads(content)  # Should not raise
+            assert verify_fn(content)
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
@@ -1302,39 +858,8 @@ class TestGenerateMarkdownReport:
         """Test generate_markdown_report includes results section."""
         from holodeck.lib.test_runner.reporter import generate_markdown_report
 
-        test_result = TestResult(
-            test_name="test_1",
-            test_input="input",
-            processed_files=[],
-            agent_response="response",
-            tool_calls=[],
-            expected_tools=None,
-            tools_matched=None,
-            metric_results=[],
-            ground_truth=None,
-            passed=True,
-            execution_time_ms=100,
-            errors=[],
-            timestamp="2024-01-01T00:00:00Z",
-        )
-
-        report = TestReport(
-            agent_name="test_agent",
-            agent_config_path="test.yaml",
-            results=[test_result],
-            summary=ReportSummary(
-                total_tests=1,
-                passed=1,
-                failed=0,
-                pass_rate=100.0,
-                total_duration_ms=100,
-                metrics_evaluated={},
-                average_scores={},
-            ),
-            timestamp="2024-01-01T00:00:00Z",
-            holodeck_version="0.1.0",
-            environment={},
-        )
+        test_result = _make_test_result()
+        report = _make_report("test.yaml", results=[test_result])
 
         markdown = generate_markdown_report(report)
 

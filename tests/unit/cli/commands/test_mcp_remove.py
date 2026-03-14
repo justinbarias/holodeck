@@ -20,12 +20,6 @@ from holodeck.models.tool import CommandType, MCPTool, TransportType
 
 
 @pytest.fixture
-def cli_runner() -> CliRunner:
-    """Provide a Click CLI test runner."""
-    return CliRunner()
-
-
-@pytest.fixture
 def sample_mcp_tool() -> MCPTool:
     """Create a sample MCPTool for testing."""
     return MCPTool(
@@ -160,51 +154,63 @@ class TestRemoveOptions:
 class TestRemoveErrorHandling:
     """Tests for error handling in remove command (T032e)."""
 
-    def test_server_not_found_error(
+    @pytest.mark.parametrize(
+        "cli_args, mock_target, error, check_server_name",
+        [
+            pytest.param(
+                ["nonexistent"],
+                "holodeck.cli.commands.mcp.remove_mcp_server_from_agent",
+                ServerNotFoundError("nonexistent", "agent.yaml"),
+                True,
+                id="server_not_found",
+            ),
+            pytest.param(
+                ["filesystem"],
+                "holodeck.cli.commands.mcp.remove_mcp_server_from_agent",
+                HoloDeckFileNotFoundError(
+                    "agent.yaml",
+                    "Agent file not found: agent.yaml",
+                ),
+                False,
+                id="file_not_found",
+            ),
+            pytest.param(
+                ["filesystem"],
+                "holodeck.cli.commands.mcp.remove_mcp_server_from_agent",
+                ConfigError(
+                    "agent_config_write",
+                    "Failed to write agent configuration",
+                ),
+                False,
+                id="config_write_error",
+            ),
+            pytest.param(
+                ["nonexistent", "-g"],
+                "holodeck.cli.commands.mcp.remove_mcp_server_from_global",
+                ServerNotFoundError("nonexistent", "global configuration"),
+                True,
+                id="global_server_not_found",
+            ),
+        ],
+    )
+    def test_error_handling(
         self,
         cli_runner: CliRunner,
+        cli_args: list[str],
+        mock_target: str,
+        error: Exception,
+        check_server_name: bool,
     ) -> None:
-        """Test error when server not found in config."""
-        with patch("holodeck.cli.commands.mcp.remove_mcp_server_from_agent") as mock:
-            mock.side_effect = ServerNotFoundError("nonexistent", "agent.yaml")
+        """Test error handling for remove command errors."""
+        with patch(mock_target) as mock:
+            mock.side_effect = error
 
-            result = cli_runner.invoke(remove, ["nonexistent"])
+            result = cli_runner.invoke(remove, cli_args)
 
             assert result.exit_code == 1
             assert "Error" in result.output
-            assert "nonexistent" in result.output
-
-    def test_file_not_found_error(
-        self,
-        cli_runner: CliRunner,
-    ) -> None:
-        """Test error when agent.yaml doesn't exist."""
-        with patch("holodeck.cli.commands.mcp.remove_mcp_server_from_agent") as mock:
-            mock.side_effect = HoloDeckFileNotFoundError(
-                "agent.yaml",
-                "Agent file not found: agent.yaml",
-            )
-
-            result = cli_runner.invoke(remove, ["filesystem"])
-
-            assert result.exit_code == 1
-            assert "Error" in result.output
-
-    def test_config_error(
-        self,
-        cli_runner: CliRunner,
-    ) -> None:
-        """Test error when config write fails."""
-        with patch("holodeck.cli.commands.mcp.remove_mcp_server_from_agent") as mock:
-            mock.side_effect = ConfigError(
-                "agent_config_write",
-                "Failed to write agent configuration",
-            )
-
-            result = cli_runner.invoke(remove, ["filesystem"])
-
-            assert result.exit_code == 1
-            assert "Error" in result.output
+            if check_server_name:
+                assert cli_args[0] in result.output
 
     def test_missing_server_argument(
         self,
@@ -216,22 +222,6 @@ class TestRemoveErrorHandling:
         assert result.exit_code != 0
         # Click should complain about missing argument
         assert "SERVER" in result.output or "Missing argument" in result.output
-
-    def test_global_server_not_found_error(
-        self,
-        cli_runner: CliRunner,
-    ) -> None:
-        """Test error when server not found in global config."""
-        with patch("holodeck.cli.commands.mcp.remove_mcp_server_from_global") as mock:
-            mock.side_effect = ServerNotFoundError(
-                "nonexistent", "global configuration"
-            )
-
-            result = cli_runner.invoke(remove, ["nonexistent", "-g"])
-
-            assert result.exit_code == 1
-            assert "Error" in result.output
-            assert "nonexistent" in result.output
 
 
 @pytest.mark.unit
