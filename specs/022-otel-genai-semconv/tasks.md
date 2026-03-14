@@ -52,16 +52,16 @@
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation.**
 > All tests calling `initialize()` MUST mock the validators (`validate_nodejs`, `validate_credentials`, `validate_embedding_provider`, `validate_tool_filtering`, `validate_working_directory`, `validate_response_format`) and `_initialize_tools()` to isolate instrumentation logic. Follow existing patterns in `test_claude_backend.py`.
 
-- [ ] T006 [P] [US1] Write unit test `test_instrument_called_with_tracer_and_meter_providers` in `tests/unit/lib/backends/test_claude_backend.py` — mock `ClaudeAgentSdkInstrumentor` import and `get_observability_context()`, create agent with `observability.enabled=True`, `traces.enabled=True`, `metrics.enabled=True`, call `initialize()`, assert `instrument()` called with `tracer_provider`, `meter_provider`, `agent_name="test-agent"`, `capture_content` from config. Assert the exact `TracerProvider` and `MeterProvider` instances passed match those returned by the mock `get_observability_context()` (not the global OTel providers)
-- [ ] T007 [P] [US1] Write unit test `test_instrument_called_without_meter_provider_when_metrics_disabled` in `tests/unit/lib/backends/test_claude_backend.py` — same setup but `metrics.enabled=False`, assert `instrument()` called with `meter_provider=None`
-- [ ] T008 [P] [US1] Write unit test `test_instrument_not_called_when_observability_disabled` in `tests/unit/lib/backends/test_claude_backend.py` — create agent with `observability.enabled=False` or `observability=None`, call `initialize()`, assert `instrument()` NOT called
-- [ ] T009 [P] [US1] Write unit test `test_instrument_not_called_when_traces_disabled` in `tests/unit/lib/backends/test_claude_backend.py` — create agent with `observability.enabled=True` but `traces.enabled=False`, call `initialize()`, assert `instrument()` NOT called
+- [x] T006 [P] [US1] Write unit test `test_instrument_called_with_tracer_and_meter_providers` in `tests/unit/lib/backends/test_claude_backend.py` — mock `ClaudeAgentSdkInstrumentor` import and `get_observability_context()`, create agent with `observability.enabled=True`, `traces.enabled=True`, `metrics.enabled=True`, call `initialize()`, assert `instrument()` called with `tracer_provider`, `meter_provider`, `agent_name="test-agent"`, `capture_content` from config. Assert the exact `TracerProvider` and `MeterProvider` instances passed match those returned by the mock `get_observability_context()` (not the global OTel providers)
+- [x] T007 [P] [US1] Write unit test `test_instrument_called_without_meter_provider_when_metrics_disabled` in `tests/unit/lib/backends/test_claude_backend.py` — same setup but `metrics.enabled=False`, assert `instrument()` called with `meter_provider=None`
+- [x] T008 [P] [US1] Write unit test `test_instrument_not_called_when_observability_disabled` in `tests/unit/lib/backends/test_claude_backend.py` — create agent with `observability.enabled=False` or `observability=None`, call `initialize()`, assert `instrument()` NOT called
+- [x] T009 [P] [US1] Write unit test `test_instrument_not_called_when_traces_disabled` in `tests/unit/lib/backends/test_claude_backend.py` — create agent with `observability.enabled=True` but `traces.enabled=False`, call `initialize()`, assert `instrument()` NOT called
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Implement `_activate_instrumentation(self) -> None` private method in `ClaudeBackend` in `src/holodeck/lib/backends/claude_backend.py` — check `agent.observability` is enabled and `traces.enabled`, try-import `ClaudeAgentSdkInstrumentor`, get `ObservabilityContext` via `get_observability_context()`, call `instrument()` with `tracer_provider`, `meter_provider` (only if `metrics.enabled`), `agent_name`, `capture_content`. **Important**: set `self._instrumentor` only AFTER `instrument()` returns successfully. Wrap entire body in try/except to catch all errors and log warning
-- [ ] T011 [US1] Add call to `self._activate_instrumentation()` in `ClaudeBackend.initialize()` in `src/holodeck/lib/backends/claude_backend.py` — place after `validate_response_format()` call and before `self._initialized = True`
-- [ ] T012 [US1] Run tests T006–T009 and verify they PASS after implementation
+- [x] T010 [US1] Implement `_activate_instrumentation(self) -> None` private method in `ClaudeBackend` in `src/holodeck/lib/backends/claude_backend.py` — check `agent.observability` is enabled and `traces.enabled`, try-import `ClaudeAgentSdkInstrumentor`, get `ObservabilityContext` via `get_observability_context()`, call `instrument()` with `tracer_provider`, `meter_provider` (only if `metrics.enabled`), `agent_name`, `capture_content`. **Important**: set `self._instrumentor` only AFTER `instrument()` returns successfully. Wrap entire body in try/except to catch all errors and log warning
+- [x] T011 [US1] Add call to `self._activate_instrumentation()` in `ClaudeBackend.initialize()` in `src/holodeck/lib/backends/claude_backend.py` — place after `validate_response_format()` call and before `self._initialized = True`
+- [x] T012 [US1] Run tests T006–T009 and verify they PASS after implementation
 
 **Checkpoint**: User Story 1 complete — instrumentation activates correctly when observability is enabled.
 
@@ -78,13 +78,13 @@
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation.**
 > All tests calling `initialize()` MUST mock the validators and `_initialize_tools()` as noted in US1.
 
-- [ ] T013 [P] [US2] Write unit test `test_graceful_degradation_when_package_not_installed` in `tests/unit/lib/backends/test_claude_backend.py` — patch the import of `opentelemetry.instrumentation.claude_agent_sdk` to raise `ImportError`, create agent with observability enabled, call `initialize()`, assert no exception raised, assert `self._instrumentor is None`, assert warning logged (use `caplog` fixture)
-- [ ] T014 [P] [US2] Write unit test `test_graceful_degradation_when_instrument_raises` in `tests/unit/lib/backends/test_claude_backend.py` — mock `ClaudeAgentSdkInstrumentor` but make `instrument()` raise `RuntimeError("version mismatch")`, call `initialize()`, assert no exception raised, assert `self._instrumentor is None` (instrumentor is never stored because `instrument()` failed before assignment), assert warning logged
-- [ ] T015 [P] [US2] Write unit test `test_backend_functional_without_instrumentation` in `tests/unit/lib/backends/test_claude_backend.py` — patch import to raise `ImportError`, initialize backend, call `invoke_once()` (with mocked `query()`), assert `ExecutionResult` returned successfully
+- [x] T013 [P] [US2] Write unit test `test_graceful_degradation_when_package_not_installed` in `tests/unit/lib/backends/test_claude_backend.py` — patch the import of `opentelemetry.instrumentation.claude_agent_sdk` to raise `ImportError`, create agent with observability enabled, call `initialize()`, assert no exception raised, assert `self._instrumentor is None`, assert warning logged (use `caplog` fixture)
+- [x] T014 [P] [US2] Write unit test `test_graceful_degradation_when_instrument_raises` in `tests/unit/lib/backends/test_claude_backend.py` — mock `ClaudeAgentSdkInstrumentor` but make `instrument()` raise `RuntimeError("version mismatch")`, call `initialize()`, assert no exception raised, assert `self._instrumentor is None` (instrumentor is never stored because `instrument()` failed before assignment), assert warning logged
+- [x] T015 [P] [US2] Write unit test `test_backend_functional_without_instrumentation` in `tests/unit/lib/backends/test_claude_backend.py` — patch import to raise `ImportError`, initialize backend, call `invoke_once()` (with mocked `query()`), assert `ExecutionResult` returned successfully
 
 ### Implementation for User Story 2
 
-- [ ] T016 [US2] Run tests T013–T015 and verify they PASS with the `_activate_instrumentation()` implementation from US1 (ImportError handling and general Exception catching should already be in place from T010)
+- [x] T016 [US2] Run tests T013–T015 and verify they PASS with the `_activate_instrumentation()` implementation from US1 (ImportError handling and general Exception catching should already be in place from T010)
 
 **Checkpoint**: User Story 2 complete — backend remains functional when package is missing or broken.
 
@@ -101,15 +101,15 @@
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation.**
 > All tests calling `initialize()` MUST mock the validators and `_initialize_tools()` as noted in US1.
 
-- [ ] T017 [P] [US3] Write unit test `test_teardown_calls_uninstrument` in `tests/unit/lib/backends/test_claude_backend.py` — initialize backend with mocked instrumentation active (`self._instrumentor` set to a mock), call `teardown()`, assert `uninstrument()` called on the mock instrumentor, assert `self._instrumentor is None`
-- [ ] T018 [P] [US3] Write unit test `test_teardown_safe_without_instrumentation` in `tests/unit/lib/backends/test_claude_backend.py` — initialize backend without instrumentation (`self._instrumentor is None`), call `teardown()`, assert no exception raised
-- [ ] T019 [P] [US3] Write unit test `test_sequential_init_teardown_no_leakage` in `tests/unit/lib/backends/test_claude_backend.py` — initialize backend with instrumentation, teardown, initialize again, teardown again; verify `instrument()` called twice and `uninstrument()` called twice (no leakage between runs)
-- [ ] T020 [P] [US3] Write unit test `test_teardown_handles_uninstrument_exception` in `tests/unit/lib/backends/test_claude_backend.py` — mock `uninstrument()` to raise `RuntimeError`, call `teardown()`, assert no exception raised, assert warning logged via `caplog`, assert `self._instrumentor is None` after teardown (FR-008: deactivation MUST NOT raise)
+- [x] T017 [P] [US3] Write unit test `test_teardown_calls_uninstrument` in `tests/unit/lib/backends/test_claude_backend.py` — initialize backend with mocked instrumentation active (`self._instrumentor` set to a mock), call `teardown()`, assert `uninstrument()` called on the mock instrumentor, assert `self._instrumentor is None`
+- [x] T018 [P] [US3] Write unit test `test_teardown_safe_without_instrumentation` in `tests/unit/lib/backends/test_claude_backend.py` — initialize backend without instrumentation (`self._instrumentor is None`), call `teardown()`, assert no exception raised
+- [x] T019 [P] [US3] Write unit test `test_sequential_init_teardown_no_leakage` in `tests/unit/lib/backends/test_claude_backend.py` — initialize backend with instrumentation, teardown, initialize again, teardown again; verify `instrument()` called twice and `uninstrument()` called twice (no leakage between runs)
+- [x] T020 [P] [US3] Write unit test `test_teardown_handles_uninstrument_exception` in `tests/unit/lib/backends/test_claude_backend.py` — mock `uninstrument()` to raise `RuntimeError`, call `teardown()`, assert no exception raised, assert warning logged via `caplog`, assert `self._instrumentor is None` after teardown (FR-008: deactivation MUST NOT raise)
 
 ### Implementation for User Story 3
 
-- [ ] T021 [US3] Add uninstrument logic to `ClaudeBackend.teardown()` in `src/holodeck/lib/backends/claude_backend.py` — if `self._instrumentor is not None`, call `self._instrumentor.uninstrument()` wrapped in try/except (log warning on error), set `self._instrumentor = None`; place before existing cleanup code
-- [ ] T022 [US3] Run tests T017–T020 and verify they PASS after implementation
+- [x] T021 [US3] Add uninstrument logic to `ClaudeBackend.teardown()` in `src/holodeck/lib/backends/claude_backend.py` — if `self._instrumentor is not None`, call `self._instrumentor.uninstrument()` wrapped in try/except (log warning on error), set `self._instrumentor = None`; place before existing cleanup code
+- [x] T022 [US3] Run tests T017–T020 and verify they PASS after implementation
 
 **Checkpoint**: User Story 3 complete — clean lifecycle management with no state leakage.
 
@@ -123,7 +123,7 @@
 
 ### Integration Test for User Story 4
 
-- [ ] T023 [US4] Write integration test `test_span_hierarchy_parent_child` in `tests/integration/test_claude_instrumentation.py` — use `pytest.importorskip("opentelemetry.instrumentation.claude_agent_sdk")` to skip when package not installed. Set up a real `InMemorySpanExporter` and `TracerProvider`, create a real `ClaudeAgentSdkInstrumentor`, call `instrument()` with the test `TracerProvider`. Create a parent span (simulating `holodeck.cli.test`), then within that span context, invoke `ClaudeBackend.initialize()` and `invoke_once()` (mock SDK `query()` to return a minimal response, mock all validators). Verify that exported spans include the `invoke_agent` span as a child of the parent span. Call `uninstrument()` in test teardown. This exercises the real instrumentation package with real OTel providers
+- [x] T023 [US4] Write integration test `test_span_hierarchy_parent_child` in `tests/integration/test_claude_instrumentation.py` — use `pytest.importorskip("opentelemetry.instrumentation.claude_agent_sdk")` to skip when package not installed. Set up a real `InMemorySpanExporter` and `TracerProvider`, create a real `ClaudeAgentSdkInstrumentor`, call `instrument()` with the test `TracerProvider`. Create a parent span (simulating `holodeck.cli.test`), then within that span context, invoke `ClaudeBackend.initialize()` and `invoke_once()` (mock SDK `query()` to return a minimal response, mock all validators). Verify that exported spans include the `invoke_agent` span as a child of the parent span. Call `uninstrument()` in test teardown. This exercises the real instrumentation package with real OTel providers
 
 **Checkpoint**: All user stories are independently functional.
 
@@ -133,11 +133,11 @@
 
 **Purpose**: Code quality, documentation, and final validation.
 
-- [ ] T024 Run `make format` to format all modified files with Black + Ruff
-- [ ] T025 Run `make lint` and fix any Ruff + Bandit violations
-- [ ] T026 Run `make type-check` and fix any MyPy errors (ensure `_instrumentor` type annotation is correct)
-- [ ] T027 Run full test suite `make test` to verify no regressions
-- [ ] T028 Run quickstart.md validation — verify install and usage instructions match implementation
+- [x] T024 Run `make format` to format all modified files with Black + Ruff
+- [x] T025 Run `make lint` and fix any Ruff + Bandit violations
+- [x] T026 Run `make type-check` and fix any MyPy errors (ensure `_instrumentor` type annotation is correct)
+- [x] T027 Run full test suite `make test` to verify no regressions — 4081 passed, 47 skipped, 0 failures
+- [x] T028 Run quickstart.md validation — verify install and usage instructions match implementation
 
 ---
 

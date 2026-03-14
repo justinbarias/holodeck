@@ -919,6 +919,14 @@ class ClaudeBackend:
 
     async def teardown(self) -> None:
         """Reset backend state, releasing any built options."""
+        # Deactivate GenAI instrumentation
+        if self._instrumentor is not None:
+            try:
+                self._instrumentor.uninstrument()
+            except Exception as exc:
+                logger.warning("Error deactivating GenAI instrumentation: %s", exc)
+            self._instrumentor = None
+
         # Cleanup owned tools
         for tool_inst in self._owned_tools:
             if hasattr(tool_inst, "cleanup"):
