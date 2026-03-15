@@ -18,7 +18,7 @@ Additionally, this feature replaces the unimplemented `PromptTool` (type: prompt
 **Target Platform**: Linux/macOS (CLI tool)
 **Project Type**: Single Python package with optional dependency groups
 **Performance Goals**: Backend initialization < 5s, single-turn invocation latency dominated by upstream LLM, not adapter overhead
-**Constraints**: New backends MUST NOT add import-time dependencies; lazy imports only. `litellm` is added as a core dependency (unified embedding provider, replaces SK embedding classes). `BackendEnum` defines valid runtime backends (`sk`, `claude`, `google_adk`, `agent_framework`).
+**Constraints**: New backends MUST NOT add import-time dependencies; lazy imports only. `litellm` is added as a core dependency (unified embedding provider, replaces SK embedding classes). `BackendEnum` defines valid runtime backends (`semantic_kernel`, `claude`, `google_adk`, `agent_framework`).
 **Prerequisites**: Before implementation, verify exact PyPI package names and API surfaces for both `google-adk` and `agent-framework-core` (see Prerequisite Tasks below).
 **Scale/Scope**: 2 new backends + SkillTool replacement, ~14 new files, ~22 modified files, ~3500 lines of new code
 

@@ -175,6 +175,7 @@ A platform user wants to define reusable, scoped sub-agent capabilities within t
 - **FR-028**: When `backend` is omitted, the system MUST auto-detect the backend from `model.provider` using the default routing table.
 - **FR-029**: System MUST support `google` as a valid `model.provider` value for Google AI / Vertex AI Gemini models.
 - **FR-030**: System MUST validate backend/provider compatibility and raise clear errors for incompatible combinations.
+- **FR-031**: System MUST emit a deprecation warning when the `semantic_kernel` backend is auto-detected from `model.provider` (i.e., when `backend` is not explicitly set and the provider previously defaulted to SK). The warning MUST recommend adding `backend: semantic_kernel` explicitly and note that the default will change to `agent_framework` (for openai/azure_openai) or `claude` (for ollama).
 
 ### Key Entities
 

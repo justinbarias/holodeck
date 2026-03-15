@@ -79,7 +79,7 @@ class EmbeddingService(Protocol):
 - All SK `TextEmbedding` imports from `tool_initializer.py`
 - No `SKEmbeddingAdapter` (SK embedding classes no longer used)
 - No `AFEmbeddingAdapter` / `af_embedding_adapter.py` (AF has no confirmed embedding API)
-- `use_native_embeddings` field removed from `AgentFrameworkConfig`
+
 
 **Alternatives Considered**:
 - Keep SK embedding classes as default adapter: Rejected (SK is being deprecated; adds unnecessary dependency)
@@ -120,6 +120,8 @@ class EmbeddingService(Protocol):
 | `ollama` | `OllamaChatClient` |
 
 When `model.provider` is set, the AF backend directly instantiates the corresponding client. No `sub_provider` field is needed.
+
+**Note**: `provider: google` is not supported by AF — no Google/Gemini client exists in the Agent Framework. Backend/provider compatibility validation (see R8) prevents this combination.
 
 **Alternatives Considered**:
 - Model name prefix matching with `sub_provider` override: Rejected — `model.provider` already contains the information; prefix matching adds fragile heuristics

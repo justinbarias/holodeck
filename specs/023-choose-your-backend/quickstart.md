@@ -13,10 +13,10 @@ pip install holodeck[google-adk]
 # Microsoft Agent Framework backend (OpenAI provider)
 pip install holodeck[agent-framework]
 
-# Agent Framework with Anthropic sub-provider
+# Agent Framework with Anthropic provider support
 pip install holodeck[agent-framework-anthropic]
 
-# Agent Framework with Ollama sub-provider
+# Agent Framework with Ollama provider support
 pip install holodeck[agent-framework-ollama]
 ```
 
@@ -255,6 +255,6 @@ Install it with: pip install holodeck[google-adk]
 
 If backend and provider are incompatible:
 ```
-BackendCompatibilityError: Backend 'claude' is not compatible with provider 'openai'.
+ValidationError: Backend 'claude' is not compatible with provider 'openai'.
 The 'claude' backend only supports the 'anthropic' provider.
 ```
