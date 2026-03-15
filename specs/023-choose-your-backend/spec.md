@@ -175,7 +175,7 @@ A platform user wants to define reusable, scoped sub-agent capabilities within t
 - **FR-028**: When `backend` is omitted, the system MUST auto-detect the backend from `model.provider` using the default routing table.
 - **FR-029**: System MUST support `google` as a valid `model.provider` value for Google AI / Vertex AI Gemini models.
 - **FR-030**: System MUST validate backend/provider compatibility and raise clear errors for incompatible combinations.
-- **FR-031**: System MUST emit a deprecation warning when the `semantic_kernel` backend is auto-detected from `model.provider` (i.e., when `backend` is not explicitly set and the provider previously defaulted to SK). The warning MUST recommend adding `backend: semantic_kernel` explicitly and note that the default will change to `agent_framework` (for openai/azure_openai) or `claude` (for ollama).
+- **FR-031**: System MUST use the updated default routing table when `backend` is omitted: `openai` and `azure_openai` default to `agent_framework`, `anthropic` defaults to `claude`, `ollama` defaults to `claude`, `google` defaults to `google_adk`. The `semantic_kernel` backend is only selected when explicitly set via `backend: semantic_kernel`. This is a breaking change from the previous behavior where `openai`, `azure_openai`, and `ollama` defaulted to `semantic_kernel`.
 
 ### Key Entities
 
@@ -213,7 +213,7 @@ A platform user wants to define reusable, scoped sub-agent capabilities within t
 - Q: Should new providers follow the Anthropic pattern (require `embedding_provider` for vectorstore tools)? → A: Yes. Neither ADK nor AF has confirmed native embedding support. All non-SK backends (Anthropic, ADK, AF) require `embedding_provider` when vectorstore/hierarchical_document tools are configured. Embeddings are handled uniformly via LiteLLM.
 - Q: Where should the `backend` field be placed in agent.yaml? → A: Top-level, alongside `model`, `instructions`, etc. Not nested inside `model`.
 - Q: Should backend/provider combinations be validated? → A: Yes. Each backend supports specific providers. Invalid combinations raise clear errors at config validation time.
-- Q: Why does `openai` default to `agent_framework` instead of `semantic_kernel`? → A: SK is planned for deprecation. AF is the recommended runtime for OpenAI models going forward. This is a breaking change with a documented migration path.
+- Q: Why does `openai` default to `agent_framework` instead of `semantic_kernel`? → A: SK is planned for deprecation. AF is the recommended runtime for OpenAI models going forward. This is a clean break — no deprecation warning or grace period. Users who need the SK backend must explicitly set `backend: semantic_kernel`.
 - Q: What stability posture for pre-release dependencies? → A: Pin to specific tested RC versions in optional deps with a documented upgrade path when GA arrives. Both backends are labeled as preview/experimental in documentation until their upstream packages reach stable GA releases.
 
 ## Assumptions
