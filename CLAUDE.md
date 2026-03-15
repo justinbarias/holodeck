@@ -954,4 +954,9 @@ Use LSP for **semantic** questions ("who calls this?", "what type is this?", "wh
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
 
 ## Recent Changes
+- 023-choose-your-backend: Added Python 3.10+ + google-adk (pinned RC), agent-framework-core (pinned v1.0.0rc4), semantic-kernel (existing), claude-agent-sdk (existing)
 - 022-otel-genai-semconv: Added Python 3.10+
+
+## Active Technologies
+- Python 3.10+ + google-adk (pinned RC), agent-framework-core (pinned v1.0.0rc4), semantic-kernel (existing), claude-agent-sdk (existing) (023-choose-your-backend)
+- N/A (in-memory session management for both new backends) (023-choose-your-backend)
