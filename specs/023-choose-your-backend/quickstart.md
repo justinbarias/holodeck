@@ -28,31 +28,34 @@ pip install holodeck[agent-framework-ollama]
 # agent.yaml
 name: gemini-agent
 model:
-  provider: google_adk
+  provider: google
   name: gemini-2.5-flash
   temperature: 0.7
 instructions:
   inline: "You are a helpful assistant."
 ```
 
-### Google ADK with OpenAI via LiteLLM
+### Google ADK with OpenAI (Cross-Provider)
 
 ```yaml
 name: adk-openai-agent
+backend: google_adk
 model:
-  provider: google_adk
-  name: openai/gpt-4o
+  provider: openai
+  name: gpt-4o
   temperature: 0.7
 instructions:
   inline: "You are a helpful assistant."
 ```
+
+> **Cross-provider selection**: Setting `backend: google_adk` with `provider: openai` runs the ADK runtime with an OpenAI model. ADK uses LiteLLM internally for non-Google models.
 
 ### Google ADK with Streaming
 
 ```yaml
 name: streaming-adk-agent
 model:
-  provider: google_adk
+  provider: google
   name: gemini-2.5-flash
 instructions:
   inline: "You are a helpful assistant."
@@ -66,7 +69,7 @@ google_adk:
 ```yaml
 name: adk-rag-agent
 model:
-  provider: google_adk
+  provider: google
   name: gemini-2.5-flash
 embedding_provider:          # Required for google_adk with vectorstore tools
   provider: openai
@@ -85,7 +88,7 @@ tools:
 ```yaml
 name: af-openai-agent
 model:
-  provider: agent_framework
+  provider: openai
   name: gpt-4o
   temperature: 0.7
 instructions:
@@ -97,7 +100,7 @@ instructions:
 ```yaml
 name: af-azure-agent
 model:
-  provider: agent_framework
+  provider: azure_openai
   name: gpt-4o
   endpoint: https://myorg.openai.azure.com/
   api_version: "2024-12-01-preview"
@@ -110,7 +113,7 @@ instructions:
 ```yaml
 name: af-mcp-agent
 model:
-  provider: agent_framework
+  provider: openai
   name: gpt-4o
 instructions:
   inline: "Use available tools to help the user."
@@ -123,13 +126,16 @@ tools:
     args: ["./workspace"]
 ```
 
-### Agent Framework with Native Embeddings
+### Agent Framework with Vectorstore Tools
 
 ```yaml
 name: af-rag-agent
 model:
-  provider: agent_framework
+  provider: openai
   name: gpt-4o
+embedding_provider:              # Required for agent_framework with vectorstore tools
+  provider: openai
+  name: text-embedding-3-small
 instructions:
   inline: "Search the knowledge base to answer questions."
 tools:
@@ -137,44 +143,92 @@ tools:
     type: vectorstore
     source: ./data/docs/
     description: "Company knowledge base"
-agent_framework:
-  use_native_embeddings: true   # Uses AF's OpenAIEmbeddingClient
 ```
 
-### Agent Framework with Explicit Sub-Provider
+### Agent Framework with Anthropic (Cross-Provider)
 
 ```yaml
-name: af-ollama-agent
+name: af-anthropic-agent
+backend: agent_framework
 model:
-  provider: agent_framework
-  name: llama3.1:70b
+  provider: anthropic
+  name: claude-sonnet-4-20250514
 instructions:
   inline: "You are a helpful assistant."
-agent_framework:
-  sub_provider: ollama
+```
+
+### Using Skills (Inline)
+
+Skills replace the old prompt tool type. They run as sub-agent invocations on the same backend:
+
+```yaml
+name: support-agent
+model:
+  provider: google
+  name: gemini-2.5-flash
+embedding_provider:              # Required for google_adk with vectorstore tools
+  provider: openai
+  name: text-embedding-3-small
+instructions:
+  inline: "You are a customer support agent. Use skills for specialized tasks."
+tools:
+  - name: knowledge_base
+    type: vectorstore
+    source: ./data/docs/
+    description: "Company knowledge base"
+  - name: sentiment-analyzer
+    type: skill
+    description: "Analyze customer sentiment from their message"
+    instructions: "Analyze the given text for sentiment. Return overall sentiment (positive/negative/neutral), confidence score, and key emotions detected."
+  - name: escalation-checker
+    type: skill
+    description: "Determine if a support case needs escalation"
+    instructions: "Review the conversation and determine if escalation is needed based on sentiment, topic complexity, and customer frustration level."
+    allowed_tools: [knowledge_base]  # can search the KB to check policies
+```
+
+### Using Skills (File-Based)
+
+For complex skills with scripts, references, or assets, point to a skill directory:
+
+```yaml
+tools:
+  - name: research-assistant
+    type: skill
+    path: ./skills/research-assistant/
+    allowed_tools: [knowledge_base, web_search]
+```
+
+The skill directory follows the [Agent Skills spec](https://agentskills.io/specification):
+```
+skills/research-assistant/
+├── SKILL.md              # Required: frontmatter + instructions
+├── references/           # Optional: detailed reference docs
+│   └── search-strategies.md
+└── assets/               # Optional: templates, schemas
+    └── report-template.md
 ```
 
 ## Switching Backends
 
-Change only `model.provider` and `model.name` — all tools continue to work:
+Use the `backend` field to run the same model on different runtimes:
 
 ```yaml
-# Before: Semantic Kernel with OpenAI
+# Default: auto-detected backend (openai → agent_framework)
 model:
   provider: openai
   name: gpt-4o
 
-# After: Google ADK with Gemini (tools unchanged)
+# Explicit: same model, Semantic Kernel backend
+backend: semantic_kernel
 model:
-  provider: google_adk
-  name: gemini-2.5-flash
-embedding_provider:          # Add if vectorstore tools are configured
   provider: openai
-  name: text-embedding-3-small
+  name: gpt-4o
 
-# After: Agent Framework with GPT-4o (tools unchanged)
+# Explicit: same model, Google ADK backend (cross-provider)
+backend: google_adk
 model:
-  provider: agent_framework
+  provider: openai
   name: gpt-4o
 ```
 
@@ -199,10 +253,8 @@ BackendInitError: Google ADK backend requires the 'google-adk' package.
 Install it with: pip install holodeck[google-adk]
 ```
 
-If model name doesn't match any known AF sub-provider:
+If backend and provider are incompatible:
 ```
-ValidationError: Cannot auto-detect sub-provider for model 'custom-model'.
-Specify 'sub_provider' in the agent_framework config section.
-Supported prefixes: gpt-*, o1*, o3*, o4* (OpenAI), claude-* (Anthropic),
-llama-*, mistral-*, phi-* (Ollama)
+BackendCompatibilityError: Backend 'claude' is not compatible with provider 'openai'.
+The 'claude' backend only supports the 'anthropic' provider.
 ```
