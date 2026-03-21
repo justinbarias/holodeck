@@ -6,11 +6,18 @@ and session management operations.
 
 import re
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from holodeck.serve.session_store import ServerSession, SessionStore
+
+
+def _mock_executor() -> MagicMock:
+    """Create a MagicMock executor with an async shutdown method."""
+    mock = MagicMock()
+    mock.shutdown = AsyncMock()
+    return mock
 
 
 class TestServerSession:
@@ -145,24 +152,27 @@ class TestSessionStore:
 
         assert result is None
 
-    def test_session_store_delete_existing(self) -> None:
+    @pytest.mark.asyncio
+    async def test_session_store_delete_existing(self) -> None:
         """Test SessionStore.delete() removes existing session."""
         store = SessionStore()
-        mock_executor = MagicMock()
-        session = store.create(mock_executor)
+        executor = _mock_executor()
+        session = store.create(executor)
         session_id = session.session_id
 
-        result = store.delete(session_id)
+        result = await store.delete(session_id)
 
         assert result is True
         assert store.get(session_id) is None
         assert len(store.sessions) == 0
+        executor.shutdown.assert_awaited_once()
 
-    def test_session_store_delete_nonexistent(self) -> None:
+    @pytest.mark.asyncio
+    async def test_session_store_delete_nonexistent(self) -> None:
         """Test SessionStore.delete() returns False for nonexistent session."""
         store = SessionStore()
 
-        result = store.delete("nonexistent-session-id")
+        result = await store.delete("nonexistent-session-id")
 
         assert result is False
 
@@ -189,51 +199,58 @@ class TestSessionStore:
         # Should not raise
         store.touch("nonexistent-session-id")
 
-    def test_session_store_cleanup_expired(self) -> None:
+    @pytest.mark.asyncio
+    async def test_session_store_cleanup_expired(self) -> None:
         """Test SessionStore.cleanup_expired() removes expired sessions."""
         store = SessionStore(ttl_seconds=1)  # 1 second TTL for testing
-        mock_executor = MagicMock()
-        session = store.create(mock_executor)
+        executor = _mock_executor()
+        session = store.create(executor)
 
         # Manually set last_activity to past
         session.last_activity = datetime.now(timezone.utc) - timedelta(seconds=10)
 
-        count = store.cleanup_expired()
+        count = await store.cleanup_expired()
 
         assert count == 1
         assert len(store.sessions) == 0
+        executor.shutdown.assert_awaited_once()
 
-    def test_session_store_cleanup_preserves_active(self) -> None:
+    @pytest.mark.asyncio
+    async def test_session_store_cleanup_preserves_active(self) -> None:
         """Test SessionStore.cleanup_expired() preserves active sessions."""
         store = SessionStore(ttl_seconds=3600)  # 1 hour TTL
-        mock_executor = MagicMock()
-        session = store.create(mock_executor)
+        executor = _mock_executor()
+        session = store.create(executor)
 
-        count = store.cleanup_expired()
+        count = await store.cleanup_expired()
 
         assert count == 0
         assert len(store.sessions) == 1
         assert store.get(session.session_id) is session
 
-    def test_session_store_cleanup_mixed(self) -> None:
+    @pytest.mark.asyncio
+    async def test_session_store_cleanup_mixed(self) -> None:
         """Test SessionStore.cleanup_expired() with mixed active/expired sessions."""
         store = SessionStore(ttl_seconds=60)
-        mock_executor = MagicMock()
 
         # Create active session
-        active_session = store.create(mock_executor)
+        active_executor = _mock_executor()
+        active_session = store.create(active_executor)
 
         # Create expired session
-        expired_session = store.create(mock_executor)
+        expired_executor = _mock_executor()
+        expired_session = store.create(expired_executor)
         expired_time = datetime.now(timezone.utc) - timedelta(seconds=120)
         expired_session.last_activity = expired_time
 
-        count = store.cleanup_expired()
+        count = await store.cleanup_expired()
 
         assert count == 1
         assert len(store.sessions) == 1
         assert store.get(active_session.session_id) is active_session
         assert store.get(expired_session.session_id) is None
+        expired_executor.shutdown.assert_awaited_once()
+        active_executor.shutdown.assert_not_awaited()
 
     def test_session_store_active_count(self) -> None:
         """Test SessionStore tracks active session count."""
@@ -335,14 +352,14 @@ class TestSessionStoreCleanupTask:
         """Test cleanup loop removes expired sessions."""
 
         store = SessionStore(ttl_seconds=0, cleanup_interval_seconds=0)
-        mock_executor = MagicMock()
+        executor = _mock_executor()
 
         # Create a session that will be immediately expired
-        store.create(mock_executor)
+        store.create(executor)
         assert store.active_count == 1
 
         # Run cleanup once manually
-        store.cleanup_expired()
+        await store.cleanup_expired()
 
         assert store.active_count == 0
 

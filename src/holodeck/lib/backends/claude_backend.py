@@ -519,11 +519,24 @@ class ClaudeSession:
                 f"subprocess terminated unexpectedly: {exc}"
             ) from exc
 
-    async def close(self) -> None:
-        """Disconnect the SDK client and release resources."""
+    async def release_transport(self) -> None:
+        """Disconnect the SDK client without losing session state.
+
+        After calling this, the next ``send()`` or ``send_streaming()`` call
+        will create a fresh ``ClaudeSDKClient`` and reconnect, resuming the
+        conversation via the preserved ``session_id``.
+
+        This is required when the session is used across different async task
+        contexts (e.g., HTTP requests in ``holodeck serve``), because the
+        SDK's anyio task group is bound to the task that called ``connect()``.
+        """
         if self._client is not None:
             await self._client.disconnect()
             self._client = None
+
+    async def close(self) -> None:
+        """Disconnect the SDK client and release resources."""
+        await self.release_transport()
 
 
 # ---------------------------------------------------------------------------

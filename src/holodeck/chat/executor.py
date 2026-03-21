@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
@@ -22,6 +23,8 @@ from holodeck.models.tool_execution import ToolExecution, ToolStatus
 
 logger = get_logger(__name__)
 
+_SENTINEL = object()
+
 
 @dataclass
 class AgentResponse:
@@ -37,6 +40,89 @@ class AgentResponse:
     execution_time: float
 
 
+# ---------------------------------------------------------------------------
+# _TaskBoundSession — actor wrapper for cross-task session safety
+# ---------------------------------------------------------------------------
+
+
+class _TaskBoundSession:
+    """Wraps an AgentSession to run all calls in a dedicated background task.
+
+    The Claude SDK's anyio task group binds to the async task that called
+    ``connect()``.  HTTP servers spawn a new task per request, so the SDK
+    client created in request N cannot be reused in request N+1.
+
+    This wrapper starts a long-lived background task that owns the session.
+    ``send()`` and ``send_streaming()`` delegate to that task via an
+    ``asyncio.Queue``, keeping the SDK client in a single consistent task
+    context while allowing callers from any task.
+    """
+
+    def __init__(self, session: AgentSession) -> None:
+        self._session = session
+        self._queue: asyncio.Queue[
+            tuple[str, asyncio.Future[Any], asyncio.Queue[Any] | None] | None
+        ] = asyncio.Queue()
+        self._task: asyncio.Task[None] | None = None
+
+    async def start(self) -> None:
+        """Start the background actor task."""
+        self._task = asyncio.create_task(self._loop())
+
+    async def _loop(self) -> None:
+        """Process messages sequentially in this task's context."""
+        while True:
+            item = await self._queue.get()
+            if item is None:
+                break
+            message, future, chunk_queue = item
+            try:
+                if chunk_queue is not None:
+                    # Streaming mode — push chunks to the caller's queue
+                    try:
+                        async for chunk in self._session.send_streaming(message):
+                            await chunk_queue.put(chunk)
+                        await chunk_queue.put(_SENTINEL)
+                    except Exception as e:
+                        await chunk_queue.put(e)
+                    if not future.done():
+                        future.set_result(None)
+                else:
+                    result = await self._session.send(message)
+                    future.set_result(result)
+            except Exception as e:
+                if not future.done():
+                    future.set_exception(e)
+
+    async def send(self, message: str) -> ExecutionResult:
+        """Send a message via the actor task and await the result."""
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[ExecutionResult] = loop.create_future()
+        await self._queue.put((message, future, None))
+        return await future
+
+    async def send_streaming(self, message: str) -> AsyncGenerator[str, None]:
+        """Stream a message via the actor task, yielding chunks."""
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[None] = loop.create_future()
+        chunk_queue: asyncio.Queue[Any] = asyncio.Queue()
+        await self._queue.put((message, future, chunk_queue))
+        while True:
+            item = await chunk_queue.get()
+            if item is _SENTINEL:
+                break
+            if isinstance(item, Exception):
+                raise item
+            yield item
+
+    async def close(self) -> None:
+        """Shut down the actor and close the underlying session."""
+        if self._task is not None and not self._task.done():
+            await self._queue.put(None)
+            await self._task
+        await self._session.close()
+
+
 class AgentExecutor:
     """Coordinates agent execution for chat sessions.
 
@@ -50,6 +136,7 @@ class AgentExecutor:
         backend: AgentBackend | None = None,
         on_execution_start: Callable[[str], None] | None = None,
         on_execution_complete: Callable[[AgentResponse], None] | None = None,
+        release_transport_after_turn: bool = False,
     ) -> None:
         """Initialize executor with agent configuration.
 
@@ -61,6 +148,10 @@ class AgentExecutor:
             backend: Optional pre-initialized backend (bypasses BackendSelector).
             on_execution_start: Optional callback before agent execution.
             on_execution_complete: Optional callback after agent execution.
+            release_transport_after_turn: If True, wrap the backend session
+                in a ``_TaskBoundSession`` actor so the SDK client stays in
+                a single background task.  Required for HTTP servers where
+                each request runs in a different async task context.
         """
         self.agent_config = agent_config
         self._backend: AgentBackend | None = backend
@@ -68,6 +159,7 @@ class AgentExecutor:
         self._history: list[dict[str, Any]] = []
         self.on_execution_start = on_execution_start
         self.on_execution_complete = on_execution_complete
+        self._use_task_bound_session = release_transport_after_turn
 
         logger.info(f"AgentExecutor initialized for agent: {agent_config.name}")
 
@@ -91,7 +183,14 @@ class AgentExecutor:
                 mode="chat",
                 allow_side_effects=False,
             )
-        self._session = await self._backend.create_session()
+        session = await self._backend.create_session()
+
+        if self._use_task_bound_session:
+            actor = _TaskBoundSession(session)
+            await actor.start()
+            self._session = actor
+        else:
+            self._session = session
 
     async def execute_turn(self, message: str) -> AgentResponse:
         """Execute a single turn of agent conversation.

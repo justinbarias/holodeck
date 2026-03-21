@@ -6,6 +6,7 @@ for exposing agents via HTTP.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
@@ -28,9 +29,10 @@ from holodeck.serve.models import (
     ProtocolType,
     ServerState,
 )
-from holodeck.serve.session_store import SessionStore
+from holodeck.serve.session_store import ServerSession, SessionStore
 
 if TYPE_CHECKING:
+    from holodeck.chat.executor import AgentExecutor
     from holodeck.models.agent import Agent
     from holodeck.models.config import ExecutionConfig
 
@@ -102,6 +104,14 @@ class AgentServer:
                 "Use 127.0.0.1 for local-only access."
             )
 
+        # Claude SDK's anyio task group binds to the task that called
+        # connect(). HTTP requests run in different tasks, so the
+        # executor must release transport after each turn and reconnect
+        # on the next request (session_id preserves conversation state).
+        self._release_transport = (
+            self.agent_config.model.provider == ProviderEnum.ANTHROPIC
+        )
+
         # Determine max sessions based on provider
         max_sessions = 1000  # Default for non-Claude providers
         if self.agent_config.model.provider == ProviderEnum.ANTHROPIC:
@@ -148,6 +158,81 @@ class AgentServer:
         logger.info(
             "Backend prerequisites validated for %s provider",
             self.agent_config.model.provider.value,
+        )
+
+    def _get_timeout(self) -> float | None:
+        """Return the configured LLM timeout, or None."""
+        if self.execution_config and self.execution_config.llm_timeout:
+            return float(self.execution_config.llm_timeout)
+        return None
+
+    def _create_executor(self) -> AgentExecutor:
+        """Create an AgentExecutor for a new session."""
+        from holodeck.chat.executor import (  # noqa: N814
+            AgentExecutor as _Executor,
+        )
+
+        return _Executor(
+            self.agent_config,
+            release_transport_after_turn=self._release_transport,
+        )
+
+    def _get_or_create_session(
+        self,
+        session_id: str | None,
+    ) -> ServerSession | JSONResponse:
+        """Look up an existing session or create a new one.
+
+        Returns:
+            A ``ServerSession`` on success, or a ``JSONResponse``
+            (503 capacity exceeded) that the caller should return directly.
+        """
+        if session_id:
+            existing = self.sessions.get(session_id)
+            if existing is not None:
+                return existing
+
+        timeout = self._get_timeout()
+        logger.debug(
+            "Creating AgentExecutor for session %s (timeout=%s)",
+            session_id,
+            timeout,
+        )
+
+        executor = self._create_executor()
+        try:
+            return self.sessions.create(executor, session_id=session_id)
+        except RuntimeError:
+            return self._capacity_exceeded_response()
+
+    def _capacity_exceeded_response(self) -> JSONResponse:
+        """Build a 503 JSON response for capacity-exceeded errors."""
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "capacity_exceeded",
+                "message": _CAPACITY_MSG_TEMPLATE.format(
+                    max=self.sessions.max_sessions,
+                ),
+                "active_sessions": self.sessions.active_count,
+                "max_sessions": self.sessions.max_sessions,
+            },
+            headers={"Retry-After": "5"},
+        )
+
+    async def _handle_backend_session_error(
+        self,
+        session_id: str,
+    ) -> JSONResponse:
+        """Clean up a broken session and return a 502 response."""
+        await self.sessions.delete(session_id)
+        return JSONResponse(
+            status_code=502,
+            content={
+                "error": "backend_error",
+                "message": _BACKEND_ERROR_MSG,
+                "retriable": True,
+            },
         )
 
     def create_app(self) -> FastAPI:
@@ -253,7 +338,6 @@ class AgentServer:
         """
         from ag_ui.core.events import RunAgentInput
 
-        from holodeck.chat.executor import AgentExecutor
         from holodeck.serve.protocols.agui import AGUIProtocol
 
         @app.post("/awp", tags=["AG-UI"])
@@ -276,46 +360,29 @@ class AgentServer:
 
             # Get session by thread_id or create new one
             session_id = input_data.thread_id
-            session = self.sessions.get(session_id)
+            result = self._get_or_create_session(session_id)
+            if isinstance(result, JSONResponse):
+                # Convert capacity error to AG-UI SSE format
+                cap = self.sessions.max_sessions
 
-            if session is None:
-                # Create new executor for this session
-                # Use thread_id as session_id for AG-UI correlation
-                # Pass timeout from execution_config if available
-                timeout = (
-                    float(self.execution_config.llm_timeout)
-                    if self.execution_config and self.execution_config.llm_timeout
-                    else None
-                )
-                logger.debug(
-                    f"Creating AgentExecutor for session {session_id} "
-                    f"with timeout={timeout}s"
-                )
-                executor = AgentExecutor(self.agent_config)
-                try:
-                    session = self.sessions.create(executor, session_id=session_id)
-                except RuntimeError:
-
-                    cap = self.sessions.max_sessions
-
-                    async def capacity_error_stream() -> AsyncGenerator[bytes, None]:
-                        payload = json.dumps(
-                            {
-                                "type": "capacity_exceeded",
-                                "message": (
-                                    f"Maximum concurrent Claude sessions "
-                                    f"({cap}) reached."
-                                ),
-                            }
-                        )
-                        yield f"event: error\ndata: {payload}\n\n".encode()
-
-                    return StreamingResponse(
-                        capacity_error_stream(),
-                        media_type="text/event-stream",
+                async def capacity_error_stream() -> AsyncGenerator[bytes, None]:
+                    payload = json.dumps(
+                        {
+                            "type": "capacity_exceeded",
+                            "message": (
+                                f"Maximum concurrent Claude sessions "
+                                f"({cap}) reached."
+                            ),
+                        }
                     )
+                    yield f"event: error\ndata: {payload}\n\n".encode()
 
-            # Touch session to update last activity
+                return StreamingResponse(
+                    capacity_error_stream(),
+                    media_type="text/event-stream",
+                )
+            session = result
+
             self.sessions.touch(session_id)
             session.message_count += 1
 
@@ -340,7 +407,6 @@ class AgentServer:
         Args:
             app: The FastAPI application.
         """
-        from holodeck.chat.executor import AgentExecutor
         from holodeck.serve.protocols.rest import RESTProtocol
 
         agent_name = self.agent_config.name
@@ -356,54 +422,20 @@ class AgentServer:
             Accepts a message, processes it through the agent, and returns
             the complete response as JSON.
             """
-            # Get or create session
-            session_id = request.session_id
-            session = self.sessions.get(session_id) if session_id else None
+            result = self._get_or_create_session(request.session_id)
+            if isinstance(result, JSONResponse):
+                return result  # type: ignore[return-value,no-any-return]
+            session = result
 
-            if session is None:
-                # Create new executor for this session
-                timeout = (
-                    float(self.execution_config.llm_timeout)
-                    if self.execution_config and self.execution_config.llm_timeout
-                    else None
-                )
-                logger.debug(
-                    f"Creating AgentExecutor for new session with timeout={timeout}s"
-                )
-                executor = AgentExecutor(self.agent_config)
-                try:
-                    session = self.sessions.create(executor, session_id=session_id)
-                except RuntimeError:
-                    return JSONResponse(  # type: ignore[return-value,no-any-return]
-                        status_code=503,
-                        content={
-                            "error": "capacity_exceeded",
-                            "message": _CAPACITY_MSG_TEMPLATE.format(
-                                max=self.sessions.max_sessions,
-                            ),
-                            "active_sessions": self.sessions.active_count,
-                            "max_sessions": self.sessions.max_sessions,
-                        },
-                        headers={"Retry-After": "5"},
-                    )
-
-            # Touch session to update last activity
             self.sessions.touch(session.session_id)
             session.message_count += 1
 
-            # Handle request synchronously
             protocol = RESTProtocol()
             try:
                 return await protocol.handle_sync_request(request, session)
             except BackendSessionError:
-                self.sessions.delete(session.session_id)
-                return JSONResponse(  # type: ignore[return-value,no-any-return]
-                    status_code=502,
-                    content={
-                        "error": "backend_error",
-                        "message": _BACKEND_ERROR_MSG,
-                        "retriable": True,
-                    },
+                return await self._handle_backend_session_error(  # type: ignore[return-value,no-any-return]
+                    session.session_id,
                 )
 
         @app.post(
@@ -416,42 +448,14 @@ class AgentServer:
             Accepts a message, processes it through the agent, and streams
             SSE events back to the client.
             """
-            # Get or create session
-            session_id = request.session_id
-            session = self.sessions.get(session_id) if session_id else None
+            result = self._get_or_create_session(request.session_id)
+            if isinstance(result, JSONResponse):
+                return result  # type: ignore[return-value,no-any-return]
+            session = result
 
-            if session is None:
-                # Create new executor for this session
-                timeout = (
-                    float(self.execution_config.llm_timeout)
-                    if self.execution_config and self.execution_config.llm_timeout
-                    else None
-                )
-                logger.debug(
-                    f"Creating AgentExecutor for new session with timeout={timeout}s"
-                )
-                executor = AgentExecutor(self.agent_config)
-                try:
-                    session = self.sessions.create(executor, session_id=session_id)
-                except RuntimeError:
-                    return JSONResponse(  # type: ignore[return-value,no-any-return]
-                        status_code=503,
-                        content={
-                            "error": "capacity_exceeded",
-                            "message": _CAPACITY_MSG_TEMPLATE.format(
-                                max=self.sessions.max_sessions,
-                            ),
-                            "active_sessions": self.sessions.active_count,
-                            "max_sessions": self.sessions.max_sessions,
-                        },
-                        headers={"Retry-After": "5"},
-                    )
-
-            # Touch session to update last activity
             self.sessions.touch(session.session_id)
             session.message_count += 1
 
-            # Handle request with streaming
             protocol = RESTProtocol()
             return StreamingResponse(
                 protocol.handle_request(request, session),
@@ -497,52 +501,20 @@ class AgentServer:
                 files=file_contents if file_contents else None,
             )
 
-            # Get or create session
-            session = self.sessions.get(session_id) if session_id else None
+            result = self._get_or_create_session(session_id)
+            if isinstance(result, JSONResponse):
+                return result  # type: ignore[return-value,no-any-return]
+            session = result
 
-            if session is None:
-                timeout = (
-                    float(self.execution_config.llm_timeout)
-                    if self.execution_config and self.execution_config.llm_timeout
-                    else None
-                )
-                logger.debug(
-                    f"Creating AgentExecutor for new session with timeout={timeout}s"
-                )
-                executor = AgentExecutor(self.agent_config)
-                try:
-                    session = self.sessions.create(executor, session_id=session_id)
-                except RuntimeError:
-                    return JSONResponse(  # type: ignore[return-value,no-any-return]
-                        status_code=503,
-                        content={
-                            "error": "capacity_exceeded",
-                            "message": _CAPACITY_MSG_TEMPLATE.format(
-                                max=self.sessions.max_sessions,
-                            ),
-                            "active_sessions": self.sessions.active_count,
-                            "max_sessions": self.sessions.max_sessions,
-                        },
-                        headers={"Retry-After": "5"},
-                    )
-
-            # Touch session to update last activity
             self.sessions.touch(session.session_id)
             session.message_count += 1
 
-            # Handle request synchronously
             protocol = RESTProtocol()
             try:
                 return await protocol.handle_sync_request(chat_request, session)
             except BackendSessionError:
-                self.sessions.delete(session.session_id)
-                return JSONResponse(  # type: ignore[return-value,no-any-return]
-                    status_code=502,
-                    content={
-                        "error": "backend_error",
-                        "message": _BACKEND_ERROR_MSG,
-                        "retriable": True,
-                    },
+                return await self._handle_backend_session_error(  # type: ignore[return-value,no-any-return]
+                    session.session_id,
                 )
 
         @app.post(
@@ -582,40 +554,14 @@ class AgentServer:
                 files=file_contents if file_contents else None,
             )
 
-            # Get or create session
-            session = self.sessions.get(session_id) if session_id else None
+            result = self._get_or_create_session(session_id)
+            if isinstance(result, JSONResponse):
+                return result  # type: ignore[return-value,no-any-return]
+            session = result
 
-            if session is None:
-                timeout = (
-                    float(self.execution_config.llm_timeout)
-                    if self.execution_config and self.execution_config.llm_timeout
-                    else None
-                )
-                logger.debug(
-                    f"Creating AgentExecutor for new session with timeout={timeout}s"
-                )
-                executor = AgentExecutor(self.agent_config)
-                try:
-                    session = self.sessions.create(executor, session_id=session_id)
-                except RuntimeError:
-                    return JSONResponse(  # type: ignore[return-value,no-any-return]
-                        status_code=503,
-                        content={
-                            "error": "capacity_exceeded",
-                            "message": _CAPACITY_MSG_TEMPLATE.format(
-                                max=self.sessions.max_sessions,
-                            ),
-                            "active_sessions": self.sessions.active_count,
-                            "max_sessions": self.sessions.max_sessions,
-                        },
-                        headers={"Retry-After": "5"},
-                    )
-
-            # Touch session to update last activity
             self.sessions.touch(session.session_id)
             session.message_count += 1
 
-            # Handle request with streaming
             protocol = RESTProtocol()
             return StreamingResponse(
                 protocol.handle_request(chat_request, session),
@@ -633,7 +579,7 @@ class AgentServer:
             Removes the session and its conversation history.
             Returns 204 No Content on success (idempotent).
             """
-            self.sessions.delete(session_id)
+            await self.sessions.delete(session_id)
             logger.debug(f"Deleted session: {session_id}")
             return Response(status_code=204)
 
@@ -672,9 +618,14 @@ class AgentServer:
         # Stop cleanup task
         await self.sessions.stop_cleanup_task()
 
-        # Cleanup sessions
+        # Shutdown all session executors (stops actor tasks, SDK subprocesses)
         session_count = self.sessions.active_count
-        self.sessions.sessions.clear()
+        session_ids = list(self.sessions.sessions.keys())
+        if session_ids:
+            await asyncio.gather(
+                *(self.sessions.delete(sid) for sid in session_ids),
+                return_exceptions=True,
+            )
 
         self.state = ServerState.STOPPED
 
