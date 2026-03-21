@@ -297,8 +297,13 @@ def build_options(
     # Output format
     output_format = _build_output_format(agent.response_format)
 
-    # Working directory
+    # Working directory — fall back to agent.yaml's directory so that
+    # relative paths in MCP args (e.g. "./data") resolve correctly.
+    from holodeck.config.context import agent_base_dir
+
     cwd = claude.working_directory if claude else None
+    if cwd is None:
+        cwd = agent_base_dir.get()
 
     # Max turns
     max_turns = claude.max_turns if claude else None
