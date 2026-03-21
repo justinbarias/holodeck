@@ -169,7 +169,11 @@ security: ## Run security checks
 	@echo "Scanning for security issues with Bandit..."
 	uv run bandit -r $(SRC_DIR)
 	@echo "Checking for hardcoded secrets..."
-	uv run detect-secrets scan --baseline .secrets.baseline
+	@if [ -f .secrets.baseline ]; then \
+		uv run detect-secrets scan --baseline .secrets.baseline; \
+	else \
+		uv run detect-secrets scan; \
+	fi
 	@echo "$(GREEN)✓ Security checks complete$(NC)"
 
 pre-commit: ## Run pre-commit hooks on all files
