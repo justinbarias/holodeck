@@ -8,6 +8,7 @@ runtime.
 import json
 import logging
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,8 @@ _FOUNDRY_TARGET_ENV_CANDIDATES = (
     "ANTHROPIC_FOUNDRY_RESOURCE",
     "ANTHROPIC_FOUNDRY_BASE_URL",
 )
+
+NODEJS_MIN_VERSION: int = 18
 
 
 def _get_required_env_var(name: str, error_message: str) -> str:
@@ -65,6 +68,43 @@ def validate_nodejs() -> None:
             "PATH. Install Node.js from https://nodejs.org/ and ensure it is "
             "on your PATH.",
         )
+
+    stdout = ""
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["node", "--version"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        stdout = result.stdout.strip()
+        version = stdout.lstrip("v")
+        major = int(version.split(".")[0])
+    except subprocess.TimeoutExpired as e:
+        raise ConfigError(
+            "nodejs",
+            "Node.js version check timed out. Ensure 'node --version' "
+            "completes quickly.",
+        ) from e
+    except subprocess.CalledProcessError as e:
+        raise ConfigError(
+            "nodejs",
+            "Failed to determine Node.js version. Ensure 'node --version' " "works.",
+        ) from e
+    except ValueError as e:
+        raise ConfigError(
+            "nodejs",
+            f"Could not parse Node.js version from output: {stdout}",
+        ) from e
+
+    if major < NODEJS_MIN_VERSION:
+        raise ConfigError(
+            "nodejs",
+            f"Node.js version {version} found but >= {NODEJS_MIN_VERSION} is "
+            "required by Claude Agent SDK. Download from https://nodejs.org/",
+        )
+
+    logger.debug(f"Node.js version {version} validated (>= {NODEJS_MIN_VERSION})")
 
 
 def validate_credentials(model: LLMProvider) -> dict[str, str]:

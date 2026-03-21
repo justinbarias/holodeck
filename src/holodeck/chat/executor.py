@@ -155,7 +155,9 @@ class AgentExecutor:
 
             return response
 
-        except (BackendSessionError, BackendInitError) as e:
+        except BackendSessionError:
+            raise
+        except BackendInitError as e:
             logger.error(f"Agent execution failed: {e}", exc_info=True)
             raise RuntimeError(f"Agent execution failed: {e}") from e
         except RuntimeError:
@@ -185,7 +187,9 @@ class AgentExecutor:
             # Update history after stream completes
             self._history.append({"role": "user", "content": message})
             self._history.append({"role": "assistant", "content": "".join(collected)})
-        except (BackendSessionError, BackendInitError) as e:
+        except BackendSessionError:
+            raise
+        except BackendInitError as e:
             raise RuntimeError(f"Agent streaming failed: {e}") from e
 
     def get_history(self) -> list[dict[str, Any]]:

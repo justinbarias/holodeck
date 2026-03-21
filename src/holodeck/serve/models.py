@@ -187,7 +187,10 @@ class HealthResponse(BaseModel):
     Provides server and agent status information.
     """
 
-    status: str = Field(..., description="Overall status: 'healthy' or 'unhealthy'")
+    status: str = Field(
+        ...,
+        description=("Overall health status: 'healthy', 'degraded', " "or 'unhealthy'"),
+    )
     agent_name: str | None = Field(
         default=None,
         description="Loaded agent name",
@@ -203,6 +206,14 @@ class HealthResponse(BaseModel):
     uptime_seconds: float = Field(
         default=0.0,
         description="Server uptime in seconds",
+    )
+    backend_ready: bool = Field(
+        default=True,
+        description="Whether backend prerequisites are satisfied",
+    )
+    backend_diagnostics: list[str] = Field(
+        default_factory=list,
+        description="Diagnostic messages when backend is degraded/unhealthy",
     )
 
 

@@ -5,12 +5,15 @@ lifecycle management, and state transitions.
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from holodeck.lib.backends import BackendInitError
+from holodeck.lib.errors import ConfigError
 from holodeck.models.config import ExecutionConfig
+from holodeck.models.llm import ProviderEnum
 from holodeck.serve.models import ProtocolType, ServerState
 from holodeck.serve.server import AgentServer
 
@@ -109,6 +112,42 @@ class TestAgentServerInit:
 
         assert server.sessions is not None
         assert server.sessions.active_count == 0
+
+    @pytest.mark.unit
+    def test_session_cap_anthropic_with_max_concurrent_sessions(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T015: Anthropic provider uses claude.max_concurrent_sessions."""
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude = MagicMock()
+        mock_agent_config.claude.max_concurrent_sessions = 5
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        assert server.sessions.max_sessions == 5
+
+    @pytest.mark.unit
+    def test_session_cap_non_anthropic_defaults_to_1000(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T015: Non-Anthropic provider defaults to 1000 max sessions."""
+        mock_agent_config.model.provider = ProviderEnum.OPENAI
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        assert server.sessions.max_sessions == 1000
+
+    @pytest.mark.unit
+    def test_session_cap_anthropic_without_claude_config_defaults_to_10(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T015: Anthropic provider without claude config defaults to 10."""
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude = None
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        assert server.sessions.max_sessions == 10
 
 
 class TestAgentServerProperties:
@@ -481,3 +520,108 @@ class TestAgentServerAGUIEndpoint:
         # Check endpoint is NOT registered
         routes = [route.path for route in app.routes]
         assert "/awp" not in routes
+
+
+class TestValidateBackendPrerequisites:
+    """Tests for AgentServer._validate_backend_prerequisites().
+
+    T014: Validates backend-specific prerequisites before serving.
+    """
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    @patch("holodeck.serve.server.validate_credentials")
+    @patch("holodeck.serve.server.validate_nodejs")
+    async def test_valid_anthropic_no_exception(
+        self,
+        mock_validate_nodejs: MagicMock,
+        mock_validate_credentials: MagicMock,
+        mock_agent_config: MagicMock,
+    ) -> None:
+        """T014: Valid Anthropic provider passes validation without exception."""
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        server = AgentServer(agent_config=mock_agent_config)
+
+        await server._validate_backend_prerequisites()
+
+        mock_validate_nodejs.assert_called_once()
+        mock_validate_credentials.assert_called_once_with(mock_agent_config.model)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    @patch("holodeck.serve.server.validate_credentials")
+    @patch("holodeck.serve.server.validate_nodejs")
+    async def test_missing_nodejs_raises_backend_init_error(
+        self,
+        mock_validate_nodejs: MagicMock,
+        mock_validate_credentials: MagicMock,
+        mock_agent_config: MagicMock,
+    ) -> None:
+        """T014: Missing Node.js raises BackendInitError for Anthropic provider."""
+        mock_validate_nodejs.side_effect = ConfigError("nodejs", "Node.js not found")
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        server = AgentServer(agent_config=mock_agent_config)
+
+        with pytest.raises(BackendInitError):
+            await server._validate_backend_prerequisites()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    @patch("holodeck.serve.server.validate_credentials")
+    @patch("holodeck.serve.server.validate_nodejs")
+    async def test_missing_credentials_raises_backend_init_error(
+        self,
+        mock_validate_nodejs: MagicMock,
+        mock_validate_credentials: MagicMock,
+        mock_agent_config: MagicMock,
+    ) -> None:
+        """T014: Missing credentials raises BackendInitError for Anthropic provider."""
+        mock_validate_credentials.side_effect = ConfigError(
+            "credentials", "API key not found"
+        )
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        server = AgentServer(agent_config=mock_agent_config)
+
+        with pytest.raises(BackendInitError):
+            await server._validate_backend_prerequisites()
+
+        mock_validate_nodejs.assert_called_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    @patch("holodeck.serve.server.validate_credentials")
+    @patch("holodeck.serve.server.validate_nodejs")
+    async def test_non_anthropic_provider_skips_validation(
+        self,
+        mock_validate_nodejs: MagicMock,
+        mock_validate_credentials: MagicMock,
+        mock_agent_config: MagicMock,
+    ) -> None:
+        """T014: Non-Anthropic provider skips Node.js and credential validation."""
+        mock_agent_config.model.provider = ProviderEnum.OPENAI
+        server = AgentServer(agent_config=mock_agent_config)
+
+        await server._validate_backend_prerequisites()
+
+        mock_validate_nodejs.assert_not_called()
+        mock_validate_credentials.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    @patch("holodeck.serve.server.validate_credentials")
+    @patch("holodeck.serve.server.validate_nodejs")
+    async def test_old_nodejs_version_raises_backend_init_error(
+        self,
+        mock_validate_nodejs: MagicMock,
+        mock_validate_credentials: MagicMock,
+        mock_agent_config: MagicMock,
+    ) -> None:
+        """T014: Old Node.js version raises BackendInitError for Anthropic provider."""
+        mock_validate_nodejs.side_effect = ConfigError(
+            "nodejs", "Node.js version 16 found but >= 18 required"
+        )
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        server = AgentServer(agent_config=mock_agent_config)
+
+        with pytest.raises(BackendInitError):
+            await server._validate_backend_prerequisites()

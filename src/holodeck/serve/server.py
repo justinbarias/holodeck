@@ -6,14 +6,20 @@ for exposing agents via HTTP.
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
+from holodeck.lib.backends import BackendInitError, BackendSessionError
+from holodeck.lib.backends.validators import validate_credentials, validate_nodejs
+from holodeck.lib.errors import ConfigError
 from holodeck.lib.logging_config import get_logger
+from holodeck.models.llm import ProviderEnum
 from holodeck.serve.middleware import ErrorHandlingMiddleware, LoggingMiddleware
 from holodeck.serve.models import (
     ChatRequest,
@@ -29,6 +35,16 @@ if TYPE_CHECKING:
     from holodeck.models.config import ExecutionConfig
 
 logger = get_logger(__name__)
+
+# Error message constants for contract-compliant responses
+_BACKEND_ERROR_MSG = (
+    "Claude Agent SDK subprocess terminated unexpectedly. "
+    "Start a new session to retry."
+)
+_CAPACITY_MSG_TEMPLATE = (
+    "Maximum concurrent Claude sessions ({max}) reached. "
+    "Retry after existing sessions complete."
+)
 
 
 class AgentServer:
@@ -86,7 +102,14 @@ class AgentServer:
                 "Use 127.0.0.1 for local-only access."
             )
 
-        self.sessions = SessionStore()
+        # Determine max sessions based on provider
+        max_sessions = 1000  # Default for non-Claude providers
+        if self.agent_config.model.provider == ProviderEnum.ANTHROPIC:
+            if self.agent_config.claude is not None:
+                max_sessions = self.agent_config.claude.max_concurrent_sessions or 10
+            else:
+                max_sessions = 10  # Default when claude section absent
+        self.sessions = SessionStore(max_sessions=max_sessions)
         self.state = ServerState.INITIALIZING
         self._app: FastAPI | None = None
         self._start_time: datetime | None = None
@@ -103,6 +126,29 @@ class AgentServer:
             return 0.0
         delta = datetime.now(timezone.utc) - self._start_time
         return delta.total_seconds()
+
+    async def _validate_backend_prerequisites(self) -> None:
+        """Validate backend-specific prerequisites before serving.
+
+        For Anthropic provider, validates Node.js availability/version
+        and API credentials. Non-Anthropic providers skip validation.
+
+        Raises:
+            BackendInitError: If prerequisites are not met.
+        """
+        if self.agent_config.model.provider != ProviderEnum.ANTHROPIC:
+            return
+
+        try:
+            validate_nodejs()
+            validate_credentials(self.agent_config.model)
+        except ConfigError as e:
+            raise BackendInitError(str(e)) from e
+
+        logger.info(
+            "Backend prerequisites validated for %s provider",
+            self.agent_config.model.provider.value,
+        )
 
     def create_app(self) -> FastAPI:
         """Create and configure the FastAPI application.
@@ -246,7 +292,28 @@ class AgentServer:
                     f"with timeout={timeout}s"
                 )
                 executor = AgentExecutor(self.agent_config)
-                session = self.sessions.create(executor, session_id=session_id)
+                try:
+                    session = self.sessions.create(executor, session_id=session_id)
+                except RuntimeError:
+
+                    cap = self.sessions.max_sessions
+
+                    async def capacity_error_stream() -> AsyncGenerator[bytes, None]:
+                        payload = json.dumps(
+                            {
+                                "type": "capacity_exceeded",
+                                "message": (
+                                    f"Maximum concurrent Claude sessions "
+                                    f"({cap}) reached."
+                                ),
+                            }
+                        )
+                        yield f"event: error\ndata: {payload}\n\n".encode()
+
+                    return StreamingResponse(
+                        capacity_error_stream(),
+                        media_type="text/event-stream",
+                    )
 
             # Touch session to update last activity
             self.sessions.touch(session_id)
@@ -304,7 +371,21 @@ class AgentServer:
                     f"Creating AgentExecutor for new session with timeout={timeout}s"
                 )
                 executor = AgentExecutor(self.agent_config)
-                session = self.sessions.create(executor, session_id=session_id)
+                try:
+                    session = self.sessions.create(executor, session_id=session_id)
+                except RuntimeError:
+                    return JSONResponse(  # type: ignore[return-value,no-any-return]
+                        status_code=503,
+                        content={
+                            "error": "capacity_exceeded",
+                            "message": _CAPACITY_MSG_TEMPLATE.format(
+                                max=self.sessions.max_sessions,
+                            ),
+                            "active_sessions": self.sessions.active_count,
+                            "max_sessions": self.sessions.max_sessions,
+                        },
+                        headers={"Retry-After": "5"},
+                    )
 
             # Touch session to update last activity
             self.sessions.touch(session.session_id)
@@ -312,7 +393,18 @@ class AgentServer:
 
             # Handle request synchronously
             protocol = RESTProtocol()
-            return await protocol.handle_sync_request(request, session)
+            try:
+                return await protocol.handle_sync_request(request, session)
+            except BackendSessionError:
+                self.sessions.delete(session.session_id)
+                return JSONResponse(  # type: ignore[return-value,no-any-return]
+                    status_code=502,
+                    content={
+                        "error": "backend_error",
+                        "message": _BACKEND_ERROR_MSG,
+                        "retriable": True,
+                    },
+                )
 
         @app.post(
             f"/agent/{agent_name}/chat/stream",
@@ -339,7 +431,21 @@ class AgentServer:
                     f"Creating AgentExecutor for new session with timeout={timeout}s"
                 )
                 executor = AgentExecutor(self.agent_config)
-                session = self.sessions.create(executor, session_id=session_id)
+                try:
+                    session = self.sessions.create(executor, session_id=session_id)
+                except RuntimeError:
+                    return JSONResponse(  # type: ignore[return-value,no-any-return]
+                        status_code=503,
+                        content={
+                            "error": "capacity_exceeded",
+                            "message": _CAPACITY_MSG_TEMPLATE.format(
+                                max=self.sessions.max_sessions,
+                            ),
+                            "active_sessions": self.sessions.active_count,
+                            "max_sessions": self.sessions.max_sessions,
+                        },
+                        headers={"Retry-After": "5"},
+                    )
 
             # Touch session to update last activity
             self.sessions.touch(session.session_id)
@@ -404,7 +510,21 @@ class AgentServer:
                     f"Creating AgentExecutor for new session with timeout={timeout}s"
                 )
                 executor = AgentExecutor(self.agent_config)
-                session = self.sessions.create(executor, session_id=session_id)
+                try:
+                    session = self.sessions.create(executor, session_id=session_id)
+                except RuntimeError:
+                    return JSONResponse(  # type: ignore[return-value,no-any-return]
+                        status_code=503,
+                        content={
+                            "error": "capacity_exceeded",
+                            "message": _CAPACITY_MSG_TEMPLATE.format(
+                                max=self.sessions.max_sessions,
+                            ),
+                            "active_sessions": self.sessions.active_count,
+                            "max_sessions": self.sessions.max_sessions,
+                        },
+                        headers={"Retry-After": "5"},
+                    )
 
             # Touch session to update last activity
             self.sessions.touch(session.session_id)
@@ -412,7 +532,18 @@ class AgentServer:
 
             # Handle request synchronously
             protocol = RESTProtocol()
-            return await protocol.handle_sync_request(chat_request, session)
+            try:
+                return await protocol.handle_sync_request(chat_request, session)
+            except BackendSessionError:
+                self.sessions.delete(session.session_id)
+                return JSONResponse(  # type: ignore[return-value,no-any-return]
+                    status_code=502,
+                    content={
+                        "error": "backend_error",
+                        "message": _BACKEND_ERROR_MSG,
+                        "retriable": True,
+                    },
+                )
 
         @app.post(
             f"/agent/{agent_name}/chat/stream/multipart",
@@ -464,7 +595,21 @@ class AgentServer:
                     f"Creating AgentExecutor for new session with timeout={timeout}s"
                 )
                 executor = AgentExecutor(self.agent_config)
-                session = self.sessions.create(executor, session_id=session_id)
+                try:
+                    session = self.sessions.create(executor, session_id=session_id)
+                except RuntimeError:
+                    return JSONResponse(  # type: ignore[return-value,no-any-return]
+                        status_code=503,
+                        content={
+                            "error": "capacity_exceeded",
+                            "message": _CAPACITY_MSG_TEMPLATE.format(
+                                max=self.sessions.max_sessions,
+                            ),
+                            "active_sessions": self.sessions.active_count,
+                            "max_sessions": self.sessions.max_sessions,
+                        },
+                        headers={"Retry-After": "5"},
+                    )
 
             # Touch session to update last activity
             self.sessions.touch(session.session_id)
@@ -501,6 +646,9 @@ class AgentServer:
         """
         if self._app is None:
             self.create_app()
+
+        # Validate backend prerequisites before accepting requests
+        await self._validate_backend_prerequisites()
 
         self._start_time = datetime.now(timezone.utc)
         self.state = ServerState.RUNNING

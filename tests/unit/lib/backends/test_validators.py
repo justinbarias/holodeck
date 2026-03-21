@@ -1,7 +1,8 @@
-"""Tests for Phase 3 startup validators (T017-T022)."""
+"""Tests for Phase 3 startup validators (T017-T022) and version checks (T013)."""
 
 import json
 import logging
+import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -47,6 +48,88 @@ class TestValidateNodejs:
     def test_raises_config_error_when_node_missing(self, mock_which: object) -> None:
         """ConfigError raised with 'nodejs' field when Node.js is not found."""
         mock_which.return_value = None  # type: ignore[union-attr]
+        with pytest.raises(ConfigError) as exc_info:
+            validate_nodejs()
+        assert exc_info.value.field == "nodejs"
+
+    # -- Version check tests (T013) ------------------------------------------
+
+    @patch("holodeck.lib.backends.validators.subprocess.run")
+    @patch("holodeck.lib.backends.validators.shutil.which")
+    def test_v22_passes(self, mock_which: object, mock_run: object) -> None:
+        """T013: v22.1.0 passes version check without raising."""
+        mock_which.return_value = "/usr/bin/node"  # type: ignore[union-attr]
+        mock_run.return_value = subprocess.CompletedProcess(  # type: ignore[union-attr]
+            args=["node", "--version"], returncode=0, stdout="v22.1.0\n", stderr=""
+        )
+        validate_nodejs()  # Should not raise
+
+    @patch("holodeck.lib.backends.validators.subprocess.run")
+    @patch("holodeck.lib.backends.validators.shutil.which")
+    def test_v18_boundary_passes(self, mock_which: object, mock_run: object) -> None:
+        """T013: v18.0.0 passes at the minimum version boundary."""
+        mock_which.return_value = "/usr/bin/node"  # type: ignore[union-attr]
+        mock_run.return_value = subprocess.CompletedProcess(  # type: ignore[union-attr]
+            args=["node", "--version"], returncode=0, stdout="v18.0.0\n", stderr=""
+        )
+        validate_nodejs()  # Should not raise
+
+    @patch("holodeck.lib.backends.validators.subprocess.run")
+    @patch("holodeck.lib.backends.validators.shutil.which")
+    def test_v16_fails(self, mock_which: object, mock_run: object) -> None:
+        """T013: v16.20.0 fails version check with ConfigError."""
+        mock_which.return_value = "/usr/bin/node"  # type: ignore[union-attr]
+        mock_run.return_value = subprocess.CompletedProcess(  # type: ignore[union-attr]
+            args=["node", "--version"], returncode=0, stdout="v16.20.0\n", stderr=""
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            validate_nodejs()
+        assert exc_info.value.field == "nodejs"
+        assert "16.20.0" in exc_info.value.message
+        assert "18" in exc_info.value.message
+
+    @patch("holodeck.lib.backends.validators.subprocess.run")
+    @patch("holodeck.lib.backends.validators.shutil.which")
+    def test_timeout_raises(self, mock_which: object, mock_run: object) -> None:
+        """T013: Timeout during version check raises ConfigError."""
+        mock_which.return_value = "/usr/bin/node"  # type: ignore[union-attr]
+        mock_run.side_effect = subprocess.TimeoutExpired(  # type: ignore[union-attr]
+            cmd=["node", "--version"], timeout=5
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            validate_nodejs()
+        assert exc_info.value.field == "nodejs"
+
+    @patch("holodeck.lib.backends.validators.subprocess.run")
+    @patch("holodeck.lib.backends.validators.shutil.which")
+    def test_nonzero_exit_raises(self, mock_which: object, mock_run: object) -> None:
+        """T013: Non-zero exit code raises ConfigError."""
+        mock_which.return_value = "/usr/bin/node"  # type: ignore[union-attr]
+        mock_run.side_effect = subprocess.CalledProcessError(  # type: ignore[union-attr]
+            returncode=1, cmd=["node", "--version"]
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            validate_nodejs()
+        assert exc_info.value.field == "nodejs"
+
+    @patch("holodeck.lib.backends.validators.shutil.which")
+    def test_node_not_found_does_not_call_subprocess(self, mock_which: object) -> None:
+        """T013: Node not found raises ConfigError without subprocess."""
+        mock_which.return_value = None  # type: ignore[union-attr]
+        with pytest.raises(ConfigError) as exc_info:
+            validate_nodejs()
+        assert exc_info.value.field == "nodejs"
+
+    @patch("holodeck.lib.backends.validators.subprocess.run")
+    @patch("holodeck.lib.backends.validators.shutil.which")
+    def test_unparseable_version_raises(
+        self, mock_which: object, mock_run: object
+    ) -> None:
+        """T013: Unparseable version output raises ConfigError."""
+        mock_which.return_value = "/usr/bin/node"  # type: ignore[union-attr]
+        mock_run.return_value = subprocess.CompletedProcess(  # type: ignore[union-attr]
+            args=["node", "--version"], returncode=0, stdout="garbage", stderr=""
+        )
         with pytest.raises(ConfigError) as exc_info:
             validate_nodejs()
         assert exc_info.value.field == "nodejs"

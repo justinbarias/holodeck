@@ -24,11 +24,13 @@ from ag_ui.core.events import (
     TextMessageStartEvent,
     ToolCallArgsEvent,
     ToolCallEndEvent,
+    ToolCallResultEvent,
     ToolCallStartEvent,
 )
 from ag_ui.encoder import EventEncoder
 from ulid import ULID
 
+from holodeck.lib.backends import BackendSessionError
 from holodeck.lib.logging_config import get_logger
 from holodeck.models.test_case import FileInput
 from holodeck.serve.file_utils import (
@@ -464,6 +466,8 @@ def create_tool_call_events(
     """
     tool_call_id = str(ULID())
 
+    result_content = tool_execution.result or ""
+
     events: list[BaseEvent] = [
         create_tool_call_start(
             tool_call_id=tool_call_id,
@@ -475,6 +479,13 @@ def create_tool_call_events(
             delta=json.dumps(tool_execution.parameters),
         ),
         create_tool_call_end(tool_call_id=tool_call_id),
+        ToolCallResultEvent(
+            type=EventType.TOOL_CALL_RESULT,
+            message_id=message_id,
+            tool_call_id=tool_call_id,
+            content=result_content,
+            role="tool",
+        ),
     ]
 
     return events
@@ -639,6 +650,14 @@ class AGUIProtocol(Protocol):
             yield encoder.encode(create_run_finished_event(thread_id, run_id))
 
             logger.debug("Completed request for run %s", run_id)
+
+        except BackendSessionError as e:
+            logger.error("Backend session error: %s", e, exc_info=True)
+            yield encoder.encode(
+                create_run_error_event(
+                    "Claude Agent SDK subprocess terminated unexpectedly.",
+                )
+            )
 
         except Exception as e:
             logger.error("Error processing request: %s", e, exc_info=True)

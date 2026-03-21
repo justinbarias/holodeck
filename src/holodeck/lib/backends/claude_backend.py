@@ -268,8 +268,10 @@ def build_options(
     if tool_server is not None:
         mcp_servers["holodeck_tools"] = tool_server
 
-    # Env vars
-    env: dict[str, str] = {**auth_env, **otel_env}
+    # Env vars — unset CLAUDECODE to prevent the "nested session" guard
+    # when HoloDeck runs inside a terminal with Claude Code active.
+    # SDK merges: {**os.environ, **options.env}, so "" overrides "1".
+    env: dict[str, str] = {"CLAUDECODE": "", **auth_env, **otel_env}
 
     # Permission mode
     perm_mode = None

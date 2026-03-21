@@ -379,11 +379,11 @@ class TestBackendExecutorExecution:
 
     @pytest.mark.asyncio
     async def test_backend_error_wrapped(self, make_agent, make_mock_backend) -> None:
-        """T007: BackendSessionError wrapped in RuntimeError."""
+        """T007: BackendSessionError propagates directly for protocol-level handling."""
         mock_backend, mock_session = make_mock_backend()
         mock_session.send.side_effect = BackendSessionError("Connection lost")
 
         executor = AgentExecutor(make_agent(), backend=mock_backend)
 
-        with pytest.raises(RuntimeError, match="Connection lost"):
+        with pytest.raises(BackendSessionError, match="Connection lost"):
             await executor.execute_turn("Hello")
