@@ -38,10 +38,14 @@ def _make_agent(**kwargs: object) -> Agent:
 class TestValidateNodejs:
     """Tests for validate_nodejs (T017)."""
 
+    @patch("holodeck.lib.backends.validators.subprocess.run")
     @patch("holodeck.lib.backends.validators.shutil.which")
-    def test_passes_when_node_found(self, mock_which: object) -> None:
+    def test_passes_when_node_found(self, mock_which: object, mock_run: object) -> None:
         """No exception raised when Node.js is found on PATH."""
         mock_which.return_value = "/usr/local/bin/node"  # type: ignore[union-attr]
+        mock_run.return_value = subprocess.CompletedProcess(  # type: ignore[union-attr]
+            args=["node", "--version"], returncode=0, stdout="v22.0.0\n", stderr=""
+        )
         validate_nodejs()  # Should not raise
 
     @patch("holodeck.lib.backends.validators.shutil.which")
