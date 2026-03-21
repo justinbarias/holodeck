@@ -158,13 +158,22 @@ type-check: ## Run type checking with mypy
 security: ## Run security checks
 	@echo "$(GREEN)Running security checks...$(NC)"
 	@echo "Checking for known vulnerabilities..."
-	uv run pip-audit --progress-spinner=off
+	# nltk 3.9.3 (latest) — no upstream fix available; low-risk for our usage
+	# (WordNet browser XSS/shutdown, JSON recursion DoS — we only use tokenization)
+	uv run pip-audit --progress-spinner=off \
+		--ignore-vuln GHSA-rf74-v2fm-23pw \
+		--ignore-vuln CVE-2026-33230 \
+		--ignore-vuln CVE-2026-33231
 	@echo "Scanning for security issues with Ruff..."
 	uv run ruff check $(SRC_DIR) --select S
 	@echo "Scanning for security issues with Bandit..."
 	uv run bandit -r $(SRC_DIR)
 	@echo "Checking for hardcoded secrets..."
-	uv run detect-secrets scan --baseline .secrets.baseline
+	@if [ -f .secrets.baseline ]; then \
+		uv run detect-secrets scan --baseline .secrets.baseline; \
+	else \
+		uv run detect-secrets scan; \
+	fi
 	@echo "$(GREEN)✓ Security checks complete$(NC)"
 
 pre-commit: ## Run pre-commit hooks on all files

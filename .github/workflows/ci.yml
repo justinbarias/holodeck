@@ -75,6 +75,4 @@ jobs:
           report_type: test_results
 
       - name: Security scan
-        run: |
-          uv run bandit -r src/
-          uv run pip-audit --progress-spinner=off
+        run: make security
