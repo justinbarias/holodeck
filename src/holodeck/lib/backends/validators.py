@@ -8,7 +8,7 @@ runtime.
 import json
 import logging
 import shutil
-import subprocess
+import subprocess  # nosec B404
 from pathlib import Path
 from typing import Any
 
@@ -71,7 +71,7 @@ def validate_nodejs() -> None:
 
     stdout = ""
     try:
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(  # noqa: S603 # nosec B603 B607
             ["node", "--version"],  # noqa: S607
             capture_output=True,
             text=True,
