@@ -120,17 +120,9 @@ def serve(
 
         # Determine logging strategy: OTel replaces setup_logging when enabled
         if agent.observability and agent.observability.enabled:
-            # Enable console exporter for serve command (structured OTel output)
-            from holodeck.models.observability import ConsoleExporterConfig
-
-            if agent.observability.exporters.console is None:
-                agent.observability.exporters.console = ConsoleExporterConfig(
-                    enabled=True
-                )
-            else:
-                agent.observability.exporters.console.enabled = True
-
             # OTel handles all logging - skip setup_logging
+            # Console exporter is NOT force-enabled; use agent.yaml config
+            # to enable it explicitly if needed.
             obs_context = initialize_observability(
                 agent.observability, agent.name, verbose=verbose, quiet=quiet
             )

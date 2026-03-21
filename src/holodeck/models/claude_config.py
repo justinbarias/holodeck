@@ -87,6 +87,12 @@ class ClaudeConfig(BaseModel):
         ge=1,
         description="Maximum agent loop iterations. None = SDK default.",
     )
+    max_concurrent_sessions: int | None = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum concurrent Claude SDK subprocesses per serve instance",
+    )
     extended_thinking: ExtendedThinkingConfig | None = Field(
         default=None,
         description="Extended reasoning (deep thinking) configuration.",

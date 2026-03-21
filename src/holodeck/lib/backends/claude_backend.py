@@ -268,8 +268,10 @@ def build_options(
     if tool_server is not None:
         mcp_servers["holodeck_tools"] = tool_server
 
-    # Env vars
-    env: dict[str, str] = {**auth_env, **otel_env}
+    # Env vars — unset CLAUDECODE to prevent the "nested session" guard
+    # when HoloDeck runs inside a terminal with Claude Code active.
+    # SDK merges: {**os.environ, **options.env}, so "" overrides "1".
+    env: dict[str, str] = {"CLAUDECODE": "", **auth_env, **otel_env}
 
     # Permission mode
     perm_mode = None
@@ -295,8 +297,13 @@ def build_options(
     # Output format
     output_format = _build_output_format(agent.response_format)
 
-    # Working directory
+    # Working directory — fall back to agent.yaml's directory so that
+    # relative paths in MCP args (e.g. "./data") resolve correctly.
+    from holodeck.config.context import agent_base_dir
+
     cwd = claude.working_directory if claude else None
+    if cwd is None:
+        cwd = agent_base_dir.get()
 
     # Max turns
     max_turns = claude.max_turns if claude else None
@@ -517,11 +524,24 @@ class ClaudeSession:
                 f"subprocess terminated unexpectedly: {exc}"
             ) from exc
 
-    async def close(self) -> None:
-        """Disconnect the SDK client and release resources."""
+    async def release_transport(self) -> None:
+        """Disconnect the SDK client without losing session state.
+
+        After calling this, the next ``send()`` or ``send_streaming()`` call
+        will create a fresh ``ClaudeSDKClient`` and reconnect, resuming the
+        conversation via the preserved ``session_id``.
+
+        This is required when the session is used across different async task
+        contexts (e.g., HTTP requests in ``holodeck serve``), because the
+        SDK's anyio task group is bound to the task that called ``connect()``.
+        """
         if self._client is not None:
             await self._client.disconnect()
             self._client = None
+
+    async def close(self) -> None:
+        """Disconnect the SDK client and release resources."""
+        await self.release_transport()
 
 
 # ---------------------------------------------------------------------------

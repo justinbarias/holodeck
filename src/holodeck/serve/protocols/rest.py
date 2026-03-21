@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from ulid import ULID
 
+from holodeck.lib.backends import BackendSessionError
 from holodeck.lib.logging_config import get_logger
 from holodeck.serve.file_utils import (
     MAX_FILE_SIZE_BYTES,
@@ -436,6 +437,18 @@ class RESTProtocol(Protocol):
             logger.debug(
                 f"Completed streaming request for session {session.session_id}"
             )
+
+        except BackendSessionError as e:
+            logger.error(f"Backend session error: {e}", exc_info=True)
+            yield SSEEvent.error(
+                type="backend_error",
+                title="Backend Error",
+                status=502,
+                detail=(
+                    "Claude Agent SDK subprocess terminated "
+                    "unexpectedly. Start a new session to retry."
+                ),
+            ).encode("utf-8")
 
         except Exception as e:
             logger.error(f"Error processing request: {e}", exc_info=True)

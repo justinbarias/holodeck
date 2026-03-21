@@ -645,3 +645,192 @@ class TestRESTProtocolErrorHandling:
 
         with pytest.raises(RuntimeError, match="Agent execution failed"):
             await protocol.handle_sync_request(request, mock_session)
+
+
+# =============================================================================
+# T016: Unit tests for REST protocol error mapping
+# =============================================================================
+
+
+class TestBackendSessionErrorStreaming:
+    """T016: BackendSessionError during streaming yields 502 SSE error event."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_backend_session_error_yields_502_sse_error(self) -> None:
+        """T016: BackendSessionError emits backend_error SSE event (502).
+
+        When agent_executor.execute_turn raises BackendSessionError, the
+        streaming handler should catch it and yield an SSE error event with
+        type 'backend_error' and status 502.
+        """
+        from holodeck.lib.backends import BackendSessionError
+        from holodeck.serve.models import ChatRequest
+        from holodeck.serve.protocols.rest import RESTProtocol
+
+        # Arrange
+        request = ChatRequest(message="Hello")
+
+        mock_executor = MagicMock()
+        mock_executor.execute_turn = AsyncMock(
+            side_effect=BackendSessionError("subprocess crashed")
+        )
+
+        mock_session = MagicMock()
+        mock_session.session_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+        mock_session.agent_executor = mock_executor
+
+        # Act
+        protocol = RESTProtocol()
+        events = []
+        async for event_bytes in protocol.handle_request(request, mock_session):
+            events.append(event_bytes.decode("utf-8"))
+
+        # Assert — should contain an SSE error event with backend_error type
+        all_content = "".join(events)
+        assert "event: error" in all_content
+        assert "backend_error" in all_content
+
+        # Parse the error event data to verify status 502
+        error_events = [e for e in events if "event: error" in e]
+        assert len(error_events) == 1
+
+        lines = error_events[0].strip().split("\n")
+        data_line = [line for line in lines if line.startswith("data: ")][0]
+        data = json.loads(data_line[6:])
+
+        assert data["type"] == "backend_error"
+        assert data["title"] == "Backend Error"
+        assert data["status"] == 502
+        assert "detail" in data
+
+
+class TestCapacityExceeded503:
+    """T016: Capacity exceeded returns 503 with Retry-After header."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_capacity_exceeded_returns_503_with_retry_after(self) -> None:
+        """T016: When SessionStore.create raises RuntimeError, server returns 503.
+
+        The REST chat endpoint should return a 503 response with a
+        Retry-After header and the capacity_exceeded error body when
+        the session store is at capacity.
+        """
+        from unittest.mock import patch
+
+        import httpx
+
+        from holodeck.serve.models import ProtocolType
+        from holodeck.serve.server import AgentServer
+
+        # Arrange — create a mock agent config
+        mock_agent_config = MagicMock()
+        mock_agent_config.name = "test-agent"
+        mock_agent_config.model.provider.value = "openai"
+        # Ensure provider comparison doesn't match ANTHROPIC
+        mock_agent_config.model.provider = MagicMock()
+        mock_agent_config.model.provider.__eq__ = lambda self, other: False
+
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.REST,
+        )
+        app = server.create_app()
+
+        # Patch SessionStore.create to raise RuntimeError (capacity exceeded)
+        with patch.object(
+            server.sessions, "create", side_effect=RuntimeError("max sessions")
+        ):
+            # Act
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    "/agent/test-agent/chat",
+                    json={"message": "Hello"},
+                )
+
+        # Assert
+        assert response.status_code == 503
+        assert response.headers.get("retry-after") == "5"
+
+        body = response.json()
+        assert body["error"] == "capacity_exceeded"
+        assert "max_sessions" in body
+        assert "active_sessions" in body
+
+
+class TestSessionCleanupAfter502:
+    """T016: Session cleanup after BackendSessionError in sync handler."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_session_deleted_after_backend_session_error(self) -> None:
+        """T016: When BackendSessionError occurs in sync handler, session is deleted.
+
+        The REST sync chat endpoint catches BackendSessionError and should
+        call sessions.delete(session_id) to clean up the broken session
+        before returning the 502 response.
+        """
+        from unittest.mock import patch
+
+        import httpx
+
+        from holodeck.lib.backends import BackendSessionError
+        from holodeck.serve.models import ProtocolType
+        from holodeck.serve.server import AgentServer
+        from holodeck.serve.session_store import ServerSession
+
+        # Arrange — create a mock agent config
+        mock_agent_config = MagicMock()
+        mock_agent_config.name = "test-agent"
+        mock_agent_config.model.provider = MagicMock()
+        mock_agent_config.model.provider.__eq__ = lambda self, other: False
+
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            protocol=ProtocolType.REST,
+        )
+        app = server.create_app()
+
+        # Create a mock session that will raise BackendSessionError
+        mock_executor = MagicMock()
+        mock_executor.execute_turn = AsyncMock(
+            side_effect=BackendSessionError("subprocess crashed")
+        )
+
+        mock_session = ServerSession(
+            agent_executor=mock_executor,
+            session_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        )
+
+        # Pre-populate the session store with the mock session
+        server.sessions.sessions["01ARZ3NDEKTSV4RRFFQ69G5FAV"] = mock_session
+
+        # Spy on the delete method
+        with patch.object(
+            server.sessions, "delete", wraps=server.sessions.delete
+        ) as mock_delete:
+            # Act — send request with existing session_id
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    "/agent/test-agent/chat",
+                    json={
+                        "message": "Hello",
+                        "session_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+                    },
+                )
+
+        # Assert — session was deleted
+        mock_delete.assert_called_once_with("01ARZ3NDEKTSV4RRFFQ69G5FAV")
+
+        # Assert — 502 response returned
+        assert response.status_code == 502
+        body = response.json()
+        assert body["error"] == "backend_error"
+        assert body["retriable"] is True

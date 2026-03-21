@@ -6,6 +6,7 @@ McpStdioServerConfig format for subprocess-based MCP servers.
 
 import json
 import logging
+from pathlib import Path
 
 from claude_agent_sdk.types import McpStdioServerConfig
 
@@ -61,6 +62,10 @@ def build_claude_mcp_configs(
     Returns:
         Dictionary mapping tool names to McpStdioServerConfig TypedDicts.
     """
+    from holodeck.config.context import agent_base_dir
+
+    base_dir = agent_base_dir.get()
+
     configs: dict[str, McpStdioServerConfig] = {}
 
     for tool in mcp_tools:
@@ -74,7 +79,7 @@ def build_claude_mcp_configs(
             continue
 
         command = tool.command.value if tool.command else "npx"
-        args = tool.args or []
+        args = _resolve_relative_args(tool.args or [], base_dir)
         env = _resolve_mcp_env(tool)
 
         entry: McpStdioServerConfig = {
@@ -88,3 +93,28 @@ def build_claude_mcp_configs(
         configs[tool.name] = entry
 
     return configs
+
+
+def _resolve_relative_args(
+    args: list[str],
+    base_dir: str | None,
+) -> list[str]:
+    """Resolve relative filesystem paths in MCP args to absolute paths.
+
+    Path-like args (starting with ``./`` or ``../``) are resolved against
+    *base_dir* (the directory containing ``agent.yaml``).  This ensures
+    the MCP subprocess sees the correct paths regardless of its own cwd.
+
+    Non-path args and args that are already absolute are passed through
+    unchanged.
+    """
+    if base_dir is None:
+        return list(args)
+
+    resolved: list[str] = []
+    for arg in args:
+        if arg.startswith("./") or arg.startswith("../"):
+            resolved.append(str(Path(base_dir, arg).resolve()))
+        else:
+            resolved.append(arg)
+    return resolved

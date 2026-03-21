@@ -56,6 +56,23 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }
+        },
+        {
+            "name": "HoloDeck: Serve Agent",
+            "type": "python",
+            "request": "launch",
+            "module": "holodeck.cli.main",
+            "args": [
+                "serve",
+                "agent.yaml",
+                "--verbose"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "cwd": "${workspaceFolder}/sample/legal-assistant/claude",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
         }
     ]
 }

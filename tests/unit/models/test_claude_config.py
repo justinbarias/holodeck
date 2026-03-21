@@ -288,6 +288,40 @@ class TestClaudeConfig:
         config = ClaudeConfig()
         assert config.permission_mode == PermissionMode.manual
 
+    @pytest.mark.unit
+    def test_max_concurrent_sessions_default_is_10(self) -> None:
+        """T012: Test that max_concurrent_sessions defaults to 10."""
+        config = ClaudeConfig()
+        assert config.max_concurrent_sessions == 10
+
+    @pytest.mark.unit
+    def test_max_concurrent_sessions_valid_value(self) -> None:
+        """T012: Test that max_concurrent_sessions accepts a valid value."""
+        config = ClaudeConfig(max_concurrent_sessions=50)
+        assert config.max_concurrent_sessions == 50
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("value", "reason"),
+        [
+            (0, "below_min"),
+            (101, "above_max"),
+        ],
+        ids=["below_min_ge1", "above_max_le100"],
+    )
+    def test_max_concurrent_sessions_out_of_range(
+        self, value: int, reason: str
+    ) -> None:
+        """T012: Test that max_concurrent_sessions outside 1-100 is rejected."""
+        with pytest.raises(ValidationError):
+            ClaudeConfig(max_concurrent_sessions=value)
+
+    @pytest.mark.unit
+    def test_max_concurrent_sessions_none_is_valid(self) -> None:
+        """T012: Test that max_concurrent_sessions accepts None."""
+        config = ClaudeConfig(max_concurrent_sessions=None)
+        assert config.max_concurrent_sessions is None
+
     def test_extra_fields_rejected(self) -> None:
         """Test that extra fields are rejected."""
         with pytest.raises(ValidationError):

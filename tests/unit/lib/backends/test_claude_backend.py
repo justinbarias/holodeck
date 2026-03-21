@@ -318,6 +318,55 @@ class TestBuildOptions:
         kwargs = mock_opts_cls.call_args[1]
         assert "WebSearch" not in kwargs["allowed_tools"]
 
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_env_merges_auth_and_otel(
+        self,
+        mock_resolve: MagicMock,
+        mock_opts_cls: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """T018: auth_env and otel_env are merged into options.env dict.
+
+        Verifies that when both auth_env and otel_env are provided, the
+        resulting env dict contains entries from both sources. Also sets
+        proxy-related process env vars (ANTHROPIC_BASE_URL, HTTP_PROXY,
+        HTTPS_PROXY) to confirm that build_options() constructs env
+        exclusively from auth_env + otel_env (process env is not leaked).
+        """
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://proxy.corp.example.com")
+        monkeypatch.setenv("HTTP_PROXY", "http://squid.corp:3128")
+        monkeypatch.setenv("HTTPS_PROXY", "http://squid.corp:3129")
+
+        agent = _make_agent()
+        auth_env = {"ANTHROPIC_API_KEY": "test-key-123"}
+        otel_env = {"CLAUDE_CODE_ENABLE_TELEMETRY": "1", "OTEL_EXPORTER": "otlp"}
+
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env=auth_env,
+            otel_env=otel_env,
+            mode="chat",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        env = kwargs["env"]
+
+        # auth_env entries present
+        assert env["ANTHROPIC_API_KEY"] == "test-key-123"
+
+        # otel_env entries present
+        assert env["CLAUDE_CODE_ENABLE_TELEMETRY"] == "1"
+        assert env["OTEL_EXPORTER"] == "otlp"
+
+        # env contains CLAUDECODE override + auth_env + otel_env
+        # (process env vars like HTTP_PROXY are not leaked)
+        assert env == {"CLAUDECODE": "", **auth_env, **otel_env}
+
 
 # ---------------------------------------------------------------------------
 # T002 — Permission mode mapping
