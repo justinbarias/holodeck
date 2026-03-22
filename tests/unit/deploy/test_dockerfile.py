@@ -5,6 +5,7 @@ TDD tests - these should fail until T009 implements the generator.
 
 import re
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -399,3 +400,227 @@ class TestDockerfileValidation:
         # Should never contain actual secret values
         assert "sk-" not in dockerfile
         assert "password" not in dockerfile.lower() or "${" in dockerfile
+
+
+class TestClaudeAgentFixture:
+    """Tests for the Claude agent test fixture."""
+
+    def test_claude_agent_fixture_loads(self) -> None:
+        """Verify Claude agent fixture loads with anthropic provider."""
+        from holodeck.config.loader import ConfigLoader
+        from holodeck.models.llm import ProviderEnum
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(
+            str(
+                Path(__file__).parent.parent.parent
+                / "fixtures"
+                / "claude_agent"
+                / "agent.yaml"
+            )
+        )
+        assert agent.model.provider == ProviderEnum.ANTHROPIC
+        assert agent.claude.max_concurrent_sessions == 5
+
+
+class TestDockerfileNodejs:
+    """Tests for Node.js conditional block in Dockerfile generation."""
+
+    def test_generate_dockerfile_without_nodejs(self) -> None:
+        """Test Dockerfile without Node.js has no nodejs references."""
+        from holodeck.deploy.dockerfile import generate_dockerfile
+
+        dockerfile = generate_dockerfile(
+            agent_name="test",
+            port=8080,
+            protocol="rest",
+            needs_nodejs=False,
+        )
+
+        assert "nodejs" not in dockerfile.lower()
+        assert "nodesource" not in dockerfile.lower()
+
+    def test_generate_dockerfile_with_nodejs(self) -> None:
+        """Test Dockerfile with Node.js includes nodesource setup."""
+        from holodeck.deploy.dockerfile import generate_dockerfile
+
+        dockerfile = generate_dockerfile(
+            agent_name="test",
+            port=8080,
+            protocol="rest",
+            needs_nodejs=True,
+        )
+
+        assert "nodesource.com/setup_22.x" in dockerfile
+        assert "apt-get install -y --no-install-recommends nodejs" in dockerfile
+
+    def test_generate_dockerfile_nodejs_cleanup(self) -> None:
+        """Test Node.js install includes apt cache cleanup."""
+        from holodeck.deploy.dockerfile import generate_dockerfile
+
+        dockerfile = generate_dockerfile(
+            agent_name="test",
+            port=8080,
+            protocol="rest",
+            needs_nodejs=True,
+        )
+
+        assert "rm -rf /var/lib/apt/lists/*" in dockerfile
+
+    def test_generate_dockerfile_nodejs_before_user_switch(self) -> None:
+        """Test Node.js install appears before USER holodeck switch."""
+        from holodeck.deploy.dockerfile import generate_dockerfile
+
+        dockerfile = generate_dockerfile(
+            agent_name="test",
+            port=8080,
+            protocol="rest",
+            needs_nodejs=True,
+        )
+
+        lines = dockerfile.split("\n")
+        nodejs_line = next(
+            i for i, line in enumerate(lines) if "nodesource" in line.lower()
+        )
+        user_line = next(
+            i for i, line in enumerate(lines) if line.strip() == "USER holodeck"
+        )
+        assert nodejs_line < user_line
+
+    def test_generate_dockerfile_default_needs_nodejs_false(self) -> None:
+        """Test that needs_nodejs defaults to False (no Node.js block)."""
+        from holodeck.deploy.dockerfile import generate_dockerfile
+
+        dockerfile = generate_dockerfile(
+            agent_name="test",
+            port=8080,
+            protocol="rest",
+        )
+
+        assert "nodejs" not in dockerfile.lower()
+        assert "nodesource" not in dockerfile.lower()
+
+
+class TestProviderDetection:
+    """Tests for provider-based needs_nodejs detection in deploy command."""
+
+    @pytest.fixture
+    def claude_agent_path(self) -> Path:
+        """Return path to Claude agent fixture."""
+        return (
+            Path(__file__).parent.parent.parent
+            / "fixtures"
+            / "claude_agent"
+            / "agent.yaml"
+        )
+
+    @pytest.fixture
+    def openai_agent_path(self) -> Path:
+        """Return path to OpenAI agent fixture."""
+        return (
+            Path(__file__).parent.parent.parent
+            / "fixtures"
+            / "deploy"
+            / "sample_agent"
+            / "agent.yaml"
+        )
+
+    def test_generate_dockerfile_content_detects_anthropic_provider(
+        self, claude_agent_path: Path
+    ) -> None:
+        """Test that Anthropic provider triggers Node.js in Dockerfile."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(claude_agent_path))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        assert "nodesource" in content.lower()
+        assert "nodejs" in content.lower()
+
+    def test_generate_dockerfile_content_skips_nodejs_for_openai(
+        self, openai_agent_path: Path
+    ) -> None:
+        """Test that OpenAI provider does not include Node.js."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(openai_agent_path))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        assert "nodesource" not in content.lower()
+        assert "nodejs" not in content.lower()
+
+    def test_generate_dockerfile_content_skips_nodejs_for_ollama(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that Ollama provider does not include Node.js."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        # Create minimal ollama agent config
+        agent_yaml = tmp_path / "agent.yaml"
+        agent_yaml.write_text(
+            "name: ollama-test\n"
+            "model:\n"
+            "  provider: ollama\n"
+            "  name: llama3\n"
+            "instructions:\n"
+            '  inline: "Test"\n'
+            "deployment:\n"
+            "  registry:\n"
+            "    url: ghcr.io\n"
+            "    repository: test/ollama\n"
+            "    tag_strategy: latest\n"
+            "  target:\n"
+            "    provider: aws\n"
+            "    aws:\n"
+            "      region: us-east-1\n"
+            "      cpu: 1\n"
+            "      memory: 2048\n"
+        )
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        assert "nodesource" not in content.lower()
+        assert "nodejs" not in content.lower()
+
+    def test_dry_run_shows_nodejs_for_claude_agent(
+        self, claude_agent_path: Path
+    ) -> None:
+        """Test dry-run output includes all Claude-specific Dockerfile additions."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(claude_agent_path))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        # Node.js installation
+        assert "nodesource.com/setup_22.x" in content
+        assert "--no-install-recommends" in content
+        assert "rm -rf /var/lib/apt/lists/*" in content
+        # Standard Dockerfile elements still present
+        assert "USER holodeck" in content
+        assert "HEALTHCHECK" in content
+        assert "ENTRYPOINT" in content
+
+    def test_dry_run_skips_nodejs_for_non_claude_agent(
+        self, openai_agent_path: Path
+    ) -> None:
+        """Test dry-run output for non-Claude agent has no Node.js additions."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(openai_agent_path))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        assert "nodesource" not in content
+        assert "--no-install-recommends" not in content
+        # Standard elements still present
+        assert "USER holodeck" in content
+        assert "HEALTHCHECK" in content
