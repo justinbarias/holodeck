@@ -123,7 +123,7 @@ class PostgresConnectionParams(TypedDict, total=False):
 def parse_chromadb_connection_string(connection_string: str) -> ChromaConnectionParams:
     """Parse a ChromaDB connection string into connection parameters.
 
-    Supports URL format: http[s]://[host][:port][/path]
+    Supports URL format: `http[s]://[host][:port][/path]`
 
     The connection string follows standard URL conventions:
     - Scheme (http/https) determines SSL setting
