@@ -15,15 +15,26 @@ from typing import Any, cast
 
 import claude_agent_sdk
 import jsonschema
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, ProcessError
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    HookMatcher,
+    ProcessError,
+)
 from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
-from claude_agent_sdk.types import McpSdkServerConfig
+from claude_agent_sdk.types import (
+    HookContext,
+    HookEvent,
+    McpSdkServerConfig,
+    SyncHookJSONOutput,
+)
 from exceptiongroup import BaseExceptionGroup
 
 from holodeck.lib.backends.base import (
     BackendInitError,
     BackendSessionError,
     ExecutionResult,
+    ToolEvent,
 )
 from holodeck.lib.backends.mcp_bridge import build_claude_mcp_configs
 from holodeck.lib.backends.otel_bridge import translate_observability
@@ -390,6 +401,79 @@ def _patch_hooks_for_context_propagation(client: ClaudeSDKClient) -> None:
                 matcher.hooks = wrapped
 
 
+def _build_tool_hooks(
+    queue: asyncio.Queue[ToolEvent],
+) -> dict[HookEvent, list[HookMatcher]]:
+    """Build Claude SDK hook matchers that push :class:`ToolEvent` to *queue*.
+
+    Three hooks are registered:
+
+    * ``PreToolUse`` — fires **before** the SDK executes a tool.
+    * ``PostToolUse`` — fires **after** a tool succeeds.
+    * ``PostToolUseFailure`` — fires **after** a tool fails.
+
+    Each callback returns an empty dict (no-op passthrough) so that the SDK
+    continues execution normally.
+
+    Args:
+        queue: Destination queue for tool events.
+
+    Returns:
+        Hook dict suitable for merging into ``ClaudeAgentOptions.hooks``.
+    """
+
+    async def _on_pre_tool(
+        input_data: Any,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        await queue.put(
+            ToolEvent(
+                kind="start",
+                tool_name=input_data["tool_name"],
+                tool_use_id=input_data["tool_use_id"],
+                tool_input=input_data.get("tool_input"),
+            )
+        )
+        return SyncHookJSONOutput()
+
+    async def _on_post_tool(
+        input_data: Any,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        await queue.put(
+            ToolEvent(
+                kind="end",
+                tool_name=input_data["tool_name"],
+                tool_use_id=input_data["tool_use_id"],
+                tool_response=str(input_data.get("tool_response", "")),
+            )
+        )
+        return SyncHookJSONOutput()
+
+    async def _on_post_tool_failure(
+        input_data: Any,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        await queue.put(
+            ToolEvent(
+                kind="error",
+                tool_name=input_data["tool_name"],
+                tool_use_id=input_data["tool_use_id"],
+                error=str(input_data.get("error", "")),
+            )
+        )
+        return SyncHookJSONOutput()
+
+    return {
+        "PreToolUse": [HookMatcher(hooks=[_on_pre_tool])],
+        "PostToolUse": [HookMatcher(hooks=[_on_post_tool])],
+        "PostToolUseFailure": [HookMatcher(hooks=[_on_post_tool_failure])],
+    }
+
+
 class ClaudeSession:
     """Stateful multi-turn session backed by ``ClaudeSDKClient``.
 
@@ -411,6 +495,37 @@ class ClaudeSession:
         self._session_id: str | None = None
         self._client: ClaudeSDKClient | None = None
         self._turn_count: int = 0
+        self._tool_event_queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+
+    @property
+    def tool_events(self) -> asyncio.Queue[ToolEvent]:
+        """Queue of real-time tool events emitted via SDK hooks."""
+        return self._tool_event_queue
+
+    def _options_with_hooks(self) -> ClaudeAgentOptions:
+        """Return base options with tool-event hooks merged in.
+
+        Appends to any existing hooks (e.g. from OTel) rather than replacing.
+        Uses ``dataclasses.replace`` to produce a new options instance,
+        leaving ``_base_options`` untouched.
+        """
+        import dataclasses
+
+        tool_hooks = _build_tool_hooks(self._tool_event_queue)
+        existing: dict[HookEvent, list[HookMatcher]] = self._base_options.hooks or {}
+        merged: dict[HookEvent, list[HookMatcher]] = dict(existing)
+        for event_name, matchers in tool_hooks.items():
+            if event_name in merged:
+                merged[event_name] = list(merged[event_name]) + matchers
+            else:
+                merged[event_name] = matchers
+
+        try:
+            return dataclasses.replace(self._base_options, hooks=merged)
+        except TypeError:
+            # Fallback for non-dataclass options (e.g. test mocks)
+            self._base_options.hooks = merged
+            return self._base_options
 
     async def _ensure_client(self) -> ClaudeSDKClient:
         """Lazily create, connect, and return the SDK client.
@@ -426,7 +541,8 @@ class ClaudeSession:
         See ``_patch_hooks_for_context_propagation`` for details.
         """
         if self._client is None:
-            self._client = claude_agent_sdk.ClaudeSDKClient(options=self._base_options)
+            options = self._options_with_hooks()
+            self._client = claude_agent_sdk.ClaudeSDKClient(options=options)
             _patch_hooks_for_context_propagation(self._client)
             await self._client.connect()
         return self._client

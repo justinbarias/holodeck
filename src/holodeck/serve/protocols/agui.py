@@ -8,6 +8,7 @@ See: https://github.com/ag-ui-protocol/ag-ui for protocol specification.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
@@ -31,6 +32,7 @@ from ag_ui.encoder import EventEncoder
 from ulid import ULID
 
 from holodeck.lib.backends import BackendSessionError
+from holodeck.lib.backends.base import ToolEvent
 from holodeck.lib.logging_config import get_logger
 from holodeck.models.test_case import FileInput
 from holodeck.serve.file_utils import (
@@ -451,28 +453,31 @@ def create_tool_call_end(tool_call_id: str) -> ToolCallEndEvent:
 
 def create_tool_call_events(
     tool_execution: ToolExecution,
-    message_id: str,
+    message_id: str,  # noqa: ARG001 – kept for API compat
 ) -> list[BaseEvent]:
     """Create complete tool call event sequence from ToolExecution.
 
-    Generates the sequence: ToolCallStart -> ToolCallArgs -> ToolCallEnd
+    Each tool call is wrapped in its own assistant message so CopilotKit
+    renders a separate card per tool invocation.
 
     Args:
         tool_execution: HoloDeck tool execution result.
-        message_id: Parent message identifier.
+        message_id: Unused (kept for backward compatibility).
 
     Returns:
-        List of [ToolCallStart, ToolCallArgs, ToolCallEnd] events.
+        List of AG-UI events for this tool call.
     """
     tool_call_id = str(ULID())
+    parent_msg_id = str(ULID())
 
     result_content = tool_execution.result or ""
 
     events: list[BaseEvent] = [
+        create_text_message_start(parent_msg_id),
         create_tool_call_start(
             tool_call_id=tool_call_id,
             tool_call_name=tool_execution.tool_name,
-            parent_message_id=message_id,
+            parent_message_id=parent_msg_id,
         ),
         create_tool_call_args(
             tool_call_id=tool_call_id,
@@ -481,14 +486,78 @@ def create_tool_call_events(
         create_tool_call_end(tool_call_id=tool_call_id),
         ToolCallResultEvent(
             type=EventType.TOOL_CALL_RESULT,
-            message_id=message_id,
+            message_id=str(ULID()),
             tool_call_id=tool_call_id,
             content=result_content,
             role="tool",
         ),
+        create_text_message_end(parent_msg_id),
     ]
 
     return events
+
+
+def _tool_event_to_agui(
+    event: ToolEvent,
+    tool_msg_ids: dict[str, str],
+) -> list[BaseEvent]:
+    """Convert a real-time :class:`ToolEvent` to AG-UI event sequence.
+
+    Each tool call is wrapped in its own assistant message so CopilotKit
+    renders a separate card per tool invocation.
+
+    Args:
+        event: Backend tool event from the hook queue.
+        tool_msg_ids: Mutable dict mapping tool_use_id → parent message ID.
+            Populated on ``start`` events, consumed on ``end``/``error``.
+
+    Returns:
+        List of AG-UI events to emit.
+    """
+    if event.kind == "start":
+        # Create a dedicated assistant message for this tool call
+        parent_msg_id = str(ULID())
+        tool_msg_ids[event.tool_use_id] = parent_msg_id
+        return [
+            create_text_message_start(parent_msg_id),
+            create_tool_call_start(
+                tool_call_id=event.tool_use_id,
+                tool_call_name=event.tool_name,
+                parent_message_id=parent_msg_id,
+            ),
+            create_tool_call_args(
+                tool_call_id=event.tool_use_id,
+                delta=json.dumps(event.tool_input or {}),
+            ),
+        ]
+    if event.kind == "end":
+        parent_msg_id = tool_msg_ids.pop(event.tool_use_id, str(ULID()))
+        return [
+            create_tool_call_end(tool_call_id=event.tool_use_id),
+            ToolCallResultEvent(
+                type=EventType.TOOL_CALL_RESULT,
+                message_id=str(ULID()),
+                tool_call_id=event.tool_use_id,
+                content=event.tool_response or "",
+                role="tool",
+            ),
+            create_text_message_end(parent_msg_id),
+        ]
+    if event.kind == "error":
+        parent_msg_id = tool_msg_ids.pop(event.tool_use_id, str(ULID()))
+        return [
+            create_tool_call_end(tool_call_id=event.tool_use_id),
+            ToolCallResultEvent(
+                type=EventType.TOOL_CALL_RESULT,
+                message_id=str(ULID()),
+                tool_call_id=event.tool_use_id,
+                content=f"Error: {event.error}",
+                role="tool",
+            ),
+            create_text_message_end(parent_msg_id),
+        ]
+
+    return []  # type: ignore[unreachable]
 
 
 # =============================================================================
@@ -625,28 +694,58 @@ class AGUIProtocol(Protocol):
             # 1. Emit RunStartedEvent
             yield encoder.encode(create_run_started_event(thread_id, run_id))
 
-            # 2. Emit TextMessageStartEvent
-            yield encoder.encode(create_text_message_start(message_id))
+            # 2. Eagerly initialize backend so tool_event_queue is available
+            #    before execution starts. Gracefully degrade if the executor
+            #    does not expose this method (e.g. in tests with mocks).
+            executor = session.agent_executor
+            _ensure = getattr(executor, "_ensure_backend_and_session", None)
+            if callable(_ensure) and asyncio.iscoroutinefunction(_ensure):
+                await _ensure()
+            tool_queue = getattr(executor, "tool_event_queue", None)
 
-            # 3. Execute agent with combined message
+            # 3. Execute agent — drain tool events concurrently if supported.
+            #    Each tool call is wrapped in its own assistant message so
+            #    CopilotKit renders a separate card per tool invocation.
             logger.debug("Executing agent for session %s", session.session_id)
-            response = await session.agent_executor.execute_turn(full_message)
+            tool_msg_ids: dict[str, str] = {}
 
-            # 4. Emit tool call events (if any)
-            for tool_exec in response.tool_executions:
-                logger.debug("Emitting tool call events for: %s", tool_exec.tool_name)
-                for event in create_tool_call_events(tool_exec, message_id):
-                    yield encoder.encode(event)
+            if isinstance(tool_queue, asyncio.Queue):
+                # Real-time path: run execute_turn as a task, drain events
+                execute_task = asyncio.create_task(executor.execute_turn(full_message))
 
-            # 5. Emit text content
+                while not execute_task.done():
+                    try:
+                        event = await asyncio.wait_for(tool_queue.get(), timeout=0.1)
+                        for agui_evt in _tool_event_to_agui(event, tool_msg_ids):
+                            yield encoder.encode(agui_evt)
+                    except asyncio.TimeoutError:
+                        continue
+
+                response = await execute_task
+
+                # Drain any events that arrived between last poll and completion
+                while not tool_queue.empty():
+                    event = tool_queue.get_nowait()
+                    for agui_evt in _tool_event_to_agui(event, tool_msg_ids):
+                        yield encoder.encode(agui_evt)
+            else:
+                # Fallback path (e.g. SK backend): post-hoc tool events
+                response = await executor.execute_turn(full_message)
+                for tool_exec in response.tool_executions:
+                    logger.debug(
+                        "Emitting tool call events for: %s", tool_exec.tool_name
+                    )
+                    for evt in create_tool_call_events(tool_exec, message_id):
+                        yield encoder.encode(evt)
+
+            # 4. Emit text response as its own assistant message
+            yield encoder.encode(create_text_message_start(message_id))
             yield encoder.encode(
                 create_text_message_content(message_id, response.content)
             )
-
-            # 6. Emit TextMessageEndEvent
             yield encoder.encode(create_text_message_end(message_id))
 
-            # 7. Emit RunFinishedEvent
+            # 5. Emit RunFinishedEvent
             yield encoder.encode(create_run_finished_event(thread_id, run_id))
 
             logger.debug("Completed request for run %s", run_id)

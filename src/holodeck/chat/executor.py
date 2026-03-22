@@ -14,6 +14,7 @@ from holodeck.lib.backends.base import (
     BackendInitError,
     BackendSessionError,
     ExecutionResult,
+    ToolEvent,
 )
 from holodeck.lib.backends.selector import BackendSelector
 from holodeck.lib.logging_config import get_logger
@@ -115,6 +116,11 @@ class _TaskBoundSession:
                 raise item
             yield item
 
+    @property
+    def tool_events(self) -> asyncio.Queue[ToolEvent] | None:
+        """Pass through the inner session's tool event queue."""
+        return getattr(self._session, "tool_events", None)
+
     async def close(self) -> None:
         """Shut down the actor and close the underlying session."""
         if self._task is not None and not self._task.done():
@@ -162,6 +168,13 @@ class AgentExecutor:
         self._use_task_bound_session = release_transport_after_turn
 
         logger.info(f"AgentExecutor initialized for agent: {agent_config.name}")
+
+    @property
+    def tool_event_queue(self) -> asyncio.Queue[ToolEvent] | None:
+        """The tool event queue from the underlying session, if available."""
+        if self._session is not None:
+            return getattr(self._session, "tool_events", None)
+        return None
 
     async def _ensure_backend_and_session(self) -> None:
         """Lazily initialize backend and session on first use.
