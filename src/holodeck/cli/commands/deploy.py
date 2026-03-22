@@ -574,6 +574,11 @@ def _generate_dockerfile_content(
     # Remove duplicates
     data_directories = list(set(data_directories))
 
+    # Claude Agent SDK requires Node.js at runtime
+    from holodeck.models.llm import ProviderEnum
+
+    needs_nodejs = agent.model.provider == ProviderEnum.ANTHROPIC
+
     return generate_dockerfile(
         agent_name=agent.name,
         port=deployment_config.port,
@@ -582,6 +587,7 @@ def _generate_dockerfile_content(
         instruction_files=instruction_files if instruction_files else None,
         data_directories=data_directories if data_directories else None,
         environment=deployment_config.environment or None,
+        needs_nodejs=needs_nodejs,
     )
 
 
