@@ -188,7 +188,12 @@ class TestToolCallEvents:
         assert event.tool_call_id == "tc-123"
 
     def test_create_tool_call_events_from_execution(self) -> None:
-        """Test creating complete tool call event sequence from ToolExecution."""
+        """Test creating complete tool call event sequence from ToolExecution.
+
+        Each tool call is now wrapped in its own assistant message:
+        TextMessageStart -> ToolCallStart -> ToolCallArgs ->
+        ToolCallEnd -> ToolCallResult -> TextMessageEnd
+        """
         from holodeck.serve.protocols.agui import create_tool_call_events
 
         # Mock ToolExecution
@@ -202,29 +207,33 @@ class TestToolCallEvents:
             message_id="msg-123",
         )
 
-        assert len(events) == 4
+        assert len(events) == 6
+        # Check TextMessageStartEvent (wraps the tool call)
+        assert events[0].type == EventType.TEXT_MESSAGE_START
         # Check ToolCallStartEvent
-        assert events[0].type == EventType.TOOL_CALL_START
-        assert events[0].tool_call_name == "search_knowledge_base"
-        assert events[0].parent_message_id == "msg-123"
+        assert events[1].type == EventType.TOOL_CALL_START
+        assert events[1].tool_call_name == "search_knowledge_base"
+        assert events[1].parent_message_id == events[0].message_id
         # Check ToolCallArgsEvent
-        assert events[1].type == EventType.TOOL_CALL_ARGS
-        args = json.loads(events[1].delta)
+        assert events[2].type == EventType.TOOL_CALL_ARGS
+        args = json.loads(events[2].delta)
         assert args["query"] == "return policy"
         assert args["limit"] == 10
         # Check ToolCallEndEvent
-        assert events[2].type == EventType.TOOL_CALL_END
+        assert events[3].type == EventType.TOOL_CALL_END
         # Check ToolCallResultEvent
-        assert events[3].type == EventType.TOOL_CALL_RESULT
-        assert events[3].content == "Found 3 matching documents."
-        assert events[3].role == "tool"
-        assert events[3].message_id == "msg-123"
-        # All should have same tool_call_id
+        assert events[4].type == EventType.TOOL_CALL_RESULT
+        assert events[4].content == "Found 3 matching documents."
+        assert events[4].role == "tool"
+        # Check TextMessageEndEvent (closes the wrapper)
+        assert events[5].type == EventType.TEXT_MESSAGE_END
+        assert events[5].message_id == events[0].message_id
+        # Tool call events should share the same tool_call_id
         assert (
-            events[0].tool_call_id
-            == events[1].tool_call_id
+            events[1].tool_call_id
             == events[2].tool_call_id
             == events[3].tool_call_id
+            == events[4].tool_call_id
         )
 
 
@@ -1432,13 +1441,8 @@ class TestAGUIProtocolErrorMapping:
         # The raw exception message ("subprocess crashed") must NOT leak
         assert "subprocess crashed" not in all_content
 
-        # The stream should still start with lifecycle events before the error
-        # (RunStarted + TextMessageStart are emitted before execute_turn)
+        # The stream should still start with RunStarted before the error
         assert "RUN_STARTED" in all_content or "run_started" in all_content.lower()
-        assert (
-            "TEXT_MESSAGE_START" in all_content
-            or "text_message_start" in all_content.lower()
-        )
 
         # The stream should NOT contain RunFinished (error replaces it)
         assert "RUN_FINISHED" not in all_content
