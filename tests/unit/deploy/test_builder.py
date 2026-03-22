@@ -312,6 +312,129 @@ class TestContainerBuilderBuild:
                 tag="latest",
             )
 
+    def test_build_log_error_entries(
+        self, builder: ContainerBuilder, mock_docker_client: MagicMock, tmp_path: Path
+    ) -> None:
+        """Test that error entries in build logs are captured."""
+        build_dir = tmp_path / "build"
+        build_dir.mkdir()
+        (build_dir / "Dockerfile").write_text("FROM python:3.10-slim\n")
+
+        mock_image = MagicMock()
+        mock_image.id = "sha256:err123"
+
+        mock_docker_client.images.build.return_value = (
+            mock_image,
+            [
+                {"stream": "Step 1/2 : FROM python:3.10-slim\n"},
+                {"error": "package not found"},
+                {"stream": "Step 2/2 : RUN echo hello\n"},
+            ],
+        )
+
+        result = builder.build(
+            build_context=str(build_dir),
+            image_name="test-org/test-agent",
+            tag="latest",
+        )
+
+        assert len(result.log_lines) == 3
+        assert "ERROR: package not found" in result.log_lines[1]
+
+    def test_build_docker_exception(
+        self, builder: ContainerBuilder, mock_docker_client: MagicMock, tmp_path: Path
+    ) -> None:
+        """Test DockerException during build is wrapped in DeploymentError."""
+        from docker.errors import DockerException
+
+        from holodeck.lib.errors import DeploymentError
+
+        build_dir = tmp_path / "build"
+        build_dir.mkdir()
+        (build_dir / "Dockerfile").write_text("FROM python:3.10-slim\n")
+
+        mock_docker_client.images.build.side_effect = DockerException("Connection lost")
+
+        with pytest.raises(DeploymentError, match="Docker error during build"):
+            builder.build(
+                build_context=str(build_dir),
+                image_name="test-org/test-agent",
+                tag="latest",
+            )
+
+    def test_build_non_docker_exception_reraises(
+        self, builder: ContainerBuilder, mock_docker_client: MagicMock, tmp_path: Path
+    ) -> None:
+        """Test non-Docker exceptions are re-raised as-is."""
+        build_dir = tmp_path / "build"
+        build_dir.mkdir()
+        (build_dir / "Dockerfile").write_text("FROM python:3.10-slim\n")
+
+        mock_docker_client.images.build.side_effect = RuntimeError("unexpected")
+
+        with pytest.raises(RuntimeError, match="unexpected"):
+            builder.build(
+                build_context=str(build_dir),
+                image_name="test-org/test-agent",
+                tag="latest",
+            )
+
+    def test_build_log_non_dict_entries_ignored(
+        self, builder: ContainerBuilder, mock_docker_client: MagicMock, tmp_path: Path
+    ) -> None:
+        """Test that non-dict log entries are ignored."""
+        build_dir = tmp_path / "build"
+        build_dir.mkdir()
+        (build_dir / "Dockerfile").write_text("FROM python:3.10-slim\n")
+
+        mock_image = MagicMock()
+        mock_image.id = "sha256:abc"
+
+        mock_docker_client.images.build.return_value = (
+            mock_image,
+            [
+                "plain string log",
+                {"stream": "Step 1/1 : FROM python\n"},
+                42,
+            ],
+        )
+
+        result = builder.build(
+            build_context=str(build_dir),
+            image_name="test-org/test-agent",
+            tag="latest",
+        )
+
+        assert len(result.log_lines) == 1
+
+    def test_build_log_non_string_stream_ignored(
+        self, builder: ContainerBuilder, mock_docker_client: MagicMock, tmp_path: Path
+    ) -> None:
+        """Test that non-string stream values are ignored."""
+        build_dir = tmp_path / "build"
+        build_dir.mkdir()
+        (build_dir / "Dockerfile").write_text("FROM python:3.10-slim\n")
+
+        mock_image = MagicMock()
+        mock_image.id = "sha256:abc"
+
+        mock_docker_client.images.build.return_value = (
+            mock_image,
+            [
+                {"stream": 12345},
+                {"stream": "valid line\n"},
+            ],
+        )
+
+        result = builder.build(
+            build_context=str(build_dir),
+            image_name="test-org/test-agent",
+            tag="latest",
+        )
+
+        assert len(result.log_lines) == 1
+        assert result.log_lines[0] == "valid line"
+
 
 class TestGetOCILabels:
     """Tests for OCI label generation."""
@@ -412,3 +535,46 @@ class TestBuildResult:
         assert result.image_name == "my-org/my-agent"
         assert result.tag == "latest"
         assert result.full_name == "my-org/my-agent:latest"
+
+    def test_build_result_from_image_no_log_lines(self) -> None:
+        """Test BuildResult.from_image with no log lines defaults to empty list."""
+        from holodeck.deploy.builder import BuildResult
+
+        mock_image = MagicMock()
+        mock_image.id = "sha256:abc"
+
+        result = BuildResult.from_image(
+            image=mock_image,
+            image_name="org/agent",
+            tag="v1",
+        )
+
+        assert result.log_lines == []
+
+    def test_build_result_from_image_none_id(self) -> None:
+        """Test BuildResult.from_image when image.id is None."""
+        from holodeck.deploy.builder import BuildResult
+
+        mock_image = MagicMock()
+        mock_image.id = None
+
+        result = BuildResult.from_image(
+            image=mock_image,
+            image_name="org/agent",
+            tag="v1",
+        )
+
+        assert result.image_id == ""
+
+    def test_build_result_default_log_lines(self) -> None:
+        """Test BuildResult default log_lines is empty list."""
+        from holodeck.deploy.builder import BuildResult
+
+        result = BuildResult(
+            image_id="sha256:abc",
+            image_name="org/agent",
+            tag="v1",
+            full_name="org/agent:v1",
+        )
+
+        assert result.log_lines == []

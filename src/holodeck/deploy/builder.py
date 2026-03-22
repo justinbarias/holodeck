@@ -12,9 +12,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import docker
-from docker.errors import BuildError, DockerException
-
 from holodeck.lib.errors import DeploymentError, DockerNotAvailableError
 from holodeck.models.deployment import TagStrategy
 
@@ -190,6 +187,9 @@ class ContainerBuilder:
             DockerNotAvailableError: If Docker daemon is not available
         """
         try:
+            import docker
+            from docker.errors import DockerException
+
             self.client = docker.from_env()  # type: ignore[attr-defined]
         except DockerException as e:
             raise DockerNotAvailableError(operation="init") from e
@@ -261,13 +261,18 @@ class ContainerBuilder:
                 log_lines=log_lines,
             )
 
-        except BuildError as e:
-            raise DeploymentError(
-                operation="build",
-                message=f"Docker build failed: {e.msg}",
-            ) from e
-        except DockerException as e:
-            raise DeploymentError(
-                operation="build",
-                message=f"Docker error during build: {e}",
-            ) from e
+        except Exception as e:
+            # docker is guaranteed imported since __init__ succeeded
+            from docker.errors import BuildError, DockerException
+
+            if isinstance(e, BuildError):
+                raise DeploymentError(
+                    operation="build",
+                    message=f"Docker build failed: {e.msg}",
+                ) from e
+            elif isinstance(e, DockerException):
+                raise DeploymentError(
+                    operation="build",
+                    message=f"Docker error during build: {e}",
+                ) from e
+            raise
