@@ -7,6 +7,7 @@ as well as health check and error response models.
 from __future__ import annotations
 
 import base64
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
@@ -29,6 +30,73 @@ class ServerState(str, Enum):
     RUNNING = "running"
     SHUTTING_DOWN = "shutting_down"
     STOPPED = "stopped"
+
+
+class InitJobState(str, Enum):
+    """States for tool initialization jobs."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class InitJobProgress(BaseModel):
+    """Progress tracking for tool initialization."""
+
+    documents_processed: int = Field(
+        ..., description="Number of documents processed so far"
+    )
+    total_documents: int | None = Field(
+        default=None, description="Total documents to process (None if unknown)"
+    )
+
+
+class InitJobResponse(BaseModel):
+    """Response body for tool initialization endpoints."""
+
+    tool_name: str = Field(..., description="Name of the tool being initialized")
+    state: InitJobState = Field(..., description="Current job state")
+    href: str = Field(..., description="URL to the job status resource")
+    created_at: datetime = Field(..., description="Job creation timestamp")
+    started_at: datetime | None = Field(
+        default=None, description="Processing start timestamp"
+    )
+    completed_at: datetime | None = Field(
+        default=None, description="Completion timestamp"
+    )
+    message: str | None = Field(
+        default=None, description="Human-readable status message"
+    )
+    error_detail: str | None = Field(
+        default=None, description="Sanitized error detail on failure"
+    )
+    progress: InitJobProgress | None = Field(
+        default=None, description="Progress info during processing"
+    )
+    force: bool = Field(
+        ..., description="Whether force re-initialization was requested"
+    )
+
+
+class ToolInfoResponse(BaseModel):
+    """Information about a single tool."""
+
+    name: str = Field(..., description="Tool name")
+    type: str = Field(..., description="Tool type (e.g. vectorstore, mcp)")
+    supports_init: bool = Field(
+        ..., description="Whether this tool supports initialization"
+    )
+    init_status: InitJobState | None = Field(
+        default=None, description="Current init job state, if any"
+    )
+
+
+class ToolListResponse(BaseModel):
+    """Response for listing available tools."""
+
+    tools: list[ToolInfoResponse] = Field(..., description="List of tool info")
+    total: int = Field(..., description="Total number of tools")
 
 
 # Supported MIME types for file uploads

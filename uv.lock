@@ -2086,6 +2086,7 @@ dependencies = [
     { name = "deepeval" },
     { name = "evaluate" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "inquirerpy" },
     { name = "jinja2" },
     { name = "jsonschema" },
@@ -2117,6 +2118,13 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all-sources = [
+    { name = "azure-storage-blob" },
+    { name = "boto3" },
+]
+azure-blob = [
+    { name = "azure-storage-blob" },
+]
 chromadb = [
     { name = "chromadb" },
 ]
@@ -2183,6 +2191,9 @@ postgres = [
 qdrant = [
     { name = "qdrant-client" },
 ]
+s3 = [
+    { name = "boto3" },
+]
 vectorstores = [
     { name = "chromadb" },
     { name = "pinecone", version = "7.0.2.dev1", source = { registry = "https://pypi.org/simple" }, extra = ["asyncio", "grpc"], marker = "python_full_version >= '3.11' and python_full_version < '4'" },
@@ -2214,10 +2225,14 @@ requires-dist = [
     { name = "azure-mgmt-appcontainers", marker = "extra == 'deploy-azure'", specifier = ">=4.0.0" },
     { name = "azure-monitor-opentelemetry-exporter", marker = "extra == 'otel-all'", specifier = ">=1.0.0b24,<2.0.0" },
     { name = "azure-monitor-opentelemetry-exporter", marker = "extra == 'otel-azmon'", specifier = ">=1.0.0b24,<2.0.0" },
+    { name = "azure-storage-blob", marker = "extra == 'all-sources'", specifier = ">=12.19" },
+    { name = "azure-storage-blob", marker = "extra == 'azure-blob'", specifier = ">=12.19" },
     { name = "bandit", extras = ["toml"], marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
+    { name = "boto3", marker = "extra == 'all-sources'", specifier = ">=1.42.0" },
     { name = "boto3", marker = "extra == 'deploy-all'", specifier = ">=1.42.0" },
     { name = "boto3", marker = "extra == 'deploy-aws'", specifier = ">=1.42.0" },
+    { name = "boto3", marker = "extra == 's3'", specifier = ">=1.42.0" },
     { name = "chromadb", marker = "extra == 'chromadb'", specifier = ">=0.5,<1.1" },
     { name = "chromadb", marker = "extra == 'vectorstores'", specifier = ">=0.5,<1.1" },
     { name = "claude-agent-sdk", specifier = "==0.1.44" },
@@ -2231,6 +2246,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0,<1.0.0" },
     { name = "google-cloud-run", marker = "extra == 'deploy-all'", specifier = ">=0.13.0" },
     { name = "google-cloud-run", marker = "extra == 'deploy-gcp'", specifier = ">=0.13.0" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "inquirerpy", specifier = ">=0.3.4,<0.4.0" },
     { name = "jinja2", specifier = ">=3.0.0,<4.0.0" },
     { name = "jsonschema", specifier = ">=4.0.0,<5.0.0" },
@@ -2283,7 +2299,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34.0,<1.0.0" },
     { name = "werkzeug", specifier = ">=3.1.6" },
 ]
-provides-extras = ["chromadb", "claude-otel", "deploy", "deploy-all", "deploy-aws", "deploy-azure", "deploy-gcp", "dev", "otel-all", "otel-azmon", "otel-prometheus", "pinecone", "postgres", "qdrant", "vectorstores"]
+provides-extras = ["all-sources", "azure-blob", "chromadb", "claude-otel", "deploy", "deploy-all", "deploy-aws", "deploy-azure", "deploy-gcp", "dev", "otel-all", "otel-azmon", "otel-prometheus", "pinecone", "postgres", "qdrant", "s3", "vectorstores"]
 
 [package.metadata.requires-dev]
 dev = [
