@@ -1,0 +1,352 @@
+openapi: 3.1.0
+info:
+  title: HoloDeck Tool Initialization API
+  description: Async tool initialization endpoints for pre-warming vectorstore and hierarchical_document tools.
+  version: 0.1.0
+
+paths:
+  /tools:
+    get:
+      operationId: listTools
+      summary: List all configured tools
+      description: Returns all configured tools with their type, init support flag, and current initialization status.
+      tags: [tools]
+      responses:
+        "200":
+          description: List of all configured tools
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolListResponse"
+              example:
+                tools:
+                  - name: knowledge_base
+                    type: vectorstore
+                    supports_init: true
+                    init_status: completed
+                  - name: policy_docs
+                    type: hierarchical_document
+                    supports_init: true
+                    init_status: null
+                  - name: search_api
+                    type: mcp
+                    supports_init: false
+                    init_status: null
+                total: 3
+
+  /tools/{tool_name}/init:
+    post:
+      operationId: triggerToolInit
+      summary: Trigger async tool initialization
+      description: |
+        Starts asynchronous initialization (ingestion/indexing) for a vectorstore or
+        hierarchical_document tool. Returns immediately with a 201 Created response
+        and a Location header pointing to the status resource.
+      tags: [tools]
+      parameters:
+        - name: tool_name
+          in: path
+          required: true
+          description: Tool name as defined in the agent configuration
+          schema:
+            type: string
+            pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        - name: force
+          in: query
+          required: false
+          description: Force full re-ingestion regardless of prior initialization state
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "201":
+          description: Initialization job created
+          headers:
+            Location:
+              description: URL of the init status resource
+              schema:
+                type: string
+                example: /tools/knowledge_base/init
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InitJobResponse"
+              example:
+                tool_name: knowledge_base
+                state: pending
+                href: /tools/knowledge_base/init
+                created_at: "2026-03-23T10:00:00Z"
+                started_at: null
+                completed_at: null
+                message: "Initialization started"
+                error_detail: null
+                progress: null
+                force: false
+        "400":
+          description: Tool type does not support initialization
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "about:blank"
+                title: "Bad Request"
+                status: 400
+                detail: "Tool 'search_api' is of type 'mcp' which does not support initialization. Only vectorstore and hierarchical_document tools can be initialized."
+                instance: "/tools/search_api/init"
+        "404":
+          description: Tool not found in agent configuration
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "about:blank"
+                title: "Not Found"
+                status: 404
+                detail: "Tool 'nonexistent' not found in agent configuration."
+                instance: "/tools/nonexistent/init"
+        "409":
+          description: Initialization already in progress (includes both pending and in_progress states)
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "about:blank"
+                title: "Conflict"
+                status: 409
+                detail: "Tool 'knowledge_base' is currently being initialized. Poll GET /tools/knowledge_base/init for status."
+                instance: "/tools/knowledge_base/init"
+        "429":
+          description: Maximum concurrent initialization jobs reached
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "about:blank"
+                title: "Too Many Requests"
+                status: 429
+                detail: "Maximum concurrent initialization jobs (3) reached. Retry after existing jobs complete."
+                instance: "/tools/another_tool/init"
+
+    get:
+      operationId: getToolInitStatus
+      summary: Get tool initialization status
+      description: Returns the current initialization status for the specified tool.
+      tags: [tools]
+      parameters:
+        - name: tool_name
+          in: path
+          required: true
+          description: Tool name as defined in the agent configuration
+          schema:
+            type: string
+            pattern: "^[a-zA-Z_][a-zA-Z0-9_]*$"
+      responses:
+        "200":
+          description: Current initialization status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InitJobResponse"
+              examples:
+                in_progress:
+                  summary: Initialization in progress
+                  value:
+                    tool_name: knowledge_base
+                    state: in_progress
+                    href: /tools/knowledge_base/init
+                    created_at: "2026-03-23T10:00:00Z"
+                    started_at: "2026-03-23T10:00:01Z"
+                    completed_at: null
+                    message: "Processing documents"
+                    error_detail: null
+                    progress:
+                      documents_processed: 15
+                      total_documents: 42
+                    force: false
+                completed:
+                  summary: Initialization completed
+                  value:
+                    tool_name: knowledge_base
+                    state: completed
+                    href: /tools/knowledge_base/init
+                    created_at: "2026-03-23T10:00:00Z"
+                    started_at: "2026-03-23T10:00:01Z"
+                    completed_at: "2026-03-23T10:00:45Z"
+                    message: "Successfully initialized: 42 documents ingested"
+                    error_detail: null
+                    progress:
+                      documents_processed: 42
+                      total_documents: 42
+                    force: false
+                failed:
+                  summary: Initialization failed
+                  value:
+                    tool_name: knowledge_base
+                    state: failed
+                    href: /tools/knowledge_base/init
+                    created_at: "2026-03-23T10:00:00Z"
+                    started_at: "2026-03-23T10:00:01Z"
+                    completed_at: "2026-03-23T10:00:05Z"
+                    message: null
+                    error_detail: "Embedding provider credentials are invalid: API key expired"
+                    progress:
+                      documents_processed: 3
+                      total_documents: 42
+                    force: false
+        "404":
+          description: No initialization job exists for this tool
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+              example:
+                type: "about:blank"
+                title: "Not Found"
+                status: 404
+                detail: "No initialization job found for tool 'knowledge_base'."
+                instance: "/tools/knowledge_base/init"
+
+components:
+  schemas:
+    InitJobState:
+      type: string
+      enum: [pending, in_progress, completed, failed]
+      description: Lifecycle state of an initialization job
+
+    InitJobProgress:
+      type: object
+      description: Document processing progress
+      properties:
+        documents_processed:
+          type: integer
+          minimum: 0
+          description: Number of documents processed so far
+        total_documents:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Total documents to process (null if not yet determined)
+      required:
+        - documents_processed
+
+    InitJobResponse:
+      type: object
+      description: Initialization job status
+      properties:
+        tool_name:
+          type: string
+          description: Tool name from agent configuration
+        state:
+          $ref: "#/components/schemas/InitJobState"
+        href:
+          type: string
+          description: URL to poll for status updates
+          example: /tools/knowledge_base/init
+        created_at:
+          type: string
+          format: date-time
+          description: UTC timestamp when job was created
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: UTC timestamp when initialization began
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: UTC timestamp when initialization finished
+        message:
+          type: string
+          nullable: true
+          description: Human-readable status message
+        error_detail:
+          type: string
+          nullable: true
+          description: Error description (only when state is failed)
+        progress:
+          $ref: "#/components/schemas/InitJobProgress"
+          nullable: true
+          description: Document processing progress
+        force:
+          type: boolean
+          description: Whether force re-ingestion was requested
+      required:
+        - tool_name
+        - state
+        - href
+        - created_at
+        - force
+
+    ToolInfoResponse:
+      type: object
+      description: Summary of a configured tool
+      properties:
+        name:
+          type: string
+          description: Tool name from agent configuration
+        type:
+          type: string
+          description: Tool type
+          enum: [vectorstore, hierarchical_document, function, mcp, prompt]
+        supports_init:
+          type: boolean
+          description: Whether this tool type supports initialization
+        init_status:
+          $ref: "#/components/schemas/InitJobState"
+          nullable: true
+          description: Current init state (null if no job exists or tool does not support init)
+      required:
+        - name
+        - type
+        - supports_init
+
+    ToolListResponse:
+      type: object
+      description: List of all configured tools
+      properties:
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolInfoResponse"
+        total:
+          type: integer
+          minimum: 0
+          description: Total number of configured tools
+      required:
+        - tools
+        - total
+
+    ProblemDetail:
+      type: object
+      description: Error response following RFC 7807 Problem Details standard (application/problem+json)
+      properties:
+        type:
+          type: string
+          description: URI reference identifying the problem type
+          example: "about:blank"
+        title:
+          type: string
+          description: Short human-readable summary of the problem type
+          example: "Not Found"
+        status:
+          type: integer
+          description: HTTP status code
+          example: 404
+        detail:
+          type: string
+          nullable: true
+          description: Human-readable explanation specific to this occurrence
+        instance:
+          type: string
+          nullable: true
+          description: URI reference identifying the specific occurrence
+          example: "/tools/knowledge_base/init"
+      required:
+        - type
+        - title
+        - status
