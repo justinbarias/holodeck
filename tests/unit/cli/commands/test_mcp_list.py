@@ -22,12 +22,6 @@ from holodeck.models.tool import CommandType, MCPTool, TransportType
 
 
 @pytest.fixture
-def cli_runner() -> CliRunner:
-    """Provide a Click CLI test runner."""
-    return CliRunner()
-
-
-@pytest.fixture
 def sample_mcp_tool() -> MCPTool:
     """Create a sample MCPTool for testing."""
     return MCPTool(

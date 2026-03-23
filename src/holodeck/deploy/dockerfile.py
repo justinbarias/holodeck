@@ -29,6 +29,13 @@ USER root
 # Set working directory
 WORKDIR /app
 
+{% if needs_nodejs %}
+# Install Node.js (required for Claude Agent SDK)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \\
+    && apt-get install -y --no-install-recommends nodejs \\
+    && rm -rf /var/lib/apt/lists/*
+{% endif %}
+
 # Copy entrypoint script
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
@@ -87,6 +94,7 @@ def generate_dockerfile(
     instruction_files: list[str] | None = None,
     data_directories: list[str] | None = None,
     environment: dict[str, str] | None = None,
+    needs_nodejs: bool = False,
 ) -> str:
     """Generate a Dockerfile for a HoloDeck agent.
 
@@ -100,6 +108,7 @@ def generate_dockerfile(
         instruction_files: List of instruction file paths to copy
         data_directories: List of data directories to copy
         environment: Environment variables to set
+        needs_nodejs: Whether to install Node.js (required for Claude Agent SDK)
 
     Returns:
         Generated Dockerfile content as a string
@@ -131,4 +140,5 @@ def generate_dockerfile(
         instruction_files=instruction_files or [],
         data_directories=data_directories or [],
         environment=environment or {},
+        needs_nodejs=needs_nodejs,
     )

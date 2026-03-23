@@ -73,6 +73,14 @@ def translate_observability(config: ObservabilityConfig) -> dict[str, str]:
     # Core telemetry enablement
     env["CLAUDE_CODE_ENABLE_TELEMETRY"] = "1"
 
+    # Disable subprocess trace export when Python-side GenAI instrumentation
+    # is active.  The instrumentor's hooks produce the authoritative
+    # invoke_agent / execute_tool spans in-process; letting the subprocess
+    # also export traces creates duplicate, unlinked trace trees in the
+    # collector and confuses dashboards like Aspire.
+    if config.traces.enabled:
+        env["OTEL_TRACES_EXPORTER"] = "none"
+
     # OTLP exporter configuration
     otlp = config.exporters.otlp
     otlp_enabled = otlp is not None and otlp.enabled

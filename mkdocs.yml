@@ -49,10 +49,19 @@ nav:
     - Overview: examples/README.md
   - API Reference:
     - Models: api/models.md
-    - ConfigLoader: api/config-loader.md
+    - Configuration: api/config-loader.md
     - CLI: api/cli.md
+    - Chat: api/chat.md
+    - Serve: api/serve.md
+    - Deploy: api/deploy.md
+    - Services: api/services.md
+    - Backends: api/backends.md
+    - Tools: api/tools.md
     - Test Runner: api/test-runner.md
     - Evaluators: api/evaluators.md
+    - Observability: api/observability.md
+    - PDF Processor: api/pdf-processor.md
+    - Tool Filter: api/tool-filter.md
     - Utilities: api/utilities.md
   - Developer:
     - Contributing: contributing.md

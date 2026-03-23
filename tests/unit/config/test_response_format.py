@@ -15,94 +15,72 @@ from holodeck.config.schema import SchemaValidator
 class TestInlineResponseFormatStorage:
     """Tests for inline response_format in agent configuration."""
 
+    @pytest.mark.parametrize(
+        "response_format,check_type,check_key",
+        [
+            pytest.param(
+                {
+                    "type": "object",
+                    "properties": {"answer": {"type": "string"}},
+                    "required": ["answer"],
+                },
+                "object",
+                "answer",
+                id="simple_object_schema",
+            ),
+            pytest.param(
+                {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "answer": {"type": "string"},
+                        "sources": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["question", "answer"],
+                },
+                "object",
+                "sources",
+                id="nested_object_with_array",
+            ),
+            pytest.param(
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer"},
+                            "name": {"type": "string"},
+                        },
+                        "required": ["id"],
+                    },
+                },
+                "array",
+                None,
+                id="array_root_type",
+            ),
+        ],
+    )
     def test_inline_response_format_stored_in_agent_config(
-        self, temp_dir: Path
+        self,
+        temp_dir: Path,
+        response_format: dict,
+        check_type: str,
+        check_key: str | None,
     ) -> None:
-        """Test that inline response_format is stored in agent config."""
+        """Test that inline response_format structures are stored correctly."""
         agent_config = {
             "name": "test-agent",
             "model": {"provider": "openai", "name": "gpt-4o"},
             "instructions": {"inline": "You are a helpful assistant"},
-            "response_format": {
-                "type": "object",
-                "properties": {"answer": {"type": "string"}},
-                "required": ["answer"],
-            },
+            "response_format": response_format,
         }
 
-        # Validate the response_format is preserved
-        assert "response_format" in agent_config
-        assert agent_config["response_format"]["type"] == "object"
-        assert "answer" in agent_config["response_format"]["properties"]
-
-    def test_inline_response_format_with_nested_structure(self, temp_dir: Path) -> None:
-        """Test inline response_format with nested object structure."""
-        agent_config = {
-            "name": "qa-agent",
-            "model": {"provider": "openai", "name": "gpt-4o"},
-            "instructions": {"inline": "Answer questions"},
-            "response_format": {
-                "type": "object",
-                "properties": {
-                    "question": {"type": "string"},
-                    "answer": {"type": "string"},
-                    "sources": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                    },
-                },
-                "required": ["question", "answer"],
-            },
-        }
-
-        response_format = agent_config["response_format"]
-        assert response_format["type"] == "object"
-        assert "sources" in response_format["properties"]
-        assert response_format["properties"]["sources"]["type"] == "array"
-
-    def test_inline_response_format_with_array_type(self, temp_dir: Path) -> None:
-        """Test inline response_format with array root type."""
-        agent_config = {
-            "name": "list-agent",
-            "model": {"provider": "openai", "name": "gpt-4o"},
-            "instructions": {"inline": "Generate list"},
-            "response_format": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "integer"},
-                        "name": {"type": "string"},
-                    },
-                    "required": ["id"],
-                },
-            },
-        }
-
-        response_format = agent_config["response_format"]
-        assert response_format["type"] == "array"
-        assert response_format["items"]["type"] == "object"
-
-    def test_response_format_can_be_null(self, temp_dir: Path) -> None:
-        """Test that response_format can be explicitly set to null."""
-        agent_config = {
-            "name": "open-agent",
-            "model": {"provider": "openai", "name": "gpt-4o"},
-            "instructions": {"inline": "Be creative"},
-            "response_format": None,
-        }
-
-        assert agent_config.get("response_format") is None
-
-    def test_response_format_omitted_is_valid(self, temp_dir: Path) -> None:
-        """Test that response_format can be omitted."""
-        agent_config = {
-            "name": "basic-agent",
-            "model": {"provider": "openai", "name": "gpt-4o"},
-            "instructions": {"inline": "Hello"},
-        }
-
-        assert "response_format" not in agent_config
+        assert agent_config["response_format"]["type"] == check_type
+        if check_key is not None:
+            assert check_key in agent_config["response_format"]["properties"]
 
 
 class TestExternalResponseFormatFileLoading:
@@ -191,27 +169,6 @@ class TestAgentResponseFormatHandling:
         # response_format should be preserved in agent config
         assert "response_format" in agent_config
         assert "agent" in agent_config["response_format"]["properties"]
-
-    def test_agent_response_format_can_be_null(self, temp_dir: Path) -> None:
-        """Test that agent can explicitly set response_format to null."""
-        agent_config = {
-            "name": "test-agent",
-            "model": {"provider": "openai", "name": "gpt-4o"},
-            "instructions": {"inline": "Test"},
-            "response_format": None,
-        }
-
-        assert agent_config.get("response_format") is None
-
-    def test_agent_response_format_can_be_omitted(self, temp_dir: Path) -> None:
-        """Test that agent can omit response_format."""
-        agent_config = {
-            "name": "test-agent",
-            "model": {"provider": "openai", "name": "gpt-4o"},
-            "instructions": {"inline": "Test"},
-        }
-
-        assert "response_format" not in agent_config
 
 
 class TestResponseFormatValidationOnLoad:

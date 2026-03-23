@@ -68,6 +68,11 @@ class TracingConfig(BaseModel):
         ge=1,
         description="Maximum spans per export batch",
     )
+    schedule_delay_millis: int = Field(
+        default=2000,
+        ge=100,
+        description="BatchSpanProcessor flush interval in ms (default 2000)",
+    )
 
     @field_validator("redaction_patterns")
     @classmethod

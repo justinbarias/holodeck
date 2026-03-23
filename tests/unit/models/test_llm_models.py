@@ -9,48 +9,39 @@ from holodeck.models.llm import LLMProvider, ProviderEnum
 class TestLLMProvider:
     """Tests for LLMProvider model."""
 
-    def test_llm_provider_valid_openai(self) -> None:
-        """Test creating a valid OpenAI LLMProvider."""
-        provider = LLMProvider(
-            provider=ProviderEnum.OPENAI,
-            name="gpt-4o",
-        )
-        assert provider.provider == ProviderEnum.OPENAI
-        assert provider.name == "gpt-4o"
-
-    def test_llm_provider_valid_azure_openai(self) -> None:
-        """Test creating a valid Azure OpenAI LLMProvider."""
-        provider = LLMProvider(
-            provider=ProviderEnum.AZURE_OPENAI,
-            name="gpt-4o",
-            endpoint="https://myinstance.openai.azure.com",
-        )
-        assert provider.provider == ProviderEnum.AZURE_OPENAI
-        assert provider.endpoint == "https://myinstance.openai.azure.com"
-
-    def test_llm_provider_valid_anthropic(self) -> None:
-        """Test creating a valid Anthropic LLMProvider."""
-        provider = LLMProvider(
-            provider=ProviderEnum.ANTHROPIC,
-            name="claude-3-opus",
-        )
-        assert provider.provider == ProviderEnum.ANTHROPIC
-        assert provider.name == "claude-3-opus"
-
-    def test_llm_provider_field_required(self) -> None:
-        """Test that provider field is required."""
-        with pytest.raises(ValidationError) as exc_info:
-            LLMProvider(name="gpt-4o")
-        assert "provider" in str(exc_info.value).lower()
-
-    def test_llm_provider_name_required(self) -> None:
-        """Test that name field is required."""
-        with pytest.raises(ValidationError) as exc_info:
-            LLMProvider(provider=ProviderEnum.OPENAI)
-        assert "name" in str(exc_info.value).lower()
+    @pytest.mark.parametrize(
+        "provider,name,extra_kwargs",
+        [
+            pytest.param(
+                ProviderEnum.OPENAI,
+                "gpt-4o",
+                {},
+                id="openai",
+            ),
+            pytest.param(
+                ProviderEnum.AZURE_OPENAI,
+                "gpt-4o",
+                {"endpoint": "https://myinstance.openai.azure.com"},
+                id="azure_openai",
+            ),
+            pytest.param(
+                ProviderEnum.ANTHROPIC,
+                "claude-3-opus",
+                {},
+                id="anthropic",
+            ),
+        ],
+    )
+    def test_llm_provider_valid_creation(
+        self, provider: ProviderEnum, name: str, extra_kwargs: dict
+    ) -> None:
+        """Test creating valid LLMProvider instances for each provider type."""
+        llm = LLMProvider(provider=provider, name=name, **extra_kwargs)
+        assert llm.provider == provider
+        assert llm.name == name
 
     def test_llm_provider_name_not_empty(self) -> None:
-        """Test that name cannot be empty string."""
+        """Test that name cannot be empty string (custom validator)."""
         with pytest.raises(ValidationError):
             LLMProvider(
                 provider=ProviderEnum.OPENAI,
@@ -88,14 +79,6 @@ class TestLLMProvider:
                 )
             assert "temperature" in str(exc_info.value).lower()
 
-    def test_llm_provider_temperature_optional(self) -> None:
-        """Test that temperature is optional."""
-        provider = LLMProvider(
-            provider=ProviderEnum.OPENAI,
-            name="gpt-4o",
-        )
-        assert provider.temperature == 0.3  # the default temperature
-
     @pytest.mark.parametrize(
         "max_tokens,should_pass",
         [
@@ -126,16 +109,8 @@ class TestLLMProvider:
                 )
             assert "max_tokens" in str(exc_info.value).lower()
 
-    def test_llm_provider_max_tokens_optional(self) -> None:
-        """Test that max_tokens is optional."""
-        provider = LLMProvider(
-            provider=ProviderEnum.OPENAI,
-            name="gpt-4o",
-        )
-        assert provider.max_tokens == 1000  # default max_tokens
-
     def test_llm_provider_endpoint_required_for_azure(self) -> None:
-        """Test that endpoint is required for Azure OpenAI."""
+        """Test that endpoint is required for Azure OpenAI (custom validator)."""
         with pytest.raises(ValidationError) as exc_info:
             LLMProvider(
                 provider=ProviderEnum.AZURE_OPENAI,
@@ -143,19 +118,20 @@ class TestLLMProvider:
             )
         assert "endpoint" in str(exc_info.value).lower()
 
-    def test_llm_provider_endpoint_not_required_for_openai(self) -> None:
-        """Test that endpoint is not required for standard OpenAI."""
+    @pytest.mark.parametrize(
+        "provider_enum",
+        [
+            pytest.param(ProviderEnum.OPENAI, id="openai"),
+            pytest.param(ProviderEnum.ANTHROPIC, id="anthropic"),
+        ],
+    )
+    def test_llm_provider_endpoint_not_required_for_non_azure(
+        self, provider_enum: ProviderEnum
+    ) -> None:
+        """Test that endpoint is not required for non-Azure providers."""
         provider = LLMProvider(
-            provider=ProviderEnum.OPENAI,
-            name="gpt-4o",
-        )
-        assert provider.endpoint is None
-
-    def test_llm_provider_endpoint_not_required_for_anthropic(self) -> None:
-        """Test that endpoint is not required for Anthropic."""
-        provider = LLMProvider(
-            provider=ProviderEnum.ANTHROPIC,
-            name="claude-3-opus",
+            provider=provider_enum,
+            name="model-name",
         )
         assert provider.endpoint is None
 
@@ -179,3 +155,13 @@ class TestLLMProvider:
         assert provider.temperature == 0.7
         assert provider.max_tokens == 2000
         assert provider.top_p == 0.9
+
+    def test_llm_provider_defaults(self) -> None:
+        """Test that optional fields have correct defaults."""
+        provider = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-4o",
+        )
+        assert provider.temperature == 0.3
+        assert provider.max_tokens == 1000
+        assert provider.endpoint is None

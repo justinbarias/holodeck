@@ -28,12 +28,6 @@ from holodeck.models.tool import CommandType, MCPTool, TransportType
 
 
 @pytest.fixture
-def cli_runner() -> CliRunner:
-    """Provide a Click CLI test runner."""
-    return CliRunner()
-
-
-@pytest.fixture
 def sample_registry_server() -> RegistryServer:
     """Create a sample RegistryServer for testing."""
     return RegistryServer(
@@ -278,70 +272,51 @@ class TestAddDuplicateDetection:
 class TestAddErrorHandling:
     """Tests for error handling in add command (T021g)."""
 
-    def test_server_not_found_error(
+    @pytest.mark.parametrize(
+        "server_name, error, expected_output",
+        [
+            pytest.param(
+                "nonexistent/server",
+                ServerNotFoundError("nonexistent/server"),
+                "not found",
+                id="server_not_found",
+            ),
+            pytest.param(
+                "io.github.example/server",
+                RegistryConnectionError("https://registry.modelcontextprotocol.io"),
+                "unavailable",
+                id="registry_connection_error",
+            ),
+            pytest.param(
+                "io.github.example/server",
+                RegistryAPIError(
+                    "https://registry.modelcontextprotocol.io/v0.1/servers/test",
+                    500,
+                    "Internal Server Error",
+                ),
+                "error",
+                id="registry_api_error",
+            ),
+        ],
+    )
+    def test_registry_error_handling(
         self,
         cli_runner: CliRunner,
+        server_name: str,
+        error: Exception,
+        expected_output: str,
     ) -> None:
-        """Test error handling when server not found in registry."""
+        """Test error handling for registry errors."""
         with patch("holodeck.cli.commands.mcp.MCPRegistryClient") as mock_class:
             mock_instance = MagicMock()
-            mock_instance.get_server.side_effect = ServerNotFoundError(
-                "nonexistent/server"
-            )
+            mock_instance.get_server.side_effect = error
             mock_class.return_value.__enter__ = MagicMock(return_value=mock_instance)
             mock_class.return_value.__exit__ = MagicMock(return_value=False)
 
-            result = cli_runner.invoke(
-                add,
-                ["nonexistent/server"],
-            )
+            result = cli_runner.invoke(add, [server_name])
 
             assert result.exit_code == 1
-            assert "not found" in result.output
-
-    def test_registry_connection_error(
-        self,
-        cli_runner: CliRunner,
-    ) -> None:
-        """Test error handling for registry connection issues."""
-        with patch("holodeck.cli.commands.mcp.MCPRegistryClient") as mock_class:
-            mock_instance = MagicMock()
-            mock_instance.get_server.side_effect = RegistryConnectionError(
-                "https://registry.modelcontextprotocol.io"
-            )
-            mock_class.return_value.__enter__ = MagicMock(return_value=mock_instance)
-            mock_class.return_value.__exit__ = MagicMock(return_value=False)
-
-            result = cli_runner.invoke(
-                add,
-                ["io.github.example/server"],
-            )
-
-            assert result.exit_code == 1
-            assert "unavailable" in result.output
-
-    def test_registry_api_error(
-        self,
-        cli_runner: CliRunner,
-    ) -> None:
-        """Test error handling for registry API errors."""
-        with patch("holodeck.cli.commands.mcp.MCPRegistryClient") as mock_class:
-            mock_instance = MagicMock()
-            mock_instance.get_server.side_effect = RegistryAPIError(
-                "https://registry.modelcontextprotocol.io/v0.1/servers/test",
-                500,
-                "Internal Server Error",
-            )
-            mock_class.return_value.__enter__ = MagicMock(return_value=mock_instance)
-            mock_class.return_value.__exit__ = MagicMock(return_value=False)
-
-            result = cli_runner.invoke(
-                add,
-                ["io.github.example/server"],
-            )
-
-            assert result.exit_code == 1
-            assert "error" in result.output.lower()
+            assert expected_output in result.output.lower()
 
     def test_no_stdio_transport_error(
         self,

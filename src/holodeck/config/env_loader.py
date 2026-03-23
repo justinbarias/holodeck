@@ -28,6 +28,10 @@ def substitute_env_vars(text: str) -> str:
         >>> substitute_env_vars("key: ${API_KEY}")
         'key: secret123'
     """
+    # Short-circuit: skip regex if no env var markers present
+    if "${" not in text:
+        return text
+
     # Pattern to match ${VAR_NAME} - captures alphanumeric, underscore
     pattern = r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}"
 

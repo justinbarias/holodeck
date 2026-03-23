@@ -141,8 +141,10 @@ class SessionStore:
         self.sessions[session.session_id] = session
         return session
 
-    def delete(self, session_id: str) -> bool:
-        """Delete a session by ID.
+    _SHUTDOWN_TIMEOUT: float = 5.0  # seconds to wait for executor shutdown
+
+    async def delete(self, session_id: str) -> bool:
+        """Delete a session by ID, shutting down its executor.
 
         Args:
             session_id: The session identifier to delete.
@@ -150,10 +152,27 @@ class SessionStore:
         Returns:
             True if session was deleted, False if not found.
         """
-        if session_id in self.sessions:
-            del self.sessions[session_id]
-            return True
-        return False
+        session = self.sessions.pop(session_id, None)
+        if session is None:
+            return False
+        try:
+            await asyncio.wait_for(
+                session.agent_executor.shutdown(),
+                timeout=self._SHUTDOWN_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Executor shutdown timed out for session %s after %.1fs",
+                session_id,
+                self._SHUTDOWN_TIMEOUT,
+            )
+        except Exception as e:
+            logger.warning(
+                "Error shutting down executor for session %s: %s",
+                session_id,
+                e,
+            )
+        return True
 
     def touch(self, session_id: str) -> None:
         """Update the last_activity timestamp for a session.
@@ -167,8 +186,8 @@ class SessionStore:
         if session:
             session.last_activity = datetime.now(timezone.utc)
 
-    def cleanup_expired(self) -> int:
-        """Remove all expired sessions.
+    async def cleanup_expired(self) -> int:
+        """Remove all expired sessions, shutting down their executors.
 
         Sessions are considered expired if their last_activity timestamp
         is older than the configured TTL.
@@ -185,8 +204,10 @@ class SessionStore:
             if session.last_activity < cutoff
         ]
 
-        for session_id in expired_ids:
-            del self.sessions[session_id]
+        await asyncio.gather(
+            *(self.delete(sid) for sid in expired_ids),
+            return_exceptions=True,
+        )
 
         return len(expired_ids)
 
@@ -221,7 +242,7 @@ class SessionStore:
         while True:
             try:
                 await asyncio.sleep(self.cleanup_interval_seconds)
-                count = self.cleanup_expired()
+                count = await self.cleanup_expired()
                 if count > 0:
                     logger.info(f"Cleaned up {count} expired session(s)")
             except asyncio.CancelledError:

@@ -140,13 +140,12 @@ def test(
                 quiet=quiet or None,
             )
 
-        # Load agent config FIRST to check observability setting
-        from holodeck.config.context import agent_base_dir
-        from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
-        from holodeck.config.loader import ConfigLoader
+        # Load agent config and resolve execution config in one call
+        from holodeck.config.loader import load_agent_with_config
 
-        loader = ConfigLoader()
-        agent = loader.load_agent_yaml(agent_config)
+        agent, resolved_config, _loader = load_agent_with_config(
+            agent_config, cli_config=cli_config
+        )
 
         # Determine logging strategy: OTel replaces setup_logging when enabled
         if agent.observability and agent.observability.enabled:
@@ -166,25 +165,6 @@ def test(
         )
         logger.debug(f"Loading agent configuration from {agent_config}")
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
-
-        # Set the base directory context for resolving relative paths in tools
-        agent_dir = str(Path(agent_config).parent.resolve())
-        agent_base_dir.set(agent_dir)
-        logger.debug(f"Set agent_base_dir context: {agent_base_dir.get()}")
-
-        # Resolve execution config once (CLI > agent.yaml > project > user > defaults)
-        project_config = loader.load_project_config(agent_dir)
-        project_execution = project_config.execution if project_config else None
-        user_config = loader.load_global_config()
-        user_execution = user_config.execution if user_config else None
-
-        resolved_config = loader.resolve_execution_config(
-            cli_config=cli_config,
-            yaml_config=agent.execution,
-            project_config=project_execution,
-            user_config=user_execution,
-            defaults=DEFAULT_EXECUTION_CONFIG,
-        )
         logger.debug(
             f"Resolved execution config: verbose={resolved_config.verbose}, "
             f"quiet={resolved_config.quiet}, llm_timeout={resolved_config.llm_timeout}"

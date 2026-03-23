@@ -59,39 +59,25 @@ def create_plugin_with_mock(
 class TestCreateMCPPluginNotImplemented:
     """Test factory for transports not yet implemented."""
 
-    def test_sse_transport_not_yet_implemented(self) -> None:
-        """SSE transport should raise MCPConfigError (not yet implemented)."""
+    @pytest.mark.parametrize(
+        ("transport", "url"),
+        [
+            pytest.param(TransportType.SSE, "https://example.com/sse", id="sse"),
+            pytest.param(
+                TransportType.WEBSOCKET, "wss://example.com/ws", id="websocket"
+            ),
+            pytest.param(TransportType.HTTP, "https://example.com/stream", id="http"),
+        ],
+    )
+    def test_transport_not_yet_implemented(
+        self, transport: TransportType, url: str
+    ) -> None:
+        """Non-stdio transports should raise MCPConfigError (not yet implemented)."""
         config = MCPTool(
             name="test",
             description="Test",
-            transport=TransportType.SSE,
-            url="https://example.com/sse",
-        )
-        with pytest.raises(MCPConfigError) as exc_info:
-            create_mcp_plugin(config)
-        assert "not yet implemented" in str(exc_info.value)
-        assert exc_info.value.field == "transport"
-
-    def test_websocket_transport_not_yet_implemented(self) -> None:
-        """WebSocket transport should raise MCPConfigError (not yet implemented)."""
-        config = MCPTool(
-            name="test",
-            description="Test",
-            transport=TransportType.WEBSOCKET,
-            url="wss://example.com/ws",
-        )
-        with pytest.raises(MCPConfigError) as exc_info:
-            create_mcp_plugin(config)
-        assert "not yet implemented" in str(exc_info.value)
-        assert exc_info.value.field == "transport"
-
-    def test_http_transport_not_yet_implemented(self) -> None:
-        """HTTP transport should raise MCPConfigError (not yet implemented)."""
-        config = MCPTool(
-            name="test",
-            description="Test",
-            transport=TransportType.HTTP,
-            url="https://example.com/stream",
+            transport=transport,
+            url=url,
         )
         with pytest.raises(MCPConfigError) as exc_info:
             create_mcp_plugin(config)
@@ -230,44 +216,54 @@ class TestResolveEnvVars:
         result = _resolve_env_vars(config)
         assert result == {}
 
-    def test_static_env_values_passed_through(self) -> None:
-        """Static env values without ${} are passed through."""
-        config = MCPTool(
-            name="test",
-            description="Test",
-            command=CommandType.NPX,
-            env={"KEY1": "value1", "KEY2": "value2"},
-        )
-        result = _resolve_env_vars(config)
-        assert result == {"KEY1": "value1", "KEY2": "value2"}
-
-    def test_env_var_substitution(self) -> None:
-        """${VAR} patterns are substituted from os.environ."""
-        with patch.dict(os.environ, {"MY_SECRET": "secret123"}):
+    @pytest.mark.parametrize(
+        ("env_dict", "environ_vars", "expected"),
+        [
+            pytest.param(
+                {"KEY1": "value1", "KEY2": "value2"},
+                {},
+                {"KEY1": "value1", "KEY2": "value2"},
+                id="static_values_passed_through",
+            ),
+            pytest.param(
+                {"API_KEY": "${MY_SECRET}"},
+                {"MY_SECRET": "secret123"},
+                {"API_KEY": "secret123"},
+                id="single_var_substitution",
+            ),
+            pytest.param(
+                {"CONNECTION": "${USER}@${HOST}"},
+                {"USER": "admin", "HOST": "localhost"},
+                {"CONNECTION": "admin@localhost"},
+                id="multiple_vars_in_same_value",
+            ),
+            pytest.param(
+                {"STATIC": "static_value", "DYNAMIC": "${SECRET}"},
+                {"SECRET": "xyz"},
+                {"STATIC": "static_value", "DYNAMIC": "xyz"},
+                id="mixed_static_and_dynamic",
+            ),
+        ],
+    )
+    def test_env_var_resolution(
+        self,
+        env_dict: dict[str, str],
+        environ_vars: dict[str, str],
+        expected: dict[str, str],
+    ) -> None:
+        """Test environment variable resolution with various patterns."""
+        with patch.dict(os.environ, environ_vars):
             config = MCPTool(
                 name="test",
                 description="Test",
                 command=CommandType.NPX,
-                env={"API_KEY": "${MY_SECRET}"},
+                env=env_dict,
             )
             result = _resolve_env_vars(config)
-            assert result == {"API_KEY": "secret123"}
-
-    def test_multiple_vars_in_same_value(self) -> None:
-        """Multiple ${VAR} in same value are all substituted."""
-        with patch.dict(os.environ, {"USER": "admin", "HOST": "localhost"}):
-            config = MCPTool(
-                name="test",
-                description="Test",
-                command=CommandType.NPX,
-                env={"CONNECTION": "${USER}@${HOST}"},
-            )
-            result = _resolve_env_vars(config)
-            assert result == {"CONNECTION": "admin@localhost"}
+            assert result == expected
 
     def test_missing_env_var_raises_config_error(self) -> None:
         """Missing environment variable raises ConfigError (fail-fast)."""
-        # Ensure the variable doesn't exist
         env_copy = os.environ.copy()
         if "NONEXISTENT_VAR" in env_copy:
             del env_copy["NONEXISTENT_VAR"]
@@ -282,18 +278,6 @@ class TestResolveEnvVars:
             with pytest.raises(ConfigError) as exc_info:
                 _resolve_env_vars(config)
             assert "NONEXISTENT_VAR" in str(exc_info.value)
-
-    def test_mixed_static_and_dynamic_env(self) -> None:
-        """Mix of static values and ${VAR} patterns works correctly."""
-        with patch.dict(os.environ, {"SECRET": "xyz"}):
-            config = MCPTool(
-                name="test",
-                description="Test",
-                command=CommandType.NPX,
-                env={"STATIC": "static_value", "DYNAMIC": "${SECRET}"},
-            )
-            result = _resolve_env_vars(config)
-            assert result == {"STATIC": "static_value", "DYNAMIC": "xyz"}
 
 
 class TestEnvFileLoading:

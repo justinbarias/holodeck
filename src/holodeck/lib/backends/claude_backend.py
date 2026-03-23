@@ -13,16 +13,28 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Any, cast
 
+import claude_agent_sdk
 import jsonschema
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, ProcessError, query
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    HookMatcher,
+    ProcessError,
+)
 from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
-from claude_agent_sdk.types import McpSdkServerConfig
+from claude_agent_sdk.types import (
+    HookContext,
+    HookEvent,
+    McpSdkServerConfig,
+    SyncHookJSONOutput,
+)
 from exceptiongroup import BaseExceptionGroup
 
 from holodeck.lib.backends.base import (
     BackendInitError,
     BackendSessionError,
     ExecutionResult,
+    ToolEvent,
 )
 from holodeck.lib.backends.mcp_bridge import build_claude_mcp_configs
 from holodeck.lib.backends.otel_bridge import translate_observability
@@ -39,6 +51,7 @@ from holodeck.lib.backends.validators import (
     validate_working_directory,
 )
 from holodeck.lib.instruction_resolver import resolve_instructions
+from holodeck.lib.observability import get_observability_context
 from holodeck.models.agent import Agent
 from holodeck.models.claude_config import PermissionMode
 from holodeck.models.token_usage import TokenUsage
@@ -266,8 +279,10 @@ def build_options(
     if tool_server is not None:
         mcp_servers["holodeck_tools"] = tool_server
 
-    # Env vars
-    env: dict[str, str] = {**auth_env, **otel_env}
+    # Env vars — unset CLAUDECODE to prevent the "nested session" guard
+    # when HoloDeck runs inside a terminal with Claude Code active.
+    # SDK merges: {**os.environ, **options.env}, so "" overrides "1".
+    env: dict[str, str] = {"CLAUDECODE": "", **auth_env, **otel_env}
 
     # Permission mode
     perm_mode = None
@@ -286,11 +301,20 @@ def build_options(
     if claude and claude.allowed_tools:
         allowed_tools.extend(claude.allowed_tools)
 
+    # Built-in capabilities
+    if claude and claude.web_search:
+        allowed_tools.append("WebSearch")
+
     # Output format
     output_format = _build_output_format(agent.response_format)
 
-    # Working directory
+    # Working directory — fall back to agent.yaml's directory so that
+    # relative paths in MCP args (e.g. "./data") resolve correctly.
+    from holodeck.config.context import agent_base_dir
+
     cwd = claude.working_directory if claude else None
+    if cwd is None:
+        cwd = agent_base_dir.get()
 
     # Max turns
     max_turns = claude.max_turns if claude else None
@@ -319,6 +343,137 @@ def build_options(
 # ---------------------------------------------------------------------------
 
 
+def _patch_hooks_for_context_propagation(client: ClaudeSDKClient) -> None:
+    """Wrap hook callbacks so they re-inject the ContextVar from the instance.
+
+    Works around a ContextVar timing mismatch in the OTel instrumentor:
+    ``connect()`` spawns a ``_read_messages`` background task *before*
+    ``_wrap_client_query`` sets the ``InvocationContext`` in the ContextVar.
+    asyncio copies ContextVars at task-creation time, so the background task
+    sees ``None`` forever.
+
+    The instrumentor's ``_wrap_client_query`` *does* store the context on the
+    instance as ``_otel_invocation_ctx``.  This function wraps each hook
+    callback so that, just before it runs, it reads from the instance attribute
+    and re-sets the ContextVar — bridging the gap.
+
+    No-op when the instrumentor package is not installed.
+    """
+    try:
+        from opentelemetry.instrumentation.claude_agent_sdk._context import (
+            set_invocation_context,
+        )
+    except ImportError:
+        return  # Instrumentor not installed — nothing to patch
+
+    options = getattr(client, "options", None)
+    hooks = getattr(options, "hooks", None) if options else None
+    if not hooks:
+        return
+
+    for matchers in hooks.values():
+        if not matchers:
+            continue
+        for matcher in matchers:
+            original_hooks = matcher.hooks if hasattr(matcher, "hooks") else []
+            wrapped: list[Any] = []
+            for hook_fn in original_hooks:
+
+                async def _ctx_wrapper(
+                    input_data: Any,
+                    tool_use_id: str | None = None,
+                    context: Any = None,
+                    *,
+                    _orig: Any = hook_fn,
+                    _cli: ClaudeSDKClient = client,
+                    **kwargs: Any,
+                ) -> dict[str, Any]:
+                    ctx = getattr(_cli, "_otel_invocation_ctx", None)
+                    if ctx is not None:
+                        set_invocation_context(ctx)
+                    result: dict[str, Any] = await _orig(
+                        input_data, tool_use_id, context, **kwargs
+                    )
+                    return result
+
+                wrapped.append(_ctx_wrapper)
+            if hasattr(matcher, "hooks"):
+                matcher.hooks = wrapped
+
+
+def _build_tool_hooks(
+    queue: asyncio.Queue[ToolEvent],
+) -> dict[HookEvent, list[HookMatcher]]:
+    """Build Claude SDK hook matchers that push :class:`ToolEvent` to *queue*.
+
+    Three hooks are registered:
+
+    * ``PreToolUse`` — fires **before** the SDK executes a tool.
+    * ``PostToolUse`` — fires **after** a tool succeeds.
+    * ``PostToolUseFailure`` — fires **after** a tool fails.
+
+    Each callback returns an empty dict (no-op passthrough) so that the SDK
+    continues execution normally.
+
+    Args:
+        queue: Destination queue for tool events.
+
+    Returns:
+        Hook dict suitable for merging into ``ClaudeAgentOptions.hooks``.
+    """
+
+    async def _on_pre_tool(
+        input_data: Any,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        await queue.put(
+            ToolEvent(
+                kind="start",
+                tool_name=input_data["tool_name"],
+                tool_use_id=input_data["tool_use_id"],
+                tool_input=input_data.get("tool_input"),
+            )
+        )
+        return SyncHookJSONOutput()
+
+    async def _on_post_tool(
+        input_data: Any,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        await queue.put(
+            ToolEvent(
+                kind="end",
+                tool_name=input_data["tool_name"],
+                tool_use_id=input_data["tool_use_id"],
+                tool_response=str(input_data.get("tool_response", "")),
+            )
+        )
+        return SyncHookJSONOutput()
+
+    async def _on_post_tool_failure(
+        input_data: Any,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        await queue.put(
+            ToolEvent(
+                kind="error",
+                tool_name=input_data["tool_name"],
+                tool_use_id=input_data["tool_use_id"],
+                error=str(input_data.get("error", "")),
+            )
+        )
+        return SyncHookJSONOutput()
+
+    return {
+        "PreToolUse": [HookMatcher(hooks=[_on_pre_tool])],
+        "PostToolUse": [HookMatcher(hooks=[_on_post_tool])],
+        "PostToolUseFailure": [HookMatcher(hooks=[_on_post_tool_failure])],
+    }
+
+
 class ClaudeSession:
     """Stateful multi-turn session backed by ``ClaudeSDKClient``.
 
@@ -340,11 +495,55 @@ class ClaudeSession:
         self._session_id: str | None = None
         self._client: ClaudeSDKClient | None = None
         self._turn_count: int = 0
+        self._tool_event_queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+
+    @property
+    def tool_events(self) -> asyncio.Queue[ToolEvent]:
+        """Queue of real-time tool events emitted via SDK hooks."""
+        return self._tool_event_queue
+
+    def _options_with_hooks(self) -> ClaudeAgentOptions:
+        """Return base options with tool-event hooks merged in.
+
+        Appends to any existing hooks (e.g. from OTel) rather than replacing.
+        Uses ``dataclasses.replace`` to produce a new options instance,
+        leaving ``_base_options`` untouched.
+        """
+        import dataclasses
+
+        tool_hooks = _build_tool_hooks(self._tool_event_queue)
+        existing: dict[HookEvent, list[HookMatcher]] = self._base_options.hooks or {}
+        merged: dict[HookEvent, list[HookMatcher]] = dict(existing)
+        for event_name, matchers in tool_hooks.items():
+            if event_name in merged:
+                merged[event_name] = list(merged[event_name]) + matchers
+            else:
+                merged[event_name] = matchers
+
+        try:
+            return dataclasses.replace(self._base_options, hooks=merged)
+        except TypeError:
+            # Fallback for non-dataclass options (e.g. test mocks)
+            self._base_options.hooks = merged
+            return self._base_options
 
     async def _ensure_client(self) -> ClaudeSDKClient:
-        """Lazily create, connect, and return the SDK client."""
+        """Lazily create, connect, and return the SDK client.
+
+        Uses ``claude_agent_sdk.ClaudeSDKClient`` (module-level attribute
+        access) instead of the locally-imported name so that wrapt
+        monkey-patches applied by the OTel instrumentor are resolved at
+        call time.
+
+        After ``__init__`` (which triggers the instrumentor's hook injection)
+        but before ``connect()`` (which spawns the ``_read_messages`` task),
+        we patch hook callbacks to re-inject the ContextVar from the instance.
+        See ``_patch_hooks_for_context_propagation`` for details.
+        """
         if self._client is None:
-            self._client = ClaudeSDKClient(options=self._base_options)
+            options = self._options_with_hooks()
+            self._client = claude_agent_sdk.ClaudeSDKClient(options=options)
+            _patch_hooks_for_context_propagation(self._client)
             await self._client.connect()
         return self._client
 
@@ -441,11 +640,24 @@ class ClaudeSession:
                 f"subprocess terminated unexpectedly: {exc}"
             ) from exc
 
-    async def close(self) -> None:
-        """Disconnect the SDK client and release resources."""
+    async def release_transport(self) -> None:
+        """Disconnect the SDK client without losing session state.
+
+        After calling this, the next ``send()`` or ``send_streaming()`` call
+        will create a fresh ``ClaudeSDKClient`` and reconnect, resuming the
+        conversation via the preserved ``session_id``.
+
+        This is required when the session is used across different async task
+        contexts (e.g., HTTP requests in ``holodeck serve``), because the
+        SDK's anyio task group is bound to the task that called ``connect()``.
+        """
         if self._client is not None:
             await self._client.disconnect()
             self._client = None
+
+    async def close(self) -> None:
+        """Disconnect the SDK client and release resources."""
+        await self.release_transport()
 
 
 # ---------------------------------------------------------------------------
@@ -486,6 +698,7 @@ class ClaudeBackend:
         self._initialized = False
         self._options: ClaudeAgentOptions | None = None
         self._owned_tools: list[Any] = []  # Tools created during initialize()
+        self._instrumentor: Any = None
 
     async def _ensure_initialized(self) -> None:
         """Lazy-init guard — call ``initialize()`` if not yet done."""
@@ -556,6 +769,9 @@ class ClaudeBackend:
 
             # 10. Response format validation
             validate_response_format(agent.response_format)
+
+            # 11. GenAI instrumentation (optional, non-blocking)
+            self._activate_instrumentation()
 
             self._initialized = True
 
@@ -628,7 +844,9 @@ class ClaudeBackend:
         structured_output: Any = None
 
         prompt_iter = _wrap_prompt(message)
-        async for msg in query(prompt=prompt_iter, options=self._options):
+        async for msg in claude_agent_sdk.query(
+            prompt=prompt_iter, options=self._options
+        ):
             text_parts, tool_calls, tool_results = _process_message(
                 msg, text_parts, tool_calls, tool_results
             )
@@ -773,8 +991,78 @@ class ClaudeBackend:
         except Exception as exc:
             raise BackendInitError(f"Failed to initialize tools: {exc}") from exc
 
+    def _activate_instrumentation(self) -> None:
+        """Activate GenAI semantic convention instrumentation if configured.
+
+        Lazily imports ``ClaudeAgentSdkInstrumentor`` from the optional
+        ``otel-instrumentation-claude-agent-sdk`` package. When observability
+        is enabled with traces, instruments the Claude Agent SDK so that
+        ``query()`` calls automatically emit GenAI-convention spans.
+
+        This method is synchronous (``instrument()`` does monkey-patching,
+        no I/O) and non-blocking — failures are logged as warnings without
+        crashing initialization.
+        """
+        obs = self._agent.observability
+        if obs is None or not obs.enabled or not obs.traces.enabled:
+            return
+
+        try:
+            from opentelemetry.instrumentation.claude_agent_sdk import (
+                ClaudeAgentSdkInstrumentor,
+            )
+        except ImportError:
+            logger.warning(
+                "otel-instrumentation-claude-agent-sdk not installed; "
+                "GenAI instrumentation disabled. "
+                "Install with: uv add holodeck[claude-otel]"
+            )
+            return
+
+        try:
+            ctx = get_observability_context()
+            if ctx is None:
+                logger.warning(
+                    "Observability context not initialized; "
+                    "GenAI instrumentation disabled"
+                )
+                return
+
+            meter_provider = ctx.meter_provider if obs.metrics.enabled else None
+
+            instrumentor = ClaudeAgentSdkInstrumentor()
+            already = instrumentor.is_instrumented_by_opentelemetry
+            logger.debug(
+                "GenAI instrumentor: already_instrumented=%s, "
+                "tracer_provider=%s, agent=%s",
+                already,
+                type(ctx.tracer_provider).__name__,
+                self._agent.name,
+            )
+            instrumentor.instrument(
+                tracer_provider=ctx.tracer_provider,
+                meter_provider=meter_provider,
+                agent_name=self._agent.name,
+                capture_content=obs.traces.capture_content,
+            )
+            self._instrumentor = instrumentor
+            logger.info(
+                "GenAI instrumentation activated for agent '%s'",
+                self._agent.name,
+            )
+        except Exception as exc:
+            logger.warning("Failed to activate GenAI instrumentation: %s", exc)
+
     async def teardown(self) -> None:
         """Reset backend state, releasing any built options."""
+        # Deactivate GenAI instrumentation
+        if self._instrumentor is not None:
+            try:
+                self._instrumentor.uninstrument()
+            except Exception as exc:
+                logger.warning("Error deactivating GenAI instrumentation: %s", exc)
+            self._instrumentor = None
+
         # Cleanup owned tools
         for tool_inst in self._owned_tools:
             if hasattr(tool_inst, "cleanup"):

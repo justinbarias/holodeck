@@ -3,6 +3,7 @@
 Tests for:
 - T015: AG-UI event mapping (lifecycle, text message, tool call events)
 - T016: RunAgentInput to HoloDeck request mapping
+- T017: AG-UI protocol error mapping (BackendSessionError, capacity exceeded)
 - T029a: Unit tests for AG-UI BinaryInputContent parsing
 - T029b: Unit tests for AG-UI multimodal content to FileInput conversion
 """
@@ -187,34 +188,52 @@ class TestToolCallEvents:
         assert event.tool_call_id == "tc-123"
 
     def test_create_tool_call_events_from_execution(self) -> None:
-        """Test creating complete tool call event sequence from ToolExecution."""
+        """Test creating complete tool call event sequence from ToolExecution.
+
+        Each tool call is now wrapped in its own assistant message:
+        TextMessageStart -> ToolCallStart -> ToolCallArgs ->
+        ToolCallEnd -> ToolCallResult -> TextMessageEnd
+        """
         from holodeck.serve.protocols.agui import create_tool_call_events
 
         # Mock ToolExecution
         tool_execution = MagicMock()
         tool_execution.tool_name = "search_knowledge_base"
         tool_execution.parameters = {"query": "return policy", "limit": 10}
+        tool_execution.result = "Found 3 matching documents."
 
         events = create_tool_call_events(
             tool_execution=tool_execution,
             message_id="msg-123",
         )
 
-        assert len(events) == 3
+        assert len(events) == 6
+        # Check TextMessageStartEvent (wraps the tool call)
+        assert events[0].type == EventType.TEXT_MESSAGE_START
         # Check ToolCallStartEvent
-        assert events[0].type == EventType.TOOL_CALL_START
-        assert events[0].tool_call_name == "search_knowledge_base"
-        assert events[0].parent_message_id == "msg-123"
+        assert events[1].type == EventType.TOOL_CALL_START
+        assert events[1].tool_call_name == "search_knowledge_base"
+        assert events[1].parent_message_id == events[0].message_id
         # Check ToolCallArgsEvent
-        assert events[1].type == EventType.TOOL_CALL_ARGS
-        args = json.loads(events[1].delta)
+        assert events[2].type == EventType.TOOL_CALL_ARGS
+        args = json.loads(events[2].delta)
         assert args["query"] == "return policy"
         assert args["limit"] == 10
         # Check ToolCallEndEvent
-        assert events[2].type == EventType.TOOL_CALL_END
-        # All should have same tool_call_id
+        assert events[3].type == EventType.TOOL_CALL_END
+        # Check ToolCallResultEvent
+        assert events[4].type == EventType.TOOL_CALL_RESULT
+        assert events[4].content == "Found 3 matching documents."
+        assert events[4].role == "tool"
+        # Check TextMessageEndEvent (closes the wrapper)
+        assert events[5].type == EventType.TEXT_MESSAGE_END
+        assert events[5].message_id == events[0].message_id
+        # Tool call events should share the same tool_call_id
         assert (
-            events[0].tool_call_id == events[1].tool_call_id == events[2].tool_call_id
+            events[1].tool_call_id
+            == events[2].tool_call_id
+            == events[3].tool_call_id
+            == events[4].tool_call_id
         )
 
 
@@ -502,8 +521,13 @@ class TestExtractMessageDictFormat:
             },
         ]
 
-        with caplog.at_level(logging.WARNING, logger="holodeck.serve.protocols.agui"):
+        agui_logger = logging.getLogger("holodeck.serve.protocols.agui")
+        agui_logger.addHandler(caplog.handler)
+        agui_logger.setLevel(logging.WARNING)
+        try:
             message = extract_message_from_input(input_data)
+        finally:
+            agui_logger.removeHandler(caplog.handler)
 
         # Only text types and strings should be included
         assert "From dict" in message
@@ -533,11 +557,14 @@ class TestExtractMessageDictFormat:
             },
         ]
 
-        with (
-            caplog.at_level(logging.WARNING, logger="holodeck.serve.protocols.agui"),
-            pytest.raises(ValueError, match="No text content found"),
-        ):
-            extract_message_from_input(input_data)
+        agui_logger = logging.getLogger("holodeck.serve.protocols.agui")
+        agui_logger.addHandler(caplog.handler)
+        agui_logger.setLevel(logging.WARNING)
+        try:
+            with pytest.raises(ValueError, match="No text content found"):
+                extract_message_from_input(input_data)
+        finally:
+            agui_logger.removeHandler(caplog.handler)
 
         # Warnings should still be logged for skipped content
         assert "Skipping non-text content part" in caplog.text
@@ -1223,3 +1250,200 @@ class TestBinaryContentToFileInput:
 
         # Cleanup
         Path(file_input.path).unlink(missing_ok=True)
+
+
+# =============================================================================
+# T017: AG-UI protocol error mapping tests
+# =============================================================================
+
+
+class TestAGUIProtocolErrorMapping:
+    """Tests for AG-UI protocol error mapping.
+
+    T017: Verifies that BackendSessionError during streaming is mapped to
+    the correct SSE error event, and that capacity exceeded errors at the
+    server level produce the expected SSE error format.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_backend_session_error_yields_sse_error_event(self) -> None:
+        """T017: BackendSessionError during AG-UI streaming yields SSE error event.
+
+        When agent_executor.execute_turn raises BackendSessionError, the
+        handle_request generator should catch it and yield an encoded
+        RunErrorEvent with the message
+        "Claude Agent SDK subprocess terminated unexpectedly."
+        """
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ag_ui.core.events import RunAgentInput
+        from ag_ui.core.types import UserMessage
+
+        from holodeck.lib.backends import BackendSessionError
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        # Arrange
+        input_data = RunAgentInput(
+            thread_id="thread-err-1",
+            run_id="run-err-1",
+            messages=[
+                UserMessage(id="msg-1", role="user", content="Hello"),
+            ],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        mock_executor = MagicMock()
+        mock_executor.execute_turn = AsyncMock(
+            side_effect=BackendSessionError("subprocess crashed"),
+        )
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-err-1"
+        mock_session.agent_executor = mock_executor
+
+        # Act
+        protocol = AGUIProtocol()
+        events: list[bytes] = []
+        async for event_bytes in protocol.handle_request(input_data, mock_session):
+            events.append(event_bytes)
+
+        # Assert — decode all yielded bytes and inspect
+        all_content = b"".join(events).decode("utf-8")
+
+        # Must contain the specific error message from the BackendSessionError handler
+        assert "Claude Agent SDK subprocess terminated unexpectedly" in all_content
+        # Must be a RUN_ERROR event type
+        assert "RUN_ERROR" in all_content or "run_error" in all_content.lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_capacity_exceeded_yields_sse_capacity_error(self) -> None:
+        """T017: Capacity exceeded at server level yields SSE capacity_exceeded event.
+
+        When SessionStore.create raises RuntimeError (capacity full), the
+        AG-UI /awp endpoint should return a StreamingResponse containing
+        an SSE error event with type "capacity_exceeded".
+        """
+        from unittest.mock import MagicMock, patch
+
+        from httpx import ASGITransport, AsyncClient
+
+        from holodeck.serve.models import ProtocolType
+        from holodeck.serve.server import AgentServer
+
+        # Arrange — create server with AG-UI protocol
+        mock_config = MagicMock()
+        mock_config.name = "test-agent"
+
+        server = AgentServer(
+            agent_config=mock_config,
+            protocol=ProtocolType.AG_UI,
+            host="127.0.0.1",
+            port=8000,
+        )
+        app = server.create_app()
+
+        # Patch SessionStore.get to return None (no existing session)
+        # and SessionStore.create to raise RuntimeError (capacity full)
+        with (
+            patch.object(server.sessions, "get", return_value=None),
+            patch.object(
+                server.sessions,
+                "create",
+                side_effect=RuntimeError("Max sessions reached"),
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=app),
+                base_url="http://test",
+            ) as client:
+                # Act
+                response = await client.post(
+                    "/awp",
+                    json={
+                        "threadId": "thread-cap-1",
+                        "runId": "run-cap-1",
+                        "messages": [
+                            {
+                                "id": "msg-1",
+                                "role": "user",
+                                "content": "Hello",
+                            },
+                        ],
+                        "state": None,
+                        "tools": [],
+                        "context": [],
+                        "forwardedProps": None,
+                    },
+                )
+
+        # Assert — response should be SSE with capacity_exceeded
+        assert response.status_code == 200
+        body = response.text
+        assert "capacity_exceeded" in body
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_backend_session_error_event_format_matches_contract(self) -> None:
+        """T017: Verify BackendSessionError SSE event format matches AG-UI contract.
+
+        The emitted RunErrorEvent must contain:
+        - Event type field indicating RUN_ERROR
+        - The exact message text from the BackendSessionError handler
+        - No raw exception details leaked to the client
+        """
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ag_ui.core.events import RunAgentInput
+        from ag_ui.core.types import UserMessage
+
+        from holodeck.lib.backends import BackendSessionError
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        # Arrange
+        input_data = RunAgentInput(
+            thread_id="thread-fmt-1",
+            run_id="run-fmt-1",
+            messages=[
+                UserMessage(id="msg-1", role="user", content="Test message"),
+            ],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        mock_executor = MagicMock()
+        mock_executor.execute_turn = AsyncMock(
+            side_effect=BackendSessionError("subprocess crashed"),
+        )
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-fmt-1"
+        mock_session.agent_executor = mock_executor
+
+        # Act
+        protocol = AGUIProtocol()
+        events: list[bytes] = []
+        async for event_bytes in protocol.handle_request(input_data, mock_session):
+            events.append(event_bytes)
+
+        # Assert — decode and verify format details
+        all_content = b"".join(events).decode("utf-8")
+
+        # The event stream should contain the sanitised message
+        assert "Claude Agent SDK subprocess terminated unexpectedly." in all_content
+
+        # The raw exception message ("subprocess crashed") must NOT leak
+        assert "subprocess crashed" not in all_content
+
+        # The stream should still start with RunStarted before the error
+        assert "RUN_STARTED" in all_content or "run_started" in all_content.lower()
+
+        # The stream should NOT contain RunFinished (error replaces it)
+        assert "RUN_FINISHED" not in all_content
+        assert "run_finished" not in all_content.lower()

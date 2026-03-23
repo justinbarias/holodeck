@@ -248,7 +248,7 @@ make format-check       # Check formatting (CI-safe)
 make lint               # Run Ruff + Bandit
 make lint-fix           # Auto-fix linting issues
 make type-check         # MyPy type checking
-make security           # Safety + Bandit + detect-secrets
+make security           # pip-audit + Bandit + detect-secrets
 make ci                 # Run complete CI pipeline locally
 ```
 
@@ -454,11 +454,11 @@ Consumers never interact with provider-specific types — only with protocols.
 
 ### Core Protocols
 
-| Protocol           | Methods                                                  | Purpose                                |
-| ------------------ | -------------------------------------------------------- | -------------------------------------- |
-| `AgentBackend`     | `initialize()`, `invoke_once()`, `create_session()`, `teardown()` | Lifecycle of a backend instance       |
-| `AgentSession`     | `send()`, `send_streaming()`, `close()`                  | Stateful multi-turn conversation       |
-| `ContextGenerator` | `contextualize_batch()`                                  | Contextual embeddings for chunks       |
+| Protocol           | Methods                                                           | Purpose                          |
+| ------------------ | ----------------------------------------------------------------- | -------------------------------- |
+| `AgentBackend`     | `initialize()`, `invoke_once()`, `create_session()`, `teardown()` | Lifecycle of a backend instance  |
+| `AgentSession`     | `send()`, `send_streaming()`, `close()`                           | Stateful multi-turn conversation |
+| `ContextGenerator` | `contextualize_batch()`                                           | Contextual embeddings for chunks |
 
 ### ExecutionResult
 
@@ -495,12 +495,12 @@ await backend.teardown()
 
 ### Claude-Specific Infrastructure
 
-| Module              | Purpose                                                     |
-| ------------------- | ----------------------------------------------------------- |
-| `tool_adapters.py`  | Wraps VectorStore/HierarchicalDoc tools as SDK MCP tools    |
-| `mcp_bridge.py`     | Translates HoloDeck MCP configs to Claude SDK format        |
-| `otel_bridge.py`    | Translates observability config to subprocess env vars      |
-| `validators.py`     | Pre-flight checks (Node.js, credentials, embedding provider)|
+| Module             | Purpose                                                      |
+| ------------------ | ------------------------------------------------------------ |
+| `tool_adapters.py` | Wraps VectorStore/HierarchicalDoc tools as SDK MCP tools     |
+| `mcp_bridge.py`    | Translates HoloDeck MCP configs to Claude SDK format         |
+| `otel_bridge.py`   | Translates observability config to subprocess env vars       |
+| `validators.py`    | Pre-flight checks (Node.js, credentials, embedding provider) |
 
 ## Agent Configuration Schema
 
@@ -532,7 +532,7 @@ tools: # Optional: List of tools
 
 claude: # Optional: Claude Agent SDK configuration (anthropic provider only)
   working_directory: path # Scope file access; subprocess cwd
-  permission_mode: manual | acceptEdits | acceptAll  # Default: manual
+  permission_mode: manual | acceptEdits | acceptAll # Default: manual
   max_turns: int # Max agent loop iterations
   extended_thinking: # Deep reasoning
     enabled: boolean
@@ -904,6 +904,28 @@ When generating commit messages:
 
 8. **DON'T skip docstrings** - all public functions need them
 
+## Code Navigation: LSP vs Grep
+
+Use **LSP** (Language Server Protocol) and **Grep** as complementary tools, choosing based on the task:
+
+### Prefer LSP when:
+- **Finding symbol references** — `findReferences` returns only real usages, excluding comments, strings, and unrelated name collisions
+- **Understanding types** — `hover` gives resolved type info and docstrings without reading the file
+- **Navigating definitions** — `goToDefinition` follows imports through re-exports reliably
+- **Exploring structure** — `documentSymbol` gives the full class/method hierarchy in one call
+- **Tracing call graphs** — `incomingCalls`/`outgoingCalls` map caller/callee relationships, which grep cannot do
+- **Finding implementations** — `goToImplementation` locates concrete implementations of protocols/abstract methods
+
+### Prefer Grep when:
+- **Searching across file types** — YAML configs, markdown docs, `.env` files, and other non-Python files
+- **Fuzzy/partial matching** — regex patterns like `claude.*session` or partial identifiers
+- **Pattern discovery** — "find all logger.error calls", "where is this config key used"
+- **Code with syntax errors** — LSP may fail on unparseable files; grep always works
+- **Simple text searches** — TODOs, feature flags, string literals, comments
+
+### Rule of thumb
+Use LSP for **semantic** questions ("who calls this?", "what type is this?", "where is this defined?") and Grep for **textual** questions ("where does this string appear?", "which files mention this config key?").
+
 ## Key Design Constraints
 
 1. **No-Code First**: Users configure agents via YAML, not Python
@@ -930,3 +952,11 @@ When generating commit messages:
 - [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
 
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
+
+## Recent Changes
+- 023-choose-your-backend: Added Python 3.10+ + google-adk (pinned RC), agent-framework-core (pinned v1.0.0rc4), semantic-kernel (existing), claude-agent-sdk (existing)
+- 022-otel-genai-semconv: Added Python 3.10+
+
+## Active Technologies
+- Python 3.10+ + google-adk (pinned RC), agent-framework-core (pinned v1.0.0rc4), semantic-kernel (existing), claude-agent-sdk (existing) (023-choose-your-backend)
+- N/A (in-memory session management for both new backends) (023-choose-your-backend)

@@ -9,6 +9,7 @@ from holodeck.lib.backends.base import (
     BackendTimeoutError,
     ContextGenerator,
     ExecutionResult,
+    ToolEvent,
 )
 from holodeck.lib.backends.claude_backend import ClaudeBackend, ClaudeSession
 from holodeck.lib.backends.mcp_bridge import build_claude_mcp_configs
@@ -24,6 +25,7 @@ from holodeck.lib.backends.tool_adapters import (
 
 __all__ = [
     "ExecutionResult",
+    "ToolEvent",
     "AgentSession",
     "AgentBackend",
     "BackendError",

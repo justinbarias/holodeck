@@ -17,8 +17,6 @@ import click
 from holodeck.chat import ChatSessionManager
 from holodeck.chat.executor import AgentResponse
 from holodeck.chat.progress import ChatProgressIndicator
-from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
-from holodeck.config.loader import ConfigLoader
 from holodeck.lib.errors import AgentInitializationError, ConfigError, ExecutionError
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.observability import (
@@ -135,21 +133,24 @@ def chat(
     effective_quiet = quiet and not verbose
 
     try:
-        # Load agent configuration FIRST to check observability setting
-        from holodeck.config.context import agent_base_dir
+        # Load agent config and resolve execution config in one call
+        from holodeck.config.loader import load_agent_with_config
 
-        loader = ConfigLoader()
-        agent = loader.load_agent_yaml(agent_config)
+        cli_config = ExecutionConfig(
+            verbose=verbose if verbose else None,
+            quiet=quiet if quiet else None,
+        )
+
+        agent, resolved_config, _loader = load_agent_with_config(
+            agent_config, cli_config=cli_config
+        )
 
         # Determine logging strategy: OTel replaces setup_logging when enabled
         if agent.observability and agent.observability.enabled:
-            # OTel handles all logging - skip setup_logging
-            # Console exporter not enabled by default (only serve enables it)
             obs_context = initialize_observability(
                 agent.observability, agent.name, verbose=verbose, quiet=quiet
             )
         else:
-            # Traditional logging
             setup_logging(verbose=verbose, quiet=effective_quiet)
 
         logger.info(
@@ -159,34 +160,6 @@ def chat(
         )
         logger.debug(f"Loading agent configuration from {agent_config}")
         logger.info(f"Agent configuration loaded successfully: {agent.name}")
-
-        # Set the base directory context for resolving relative paths in tools
-        agent_dir = str(Path(agent_config).parent.resolve())
-        agent_base_dir.set(agent_dir)
-        logger.debug(f"Set agent_base_dir context: {agent_base_dir.get()}")
-
-        # Resolve execution config with 6-level priority hierarchy
-        # CLI flags > agent.yaml > project config > user config > env vars > defaults
-        cli_config = ExecutionConfig(
-            verbose=verbose if verbose else None,
-            quiet=quiet if quiet else None,  # Set to True if True, else None
-        )
-
-        # Load project-level config (same directory as agent.yaml)
-        project_config = loader.load_project_config(agent_dir)
-        project_execution = project_config.execution if project_config else None
-
-        # Load user-level config (~/.holodeck/)
-        user_config = loader.load_global_config()
-        user_execution = user_config.execution if user_config else None
-
-        resolved_config = loader.resolve_execution_config(
-            cli_config=cli_config,
-            yaml_config=agent.execution,
-            project_config=project_execution,
-            user_config=user_execution,
-            defaults=DEFAULT_EXECUTION_CONFIG,
-        )
 
         logger.debug(
             f"Resolved execution config: verbose={resolved_config.verbose}, "

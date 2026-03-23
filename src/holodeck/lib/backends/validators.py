@@ -8,6 +8,7 @@ runtime.
 import json
 import logging
 import shutil
+import subprocess  # nosec B404
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,37 @@ from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.tool import HierarchicalDocumentToolConfig, VectorstoreTool
 
 logger = logging.getLogger(__name__)
+
+_BEDROCK_REGION_ENV_CANDIDATES = ("AWS_REGION", "AWS_DEFAULT_REGION")
+_VERTEX_PROJECT_ENV_CANDIDATES = (
+    "ANTHROPIC_VERTEX_PROJECT_ID",
+    "GCLOUD_PROJECT",
+    "GOOGLE_CLOUD_PROJECT",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+)
+_FOUNDRY_TARGET_ENV_CANDIDATES = (
+    "ANTHROPIC_FOUNDRY_RESOURCE",
+    "ANTHROPIC_FOUNDRY_BASE_URL",
+)
+
+NODEJS_MIN_VERSION: int = 18
+
+
+def _get_required_env_var(name: str, error_message: str) -> str:
+    """Return a required env var value or raise ConfigError."""
+    value = get_env_var(name)
+    if value is None or not str(value).strip():
+        raise ConfigError(name, error_message)
+    return str(value)
+
+
+def _get_first_present_env_var(candidates: tuple[str, ...]) -> tuple[str, str] | None:
+    """Return first non-empty env var value from candidates."""
+    for key in candidates:
+        value = get_env_var(key)
+        if value is not None and str(value).strip():
+            return key, str(value)
+    return None
 
 
 def validate_nodejs() -> None:
@@ -37,13 +69,51 @@ def validate_nodejs() -> None:
             "on your PATH.",
         )
 
+    stdout = ""
+    try:
+        result = subprocess.run(  # noqa: S603 # nosec B603 B607
+            ["node", "--version"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        stdout = result.stdout.strip()
+        version = stdout.lstrip("v")
+        major = int(version.split(".")[0])
+    except subprocess.TimeoutExpired as e:
+        raise ConfigError(
+            "nodejs",
+            "Node.js version check timed out. Ensure 'node --version' "
+            "completes quickly.",
+        ) from e
+    except subprocess.CalledProcessError as e:
+        raise ConfigError(
+            "nodejs",
+            "Failed to determine Node.js version. Ensure 'node --version' " "works.",
+        ) from e
+    except ValueError as e:
+        raise ConfigError(
+            "nodejs",
+            f"Could not parse Node.js version from output: {stdout}",
+        ) from e
+
+    if major < NODEJS_MIN_VERSION:
+        raise ConfigError(
+            "nodejs",
+            f"Node.js version {version} found but >= {NODEJS_MIN_VERSION} is "
+            "required by Claude Agent SDK. Download from https://nodejs.org/",
+        )
+
+    logger.debug(f"Node.js version {version} validated (>= {NODEJS_MIN_VERSION})")
+
 
 def validate_credentials(model: LLMProvider) -> dict[str, str]:
     """Validate authentication credentials for the LLM provider.
 
     Checks that the required environment variables are present for the
-    configured auth_provider. Returns a dict of extra environment variables
-    to inject into the Claude subprocess for provider-specific auth.
+    configured auth_provider, including cloud routing context for Bedrock,
+    Vertex, and Foundry. Returns a dict of environment variables to inject
+    into the Claude subprocess.
 
     Args:
         model: LLM provider configuration.
@@ -57,33 +127,66 @@ def validate_credentials(model: LLMProvider) -> dict[str, str]:
     auth = model.auth_provider or AuthProvider.api_key
 
     if auth == AuthProvider.api_key:
-        key = get_env_var("ANTHROPIC_API_KEY")
-        if not key:
-            raise ConfigError(
-                "ANTHROPIC_API_KEY",
-                "ANTHROPIC_API_KEY environment variable is not set. "
-                "Set it with: export ANTHROPIC_API_KEY=sk-ant-...",
-            )
+        key = _get_required_env_var(
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_API_KEY environment variable is not set. "
+            "Set it with: export ANTHROPIC_API_KEY=sk-ant-...",
+        )
         return {"ANTHROPIC_API_KEY": key}
 
     if auth == AuthProvider.oauth_token:
-        token = get_env_var("CLAUDE_CODE_OAUTH_TOKEN")
-        if not token:
-            raise ConfigError(
-                "CLAUDE_CODE_OAUTH_TOKEN",
-                "CLAUDE_CODE_OAUTH_TOKEN environment variable is not set. "
-                "Run `claude setup-token` to authenticate with OAuth.",
-            )
+        token = _get_required_env_var(
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CODE_OAUTH_TOKEN environment variable is not set. "
+            "Run `claude setup-token` to authenticate with OAuth.",
+        )
         return {"CLAUDE_CODE_OAUTH_TOKEN": token}
 
     if auth == AuthProvider.bedrock:
-        return {"CLAUDE_CODE_USE_BEDROCK": "1"}
+        bedrock_region = _get_first_present_env_var(_BEDROCK_REGION_ENV_CANDIDATES)
+        if bedrock_region is None:
+            raise ConfigError(
+                "AWS_REGION",
+                "Missing AWS region for auth_provider: bedrock. Set either "
+                "AWS_REGION or AWS_DEFAULT_REGION (for example: "
+                "export AWS_REGION=us-east-1).",
+            )
+        return {
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            bedrock_region[0]: bedrock_region[1],
+        }
 
     if auth == AuthProvider.vertex:
-        return {"CLAUDE_CODE_USE_VERTEX": "1"}
+        region = _get_required_env_var(
+            "CLOUD_ML_REGION",
+            "CLOUD_ML_REGION environment variable is not set for "
+            "auth_provider: vertex. Set it with: "
+            "export CLOUD_ML_REGION=us-east5",
+        )
+        project_context = _get_first_present_env_var(_VERTEX_PROJECT_ENV_CANDIDATES)
+        if project_context is None:
+            raise ConfigError(
+                "ANTHROPIC_VERTEX_PROJECT_ID",
+                "Missing Vertex project context for auth_provider: vertex. "
+                "Set one of: ANTHROPIC_VERTEX_PROJECT_ID, GCLOUD_PROJECT, "
+                "GOOGLE_CLOUD_PROJECT, or GOOGLE_APPLICATION_CREDENTIALS.",
+            )
+        return {
+            "CLAUDE_CODE_USE_VERTEX": "1",
+            "CLOUD_ML_REGION": region,
+            project_context[0]: project_context[1],
+        }
 
-    # AuthProvider.foundry (and any future values)
-    return {"CLAUDE_CODE_USE_FOUNDRY": "1"}
+    # AuthProvider.foundry
+    foundry_target = _get_first_present_env_var(_FOUNDRY_TARGET_ENV_CANDIDATES)
+    if foundry_target is None:
+        raise ConfigError(
+            "ANTHROPIC_FOUNDRY_RESOURCE",
+            "Missing Foundry target for auth_provider: foundry. "
+            "Set one of: ANTHROPIC_FOUNDRY_RESOURCE or "
+            "ANTHROPIC_FOUNDRY_BASE_URL.",
+        )
+    return {"CLAUDE_CODE_USE_FOUNDRY": "1", foundry_target[0]: foundry_target[1]}
 
 
 def validate_embedding_provider(agent: Agent) -> None:

@@ -1,0 +1,27 @@
+name: claude-deploy-test
+description: Minimal Claude agent for serve and deploy integration tests
+
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+
+instructions:
+  inline: "You are a helpful test assistant."
+
+claude:
+  permission_mode: acceptAll
+  max_concurrent_sessions: 5
+
+deployment:
+  port: 8080
+  protocol: rest
+  registry:
+    url: ghcr.io
+    repository: test-org/claude-agent
+    tag_strategy: latest
+  target:
+    provider: aws
+    aws:
+      region: us-east-1
+      cpu: 1
+      memory: 2048

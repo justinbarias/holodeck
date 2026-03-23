@@ -9,112 +9,52 @@ import pytest
 
 from holodeck.chat.executor import AgentExecutor, AgentResponse
 from holodeck.lib.backends.base import (
-    AgentBackend,
-    AgentSession,
     BackendSessionError,
     ExecutionResult,
 )
-from holodeck.models.agent import Agent, Instructions
-from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool_execution import ToolExecution, ToolStatus
 
 # ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_agent() -> Agent:
-    """Create a minimal Agent instance for tests."""
-    return Agent(
-        name="test-agent",
-        description="Test agent",
-        model=LLMProvider(
-            provider=ProviderEnum.OPENAI,
-            name="gpt-4o-mini",
-            api_key="test-key",
-        ),
-        instructions=Instructions(inline="Be helpful."),
-    )
-
-
-def _make_mock_backend(
-    response_text: str = "Hello!",
-    tool_calls: list | None = None,
-    token_usage: TokenUsage | None = None,
-) -> tuple[AsyncMock, AsyncMock]:
-    """Create mock AgentBackend/AgentSession pair.
-
-    Returns:
-        Tuple of (mock_backend, mock_session).
-    """
-    if token_usage is None:
-        token_usage = TokenUsage(
-            prompt_tokens=10,
-            completion_tokens=5,
-            total_tokens=15,
-        )
-
-    mock_session = AsyncMock(spec=AgentSession)
-    mock_session.send.return_value = ExecutionResult(
-        response=response_text,
-        tool_calls=tool_calls or [],
-        token_usage=token_usage,
-    )
-
-    async def _stream_chunks(message: str):
-        for chunk in ["Hello", " ", "world"]:
-            yield chunk
-
-    mock_session.send_streaming = _stream_chunks
-
-    mock_backend = AsyncMock(spec=AgentBackend)
-    mock_backend.create_session.return_value = mock_session
-    return mock_backend, mock_session
-
-
-# ---------------------------------------------------------------------------
-# T021: TestAgentExecutorInitialization — rewritten without AgentFactory
+# T021: TestAgentExecutorInitialization
 # ---------------------------------------------------------------------------
 
 
 class TestAgentExecutorInitialization:
     """Test AgentExecutor initialization with backend injection."""
 
-    def test_executor_initialization(self) -> None:
+    def test_executor_initialization(self, make_agent) -> None:
         """Executor initializes with agent config."""
-        agent_config = _make_agent()
-        executor = AgentExecutor(agent_config)
+        executor = AgentExecutor(make_agent())
         assert executor is not None
 
-    def test_executor_stores_agent_config(self) -> None:
+    def test_executor_stores_agent_config(self, make_agent) -> None:
         """Executor stores agent configuration."""
-        agent_config = _make_agent()
+        agent_config = make_agent()
         executor = AgentExecutor(agent_config)
         assert executor.agent_config == agent_config
 
-    def test_executor_accepts_backend_injection(self) -> None:
+    def test_executor_accepts_backend_injection(
+        self, make_agent, make_mock_backend
+    ) -> None:
         """Executor accepts an injected backend."""
-        agent_config = _make_agent()
-        mock_backend, _ = _make_mock_backend()
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        mock_backend, _ = make_mock_backend()
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         assert executor._backend is mock_backend
 
-    def test_executor_lazy_init_no_session(self) -> None:
+    def test_executor_lazy_init_no_session(self, make_agent) -> None:
         """Executor starts with no session (lazy init)."""
-        agent_config = _make_agent()
-        executor = AgentExecutor(agent_config)
+        executor = AgentExecutor(make_agent())
         assert executor._session is None
 
-    def test_executor_empty_history_on_init(self) -> None:
+    def test_executor_empty_history_on_init(self, make_agent) -> None:
         """Executor starts with empty history."""
-        agent_config = _make_agent()
-        executor = AgentExecutor(agent_config)
+        executor = AgentExecutor(make_agent())
         assert executor.get_history() == []
 
 
 # ---------------------------------------------------------------------------
-# T022: TestAgentExecutorExecution — rewritten without AgentFactory
+# T022: TestAgentExecutorExecution
 # ---------------------------------------------------------------------------
 
 
@@ -122,12 +62,11 @@ class TestAgentExecutorExecution:
     """Test message execution using mock backends."""
 
     @pytest.mark.asyncio
-    async def test_execute_turn_success(self) -> None:
+    async def test_execute_turn_success(self, make_agent, make_mock_backend) -> None:
         """Successful execution returns AgentResponse."""
-        agent_config = _make_agent()
-        mock_backend, mock_session = _make_mock_backend("Hi there!")
+        mock_backend, mock_session = make_mock_backend("Hi there!")
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         response = await executor.execute_turn("Hello")
 
         assert isinstance(response, AgentResponse)
@@ -136,17 +75,18 @@ class TestAgentExecutorExecution:
         mock_session.send.assert_awaited_once_with("Hello")
 
     @pytest.mark.asyncio
-    async def test_execute_turn_with_tool_calls(self) -> None:
+    async def test_execute_turn_with_tool_calls(
+        self, make_agent, make_mock_backend
+    ) -> None:
         """Tool calls extracted from ExecutionResult."""
-        agent_config = _make_agent()
-        mock_backend, _ = _make_mock_backend(
+        mock_backend, _ = make_mock_backend(
             response_text="Searching...",
             tool_calls=[
                 {"name": "search", "arguments": {"query": "test"}},
             ],
         )
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         response = await executor.execute_turn("Search for test")
 
         assert len(response.tool_executions) == 1
@@ -154,12 +94,13 @@ class TestAgentExecutorExecution:
         assert response.tool_executions[0].status == ToolStatus.SUCCESS
 
     @pytest.mark.asyncio
-    async def test_execute_turn_returns_agent_response(self) -> None:
+    async def test_execute_turn_returns_agent_response(
+        self, make_agent, make_mock_backend
+    ) -> None:
         """Execution returns properly structured AgentResponse."""
-        agent_config = _make_agent()
-        mock_backend, _ = _make_mock_backend("Response")
+        mock_backend, _ = make_mock_backend("Response")
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         response = await executor.execute_turn("Test")
 
         assert hasattr(response, "content")
@@ -169,29 +110,29 @@ class TestAgentExecutorExecution:
 
 
 # ---------------------------------------------------------------------------
-# T023: TestAgentExecutorHistory — rewritten without AgentFactory/ChatHistory
+# T023: TestAgentExecutorHistory
 # ---------------------------------------------------------------------------
 
 
 class TestAgentExecutorHistory:
     """Test history management via local list[dict]."""
 
-    def test_get_history_returns_empty_list(self) -> None:
+    def test_get_history_returns_empty_list(self, make_agent) -> None:
         """History returns empty list before any turns."""
-        agent_config = _make_agent()
-        executor = AgentExecutor(agent_config)
+        executor = AgentExecutor(make_agent())
         history = executor.get_history()
 
         assert isinstance(history, list)
         assert history == []
 
     @pytest.mark.asyncio
-    async def test_history_tracks_user_assistant_pairs(self) -> None:
+    async def test_history_tracks_user_assistant_pairs(
+        self, make_agent, make_mock_backend
+    ) -> None:
         """Each turn appends user + assistant entries."""
-        agent_config = _make_agent()
-        mock_backend, _ = _make_mock_backend("Reply")
+        mock_backend, _ = make_mock_backend("Reply")
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         await executor.execute_turn("Hello")
 
         history = executor.get_history()
@@ -200,12 +141,13 @@ class TestAgentExecutorHistory:
         assert history[1] == {"role": "assistant", "content": "Reply"}
 
     @pytest.mark.asyncio
-    async def test_clear_history_resets_and_closes_session(self) -> None:
+    async def test_clear_history_resets_and_closes_session(
+        self, make_agent, make_mock_backend
+    ) -> None:
         """clear_history() closes session and empties history."""
-        agent_config = _make_agent()
-        mock_backend, mock_session = _make_mock_backend()
+        mock_backend, mock_session = make_mock_backend()
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         await executor.execute_turn("Hello")
 
         await executor.clear_history()
@@ -215,12 +157,11 @@ class TestAgentExecutorHistory:
         assert executor.get_history() == []
 
     @pytest.mark.asyncio
-    async def test_shutdown_cleanup(self) -> None:
+    async def test_shutdown_cleanup(self, make_agent, make_mock_backend) -> None:
         """Shutdown closes session and tears down backend."""
-        agent_config = _make_agent()
-        mock_backend, mock_session = _make_mock_backend()
+        mock_backend, mock_session = make_mock_backend()
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         await executor.execute_turn("Hello")
 
         await executor.shutdown()
@@ -232,7 +173,7 @@ class TestAgentExecutorHistory:
 
 
 # ---------------------------------------------------------------------------
-# T024: TestAgentResponseStructure — ExecutionResult → AgentResponse
+# T024: TestAgentResponseStructure
 # ---------------------------------------------------------------------------
 
 
@@ -275,15 +216,16 @@ class TestAgentResponseStructure:
         assert response.tokens_used.total_tokens == 15
 
     @pytest.mark.asyncio
-    async def test_execution_result_to_agent_response(self) -> None:
-        """Full ExecutionResult → AgentResponse conversion."""
-        agent_config = _make_agent()
+    async def test_execution_result_to_agent_response(
+        self, make_agent, make_mock_backend
+    ) -> None:
+        """Full ExecutionResult to AgentResponse conversion."""
         token_usage = TokenUsage(
             prompt_tokens=20,
             completion_tokens=10,
             total_tokens=30,
         )
-        mock_backend, _ = _make_mock_backend(
+        mock_backend, _ = make_mock_backend(
             response_text="Converted response",
             tool_calls=[
                 {"name": "search", "arguments": {"q": "test"}},
@@ -291,18 +233,18 @@ class TestAgentResponseStructure:
             token_usage=token_usage,
         )
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         response = await executor.execute_turn("Convert this")
 
-        # (1) result.response → response.content
+        # (1) result.response -> response.content
         assert response.content == "Converted response"
 
-        # (2) result.tool_calls → response.tool_executions
+        # (2) result.tool_calls -> response.tool_executions
         assert len(response.tool_executions) == 1
         assert response.tool_executions[0].tool_name == "search"
         assert isinstance(response.tool_executions[0], ToolExecution)
 
-        # (3) result.token_usage → response.tokens_used
+        # (3) result.token_usage -> response.tokens_used
         assert response.tokens_used is not None
         assert response.tokens_used.total_tokens == 30
 
@@ -312,7 +254,7 @@ class TestAgentResponseStructure:
 
 
 # ---------------------------------------------------------------------------
-# TestBackendExecutorExecution (T001–T007) — already uses mock backends
+# TestBackendExecutorExecution (T001-T007)
 # ---------------------------------------------------------------------------
 
 
@@ -320,12 +262,13 @@ class TestBackendExecutorExecution:
     """Test AgentExecutor with backend abstraction layer (T001-T007)."""
 
     @pytest.mark.asyncio
-    async def test_execute_turn_uses_session_send(self) -> None:
+    async def test_execute_turn_uses_session_send(
+        self, make_agent, make_mock_backend
+    ) -> None:
         """T001: backend= injection, session.send(), returns AgentResponse."""
-        agent_config = _make_agent()
-        mock_backend, mock_session = _make_mock_backend("Hi there!")
+        mock_backend, mock_session = make_mock_backend("Hi there!")
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         response = await executor.execute_turn("Hello")
 
         assert isinstance(response, AgentResponse)
@@ -333,12 +276,13 @@ class TestBackendExecutorExecution:
         mock_session.send.assert_awaited_once_with("Hello")
 
     @pytest.mark.asyncio
-    async def test_execute_turn_streaming_yields_chunks(self) -> None:
+    async def test_execute_turn_streaming_yields_chunks(
+        self, make_agent, make_mock_backend
+    ) -> None:
         """T002: execute_turn_streaming() yields chunks."""
-        agent_config = _make_agent()
-        mock_backend, _ = _make_mock_backend()
+        mock_backend, _ = make_mock_backend()
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         chunks: list[str] = []
         async for chunk in executor.execute_turn_streaming("Hello"):
             chunks.append(chunk)
@@ -346,33 +290,33 @@ class TestBackendExecutorExecution:
         assert chunks == ["Hello", " ", "world"]
 
     @pytest.mark.asyncio
-    async def test_auto_select_backend(self) -> None:
-        """T003: No backend= → BackendSelector.select() called."""
-        agent_config = _make_agent()
-        mock_backend, _ = _make_mock_backend()
+    async def test_auto_select_backend(self, make_agent, make_mock_backend) -> None:
+        """T003: No backend= means BackendSelector.select() is called."""
+        mock_backend, _ = make_mock_backend()
 
         with mock.patch(
             "holodeck.chat.executor.BackendSelector.select",
             new_callable=AsyncMock,
             return_value=mock_backend,
         ) as mock_select:
-            executor = AgentExecutor(agent_config)
+            executor = AgentExecutor(make_agent())
             await executor.execute_turn("Hello")
 
             mock_select.assert_awaited_once_with(
-                agent_config,
+                executor.agent_config,
                 tool_instances=None,
                 mode="chat",
                 allow_side_effects=False,
             )
 
     @pytest.mark.asyncio
-    async def test_get_history_tracks_messages(self) -> None:
-        """T004: 2 turns → 4 history entries."""
-        agent_config = _make_agent()
-        mock_backend, _ = _make_mock_backend("Response 1")
+    async def test_get_history_tracks_messages(
+        self, make_agent, make_mock_backend
+    ) -> None:
+        """T004: 2 turns produce 4 history entries."""
+        mock_backend, _ = make_mock_backend("Response 1")
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         await executor.execute_turn("Message 1")
 
         # Update mock for second turn
@@ -403,12 +347,13 @@ class TestBackendExecutorExecution:
         }
 
     @pytest.mark.asyncio
-    async def test_clear_history_closes_session(self) -> None:
+    async def test_clear_history_closes_session(
+        self, make_agent, make_mock_backend
+    ) -> None:
         """T005: clear_history() closes session and empties history."""
-        agent_config = _make_agent()
-        mock_backend, mock_session = _make_mock_backend()
+        mock_backend, mock_session = make_mock_backend()
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         await executor.execute_turn("Hello")
 
         await executor.clear_history()
@@ -418,12 +363,13 @@ class TestBackendExecutorExecution:
         assert executor.get_history() == []
 
     @pytest.mark.asyncio
-    async def test_shutdown_closes_session_and_backend(self) -> None:
+    async def test_shutdown_closes_session_and_backend(
+        self, make_agent, make_mock_backend
+    ) -> None:
         """T006: shutdown() closes session + tears down backend."""
-        agent_config = _make_agent()
-        mock_backend, mock_session = _make_mock_backend()
+        mock_backend, mock_session = make_mock_backend()
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
         await executor.execute_turn("Hello")
 
         await executor.shutdown()
@@ -432,13 +378,12 @@ class TestBackendExecutorExecution:
         mock_backend.teardown.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_backend_error_wrapped(self) -> None:
-        """T007: BackendSessionError → wrapped in RuntimeError."""
-        agent_config = _make_agent()
-        mock_backend, mock_session = _make_mock_backend()
+    async def test_backend_error_wrapped(self, make_agent, make_mock_backend) -> None:
+        """T007: BackendSessionError propagates directly for protocol-level handling."""
+        mock_backend, mock_session = make_mock_backend()
         mock_session.send.side_effect = BackendSessionError("Connection lost")
 
-        executor = AgentExecutor(agent_config, backend=mock_backend)
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
 
-        with pytest.raises(RuntimeError, match="Connection lost"):
+        with pytest.raises(BackendSessionError, match="Connection lost"):
             await executor.execute_turn("Hello")

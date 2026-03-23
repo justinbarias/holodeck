@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 from holodeck.lib.errors import HoloDeckError
 from holodeck.models.token_usage import TokenUsage
@@ -42,6 +42,33 @@ class ExecutionResult:
     num_turns: int = 1
     is_error: bool = False
     error_reason: str | None = None
+
+
+@dataclass
+class ToolEvent:
+    """Real-time tool execution event from the backend.
+
+    Emitted by backends that support hook-based tool observation (e.g. Claude
+    Agent SDK).  Events are pushed onto an ``asyncio.Queue`` that consumers
+    can drain concurrently during agent execution.
+
+    Attributes:
+        kind: Event type — ``"start"`` before execution, ``"end"`` after
+            success, ``"error"`` after failure.
+        tool_name: Name of the tool being invoked.
+        tool_use_id: Unique identifier correlating start/end/error for the
+            same invocation.
+        tool_input: Tool input parameters (present on ``"start"``).
+        tool_response: Tool output (present on ``"end"``).
+        error: Error description (present on ``"error"``).
+    """
+
+    kind: Literal["start", "end", "error"]
+    tool_name: str
+    tool_use_id: str
+    tool_input: dict[str, Any] | None = None
+    tool_response: str | None = None
+    error: str | None = None
 
 
 @runtime_checkable

@@ -75,6 +75,4 @@ jobs:
           report_type: test_results
 
       - name: Security scan
-        run: |
-          uv run bandit -r src/
-          uv run safety check --ignore=80470
+        run: make security
