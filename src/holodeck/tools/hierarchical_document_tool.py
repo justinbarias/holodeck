@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -445,7 +446,11 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         domain_key = self.config.document_domain.value
         return DOMAIN_PATTERNS.get(domain_key)
 
-    async def _ingest_documents(self, force_ingest: bool = False) -> int:
+    async def _ingest_documents(
+        self,
+        force_ingest: bool = False,
+        progress_callback: Callable[[int, int | None], None] | None = None,
+    ) -> int:
         """Ingest all configured documents through the ingestion pipeline.
 
         Pipeline stages:
@@ -461,6 +466,8 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Args:
             force_ingest: If True, re-ingest all files regardless of modification
                 time. Existing records will be deleted before re-ingestion.
+            progress_callback: Optional callback invoked after each file is
+                processed (or skipped). Called as ``callback(current, total)``.
 
         Returns:
             Number of files skipped (unchanged since last ingestion).
@@ -507,6 +514,8 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         skipped_files = 0
         ingested_files = 0
+        processed_count = 0
+        total_files = len(files)
 
         for file_path in files:
             # Check if file needs re-ingestion (unless force_ingest)
@@ -515,6 +524,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 if not needs_reingest:
                     logger.debug(f"Skipping unchanged file: {file_path}")
                     skipped_files += 1
+                    processed_count += 1
+                    if progress_callback is not None:
+                        progress_callback(processed_count, total_files)
                     continue
             else:
                 # Force ingest: delete existing records first
@@ -524,6 +536,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             markdown_content = await self._convert_to_markdown(str(file_path))
             if not markdown_content.strip():
                 logger.warning(f"Empty content from {file_path}, skipping")
+                processed_count += 1
+                if progress_callback is not None:
+                    progress_callback(processed_count, total_files)
                 continue
 
             mtime = file_path.stat().st_mtime
@@ -538,6 +553,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 logger.debug(
                     f"No content chunks after filtering headers from {file_path}"
                 )
+                processed_count += 1
+                if progress_callback is not None:
+                    progress_callback(processed_count, total_files)
                 continue
 
             # 4. Context generation (if enabled and generator available)
@@ -574,6 +592,10 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             await self._store_chunks(chunks)
             self._chunks.extend(chunks)
             ingested_files += 1
+
+            processed_count += 1
+            if progress_callback is not None:
+                progress_callback(processed_count, total_files)
 
             logger.debug(f"Ingested {len(chunks)} chunks from {file_path}")
 
@@ -899,7 +921,10 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         return results
 
     async def initialize(
-        self, force_ingest: bool = True, provider_type: str | None = None
+        self,
+        force_ingest: bool = True,
+        provider_type: str | None = None,
+        progress_callback: Callable[[int, int | None], None] | None = None,
     ) -> None:
         """Initialize the tool by processing all configured documents.
 
@@ -917,6 +942,10 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 before re-ingestion.
             provider_type: LLM provider for dimension auto-detection
                 (defaults to "openai" if not specified).
+            progress_callback: Optional callback invoked after each file is
+                processed (or skipped). Called as ``callback(current, total)``
+                where *current* is the 1-based file index and *total* is the
+                total number of discovered files.
 
         Raises:
             FileNotFoundError: If a document file is not found.
@@ -932,7 +961,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self._setup_collection(provider_type)
 
         # Ingest all documents (with incremental check)
-        skipped_files = await self._ingest_documents(force_ingest=force_ingest)
+        skipped_files = await self._ingest_documents(
+            force_ingest=force_ingest, progress_callback=progress_callback
+        )
 
         # Rebuild BM25 index from stored chunks when files were skipped.
         # The BM25 index is in-memory only and doesn't survive restarts.

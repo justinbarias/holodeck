@@ -1719,3 +1719,104 @@ class TestHierarchicalDocumentToolConfigEmbeddingModel:
             embedding_model="text-embedding-3-large",
         )
         assert config.embedding_model == "text-embedding-3-large"
+
+
+class TestSourceSchemeValidation:
+    """Tests for source field URI scheme validation.
+
+    Covers VectorstoreTool and HierarchicalDocumentToolConfig.
+    """
+
+    def test_vectorstore_source_local_path_accepted(self) -> None:
+        """Test that a relative local path is accepted."""
+        tool = VectorstoreTool(
+            name="test", description="test", type="vectorstore", source="./data/docs"
+        )
+        assert tool.source == "./data/docs"
+
+    def test_vectorstore_source_absolute_path_accepted(self) -> None:
+        """Test that an absolute local path is accepted."""
+        tool = VectorstoreTool(
+            name="test", description="test", type="vectorstore", source="/abs/path"
+        )
+        assert tool.source == "/abs/path"
+
+    def test_vectorstore_source_s3_uri_accepted(self) -> None:
+        """Test that an s3:// URI is accepted."""
+        tool = VectorstoreTool(
+            name="test",
+            description="test",
+            type="vectorstore",
+            source="s3://bucket/prefix/",
+        )
+        assert tool.source == "s3://bucket/prefix/"
+
+    def test_vectorstore_source_az_uri_accepted(self) -> None:
+        """Test that an az:// URI is accepted."""
+        tool = VectorstoreTool(
+            name="test",
+            description="test",
+            type="vectorstore",
+            source="az://container/prefix/",
+        )
+        assert tool.source == "az://container/prefix/"
+
+    def test_vectorstore_source_https_uri_accepted(self) -> None:
+        """Test that an https:// URI is accepted."""
+        tool = VectorstoreTool(
+            name="test",
+            description="test",
+            type="vectorstore",
+            source="https://example.com/f.md",
+        )
+        assert tool.source == "https://example.com/f.md"
+
+    def test_vectorstore_source_http_uri_accepted(self) -> None:
+        """Test that an http:// URI is accepted."""
+        tool = VectorstoreTool(
+            name="test",
+            description="test",
+            type="vectorstore",
+            source="http://example.com/f.md",
+        )
+        assert tool.source == "http://example.com/f.md"
+
+    def test_vectorstore_source_file_uri_accepted(self) -> None:
+        """Test that a file:// URI is accepted."""
+        tool = VectorstoreTool(
+            name="test",
+            description="test",
+            type="vectorstore",
+            source="file:///local/path",
+        )
+        assert tool.source == "file:///local/path"
+
+    def test_vectorstore_source_unsupported_scheme_rejected(self) -> None:
+        """Test that an unsupported URI scheme (ftp) is rejected."""
+        with pytest.raises(ValidationError, match="Unsupported source URI scheme"):
+            VectorstoreTool(
+                name="test",
+                description="test",
+                type="vectorstore",
+                source="ftp://host/f",
+            )
+
+    def test_hierarchical_doc_source_s3_accepted(self) -> None:
+        """Test that s3:// URI is accepted for HierarchicalDocumentToolConfig."""
+        config = HierarchicalDocumentToolConfig(
+            name="test",
+            description="test",
+            type="hierarchical_document",
+            source="s3://bucket/prefix/",
+        )
+        assert config.source == "s3://bucket/prefix/"
+
+    def test_hierarchical_doc_source_unsupported_rejected(self) -> None:
+        """Test that ftp is rejected for HierarchicalDocumentToolConfig."""
+        with pytest.raises(ValidationError, match="Unsupported source URI scheme"):
+            HierarchicalDocumentToolConfig(
+                name="test",
+                description="test",
+                type="hierarchical_document",
+                source="ftp://host/f",
+            )

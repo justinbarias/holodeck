@@ -21,6 +21,7 @@ from holodeck.lib.tool_initializer import (
     _resolve_context_generator,
     _resolve_context_model_config,
     create_embedding_service,
+    initialize_single_tool,
     initialize_tools,
     resolve_embedding_model,
 )
@@ -802,3 +803,206 @@ class TestResolveContextGenerator:
             chat_service=None,
         )
         assert result is None
+
+
+# ===================================================================
+# T013: TestInitializeSingleTool
+# ===================================================================
+
+
+def _make_function_tool(name: str = "my_function") -> Any:
+    """Create a FunctionTool config fixture."""
+    from holodeck.models.tool import FunctionTool
+
+    return FunctionTool(
+        name=name,
+        description=f"Function {name}",
+        file="some/module.py",
+        function="some_func",
+    )
+
+
+class TestInitializeSingleTool:
+    """Tests for initialize_single_tool() (T013)."""
+
+    @pytest.mark.asyncio
+    async def test_initializes_vectorstore_by_name(self) -> None:
+        """Finds vectorstore tool by name and initializes it."""
+        tool = _make_vectorstore_tool(name="vs_single")
+        agent = _make_agent(tools=[tool])
+
+        mock_vs_instance = MagicMock()
+        mock_vs_instance.set_embedding_service = MagicMock()
+        mock_vs_instance.initialize = AsyncMock()
+        mock_vs_cls = MagicMock(return_value=mock_vs_instance)
+
+        with (
+            patch(
+                "holodeck.lib.tool_initializer.create_embedding_service"
+            ) as mock_embed,
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                mock_vs_cls,
+            ),
+        ):
+            await initialize_single_tool(agent, "vs_single")
+
+            mock_embed.assert_called_once_with(agent)
+            mock_vs_cls.assert_called_once_with(tool)
+            mock_vs_instance.set_embedding_service.assert_called_once()
+            mock_vs_instance.initialize.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_initializes_hierarchical_doc_by_name(self) -> None:
+        """Finds hierarchical_document tool by name and initializes it."""
+        tool = _make_hierarchical_doc_tool(name="hd_single")
+        agent = _make_agent(tools=[tool])
+
+        mock_hd_instance = MagicMock()
+        mock_hd_instance.set_embedding_service = MagicMock()
+        mock_hd_instance.initialize = AsyncMock()
+        mock_hd_cls = MagicMock(return_value=mock_hd_instance)
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.hierarchical_document_tool.HierarchicalDocumentTool",
+                mock_hd_cls,
+            ),
+        ):
+            await initialize_single_tool(agent, "hd_single")
+
+            mock_hd_cls.assert_called_once_with(tool)
+            mock_hd_instance.set_embedding_service.assert_called_once()
+            mock_hd_instance.initialize.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_unknown_tool_name_raises(self) -> None:
+        """Non-existent tool name raises ToolInitializerError."""
+        tool = _make_vectorstore_tool(name="existing")
+        agent = _make_agent(tools=[tool])
+
+        with pytest.raises(ToolInitializerError, match="Tool not found.*ghost"):
+            await initialize_single_tool(agent, "ghost")
+
+    @pytest.mark.asyncio
+    async def test_non_init_tool_type_raises(self) -> None:
+        """Function tool raises ToolInitializerError."""
+        func_tool = _make_function_tool(name="my_func")
+        agent = _make_agent(tools=[func_tool])
+
+        with pytest.raises(
+            ToolInitializerError, match="does not support initialization"
+        ):
+            await initialize_single_tool(agent, "my_func")
+
+    @pytest.mark.asyncio
+    async def test_force_ingest_propagated(self) -> None:
+        """force_ingest=True passed to tool.initialize()."""
+        tool = _make_vectorstore_tool(name="vs_force")
+        agent = _make_agent(tools=[tool])
+
+        mock_vs_instance = MagicMock()
+        mock_vs_instance.set_embedding_service = MagicMock()
+        mock_vs_instance.initialize = AsyncMock()
+        mock_vs_cls = MagicMock(return_value=mock_vs_instance)
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                mock_vs_cls,
+            ),
+        ):
+            await initialize_single_tool(agent, "vs_force", force_ingest=True)
+
+            _, kwargs = mock_vs_instance.initialize.call_args
+            assert kwargs["force_ingest"] is True
+
+    @pytest.mark.asyncio
+    async def test_progress_callback_forwarded(self) -> None:
+        """progress_callback passed to tool.initialize()."""
+        tool = _make_vectorstore_tool(name="vs_progress")
+        agent = _make_agent(tools=[tool])
+
+        mock_vs_instance = MagicMock()
+        mock_vs_instance.set_embedding_service = MagicMock()
+        mock_vs_instance.initialize = AsyncMock()
+        mock_vs_cls = MagicMock(return_value=mock_vs_instance)
+
+        def my_callback(current: int, total: int | None) -> None:
+            pass
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                mock_vs_cls,
+            ),
+        ):
+            await initialize_single_tool(
+                agent, "vs_progress", progress_callback=my_callback
+            )
+
+            _, kwargs = mock_vs_instance.initialize.call_args
+            assert kwargs["progress_callback"] is my_callback
+
+    @pytest.mark.asyncio
+    async def test_source_override_shallow_copy(self) -> None:
+        """source_override creates a copy, original config unchanged."""
+        from pathlib import Path
+
+        tool = _make_vectorstore_tool(name="vs_override")
+        original_source = tool.source
+        agent = _make_agent(tools=[tool])
+
+        mock_vs_instance = MagicMock()
+        mock_vs_instance.set_embedding_service = MagicMock()
+        mock_vs_instance.initialize = AsyncMock()
+        mock_vs_cls = MagicMock(return_value=mock_vs_instance)
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                mock_vs_cls,
+            ),
+        ):
+            await initialize_single_tool(
+                agent,
+                "vs_override",
+                source_override=Path("/data/override_source"),
+            )
+
+            # Original config should be unchanged
+            assert tool.source == original_source
+
+            # The tool class should have received a config with the new source
+            call_args = mock_vs_cls.call_args[0]
+            passed_config = call_args[0]
+            assert str(passed_config.source) == "/data/override_source"
+
+    @pytest.mark.asyncio
+    async def test_no_source_override_uses_original(self) -> None:
+        """Without source_override, original config source used."""
+        tool = _make_vectorstore_tool(name="vs_orig")
+        agent = _make_agent(tools=[tool])
+
+        mock_vs_instance = MagicMock()
+        mock_vs_instance.set_embedding_service = MagicMock()
+        mock_vs_instance.initialize = AsyncMock()
+        mock_vs_cls = MagicMock(return_value=mock_vs_instance)
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                mock_vs_cls,
+            ),
+        ):
+            await initialize_single_tool(agent, "vs_orig")
+
+            # The tool class should have received the original config
+            call_args = mock_vs_cls.call_args[0]
+            passed_config = call_args[0]
+            assert passed_config is tool

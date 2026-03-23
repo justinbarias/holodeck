@@ -8,7 +8,9 @@ wrappers around OpenAI/Azure/Ollama APIs and do NOT require the full SK kernel.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
 from holodeck.lib.errors import HoloDeckError
 from holodeck.models.llm import ProviderEnum
@@ -585,3 +587,83 @@ async def initialize_hierarchical_doc_tools(
             ) from exc
 
     return instances
+
+
+async def initialize_single_tool(
+    agent: Agent,
+    tool_name: str,
+    force_ingest: bool = False,
+    progress_callback: Callable[[int, int | None], None] | None = None,
+    source_override: Path | None = None,
+) -> None:
+    """Initialize a single tool by name.
+
+    Finds the tool config in the agent, creates an embedding service,
+    and initializes the tool. Used by ToolInitManager for async init jobs.
+
+    Args:
+        agent: Agent configuration containing tool definitions.
+        tool_name: Name of the tool to initialize.
+        force_ingest: If True, force re-ingestion of all source files.
+        progress_callback: Optional callback for progress reporting.
+        source_override: Optional path to use instead of the configured source.
+
+    Raises:
+        ToolInitializerError: If tool not found, not initializable, or init fails.
+    """
+    from holodeck.models.tool import HierarchicalDocumentToolConfig
+    from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
+    from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+    from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+    # Find tool config by name
+    tool_config = None
+    for t in agent.tools or []:
+        if t.name == tool_name:
+            tool_config = t
+            break
+
+    if tool_config is None:
+        raise ToolInitializerError(f"Tool not found: '{tool_name}'")
+
+    # Type check — only vectorstore and hierarchical_document tools can be initialized
+    is_vectorstore = isinstance(tool_config, VectorstoreToolConfig)
+    is_hierarchical = isinstance(tool_config, HierarchicalDocumentToolConfig)
+
+    if not (is_vectorstore or is_hierarchical):
+        raise ToolInitializerError(
+            f"Tool '{tool_name}' (type: {tool_config.type}) does not support "
+            "initialization. Only vectorstore and hierarchical_document tools "
+            "can be initialized."
+        )
+
+    # Source override: use Pydantic v2 model_copy to avoid mutating original config
+    if source_override is not None:
+        tool_config = tool_config.model_copy(update={"source": str(source_override)})
+
+    # Create embedding service
+    embedding_service = create_embedding_service(agent)
+
+    # Resolve provider type for dimension resolution
+    provider_type = _resolve_embedding_provider(agent).value
+
+    if is_vectorstore:
+        vs_tool = VectorStoreTool(cast(VectorstoreToolConfig, tool_config))
+        vs_tool.set_embedding_service(embedding_service)
+        await vs_tool.initialize(
+            force_ingest=force_ingest,
+            provider_type=provider_type,
+            progress_callback=progress_callback,
+        )
+    else:
+        hd_tool = HierarchicalDocumentTool(
+            cast(HierarchicalDocumentToolConfig, tool_config)
+        )
+        hd_tool.set_embedding_service(embedding_service)
+        await hd_tool.initialize(
+            force_ingest=force_ingest,
+            provider_type=provider_type,
+            progress_callback=progress_callback,
+        )
+
+    logger.info("Initialized single tool: %s", tool_name)

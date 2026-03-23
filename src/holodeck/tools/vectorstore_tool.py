@@ -17,6 +17,7 @@ Features:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -646,7 +647,10 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self.document_count = total_records
 
     async def initialize(
-        self, force_ingest: bool = False, provider_type: str | None = None
+        self,
+        force_ingest: bool = False,
+        provider_type: str | None = None,
+        progress_callback: Callable[[int, int | None], None] | None = None,
     ) -> None:
         """Initialize tool and ingest source files.
 
@@ -661,6 +665,10 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             force_ingest: If True, re-ingest all files regardless of modification time.
             provider_type: LLM provider for dimension auto-detection
                 (defaults to "openai" if not specified)
+            progress_callback: Optional callback invoked after each file is
+                processed (or skipped). Called as ``callback(current, total)``
+                where *current* is the 1-based file index and *total* is the
+                total number of discovered files.
 
         Raises:
             FileNotFoundError: If the source path doesn't exist.
@@ -715,6 +723,8 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         # Process each file with mtime checking
         total_chunks = 0
         skipped_files = 0
+        processed_count = 0
+        total_files = len(files)
 
         for file_path in files:
             # Check if file needs re-ingestion (unless force_ingest)
@@ -723,6 +733,9 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 if not needs_reingest:
                     logger.debug(f"Skipping unchanged file: {file_path}")
                     skipped_files += 1
+                    processed_count += 1
+                    if progress_callback is not None:
+                        progress_callback(processed_count, total_files)
                     continue
             else:
                 # Force ingest: delete existing records first
@@ -730,6 +743,9 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
             source_file = await self._process_file(file_path)
             if source_file is None:
+                processed_count += 1
+                if progress_callback is not None:
+                    progress_callback(processed_count, total_files)
                 continue
 
             # Generate embeddings
@@ -738,6 +754,10 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             # Store chunks
             chunks_stored = await self._store_chunks(source_file, embeddings)
             total_chunks += chunks_stored
+
+            processed_count += 1
+            if progress_callback is not None:
+                progress_callback(processed_count, total_files)
 
         self.document_count = total_chunks
         self.is_initialized = True

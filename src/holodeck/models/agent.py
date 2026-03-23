@@ -4,9 +4,16 @@ This module defines the main Agent model and related configuration used
 in agent.yaml files.
 """
 
+import sys
+from collections import Counter
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from holodeck.lib.tool_filter.models import ToolFilterConfig
 from holodeck.models.claude_config import ClaudeConfig
@@ -167,3 +174,21 @@ class Agent(BaseModel):
         if v is not None and len(v) > 100:
             raise ValueError("Maximum 100 test cases per agent")
         return v
+
+    @model_validator(mode="after")
+    def validate_tool_name_uniqueness(self) -> Self:
+        """Validate that all tool names are unique across tool types.
+
+        Raises:
+            ValueError: If duplicate tool names are found, listing them.
+        """
+        if not self.tools:
+            return self
+        counts = Counter(tool.name for tool in self.tools)
+        duplicates = sorted(name for name, count in counts.items() if count > 1)
+        if duplicates:
+            raise ValueError(
+                f"Duplicate tool names found: {', '.join(duplicates)}. "
+                "Each tool must have a unique name."
+            )
+        return self

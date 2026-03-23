@@ -250,3 +250,41 @@ class TestGeneratePlaceholderEmbeddings:
         """generate_placeholder_embeddings handles zero count."""
         result = generate_placeholder_embeddings(0)
         assert result == []
+
+
+class TestResolveSourcePathURISchemes:
+    """Tests for URI scheme handling in resolve_source_path (T026)."""
+
+    def test_s3_uri_raises(self) -> None:
+        """resolve_source_path raises ValueError for s3:// URIs."""
+        with pytest.raises(ValueError, match="SourceResolver"):
+            resolve_source_path("s3://bucket/prefix")
+
+    def test_az_uri_raises(self) -> None:
+        """resolve_source_path raises ValueError for az:// URIs."""
+        with pytest.raises(ValueError, match="SourceResolver"):
+            resolve_source_path("az://container/prefix")
+
+    def test_https_uri_raises(self) -> None:
+        """resolve_source_path raises ValueError for https:// URIs."""
+        with pytest.raises(ValueError, match="SourceResolver"):
+            resolve_source_path("https://example.com/file.md")
+
+    def test_http_uri_raises(self) -> None:
+        """resolve_source_path raises ValueError for http:// URIs."""
+        with pytest.raises(ValueError, match="SourceResolver"):
+            resolve_source_path("http://example.com/file.md")
+
+    def test_local_path_still_works(self, tmp_path: Path) -> None:
+        """resolve_source_path still works for local paths."""
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        result = resolve_source_path(str(data_dir))
+        assert result == data_dir.resolve()
+
+    def test_absolute_path_still_works(self, tmp_path: Path) -> None:
+        """resolve_source_path returns absolute path for local directories."""
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        result = resolve_source_path(str(data_dir))
+        assert result.is_absolute()
