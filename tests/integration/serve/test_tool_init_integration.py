@@ -1,10 +1,8 @@
-"""Integration tests for POST /tools/{tool_name}/init endpoint.
+"""Integration tests for tool init endpoints (POST and GET).
 
 Tests the full HTTP path through AgentServer → tool_init_routes → ToolInitManager
 using a real FastAPI app with realistic agent configurations. The actual tool
 initialization background task is mocked to avoid needing real embedding providers.
-
-These tests exercise the wiring between components (T027-T030) end-to-end.
 """
 
 from __future__ import annotations
@@ -259,3 +257,54 @@ class TestToolInitEndpointIntegration:
 
         health_again = await integration_client.get("/health")
         assert health_again.status_code == 200
+
+
+@pytest.mark.integration
+class TestGetToolInitIntegration:
+    """Integration tests for GET /tools/{tool_name}/init (US2)."""
+
+    @pytest.mark.asyncio
+    async def test_get_init_no_prior_post_returns_404(
+        self, integration_client: AsyncClient
+    ) -> None:
+        """GET without a prior POST returns 404 ProblemDetail."""
+        response = await integration_client.get("/tools/knowledge_base/init")
+
+        assert response.status_code == 404
+        body = response.json()
+        assert body["title"] == "Not Found"
+        assert body["status"] == 404
+        assert "application/problem+json" in response.headers["content-type"]
+
+    @pytest.mark.asyncio
+    async def test_get_init_after_post_returns_200(
+        self, integration_client: AsyncClient
+    ) -> None:
+        """GET after POST returns 200 with matching job state."""
+        with (
+            patch(
+                "holodeck.serve.tool_init_manager.initialize_single_tool",
+                new_callable=AsyncMock,
+            ),
+            patch("holodeck.serve.tool_init_manager.SourceResolver") as mock_sr,
+        ):
+            mock_resolved = MagicMock()
+            mock_resolved.local_path = Path("./data")
+            mock_resolved.is_remote = False
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__ = AsyncMock(return_value=mock_resolved)
+            mock_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sr.resolve_context.return_value = mock_ctx
+
+            # Create the job
+            post_resp = await integration_client.post("/tools/knowledge_base/init")
+            assert post_resp.status_code == 201
+
+            # Poll the job
+            get_resp = await integration_client.get("/tools/knowledge_base/init")
+
+        assert get_resp.status_code == 200
+        body = get_resp.json()
+        assert body["tool_name"] == "knowledge_base"
+        assert body["href"] == "/tools/knowledge_base/init"
+        assert "created_at" in body
