@@ -17,6 +17,7 @@ Features:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -130,12 +131,70 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self._collection: Any = None
         self._provider: str = "in-memory"
 
+        # Source context for stable record keys (remote sources)
+        self._source_root: Path | None = None
+        self._is_remote: bool = False
+
         logger.debug(
             f"VectorStoreTool initialized: name={config.name}, "
             f"source={config.source}, base_dir={base_dir}, top_k={config.top_k}"
         )
 
     # set_embedding_service is inherited from EmbeddingServiceMixin
+
+    def set_source_context(self, source_root: Path, is_remote: bool) -> None:
+        """Set source context for stable record keys.
+
+        Called by tool_initializer when a remote source is resolved.
+        Enables stable keys (relative paths) and content-hash-based
+        change detection for remote sources.
+
+        Args:
+            source_root: Root directory of the resolved source.
+            is_remote: Whether the source was resolved from a remote URI.
+        """
+        self._source_root = source_root
+        self._is_remote = is_remote
+
+    def _compute_source_key(self, file_path: Path) -> str:
+        """Compute a stable source key for a file.
+
+        For remote sources, returns the path relative to source_root
+        (stable across temp dirs). For local sources, returns the
+        absolute path string (backward compatible with existing records).
+
+        Args:
+            file_path: Absolute path to the file.
+
+        Returns:
+            Stable string key for record storage and lookup.
+        """
+        if self._is_remote and self._source_root is not None:
+            return str(file_path.relative_to(self._source_root))
+        return str(file_path)
+
+    def _compute_content_hash(self, file_path: Path) -> str:
+        """Compute SHA-256 hash of file content for change detection.
+
+        Only used for remote sources where mtime is unreliable (files are
+        freshly downloaded each time). Returns empty string for local
+        sources which use mtime instead.
+
+        Args:
+            file_path: Path to the file to hash.
+
+        Returns:
+            SHA-256 hex digest for remote sources, empty string for local.
+        """
+        if not self._is_remote:
+            return ""
+        import hashlib
+
+        h = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for block in iter(lambda: f.read(8192), b""):
+                h.update(block)
+        return h.hexdigest()
 
     def _is_structured_mode(self) -> bool:
         """Check if tool is configured for structured data mode.
@@ -429,19 +488,23 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         record_class = create_document_record_class(self._embedding_dimensions)
 
+        source_key = self._compute_source_key(source_file.path)
+        content_hash = self._compute_content_hash(source_file.path)
+
         records: list[Any] = []
         for idx, (chunk, embedding) in enumerate(
             zip(source_file.chunks, embeddings, strict=False)
         ):
             record = record_class(
-                id=f"{source_file.path}_chunk_{idx}",
-                source_path=str(source_file.path),
+                id=f"{source_key}_chunk_{idx}",
+                source_path=source_key,
                 chunk_index=idx,
                 content=chunk,
                 embedding=embedding,
                 mtime=source_file.mtime,
                 file_type=source_file.file_type,
                 file_size_bytes=source_file.size_bytes,
+                content_hash=content_hash,
             )
             records.append(record)
 
@@ -470,23 +533,30 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         if self._collection is None:
             return True  # No collection, must ingest
 
-        # Round to 6 decimal places to match stored precision
-        current_mtime = round(file_path.stat().st_mtime, 6)
-        source_path_str = str(file_path)
+        source_key = self._compute_source_key(file_path)
 
         # Query for existing record by ID pattern
         async with self._collection as collection:
             try:
                 # Get first chunk to check mtime (all chunks share same mtime)
-                record_id = f"{source_path_str}_chunk_0"
+                record_id = f"{source_key}_chunk_0"
                 record = await collection.get(record_id)
 
                 if record is None:
                     return True  # Not in store, must ingest
 
-                stored_mtime: float = float(record.mtime)
-                should_reingest = current_mtime > stored_mtime
-                return should_reingest
+                if self._is_remote:
+                    # For remote sources, compare content hash
+                    current_hash = self._compute_content_hash(file_path)
+                    stored_hash = getattr(record, "content_hash", "")
+                    if not stored_hash:
+                        return True  # No hash stored (old record), must reingest
+                    return current_hash != stored_hash
+                else:
+                    # For local sources, compare mtime (backward compat)
+                    current_mtime = round(file_path.stat().st_mtime, 6)
+                    stored_mtime: float = float(record.mtime)
+                    return current_mtime > stored_mtime
 
             except Exception as e:
                 logger.debug(f"Could not retrieve record for {file_path}: {e}")
@@ -504,13 +574,13 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         if self._collection is None:
             return 0
 
-        source_path_str = str(file_path)
+        source_key = self._compute_source_key(file_path)
         deleted_count = 0
 
         async with self._collection as collection:
             chunk_index = 0
             while True:
-                record_id = f"{source_path_str}_chunk_{chunk_index}"
+                record_id = f"{source_key}_chunk_{chunk_index}"
                 try:
                     record = await collection.get(record_id)
                     if record is None:
@@ -646,7 +716,10 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self.document_count = total_records
 
     async def initialize(
-        self, force_ingest: bool = False, provider_type: str | None = None
+        self,
+        force_ingest: bool = False,
+        provider_type: str | None = None,
+        progress_callback: Callable[[int, int | None], None] | None = None,
     ) -> None:
         """Initialize tool and ingest source files.
 
@@ -661,6 +734,10 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             force_ingest: If True, re-ingest all files regardless of modification time.
             provider_type: LLM provider for dimension auto-detection
                 (defaults to "openai" if not specified)
+            progress_callback: Optional callback invoked after each file is
+                processed (or skipped). Called as ``callback(current, total)``
+                where *current* is the 1-based file index and *total* is the
+                total number of discovered files.
 
         Raises:
             FileNotFoundError: If the source path doesn't exist.
@@ -715,6 +792,8 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         # Process each file with mtime checking
         total_chunks = 0
         skipped_files = 0
+        processed_count = 0
+        total_files = len(files)
 
         for file_path in files:
             # Check if file needs re-ingestion (unless force_ingest)
@@ -723,6 +802,9 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 if not needs_reingest:
                     logger.debug(f"Skipping unchanged file: {file_path}")
                     skipped_files += 1
+                    processed_count += 1
+                    if progress_callback is not None:
+                        progress_callback(processed_count, total_files)
                     continue
             else:
                 # Force ingest: delete existing records first
@@ -730,6 +812,9 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
             source_file = await self._process_file(file_path)
             if source_file is None:
+                processed_count += 1
+                if progress_callback is not None:
+                    progress_callback(processed_count, total_files)
                 continue
 
             # Generate embeddings
@@ -738,6 +823,10 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             # Store chunks
             chunks_stored = await self._store_chunks(source_file, embeddings)
             total_chunks += chunks_stored
+
+            processed_count += 1
+            if progress_callback is not None:
+                progress_callback(processed_count, total_files)
 
         self.document_count = total_chunks
         self.is_initialized = True

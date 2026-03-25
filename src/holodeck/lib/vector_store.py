@@ -500,6 +500,7 @@ def create_document_record_class(dimensions: int = 1536) -> type[Any]:
         mtime: Annotated[float, VectorStoreField("data")] = field(default=0.0)
         file_type: Annotated[str, VectorStoreField("data")] = field(default="")
         file_size_bytes: Annotated[int, VectorStoreField("data")] = field(default=0)
+        content_hash: Annotated[str, VectorStoreField("data")] = field(default="")
 
     return cast(type[Any], DynamicDocumentRecord)
 
@@ -762,6 +763,7 @@ def create_hierarchical_document_record_class(
             str, VectorStoreField("data", is_indexed=True)
         ] = field(default="")
         subsection_ids: Annotated[str, VectorStoreField("data")] = field(default="[]")
+        content_hash: Annotated[str, VectorStoreField("data")] = field(default="")
 
     return cast(type[Any], DynamicHierarchicalDocumentRecord)
 

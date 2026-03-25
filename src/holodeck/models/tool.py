@@ -26,6 +26,35 @@ from pydantic import (
 
 from holodeck.models.llm import LLMProvider
 
+_SUPPORTED_SOURCE_SCHEMES = {"s3", "az", "https", "http", "file"}
+
+
+def _validate_source_scheme(v: str) -> str:
+    """Validate the URI scheme of a source field value.
+
+    Local paths (no ``://``) are returned as-is.  URIs must use one of the
+    supported schemes: s3, az, https, http, file.
+
+    Args:
+        v: The source string to validate.
+
+    Returns:
+        The unchanged source string if valid.
+
+    Raises:
+        ValueError: If the URI scheme is not in the supported set.
+    """
+    if "://" not in v:
+        return v
+    scheme = v.split("://", 1)[0].lower()
+    if scheme not in _SUPPORTED_SOURCE_SCHEMES:
+        supported = ", ".join(sorted(_SUPPORTED_SOURCE_SCHEMES))
+        raise ValueError(
+            f"Unsupported source URI scheme '{scheme}'. "
+            f"Supported schemes: {supported}"
+        )
+    return v
+
 
 class TransportType(str, Enum):
     """Supported MCP transport types.
@@ -326,10 +355,10 @@ class VectorstoreTool(BaseModel):
     @field_validator("source")
     @classmethod
     def validate_source(cls, v: str) -> str:
-        """Validate source is not empty."""
+        """Validate source is not empty and has a supported URI scheme."""
         if not v or not v.strip():
             raise ValueError("source must be a non-empty path")
-        return v
+        return _validate_source_scheme(v)
 
     @field_validator("database")
     @classmethod
@@ -817,10 +846,10 @@ class HierarchicalDocumentToolConfig(BaseModel):
     @field_validator("source")
     @classmethod
     def validate_source(cls, v: str) -> str:
-        """Validate source is not empty."""
+        """Validate source is not empty and has a supported URI scheme."""
         if not v or not v.strip():
             raise ValueError("source must be a non-empty path")
-        return v
+        return _validate_source_scheme(v)
 
     @field_validator("min_score")
     @classmethod

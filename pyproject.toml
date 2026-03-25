@@ -45,6 +45,7 @@ dependencies = [
     "opensearch-py>=2.0.0,<3.0.0",  # OpenSearch client for production keyword index
     "tiktoken>=0.12.0",
     "aiohttp>=3.13.3",
+    "httpx>=0.27",
     "authlib>=1.6.9",
     "azure-core>=1.38.0",
     "claude-agent-sdk==0.1.44",
@@ -117,6 +118,11 @@ claude-otel = ["otel-instrumentation-claude-agent-sdk>=0.0.3,<0.1.0"]
 # Deployment engine
 deploy = ["docker>=7.0.0"]
 deploy-aws = ["boto3>=1.42.0"]
+
+# Cloud source resolvers for tool init
+s3 = ["boto3>=1.42.0"]
+azure-blob = ["azure-storage-blob>=12.19"]
+all-sources = ["boto3>=1.42.0", "azure-storage-blob>=12.19"]
 deploy-gcp = ["google-cloud-run>=0.13.0"]
 deploy-azure = ["azure-mgmt-appcontainers>=4.0.0", "azure-identity>=1.15.0"]
 deploy-all = [

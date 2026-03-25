@@ -250,3 +250,26 @@ class TestGeneratePlaceholderEmbeddings:
         """generate_placeholder_embeddings handles zero count."""
         result = generate_placeholder_embeddings(0)
         assert result == []
+
+
+class TestResolveSourcePathURISchemes:
+    """Tests for resolve_source_path with various source types.
+
+    Note: Remote source resolution (s3://, az://, etc.) is handled upstream
+    by SourceResolver in tool_initializer.py. resolve_source_path only sees
+    local paths after resolution.
+    """
+
+    def test_local_path_still_works(self, tmp_path: Path) -> None:
+        """resolve_source_path still works for local paths."""
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        result = resolve_source_path(str(data_dir))
+        assert result == data_dir.resolve()
+
+    def test_absolute_path_still_works(self, tmp_path: Path) -> None:
+        """resolve_source_path returns absolute path for local directories."""
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        result = resolve_source_path(str(data_dir))
+        assert result.is_absolute()
