@@ -6,9 +6,14 @@ class HoloDeckError(Exception):
 
     All HoloDeck-specific exceptions inherit from this class, enabling
     centralized exception handling and error tracking.
+
+    Attributes:
+        context: Optional dict of additional error context for debugging.
     """
 
-    pass
+    def __init__(self, *args: object, context: dict | None = None) -> None:
+        super().__init__(*args)
+        self.context = context or {}
 
 
 class ConfigError(HoloDeckError):
