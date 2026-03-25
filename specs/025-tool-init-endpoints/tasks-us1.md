@@ -93,25 +93,25 @@ These tasks build the core orchestration, tool initialization, and source resolu
 
 These tasks implement the POST endpoint, route registration, shutdown wiring, and OTel instrumentation.
 
-- [ ] T027 [US1] Create `src/holodeck/serve/tool_init_routes.py` with a FastAPI `APIRouter` (R8). Define `POST /tools/{tool_name}/init` route handler that: (a) accepts `tool_name` path parameter and optional `force: bool = False` query parameter, (b) calls `ToolInitManager.start_init_job(tool_name, force)`, (c) on success, returns 201 Created with `Location` header set to `/tools/{tool_name}/init` and `InitJobResponse` body, (d) catches distinct exception types from `ToolInitManager` and returns `ProblemDetail` responses: 400 for non-initializable tool type, 404 for nonexistent tool, 409 for already-active job, 429 for concurrency limit reached. All error responses use `application/problem+json` content type.
+- [x] T027 [US1] Create `src/holodeck/serve/tool_init_routes.py` with a FastAPI `APIRouter` (R8). Define `POST /tools/{tool_name}/init` route handler that: (a) accepts `tool_name` path parameter and optional `force: bool = False` query parameter, (b) calls `ToolInitManager.start_init_job(tool_name, force)`, (c) on success, returns 201 Created with `Location` header set to `/tools/{tool_name}/init` and `InitJobResponse` body, (d) catches distinct exception types from `ToolInitManager` and returns `ProblemDetail` responses: 400 for non-initializable tool type, 404 for nonexistent tool, 409 for already-active job, 429 for concurrency limit reached. All error responses use `application/problem+json` content type.
 
-- [ ] T028 [US1] Register the tool init router in `src/holodeck/serve/server.py`. In `AgentServer.create_app()`, import the router from `tool_init_routes.py` and call `app.include_router(router)` alongside the existing health/ready route registrations (FR-012 — protocol-agnostic, not inside protocol-specific routers). Pass the `ToolInitManager` instance to the router via `app.state.tool_init_manager`.
+- [x] T028 [US1] Register the tool init router in `src/holodeck/serve/server.py`. In `AgentServer.create_app()`, import the router from `tool_init_routes.py` and call `app.include_router(router)` alongside the existing health/ready route registrations (FR-012 — protocol-agnostic, not inside protocol-specific routers). Pass the `ToolInitManager` instance to the router via `app.state.tool_init_manager`.
 
-- [ ] T029 [US1] Create and wire `ToolInitManager` instance in `AgentServer.__init__()` at `src/holodeck/serve/server.py`. Instantiate `ToolInitManager(agent=self.agent_config)` and store as `self._tool_init_manager`. Optionally accept `max_concurrent_init_jobs: int = 3` constructor parameter on `AgentServer` for configurability.
+- [x] T029 [US1] Create and wire `ToolInitManager` instance in `AgentServer.__init__()` at `src/holodeck/serve/server.py`. Instantiate `ToolInitManager(agent=self.agent_config)` and store as `self._tool_init_manager`. Optionally accept `max_concurrent_init_jobs: int = 3` constructor parameter on `AgentServer` for configurability.
 
-- [ ] T030 [US1] Wire `ToolInitManager.shutdown()` into `AgentServer.stop()` at `src/holodeck/serve/server.py` (FR-009, R3). Add `await self._tool_init_manager.shutdown()` call before the existing session cleanup. Follow the same pattern as `await self.sessions.stop_cleanup_task()`. Also call `await SourceResolver.cleanup_orphans()` during server startup in `AgentServer.start()` to clean up stale temp directories from previous runs.
+- [x] T030 [US1] Wire `ToolInitManager.shutdown()` into `AgentServer.stop()` at `src/holodeck/serve/server.py` (FR-009, R3). Add `await self._tool_init_manager.shutdown()` call before the existing session cleanup. Follow the same pattern as `await self.sessions.stop_cleanup_task()`. Also call `await SourceResolver.cleanup_orphans()` during server startup in `AgentServer.start()` to clean up stale temp directories from previous runs.
 
-- [ ] T031 [US1] Add OTel instrumentation for init job lifecycle in `src/holodeck/serve/tool_init_manager.py` (FR-014, R5). Import `get_tracer` from `holodeck.lib.observability`. Create spans: `holodeck.serve.tool_init.start` (when job is created), `holodeck.serve.tool_init.progress` (on progress updates, if frequent enough), `holodeck.serve.tool_init.complete` (on success), `holodeck.serve.tool_init.failed` (on failure with `StatusCode.ERROR`). Add span attributes: `tool_init.job.tool_name`, `tool_init.job.state`, `tool_init.job.documents_processed`, `tool_init.job.duration_ms`, `tool_init.job.force`. Use the conditional `nullcontext()` pattern when observability is disabled.
+- [x] T031 [US1] Add OTel instrumentation for init job lifecycle in `src/holodeck/serve/tool_init_manager.py` (FR-014, R5). Import `get_tracer` from `holodeck.lib.observability`. Create spans: `holodeck.serve.tool_init.start` (when job is created), `holodeck.serve.tool_init.progress` (on progress updates, if frequent enough), `holodeck.serve.tool_init.complete` (on success), `holodeck.serve.tool_init.failed` (on failure with `StatusCode.ERROR`). Add span attributes: `tool_init.job.tool_name`, `tool_init.job.state`, `tool_init.job.documents_processed`, `tool_init.job.duration_ms`, `tool_init.job.force`. Use the conditional `nullcontext()` pattern when observability is disabled.
 
 ---
 
 ## Phase 5: Polish — Quality & Validation
 
-- [ ] T032 [US1] Run `make format && make lint-fix` to ensure all new and modified files pass Black formatting and Ruff linting.
+- [x] T032 [US1] Run `make format && make lint-fix` to ensure all new and modified files pass Black formatting and Ruff linting.
 
-- [ ] T033 [US1] Run `make type-check` and fix any MyPy errors in new and modified files. Ensure all public functions have complete type hints and all imports resolve correctly.
+- [x] T033 [US1] Run `make type-check` and fix any MyPy errors in new and modified files. Ensure all public functions have complete type hints and all imports resolve correctly.
 
-- [ ] T034 [US1] Run `make test-unit -n auto` to verify no existing tests are broken by the changes. Fix any regressions.
+- [x] T034 [US1] Run `make test-unit -n auto` to verify no existing tests are broken by the changes. Fix any regressions.
 
 ---
 
