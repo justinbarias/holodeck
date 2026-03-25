@@ -10,6 +10,7 @@ Tests cover:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1006,3 +1007,269 @@ class TestInitializeSingleTool:
             call_args = mock_vs_cls.call_args[0]
             passed_config = call_args[0]
             assert passed_config is tool
+
+
+# ===================================================================
+# Remote Source Resolution in initialize_tools()
+# ===================================================================
+
+
+class TestRemoteSourceResolution:
+    """Tests for remote source resolution in initialize_tools() flow."""
+
+    @pytest.mark.asyncio
+    async def test_vectorstore_remote_source_resolved(self) -> None:
+        """Vectorstore tool with az:// source resolved via SourceResolver."""
+        from holodeck.models.tool import VectorstoreTool
+
+        tool = VectorstoreTool(
+            name="remote_vs",
+            description="Remote tool",
+            source="az://container/data/",
+        )
+        agent = _make_agent(tools=[tool])
+
+        mock_vs = MagicMock()
+        mock_vs.return_value = MagicMock()
+        mock_vs.return_value.set_embedding_service = MagicMock()
+        mock_vs.return_value.initialize = AsyncMock()
+
+        mock_resolved = MagicMock()
+        mock_resolved.local_path = Path("/tmp/holodeck-init-test/data")  # noqa: S108
+        mock_resolved.is_remote = True
+        mock_resolved.temp_dir = Path("/tmp/holodeck-init-test")  # noqa: S108
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                mock_vs,
+            ),
+            patch("holodeck.lib.tool_initializer.SourceResolver") as mock_sr,
+        ):
+            mock_sr.resolve = AsyncMock(return_value=mock_resolved)
+            mock_sr.cleanup = AsyncMock()
+            result = await initialize_tools(agent)
+
+            # SourceResolver.resolve should have been called
+            mock_sr.resolve.assert_awaited_once()
+            # Tool should be constructed with resolved local path
+            call_args = mock_vs.call_args[0]
+            assert str(call_args[0].source) == str(mock_resolved.local_path)
+            assert "remote_vs" in result
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_doc_remote_source_resolved(self) -> None:
+        """Hierarchical doc tool with s3:// source resolved via SourceResolver."""
+        from holodeck.models.tool import HierarchicalDocumentToolConfig
+
+        tool = HierarchicalDocumentToolConfig(
+            name="remote_hd",
+            description="Remote doc",
+            source="s3://bucket/docs/",
+        )
+        agent = _make_agent(tools=[tool])
+
+        mock_hd = MagicMock()
+        mock_hd.return_value = MagicMock()
+        mock_hd.return_value.set_embedding_service = MagicMock()
+        mock_hd.return_value.set_context_generator = MagicMock()
+        mock_hd.return_value.initialize = AsyncMock()
+
+        mock_resolved = MagicMock()
+        mock_resolved.local_path = Path("/tmp/holodeck-init-test/docs")  # noqa: S108
+        mock_resolved.is_remote = True
+        mock_resolved.temp_dir = Path("/tmp/holodeck-init-test")  # noqa: S108
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.hierarchical_document_tool.HierarchicalDocumentTool",
+                mock_hd,
+            ),
+            patch("holodeck.lib.tool_initializer.SourceResolver") as mock_sr,
+        ):
+            mock_sr.resolve = AsyncMock(return_value=mock_resolved)
+            mock_sr.cleanup = AsyncMock()
+            result = await initialize_tools(agent)
+
+            mock_sr.resolve.assert_awaited_once()
+            call_args = mock_hd.call_args[0]
+            assert str(call_args[0].source) == str(mock_resolved.local_path)
+            assert "remote_hd" in result
+
+    @pytest.mark.asyncio
+    async def test_local_source_skips_resolver(self) -> None:
+        """Local source path does NOT invoke SourceResolver."""
+        tool = _make_vectorstore_tool(name="local_vs")
+        agent = _make_agent(tools=[tool])
+
+        mock_vs = MagicMock()
+        mock_vs.return_value = MagicMock()
+        mock_vs.return_value.set_embedding_service = MagicMock()
+        mock_vs.return_value.initialize = AsyncMock()
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                mock_vs,
+            ),
+            patch("holodeck.lib.tool_initializer.SourceResolver") as mock_sr,
+        ):
+            mock_sr.resolve = AsyncMock()
+            await initialize_tools(agent)
+            mock_sr.resolve.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_remote_source_cleanup_on_failure(self) -> None:
+        """Temp dir cleaned up when tool init fails with remote source."""
+        from holodeck.models.tool import VectorstoreTool
+
+        tool = VectorstoreTool(
+            name="fail_vs",
+            description="Failing remote tool",
+            source="https://example.com/data.zip",
+        )
+        agent = _make_agent(tools=[tool])
+
+        mock_vs = MagicMock()
+        mock_vs.return_value = MagicMock()
+        mock_vs.return_value.set_embedding_service = MagicMock()
+        mock_vs.return_value.initialize = AsyncMock(
+            side_effect=RuntimeError("init failed")
+        )
+
+        mock_resolved = MagicMock()
+        mock_resolved.local_path = Path("/tmp/holodeck-init-fail/data")  # noqa: S108
+        mock_resolved.is_remote = True
+        mock_resolved.temp_dir = Path("/tmp/holodeck-init-fail")  # noqa: S108
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                mock_vs,
+            ),
+            patch("holodeck.lib.tool_initializer.SourceResolver") as mock_sr,
+            pytest.raises(ToolInitializerError),
+        ):
+            mock_sr.resolve = AsyncMock(return_value=mock_resolved)
+            mock_sr.cleanup = AsyncMock()
+            await initialize_tools(agent)
+
+        # Cleanup should have been called with the temp dir
+        expected_cleanup = Path("/tmp/holodeck-init-fail")  # noqa: S108
+        mock_sr.cleanup.assert_awaited_once_with(expected_cleanup)
+
+
+class TestSourceContextWiring:
+    """Tests that set_source_context() is called for remote sources."""
+
+    @pytest.mark.asyncio
+    async def test_vectorstore_remote_sets_source_context(self) -> None:
+        """Remote vectorstore tool gets set_source_context called."""
+        from holodeck.models.tool import VectorstoreTool
+
+        tool_cfg = VectorstoreTool(
+            name="remote_vs",
+            description="Remote tool",
+            source="az://container/data/",
+        )
+        agent = _make_agent(tools=[tool_cfg])
+
+        mock_vs_instance = MagicMock()
+        mock_vs_instance.set_embedding_service = MagicMock()
+        mock_vs_instance.set_source_context = MagicMock()
+        mock_vs_instance.initialize = AsyncMock()
+        mock_vs_cls = MagicMock(return_value=mock_vs_instance)
+
+        mock_resolved = MagicMock()
+        mock_resolved.local_path = Path("/tmp/holodeck-init-test/data")  # noqa: S108
+        mock_resolved.is_remote = True
+        mock_resolved.temp_dir = Path("/tmp/holodeck-init-test")  # noqa: S108
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                mock_vs_cls,
+            ),
+            patch("holodeck.lib.tool_initializer.SourceResolver") as mock_sr,
+        ):
+            mock_sr.resolve = AsyncMock(return_value=mock_resolved)
+            mock_sr.cleanup = AsyncMock()
+            await initialize_tools(agent)
+
+            expected_root = Path("/tmp/holodeck-init-test/data")  # noqa: S108
+            mock_vs_instance.set_source_context.assert_called_once_with(
+                source_root=expected_root,
+                is_remote=True,
+            )
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_remote_sets_source_context(self) -> None:
+        """Remote hierarchical doc tool gets set_source_context called."""
+        from holodeck.models.tool import HierarchicalDocumentToolConfig
+
+        tool_cfg = HierarchicalDocumentToolConfig(
+            name="remote_hd",
+            description="Remote doc",
+            source="s3://bucket/docs/",
+        )
+        agent = _make_agent(tools=[tool_cfg])
+
+        mock_hd_instance = MagicMock()
+        mock_hd_instance.set_embedding_service = MagicMock()
+        mock_hd_instance.set_context_generator = MagicMock()
+        mock_hd_instance.set_source_context = MagicMock()
+        mock_hd_instance.initialize = AsyncMock()
+        mock_hd_cls = MagicMock(return_value=mock_hd_instance)
+
+        mock_resolved = MagicMock()
+        mock_resolved.local_path = Path("/tmp/holodeck-init-test/docs")  # noqa: S108
+        mock_resolved.is_remote = True
+        mock_resolved.temp_dir = Path("/tmp/holodeck-init-test")  # noqa: S108
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.hierarchical_document_tool.HierarchicalDocumentTool",
+                mock_hd_cls,
+            ),
+            patch("holodeck.lib.tool_initializer.SourceResolver") as mock_sr,
+        ):
+            mock_sr.resolve = AsyncMock(return_value=mock_resolved)
+            mock_sr.cleanup = AsyncMock()
+            await initialize_tools(agent)
+
+            expected_root = Path("/tmp/holodeck-init-test/docs")  # noqa: S108
+            mock_hd_instance.set_source_context.assert_called_once_with(
+                source_root=expected_root,
+                is_remote=True,
+            )
+
+    @pytest.mark.asyncio
+    async def test_local_source_no_source_context(self) -> None:
+        """Local source does NOT call set_source_context."""
+        tool_cfg = _make_vectorstore_tool(name="local_vs")
+        agent = _make_agent(tools=[tool_cfg])
+
+        mock_vs_instance = MagicMock()
+        mock_vs_instance.set_embedding_service = MagicMock()
+        mock_vs_instance.set_source_context = MagicMock()
+        mock_vs_instance.initialize = AsyncMock()
+        mock_vs_cls = MagicMock(return_value=mock_vs_instance)
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                mock_vs_cls,
+            ),
+            patch("holodeck.lib.tool_initializer.SourceResolver") as mock_sr,
+        ):
+            mock_sr.resolve = AsyncMock()
+            await initialize_tools(agent)
+
+            mock_vs_instance.set_source_context.assert_not_called()

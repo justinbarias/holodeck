@@ -13,7 +13,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from holodeck.lib.errors import HoloDeckError
+from holodeck.lib.source_resolver import SourceResolver
 from holodeck.models.llm import ProviderEnum
+
+# Remote URI schemes that require SourceResolver
+_REMOTE_SCHEMES = ("s3://", "az://", "https://", "http://")
+
+
+def _is_remote_source(source: str) -> bool:
+    """Check if a source string is a remote URI requiring SourceResolver."""
+    return any(source.startswith(s) for s in _REMOTE_SCHEMES)
+
 
 if TYPE_CHECKING:
     from holodeck.models.agent import Agent
@@ -317,25 +327,54 @@ async def _initialize_vectorstore_tools(
     from holodeck.tools.vectorstore_tool import VectorStoreTool
 
     instances: dict[str, Any] = {}
+    cleanup_stack: list[Path] = []
 
-    for tool_config in agent.tools or []:
-        if not isinstance(tool_config, VectorstoreToolConfig):
-            continue
+    try:
+        for tool_config in agent.tools or []:
+            if not isinstance(tool_config, VectorstoreToolConfig):
+                continue
 
-        try:
-            tool = VectorStoreTool(
-                tool_config, base_dir=base_dir, execution_config=execution_config
-            )
-            tool.set_embedding_service(embedding_service)
-            await tool.initialize(
-                force_ingest=force_ingest, provider_type=provider_type
-            )
-            instances[tool_config.name] = tool
-            logger.info("Initialized vectorstore tool: %s", tool_config.name)
-        except Exception as exc:
-            raise ToolInitializerError(
-                f"Failed to initialize vectorstore tool '{tool_config.name}': {exc}"
-            ) from exc
+            try:
+                # Resolve remote source if needed
+                effective_config = tool_config
+                is_remote = _is_remote_source(tool_config.source)
+                resolved_local_path: Path | None = None
+                if is_remote:
+                    resolved = await SourceResolver.resolve(
+                        tool_config.source, base_dir
+                    )
+                    if resolved.temp_dir:
+                        cleanup_stack.append(resolved.temp_dir)
+                    resolved_local_path = resolved.local_path
+                    effective_config = tool_config.model_copy(
+                        update={"source": str(resolved_local_path)}
+                    )
+
+                tool = VectorStoreTool(
+                    effective_config,
+                    base_dir=base_dir,
+                    execution_config=execution_config,
+                )
+                if is_remote and resolved_local_path is not None:
+                    tool.set_source_context(
+                        source_root=resolved_local_path,
+                        is_remote=True,
+                    )
+                tool.set_embedding_service(embedding_service)
+                await tool.initialize(
+                    force_ingest=force_ingest, provider_type=provider_type
+                )
+                instances[tool_config.name] = tool
+                logger.info("Initialized vectorstore tool: %s", tool_config.name)
+            except Exception as exc:
+                raise ToolInitializerError(
+                    f"Failed to initialize vectorstore tool "
+                    f"'{tool_config.name}': {exc}"
+                ) from exc
+    except Exception:
+        for temp_dir in cleanup_stack:
+            await SourceResolver.cleanup(temp_dir)
+        raise
 
     return instances
 
@@ -556,35 +595,64 @@ async def initialize_hierarchical_doc_tools(
     from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
 
     instances: dict[str, Any] = {}
+    cleanup_stack: list[Path] = []
 
-    for tool_config in agent.tools or []:
-        if not isinstance(tool_config, HierarchicalDocumentToolConfig):
-            continue
+    try:
+        for tool_config in agent.tools or []:
+            if not isinstance(tool_config, HierarchicalDocumentToolConfig):
+                continue
 
-        try:
-            tool = HierarchicalDocumentTool(tool_config, base_dir=base_dir)
-            tool.set_embedding_service(embedding_service)
+            try:
+                # Resolve remote source if needed
+                effective_config = tool_config
+                is_remote = _is_remote_source(tool_config.source)
+                resolved_local_path: Path | None = None
+                if is_remote:
+                    resolved = await SourceResolver.resolve(
+                        tool_config.source, base_dir
+                    )
+                    if resolved.temp_dir:
+                        cleanup_stack.append(resolved.temp_dir)
+                    resolved_local_path = resolved.local_path
+                    effective_config = tool_config.model_copy(
+                        update={"source": str(resolved_local_path)}
+                    )
 
-            # Resolve context generator via 5-tier priority chain
-            resolved_generator = _resolve_context_generator(
-                agent=agent,
-                tool_config=tool_config,
-                context_generator=context_generator,
-                chat_service=chat_service,
-            )
-            if resolved_generator is not None:
-                tool.set_context_generator(resolved_generator)
+                tool = HierarchicalDocumentTool(effective_config, base_dir=base_dir)
+                if is_remote and resolved_local_path is not None:
+                    tool.set_source_context(
+                        source_root=resolved_local_path,
+                        is_remote=True,
+                    )
+                tool.set_embedding_service(embedding_service)
 
-            await tool.initialize(
-                force_ingest=force_ingest, provider_type=provider_type
-            )
-            instances[tool_config.name] = tool
-            logger.info("Initialized hierarchical document tool: %s", tool_config.name)
-        except Exception as exc:
-            raise ToolInitializerError(
-                f"Failed to initialize hierarchical document tool "
-                f"'{tool_config.name}': {exc}"
-            ) from exc
+                # Resolve context generator via 5-tier priority chain
+                resolved_generator = _resolve_context_generator(
+                    agent=agent,
+                    tool_config=tool_config,
+                    context_generator=context_generator,
+                    chat_service=chat_service,
+                )
+                if resolved_generator is not None:
+                    tool.set_context_generator(resolved_generator)
+
+                await tool.initialize(
+                    force_ingest=force_ingest, provider_type=provider_type
+                )
+                instances[tool_config.name] = tool
+                logger.info(
+                    "Initialized hierarchical document tool: %s",
+                    tool_config.name,
+                )
+            except Exception as exc:
+                raise ToolInitializerError(
+                    f"Failed to initialize hierarchical document tool "
+                    f"'{tool_config.name}': {exc}"
+                ) from exc
+    except Exception:
+        for temp_dir in cleanup_stack:
+            await SourceResolver.cleanup(temp_dir)
+        raise
 
     return instances
 
@@ -637,6 +705,12 @@ async def initialize_single_tool(
             "can be initialized."
         )
 
+    # Determine if the original source is remote (before override).
+    # Both VectorstoreTool and HierarchicalDocumentToolConfig have .source,
+    # but mypy can't narrow the union after isinstance checks above.
+    source_str: str = getattr(tool_config, "source", "")
+    is_remote = _is_remote_source(source_str)
+
     # Source override: use Pydantic v2 model_copy to avoid mutating original config
     if source_override is not None:
         tool_config = tool_config.model_copy(update={"source": str(source_override)})
@@ -649,6 +723,8 @@ async def initialize_single_tool(
 
     if is_vectorstore:
         vs_tool = VectorStoreTool(cast(VectorstoreToolConfig, tool_config))
+        if is_remote and source_override is not None:
+            vs_tool.set_source_context(source_root=source_override, is_remote=True)
         vs_tool.set_embedding_service(embedding_service)
         await vs_tool.initialize(
             force_ingest=force_ingest,
@@ -659,6 +735,8 @@ async def initialize_single_tool(
         hd_tool = HierarchicalDocumentTool(
             cast(HierarchicalDocumentToolConfig, tool_config)
         )
+        if is_remote and source_override is not None:
+            hd_tool.set_source_context(source_root=source_override, is_remote=True)
         hd_tool.set_embedding_service(embedding_service)
         await hd_tool.initialize(
             force_ingest=force_ingest,

@@ -253,27 +253,12 @@ class TestGeneratePlaceholderEmbeddings:
 
 
 class TestResolveSourcePathURISchemes:
-    """Tests for URI scheme handling in resolve_source_path (T026)."""
+    """Tests for resolve_source_path with various source types.
 
-    def test_s3_uri_raises(self) -> None:
-        """resolve_source_path raises ValueError for s3:// URIs."""
-        with pytest.raises(ValueError, match="SourceResolver"):
-            resolve_source_path("s3://bucket/prefix")
-
-    def test_az_uri_raises(self) -> None:
-        """resolve_source_path raises ValueError for az:// URIs."""
-        with pytest.raises(ValueError, match="SourceResolver"):
-            resolve_source_path("az://container/prefix")
-
-    def test_https_uri_raises(self) -> None:
-        """resolve_source_path raises ValueError for https:// URIs."""
-        with pytest.raises(ValueError, match="SourceResolver"):
-            resolve_source_path("https://example.com/file.md")
-
-    def test_http_uri_raises(self) -> None:
-        """resolve_source_path raises ValueError for http:// URIs."""
-        with pytest.raises(ValueError, match="SourceResolver"):
-            resolve_source_path("http://example.com/file.md")
+    Note: Remote source resolution (s3://, az://, etc.) is handled upstream
+    by SourceResolver in tool_initializer.py. resolve_source_path only sees
+    local paths after resolution.
+    """
 
     def test_local_path_still_works(self, tmp_path: Path) -> None:
         """resolve_source_path still works for local paths."""

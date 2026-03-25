@@ -98,16 +98,6 @@ def resolve_source_path(source: str, base_dir: str | None = None) -> Path:
         >>> resolve_source_path("relative/file.txt", "/base")
         PosixPath('/base/relative/file.txt')
     """
-    # Check for remote URI schemes that require SourceResolver
-    remote_schemes = ("s3://", "az://", "https://", "http://")
-    for scheme in remote_schemes:
-        if source.startswith(scheme):
-            raise ValueError(
-                f"Remote source '{source}' requires async resolution. "
-                "Use SourceResolver.resolve_context() instead of "
-                "resolve_source_path()."
-            )
-
     source_path = Path(source)
 
     # If path is absolute, use it directly

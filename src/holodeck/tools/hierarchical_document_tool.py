@@ -137,6 +137,10 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         # Hybrid search executor (initialized during ingestion)
         self._hybrid_executor: HybridSearchExecutor | None = None
 
+        # Source context for stable record keys (remote sources)
+        self._source_root: Path | None = None
+        self._is_remote: bool = False
+
     # set_embedding_service is inherited from EmbeddingServiceMixin
 
     def set_context_generator(self, generator: Any) -> None:
@@ -178,6 +182,85 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             )
         else:
             logger.debug("Chat service set for HierarchicalDocumentTool")
+
+    def set_source_context(self, source_root: Path, is_remote: bool) -> None:
+        """Set source context for stable record keys.
+
+        Called by tool_initializer when a remote source is resolved.
+        Enables stable keys (relative paths) and content-hash-based
+        change detection for remote sources.
+
+        Args:
+            source_root: Root directory of the resolved source.
+            is_remote: Whether the source was resolved from a remote URI.
+        """
+        self._source_root = source_root
+        self._is_remote = is_remote
+
+    def _compute_source_key(self, file_path: Path) -> str:
+        """Compute a stable source key for a file.
+
+        For remote sources, returns the path relative to source_root
+        (stable across temp dirs). For local sources, returns the
+        absolute path string (backward compatible with existing records).
+
+        Args:
+            file_path: Absolute path to the file.
+
+        Returns:
+            Stable string key for record storage and lookup.
+        """
+        if self._is_remote and self._source_root is not None:
+            return str(file_path.relative_to(self._source_root))
+        return str(file_path)
+
+    def _compute_content_hash(self, file_path: Path) -> str:
+        """Compute SHA-256 hash of file content for change detection.
+
+        Only used for remote sources where mtime is unreliable (files are
+        freshly downloaded each time). Returns empty string for local
+        sources which use mtime instead.
+
+        Args:
+            file_path: Path to the file to hash.
+
+        Returns:
+            SHA-256 hex digest for remote sources, empty string for local.
+        """
+        if not self._is_remote:
+            return ""
+        import hashlib
+
+        h = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for block in iter(lambda: f.read(8192), b""):
+                h.update(block)
+        return h.hexdigest()
+
+    def _remap_chunk_keys(self, chunks: list[DocumentChunk], file_path: Path) -> None:
+        """Remap chunk source_path and id to use stable source keys.
+
+        For remote sources, rewrites the source_path from absolute temp
+        dir path to a relative path, and updates chunk IDs accordingly.
+        For local sources, this is a no-op.
+
+        Args:
+            chunks: List of DocumentChunks to remap (modified in-place).
+            file_path: Absolute path to the source file.
+        """
+        source_key = self._compute_source_key(file_path)
+        original_source = str(file_path)
+
+        if source_key == original_source:
+            return  # No remapping needed (local source)
+
+        # Compute the ID prefix replacements
+        old_prefix = original_source.replace("/", "_").replace("\\", "_")
+        new_prefix = source_key.replace("/", "_").replace("\\", "_")
+
+        for chunk in chunks:
+            chunk.source_path = source_key
+            chunk.id = chunk.id.replace(old_prefix, new_prefix, 1)
 
     def _setup_collection(self, provider_type: str = "openai") -> None:
         """Set up the vector store collection for chunk storage.
@@ -258,24 +341,30 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         if self._collection is None:
             return True  # No collection, must ingest
 
-        current_mtime = file_path.stat().st_mtime
-        source_path_str = str(file_path)
+        source_key = self._compute_source_key(file_path)
 
         async with self._collection as collection:
             try:
-                # Get first available record for this file to check mtime
-                # (all chunks from the same file share the same mtime)
+                # Get first available record for this file to check mtime/hash
                 records = await collection.get(
-                    top=1,
-                    filter=lambda r: r.source_path == source_path_str,
+                    filter=lambda r: r.source_path == source_key,
                 )
 
                 if not records:
                     return True  # Not in store, must ingest
 
-                stored_mtime = float(records[0].mtime)
-                # Use tolerance to handle floating-point precision loss in storage
-                return current_mtime - stored_mtime > 0.001
+                if self._is_remote:
+                    # For remote sources, compare content hash
+                    current_hash = self._compute_content_hash(file_path)
+                    stored_hash = getattr(records[0], "content_hash", "")
+                    if not stored_hash:
+                        return True  # No hash stored (old record)
+                    return current_hash != stored_hash
+                else:
+                    # For local sources, compare mtime (backward compat)
+                    current_mtime = file_path.stat().st_mtime
+                    stored_mtime = float(records[0].mtime)
+                    return current_mtime - stored_mtime > 0.001
 
             except Exception as e:
                 logger.debug(f"Could not retrieve record for {file_path}: {e}")
@@ -293,7 +382,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         if self._collection is None:
             return 0
 
-        source_path_str = str(file_path)
+        source_key = self._compute_source_key(file_path)
         deleted_count = 0
 
         async with self._collection as collection:
@@ -301,7 +390,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 # Get all records for this file
                 records = await collection.get(
                     top=10000,  # Large limit to get all chunks
-                    filter=lambda r: r.source_path == source_path_str,
+                    filter=lambda r: r.source_path == source_key,
                 )
 
                 if records:
@@ -546,6 +635,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             # 3. Parse structure
             chunks = self._chunker.parse(markdown_content, str(file_path), mtime)
 
+            # Remap chunk keys for stable record IDs (remote sources)
+            self._remap_chunk_keys(chunks, file_path)
+
             # 3.5 Filter out header-only chunks (no substantive content)
             chunks = [c for c in chunks if c.chunk_type != ChunkType.HEADER]
 
@@ -589,7 +681,8 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             await self._embed_chunks(chunks)
 
             # 7. Store
-            await self._store_chunks(chunks)
+            content_hash = self._compute_content_hash(file_path)
+            await self._store_chunks(chunks, content_hash=content_hash)
             self._chunks.extend(chunks)
             ingested_files += 1
 
@@ -644,13 +737,17 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         for chunk, emb in zip(chunks, placeholders, strict=False):
             chunk.embedding = emb
 
-    async def _store_chunks(self, chunks: list[DocumentChunk]) -> int:
+    async def _store_chunks(
+        self, chunks: list[DocumentChunk], content_hash: str = ""
+    ) -> int:
         """Store document chunks in the vector store.
 
         Uses HierarchicalDocumentRecord for storage.
 
         Args:
             chunks: List of DocumentChunks to store.
+            content_hash: SHA-256 content hash for remote source change
+                detection. Empty string for local sources.
 
         Returns:
             Number of chunks stored.
@@ -684,6 +781,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 defined_term=chunk.defined_term or "",
                 defined_term_normalized=chunk.defined_term_normalized or "",
                 subsection_ids=json.dumps(chunk.subsection_ids),
+                content_hash=content_hash,
             )
             records.append(record)
 

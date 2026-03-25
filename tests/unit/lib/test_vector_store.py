@@ -12,17 +12,37 @@ from unittest.mock import MagicMock
 _saved_modules: dict[str, object] = {}
 _mocked_modules: set[str] = set()
 
-# Mock semantic_kernel modules ONLY during initial import
-# We'll restore them after the holodeck.lib.vector_store import completes
-for module_name in [
+# Mock all semantic_kernel submodules needed during import.
+# Uses a catch-all approach: any attribute access on a MagicMock returns
+# another MagicMock, so deeply-nested imports resolve automatically.
+_SK_MODULES = [
     "semantic_kernel",
+    "semantic_kernel.agents",
     "semantic_kernel.connectors",
     "semantic_kernel.connectors.memory",
     "semantic_kernel.connectors.ai",
+    "semantic_kernel.connectors.ai.anthropic",
+    "semantic_kernel.connectors.ai.chat_completion_client_base",
+    "semantic_kernel.connectors.ai.embedding_generator_base",
+    "semantic_kernel.connectors.ai.function_choice_behavior",
+    "semantic_kernel.connectors.ai.ollama",
+    "semantic_kernel.connectors.ai.open_ai",
+    "semantic_kernel.connectors.ai.prompt_execution_settings",
+    "semantic_kernel.connectors.mcp",
+    "semantic_kernel.connectors.postgres",
     "semantic_kernel.contents",
     "semantic_kernel.data",
     "semantic_kernel.data.vector",
-]:
+    "semantic_kernel.functions",
+    "semantic_kernel.functions.kernel_function",
+    "semantic_kernel.functions.kernel_function_decorator",
+    "semantic_kernel.functions.kernel_function_from_method",
+    "semantic_kernel.functions.kernel_parameter_metadata",
+    "semantic_kernel.functions.kernel_plugin",
+    "semantic_kernel.text",
+]
+
+for module_name in _SK_MODULES:
     if module_name in sys.modules:
         _saved_modules[module_name] = sys.modules[module_name]
     else:
@@ -62,6 +82,7 @@ from holodeck.lib.vector_store import (  # noqa: E402
     convert_document_to_query_result,
     create_chromadb_client,
     create_document_record_class,
+    create_hierarchical_document_record_class,
     get_collection_class,
     get_collection_factory,
     parse_chromadb_connection_string,
@@ -71,15 +92,7 @@ from holodeck.lib.vector_store import (  # noqa: E402
 
 # Restore original modules after import to avoid polluting other tests
 # This is critical for parallel test execution with pytest-xdist
-for module_name in [
-    "semantic_kernel",
-    "semantic_kernel.connectors",
-    "semantic_kernel.connectors.memory",
-    "semantic_kernel.connectors.ai",
-    "semantic_kernel.contents",
-    "semantic_kernel.data",
-    "semantic_kernel.data.vector",
-]:
+for module_name in _SK_MODULES:
     if module_name in _saved_modules:
         sys.modules[module_name] = _saved_modules[module_name]
     else:
@@ -1712,3 +1725,39 @@ class TestGetCollectionFactoryPinecone:
             assert call_kwargs.kwargs["use_grpc"] is True
         finally:
             importlib.import_module = original_import
+
+
+class TestContentHashField:
+    """Tests for content_hash field on record classes."""
+
+    def test_document_record_has_content_hash_field(self) -> None:
+        """content_hash field exists with empty string default."""
+        record_class = create_document_record_class(128)
+        record = record_class()
+        assert hasattr(record, "content_hash")
+        assert record.content_hash == ""
+
+    def test_document_record_content_hash_stores_value(self) -> None:
+        """content_hash field can store a SHA-256 hex string."""
+        record_class = create_document_record_class(128)
+        record = record_class(content_hash="abc123def456")
+        assert record.content_hash == "abc123def456"
+
+    def test_hierarchical_record_has_content_hash_field(self) -> None:
+        """content_hash field exists on hierarchical record with empty default."""
+        record_class = create_hierarchical_document_record_class(128, "test")
+        record = record_class()
+        assert hasattr(record, "content_hash")
+        assert record.content_hash == ""
+
+    def test_hierarchical_record_content_hash_stores_value(self) -> None:
+        """content_hash field can store a SHA-256 hex string."""
+        record_class = create_hierarchical_document_record_class(128, "test")
+        record = record_class(content_hash="abc123def456")
+        assert record.content_hash == "abc123def456"
+
+    def test_default_document_record_has_content_hash(self) -> None:
+        """The default DocumentRecord (1536 dims) has content_hash."""
+        record = DocumentRecord()
+        assert hasattr(record, "content_hash")
+        assert record.content_hash == ""
