@@ -569,7 +569,7 @@ def sanitize_error_detail(detail: str) -> str:
 
     # Temp directory paths
     detail = re.sub(
-        r"/tmp/holodeck-init-[^\s/]+",  # noqa: S108
+        r"/tmp/holodeck-init-[^\s/]+",  # noqa: S108  # nosec B108
         "<TEMP_DIR>",
         detail,
     )
