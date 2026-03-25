@@ -543,3 +543,152 @@ class TestRunInitJob:
         assert job.progress is not None
         assert job.progress.documents_processed == 3
         assert job.progress.total_documents == 10
+
+
+class TestOTelInstrumentation:
+    """Tests for OTel span instrumentation in ToolInitManager (T031)."""
+
+    @pytest.mark.asyncio
+    async def test_start_job_creates_otel_span(self) -> None:
+        """start_init_job creates a holodeck.serve.tool_init.start span."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool()])
+        manager = ToolInitManager(agent=agent)
+
+        with (
+            patch.object(manager, "_run_init_job", new_callable=AsyncMock),
+            patch("holodeck.serve.tool_init_manager.get_tracer") as mock_get_tracer,
+        ):
+            mock_tracer = MagicMock()
+            mock_span = MagicMock()
+            mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+                return_value=False
+            )
+            mock_get_tracer.return_value = mock_tracer
+
+            manager.start_init_job("knowledge_base")
+
+            mock_tracer.start_as_current_span.assert_called_with(
+                "holodeck.serve.tool_init.start"
+            )
+
+    @pytest.mark.asyncio
+    async def test_start_job_span_attributes(self) -> None:
+        """start_init_job span sets tool_name, state, and force attributes."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool()])
+        manager = ToolInitManager(agent=agent)
+
+        with (
+            patch.object(manager, "_run_init_job", new_callable=AsyncMock),
+            patch("holodeck.serve.tool_init_manager.get_tracer") as mock_get_tracer,
+        ):
+            mock_tracer = MagicMock()
+            mock_span = MagicMock()
+            mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+                return_value=False
+            )
+            mock_get_tracer.return_value = mock_tracer
+
+            manager.start_init_job("knowledge_base", force=True)
+
+            calls = mock_span.set_attribute.call_args_list
+            attr_dict = {c[0][0]: c[0][1] for c in calls}
+            assert attr_dict["tool_init.job.tool_name"] == "knowledge_base"
+            assert attr_dict["tool_init.job.force"] is True
+
+    @pytest.mark.asyncio
+    async def test_run_job_success_creates_span(self) -> None:
+        """_run_init_job wraps execution in an OTel span on success."""
+        from holodeck.serve.tool_init_manager import InitJob, ToolInitManager
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool()])
+        manager = ToolInitManager(agent=agent)
+        job = InitJob(tool_name="knowledge_base", created_at=datetime.now())
+
+        with (
+            patch("holodeck.serve.tool_init_manager.SourceResolver") as mock_sr,
+            patch(
+                "holodeck.serve.tool_init_manager.initialize_single_tool",
+                new_callable=AsyncMock,
+            ),
+            patch("holodeck.serve.tool_init_manager.get_tracer") as mock_get_tracer,
+        ):
+            mock_tracer = MagicMock()
+            mock_span = MagicMock()
+            mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+                return_value=False
+            )
+            mock_get_tracer.return_value = mock_tracer
+
+            mock_resolved = MagicMock()
+            mock_resolved.local_path = Path("/tmp/data")  # noqa: S108
+            mock_resolved.is_remote = False
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__ = AsyncMock(return_value=mock_resolved)
+            mock_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sr.resolve_context.return_value = mock_ctx
+
+            await manager._run_init_job(job)
+
+        mock_tracer.start_as_current_span.assert_called_with(
+            "holodeck.serve.tool_init.progress"
+        )
+        # Verify complete event was added
+        mock_span.add_event.assert_any_call("holodeck.serve.tool_init.complete")
+
+    @pytest.mark.asyncio
+    async def test_run_job_failure_sets_error_status(self) -> None:
+        """_run_init_job sets StatusCode.ERROR on span when job fails."""
+        from holodeck.serve.tool_init_manager import InitJob, ToolInitManager
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool()])
+        manager = ToolInitManager(agent=agent)
+        job = InitJob(tool_name="knowledge_base", created_at=datetime.now())
+
+        with (
+            patch("holodeck.serve.tool_init_manager.SourceResolver") as mock_sr,
+            patch(
+                "holodeck.serve.tool_init_manager.initialize_single_tool",
+                new_callable=AsyncMock,
+            ) as mock_init,
+            patch("holodeck.serve.tool_init_manager.get_tracer") as mock_get_tracer,
+        ):
+            mock_tracer = MagicMock()
+            mock_span = MagicMock()
+            mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
+                return_value=mock_span
+            )
+            mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
+                return_value=False
+            )
+            mock_get_tracer.return_value = mock_tracer
+
+            mock_resolved = MagicMock()
+            mock_resolved.local_path = Path("/tmp/data")  # noqa: S108
+            mock_resolved.is_remote = False
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__ = AsyncMock(return_value=mock_resolved)
+            mock_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sr.resolve_context.return_value = mock_ctx
+            mock_init.side_effect = RuntimeError("boom")
+
+            await manager._run_init_job(job)
+
+        from opentelemetry.trace import StatusCode
+
+        mock_span.set_status.assert_called_once()
+        status_call = mock_span.set_status.call_args[0]
+        assert status_call[0] == StatusCode.ERROR
+        mock_span.add_event.assert_any_call("holodeck.serve.tool_init.failed")

@@ -522,6 +522,145 @@ class TestAgentServerAGUIEndpoint:
         assert "/awp" not in routes
 
 
+class TestToolInitManagerWiring:
+    """Tests for ToolInitManager wiring in AgentServer (T029)."""
+
+    def test_init_creates_tool_init_manager(self, mock_agent_config: MagicMock) -> None:
+        """T029: AgentServer creates a ToolInitManager on init."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        assert hasattr(server, "_tool_init_manager")
+        assert isinstance(server._tool_init_manager, ToolInitManager)
+
+    def test_init_max_concurrent_init_jobs_default(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T029: Default max_concurrent is 4."""
+        server = AgentServer(agent_config=mock_agent_config)
+
+        assert server._tool_init_manager._max_concurrent == 4
+
+    def test_init_max_concurrent_init_jobs_custom(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T029: Custom max_concurrent_init_jobs is forwarded."""
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            max_concurrent_init_jobs=7,
+        )
+
+        assert server._tool_init_manager._max_concurrent == 7
+
+
+class TestToolInitRouterRegistration:
+    """Tests for tool init router registration in create_app (T028)."""
+
+    def test_create_app_registers_tool_init_route(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T028: Tool init route is registered on the app."""
+        server = AgentServer(agent_config=mock_agent_config)
+        app = server.create_app()
+
+        routes = [route.path for route in app.routes]
+        assert "/tools/{tool_name}/init" in routes
+
+    def test_app_state_has_tool_init_manager(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T028: app.state.tool_init_manager is set after create_app."""
+        server = AgentServer(agent_config=mock_agent_config)
+        app = server.create_app()
+
+        assert hasattr(app.state, "tool_init_manager")
+        assert app.state.tool_init_manager is server._tool_init_manager
+
+    def test_tool_init_route_available_in_agui_protocol(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T028: Tool init endpoint available regardless of protocol (AG-UI)."""
+        server = AgentServer(
+            agent_config=mock_agent_config, protocol=ProtocolType.AG_UI
+        )
+        app = server.create_app()
+
+        routes = [route.path for route in app.routes]
+        assert "/tools/{tool_name}/init" in routes
+
+    def test_tool_init_route_available_in_rest_protocol(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T028: Tool init endpoint available regardless of protocol (REST)."""
+        server = AgentServer(agent_config=mock_agent_config, protocol=ProtocolType.REST)
+        app = server.create_app()
+
+        routes = [route.path for route in app.routes]
+        assert "/tools/{tool_name}/init" in routes
+
+
+class TestToolInitShutdownWiring:
+    """Tests for tool init shutdown and cleanup wiring (T030)."""
+
+    @pytest.mark.asyncio
+    async def test_stop_calls_tool_init_manager_shutdown(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T030: stop() calls _tool_init_manager.shutdown()."""
+        from unittest.mock import AsyncMock
+
+        server = AgentServer(agent_config=mock_agent_config)
+        await server.start()
+
+        server._tool_init_manager.shutdown = AsyncMock()
+        await server.stop()
+
+        server._tool_init_manager.shutdown.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_shutdown_before_session_cleanup(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """T030: Tool init shutdown happens before session cleanup."""
+
+        call_order: list[str] = []
+
+        server = AgentServer(agent_config=mock_agent_config)
+        await server.start()
+
+        async def track_shutdown() -> None:
+            call_order.append("tool_init_shutdown")
+
+        async def track_stop_cleanup() -> None:
+            call_order.append("stop_cleanup_task")
+
+        server._tool_init_manager.shutdown = track_shutdown
+        server.sessions.stop_cleanup_task = track_stop_cleanup
+
+        await server.stop()
+
+        assert call_order.index("tool_init_shutdown") < call_order.index(
+            "stop_cleanup_task"
+        )
+
+    @pytest.mark.asyncio
+    @patch("holodeck.lib.source_resolver.SourceResolver.cleanup_orphans")
+    async def test_start_calls_cleanup_orphans(
+        self,
+        mock_cleanup: MagicMock,
+        mock_agent_config: MagicMock,
+    ) -> None:
+        """T030: start() calls SourceResolver.cleanup_orphans()."""
+
+        mock_cleanup.return_value = 0
+
+        server = AgentServer(agent_config=mock_agent_config)
+        await server.start()
+
+        mock_cleanup.assert_awaited_once()
+
+
 class TestValidateBackendPrerequisites:
     """Tests for AgentServer._validate_backend_prerequisites().
 

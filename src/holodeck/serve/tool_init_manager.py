@@ -13,6 +13,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from opentelemetry.trace import StatusCode
+
+from holodeck.lib.observability import get_tracer
 from holodeck.lib.source_resolver import SourceResolver, sanitize_error_detail
 from holodeck.lib.tool_initializer import ToolInitializerError, initialize_single_tool
 from holodeck.serve.models import InitJobProgress, InitJobState
@@ -183,6 +186,12 @@ class ToolInitManager:
         task = asyncio.create_task(self._run_init_job(job))
         self._tasks[tool_name] = task
 
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span("holodeck.serve.tool_init.start") as span:
+            span.set_attribute("tool_init.job.tool_name", tool_name)
+            span.set_attribute("tool_init.job.state", job.state.value)
+            span.set_attribute("tool_init.job.force", force)
+
         logger.info("Scheduled init job for tool '%s' (force=%s)", tool_name, force)
         return job
 
@@ -260,49 +269,71 @@ class ToolInitManager:
         Args:
             job: The init job to run.
         """
-        job.state = InitJobState.IN_PROGRESS
-        job.started_at = datetime.now()
+        tracer = get_tracer(__name__)
+        with tracer.start_as_current_span("holodeck.serve.tool_init.progress") as span:
+            span.set_attribute("tool_init.job.tool_name", job.tool_name)
+            span.set_attribute("tool_init.job.force", job.force)
 
-        def _progress_callback(processed: int, total: int | None) -> None:
-            job.progress = InitJobProgress(
-                documents_processed=processed,
-                total_documents=total,
-            )
+            job.state = InitJobState.IN_PROGRESS
+            job.started_at = datetime.now()
 
-        try:
-            # Find tool config to get source
-            tool_config = None
-            for t in self._agent.tools or []:
-                if t.name == job.tool_name:
-                    tool_config = t
-                    break
-
-            source = getattr(tool_config, "source", "") if tool_config else ""
-
-            async with SourceResolver.resolve_context(source) as resolved:
-                await initialize_single_tool(
-                    agent=self._agent,
-                    tool_name=job.tool_name,
-                    force_ingest=job.force,
-                    progress_callback=_progress_callback,
-                    source_override=(
-                        resolved.local_path if resolved.is_remote else None
-                    ),
+            def _progress_callback(processed: int, total: int | None) -> None:
+                job.progress = InitJobProgress(
+                    documents_processed=processed,
+                    total_documents=total,
                 )
 
-            job.state = InitJobState.COMPLETED
-            job.completed_at = datetime.now()
-            job.message = f"Tool '{job.tool_name}' initialized successfully"
+            try:
+                # Find tool config to get source
+                tool_config = None
+                for t in self._agent.tools or []:
+                    if t.name == job.tool_name:
+                        tool_config = t
+                        break
 
-        except asyncio.CancelledError:
-            job.state = InitJobState.FAILED
-            job.completed_at = datetime.now()
-            job.message = "Cancelled due to server shutdown"
-        except Exception as exc:
-            job.state = InitJobState.FAILED
-            job.completed_at = datetime.now()
-            job.error_detail = sanitize_error_detail(str(exc))
-            job.message = f"Initialization failed for tool '{job.tool_name}'"
-            logger.error("Init job failed for '%s': %s", job.tool_name, exc)
-        finally:
-            self._active_count -= 1
+                source = getattr(tool_config, "source", "") if tool_config else ""
+
+                async with SourceResolver.resolve_context(source) as resolved:
+                    await initialize_single_tool(
+                        agent=self._agent,
+                        tool_name=job.tool_name,
+                        force_ingest=job.force,
+                        progress_callback=_progress_callback,
+                        source_override=(
+                            resolved.local_path if resolved.is_remote else None
+                        ),
+                    )
+
+                job.state = InitJobState.COMPLETED
+                job.completed_at = datetime.now()
+                job.message = f"Tool '{job.tool_name}' initialized successfully"
+
+                # Record success span attributes
+                duration_ms = int(
+                    (job.completed_at - job.started_at).total_seconds() * 1000
+                )
+                span.set_attribute("tool_init.job.state", job.state.value)
+                span.set_attribute("tool_init.job.duration_ms", duration_ms)
+                if job.progress:
+                    span.set_attribute(
+                        "tool_init.job.documents_processed",
+                        job.progress.documents_processed,
+                    )
+                span.add_event("holodeck.serve.tool_init.complete")
+
+            except asyncio.CancelledError:
+                job.state = InitJobState.FAILED
+                job.completed_at = datetime.now()
+                job.message = "Cancelled due to server shutdown"
+                span.set_status(StatusCode.ERROR, job.message)
+                span.add_event("holodeck.serve.tool_init.failed")
+            except Exception as exc:
+                job.state = InitJobState.FAILED
+                job.completed_at = datetime.now()
+                job.error_detail = sanitize_error_detail(str(exc))
+                job.message = f"Initialization failed for tool '{job.tool_name}'"
+                logger.error("Init job failed for '%s': %s", job.tool_name, exc)
+                span.set_status(StatusCode.ERROR, str(exc))
+                span.add_event("holodeck.serve.tool_init.failed")
+            finally:
+                self._active_count -= 1

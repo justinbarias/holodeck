@@ -30,6 +30,7 @@ from holodeck.serve.models import (
     ServerState,
 )
 from holodeck.serve.session_store import ServerSession, SessionStore
+from holodeck.serve.tool_init_manager import ToolInitManager
 
 if TYPE_CHECKING:
     from holodeck.chat.executor import AgentExecutor
@@ -74,6 +75,7 @@ class AgentServer:
         debug: bool = False,
         execution_config: ExecutionConfig | None = None,
         observability_enabled: bool = False,
+        max_concurrent_init_jobs: int = 4,
     ) -> None:
         """Initialize the agent server.
 
@@ -120,6 +122,9 @@ class AgentServer:
             else:
                 max_sessions = 10  # Default when claude section absent
         self.sessions = SessionStore(max_sessions=max_sessions)
+        self._tool_init_manager = ToolInitManager(
+            agent=self.agent_config, max_concurrent=max_concurrent_init_jobs
+        )
         self.state = ServerState.INITIALIZING
         self._app: FastAPI | None = None
         self._start_time: datetime | None = None
@@ -278,6 +283,12 @@ class AgentServer:
 
         # Register health endpoints
         self._register_health_endpoints(app)
+
+        # Register tool init endpoints (protocol-agnostic)
+        from holodeck.serve.tool_init_routes import router as tool_init_router
+
+        app.state.tool_init_manager = self._tool_init_manager
+        app.include_router(tool_init_router)
 
         # Register protocol-specific endpoints
         if self.protocol == ProtocolType.AG_UI:
@@ -596,6 +607,16 @@ class AgentServer:
         # Validate backend prerequisites before accepting requests
         await self._validate_backend_prerequisites()
 
+        # Clean up orphaned temp directories from previous runs
+        from holodeck.lib.source_resolver import SourceResolver
+
+        orphans_removed = await SourceResolver.cleanup_orphans()
+        if orphans_removed:
+            logger.info(
+                "Cleaned up %d orphaned init temp directories",
+                orphans_removed,
+            )
+
         self._start_time = datetime.now(timezone.utc)
         self.state = ServerState.RUNNING
 
@@ -614,6 +635,9 @@ class AgentServer:
         stopping the cleanup task and clearing all sessions.
         """
         self.state = ServerState.SHUTTING_DOWN
+
+        # Shutdown tool init manager (cancel running jobs)
+        await self._tool_init_manager.shutdown()
 
         # Stop cleanup task
         await self.sessions.stop_cleanup_task()
