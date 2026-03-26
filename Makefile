@@ -158,14 +158,9 @@ type-check: ## Run type checking with mypy
 security: ## Run security checks
 	@echo "$(GREEN)Running security checks...$(NC)"
 	@echo "Checking for known vulnerabilities..."
-	# nltk 3.9.3 (latest) — no upstream fix available; low-risk for our usage
-	# (WordNet browser XSS/shutdown, JSON recursion DoS — we only use tokenization)
 	# pygments 2.19.2 (latest) — no upstream fix available; low-risk for our usage
 	# (ReDoS in AdlLexer, local access only — we don't use ADL lexer)
 	uv run pip-audit --progress-spinner=off \
-		--ignore-vuln GHSA-rf74-v2fm-23pw \
-		--ignore-vuln CVE-2026-33230 \
-		--ignore-vuln CVE-2026-33231 \
 		--ignore-vuln CVE-2026-4539
 	@echo "Scanning for security issues with Ruff..."
 	uv run ruff check $(SRC_DIR) --select S

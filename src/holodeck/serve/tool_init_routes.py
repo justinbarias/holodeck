@@ -1,7 +1,7 @@
 """Tool initialization HTTP routes.
 
-Provides the POST /tools/{tool_name}/init endpoint for triggering
-background tool data ingestion jobs.
+Provides the POST and GET /tools/{tool_name}/init endpoints for triggering
+and polling background tool data ingestion jobs.
 """
 
 from __future__ import annotations
@@ -122,3 +122,42 @@ async def start_tool_init(
         content=response.model_dump(mode="json", exclude_none=True),
         headers={"Location": instance},
     )
+
+
+@router.get(
+    "/tools/{tool_name}/init",
+    response_model=InitJobResponse,
+    responses={
+        404: {"model": ProblemDetail, "content": {"application/problem+json": {}}},
+    },
+)
+async def get_tool_init_status(
+    tool_name: str,
+    request: Request,
+) -> InitJobResponse | JSONResponse:
+    """Poll the initialization status of a tool.
+
+    Returns the current state of the initialization job for the
+    specified tool, or 404 if no job has been started.
+
+    Implements FR-003 (status endpoint) and FR-004 (status fields).
+
+    Args:
+        tool_name: Name of the tool to query.
+        request: The incoming HTTP request.
+
+    Returns:
+        200 with InitJobResponse, or 404 ProblemDetail if no job exists.
+    """
+    manager = request.app.state.tool_init_manager
+    job = manager.get_job(tool_name)
+
+    if job is None:
+        return _problem_response(
+            status=404,
+            title="Not Found",
+            detail=f"No initialization job found for tool '{tool_name}'.",
+            instance=f"/tools/{tool_name}/init",
+        )
+
+    return _job_to_response(job)

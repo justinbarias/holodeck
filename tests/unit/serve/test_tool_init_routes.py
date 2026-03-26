@@ -1,6 +1,6 @@
-"""Unit tests for tool init route handlers (T027).
+"""Unit tests for tool init route handlers.
 
-Tests cover the POST /tools/{tool_name}/init endpoint including
+Tests cover the POST and GET /tools/{tool_name}/init endpoints including
 success responses, error mapping, and ProblemDetail formatting.
 """
 
@@ -243,3 +243,140 @@ class TestPostToolInit:
         body = response.json()
         assert body["progress"]["documents_processed"] == 5
         assert body["progress"]["total_documents"] == 10
+
+
+class TestGetToolInitStatus:
+    """Tests for GET /tools/{tool_name}/init endpoint (US2)."""
+
+    def test_no_job_returns_404(self) -> None:
+        """GET for tool with no init job returns 404."""
+        manager = MagicMock()
+        manager.get_job.return_value = None
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools/nonexistent/init")
+
+        assert response.status_code == 404
+
+    def test_no_job_returns_problem_json_content_type(self) -> None:
+        """GET 404 response uses application/problem+json content type."""
+        manager = MagicMock()
+        manager.get_job.return_value = None
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools/nonexistent/init")
+
+        assert "application/problem+json" in response.headers["content-type"]
+
+    def test_no_job_body_matches_problem_detail(self) -> None:
+        """GET 404 body matches RFC 7807 ProblemDetail schema."""
+        manager = MagicMock()
+        manager.get_job.return_value = None
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools/my_tool/init")
+
+        body = response.json()
+        assert body["title"] == "Not Found"
+        assert body["status"] == 404
+        assert body["detail"] == "No initialization job found for tool 'my_tool'."
+        assert body["instance"] == "/tools/my_tool/init"
+
+    def test_existing_job_returns_200(self) -> None:
+        """GET for tool with existing init job returns 200."""
+        manager = MagicMock()
+        manager.get_job.return_value = _make_init_job()
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools/knowledge_base/init")
+
+        assert response.status_code == 200
+
+    def test_existing_job_body_matches_init_job_response(self) -> None:
+        """GET 200 body matches InitJobResponse schema."""
+        manager = MagicMock()
+        manager.get_job.return_value = _make_init_job()
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools/knowledge_base/init")
+        body = response.json()
+
+        assert body["tool_name"] == "knowledge_base"
+        assert body["state"] == "pending"
+        assert body["href"] == "/tools/knowledge_base/init"
+        assert body["force"] is False
+        assert "created_at" in body
+
+    def test_existing_job_with_progress(self) -> None:
+        """GET response includes progress when present on job."""
+        job = _make_init_job()
+        job.state = InitJobState.IN_PROGRESS
+        job.progress = InitJobProgress(documents_processed=5, total_documents=10)
+
+        manager = MagicMock()
+        manager.get_job.return_value = job
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools/knowledge_base/init")
+        body = response.json()
+
+        assert body["progress"]["documents_processed"] == 5
+        assert body["progress"]["total_documents"] == 10
+
+    def test_in_progress_job_includes_started_at(self) -> None:
+        """GET for in-progress job includes started_at, no completed_at."""
+        job = _make_init_job(state=InitJobState.IN_PROGRESS)
+        job.started_at = datetime(2026, 3, 25, 12, 0, 1)
+
+        manager = MagicMock()
+        manager.get_job.return_value = job
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools/knowledge_base/init")
+        body = response.json()
+
+        assert body["started_at"] is not None
+        assert body.get("completed_at") is None
+
+    def test_completed_job_includes_completed_at(self) -> None:
+        """GET for completed job includes completed_at timestamp."""
+        job = _make_init_job(state=InitJobState.COMPLETED)
+        job.started_at = datetime(2026, 3, 25, 12, 0, 1)
+        job.completed_at = datetime(2026, 3, 25, 12, 0, 45)
+        job.message = "Successfully initialized: 42 documents ingested"
+
+        manager = MagicMock()
+        manager.get_job.return_value = job
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools/knowledge_base/init")
+        body = response.json()
+
+        assert body["completed_at"] is not None
+        assert body["state"] == "completed"
+
+    def test_failed_job_includes_error_detail(self) -> None:
+        """GET for failed job includes error_detail field."""
+        job = _make_init_job(state=InitJobState.FAILED)
+        job.started_at = datetime(2026, 3, 25, 12, 0, 1)
+        job.completed_at = datetime(2026, 3, 25, 12, 0, 5)
+        job.error_detail = "Embedding provider credentials are invalid"
+
+        manager = MagicMock()
+        manager.get_job.return_value = job
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools/knowledge_base/init")
+        body = response.json()
+
+        assert body["state"] == "failed"
+        assert body["error_detail"] == "Embedding provider credentials are invalid"
