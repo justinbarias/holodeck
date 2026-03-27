@@ -7,10 +7,165 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Custom Anthropic Endpoint Support** — Route the Claude Agent SDK to third-party Anthropic-compatible endpoints (Ollama, LiteLLM, etc.)
+  - New `AuthProvider.custom` validates `ANTHROPIC_AUTH_TOKEN` environment variable
+  - `model.endpoint` is forwarded as `ANTHROPIC_BASE_URL` to the SDK subprocess when set for Anthropic providers
+  - Warning validator in `LLMProvider` when `auth_provider: custom` is used without an endpoint
+  - Ollama legal-assistant sample under `sample/legal-assistant/ollama/`
+- **Async Tool Initialization Endpoints** (Feature #025) — Background tool data ingestion via REST API
+  - `POST /tools/{tool_name}/init` — Trigger background vectorstore/hierarchical_document ingestion (201 Created with Location header)
+  - `GET /tools/{tool_name}/init` — Poll initialization status with progress tracking (documents_processed/total_documents)
+  - `GET /tools` — List all agent tools with initialization state (pending/in_progress/completed/failed/not_started)
+  - RFC 7807 `ProblemDetail` error responses (400/404/409/429/503)
+  - `ToolInitManager` orchestrator with configurable concurrency limiting (default 3), conflict detection, and graceful shutdown
+  - `SourceResolver` for unified local/S3/Azure Blob/HTTP source resolution with temp directory cleanup
+  - `initialize_single_tool()` async function with source override and progress callback support
+  - OTel spans for full init job lifecycle (start, progress, complete, failed)
+  - OpenAPI 3.1 contract specification (`specs/025-tool-init-endpoints/contracts/openapi.yaml`)
+
+### Changed
+
+- GitHub Actions Claude Code review workflow: added concurrency control, `pull-requests: write` permission, file-based body submission
+
+### Fixed
+
+- CI/CD: Claude code review posting now works correctly (#291)
+
+### Dependencies
+
+- `httpx` ≥0.27 (new core dependency — async HTTP for remote source downloads)
+- `boto3` ≥1.42.0 (new optional extra `[s3]`)
+- `azure-storage-blob` ≥12.19 (new optional extra `[azure-blob]`)
+- `cryptography`: 46.0.5 → 46.0.6
+- `nltk`: 3.9.3 → 3.9.4
+- `pypdf`: 6.9.1 → 6.9.2
+- `requests`: 2.32.5 → 2.33.0
+
+### Documentation
+
+- Complete spec-kit artifacts for Feature #025 (spec, plan, data-model, research, quickstart, OpenAPI contract, task breakdowns)
+
+### Testing
+
+- 71 new tool init tests (routes, manager, OTel, integration, re-initialization)
+- Full suite: 4,321 passed, 47 skipped, 0 failed
+
 ### Planned Features
 
 - **Deployment Engine**: Registry push (`holodeck deploy push`) and cloud deployment (`holodeck deploy run`)
 - **Plugin System**: Pre-built plugin packages for common integrations
+
+---
+
+## [0.5.2] - 2026-03-23
+
+### Documentation
+
+- **API Reference Rewrite** — Rewrote all 6 existing `docs/api/*.md` files to fix broken mkdocstrings references (#286)
+  - Removed nonexistent symbols (`config.merge.ConfigMerger`, `validator.normalize_errors`, `compute_f1_score`, etc.)
+  - Corrected module paths across all reference pages
+- Added 9 new API reference pages for previously undocumented subsystems:
+  - `backends`, `chat`, `deploy`, `serve`, `services`, `observability`, `pdf-processor`, `tool-filter`, `tools`
+- Updated `mkdocs.yml` navigation to include all 15 API reference pages
+- Build validation: `mkdocs build --strict` passes with 0 warnings/errors
+
+---
+
+## [0.5.1] - 2026-03-23
+
+### Added
+
+- **Claude Backend Support for `holodeck serve`** (Feature #024 US1) — Full Claude Agent SDK integration with the server command (#282)
+  - Task-bound session actor wrapping Claude SDK sessions for anyio task-group binding
+  - `BackendSessionError` exception for propagating backend failures to protocols
+  - `max_concurrent_sessions` config field (1–100, default 10) for capacity management
+  - `backend_ready` and `backend_diagnostics` health check fields in server models
+  - Pre-flight validation (Node.js ≥18, API credentials) during server startup
+  - Graceful lifecycle with 5s shutdown timeouts and parallel session teardown
+- **Real-Time Tool Streaming via Claude Agent SDK Hooks** (#283)
+  - `PreToolUse`, `PostToolUse`, `PostToolUseFailure` hook integration
+  - `ToolEvent` dataclass for provider-agnostic tool event abstraction
+  - Queue-based event passthrough: `ClaudeSession` → `_TaskBoundSession` → `AgentExecutor` → AG-UI protocol
+  - Concurrent tool event queue draining with fallback to post-hoc emission for non-hook backends
+- **Node.js Conditional Installation for Claude Agent Containers** (Feature #024 US2) (#284)
+  - Auto-detection of Anthropic provider in Dockerfile generation
+  - `needs_nodejs` Jinja2 conditional for Node.js 22.x via nodesource
+- **OpenTelemetry GenAI Semantic Convention Instrumentation** (#271)
+  - `otel-instrumentation-claude-agent-sdk` activation for `invoke_agent` and `execute_tool` spans
+  - `get_observability_context()` accessor function
+  - Configurable `schedule_delay_millis` in `TracingConfig` (default 2000ms)
+  - New `claude-otel` optional dependency group
+- **Specification Artifacts**
+  - Feature #024 (Claude Serve/Deploy Parity): full spec, plan, data-model, quickstart, 139 tasks across 5 user stories
+  - Feature #023 (Choose Your Backend): full spec, plan, data-model, quickstart, research, per-story task files
+
+### Changed
+
+- **Configuration System Overhaul** (#272)
+  - Fixed provider resolution to match by dict key with `.provider` field fallback
+  - Enabled multiple providers of the same type (e.g., `openai_prod` vs `openai_dev`)
+  - Fixed config merging: deep-merge project + user configs instead of replacement
+  - Fixed lossy YAML roundtrip: substitute env vars before first parse
+  - Added `load_agent_with_config()` helper eliminating 15-line boilerplate in 3 CLI commands
+  - Added `ConfigLoader` caching to eliminate double file I/O
+  - Consolidated 3 deep-merge implementations into single `_deep_merge` utility
+  - Deleted ~1,500 lines of dead code: `merge.py`, `ConfigValidator`, unused functions
+  - Fixed TOCTOU vulnerability in `parse_yaml`; narrowed exception catching
+- **Anthropic Cloud Auth Hardening** (#269) — Stricter validation for Bedrock, Vertex, and Foundry credential flows
+
+### Refactored
+
+- **Test Suite Simplification** (#275) — 2,120 fewer lines (−3.1%) with zero coverage loss
+  - Consolidated 4 identical DeepEval RAG evaluator test files into single `test_rag_evaluators.py` with `@pytest.mark.parametrize`
+  - Extracted shared fixture factories into `conftest.py` files
+  - Parameterized repetitive test patterns across 30 files (option parsing, exit codes, TTY/non-TTY pairs)
+  - Removed trivial framework-behavior tests (Pydantic field presence, object identity, enum existence)
+
+### Fixed
+
+- **Docker SDK ImportError** (#285) — Lazy-import docker SDK in `deploy/builder.py` and `deploy/__init__.py` to prevent `ModuleNotFoundError` when `[deploy]` extra is not installed
+- **Missing `execute_tool` OTel spans** — Fixed ContextVar timing mismatch in `holodeck chat`; workaround re-injects ContextVar from instance attribute in hooks
+- **Claude subprocess OTel conflict** — Set `OTEL_TRACES_EXPORTER=none` for Claude subprocess when Python-side GenAI instrumentation is active
+- **Web search propagation** — `web_search` flag from `ClaudeConfig` now correctly wired to `allowed_tools` in `build_options`
+
+### Security
+
+- Replaced deprecated `safety check` (mandatory auth) with `pip-audit` (free, OSV-based) (#270)
+- **6 CVEs resolved in direct dependencies:**
+  - CVE-2026-27962, CVE-2026-28490: authlib ≥1.6.9
+  - CVE-2026-30922: pyasn1 ≥0.6.3
+  - CVE-2026-27448, CVE-2026-27459: pyopenssl ≥26.0.0
+  - CVE-2026-33123: pypdf ≥6.9.1
+- 3 additional transitive CVEs patched via constraint dependencies
+
+### Dependencies
+
+- `claude-agent-sdk`: 0.1.37 → 0.1.44
+- `cryptography`: ≥46.0.2 → ≥46.0.5
+- `semantic-kernel`: ≥1.37.1 → ≥1.39.4
+- `pypdf`: ≥6.6.0 → ≥6.9.1
+- `werkzeug`: ≥3.1.5 → ≥3.1.6
+- `authlib`: ≥1.6.6 → ≥1.6.9
+- `pyasn1`: ≥0.6.2 → ≥0.6.3 (dev)
+- New constraint dependencies: `jaraco-context ≥6.1.0`, `nltk ≥3.9.3`, `pyopenssl ≥26.0.0`, `pillow ≥12.1.1`, `protobuf ≥5.29.6`, `python-multipart ≥0.0.22`
+- New optional group: `claude-otel` (OpenTelemetry instrumentation for Claude Agent SDK)
+- Replaced `safety` with `pip-audit ≥2.7.0`
+
+### Documentation
+
+- CLAUDE.md: added LSP vs Grep guidance, Python 3.10+ note
+- Hardened Anthropic cloud auth documentation (#269)
+
+### Testing
+
+- 44 new Claude backend instrumentation tests
+- 259 serve module tests (Claude backend support)
+- 203 backend/validator/config tests
+- 20 Node.js conditional Dockerfile tests
+- Integration tests with OTLP exporter for Aspire dashboard
+- All 3,813 unit tests passing; full regression: 4,124 passed
 
 ---
 
@@ -654,7 +809,7 @@ None reported in 0.0.1.
 - [x] **v0.2** - Evaluation framework
 - [x] **v0.3** - API deployment (serve + deploy build)
 - [x] **v0.4** - Hierarchical document search & tiered keyword search
-- [ ] **v0.5** - Web UI (no-code editor)
+- [x] **v0.5** - Multi-backend architecture (Claude Agent SDK, OTel, Claude serve support)
 - [ ] **v0.6** - Enterprise features (SSO, audit logs, RBAC)
 - [ ] **v1.0** - Production-ready release
 
@@ -708,9 +863,11 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 
 ---
 
-[unreleased]: https://github.com/justinbarias/holodeck/compare/0.4.1...HEAD
-[0.4.1]: https://github.com/justinbarias/holodeck/compare/0.4.0...0.4.1
-[0.4.0]: https://github.com/justinbarias/holodeck/compare/0.3.5...0.4.0
+[unreleased]: https://github.com/justinbarias/holodeck/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/justinbarias/holodeck/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/justinbarias/holodeck/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/justinbarias/holodeck/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/justinbarias/holodeck/compare/0.3.5...v0.4.0
 [0.3.5]: https://github.com/justinbarias/holodeck/compare/0.3.4...0.3.5
 [0.3.4]: https://github.com/justinbarias/holodeck/compare/0.3.3...0.3.4
 [0.3.3]: https://github.com/justinbarias/holodeck/compare/0.3.2...0.3.3
