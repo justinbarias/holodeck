@@ -785,3 +785,119 @@ class TestOTelInstrumentation:
         status_call = mock_span.set_status.call_args[0]
         assert status_call[0] == StatusCode.ERROR
         mock_span.add_event.assert_any_call("holodeck.serve.tool_init.failed")
+
+
+class TestGetAllToolStatuses:
+    """Tests for ToolInitManager.get_all_tool_statuses() (US3)."""
+
+    def test_no_tools_returns_empty(self) -> None:
+        """Agent with no tools returns an empty list."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        agent = _make_mock_agent(tools=None)
+        manager = ToolInitManager(agent=agent)
+
+        result = manager.get_all_tool_statuses()
+
+        assert result == []
+
+    def test_empty_tools_list_returns_empty(self) -> None:
+        """Agent with empty tools list returns an empty list."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        agent = _make_mock_agent(tools=[])
+        manager = ToolInitManager(agent=agent)
+
+        result = manager.get_all_tool_statuses()
+
+        assert result == []
+
+    def test_mixed_tools_correct_supports_init(self) -> None:
+        """Vectorstore/hierarchical_document have supports_init=True, others False."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        tools = [
+            _make_vectorstore_tool("kb"),
+            _make_hierarchical_doc_tool("docs"),
+            _make_mcp_tool("api"),
+            _make_function_tool("calc"),
+        ]
+        agent = _make_mock_agent(tools=tools)
+        manager = ToolInitManager(agent=agent)
+
+        result = manager.get_all_tool_statuses()
+
+        assert len(result) == 4
+        by_name = {r.name: r for r in result}
+        assert by_name["kb"].supports_init is True
+        assert by_name["docs"].supports_init is True
+        assert by_name["api"].supports_init is False
+        assert by_name["calc"].supports_init is False
+
+    def test_tool_types_in_response(self) -> None:
+        """Each response includes the correct tool type."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        tools = [_make_vectorstore_tool("kb"), _make_mcp_tool("api")]
+        agent = _make_mock_agent(tools=tools)
+        manager = ToolInitManager(agent=agent)
+
+        result = manager.get_all_tool_statuses()
+
+        by_name = {r.name: r for r in result}
+        assert by_name["kb"].type == "vectorstore"
+        assert by_name["api"].type == "mcp"
+
+    def test_no_job_means_init_status_none(self) -> None:
+        """Tools without prior init jobs have init_status=None."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool("kb")])
+        manager = ToolInitManager(agent=agent)
+
+        result = manager.get_all_tool_statuses()
+
+        assert result[0].init_status is None
+
+    @pytest.mark.asyncio
+    async def test_existing_job_reflects_state(self) -> None:
+        """Tools with an init job show the current job state."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool("kb")])
+        manager = ToolInitManager(agent=agent)
+
+        with patch.object(manager, "_run_init_job", new_callable=AsyncMock):
+            job = manager.start_init_job("kb")
+            job.state = InitJobState.COMPLETED
+
+        result = manager.get_all_tool_statuses()
+
+        assert result[0].init_status == InitJobState.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_mixed_tools_with_and_without_jobs(self) -> None:
+        """Some tools have jobs, others don't — both reported correctly."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        tools = [
+            _make_vectorstore_tool("kb"),
+            _make_mcp_tool("api"),
+            _make_hierarchical_doc_tool("docs"),
+        ]
+        agent = _make_mock_agent(tools=tools)
+        manager = ToolInitManager(agent=agent)
+
+        with patch.object(manager, "_run_init_job", new_callable=AsyncMock):
+            job = manager.start_init_job("kb")
+            job.state = InitJobState.IN_PROGRESS
+
+        result = manager.get_all_tool_statuses()
+        by_name = {r.name: r for r in result}
+
+        assert by_name["kb"].init_status == InitJobState.IN_PROGRESS
+        assert by_name["kb"].supports_init is True
+        assert by_name["api"].init_status is None
+        assert by_name["api"].supports_init is False
+        assert by_name["docs"].init_status is None
+        assert by_name["docs"].supports_init is True

@@ -413,3 +413,110 @@ class TestGetToolInitStatus:
 
         assert body["state"] == "failed"
         assert body["error_detail"] == "Embedding provider credentials are invalid"
+
+
+class TestListTools:
+    """Tests for GET /tools endpoint (US3)."""
+
+    def test_returns_200(self) -> None:
+        """GET /tools returns 200."""
+
+        manager = MagicMock()
+        manager.get_all_tool_statuses.return_value = []
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools")
+
+        assert response.status_code == 200
+
+    def test_empty_tools_returns_empty_list_with_zero_total(self) -> None:
+        """GET /tools with no tools returns empty list and total=0."""
+        manager = MagicMock()
+        manager.get_all_tool_statuses.return_value = []
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools")
+        body = response.json()
+
+        assert body["tools"] == []
+        assert body["total"] == 0
+
+    def test_response_shape_matches_tool_list_response(self) -> None:
+        """GET /tools body has 'tools' list and 'total' integer."""
+        from holodeck.serve.models import ToolInfoResponse
+
+        statuses = [
+            ToolInfoResponse(
+                name="kb",
+                type="vectorstore",
+                supports_init=True,
+                init_status="completed",
+            ),
+            ToolInfoResponse(
+                name="api",
+                type="mcp",
+                supports_init=False,
+                init_status=None,
+            ),
+        ]
+        manager = MagicMock()
+        manager.get_all_tool_statuses.return_value = statuses
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools")
+        body = response.json()
+
+        assert isinstance(body["tools"], list)
+        assert len(body["tools"]) == 2
+        assert body["total"] == 2
+
+    def test_tool_info_fields_present(self) -> None:
+        """Each tool in the response has name, type, supports_init, init_status."""
+        from holodeck.serve.models import ToolInfoResponse
+
+        statuses = [
+            ToolInfoResponse(
+                name="kb",
+                type="vectorstore",
+                supports_init=True,
+                init_status="pending",
+            ),
+        ]
+        manager = MagicMock()
+        manager.get_all_tool_statuses.return_value = statuses
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools")
+        tool = response.json()["tools"][0]
+
+        assert tool["name"] == "kb"
+        assert tool["type"] == "vectorstore"
+        assert tool["supports_init"] is True
+        assert tool["init_status"] == "pending"
+
+    def test_non_initializable_tool_has_null_init_status(self) -> None:
+        """Non-initializable tools have init_status=null in response."""
+        from holodeck.serve.models import ToolInfoResponse
+
+        statuses = [
+            ToolInfoResponse(
+                name="api",
+                type="mcp",
+                supports_init=False,
+                init_status=None,
+            ),
+        ]
+        manager = MagicMock()
+        manager.get_all_tool_statuses.return_value = statuses
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.get("/tools")
+        tool = response.json()["tools"][0]
+
+        assert tool["supports_init"] is False
+        assert tool["init_status"] is None

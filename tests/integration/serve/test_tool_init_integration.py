@@ -359,3 +359,103 @@ class TestGetToolInitIntegration:
         assert body["tool_name"] == "knowledge_base"
         assert body["href"] == "/tools/knowledge_base/init"
         assert "created_at" in body
+
+
+@pytest.mark.integration
+class TestListToolsIntegration:
+    """Integration tests for GET /tools endpoint (US3)."""
+
+    @pytest.mark.asyncio
+    async def test_list_tools_returns_all_configured_tools(
+        self, integration_client: AsyncClient
+    ) -> None:
+        """GET /tools returns all 4 tools from the mock agent."""
+        response = await integration_client.get("/tools")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == 4
+        assert len(body["tools"]) == 4
+
+    @pytest.mark.asyncio
+    async def test_list_tools_correct_supports_init(
+        self, integration_client: AsyncClient
+    ) -> None:
+        """GET /tools marks vectorstore/hierarchical_document as initializable."""
+        response = await integration_client.get("/tools")
+        body = response.json()
+
+        by_name = {t["name"]: t for t in body["tools"]}
+        assert by_name["knowledge_base"]["supports_init"] is True
+        assert by_name["docs"]["supports_init"] is True
+        assert by_name["calculator"]["supports_init"] is False
+        assert by_name["api"]["supports_init"] is False
+
+    @pytest.mark.asyncio
+    async def test_list_tools_correct_types(
+        self, integration_client: AsyncClient
+    ) -> None:
+        """GET /tools reports the correct type for each tool."""
+        response = await integration_client.get("/tools")
+        body = response.json()
+
+        by_name = {t["name"]: t for t in body["tools"]}
+        assert by_name["knowledge_base"]["type"] == "vectorstore"
+        assert by_name["docs"]["type"] == "hierarchical_document"
+        assert by_name["calculator"]["type"] == "function"
+        assert by_name["api"]["type"] == "mcp"
+
+    @pytest.mark.asyncio
+    async def test_list_tools_init_status_none_before_init(
+        self, integration_client: AsyncClient
+    ) -> None:
+        """GET /tools shows init_status=null for tools with no prior init."""
+        response = await integration_client.get("/tools")
+        body = response.json()
+
+        for tool in body["tools"]:
+            assert tool["init_status"] is None
+
+    @pytest.mark.asyncio
+    async def test_list_tools_reflects_init_job_state(
+        self, integration_client: AsyncClient
+    ) -> None:
+        """GET /tools shows init_status after a POST /tools/{name}/init."""
+        import asyncio
+
+        with (
+            patch(
+                "holodeck.serve.tool_init_manager.initialize_single_tool",
+                new_callable=AsyncMock,
+            ),
+            patch("holodeck.serve.tool_init_manager.SourceResolver") as mock_sr,
+        ):
+            mock_resolved = MagicMock()
+            mock_resolved.local_path = Path("./data")
+            mock_resolved.is_remote = False
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__ = AsyncMock(return_value=mock_resolved)
+            mock_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sr.resolve_context.return_value = mock_ctx
+
+            # Trigger init for knowledge_base
+            post = await integration_client.post("/tools/knowledge_base/init")
+            assert post.status_code == 201
+
+            # Wait for job to complete
+            await asyncio.sleep(0.05)
+            for _ in range(20):
+                status = await integration_client.get("/tools/knowledge_base/init")
+                if status.json()["state"] == "completed":
+                    break
+                await asyncio.sleep(0.05)
+
+            # Now GET /tools should reflect the completed state
+            response = await integration_client.get("/tools")
+
+        body = response.json()
+        by_name = {t["name"]: t for t in body["tools"]}
+        assert by_name["knowledge_base"]["init_status"] == "completed"
+        # Others still null
+        assert by_name["docs"]["init_status"] is None
+        assert by_name["calculator"]["init_status"] is None
