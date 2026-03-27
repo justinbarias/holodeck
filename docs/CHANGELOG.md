@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned Features
+
+- **Deployment Engine**: Registry push (`holodeck deploy push`) and cloud deployment (`holodeck deploy run`)
+- **Plugin System**: Pre-built plugin packages for common integrations
+
+---
+
+## [0.6.0] - 2026-03-28
+
 ### Added
 
 - **Custom Anthropic Endpoint Support** --Route the Claude Agent SDK to third-party Anthropic-compatible endpoints (Ollama, LiteLLM, etc.)
@@ -51,11 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 71 new tool init tests (routes, manager, OTel, integration, re-initialization)
 - Full suite: 4,321 passed, 47 skipped, 0 failed
-
-### Planned Features
-
-- **Deployment Engine**: Registry push (`holodeck deploy push`) and cloud deployment (`holodeck deploy run`)
-- **Plugin System**: Pre-built plugin packages for common integrations
 
 ---
 
@@ -863,7 +867,8 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 
 ---
 
-[unreleased]: https://github.com/justinbarias/holodeck/compare/v0.5.2...HEAD
+[unreleased]: https://github.com/justinbarias/holodeck/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/justinbarias/holodeck/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/justinbarias/holodeck/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/justinbarias/holodeck/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/justinbarias/holodeck/compare/v0.4.0...v0.5.0
