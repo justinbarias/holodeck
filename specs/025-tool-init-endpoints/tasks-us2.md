@@ -23,7 +23,7 @@
 
 **Purpose**: Confirm that US1 foundational infrastructure is in place before adding the GET endpoint.
 
-- [ ] T001 [US2] Verify US1 prerequisites are merged: confirm `ToolInitManager` class exists in `src/holodeck/serve/tool_init_manager.py` with `_jobs: dict[str, InitJob]` attribute, confirm `InitJobResponse` and `ProblemDetail` models exist in `src/holodeck/serve/models.py`, confirm `tool_init_routes.py` router is registered in `src/holodeck/serve/server.py`, and confirm POST `/tools/{tool_name}/init` handler exists in `src/holodeck/serve/tool_init_routes.py`. If any are missing, STOP and complete US1 first
+- [x] T001 [US2] Verify US1 prerequisites are merged: confirm `ToolInitManager` class exists in `src/holodeck/serve/tool_init_manager.py` with `_jobs: dict[str, InitJob]` attribute, confirm `InitJobResponse` and `ProblemDetail` models exist in `src/holodeck/serve/models.py`, confirm `tool_init_routes.py` router is registered in `src/holodeck/serve/server.py`, and confirm POST `/tools/{tool_name}/init` handler exists in `src/holodeck/serve/tool_init_routes.py`. If any are missing, STOP and complete US1 first
 
 **Checkpoint**: US1 infrastructure confirmed. Ready to add GET endpoint.
 
@@ -33,8 +33,8 @@
 
 **Purpose**: Ensure `ToolInitManager` exposes a method to retrieve a job by tool name, returning `None` when no job exists. US1 may already provide this; if so, this phase is a no-op verification.
 
-- [ ] T002 [US2] Check whether `ToolInitManager` in `src/holodeck/serve/tool_init_manager.py` already has a `get_job(tool_name: str) -> InitJob | None` method (or equivalent). If it exists, verify it returns the `InitJob` from `_jobs` dict by key, returning `None` when the key is absent. Mark this task complete and skip T003
-- [ ] T003 [US2] If `get_job()` does not exist, add it to `ToolInitManager` in `src/holodeck/serve/tool_init_manager.py`. Implementation: `return self._jobs.get(tool_name)`. Add Google-style docstring. Type hint the return as `InitJob | None`. No locking needed — single-threaded asyncio (design decision R4)
+- [x] T002 [US2] Check whether `ToolInitManager` in `src/holodeck/serve/tool_init_manager.py` already has a `get_job(tool_name: str) -> InitJob | None` method (or equivalent). If it exists, verify it returns the `InitJob` from `_jobs` dict by key, returning `None` when the key is absent. Mark this task complete and skip T003
+- [x] T003 [US2] If `get_job()` does not exist, add it to `ToolInitManager` in `src/holodeck/serve/tool_init_manager.py`. Implementation: `return self._jobs.get(tool_name)`. Add Google-style docstring. Type hint the return as `InitJob | None`. No locking needed — single-threaded asyncio (design decision R4)
 
 **Checkpoint**: `ToolInitManager.get_job()` available for the route handler.
 
@@ -44,7 +44,7 @@
 
 **Purpose**: Implement the `GET /tools/{tool_name}/init` endpoint in the existing routes module. This is the core of US2.
 
-- [ ] T004 [US2] Add the `get_tool_init_status` route handler to `src/holodeck/serve/tool_init_routes.py`. Implementation details:
+- [x] T004 [US2] Add the `get_tool_init_status` route handler to `src/holodeck/serve/tool_init_routes.py`. Implementation details:
     - Route: `@router.get("/tools/{tool_name}/init", response_model=InitJobResponse, responses={404: {"model": ProblemDetail, "content": {"application/problem+json": {}}}})`
     - Path parameter: `tool_name: str`
     - Access `ToolInitManager` via `request.app.state.tool_init_manager` (same DI pattern as the POST handler from US1 T027)
@@ -53,7 +53,7 @@
     - If job exists, convert `InitJob` to `InitJobResponse` (reuse the same conversion logic from US1's POST handler — extract to a helper if not already shared) and return with status 200
     - Add Google-style docstring referencing FR-003, FR-004
 
-- [ ] T005 [US2] Verify that the `InitJob` to `InitJobResponse` conversion is shared between the POST handler (US1) and the new GET handler. If US1 inlined the conversion in the POST handler, extract it to a private helper function `_job_to_response(job: InitJob) -> InitJobResponse` in `src/holodeck/serve/tool_init_routes.py` and update both handlers to use it. The helper must populate: `tool_name`, `state`, `href=f"/tools/{job.tool_name}/init"`, `created_at`, `started_at`, `completed_at`, `message`, `error_detail`, `progress`, `force`
+- [x] T005 [US2] Verify that the `InitJob` to `InitJobResponse` conversion is shared between the POST handler (US1) and the new GET handler. If US1 inlined the conversion in the POST handler, extract it to a private helper function `_job_to_response(job: InitJob) -> InitJobResponse` in `src/holodeck/serve/tool_init_routes.py` and update both handlers to use it. The helper must populate: `tool_name`, `state`, `href=f"/tools/{job.tool_name}/init"`, `created_at`, `started_at`, `completed_at`, `message`, `error_detail`, `progress`, `force`
 
 **Checkpoint**: GET endpoint returns 200 with `InitJobResponse` or 404 with `ProblemDetail`. Manually verifiable via `curl http://localhost:8000/tools/{tool_name}/init`.
 
@@ -63,10 +63,10 @@
 
 **Purpose**: Code quality, formatting, and validation.
 
-- [ ] T006 [P] [US2] Run `make format` to format `src/holodeck/serve/tool_init_manager.py` and `src/holodeck/serve/tool_init_routes.py` with Black + Ruff
-- [ ] T007 [P] [US2] Run `make lint` and fix any Ruff + Bandit violations in `src/holodeck/serve/tool_init_manager.py` and `src/holodeck/serve/tool_init_routes.py`
-- [ ] T008 [US2] Run `make type-check` and fix any MyPy errors in `src/holodeck/serve/tool_init_manager.py` and `src/holodeck/serve/tool_init_routes.py` — ensure `get_job()` return type and route handler return type annotations are correct
-- [ ] T009 [US2] Run full test suite `make test` to verify no regressions across entire codebase
+- [x] T006 [P] [US2] Run `make format` to format `src/holodeck/serve/tool_init_manager.py` and `src/holodeck/serve/tool_init_routes.py` with Black + Ruff
+- [x] T007 [P] [US2] Run `make lint` and fix any Ruff + Bandit violations in `src/holodeck/serve/tool_init_manager.py` and `src/holodeck/serve/tool_init_routes.py`
+- [x] T008 [US2] Run `make type-check` and fix any MyPy errors in `src/holodeck/serve/tool_init_manager.py` and `src/holodeck/serve/tool_init_routes.py` — ensure `get_job()` return type and route handler return type annotations are correct
+- [x] T009 [US2] Run full test suite `make test` to verify no regressions across entire codebase
 
 **Checkpoint**: All quality checks pass. US2 complete.
 

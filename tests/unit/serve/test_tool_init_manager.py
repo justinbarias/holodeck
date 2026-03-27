@@ -545,6 +545,99 @@ class TestRunInitJob:
         assert job.progress.total_documents == 10
 
 
+class TestToolInitManagerReInit:
+    """Tests for re-initialization scenarios (US4)."""
+
+    @pytest.mark.asyncio
+    async def test_reinit_completed_creates_fresh_job_with_new_timestamp(self) -> None:
+        """Replacing a completed job produces a new InitJob with fresh created_at."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool()])
+        manager = ToolInitManager(agent=agent)
+
+        with patch.object(manager, "_run_init_job", new_callable=AsyncMock):
+            job1 = manager.start_init_job("knowledge_base")
+            ts1 = job1.created_at
+            job1.state = InitJobState.COMPLETED
+
+            job2 = manager.start_init_job("knowledge_base")
+
+            assert job2 is not job1
+            assert job2.state == InitJobState.PENDING
+            assert job2.created_at >= ts1
+
+    @pytest.mark.asyncio
+    async def test_reinit_failed_replaces_stale_task_in_tasks_dict(self) -> None:
+        """Replacing a failed job updates _tasks to point to the new asyncio.Task."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool()])
+        manager = ToolInitManager(agent=agent)
+
+        with patch.object(manager, "_run_init_job", new_callable=AsyncMock):
+            job1 = manager.start_init_job("knowledge_base")
+            old_task = manager._tasks["knowledge_base"]
+            job1.state = InitJobState.FAILED
+
+            manager.start_init_job("knowledge_base")
+            new_task = manager._tasks["knowledge_base"]
+
+            assert new_task is not old_task
+
+    @pytest.mark.asyncio
+    async def test_reinit_active_count_correct_after_replacement(self) -> None:
+        """_active_count is 1 after re-init of a completed job (not double-counted)."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool()])
+        manager = ToolInitManager(agent=agent)
+
+        with patch.object(manager, "_run_init_job", new_callable=AsyncMock):
+            job1 = manager.start_init_job("knowledge_base")
+            # Simulate completion (decrement as _run_init_job would)
+            job1.state = InitJobState.COMPLETED
+            manager._active_count -= 1  # Simulates finally block in _run_init_job
+
+            manager.start_init_job("knowledge_base")
+
+            assert manager._active_count == 1
+
+    @pytest.mark.asyncio
+    async def test_reinit_with_force_true_propagated(self) -> None:
+        """Re-init with force=True stores force on the replacement job."""
+        from holodeck.serve.tool_init_manager import ToolInitManager
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool()])
+        manager = ToolInitManager(agent=agent)
+
+        with patch.object(manager, "_run_init_job", new_callable=AsyncMock):
+            job1 = manager.start_init_job("knowledge_base")
+            job1.state = InitJobState.COMPLETED
+            manager._active_count -= 1
+
+            job2 = manager.start_init_job("knowledge_base", force=True)
+
+            assert job2.force is True
+
+    @pytest.mark.asyncio
+    async def test_reinit_pending_raises_conflict_even_with_force(self) -> None:
+        """force=True does NOT bypass 409 for PENDING/IN_PROGRESS jobs."""
+        from holodeck.serve.tool_init_manager import (
+            InitJobConflictError,
+            ToolInitManager,
+        )
+
+        agent = _make_mock_agent(tools=[_make_vectorstore_tool()])
+        manager = ToolInitManager(agent=agent)
+
+        with patch.object(manager, "_run_init_job", new_callable=AsyncMock):
+            manager.start_init_job("knowledge_base")
+
+            with pytest.raises(InitJobConflictError):
+                manager.start_init_job("knowledge_base", force=True)
+
+
 class TestOTelInstrumentation:
     """Tests for OTel span instrumentation in ToolInitManager (T031)."""
 

@@ -260,6 +260,57 @@ class TestToolInitEndpointIntegration:
 
 
 @pytest.mark.integration
+class TestToolReInitIntegration:
+    """Integration tests for re-initialization flow (US4)."""
+
+    @pytest.mark.asyncio
+    async def test_reinit_after_completion_returns_201(
+        self, integration_client: AsyncClient
+    ) -> None:
+        """POST → completion → POST again returns 201 with a fresh job."""
+        import asyncio
+
+        with (
+            patch(
+                "holodeck.serve.tool_init_manager.initialize_single_tool",
+                new_callable=AsyncMock,
+            ),
+            patch("holodeck.serve.tool_init_manager.SourceResolver") as mock_sr,
+        ):
+            mock_resolved = MagicMock()
+            mock_resolved.local_path = Path("./data")
+            mock_resolved.is_remote = False
+            mock_ctx = AsyncMock()
+            mock_ctx.__aenter__ = AsyncMock(return_value=mock_resolved)
+            mock_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sr.resolve_context.return_value = mock_ctx
+
+            # First init
+            resp1 = await integration_client.post("/tools/knowledge_base/init")
+            assert resp1.status_code == 201
+
+            # Wait for the background task to complete
+            await asyncio.sleep(0.05)
+
+            # Poll until completed
+            for _ in range(20):
+                status = await integration_client.get("/tools/knowledge_base/init")
+                if status.json()["state"] == "completed":
+                    break
+                await asyncio.sleep(0.05)
+            else:
+                pytest.fail("First job did not complete in time")
+
+            # Re-init should succeed with 201
+            resp2 = await integration_client.post("/tools/knowledge_base/init")
+
+        assert resp2.status_code == 201
+        body = resp2.json()
+        assert body["state"] == "pending"
+        assert body["created_at"] != resp1.json()["created_at"]
+
+
+@pytest.mark.integration
 class TestGetToolInitIntegration:
     """Integration tests for GET /tools/{tool_name}/init (US2)."""
 

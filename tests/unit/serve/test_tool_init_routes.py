@@ -227,6 +227,39 @@ class TestPostToolInit:
         body = response.json()
         assert body["instance"] == "/tools/my_tool/init"
 
+    def test_conflict_409_has_no_location_header(self) -> None:
+        """409 Conflict response does NOT include a Location header."""
+        from holodeck.serve.tool_init_manager import InitJobConflictError
+
+        manager = MagicMock()
+        manager.start_init_job.side_effect = InitJobConflictError(
+            "Tool 'kb' already has an active init job (state=pending)"
+        )
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.post("/tools/kb/init")
+
+        assert response.status_code == 409
+        assert "location" not in response.headers
+
+    def test_conflict_409_detail_includes_tool_name_and_state(self) -> None:
+        """409 ProblemDetail detail field contains tool name and current state."""
+        from holodeck.serve.tool_init_manager import InitJobConflictError
+
+        manager = MagicMock()
+        manager.start_init_job.side_effect = InitJobConflictError(
+            "Tool 'knowledge_base' already has an active init job (state=in_progress)"
+        )
+        app = _make_app_with_mock_manager(manager)
+        client = TestClient(app)
+
+        response = client.post("/tools/knowledge_base/init")
+
+        body = response.json()
+        assert "knowledge_base" in body["detail"]
+        assert "in_progress" in body["detail"]
+
     def test_success_with_progress(self) -> None:
         """POST response includes progress when present on job."""
         job = _make_init_job()
