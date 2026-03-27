@@ -38,3 +38,6 @@ metrics/*
 # samples folder
 /sample
 report.md
+
+# Git worktrees
+.worktrees/
