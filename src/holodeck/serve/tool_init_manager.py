@@ -18,7 +18,7 @@ from opentelemetry.trace import StatusCode
 from holodeck.lib.observability import get_tracer
 from holodeck.lib.source_resolver import SourceResolver, sanitize_error_detail
 from holodeck.lib.tool_initializer import ToolInitializerError, initialize_single_tool
-from holodeck.serve.models import InitJobProgress, InitJobState
+from holodeck.serve.models import InitJobProgress, InitJobState, ToolInfoResponse
 
 if TYPE_CHECKING:
     from holodeck.models.agent import Agent
@@ -205,6 +205,30 @@ class ToolInitManager:
             The :class:`InitJob` if one exists, otherwise ``None``.
         """
         return self._jobs.get(tool_name)
+
+    def get_all_tool_statuses(self) -> list[ToolInfoResponse]:
+        """Return init status for every configured tool.
+
+        Iterates all tools in the agent configuration, derives whether each
+        supports initialization, and cross-references any existing init jobs
+        for the current state.
+
+        Returns:
+            A list of :class:`ToolInfoResponse` for each configured tool.
+        """
+        statuses: list[ToolInfoResponse] = []
+        for tool in self._agent.tools or []:
+            supports_init = tool.type in INITIALIZABLE_TYPES
+            job = self._jobs.get(tool.name)
+            statuses.append(
+                ToolInfoResponse(
+                    name=tool.name,
+                    type=tool.type,
+                    supports_init=supports_init,
+                    init_status=job.state if job is not None else None,
+                )
+            )
+        return statuses
 
     async def shutdown(self) -> None:
         """Gracefully shut down the manager.

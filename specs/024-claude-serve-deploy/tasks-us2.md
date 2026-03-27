@@ -25,8 +25,8 @@
 
 **CRITICAL**: US1 must be complete before starting. Specifically: `validate_nodejs()` with version check in `src/holodeck/lib/backends/validators.py`, `max_concurrent_sessions` on `ClaudeConfig` in `src/holodeck/models/claude_config.py`, and serve pre-flight validation in `src/holodeck/serve/server.py` must already exist.
 
-- [ ] T001 Verify US1 prerequisites are merged: confirm `validate_nodejs()` in `src/holodeck/lib/backends/validators.py` includes Node.js version check (>= 18), `ClaudeConfig.max_concurrent_sessions` field exists in `src/holodeck/models/claude_config.py`, and `_validate_backend_prerequisites()` exists in `src/holodeck/serve/server.py`. If any are missing, STOP and complete US1 first
-- [ ] T002 Verify `jinja2` and `docker` packages are available in the virtualenv by running `python -c "import jinja2; import docker"`. If missing, add to `pyproject.toml` and run `uv lock`
+- [x] T001 Verify US1 prerequisites are merged: confirm `validate_nodejs()` in `src/holodeck/lib/backends/validators.py` includes Node.js version check (>= 18), `ClaudeConfig.max_concurrent_sessions` field exists in `src/holodeck/models/claude_config.py`, and `_validate_backend_prerequisites()` exists in `src/holodeck/serve/server.py`. If any are missing, STOP and complete US1 first
+- [x] T002 Verify `jinja2` and `docker` packages are available in the virtualenv by running `python -c "import jinja2; import docker"`. If missing, add to `pyproject.toml` and run `uv lock`
 
 **Checkpoint**: All shared infrastructure from US1 confirmed present. Deploy dependencies available.
 
@@ -36,8 +36,8 @@
 
 **Purpose**: Create the Claude agent fixture for deploy tests and establish the test infrastructure needed by US2 implementation tasks.
 
-- [ ] T003 Create test fixture `tests/fixtures/claude_agent/agent.yaml` with a minimal Claude agent config: `name: claude-deploy-test`, `model.provider: anthropic`, `model.name: claude-sonnet-4-20250514`, `instructions.inline: "You are a test assistant."`, `deployment.port: 8080`, `deployment.protocol: rest`. Include `claude.max_concurrent_sessions: 5` to exercise the new config field
-- [ ] T004 [P] Verify the fixture loads correctly by writing a smoke test in `tests/unit/deploy/test_dockerfile.py` (append to existing file): `test_claude_agent_fixture_loads` — load `tests/fixtures/claude_agent/agent.yaml` via `ConfigLoader`, assert `agent.model.provider == ProviderEnum.ANTHROPIC`, assert `agent.claude.max_concurrent_sessions == 5`
+- [x] T003 Create test fixture `tests/fixtures/claude_agent/agent.yaml` with a minimal Claude agent config: `name: claude-deploy-test`, `model.provider: anthropic`, `model.name: claude-sonnet-4-20250514`, `instructions.inline: "You are a test assistant."`, `deployment.port: 8080`, `deployment.protocol: rest`. Include `claude.max_concurrent_sessions: 5` to exercise the new config field
+- [x] T004 [P] Verify the fixture loads correctly by writing a smoke test in `tests/unit/deploy/test_dockerfile.py` (append to existing file): `test_claude_agent_fixture_loads` — load `tests/fixtures/claude_agent/agent.yaml` via `ConfigLoader`, assert `agent.model.provider == ProviderEnum.ANTHROPIC`, assert `agent.claude.max_concurrent_sessions == 5`
 
 **Checkpoint**: Claude deploy test fixture ready. Existing test infrastructure confirmed working.
 
@@ -49,8 +49,8 @@
 
 ### 3a: Dockerfile Template — Node.js Conditional Block (FR-002, FR-003)
 
-- [ ] T005 [P] [US2] Write unit tests FIRST in `tests/unit/deploy/test_dockerfile.py` (append to existing file). Tests MUST FAIL before implementation. Include: (1) `test_generate_dockerfile_without_nodejs` — call `generate_dockerfile(agent_name="test", port=8080, protocol="rest")` without `needs_nodejs`, assert output does NOT contain "nodejs" or "nodesource", (2) `test_generate_dockerfile_with_nodejs` — call `generate_dockerfile(agent_name="test", port=8080, protocol="rest", needs_nodejs=True)`, assert output contains `nodesource/setup_22.x` and `apt-get install -y --no-install-recommends nodejs`, (3) `test_generate_dockerfile_nodejs_cleanup` — call with `needs_nodejs=True`, assert output contains `rm -rf /var/lib/apt/lists/*` after Node.js install, (4) `test_generate_dockerfile_nodejs_before_user_switch` — call with `needs_nodejs=True`, assert the Node.js `RUN` block appears before the `USER holodeck` line (security: install as root), (5) `test_generate_dockerfile_default_needs_nodejs_false` — call without `needs_nodejs` param, assert no Node.js block in output (backward-compatible default)
-- [ ] T006 [US2] Add `needs_nodejs: bool = False` parameter to `generate_dockerfile()` in `src/holodeck/deploy/dockerfile.py`. Pass it to the Jinja2 template context. Add conditional Node.js installation block to `HOLODECK_DOCKERFILE_TEMPLATE` after the `USER root` / `WORKDIR /app` section and before `COPY entrypoint.sh`:
+- [x] T005 [P] [US2] Write unit tests FIRST in `tests/unit/deploy/test_dockerfile.py` (append to existing file). Tests MUST FAIL before implementation. Include: (1) `test_generate_dockerfile_without_nodejs` — call `generate_dockerfile(agent_name="test", port=8080, protocol="rest")` without `needs_nodejs`, assert output does NOT contain "nodejs" or "nodesource", (2) `test_generate_dockerfile_with_nodejs` — call `generate_dockerfile(agent_name="test", port=8080, protocol="rest", needs_nodejs=True)`, assert output contains `nodesource/setup_22.x` and `apt-get install -y --no-install-recommends nodejs`, (3) `test_generate_dockerfile_nodejs_cleanup` — call with `needs_nodejs=True`, assert output contains `rm -rf /var/lib/apt/lists/*` after Node.js install, (4) `test_generate_dockerfile_nodejs_before_user_switch` — call with `needs_nodejs=True`, assert the Node.js `RUN` block appears before the `USER holodeck` line (security: install as root), (5) `test_generate_dockerfile_default_needs_nodejs_false` — call without `needs_nodejs` param, assert no Node.js block in output (backward-compatible default)
+- [x] T006 [US2] Add `needs_nodejs: bool = False` parameter to `generate_dockerfile()` in `src/holodeck/deploy/dockerfile.py`. Pass it to the Jinja2 template context. Add conditional Node.js installation block to `HOLODECK_DOCKERFILE_TEMPLATE` after the `USER root` / `WORKDIR /app` section and before `COPY entrypoint.sh`:
     ```
     {% if needs_nodejs %}
     # Install Node.js (required for Claude Agent SDK)
@@ -59,28 +59,28 @@
         && rm -rf /var/lib/apt/lists/*
     {% endif %}
     ```
-- [ ] T007 [US2] Run tests in `tests/unit/deploy/test_dockerfile.py` with `pytest tests/unit/deploy/test_dockerfile.py -n auto -v` and verify all pass (both new and existing tests)
+- [x] T007 [US2] Run tests in `tests/unit/deploy/test_dockerfile.py` with `pytest tests/unit/deploy/test_dockerfile.py -n auto -v` and verify all pass (both new and existing tests)
 
 ### 3b: Deploy Command — Provider Detection (FR-002, FR-007)
 
-- [ ] T008 [P] [US2] Write unit tests FIRST in `tests/unit/deploy/test_dockerfile.py` (or a new `tests/unit/cli/commands/test_deploy_claude.py` if the file grows too large). Tests MUST FAIL before implementation. Include: (1) `test_generate_dockerfile_content_detects_anthropic_provider` — create a mock Agent with `model.provider=ProviderEnum.ANTHROPIC` and a mock DeploymentConfig, call `_generate_dockerfile_content(agent, config, "1.0.0")`, assert output contains Node.js installation block, (2) `test_generate_dockerfile_content_skips_nodejs_for_openai` — create mock Agent with `model.provider=ProviderEnum.OPENAI`, call `_generate_dockerfile_content()`, assert output does NOT contain Node.js block, (3) `test_generate_dockerfile_content_skips_nodejs_for_ollama` — same for `ProviderEnum.OLLAMA`
-- [ ] T009 [US2] Modify `_generate_dockerfile_content()` in `src/holodeck/cli/commands/deploy.py` to detect the agent's provider. Import `ProviderEnum` from `holodeck.models.llm`. Before the `return generate_dockerfile(...)` call, add: `needs_nodejs = agent.model.provider == ProviderEnum.ANTHROPIC`. Pass `needs_nodejs=needs_nodejs` to `generate_dockerfile()` call
-- [ ] T010 [US2] Run tests for the deploy command with `pytest tests/unit/deploy/ -n auto -v` and verify all pass
+- [x] T008 [P] [US2] Write unit tests FIRST in `tests/unit/deploy/test_dockerfile.py` (or a new `tests/unit/cli/commands/test_deploy_claude.py` if the file grows too large). Tests MUST FAIL before implementation. Include: (1) `test_generate_dockerfile_content_detects_anthropic_provider` — create a mock Agent with `model.provider=ProviderEnum.ANTHROPIC` and a mock DeploymentConfig, call `_generate_dockerfile_content(agent, config, "1.0.0")`, assert output contains Node.js installation block, (2) `test_generate_dockerfile_content_skips_nodejs_for_openai` — create mock Agent with `model.provider=ProviderEnum.OPENAI`, call `_generate_dockerfile_content()`, assert output does NOT contain Node.js block, (3) `test_generate_dockerfile_content_skips_nodejs_for_ollama` — same for `ProviderEnum.OLLAMA`
+- [x] T009 [US2] Modify `_generate_dockerfile_content()` in `src/holodeck/cli/commands/deploy.py` to detect the agent's provider. Import `ProviderEnum` from `holodeck.models.llm`. Before the `return generate_dockerfile(...)` call, add: `needs_nodejs = agent.model.provider == ProviderEnum.ANTHROPIC`. Pass `needs_nodejs=needs_nodejs` to `generate_dockerfile()` call
+- [x] T010 [US2] Run tests for the deploy command with `pytest tests/unit/deploy/ -n auto -v` and verify all pass
 
 ### 3c: Dry-Run Output Verification (FR-007)
 
-- [ ] T011 [P] [US2] Write unit test in `tests/unit/deploy/test_dockerfile.py`: `test_dry_run_shows_nodejs_for_claude_agent` — simulate the dry-run path by calling `_generate_dockerfile_content()` with an anthropic-provider agent, capture the returned Dockerfile string, assert it contains: (1) "Node.js" or "nodejs" comment, (2) `nodesource/setup_22.x`, (3) `apt-get install -y --no-install-recommends nodejs`, (4) non-root user (`USER holodeck`), (5) `HEALTHCHECK` directive. This validates that --dry-run output (which just prints the Dockerfile) shows Claude-specific additions
-- [ ] T012 [P] [US2] Write unit test: `test_dry_run_skips_nodejs_for_non_claude_agent` — same as above but with `provider=openai`, assert output does NOT contain Node.js installation block
+- [x] T011 [P] [US2] Write unit test in `tests/unit/deploy/test_dockerfile.py`: `test_dry_run_shows_nodejs_for_claude_agent` — simulate the dry-run path by calling `_generate_dockerfile_content()` with an anthropic-provider agent, capture the returned Dockerfile string, assert it contains: (1) "Node.js" or "nodejs" comment, (2) `nodesource/setup_22.x`, (3) `apt-get install -y --no-install-recommends nodejs`, (4) non-root user (`USER holodeck`), (5) `HEALTHCHECK` directive. This validates that --dry-run output (which just prints the Dockerfile) shows Claude-specific additions
+- [x] T012 [P] [US2] Write unit test: `test_dry_run_skips_nodejs_for_non_claude_agent` — same as above but with `provider=openai`, assert output does NOT contain Node.js installation block
 
 ### 3d: Integration Tests (FR-009, FR-010)
 
-- [ ] T013 [US2] Create integration test file `tests/integration/deploy/test_build_claude.py`. Write tests that exercise the full deploy build path for Claude agents. Include: (1) `test_build_claude_agent_generates_dockerfile_with_nodejs` — load the fixture `tests/fixtures/claude_agent/agent.yaml`, call the build pipeline (mock Docker SDK to avoid actual image build), capture generated Dockerfile, assert Node.js block present, (2) `test_build_openai_agent_no_nodejs` — use an existing OpenAI fixture, call build pipeline, assert no Node.js in Dockerfile
-- [ ] T014 [US2] Run integration tests with `pytest tests/integration/deploy/ -n auto -v` and verify all pass. Also run `pytest tests/integration/ -n auto -v` to verify no regressions in existing deploy integration tests (FR-009)
+- [x] T013 [US2] Create integration test file `tests/integration/deploy/test_build_claude.py`. Write tests that exercise the full deploy build path for Claude agents. Include: (1) `test_build_claude_agent_generates_dockerfile_with_nodejs` — load the fixture `tests/fixtures/claude_agent/agent.yaml`, call the build pipeline (mock Docker SDK to avoid actual image build), capture generated Dockerfile, assert Node.js block present, (2) `test_build_openai_agent_no_nodejs` — use an existing OpenAI fixture, call build pipeline, assert no Node.js in Dockerfile
+- [x] T014 [US2] Run integration tests with `pytest tests/integration/deploy/ -n auto -v` and verify all pass. Also run `pytest tests/integration/ -n auto -v` to verify no regressions in existing deploy integration tests (FR-009)
 
 ### 3e: Acceptance Scenario Verification Tests
 
-- [ ] T015 [P] [US2] Write acceptance test `test_anthropic_deploy_build_includes_nodejs` in `tests/integration/deploy/test_build_claude.py` — corresponds to acceptance scenario 1. Load Claude agent fixture, trigger `_generate_dockerfile_content()`, assert Dockerfile includes `nodejs` installation alongside Python runtime (verify both `python` base image and `nodejs` install are present)
-- [ ] T016 [P] [US2] Write acceptance test `test_dry_run_shows_claude_dockerfile_additions` in `tests/integration/deploy/test_build_claude.py` — corresponds to acceptance scenario 5. Simulate dry-run by calling `_generate_dockerfile_content()` with Claude agent, assert output contains: Node.js installation, non-root `USER holodeck`, `HEALTHCHECK`, and security-related patterns (`--no-install-recommends`, `rm -rf /var/lib/apt/lists/*`)
+- [x] T015 [P] [US2] Write acceptance test `test_anthropic_deploy_build_includes_nodejs` in `tests/integration/deploy/test_build_claude.py` — corresponds to acceptance scenario 1. Load Claude agent fixture, trigger `_generate_dockerfile_content()`, assert Dockerfile includes `nodejs` installation alongside Python runtime (verify both `python` base image and `nodejs` install are present)
+- [x] T016 [P] [US2] Write acceptance test `test_dry_run_shows_claude_dockerfile_additions` in `tests/integration/deploy/test_build_claude.py` — corresponds to acceptance scenario 5. Simulate dry-run by calling `_generate_dockerfile_content()` with Claude agent, assert output contains: Node.js installation, non-root `USER holodeck`, `HEALTHCHECK`, and security-related patterns (`--no-install-recommends`, `rm -rf /var/lib/apt/lists/*`)
 
 ---
 
@@ -88,12 +88,12 @@
 
 **Purpose**: Code quality, regression checks, and final validation.
 
-- [ ] T017 [P] Run `make format` to format all new and modified files with Black + Ruff
-- [ ] T018 [P] Run `make lint` and fix any Ruff + Bandit violations in `src/holodeck/deploy/dockerfile.py`, `src/holodeck/cli/commands/deploy.py`
-- [ ] T019 Run `make type-check` and fix any MyPy errors in modified files — ensure `needs_nodejs` parameter has proper type annotation
-- [ ] T020 Run full test suite `make test` to verify no regressions across entire codebase (FR-009). Pay special attention to existing deploy tests passing unchanged
-- [ ] T021 Run `make security` to verify no new security issues introduced by the Node.js installation pattern
-- [ ] T022 Verify that the generated Dockerfile follows secure deployment practices per FR-003: non-root user, `--no-install-recommends`, cache cleanup, `HEALTHCHECK` directive present
+- [x] T017 [P] Run `make format` to format all new and modified files with Black + Ruff
+- [x] T018 [P] Run `make lint` and fix any Ruff + Bandit violations in `src/holodeck/deploy/dockerfile.py`, `src/holodeck/cli/commands/deploy.py`
+- [x] T019 Run `make type-check` and fix any MyPy errors in modified files — ensure `needs_nodejs` parameter has proper type annotation
+- [x] T020 Run full test suite `make test` to verify no regressions across entire codebase (FR-009). Pay special attention to existing deploy tests passing unchanged
+- [x] T021 Run `make security` to verify no new security issues introduced by the Node.js installation pattern
+- [x] T022 Verify that the generated Dockerfile follows secure deployment practices per FR-003: non-root user, `--no-install-recommends`, cache cleanup, `HEALTHCHECK` directive present
 
 ---
 

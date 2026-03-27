@@ -10,7 +10,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from holodeck.lib.logging_config import get_logger
-from holodeck.serve.models import InitJobResponse, ProblemDetail
+from holodeck.serve.models import InitJobResponse, ProblemDetail, ToolListResponse
 from holodeck.serve.tool_init_manager import (
     InitJob,
     InitJobCapacityError,
@@ -161,3 +161,25 @@ async def get_tool_init_status(
         )
 
     return _job_to_response(job)
+
+
+@router.get(
+    "/tools",
+    response_model=ToolListResponse,
+)
+async def list_tools(request: Request) -> ToolListResponse:
+    """List all configured tools and their initialization status.
+
+    Returns every tool in the agent configuration with its type,
+    whether it supports initialization, and its current init job
+    state (if any).
+
+    Args:
+        request: The incoming HTTP request.
+
+    Returns:
+        200 with ToolListResponse containing all tool statuses.
+    """
+    manager = request.app.state.tool_init_manager
+    statuses = manager.get_all_tool_statuses()
+    return ToolListResponse(tools=statuses, total=len(statuses))
