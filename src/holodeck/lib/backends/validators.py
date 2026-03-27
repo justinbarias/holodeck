@@ -177,7 +177,16 @@ def validate_credentials(model: LLMProvider) -> dict[str, str]:
             project_context[0]: project_context[1],
         }
 
-    # AuthProvider.foundry
+    if auth == AuthProvider.custom:
+        token = _get_required_env_var(
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_AUTH_TOKEN environment variable is not set. "
+            "Set it for custom endpoint authentication "
+            "(e.g., export ANTHROPIC_AUTH_TOKEN=ollama).",
+        )
+        return {"ANTHROPIC_AUTH_TOKEN": token}
+
+    # AuthProvider.foundry (fallthrough)
     foundry_target = _get_first_present_env_var(_FOUNDRY_TARGET_ENV_CANDIDATES)
     if foundry_target is None:
         raise ConfigError(

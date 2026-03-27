@@ -18,6 +18,7 @@ class AuthProvider(str, Enum):
     bedrock = "bedrock"
     vertex = "vertex"
     foundry = "foundry"
+    custom = "custom"  # ANTHROPIC_AUTH_TOKEN for third-party endpoints
 
 
 class PermissionMode(str, Enum):

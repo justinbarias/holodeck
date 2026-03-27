@@ -284,6 +284,11 @@ def build_options(
     # SDK merges: {**os.environ, **options.env}, so "" overrides "1".
     env: dict[str, str] = {"CLAUDECODE": "", **auth_env, **otel_env}
 
+    # Custom base URL — when endpoint is set for Anthropic, forward it
+    # as ANTHROPIC_BASE_URL so the SDK subprocess targets the custom endpoint.
+    if agent.model.endpoint:
+        env["ANTHROPIC_BASE_URL"] = agent.model.endpoint
+
     # Permission mode
     perm_mode = None
     if claude is not None:

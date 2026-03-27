@@ -38,6 +38,7 @@ from holodeck.lib.backends.claude_backend import (
 )
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.claude_config import (
+    AuthProvider,
     ClaudeConfig,
     ExtendedThinkingConfig,
     PermissionMode,
@@ -366,6 +367,59 @@ class TestBuildOptions:
         # env contains CLAUDECODE override + auth_env + otel_env
         # (process env vars like HTTP_PROXY are not leaked)
         assert env == {"CLAUDECODE": "", **auth_env, **otel_env}
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_endpoint_sets_anthropic_base_url(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Custom endpoint is forwarded as ANTHROPIC_BASE_URL in env."""
+        agent = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.ANTHROPIC,
+                name="llama3.1",
+                endpoint="http://localhost:11434/v1",
+                auth_provider=AuthProvider.custom,
+            ),
+            instructions=Instructions(inline="Be helpful."),
+        )
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={"ANTHROPIC_AUTH_TOKEN": "ollama"},
+            otel_env={},
+            mode="chat",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        env = kwargs["env"]
+        assert env["ANTHROPIC_BASE_URL"] == "http://localhost:11434/v1"
+        assert env["ANTHROPIC_AUTH_TOKEN"] == "ollama"  # noqa: S105
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_no_endpoint_omits_base_url(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """ANTHROPIC_BASE_URL is not set when endpoint is None."""
+        agent = _make_agent()
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={"ANTHROPIC_API_KEY": "test-key"},
+            otel_env={},
+            mode="chat",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "ANTHROPIC_BASE_URL" not in kwargs["env"]
 
 
 # ---------------------------------------------------------------------------
