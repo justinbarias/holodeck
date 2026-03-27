@@ -9,15 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Custom Anthropic Endpoint Support** — Route the Claude Agent SDK to third-party Anthropic-compatible endpoints (Ollama, LiteLLM, etc.)
+- **Custom Anthropic Endpoint Support** --Route the Claude Agent SDK to third-party Anthropic-compatible endpoints (Ollama, LiteLLM, etc.)
   - New `AuthProvider.custom` validates `ANTHROPIC_AUTH_TOKEN` environment variable
   - `model.endpoint` is forwarded as `ANTHROPIC_BASE_URL` to the SDK subprocess when set for Anthropic providers
   - Warning validator in `LLMProvider` when `auth_provider: custom` is used without an endpoint
   - Ollama legal-assistant sample under `sample/legal-assistant/ollama/`
-- **Async Tool Initialization Endpoints** (Feature #025) — Background tool data ingestion via REST API
-  - `POST /tools/{tool_name}/init` — Trigger background vectorstore/hierarchical_document ingestion (201 Created with Location header)
-  - `GET /tools/{tool_name}/init` — Poll initialization status with progress tracking (documents_processed/total_documents)
-  - `GET /tools` — List all agent tools with initialization state (pending/in_progress/completed/failed/not_started)
+- **Async Tool Initialization Endpoints** (Feature #025) --Background tool data ingestion via REST API
+  - `POST /tools/{tool_name}/init` --Trigger background vectorstore/hierarchical_document ingestion (201 Created with Location header)
+  - `GET /tools/{tool_name}/init` --Poll initialization status with progress tracking (documents_processed/total_documents)
+  - `GET /tools` --List all agent tools with initialization state (pending/in_progress/completed/failed/not_started)
   - RFC 7807 `ProblemDetail` error responses (400/404/409/429/503)
   - `ToolInitManager` orchestrator with configurable concurrency limiting (default 3), conflict detection, and graceful shutdown
   - `SourceResolver` for unified local/S3/Azure Blob/HTTP source resolution with temp directory cleanup
@@ -35,13 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 
-- `httpx` ≥0.27 (new core dependency — async HTTP for remote source downloads)
-- `boto3` ≥1.42.0 (new optional extra `[s3]`)
-- `azure-storage-blob` ≥12.19 (new optional extra `[azure-blob]`)
-- `cryptography`: 46.0.5 → 46.0.6
-- `nltk`: 3.9.3 → 3.9.4
-- `pypdf`: 6.9.1 → 6.9.2
-- `requests`: 2.32.5 → 2.33.0
+- `httpx` >=0.27 (new core dependency --async HTTP for remote source downloads)
+- `boto3` >=1.42.0 (new optional extra `[s3]`)
+- `azure-storage-blob` >=12.19 (new optional extra `[azure-blob]`)
+- `cryptography`: 46.0.5 -> 46.0.6
+- `nltk`: 3.9.3 -> 3.9.4
+- `pypdf`: 6.9.1 -> 6.9.2
+- `requests`: 2.32.5 -> 2.33.0
 
 ### Documentation
 
@@ -63,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- **API Reference Rewrite** — Rewrote all 6 existing `docs/api/*.md` files to fix broken mkdocstrings references (#286)
+- **API Reference Rewrite** --Rewrote all 6 existing `docs/api/*.md` files to fix broken mkdocstrings references (#286)
   - Removed nonexistent symbols (`config.merge.ConfigMerger`, `validator.normalize_errors`, `compute_f1_score`, etc.)
   - Corrected module paths across all reference pages
 - Added 9 new API reference pages for previously undocumented subsystems:
@@ -77,17 +77,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Claude Backend Support for `holodeck serve`** (Feature #024 US1) — Full Claude Agent SDK integration with the server command (#282)
+- **Claude Backend Support for `holodeck serve`** (Feature #024 US1) --Full Claude Agent SDK integration with the server command (#282)
   - Task-bound session actor wrapping Claude SDK sessions for anyio task-group binding
   - `BackendSessionError` exception for propagating backend failures to protocols
-  - `max_concurrent_sessions` config field (1–100, default 10) for capacity management
+  - `max_concurrent_sessions` config field (1-100, default 10) for capacity management
   - `backend_ready` and `backend_diagnostics` health check fields in server models
-  - Pre-flight validation (Node.js ≥18, API credentials) during server startup
+  - Pre-flight validation (Node.js >=18, API credentials) during server startup
   - Graceful lifecycle with 5s shutdown timeouts and parallel session teardown
 - **Real-Time Tool Streaming via Claude Agent SDK Hooks** (#283)
   - `PreToolUse`, `PostToolUse`, `PostToolUseFailure` hook integration
   - `ToolEvent` dataclass for provider-agnostic tool event abstraction
-  - Queue-based event passthrough: `ClaudeSession` → `_TaskBoundSession` → `AgentExecutor` → AG-UI protocol
+  - Queue-based event passthrough: `ClaudeSession` -> `_TaskBoundSession` -> `AgentExecutor` -> AG-UI protocol
   - Concurrent tool event queue draining with fallback to post-hoc emission for non-hook backends
 - **Node.js Conditional Installation for Claude Agent Containers** (Feature #024 US2) (#284)
   - Auto-detection of Anthropic provider in Dockerfile generation
@@ -113,11 +113,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Consolidated 3 deep-merge implementations into single `_deep_merge` utility
   - Deleted ~1,500 lines of dead code: `merge.py`, `ConfigValidator`, unused functions
   - Fixed TOCTOU vulnerability in `parse_yaml`; narrowed exception catching
-- **Anthropic Cloud Auth Hardening** (#269) — Stricter validation for Bedrock, Vertex, and Foundry credential flows
+- **Anthropic Cloud Auth Hardening** (#269) --Stricter validation for Bedrock, Vertex, and Foundry credential flows
 
 ### Refactored
 
-- **Test Suite Simplification** (#275) — 2,120 fewer lines (−3.1%) with zero coverage loss
+- **Test Suite Simplification** (#275) --2,120 fewer lines (-3.1%) with zero coverage loss
   - Consolidated 4 identical DeepEval RAG evaluator test files into single `test_rag_evaluators.py` with `@pytest.mark.parametrize`
   - Extracted shared fixture factories into `conftest.py` files
   - Parameterized repetitive test patterns across 30 files (option parsing, exit codes, TTY/non-TTY pairs)
@@ -125,33 +125,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Docker SDK ImportError** (#285) — Lazy-import docker SDK in `deploy/builder.py` and `deploy/__init__.py` to prevent `ModuleNotFoundError` when `[deploy]` extra is not installed
-- **Missing `execute_tool` OTel spans** — Fixed ContextVar timing mismatch in `holodeck chat`; workaround re-injects ContextVar from instance attribute in hooks
-- **Claude subprocess OTel conflict** — Set `OTEL_TRACES_EXPORTER=none` for Claude subprocess when Python-side GenAI instrumentation is active
-- **Web search propagation** — `web_search` flag from `ClaudeConfig` now correctly wired to `allowed_tools` in `build_options`
+- **Docker SDK ImportError** (#285) --Lazy-import docker SDK in `deploy/builder.py` and `deploy/__init__.py` to prevent `ModuleNotFoundError` when `[deploy]` extra is not installed
+- **Missing `execute_tool` OTel spans** --Fixed ContextVar timing mismatch in `holodeck chat`; workaround re-injects ContextVar from instance attribute in hooks
+- **Claude subprocess OTel conflict** --Set `OTEL_TRACES_EXPORTER=none` for Claude subprocess when Python-side GenAI instrumentation is active
+- **Web search propagation** --`web_search` flag from `ClaudeConfig` now correctly wired to `allowed_tools` in `build_options`
 
 ### Security
 
 - Replaced deprecated `safety check` (mandatory auth) with `pip-audit` (free, OSV-based) (#270)
 - **6 CVEs resolved in direct dependencies:**
-  - CVE-2026-27962, CVE-2026-28490: authlib ≥1.6.9
-  - CVE-2026-30922: pyasn1 ≥0.6.3
-  - CVE-2026-27448, CVE-2026-27459: pyopenssl ≥26.0.0
-  - CVE-2026-33123: pypdf ≥6.9.1
+  - CVE-2026-27962, CVE-2026-28490: authlib >=1.6.9
+  - CVE-2026-30922: pyasn1 >=0.6.3
+  - CVE-2026-27448, CVE-2026-27459: pyopenssl >=26.0.0
+  - CVE-2026-33123: pypdf >=6.9.1
 - 3 additional transitive CVEs patched via constraint dependencies
 
 ### Dependencies
 
-- `claude-agent-sdk`: 0.1.37 → 0.1.44
-- `cryptography`: ≥46.0.2 → ≥46.0.5
-- `semantic-kernel`: ≥1.37.1 → ≥1.39.4
-- `pypdf`: ≥6.6.0 → ≥6.9.1
-- `werkzeug`: ≥3.1.5 → ≥3.1.6
-- `authlib`: ≥1.6.6 → ≥1.6.9
-- `pyasn1`: ≥0.6.2 → ≥0.6.3 (dev)
-- New constraint dependencies: `jaraco-context ≥6.1.0`, `nltk ≥3.9.3`, `pyopenssl ≥26.0.0`, `pillow ≥12.1.1`, `protobuf ≥5.29.6`, `python-multipart ≥0.0.22`
+- `claude-agent-sdk`: 0.1.37 -> 0.1.44
+- `cryptography`: >=46.0.2 -> >=46.0.5
+- `semantic-kernel`: >=1.37.1 -> >=1.39.4
+- `pypdf`: >=6.6.0 -> >=6.9.1
+- `werkzeug`: >=3.1.5 -> >=3.1.6
+- `authlib`: >=1.6.6 -> >=1.6.9
+- `pyasn1`: >=0.6.2 -> >=0.6.3 (dev)
+- New constraint dependencies: `jaraco-context >=6.1.0`, `nltk >=3.9.3`, `pyopenssl >=26.0.0`, `pillow >=12.1.1`, `protobuf >=5.29.6`, `python-multipart >=0.0.22`
 - New optional group: `claude-otel` (OpenTelemetry instrumentation for Claude Agent SDK)
-- Replaced `safety` with `pip-audit ≥2.7.0`
+- Replaced `safety` with `pip-audit >=2.7.0`
 
 ### Documentation
 
@@ -173,67 +173,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Claude Agent SDK Backend** — Native Anthropic provider support as a first-class backend (#021)
+- **Claude Agent SDK Backend** --Native Anthropic provider support as a first-class backend (#021)
   - `ClaudeBackend` and `ClaudeSession` implementing provider-agnostic `AgentBackend`/`AgentSession` protocols
-  - `BackendSelector` auto-routes agents by `model.provider` (anthropic → Claude SDK, openai/azure/ollama → Semantic Kernel)
+  - `BackendSelector` auto-routes agents by `model.provider` (anthropic -> Claude SDK, openai/azure/ollama -> Semantic Kernel)
   - `ClaudeConfig` Pydantic model with extended thinking, web search, bash, file system, subagents, and permission mode settings
   - `AuthProvider` enum supporting `api_key`, `oauth_token`, `bedrock`, `vertex`, `foundry` credential flows
   - Subprocess retry with exponential backoff (3 attempts) and `max_turns` exceeded detection
   - Structured output validation via JSON schema (file or inline)
-- **Multi-Backend Abstraction Layer** — Protocol-driven architecture decoupling all consumers from provider-specific types
+- **Multi-Backend Abstraction Layer** --Protocol-driven architecture decoupling all consumers from provider-specific types
   - `AgentBackend`, `AgentSession`, `ContextGenerator` protocols in `lib/backends/base.py`
   - `ExecutionResult` dataclass with response, tool calls/results, token usage, structured output, and error tracking
   - `SKBackend`/`SKSession` wrapping existing Semantic Kernel infrastructure behind the same protocols
-- **Claude Tool Adapters** — Bridge HoloDeck tools to Claude Agent SDK via in-process MCP server
+- **Claude Tool Adapters** --Bridge HoloDeck tools to Claude Agent SDK via in-process MCP server
   - `VectorStoreToolAdapter` and `HierarchicalDocToolAdapter` wrapping initialized tool instances as `@tool`-decorated handlers
   - `build_holodeck_sdk_server()` factory bundling adapters into `McpSdkServerConfig`
-- **MCP Bridge** (`mcp_bridge.py`) — Translates HoloDeck `MCPTool` configs to Claude SDK `McpStdioServerConfig` with env var resolution
-- **OTel Bridge** (`otel_bridge.py`) — Maps `ObservabilityConfig` to Claude subprocess environment variables (OTLP exporter, protocol, privacy controls)
-- **Startup Validators** — 6 pre-flight checks called during `ClaudeBackend.initialize()`: Node.js presence, credential validation, embedding provider validation, tool filtering warnings, working directory collision detection, response format schema validation
-- **ClaudeSDKContextGenerator** — `ContextGenerator` protocol implementation using Claude Agent SDK `query()` for contextual embeddings with batch prompts, JSON parsing, single-chunk fallback, retry logic, and concurrency control
-- **Shared Tool Initializer** (`tool_initializer.py`) — Provider-agnostic tool initialization used by both SK and Claude backends with 5-tier context generator resolution chain
-- **Shared Instruction Resolver** (`instruction_resolver.py`) — Extracted instruction loading (file or inline) from AgentFactory for cross-backend reuse
-- **`embedding_provider` field on Agent model** — Required when using `provider: anthropic` with vectorstore/hierarchical_document tools (Anthropic has no native embedding API)
-- **`context_model` field on HierarchicalDocumentToolConfig** — Dedicated LLM for contextual embedding generation, separate from the main agent model
-- **`embedding_model` field on VectorstoreTool and HierarchicalDocumentToolConfig** — Explicit embedding model override with cross-tool conflict detection
-- **PDF Processor Package** (`lib/pdf_processor/`) — Extracted PDF operations into dedicated package (#265)
-  - `heading_extractor.py`: Dual-strategy heading detection — bookmark-based (preferred) with font-size fallback and fuzzy matching
+- **MCP Bridge** (`mcp_bridge.py`) --Translates HoloDeck `MCPTool` configs to Claude SDK `McpStdioServerConfig` with env var resolution
+- **OTel Bridge** (`otel_bridge.py`) --Maps `ObservabilityConfig` to Claude subprocess environment variables (OTLP exporter, protocol, privacy controls)
+- **Startup Validators** --6 pre-flight checks called during `ClaudeBackend.initialize()`: Node.js presence, credential validation, embedding provider validation, tool filtering warnings, working directory collision detection, response format schema validation
+- **ClaudeSDKContextGenerator** --`ContextGenerator` protocol implementation using Claude Agent SDK `query()` for contextual embeddings with batch prompts, JSON parsing, single-chunk fallback, retry logic, and concurrency control
+- **Shared Tool Initializer** (`tool_initializer.py`) --Provider-agnostic tool initialization used by both SK and Claude backends with 5-tier context generator resolution chain
+- **Shared Instruction Resolver** (`instruction_resolver.py`) --Extracted instruction loading (file or inline) from AgentFactory for cross-backend reuse
+- **`embedding_provider` field on Agent model** --Required when using `provider: anthropic` with vectorstore/hierarchical_document tools (Anthropic has no native embedding API)
+- **`context_model` field on HierarchicalDocumentToolConfig** --Dedicated LLM for contextual embedding generation, separate from the main agent model
+- **`embedding_model` field on VectorstoreTool and HierarchicalDocumentToolConfig** --Explicit embedding model override with cross-tool conflict detection
+- **PDF Processor Package** (`lib/pdf_processor/`) --Extracted PDF operations into dedicated package (#265)
+  - `heading_extractor.py`: Dual-strategy heading detection --bookmark-based (preferred) with font-size fallback and fuzzy matching
   - `page_extractor.py`: Page-range extraction using pypdf with bounds validation
-- **Multi-Field Keyword Search** — Per-field boosting for keyword-based retrieval (#265)
+- **Multi-Field Keyword Search** --Per-field boosting for keyword-based retrieval (#265)
   - Indexed fields: `content` (1x), `parent_chain` (2x), `section_id` (2x), `defined_term` (3x), `source_file` (1x)
   - Enables structure-aware queries (e.g., "Section 203(a)", "Force Majeure")
 
 ### Changed
 
-- **Chat Layer Decoupled from Semantic Kernel** — `AgentExecutor` and `ChatSessionManager` now use `BackendSelector` + `AgentSession` abstractions; zero `AgentFactory`/`ChatHistory` imports remain in the chat layer
-- **Chat Streaming** — New `execute_turn_streaming` async generator and `process_message_streaming` for token-by-token output; CLI REPL shows spinner until first chunk arrives
-- **Test Runner Decoupled** — `TestExecutor` uses `BackendSelector` + `ExecutionResult` instead of direct `AgentFactory`; `allow_side_effects` flag plumbed through to backend selection
-- **AgentFactory Refactored** — Now a backward-compatible facade; HierarchicalDocumentTool initialization delegated to shared `tool_initializer`
-- **Chat History Model** — `ChatSessionManager.history` changed from SK `ChatHistory` to plain `list[dict]` for provider neutrality
-- **ContextGenerator Protocol** — `HierarchicalDocumentTool` accepts any `ContextGenerator` implementation via `set_context_generator()`, decoupled from `LLMContextGenerator` and SK chat service
+- **Chat Layer Decoupled from Semantic Kernel** --`AgentExecutor` and `ChatSessionManager` now use `BackendSelector` + `AgentSession` abstractions; zero `AgentFactory`/`ChatHistory` imports remain in the chat layer
+- **Chat Streaming** --New `execute_turn_streaming` async generator and `process_message_streaming` for token-by-token output; CLI REPL shows spinner until first chunk arrives
+- **Test Runner Decoupled** --`TestExecutor` uses `BackendSelector` + `ExecutionResult` instead of direct `AgentFactory`; `allow_side_effects` flag plumbed through to backend selection
+- **AgentFactory Refactored** --Now a backward-compatible facade; HierarchicalDocumentTool initialization delegated to shared `tool_initializer`
+- **Chat History Model** --`ChatSessionManager.history` changed from SK `ChatHistory` to plain `list[dict]` for provider neutrality
+- **ContextGenerator Protocol** --`HierarchicalDocumentTool` accepts any `ContextGenerator` implementation via `set_context_generator()`, decoupled from `LLMContextGenerator` and SK chat service
 
 ### Fixed
 
-- **Context Model YAML Overrides** — Fixed silent ignoring of `context_model` YAML overrides in the SK path by unifying initialization through `tool_initializer`
-- **Claude Multi-Turn Sessions** — Use `session_id` parameter (SDK 0.1.37 compat) for proper conversation continuity
-- **MCP Tool Communication** — Wrap prompts as `AsyncIterable` to keep stdin open for bidirectional MCP tool communication (fixes `ProcessTransport` error)
-- **Credential Validation** — `validate_credentials` now returns actual credential values in env dict instead of empty dict
-- **Tool Result Enrichment** — `_enrich_tool_results` correlates tool names from `tool_calls` to `tool_results` via `call_id` for evaluation `retrieval_context`
+- **Context Model YAML Overrides** --Fixed silent ignoring of `context_model` YAML overrides in the SK path by unifying initialization through `tool_initializer`
+- **Claude Multi-Turn Sessions** --Use `session_id` parameter (SDK 0.1.37 compat) for proper conversation continuity
+- **MCP Tool Communication** --Wrap prompts as `AsyncIterable` to keep stdin open for bidirectional MCP tool communication (fixes `ProcessTransport` error)
+- **Credential Validation** --`validate_credentials` now returns actual credential values in env dict instead of empty dict
+- **Tool Result Enrichment** --`_enrich_tool_results` correlates tool names from `tool_calls` to `tool_results` via `call_id` for evaluation `retrieval_context`
 
 ### Security
 
-- **orjson** 3.11.4 &rarr; 3.11.7 — fixes CVE-2025-67221 (DoS via missing recursion depth limits)
-- **wheel** 0.45.1 &rarr; 0.46.3 — fixes CVE-2026-24049 (path traversal via extracted file permissions)
+- **orjson** 3.11.4 -> 3.11.7 --fixes CVE-2025-67221 (DoS via missing recursion depth limits)
+- **wheel** 0.45.1 -> 0.46.3 --fixes CVE-2026-24049 (path traversal via extracted file permissions)
 
 ### Dependencies
 
-- **claude-agent-sdk** 0.1.37 — Native Claude Agent SDK integration (new)
-- **authlib** 1.6.5 &rarr; 1.6.6
-- **pypdf** 6.3.0 &rarr; 6.6.0+ (removed upper bound)
-- **werkzeug** 3.1.4 &rarr; 3.1.5+
-- **azure-core** &ge;1.38.0 (new)
-- **orjson** 3.11.4 &rarr; 3.11.7
-- **wheel** 0.45.1 &rarr; 0.46.3
+- **claude-agent-sdk** 0.1.37 --Native Claude Agent SDK integration (new)
+- **authlib** 1.6.5 -> 1.6.6
+- **pypdf** 6.3.0 -> 6.6.0+ (removed upper bound)
+- **werkzeug** 3.1.4 -> 3.1.5+
+- **azure-core** >=1.38.0 (new)
+- **orjson** 3.11.4 -> 3.11.7
+- **wheel** 0.45.1 -> 0.46.3
 
 ### Documentation
 
@@ -244,7 +244,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known Limitations
 
-- **`holodeck serve` does not support Claude agents** — The server command (`holodeck serve`) only supports Semantic Kernel backends (OpenAI, Azure OpenAI, Ollama). Agents with `provider: anthropic` work via `holodeck test` and `holodeck chat` but cannot be deployed as HTTP servers yet. Claude agent server/deployment support is planned for a future release.
+- **`holodeck serve` does not support Claude agents** --The server command (`holodeck serve`) only supports Semantic Kernel backends (OpenAI, Azure OpenAI, Ollama). Agents with `provider: anthropic` work via `holodeck test` and `holodeck chat` but cannot be deployed as HTTP servers yet. Claude agent server/deployment support is planned for a future release.
 
 ---
 
@@ -252,54 +252,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **HierarchicalDocumentTool** — Structure-aware document search with hierarchy preservation (#255)
+- **HierarchicalDocumentTool** --Structure-aware document search with hierarchy preservation (#255)
   - Markdown heading chain tracking (H1-H6 parent chains)
   - Domain-aware subsection recognition (US legislative, AU legislative, academic, technical, legal contracts, financial, medical, patent, general)
   - LLM-based contextual embeddings (Anthropic approach, ~49% improved retrieval accuracy)
   - Incremental ingestion with mtime-based tracking and `--force-ingest` override
   - Hybrid search combining semantic + keyword with configurable weights
-  - Full YAML configuration — no code required
-- **Tiered Keyword Search with RRF Fusion** — Automatic strategy selection based on provider capabilities
+  - Full YAML configuration --no code required
+- **Tiered Keyword Search with RRF Fusion** --Automatic strategy selection based on provider capabilities
   - NATIVE_HYBRID for providers with built-in hybrid search (azure-ai-search, weaviate, qdrant, mongodb, azure-cosmos-nosql)
   - FALLBACK_BM25 using rank_bm25 + Reciprocal Rank Fusion (k=60) for other providers (postgres, pinecone, chromadb, faiss, in-memory, sql-server)
-- **KeywordSearchProvider Protocol** — Pluggable keyword search backend interface with two implementations:
-  - `InMemoryBM25KeywordProvider` — rank_bm25 in-process for development and local workloads
-  - `OpenSearchKeywordProvider` — external OpenSearch cluster for production, with configurable auth (basic/API key), TLS, and timeouts
-- **KeywordIndexConfig Model** — YAML-configurable keyword search backend selection (`in-memory` or `opensearch`) with Pydantic validation
-- **Keyword Search Provider Router** — Automatic backend routing with OpenTelemetry span instrumentation for search observability
-- **Shared Tool Utilities** (#257) — Extracted reusable infrastructure into `lib/tools/`:
+- **KeywordSearchProvider Protocol** --Pluggable keyword search backend interface with two implementations:
+  - `InMemoryBM25KeywordProvider` --rank_bm25 in-process for development and local workloads
+  - `OpenSearchKeywordProvider` --external OpenSearch cluster for production, with configurable auth (basic/API key), TLS, and timeouts
+- **KeywordIndexConfig Model** --YAML-configurable keyword search backend selection (`in-memory` or `opensearch`) with Pydantic validation
+- **Keyword Search Provider Router** --Automatic backend routing with OpenTelemetry span instrumentation for search observability
+- **Shared Tool Utilities** (#257) --Extracted reusable infrastructure into `lib/tools/`:
   - `common.py`: file discovery, source path resolution, placeholder embedding generation
   - `base_tool.py`: `EmbeddingServiceMixin` and `DatabaseConfigMixin` for tool code reuse
-- **Shared Terminal UI Utilities** (#256) — Consolidated duplicate code into `lib/ui/`:
+- **Shared Terminal UI Utilities** (#256) --Consolidated duplicate code into `lib/ui/`:
   - `terminal.py`: TTY detection
   - `spinner.py`: `SpinnerMixin` for progress animation
   - `colors.py`: `ANSIColors` and `colorize()` function
   - Chat history extraction utilities shared between chat and test_runner
-- **HierarchicalDocumentTool Specification** (#242) — Full spec-kit artifacts:
+- **HierarchicalDocumentTool Specification** (#242) --Full spec-kit artifacts:
   - spec.md with 8 user stories (P1-P3 priorities)
   - Implementation plan, data model documentation, quickstart guide
   - 110+ implementation tasks organized by priority
 
 ### Changed
 
-- **BM25 Score Normalization** — Replaced hardcoded `/10.0` divisor with max-score normalization; the top result always scores 1.0, others are proportional to the maximum
-- **Async OpenSearch I/O** — `HybridSearchExecutor.build_keyword_index()` and `keyword_search()` are now async; OpenSearch calls offloaded via `asyncio.to_thread()`, in-memory BM25 remains direct with zero overhead
-- **KeywordIndexConfig Self-Validation** — OpenSearch field validation (`endpoint`, `index_name`) moved from parent `HierarchicalDocumentToolConfig` into `KeywordIndexConfig` itself via `@model_validator`, enabling validation regardless of construction context
-- **Chunk Ownership Architecture** — `HybridSearchExecutor` now owns chunk data via internal `_chunk_map`, eliminating chunk duplication and improving lookup performance
-- **Search Mode Routing** — Tool supports KEYWORD, SEMANTIC, and HYBRID search modes with graceful degradation to semantic-only on keyword failure
-- **CLI Error Handling** — Extracted error handling into reusable context manager
+- **BM25 Score Normalization** --Replaced hardcoded `/10.0` divisor with max-score normalization; the top result always scores 1.0, others are proportional to the maximum
+- **Async OpenSearch I/O** --`HybridSearchExecutor.build_keyword_index()` and `keyword_search()` are now async; OpenSearch calls offloaded via `asyncio.to_thread()`, in-memory BM25 remains direct with zero overhead
+- **KeywordIndexConfig Self-Validation** --OpenSearch field validation (`endpoint`, `index_name`) moved from parent `HierarchicalDocumentToolConfig` into `KeywordIndexConfig` itself via `@model_validator`, enabling validation regardless of construction context
+- **Chunk Ownership Architecture** --`HybridSearchExecutor` now owns chunk data via internal `_chunk_map`, eliminating chunk duplication and improving lookup performance
+- **Search Mode Routing** --Tool supports KEYWORD, SEMANTIC, and HYBRID search modes with graceful degradation to semantic-only on keyword failure
+- **CLI Error Handling** --Extracted error handling into reusable context manager
 
 ### Removed
 
-- **ExactMatchIndex** — Removed unused class, `SearchMode.EXACT` enum value, `_exact_search()` method, and exact match routing logic (~485 lines) in favor of unified keyword search
+- **ExactMatchIndex** --Removed unused class, `SearchMode.EXACT` enum value, `_exact_search()` method, and exact match routing logic (~485 lines) in favor of unified keyword search
 
 ### Fixed
 
-- **Hybrid Weight Validation** — Enforce `semantic_weight + keyword_weight > 0` for hybrid search mode, rejecting invalid weight combinations
+- **Hybrid Weight Validation** --Enforce `semantic_weight + keyword_weight > 0` for hybrid search mode, rejecting invalid weight combinations
 
 ### Security
 
-- **aiohttp** 3.13.2 &rarr; 3.13.3 — fixes 8 CVEs:
+- **aiohttp** 3.13.2 -> 3.13.3 --fixes 8 CVEs:
   - CVE-2025-47364 (CRLF injection in redirects)
   - CVE-2025-49109 (DoS via keepalive infinite loop)
   - CVE-2025-49110 (DoS via `Transfer-Encoding` header)
@@ -308,13 +308,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - CVE-2025-49113 (DoS via `Content-Length`/`Transfer-Encoding` conflict)
   - CVE-2025-69229 (DoS via excessive chunked messages)
   - CVE-2025-69230 (DoS via Cookie header logging)
-- **werkzeug** 3.1.4 &rarr; 3.1.5
-- **python-multipart** 0.0.20 &rarr; 0.0.22
-- **authlib** 1.6.5 &rarr; 1.6.6
-- **pypdf** 6.4.0 &rarr; 6.6.2
-- **protobuf** 5.29.5 &rarr; 5.29.6
-- **semantic-kernel** 1.39.0 &rarr; 1.39.3
-- **wheel** 0.45.1 &rarr; 0.46.2
+- **werkzeug** 3.1.4 -> 3.1.5
+- **python-multipart** 0.0.20 -> 0.0.22
+- **authlib** 1.6.5 -> 1.6.6
+- **pypdf** 6.4.0 -> 6.6.2
+- **protobuf** 5.29.5 -> 5.29.6
+- **semantic-kernel** 1.39.0 -> 1.39.3
+- **wheel** 0.45.1 -> 0.46.2
 
 ### Documentation
 
