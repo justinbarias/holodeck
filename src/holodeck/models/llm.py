@@ -42,6 +42,10 @@ class LLMProvider(BaseModel):
         None, description="API endpoint (required for Azure OpenAI and Ollama)"
     )
     api_key: str | None = Field(None, description="API Key for LLM Provider")
+    api_version: str | None = Field(
+        default=None,
+        description="API version for Azure OpenAI (e.g., '2024-10-21')",
+    )
     auth_provider: AuthProvider | None = Field(
         default=None,
         description=(

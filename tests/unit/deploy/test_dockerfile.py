@@ -624,3 +624,265 @@ class TestProviderDetection:
         # Standard elements still present
         assert "USER holodeck" in content
         assert "HEALTHCHECK" in content
+
+
+class TestDockerfileExtras:
+    """Tests for the extras conditional block in Dockerfile generation."""
+
+    def test_generate_dockerfile_with_extras(self) -> None:
+        """Test Dockerfile with extras includes uv pip install line."""
+        from holodeck.deploy.dockerfile import generate_dockerfile
+
+        dockerfile = generate_dockerfile(
+            "test", 8080, "rest", extras=["chromadb", "s3"]
+        )
+
+        assert "holodeck-ai[chromadb,s3]" in dockerfile
+        assert "uv pip install" in dockerfile
+
+    def test_generate_dockerfile_with_single_extra(self) -> None:
+        """Test Dockerfile with a single extra."""
+        from holodeck.deploy.dockerfile import generate_dockerfile
+
+        dockerfile = generate_dockerfile("test", 8080, "rest", extras=["chromadb"])
+
+        assert "holodeck-ai[chromadb]" in dockerfile
+
+    def test_generate_dockerfile_without_extras(self) -> None:
+        """Test Dockerfile without extras has no holodeck-ai extras line."""
+        from holodeck.deploy.dockerfile import generate_dockerfile
+
+        dockerfile = generate_dockerfile("test", 8080, "rest", extras=None)
+
+        assert "holodeck-ai[" not in dockerfile
+
+    def test_generate_dockerfile_empty_extras(self) -> None:
+        """Test Dockerfile with empty extras list has no extras line."""
+        from holodeck.deploy.dockerfile import generate_dockerfile
+
+        dockerfile = generate_dockerfile("test", 8080, "rest", extras=[])
+
+        assert "holodeck-ai[" not in dockerfile
+
+    def test_generate_dockerfile_extras_before_user_switch(self) -> None:
+        """Test extras install appears before USER holodeck switch."""
+        from holodeck.deploy.dockerfile import generate_dockerfile
+
+        dockerfile = generate_dockerfile("test", 8080, "rest", extras=["chromadb"])
+
+        lines = dockerfile.split("\n")
+        extras_line = next(i for i, line in enumerate(lines) if "holodeck-ai[" in line)
+        user_line = next(
+            i for i, line in enumerate(lines) if line.strip() == "USER holodeck"
+        )
+        assert extras_line < user_line
+
+
+class TestExtrasDetection:
+    """Tests for extras auto-detection in _generate_dockerfile_content."""
+
+    def test_chromadb_database_detected(self, tmp_path: Path) -> None:
+        """Test chromadb database provider triggers chromadb extra."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        agent_yaml = tmp_path / "agent.yaml"
+        agent_yaml.write_text(
+            "name: extras-test\n"
+            "model:\n"
+            "  provider: openai\n"
+            "  name: gpt-4o\n"
+            "instructions:\n"
+            '  inline: "Test"\n'
+            "tools:\n"
+            "  - name: search_docs\n"
+            "    type: vectorstore\n"
+            "    description: Search docs\n"
+            "    source: ./data\n"
+            "    database:\n"
+            "      provider: chromadb\n"
+            "      collection: test\n"
+            "deployment:\n"
+            "  registry:\n"
+            "    url: ghcr.io\n"
+            "    repository: test/extras\n"
+            "    tag_strategy: latest\n"
+            "  target:\n"
+            "    provider: aws\n"
+            "    aws:\n"
+            "      region: us-east-1\n"
+            "      cpu: 1\n"
+            "      memory: 2048\n"
+        )
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        assert "holodeck-ai[chromadb]" in content
+
+    def test_azure_blob_source_detected(self, tmp_path: Path) -> None:
+        """Test az:// source triggers azure-blob extra."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        agent_yaml = tmp_path / "agent.yaml"
+        agent_yaml.write_text(
+            "name: extras-test\n"
+            "model:\n"
+            "  provider: openai\n"
+            "  name: gpt-4o\n"
+            "instructions:\n"
+            '  inline: "Test"\n'
+            "tools:\n"
+            "  - name: search_docs\n"
+            "    type: vectorstore\n"
+            "    description: Search docs\n"
+            "    source: az://container/path\n"
+            "deployment:\n"
+            "  registry:\n"
+            "    url: ghcr.io\n"
+            "    repository: test/extras\n"
+            "    tag_strategy: latest\n"
+            "  target:\n"
+            "    provider: aws\n"
+            "    aws:\n"
+            "      region: us-east-1\n"
+            "      cpu: 1\n"
+            "      memory: 2048\n"
+        )
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        assert "holodeck-ai[azure-blob]" in content
+
+    def test_s3_source_detected(self, tmp_path: Path) -> None:
+        """Test s3:// source triggers s3 extra."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        agent_yaml = tmp_path / "agent.yaml"
+        agent_yaml.write_text(
+            "name: extras-test\n"
+            "model:\n"
+            "  provider: openai\n"
+            "  name: gpt-4o\n"
+            "instructions:\n"
+            '  inline: "Test"\n'
+            "tools:\n"
+            "  - name: search_docs\n"
+            "    type: vectorstore\n"
+            "    description: Search docs\n"
+            "    source: s3://bucket/path\n"
+            "deployment:\n"
+            "  registry:\n"
+            "    url: ghcr.io\n"
+            "    repository: test/extras\n"
+            "    tag_strategy: latest\n"
+            "  target:\n"
+            "    provider: aws\n"
+            "    aws:\n"
+            "      region: us-east-1\n"
+            "      cpu: 1\n"
+            "      memory: 2048\n"
+        )
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        assert "holodeck-ai[s3]" in content
+
+    def test_anthropic_provider_triggers_claude_otel(self) -> None:
+        """Test Anthropic provider triggers claude-otel extra."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        agent_path = (
+            Path(__file__).parent.parent.parent
+            / "fixtures"
+            / "claude_agent"
+            / "agent.yaml"
+        )
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_path))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        assert "claude-otel" in content
+
+    def test_duplicate_extras_deduplicated(self, tmp_path: Path) -> None:
+        """Test two tools with same extra produce only one entry."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        agent_yaml = tmp_path / "agent.yaml"
+        agent_yaml.write_text(
+            "name: extras-test\n"
+            "model:\n"
+            "  provider: openai\n"
+            "  name: gpt-4o\n"
+            "instructions:\n"
+            '  inline: "Test"\n'
+            "tools:\n"
+            "  - name: search_a\n"
+            "    type: vectorstore\n"
+            "    description: Search A\n"
+            "    source: ./data-a\n"
+            "    database:\n"
+            "      provider: chromadb\n"
+            "      collection: a\n"
+            "  - name: search_b\n"
+            "    type: vectorstore\n"
+            "    description: Search B\n"
+            "    source: ./data-b\n"
+            "    database:\n"
+            "      provider: chromadb\n"
+            "      collection: b\n"
+            "deployment:\n"
+            "  registry:\n"
+            "    url: ghcr.io\n"
+            "    repository: test/extras\n"
+            "    tag_strategy: latest\n"
+            "  target:\n"
+            "    provider: aws\n"
+            "    aws:\n"
+            "      region: us-east-1\n"
+            "      cpu: 1\n"
+            "      memory: 2048\n"
+        )
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        # Should appear exactly once
+        assert content.count("chromadb") == 1
+
+    def test_no_tools_no_extras(self, tmp_path: Path) -> None:
+        """Test empty tool list produces no extras line."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        agent_yaml = tmp_path / "agent.yaml"
+        agent_yaml.write_text(
+            "name: extras-test\n"
+            "model:\n"
+            "  provider: openai\n"
+            "  name: gpt-4o\n"
+            "instructions:\n"
+            '  inline: "Test"\n'
+            "deployment:\n"
+            "  registry:\n"
+            "    url: ghcr.io\n"
+            "    repository: test/extras\n"
+            "    tag_strategy: latest\n"
+            "  target:\n"
+            "    provider: aws\n"
+            "    aws:\n"
+            "      region: us-east-1\n"
+            "      cpu: 1\n"
+            "      memory: 2048\n"
+        )
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        assert "holodeck-ai[" not in content

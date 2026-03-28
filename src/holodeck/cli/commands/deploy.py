@@ -547,7 +547,7 @@ def _generate_dockerfile_content(
         Generated Dockerfile content
     """
     from holodeck.deploy.dockerfile import generate_dockerfile
-    from holodeck.models.tool import VectorstoreTool
+    from holodeck.models.tool import HierarchicalDocumentToolConfig, VectorstoreTool
 
     # Collect instruction files
     instruction_files: list[str] = []
@@ -579,6 +579,21 @@ def _generate_dockerfile_content(
 
     needs_nodejs = agent.model.provider == ProviderEnum.ANTHROPIC
 
+    # Detect required extras from agent config
+    extras: list[str] = []
+    for tool in agent.tools or []:
+        if isinstance(tool, VectorstoreTool | HierarchicalDocumentToolConfig):
+            if tool.database and getattr(tool.database, "provider", None) == "chromadb":
+                extras.append("chromadb")
+            if tool.source:
+                if tool.source.startswith("az://"):
+                    extras.append("azure-blob")
+                elif tool.source.startswith("s3://"):
+                    extras.append("s3")
+    if needs_nodejs:
+        extras.append("claude-otel")
+    extras = sorted(set(extras))
+
     return generate_dockerfile(
         agent_name=agent.name,
         port=deployment_config.port,
@@ -588,6 +603,7 @@ def _generate_dockerfile_content(
         data_directories=data_directories if data_directories else None,
         environment=deployment_config.environment or None,
         needs_nodejs=needs_nodejs,
+        extras=extras if extras else None,
     )
 
 

@@ -19,6 +19,10 @@ from holodeck.models.llm import ProviderEnum
 # Remote URI schemes that require SourceResolver
 _REMOTE_SCHEMES = ("s3://", "az://", "https://", "http://")
 
+# Default Azure OpenAI API version — latest GA as of 2024-10-21.
+# SK may default to unsupported preview versions; this ensures compatibility.
+AZURE_OPENAI_DEFAULT_API_VERSION = "2024-10-21"
+
 
 def _is_remote_source(source: str) -> bool:
     """Check if a source string is a remote URI requiring SourceResolver."""
@@ -131,11 +135,13 @@ def create_embedding_service(agent: Agent) -> Any:
         )
 
     if provider == ProviderEnum.AZURE_OPENAI:
-        return AzureTextEmbedding(
-            deployment_name=embedding_model,
-            endpoint=model_config.endpoint,
-            api_key=model_config.api_key,
-        )
+        azure_embed_kwargs: dict[str, Any] = {
+            "deployment_name": embedding_model,
+            "endpoint": model_config.endpoint,
+            "api_key": model_config.api_key,
+            "api_version": model_config.api_version or AZURE_OPENAI_DEFAULT_API_VERSION,
+        }
+        return AzureTextEmbedding(**azure_embed_kwargs)
 
     if provider == ProviderEnum.OLLAMA:
         try:
@@ -427,11 +433,13 @@ def _create_chat_service_from_config(model_config: Any) -> Any:
     )
 
     if model_config.provider == ProviderEnum.AZURE_OPENAI:
-        return AzureChatCompletion(
-            deployment_name=model_config.name,
-            endpoint=model_config.endpoint,
-            api_key=model_config.api_key,
-        )
+        azure_chat_kwargs: dict[str, Any] = {
+            "deployment_name": model_config.name,
+            "endpoint": model_config.endpoint,
+            "api_key": model_config.api_key,
+            "api_version": model_config.api_version or AZURE_OPENAI_DEFAULT_API_VERSION,
+        }
+        return AzureChatCompletion(**azure_chat_kwargs)
 
     if model_config.provider == ProviderEnum.OPENAI:
         return OpenAIChatCompletion(

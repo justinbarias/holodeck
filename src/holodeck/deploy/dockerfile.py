@@ -36,6 +36,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \\
     && rm -rf /var/lib/apt/lists/*
 {% endif %}
 
+{% if extras %}
+# Install agent-specific extras
+RUN uv pip install --system --no-cache --prerelease=allow \\
+    "holodeck-ai[{{ extras | join(',') }}]"
+{% endif %}
+
 # Copy entrypoint script
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
@@ -95,6 +101,7 @@ def generate_dockerfile(
     data_directories: list[str] | None = None,
     environment: dict[str, str] | None = None,
     needs_nodejs: bool = False,
+    extras: list[str] | None = None,
 ) -> str:
     """Generate a Dockerfile for a HoloDeck agent.
 
@@ -109,6 +116,7 @@ def generate_dockerfile(
         data_directories: List of data directories to copy
         environment: Environment variables to set
         needs_nodejs: Whether to install Node.js (required for Claude Agent SDK)
+        extras: holodeck-ai extras to install (e.g., ["chromadb"])
 
     Returns:
         Generated Dockerfile content as a string
@@ -141,4 +149,5 @@ def generate_dockerfile(
         data_directories=data_directories or [],
         environment=environment or {},
         needs_nodejs=needs_nodejs,
+        extras=extras or [],
     )
