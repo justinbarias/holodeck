@@ -1019,6 +1019,7 @@ class TestEmbeddingServiceRegistration:
                 deployment_name="text-embedding-3-small",
                 endpoint="https://test.openai.azure.com",
                 api_key="azure-key",
+                api_version="2024-10-21",
             )
             assert factory._embedding_service is not None
 

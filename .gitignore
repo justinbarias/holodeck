@@ -25,6 +25,7 @@ htmlcov/
 
 # Environment
 .env
+.env.*
 *.log
 bandit-report.json
 coverage.xml
