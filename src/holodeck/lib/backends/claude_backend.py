@@ -53,7 +53,7 @@ from holodeck.lib.backends.validators import (
 from holodeck.lib.instruction_resolver import resolve_instructions
 from holodeck.lib.observability import get_observability_context
 from holodeck.models.agent import Agent
-from holodeck.models.claude_config import PermissionMode
+from holodeck.models.claude_config import AuthProvider, PermissionMode
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool import HierarchicalDocumentToolConfig, MCPTool
 from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
@@ -284,9 +284,12 @@ def build_options(
     # SDK merges: {**os.environ, **options.env}, so "" overrides "1".
     env: dict[str, str] = {"CLAUDECODE": "", **auth_env, **otel_env}
 
-    # Custom base URL — when endpoint is set for Anthropic, forward it
-    # as ANTHROPIC_BASE_URL so the SDK subprocess targets the custom endpoint.
-    if agent.model.endpoint:
+    # Custom base URL — when a custom auth provider is used with an explicit
+    # endpoint, forward it as ANTHROPIC_BASE_URL so the SDK subprocess targets
+    # the third-party endpoint.  Only inject for auth_provider=custom to avoid
+    # accidentally overriding the default Anthropic URL for proxy/rate-limit
+    # setups that use endpoint with a standard auth provider.
+    if agent.model.endpoint and agent.model.auth_provider == AuthProvider.custom:
         env["ANTHROPIC_BASE_URL"] = agent.model.endpoint
 
     # Permission mode

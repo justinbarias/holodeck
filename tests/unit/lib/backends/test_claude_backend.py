@@ -421,6 +421,36 @@ class TestBuildOptions:
         kwargs = mock_opts_cls.call_args[1]
         assert "ANTHROPIC_BASE_URL" not in kwargs["env"]
 
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_endpoint_with_api_key_omits_base_url(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """ANTHROPIC_BASE_URL is NOT set when endpoint is set but auth is api_key."""
+        agent = Agent(
+            name="test-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.ANTHROPIC,
+                name="claude-sonnet-4-6",
+                endpoint="https://proxy.corp.example.com",
+                auth_provider=AuthProvider.api_key,
+            ),
+            instructions=Instructions(inline="Be helpful."),
+        )
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={"ANTHROPIC_API_KEY": "test-key"},
+            otel_env={},
+            mode="chat",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "ANTHROPIC_BASE_URL" not in kwargs["env"]
+
 
 # ---------------------------------------------------------------------------
 # T002 — Permission mode mapping
