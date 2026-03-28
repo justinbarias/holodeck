@@ -1,8 +1,11 @@
 """Tests for LLM Provider models in holodeck.models.llm."""
 
+import logging
+
 import pytest
 from pydantic import ValidationError
 
+from holodeck.models.claude_config import AuthProvider
 from holodeck.models.llm import LLMProvider, ProviderEnum
 
 
@@ -165,3 +168,28 @@ class TestLLMProvider:
         assert provider.temperature == 0.3
         assert provider.max_tokens == 1000
         assert provider.endpoint is None
+
+    def test_custom_auth_without_endpoint_emits_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Warning emitted when auth_provider=custom but no endpoint set."""
+        with caplog.at_level(logging.WARNING, logger="holodeck.models.llm"):
+            LLMProvider(
+                provider=ProviderEnum.ANTHROPIC,
+                name="llama3.1",
+                auth_provider=AuthProvider.custom,
+            )
+        assert "No endpoint is currently configured" in caplog.text
+
+    def test_custom_auth_with_endpoint_no_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """No warning when auth_provider=custom and endpoint is set."""
+        with caplog.at_level(logging.WARNING, logger="holodeck.models.llm"):
+            LLMProvider(
+                provider=ProviderEnum.ANTHROPIC,
+                name="llama3.1",
+                auth_provider=AuthProvider.custom,
+                endpoint="http://localhost:11434/v1",
+            )
+        assert "No endpoint is currently configured" not in caplog.text

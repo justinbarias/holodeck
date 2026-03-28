@@ -102,3 +102,14 @@ class LLMProvider(BaseModel):
                 self.provider.value,
             )
         return self
+
+    @model_validator(mode="after")
+    def check_custom_auth_needs_endpoint(self) -> "LLMProvider":
+        """Warn when auth_provider is 'custom' but no endpoint is set."""
+        if self.auth_provider == AuthProvider.custom and not self.endpoint:
+            logger.warning(
+                "auth_provider 'custom' is typically used with a custom endpoint "
+                "(e.g., endpoint: http://localhost:11434/v1). "
+                "No endpoint is currently configured."
+            )
+        return self

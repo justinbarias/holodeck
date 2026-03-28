@@ -82,7 +82,7 @@
     },
     "AuthProvider": {
       "type": "string",
-      "enum": ["api_key", "oauth_token", "bedrock", "vertex", "foundry"],
+      "enum": ["api_key", "oauth_token", "bedrock", "vertex", "foundry", "custom"],
       "description": "Authentication provider for Anthropic models"
     },
     "PermissionMode": {

@@ -384,6 +384,33 @@ class TestValidateCredentials:
             validate_credentials(model)
         assert exc_info.value.field == "ANTHROPIC_FOUNDRY_RESOURCE"
 
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_custom_auth_token_present(self, mock_get_env: object) -> None:
+        """Returns dict with ANTHROPIC_AUTH_TOKEN when set."""
+        mock_get_env.return_value = "ollama"  # type: ignore[union-attr]
+        model = LLMProvider(
+            provider=ProviderEnum.ANTHROPIC,
+            name="llama3.1",
+            endpoint="http://localhost:11434/v1",
+            auth_provider=AuthProvider.custom,
+        )
+        result = validate_credentials(model)
+        assert result == {"ANTHROPIC_AUTH_TOKEN": "ollama"}
+
+    @patch("holodeck.lib.backends.validators.get_env_var")
+    def test_custom_auth_token_missing_raises(self, mock_get_env: object) -> None:
+        """ConfigError raised with ANTHROPIC_AUTH_TOKEN when token is absent."""
+        mock_get_env.return_value = None  # type: ignore[union-attr]
+        model = LLMProvider(
+            provider=ProviderEnum.ANTHROPIC,
+            name="llama3.1",
+            endpoint="http://localhost:11434/v1",
+            auth_provider=AuthProvider.custom,
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            validate_credentials(model)
+        assert exc_info.value.field == "ANTHROPIC_AUTH_TOKEN"
+
 
 @pytest.mark.unit
 class TestValidateEmbeddingProvider:
