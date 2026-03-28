@@ -628,6 +628,7 @@ class TestGenerateDockerfileContent:
 
         vectorstore_tool = MagicMock(spec=VectorstoreTool)
         vectorstore_tool.source = "data/documents"
+        vectorstore_tool.database = None
         mock_agent.tools = [vectorstore_tool]
 
         with patch("holodeck.deploy.dockerfile.generate_dockerfile") as mock_gen:
