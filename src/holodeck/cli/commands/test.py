@@ -26,12 +26,13 @@ from holodeck.lib.observability import (
     initialize_observability,
     shutdown_observability,
 )
+from holodeck.lib.prompt_version import resolve_prompt_version
 from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.lib.test_runner.progress import ProgressIndicator
 from holodeck.lib.test_runner.reporter import generate_markdown_report
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
-from holodeck.models.eval_run import EvalRun, PromptVersion
+from holodeck.models.eval_run import EvalRun
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.test_result import TestReport, TestResult
 
@@ -320,28 +321,6 @@ def test(
             shutdown_observability(obs_context)
 
 
-def _build_prompt_version_stub(agent: Agent) -> PromptVersion:
-    """Return a placeholder :class:`PromptVersion` until US2 lands.
-
-    US2 owns frontmatter parsing and real version derivation. US1 ships a
-    stub so the writer can persist a complete :class:`EvalRun`. The CLI
-    refuses to persist a run whose prompt version is still the sentinel
-    (see :func:`_persist_eval_run`).
-    """
-    if agent.instructions.file is not None:
-        source: str = "file"
-        file_path: str | None = agent.instructions.file
-    else:
-        source = "inline"
-        file_path = None
-    return PromptVersion(
-        version="auto-00000000",
-        source=source,  # type: ignore[arg-type]
-        file_path=file_path,
-        body_hash="0" * 64,
-    )
-
-
 def _persist_eval_run(
     agent: Agent,
     report: TestReport,
@@ -354,19 +333,10 @@ def _persist_eval_run(
     surface a single CLI notice — the test exit code is unchanged (FR-009).
     """
     try:
-        prompt_version = _build_prompt_version_stub(agent)
-        if (
-            prompt_version.version == "auto-00000000"
-            and prompt_version.body_hash == "0" * 64
-        ):
-            # Fail-loud guard: prevents shipping US1 to production with the
-            # placeholder; replace this branch once US2 plugs in real
-            # frontmatter-driven prompt-version resolution.
-            logger.debug(
-                "Persisting EvalRun with US2 stub PromptVersion — frontmatter "
-                "parsing not yet implemented (031-eval-runs-dashboard US2)."
-            )
-
+        agent_base_dir = Path(agent_config_path).resolve().parent
+        prompt_version = resolve_prompt_version(
+            agent.instructions, base_dir=agent_base_dir
+        )
         redacted_agent = redact(agent)
         metadata = build_eval_run_metadata(
             agent=redacted_agent,
@@ -374,7 +344,6 @@ def _persist_eval_run(
             argv=sys.argv[1:],
         )
         run = EvalRun(report=report, metadata=metadata)
-        agent_base_dir = Path(agent_config_path).resolve().parent
         target = write_eval_run(run, agent_base_dir=agent_base_dir)
         try:
             display = target.relative_to(Path.cwd())
