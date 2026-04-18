@@ -310,10 +310,7 @@ def _kpi_strip(runs: list[EvalRun]) -> html.Div:
         [
             _kpi_card(
                 "Latest pass rate",
-                [
-                    html.Span(f"{latest_pr * 100:.1f}"),
-                    html.Span("%", className="kpi-unit"),
-                ],
+                [html.Span(f"{latest_pr * 100:.1f}%")],
                 delta=(
                     html.Div(delta_str, className=f"kpi-delta {delta_cls}")
                     if delta_str
@@ -336,7 +333,7 @@ def _kpi_strip(runs: list[EvalRun]) -> html.Div:
             ),
             _kpi_card(
                 "Median duration",
-                [html.Span(f"{median_s:.1f}"), html.Span("s", className="kpi-unit")],
+                [html.Span(f"{median_s:.1f}s")],
                 caption="per run",
             ),
         ],
