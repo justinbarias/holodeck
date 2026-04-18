@@ -17,7 +17,6 @@ import click
 from holodeck.lib.errors import ConfigError, EvaluationError, ExecutionError
 from holodeck.lib.eval_run import (
     build_eval_run_metadata,
-    redact,
     write_eval_run,
 )
 from holodeck.lib.logging_config import get_logger, setup_logging
@@ -337,9 +336,10 @@ def _persist_eval_run(
         prompt_version = resolve_prompt_version(
             agent.instructions, base_dir=agent_base_dir
         )
-        redacted_agent = redact(agent)
+        # build_eval_run_metadata performs deep-copy + redact internally so
+        # the live ``agent`` instance used by the executor is never mutated.
         metadata = build_eval_run_metadata(
-            agent=redacted_agent,
+            agent=agent,
             prompt_version=prompt_version,
             argv=sys.argv[1:],
         )
