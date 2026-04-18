@@ -251,7 +251,39 @@ No traceback.
 
 ---
 
-## 9. Success checklist
+## 10. Verify tool-call capture (dashboard Explorer prerequisite)
+
+The dashboard's Explorer view needs `{name, args, result, bytes}` per tool call to render the `ToolCall` panel. Confirm `tool_invocations` is populated end-to-end.
+
+Add a trivial function tool to `demo/agent.yaml` (or use any fixture with an MCP/function tool) and a test case that triggers it. Then:
+
+```bash
+holodeck test agent.yaml
+python - <<'PY'
+import pathlib
+from holodeck.models.eval_run import EvalRun
+p = sorted(pathlib.Path("results/support-demo").glob("*.json"))[-1]
+run = EvalRun.model_validate_json(p.read_text())
+tc = run.report.results[0]
+print("tool_invocations:", len(tc.tool_invocations))
+for inv in tc.tool_invocations:
+    print(f"  - {inv.name}({inv.args}) -> {inv.bytes} bytes")
+print("token_usage:", tc.token_usage)
+print("metric kinds:", {m.kind for m in tc.metric_results})
+PY
+```
+
+Expected:
+- `tool_invocations` is non-empty when the test triggered at least one tool.
+- Each invocation has a non-empty `name`, a dict `args` (possibly empty), a `result`, and `bytes == len(json.dumps(result, default=str))`.
+- `token_usage` is a `TokenUsage` object (not `None`) when the backend reported it.
+- Every `MetricResult` has `kind ∈ {"standard","rag","geval"}`.
+
+If `tool_invocations` is empty but `tool_calls` (names-only) is not, the pairing layer (see research.md R8) didn't run — report as a bug. Back-compat readers will fall through to `tool_calls`.
+
+---
+
+## 11. Success checklist
 
 | Criterion | Verified by step |
 |---|---|
@@ -265,3 +297,6 @@ No traceback.
 | SC-008: <200 ms persistence overhead | Micro-benchmark: `time holodeck test` with 1 test case, compare before/after |
 | SC-009: `--output` output byte-equivalent | `diff` against pre-feature output on the same config |
 | SC-010: <5 s P95 load for 1000 runs | Populate 1000 synthetic runs and time Summary first-render |
+| SC-011: Tool-call args/result captured | §10 |
+| SC-012: Token usage persisted for cost computation | §10 |
+| SC-013: MetricResult.kind populated for every metric | §10 |

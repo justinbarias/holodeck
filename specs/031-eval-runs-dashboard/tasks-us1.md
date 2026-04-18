@@ -11,7 +11,9 @@ description: "Task list — User Story 1: Persist Strongly-Typed EvalRun Per Tes
 **Research**: [research.md](./research.md)
 **Contract**: [contracts/cli.md](./contracts/cli.md)
 
-**Goal**: Every `holodeck test` invocation writes a strongly-typed `EvalRun` JSON artifact to `<agent_base_dir>/results/<slugified-agent-name>/<ISO-timestamp>.json`. The artifact wraps the existing `TestReport` unchanged and adds an `EvalRunMetadata` block with a redacted `Agent` snapshot and run provenance. Writes are atomic.
+**Goal**: Every `holodeck test` invocation writes a strongly-typed `EvalRun` JSON artifact to `<agent_base_dir>/results/<slugified-agent-name>/<ISO-timestamp>.json`. The artifact wraps the existing `TestReport` (extended additively with `MetricResult.kind`, `TestResult.tool_invocations`, `TestResult.token_usage`) and adds an `EvalRunMetadata` block with a redacted `Agent` snapshot and run provenance. Writes are atomic.
+
+**Dashboard readiness**: the additive `TestResult` fields are not decorative — they are the minimum runtime data required for the dashboard's Summary breakdowns (kind), Explorer tool-call panels (`tool_invocations`), and Compare view cost row (`token_usage`). See [data-model.md](./data-model.md) "Dashboard Field Projections" and [research.md](./research.md) R8 (pairing) / R9 (token capture).
 
 **Independent Test**: Run `holodeck test agent.yaml` in a project with no prior runs → a file appears at `results/<slug>/<ts>.json` → `EvalRun.model_validate_json(path.read_text())` round-trips without loss (modulo redacted secrets).
 
@@ -65,25 +67,30 @@ Without this field, Summary's three breakdown panels (`summary.js:442-458`), the
 - [ ] T010c [US1] Update every evaluator writer under `src/holodeck/lib/evaluators/` to populate `kind` when constructing `MetricResult`: NLP metrics (bleu/rouge/meteor) → `"standard"`; GEval judges → `"geval"`; RAG metrics → `"rag"`. Grep for `MetricResult(` and patch each construction site
 - [ ] T010d [US1] Back-compat: when loading legacy `EvalRun` JSON files produced before T010b, attempt to infer `kind` from `metric_name` via a small classifier in `src/holodeck/lib/eval_run/legacy.py` (names in {bleu, rouge, meteor, exact_match} → `standard`; names in RAG metric enum → `rag`; unknown → `geval`). Log a WARNING when inference is used
 
-### Migration B — Structured tool-call capture
+### Migration B — Structured tool-call capture (`ToolInvocation`)
 
 Without this, Explorer's Conversation panel renders empty tool-call panels for real runs (the handoff's `explorer.js::ToolCall:152-184` requires `{name, args, result, bytes}` per invocation).
 
-- [ ] T010e [P] [US1] (TDD) `tests/unit/models/test_tool_events.py`: assert `TestResult` has a new field `tool_events: list[ToolEvent]` with `default_factory=list`; `ToolEvent` has fields `name: str`, `args: dict[str, Any]`, `result: Any`, `bytes: int` (computed from `len(json.dumps(result))`); existing `tool_calls: list[str]` remains for back-compat
-- [ ] T010f [US1] Add `class ToolEvent(BaseModel)` to `src/holodeck/models/tool_event.py` (the file already exists — inspect first for existing shape; extend or replace accordingly). Add `tool_events: list[ToolEvent]` field to `TestResult` in `src/holodeck/models/test_result.py`
-- [ ] T010g [US1] Update `src/holodeck/lib/test_runner/executor.py` to capture `ToolEvent` from both SK and Claude backends. Reference: SK exposes tool-call events via `FunctionCallContent` / `FunctionResultContent`; Claude Agent SDK exposes them via message stream. Populate `tool_events` parallel to the existing `tool_calls: list[str]` (which continues to record just names for back-compat)
-- [ ] T010h [US1] Back-compat: `tool_calls` list[str] remains; readers (including US5 Explorer) prefer `tool_events` when non-empty, else fall back to rendering `tool_calls` as name-only panels with "args/result not captured" placeholder
+> **Naming decision (2026-04-18 revisit)**: the persisted model is `ToolInvocation`, **not** `ToolEvent`. Two `ToolEvent` classes already exist (`models/tool_event.py` — streaming UI events; `lib/backends/base.py::ToolEvent` — backend hook events). A third `ToolEvent` would be confusing. `ToolInvocation` unambiguously means "one completed call+result pair on disk". See [research.md](./research.md) R8 for the per-backend pairing contract.
 
-### Migration C — Multi-turn conversation capture
+- [ ] T010e [P] [US1] (TDD) `tests/unit/models/test_tool_invocation.py`: assert `ToolInvocation` has fields `name: str`, `args: dict[str, Any]` (default `{}`), `result: Any` (default `None`), `bytes: int` (ge=0), `duration_ms: int | None` (default `None`), `error: str | None` (default `None`), with `extra="forbid"`. Assert `TestResult.tool_invocations: list[ToolInvocation]` exists with `default_factory=list`; existing `tool_calls: list[str]` remains for back-compat. Round-trip via `model_dump_json()` / `model_validate_json()` preserves all fields.
+- [ ] T010f [US1] Add `class ToolInvocation(BaseModel)` co-located in `src/holodeck/models/test_result.py` (avoids cross-module import cycles with `models/tool_event.py`, which remains untouched). Add `tool_invocations: list[ToolInvocation] = Field(default_factory=list, ...)` field to `TestResult`.
+- [ ] T010g [P] [US1] (TDD) `tests/unit/lib/test_runner/test_tool_invocation_builder.py`: cover both pairing strategies. (a) **SK index-pairing**: given `tool_calls=[{name:"a",args:{}}, {name:"b",args:{x:1}}]` and `tool_results=[{name:"a",result:1}, {name:"b",result:2}]`, produce two `ToolInvocation`s with correct args/result. (b) **SK length mismatch**: when `tool_results` is shorter (tool raised), pad with `error="no result received"`. (c) **Claude id-pairing**: given records each carrying `tool_use_id`, pair by id (not index). (d) **Claude unmatched id**: call with no corresponding result → `error="no result received"`. (e) **Bytes computation**: `len(json.dumps(result, default=str))` including for non-JSON-serialisable values like `datetime`.
+- [ ] T010h [US1] Implement `src/holodeck/lib/test_runner/tool_invocation_builder.py` exporting `pair_tool_calls(exec_result: ExecutionResult, backend_kind: Literal["sk","claude"]) -> list[ToolInvocation]`. Branching on `backend_kind`: SK path zips the two parallel lists by index; Claude path builds a dict keyed by `tool_use_id` from calls, then walks results to pair. Result payloads are coerced to JSON-safe via `json.loads(json.dumps(result, default=str))` before construction.
+- [ ] T010i [US1] Wire `pair_tool_calls` into `src/holodeck/lib/test_runner/executor.py` at the post-`invoke_once` site ([executor.py:602-604](../../src/holodeck/lib/test_runner/executor.py)). Detect backend kind via `isinstance` check on `self._backend` OR by reading a new `backend.kind: Literal["sk","claude"]` attribute (choose whichever the existing `BackendSelector` already surfaces — inspect first; if neither, add a `kind` attribute to `AgentBackend` protocol). Populate `tool_invocations` parallel to the existing `tool_calls: list[str]` (which continues to record just names for back-compat).
+- [ ] T010j [US1] Back-compat: `tool_calls: list[str]` remains. Document in the `TestResult` docstring: "readers should prefer `tool_invocations` when non-empty; fall back to rendering `tool_calls` as name-only with an 'args/result not captured' placeholder for legacy runs."
 
-Without this, Explorer's Conversation section degrades to "one user bubble + one assistant bubble" for real runs — no interleaved tool-call events, no multi-turn history.
+### Migration C — `TestResult.token_usage` for cost computation
 
-- [ ] T010i [P] [US1] (TDD) `tests/unit/models/test_conversation_turns.py`: assert `TestResult.conversation: list[ConversationTurn]` exists with `default_factory=list`; `ConversationTurn` is a discriminated union `Annotated[UserTurn | AssistantTurn | ToolCallTurn | ToolResultTurn, Discriminator("role")]`. Each turn has `role`; bodies carry `content: str` (user/assistant) or `name + args` (tool_call) or `name + result` (tool_result)
-- [ ] T010j [US1] Implement the `ConversationTurn` union in `src/holodeck/models/test_result.py` (or a sibling `conversation.py` if the file grows large). Use the same discriminator pattern already in use for `ToolUnion` (`models/tool.py:913`)
-- [ ] T010k [US1] Update `src/holodeck/lib/test_runner/executor.py` to record turns as they occur — backends emit events in order, so this is a stream-consumer pattern: accumulate user → (zero or more tool_call/tool_result pairs) → assistant. Single-turn test cases produce exactly one `UserTurn` + one `AssistantTurn` with any tool events between them
-- [ ] T010l [US1] Back-compat: `test_input` and `agent_response` fields remain; when `conversation` is empty (legacy runs), readers synthesize a 2-turn conversation from them
+Without this, Compare view's "cost" row has no real data to compute from; dashboard falls back to synthetic `duration × rate` (handoff behaviour) until a pricing table ships.
 
-**Checkpoint for Phase 2b**: Unit tests for T010a/T010e/T010i pass. A manual `holodeck test` on a fixture with at least one tool-using case produces a persisted `EvalRun` whose `metadata.agent_config` snapshot AND `report.results[0].tool_events` / `report.results[0].conversation` are non-empty.
+- [ ] T010k [P] [US1] (TDD) `tests/unit/models/test_test_result_token_usage.py`: assert `TestResult.token_usage: TokenUsage | None` exists with default `None`; round-trip preserves the field when populated; legacy JSON without the field loads with `token_usage=None` via Pydantic defaults.
+- [ ] T010l [US1] Add `token_usage: TokenUsage | None = Field(default=None, description="Token usage reported by the backend; None when the backend did not report it.")` to `TestResult` in `src/holodeck/models/test_result.py`. Import `TokenUsage` from `holodeck.models.token_usage`.
+- [ ] T010m [US1] Wire `token_usage` into the `TestResult(...)` construction at [executor.py:670-684](../../src/holodeck/lib/test_runner/executor.py): `token_usage=exec_result.token_usage if exec_result else None`. (The `exec_result` variable exists only inside the backend branch today — extract to the surrounding scope so the new kwarg on `TestResult` has a defined source.)
+
+> **Deferred — conversation discriminated union** (was Migration C in an earlier draft): the handoff's Explorer renders `test_input` + `agent_response` + parallel `tool_invocations` without interleaved turns. A `ConversationTurn = Annotated[UserTurn | AssistantTurn | ToolCallTurn | ToolResultTurn, Discriminator("role")]` is future-proofing the handoff does not exercise. Revisit when multi-turn agent sessions become a first-class test-case feature.
+
+**Checkpoint for Phase 2b**: Unit tests for T010a (MetricResult.kind), T010e (ToolInvocation), T010g (pairing), T010k (token_usage) pass. A manual `holodeck test` on a fixture with at least one tool-using case produces a persisted `EvalRun` whose `metadata.agent_config` snapshot is non-empty AND `report.results[0].tool_invocations` is populated with correctly paired `{name, args, result, bytes}` AND `report.results[0].token_usage` is non-`None` (backend permitting).
 
 ---
 
@@ -125,6 +132,9 @@ Without this, Explorer's Conversation section degrades to "one user bubble + one
 
 - T001–T002 have no dependencies.
 - T003–T010 (SecretStr migration) block T015 (redactor test rule 2) and T022 (integration redaction test).
+- T010a–T010d (MetricResult.kind) are independent of T010e–T010m and can land in parallel.
+- T010e–T010f (ToolInvocation model) block T010g–T010i (pairing builder + executor wire-in).
+- T010k–T010l (TestResult.token_usage) block T010m (executor wire-in).
 - T011–T022 (all TDD tests) MUST be written and failing before T023–T032 implementation.
 - T023–T024 block T025.
 - T025–T027 block T028 (writer uses `EvalRun` type and metadata builder).
@@ -135,7 +145,13 @@ Without this, Explorer's Conversation section degrades to "one user bubble + one
 ### Parallel Opportunities
 
 ```bash
-# TDD phase — all independent test files:
+# Phase 2b TDD — all independent test files can be authored in parallel:
+Task: "tests/unit/models/test_metric_result_kind.py (T010a)"
+Task: "tests/unit/models/test_tool_invocation.py (T010e)"
+Task: "tests/unit/lib/test_runner/test_tool_invocation_builder.py (T010g)"
+Task: "tests/unit/models/test_test_result_token_usage.py (T010k)"
+
+# Phase 3 TDD — all independent test files:
 Task: "tests/unit/models/test_eval_run.py (T011–T013)"
 Task: "tests/unit/lib/eval_run/test_slugify.py (T014)"
 Task: "tests/unit/lib/eval_run/test_redactor.py (T015)"

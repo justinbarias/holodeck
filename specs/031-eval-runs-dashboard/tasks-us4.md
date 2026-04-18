@@ -257,7 +257,12 @@ Visual reference: `design_handoff_holodeck_eval_dashboard/summary.js` + open `Ev
 
 ## Dependencies
 
-- US1 Phase 2b runtime-shape migrations (US1 T010a–T010l: `MetricResult.kind`, `TestResult.tool_events`, `TestResult.conversation`) BLOCK every real-run rendering path in US4 — specifically the breakdown panels (T360), metric-trend kind filter (T359), and Summary's `kind`-aware aggregations (T321, T322). US4 work against the SEED dataset can proceed without these; real-run parity cannot.
+- US1 Phase 2b runtime-shape migrations BLOCK every real-run rendering path in US4. Specifically:
+  - **Migration A — `MetricResult.kind`** (US1 T010a–T010d) is required by the breakdown panels (T360), the metric-trend kind filter (T359), and Summary's `kind`-aware aggregations (T321, T322).
+  - **Migration B — `TestResult.tool_invocations`** (US1 T010e–T010j) is NOT directly consumed by US4 (Summary doesn't render per-tool data) but is required by US5. Listed here so US4's real-run smoke tests don't fail if the fixture expects populated `tool_invocations`.
+  - **Migration C — `TestResult.token_usage`** (US1 T010k–T010m) is NOT consumed by US4 (cost is a Compare-view concern in US5) but is listed here for the same smoke-test reason.
+  - The interleaved `conversation: list[ConversationTurn]` discriminated union originally drafted for US1 has been **deferred** (see US1 Phase 2b decision note). US4 is unaffected — Summary never renders conversations.
+  - US4 work against the SEED dataset can proceed without any of these; real-run parity cannot.
 - T301–T303 must complete first (extra installed, package tree exists).
 - T304 blocks T305, T342 (group conversion is foundational for the subcommand).
 - T306–T313 (seed data TDD + impl) blocks T319 (data_loader's seed branch), T364 (smoke test).

@@ -222,6 +222,63 @@ An optional smoke integration test under `tests/integration/dashboard/test_app_s
 
 ---
 
+## R8. Tool call/result pairing for `ToolInvocation` persistence
+
+**Decision**: Pair backend-emitted tool-call records with their result records at executor time, producing a list of `ToolInvocation(name, args, result, bytes, duration_ms?, error?)` on each `TestResult`. Pairing strategy differs per backend; both land in a single uniform `ToolInvocation` shape.
+
+**Background**: `ExecutionResult.tool_calls` and `ExecutionResult.tool_results` are two parallel `list[dict[str, Any]]` fields ([backends/base.py:38–39](../../src/holodeck/lib/backends/base.py)). Today the executor only extracts tool **names** via `extract_tool_names(exec_result.tool_calls)` and persists them to `TestResult.tool_calls: list[str]` — the `args` and the `result` payload are discarded. The design dashboard's Explorer view (explorer.js:152–184) cannot render `{name, args, result, bytes}` panels without this data.
+
+**Pairing semantics**:
+
+| Backend | Call source | Result source | Correlation key | Failure mode |
+|---|---|---|---|---|
+| Semantic Kernel (`sk_backend.py`) | `FunctionCallContent` items on chat history | `FunctionResultContent` items on chat history | Positional index in call-order | If the call raised before returning, `tool_results` is shorter than `tool_calls` — pad with `ToolInvocation(error="no result received", result=None)` preserving call-order. |
+| Claude Agent SDK (`claude_backend.py`) | `ToolUseBlock` in assistant messages | `ToolResultBlock` in user-role messages | `tool_use_id` field (guaranteed unique within a turn) | Unmatched `tool_use_id` → record with `error="no result received"`. A result without a prior call is a protocol violation — log WARNING and skip. |
+
+**Shape contract** (enforced by `ToolInvocation` validator):
+
+```python
+class ToolInvocation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    result: Any = None
+    bytes: int = Field(ge=0)
+    duration_ms: int | None = None
+    error: str | None = None
+```
+
+`bytes = len(json.dumps(result, default=str))` — `default=str` ensures non-JSON-serialisable values (datetimes, Pydantic models) don't raise during size measurement. The persisted `result` is coerced to a JSON-safe shape by the writer (`json.loads(json.dumps(result, default=str))`) before it reaches `ToolInvocation` — this is lossy for non-serialisable values but matches on-disk semantics.
+
+**Implementation locus**: a new helper `pair_tool_calls(exec_result: ExecutionResult, backend_kind: str) -> list[ToolInvocation]` in `src/holodeck/lib/test_runner/tool_invocation_builder.py`. The executor calls it at [executor.py:602–604](../../src/holodeck/lib/test_runner/executor.py) immediately after `exec_result` arrives, replacing the current `tool_calls = extract_tool_names(...)` line with both a names-list (for back-compat) and a `tool_invocations` list.
+
+**Alternatives considered**:
+- **Dict-merge heuristic** (match by tool name only) — rejected: ambiguous when the same tool is called multiple times in one turn.
+- **Single unified stream of `ToolEvent(kind="start"|"end")` events from the backend** — already exists as `lib/backends/base.py::ToolEvent` for streaming, but consumers must materialise a paired list anyway; we'd be pushing complexity into every consumer.
+
+---
+
+## R9. `token_usage` persistence on `TestResult`
+
+**Decision**: Add `TestResult.token_usage: TokenUsage | None = None`. Executor copies from `exec_result.token_usage`. `TokenUsage` model already exists at `src/holodeck/models/token_usage.py` and is already carried on `ExecutionResult` by both backends — the only gap is that the executor drops it on the floor today.
+
+**Rationale**: Required by the Compare view's cost computation. The design handoff (compare.js:31–32) synthesises cost from `duration_ms * rate` with a hardcoded per-model rate — acceptable for a prototype, not for a real dashboard. Persisting token counts lets the dashboard multiply by a pricing table (also out-of-scope for US1; V1 dashboard may still fall back to the synthetic formula until the pricing table ships). HoloDeck itself never persists a dollar value — the aggregation lives in the viewer.
+
+**Why not in US1 scope before now**: `token_usage` was already on `ExecutionResult` but the executor discarded it because no downstream consumer needed it pre-dashboard. Adding it here costs one field + one line in the executor.
+
+**Executor wire-up** (single line at [executor.py:670–684](../../src/holodeck/lib/test_runner/executor.py) `TestResult(...)` construction):
+
+```python
+return TestResult(
+    ...,
+    tool_invocations=tool_invocations,   # from R8
+    token_usage=exec_result.token_usage if exec_result else None,   # from R9
+    ...
+)
+```
+
+---
+
 ## Summary of key decisions
 
 | Topic | Choice |
@@ -241,3 +298,7 @@ An optional smoke integration test under `tests/integration/dashboard/test_app_s
 | SecretStr migration | In-scope for this feature; every callsite updated to `.get_secret_value()` |
 | Corrupt-file handling | Log + skip (dashboard) |
 | UI testing | Data layer unit-tested; Streamlit UI smoke-tested optionally |
+| Tool-call persistence shape | `ToolInvocation{name, args, result, bytes, duration_ms?, error?}` — pairing per R8 |
+| Token usage persistence | `TestResult.token_usage: TokenUsage \| None` — copied from `ExecutionResult` |
+| Cost computation | Dashboard-side from `token_usage × pricing_table` (HoloDeck persists no dollar value) |
+| Conversation discriminated union | **Deferred** to a follow-up user story — `test_input` + `agent_response` + parallel `tool_invocations` suffices for US4/US5 |

@@ -8,15 +8,26 @@ This document enumerates the new Pydantic models introduced by the feature, thei
 
 ```
 EvalRun
-├── report: TestReport              # existing, unchanged
+├── report: TestReport              # existing shape, additively extended
+│   ├── summary: ReportSummary      # existing, unchanged on-disk
+│   ├── results: list[TestResult]
+│   │   ├── test_input: str         # existing — the user turn
+│   │   ├── agent_response: str     # existing — the assistant turn
+│   │   ├── tool_calls: list[str]   # existing — names only, kept for back-compat
+│   │   ├── tool_invocations: list[ToolInvocation]   # NEW (additive)
+│   │   ├── token_usage: TokenUsage | None           # NEW (additive)
+│   │   └── metric_results: list[MetricResult]
+│   │       └── kind: "standard" | "rag" | "geval"   # NEW (additive)
+│   └── timestamp: str              # existing — dashboard projects to `created_at`
 └── metadata: EvalRunMetadata
     ├── agent_config: Agent         # existing, snapshot (redacted)
     ├── prompt_version: PromptVersion
-    ├── created_at: str             # ISO-8601 with ms
-    ├── holodeck_version: str
+    ├── holodeck_version: str       # dashboard projects to root-level `holodeck_version`
     ├── cli_args: list[str]         # sanitized argv
-    └── git_commit: str | None
+    └── git_commit: str | None      # dashboard projects to root-level `git_commit`
 ```
+
+> **No persisted `id` field.** `run.id` in the handoff dataset is a **dashboard-assigned** identifier computed by `data_loader` from the filename stem (e.g. `2026-04-18T14-22-09.812Z` → id `2026-04-18T14-22-09.812Z`). No on-disk schema change; documented here so future dashboard contributors know where the id originates.
 
 ---
 
@@ -74,13 +85,52 @@ Location: `src/holodeck/models/eval_run.py`
 
 ---
 
+## `ToolInvocation` (new — persisted tool-call record)
+
+Location: `src/holodeck/models/test_result.py` (co-located with `TestResult`; avoids cross-module import cycles).
+
+> **Naming**: deliberately **not** `ToolEvent`. Two `ToolEvent` classes already exist (`models/tool_event.py` for streaming UI events, `lib/backends/base.py` for backend hook events). `ToolInvocation` unambiguously denotes a completed call+result pair.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | `str` | ✅ | Tool name invoked by the agent (e.g. `"lookup_order"`). |
+| `args` | `dict[str, Any]` | ✅ | Tool input parameters. Empty dict when the tool takes no args. |
+| `result` | `Any` | ✅ | Tool output — may be a JSON-serialisable scalar, dict, list, or string. |
+| `bytes` | `int` | ✅ | `len(json.dumps(result, default=str))`. Used by the dashboard to collapse-by-default large results. |
+| `duration_ms` | `int \| None` | — | Tool execution time in milliseconds. `None` when the backend does not report it (SK Plugin path). |
+| `error` | `str \| None` | — | Error message when the tool invocation failed. `result` should be `None` in that case. |
+
+**Validation**:
+- `model_config = ConfigDict(extra="forbid")`.
+- `bytes >= 0`.
+- When `error` is set, `result` SHOULD be `None` — not enforced, but a writer invariant.
+
+**Pairing semantics** (see research.md R8):
+- **SK backend**: `tool_calls` and `tool_results` are parallel lists produced in call-order. Pair by index. If lengths diverge (rare — tool raised before returning), pad the shorter list with synthesised records carrying `error`.
+- **Claude backend**: every `FunctionCallContent` carries a `tool_use_id` matched by the downstream `FunctionResultContent`. Pair by id. Unmatched ids → record with `error="no result received"`.
+
+---
+
+## `TestResult` additive fields
+
+Location: `src/holodeck/models/test_result.py` (existing model — new fields appended).
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `tool_invocations` | `list[ToolInvocation]` | — | Default `[]`. Parallel to `tool_calls` (names-only) for back-compat. Dashboard prefers `tool_invocations` when non-empty. |
+| `token_usage` | `TokenUsage \| None` | — | Default `None`. Populated from `ExecutionResult.token_usage`. Required for Compare view cost computation (dashboard multiplies tokens by a pricing table; HoloDeck itself does not persist a dollar value). |
+
+> **Deferred**: the `conversation: list[ConversationTurn]` discriminated union originally proposed for US1 is **deferred to a later user story**. The dashboard's Explorer view renders the existing `test_input` + `agent_response` + parallel `tool_invocations` shape without needing interleaved turns. Revisit if multi-turn agent sessions become a first-class test-case scenario.
+
+---
+
 ## `EvalRun`
 
 Location: `src/holodeck/models/eval_run.py`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `report` | `TestReport` | ✅ | Existing model, re-exported from `holodeck.models.test_result`. Unchanged. |
+| `report` | `TestReport` | ✅ | Existing model, re-exported from `holodeck.models.test_result`. Additive fields on `TestResult` (see above) apply transitively. |
 | `metadata` | `EvalRunMetadata` | ✅ | Snapshot and provenance. |
 
 **Validation**:
@@ -149,3 +199,28 @@ Where:
 - `EvalRun` is **immutable** once written.
 - The dashboard is read-only; it never mutates nor deletes files.
 - Readers tolerate `EvalRun` files where newly-added optional fields are absent (Pydantic defaults). The existing-only `TestReport` is unchanged, so legacy reports remain loadable.
+
+---
+
+## Dashboard Field Projections
+
+The Streamlit dashboard (US4/US5) consumes `EvalRun` JSON via `dashboard/data_loader.py`. Design-handoff field names (from `design_handoff_holodeck_eval_dashboard/data.js`) **do not** match Python model field names 1:1. The loader is the single place where projection happens; no on-disk rename.
+
+| On-disk (Pydantic) | Dashboard (handoff) | Used by |
+|---|---|---|
+| `report.timestamp` | `run.created_at` | every view (axis labels, sort) |
+| `report.summary.total_tests` | `summary.total` | Summary table "Tests" col, Compare matrix |
+| `report.summary.total_duration_ms` | `summary.duration_ms` | KPI strip, Compare "Duration" row |
+| `report.summary.pass_rate` **(0..100)** | `summary.pass_rate` **(0..1)** | **Loader divides by 100** — see below |
+| `report.results[].test_input` | `testCase.input` | Explorer conversation user bubble |
+| `report.results[].tool_calls` (names) | `testCase.tools_called` | Compare matrix tool-call summary |
+| `report.results[].tool_invocations` | `testCase.tool_calls` (in Explorer detail) | Explorer `ToolCall` panel |
+| `agent_config.tools[].type` (ToolUnion discriminator) | `agent_config.tools[].kind` | Explorer config-snapshot tool chips |
+| `agent_config.embedding_provider` | `agent_config.embedding` | Explorer config-snapshot rows |
+| `metadata.holodeck_version` | `run.holodeck_version` (root) | (informational) |
+| `metadata.git_commit` | `run.git_commit` (root) | Summary table "Commit" col, Compare header |
+| `metadata.prompt_version.*` | `run.metadata.prompt_version.*` | **No projection** — already nested correctly |
+
+**Scale conversion**: `pass_rate` is persisted as an integer-ish percentage `0..100` (existing `ReportSummary` semantics, documented in the Pydantic field description). The design-handoff assumes `0..1`. The loader divides on read — decided in preference to a breaking migration of `ReportSummary` that would churn the markdown reporter, existing TestReport JSON files on disk, and every integration test that asserts against the markdown output.
+
+**`run.id` synthesis**: not a persisted field. The loader computes `id = filepath.stem` (e.g. `"2026-04-18T14-22-09.812Z"` or `"2026-04-18T14-22-09.812Z-a3f9"` when the writer appended a collision suffix). This id is stable across loader invocations — it is **safe** to store in `st.session_state.compare_queue` / `st.query_params` because it survives server restarts as long as the file is on disk.

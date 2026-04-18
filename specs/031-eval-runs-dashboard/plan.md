@@ -11,7 +11,9 @@ Extend HoloDeck's `test` command with three cohesive capabilities:
 2. **Prompt versioning (`python-frontmatter`)** — optional YAML frontmatter on instruction files is parsed via `python-frontmatter`; the prompt body is stripped before it reaches the LLM; a `PromptVersion` is attached to `EvalRun.metadata`. Manual `version:` overrides an auto `auto-<sha256[:8]>` derived from the prompt body.
 3. **Dashboard (`holodeck test view`)** — a new Click subcommand of `test` that launches a Streamlit app (shipped as optional extra `holodeck[dashboard]`) in a subprocess. The app auto-discovers runs under `results/<slugified-agent-name>/`, renders a Summary view with faceted filters + trend/breakdown charts, and an Explorer view for per-test-case drill-down.
 
-Scope is purely additive: `TestReport`/`TestResult` are unchanged; existing `--output` behaviour is preserved byte-equivalent.
+Scope is purely additive to the file-on-disk contract: `TestReport` keeps its shape; `TestResult` gains **additive** fields only (`tool_invocations`, `token_usage`, and `MetricResult.kind`) — legacy EvalRun files remain loadable via Pydantic defaults. Existing `--output` behaviour is preserved byte-equivalent.
+
+**Why `TestResult` must grow** (not in the original plan, added after the design handoff landed): the dashboard's Explorer view requires `{name, args, result, bytes}` per tool invocation; its Compare view references per-run cost (derivable from token usage); every Summary breakdown pivots on `MetricResult.kind`. Without these fields the dashboard can only render the synthetic seed dataset, not real runs. See [data-model.md](./data-model.md) "Dashboard Field Projections" for the full on-disk ↔ dashboard name-mapping table and [research.md](./research.md) R8 / R9 for pairing and token-usage decisions.
 
 ## Technical Context
 
@@ -79,6 +81,13 @@ specs/031-eval-runs-dashboard/
 src/holodeck/
 ├── models/
 │   ├── eval_run.py                # NEW: EvalRun, EvalRunMetadata, PromptVersion
+│   ├── test_result.py             # EDIT: MetricResult.kind (new Literal field),
+│   │                              #       TestResult.tool_invocations: list[ToolInvocation],
+│   │                              #       TestResult.token_usage: TokenUsage | None,
+│   │                              #       ToolInvocation (new co-located model).
+│   │                              #       Name deliberately chosen to NOT collide with
+│   │                              #       models/tool_event.py::ToolEvent (streaming) or
+│   │                              #       lib/backends/base.py::ToolEvent (hook-stream).
 │   ├── llm.py                     # EDIT: LLMProvider.api_key: str → SecretStr
 │   ├── tool.py                    # EDIT: VectorStoreConfig.connection_string,
 │   │                              #       VectorStoreConfig.api_key,
@@ -100,6 +109,12 @@ src/holodeck/
 │   │   ├── redactor.py            # name-allowlist + SecretStr-driven redaction
 │   │   ├── slugify.py             # agent-name slugification
 │   │   └── metadata.py            # build EvalRunMetadata (git rev-parse, cli args, ts)
+│   ├── test_runner/
+│   │   ├── executor.py            # EDIT: wire ToolInvocation pairing (research.md R8)
+│   │   │                          #       and TestResult.token_usage (research.md R9)
+│   │   └── tool_invocation_builder.py  # NEW: pair_tool_calls(exec_result, backend_kind)
+│   │                                   # → list[ToolInvocation]; per-backend correlation
+│   │                                   # (SK: index, Claude: tool_use_id)
 │   ├── prompt_version.py          # NEW: frontmatter parse + auto-hash resolver,
 │   │                              #       exposes `resolve_prompt_version(instructions,
 │   │                              #       base_dir) -> PromptVersion`. Does NOT modify
@@ -138,12 +153,17 @@ src/holodeck/
 tests/
 ├── unit/
 │   ├── models/
-│   │   └── test_eval_run.py
+│   │   ├── test_eval_run.py
+│   │   ├── test_metric_result_kind.py           # NEW: MetricResult.kind
+│   │   ├── test_tool_invocation.py              # NEW: ToolInvocation shape + bytes computation
+│   │   └── test_test_result_token_usage.py      # NEW: TestResult.token_usage round-trip
 │   ├── lib/
 │   │   ├── eval_run/
 │   │   │   ├── test_writer_atomic.py
 │   │   │   ├── test_redactor.py
 │   │   │   └── test_slugify.py
+│   │   ├── test_runner/
+│   │   │   └── test_tool_invocation_builder.py  # NEW: SK index-pairing, Claude id-pairing
 │   │   └── test_prompt_version.py
 │   ├── cli/
 │   │   └── test_view_command.py   # subprocess spawn mocked
@@ -163,6 +183,14 @@ tests/
 - **SecretStr migration is in-scope for this feature.** Every secret-bearing field in the agent model tree must migrate from `str` to `SecretStr`, and every reader callsite must be updated to use `.get_secret_value()`. The migration is itemized in `data-model.md` and is a blocker for FR-005 Acceptance Scenario 3.
 - **`resolve_prompt_version` is additive**, not a signature change to `resolve_instructions`. Existing callers are untouched.
 - **`results/` is rooted at `agent_base_dir`** — consistent with how `instructions.file`, `response_format` files, and vector-store source paths are already resolved.
+
+**Key architecture decisions recorded after the design handoff landed (2026-04-18 revisit)**:
+- **`TestResult` grows additively** to carry dashboard-required runtime data: `tool_invocations: list[ToolInvocation]`, `token_usage: TokenUsage | None`, and `MetricResult.kind: Literal["standard","rag","geval"]`. These are additive — legacy EvalRun files load via Pydantic defaults.
+- **`ToolInvocation` is the persisted tool-call shape**, deliberately named to avoid the two existing `ToolEvent` classes (streaming UI event, backend hook event). Fields: `name, args, result, bytes, duration_ms?, error?`. See [research.md](./research.md) R8 for per-backend pairing semantics.
+- **Conversation discriminated union deferred**: the dashboard's Explorer view renders `test_input` + `agent_response` + parallel `tool_invocations` without needing interleaved turns. `ConversationTurn` union is not in US1 scope.
+- **Cost is dashboard-side**: HoloDeck persists `token_usage`; the Streamlit layer multiplies by a pricing table. No dollar values on disk.
+- **`pass_rate` scale**: stays `0..100` on disk (existing `ReportSummary` semantics); loader normalises to `0..1` for the dashboard. See [data-model.md](./data-model.md) "Dashboard Field Projections".
+- **`run.id` is dashboard-assigned**: loader sets `id = filepath.stem`; no persisted field. Stable across refresh because the filename is stable.
 
 ## Complexity Tracking
 
