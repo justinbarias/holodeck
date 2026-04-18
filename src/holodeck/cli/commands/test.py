@@ -73,7 +73,40 @@ class SpinnerThread(threading.Thread):
             sys.stdout.flush()
 
 
-@click.command()
+class _TestGroup(click.Group):
+    """Click group whose default subcommand is the test runner.
+
+    Lets `holodeck test agent.yaml --verbose` keep working (legacy contract)
+    while also routing `holodeck test view --seed` to the `view` subcommand.
+    If the first positional arg isn't a registered subcommand name, we inject
+    the default subcommand (`run`) at position 0.
+    """
+
+    def resolve_command(self, ctx, args):  # type: ignore[no-untyped-def]
+        first_positional_idx = next(
+            (i for i, a in enumerate(args) if not a.startswith("-")), None
+        )
+        candidate = (
+            args[first_positional_idx] if first_positional_idx is not None else None
+        )
+        if candidate is None or candidate not in self.commands:
+            args.insert(0, "run")
+        return super().resolve_command(ctx, args)
+
+
+@click.group(cls=_TestGroup)
+def test() -> None:
+    """Execute agent test cases with evaluation metrics.
+
+    Default subcommand is `run` — so `holodeck test agent.yaml` stays valid
+    shorthand for `holodeck test run agent.yaml`. Subcommands:
+
+      run    Execute test cases (default).
+      view   Launch the Dash evaluation dashboard.
+    """
+
+
+@test.command("run")
 @click.argument("agent_config", type=click.Path(exists=True), default="agent.yaml")
 @click.option(
     "--output",
@@ -111,7 +144,7 @@ class SpinnerThread(threading.Thread):
     is_flag=True,
     help="Force re-ingestion of all vector store source files",
 )
-def test(
+def run(
     agent_config: str,
     output: str | None,
     format: str | None,
@@ -403,3 +436,10 @@ def _save_report(report: TestReport, output: str, format: str | None) -> None:
     except OSError as e:
         logger.error(f"Failed to write report to {output}: {e}")
         raise
+
+
+# Register the `view` subcommand for the Dash dashboard launcher.
+# Imported at module bottom to avoid circular imports with the dashboard package.
+from holodeck.cli.commands.test_view import view  # noqa: E402
+
+test.add_command(view)
