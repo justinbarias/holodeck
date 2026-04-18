@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holodeck.ai/schemas/031/prompt_version.schema.json",
+  "title": "PromptVersion",
+  "description": "Captures system prompt identity at run time.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "tags", "source", "body_hash", "extra"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Manual frontmatter value, or 'auto-' + first 8 hex chars of body SHA-256."
+    },
+    "author": {
+      "type": ["string", "null"]
+    },
+    "description": {
+      "type": ["string", "null"]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "source": {
+      "type": "string",
+      "enum": ["file", "inline"]
+    },
+    "file_path": {
+      "type": ["string", "null"]
+    },
+    "body_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Full SHA-256 of prompt body (frontmatter stripped)."
+    },
+    "extra": {
+      "type": "object",
+      "description": "Any frontmatter keys outside the documented schema; preserved for forward compatibility.",
+      "additionalProperties": true
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "source": { "const": "inline" } } },
+      "then": { "properties": { "file_path": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "source": { "const": "file" } } },
+      "then": {
+        "properties": { "file_path": { "type": "string", "minLength": 1 } },
+        "required": ["file_path"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holodeck.ai/schemas/031/eval_run.schema.json",
+  "title": "EvalRun",
+  "description": "Top-level persisted artifact written to results/<slug>/<ts>.json for every holodeck test invocation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["report", "metadata"],
+  "properties": {
+    "report": {
+      "description": "Existing TestReport model (unchanged by this feature). Schema not duplicated here; see src/holodeck/models/test_result.py.",
+      "type": "object"
+    },
+    "metadata": {
+      "$ref": "#/$defs/EvalRunMetadata"
+    }
+  },
+  "$defs": {
+    "EvalRunMetadata": {
+      "type": "object",
+      "description": "Run provenance. Intentionally omits a 'created_at' field — run ordering and filename derivation use report.timestamp (the existing TestReport.timestamp) as the single source of truth.",
+      "additionalProperties": false,
+      "required": [
+        "agent_config",
+        "prompt_version",
+        "holodeck_version",
+        "cli_args"
+      ],
+      "properties": {
+        "agent_config": {
+          "description": "Deep snapshot of the validated Agent model with secrets redacted.",
+          "type": "object"
+        },
+        "prompt_version": {
+          "$ref": "prompt_version.schema.json"
+        },
+        "holodeck_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cli_args": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "git_commit": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{7,40}$"
+        }
+      }
+    }
+  }
+}

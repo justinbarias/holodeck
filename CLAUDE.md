@@ -954,9 +954,10 @@ Use LSP for **semantic** questions ("who calls this?", "what type is this?", "wh
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
 
 ## Recent Changes
+- 031-eval-runs-dashboard: Added Python 3.10+ (matches existing HoloDeck target).
 - 025-tool-init-endpoints: Added Python 3.10+ + FastAPI (existing), Pydantic v2 (existing), asyncio (existing), OpenTelemetry (existing), httpx (new core dep), boto3 (optional extra `[s3]`), azure-storage-blob (optional extra `[azure-blob]`)
 - 025-tool-init-endpoints: Added Python 3.10+ + FastAPI (existing), Pydantic v2 (existing), asyncio (existing), OpenTelemetry (existing)
-- 023-choose-your-backend: Added Python 3.10+ + google-adk (pinned RC), agent-framework-core (pinned v1.0.0rc4), semantic-kernel (existing), claude-agent-sdk (existing)
 
 ## Active Technologies
-- Python 3.10+ + FastAPI (existing), Pydantic v2 (existing), asyncio (existing), OpenTelemetry (existing), httpx (new core dep), boto3 (optional extra `[s3]`), azure-storage-blob (optional extra `[azure-blob]`) (025-tool-init-endpoints)
+- Python 3.10+ (matches existing HoloDeck target). (031-eval-runs-dashboard)
+- Filesystem. Runs persisted as UTF-8 JSON at `results/<slugified-agent-name>/<ISO-timestamp>.json`. No database. (031-eval-runs-dashboard)
