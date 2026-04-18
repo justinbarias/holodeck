@@ -240,9 +240,9 @@ table.runs td {
 }
 table.runs tr:last-child td { border-bottom: none; }
 table.runs tbody tr {
-  cursor: pointer;
   transition: background var(--dur-quick) var(--ease-standard);
 }
+table.runs tbody td.run-nav { cursor: pointer; }
 table.runs tbody tr:hover { background: rgba(123, 255, 90, 0.04); }
 table.runs tbody tr.active { background: rgba(123, 255, 90, 0.08); box-shadow: inset 3px 0 0 var(--hd-accent); }
 

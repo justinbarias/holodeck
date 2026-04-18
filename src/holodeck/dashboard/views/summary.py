@@ -535,7 +535,9 @@ def _pill_class(tier: str) -> str:
     )
 
 
-def _runs_table(runs: list[EvalRun], compare_queue: list[str]) -> html.Div:
+def _runs_table(
+    runs: list[EvalRun], compare_queue: list[str], search: str = ""
+) -> html.Div:
     df = to_summary_dataframe(runs)
     if df.empty:
         return html.Div()
@@ -564,6 +566,16 @@ def _runs_table(runs: list[EvalRun], compare_queue: list[str]) -> html.Div:
         in_queue = run_id in compare_queue
         date_s = ts.strftime("%-d %b") if hasattr(ts, "strftime") else str(ts)
         time_s = ts.strftime("%H:%M") if hasattr(ts, "strftime") else ""
+
+        def _nav_td(rid: str, col: str, children, **kwargs):
+            return html.Td(
+                children,
+                id={"type": "run-row", "run_id": rid, "col": col},
+                n_clicks=0,
+                className="run-nav",
+                **kwargs,
+            )
+
         body_rows.append(
             html.Tr(
                 [
@@ -577,13 +589,15 @@ def _runs_table(runs: list[EvalRun], compare_queue: list[str]) -> html.Div:
                         ),
                         style={"width": "44px", "textAlign": "center"},
                     ),
-                    html.Td(
+                    _nav_td(
+                        "ts",
                         html.Span(
                             [html.Span(date_s, className="date"), html.Span(time_s)],
                             className="ts",
-                        )
+                        ),
                     ),
-                    html.Td(
+                    _nav_td(
+                        "pr",
                         html.Div(
                             [
                                 html.Span(
@@ -599,26 +613,31 @@ def _runs_table(runs: list[EvalRun], compare_queue: list[str]) -> html.Div:
                                 ),
                             ],
                             className="bar-inline",
-                        )
+                        ),
                     ),
-                    html.Td(
+                    _nav_td(
+                        "tests",
                         html.Span(
                             [
                                 html.Span(str(int(row["passed"])), className="mono fg"),
                                 "/",
                                 html.Span(str(int(row["total"])), className="mono"),
                             ]
-                        )
+                        ),
                     ),
-                    html.Td(
+                    _nav_td(
+                        "prompt",
                         html.Span(
                             row["prompt_version"],
                             className="mono",
                             style={"color": "var(--hd-accent)"},
-                        )
+                        ),
                     ),
-                    html.Td(html.Span(row["model_name"], className="mono")),
-                    html.Td(
+                    _nav_td(
+                        run_id, "model", html.Span(row["model_name"], className="mono")
+                    ),
+                    _nav_td(
+                        "duration",
                         html.Span(
                             (
                                 f"{row['duration_ms'] / 1000:.1f}s"
@@ -626,12 +645,13 @@ def _runs_table(runs: list[EvalRun], compare_queue: list[str]) -> html.Div:
                                 else "—"
                             ),
                             className="mono",
-                        )
+                        ),
                     ),
-                    html.Td(html.Span((row["git_commit"] or "")[:7], className="mono")),
-                ],
-                id={"type": "run-row", "run_id": run_id},
-                n_clicks=0,
+                    _nav_td(
+                        "commit",
+                        html.Span((row["git_commit"] or "")[:7], className="mono"),
+                    ),
+                ]
             )
         )
 
@@ -659,7 +679,14 @@ def _runs_table(runs: list[EvalRun], compare_queue: list[str]) -> html.Div:
                     ),
                     html.Div(
                         [
-                            html.Span("filter runs…", className="table-search"),
+                            dcc.Input(
+                                id="runs-search",
+                                type="text",
+                                placeholder="filter runs…",
+                                value=search,
+                                debounce=True,
+                                className="table-search",
+                            ),
                             html.Button(
                                 "Export CSV",
                                 id="runs-export",
@@ -712,7 +739,7 @@ def render_summary(
             _pass_rate_panel(filtered, agent_display_name),
             _metric_trend_panel(filtered, filters.metric_kind),
             _breakdown_row(filtered),
-            _runs_table(filtered, compare_queue),
+            _runs_table(filtered, compare_queue, search=filters.search),
         ]
 
     return html.Div(

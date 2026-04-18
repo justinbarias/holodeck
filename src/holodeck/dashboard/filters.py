@@ -26,6 +26,7 @@ class Filters:
     min_pass_rate: float = 0.0  # 0..1
     tags: list[str] = field(default_factory=list)
     metric_kind: MetricKind = "rag"
+    search: str = ""  # substring match across prompt version / model / commit
 
 
 def _run_passes(run: EvalRun, f: Filters) -> bool:
@@ -49,6 +50,20 @@ def _run_passes(run: EvalRun, f: Filters) -> bool:
         run_tags = set(run.metadata.prompt_version.tags or [])
         if not run_tags.intersection(f.tags):
             return False
+    if f.search:
+        needle = f.search.strip().lower()
+        if needle:
+            haystack = " ".join(
+                [
+                    run.metadata.prompt_version.version or "",
+                    run.metadata.agent_config.model.name or "",
+                    run.metadata.git_commit or "",
+                    ts.strftime("%Y-%m-%d %H:%M"),
+                    " ".join(run.metadata.prompt_version.tags or []),
+                ]
+            ).lower()
+            if needle not in haystack:
+                return False
     return True
 
 
@@ -73,6 +88,8 @@ def filters_to_query_params(f: Filters) -> dict[str, str]:
         out["tags"] = ",".join(f.tags)
     if f.metric_kind != "rag":
         out["kind"] = f.metric_kind
+    if f.search:
+        out["q"] = f.search
     return out
 
 
@@ -96,4 +113,6 @@ def filters_from_query_params(params: dict[str, str]) -> Filters:
     kind = params.get("kind")
     if kind in ("standard", "rag", "geval"):
         f.metric_kind = kind  # type: ignore[assignment]
+    if params.get("q"):
+        f.search = params["q"]
     return f

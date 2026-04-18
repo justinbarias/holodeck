@@ -212,10 +212,9 @@ def on_chip_click(_v, _m, _t, state):
     state = state or state_mod.default_state()
     if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
         raise dash.exceptions.PreventUpdate
-    if not any((ctx.triggered[0] or {}).get("value", 0) or []):
-        # filter spurious init triggers
-        pass
-    # Pull the clicked chip
+    trigger = ctx.triggered[0] if ctx.triggered else {}
+    if not trigger.get("value"):
+        raise dash.exceptions.PreventUpdate
     kind = ctx.triggered_id.get("type", "")
     value = ctx.triggered_id.get("value", "")
     current = state.get("filters") or asdict(Filters())
@@ -282,6 +281,21 @@ def on_reset(_n, state):
 
 
 @callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input("runs-search", "value"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_runs_search(value, state):
+    state = state or state_mod.default_state()
+    current = state.get("filters") or asdict(Filters())
+    new_search = (value or "").strip()
+    if new_search == (current.get("search") or ""):
+        raise dash.exceptions.PreventUpdate
+    return {**state, "filters": {**current, "search": new_search}}
+
+
+@callback(
     Output("url", "search"),
     Input("app-state", "data"),
     prevent_initial_call=True,
@@ -324,7 +338,10 @@ def on_queue_toggle(_clicks, state):
 
 @callback(
     Output("app-state", "data", allow_duplicate=True),
-    Input({"type": "run-row", "run_id": dash.ALL}, "n_clicks"),
+    Input(
+        {"type": "run-row", "run_id": dash.ALL, "col": dash.ALL},
+        "n_clicks",
+    ),
     State("app-state", "data"),
     prevent_initial_call=True,
 )
@@ -332,7 +349,8 @@ def on_row_click(_clicks, state):
     state = state or state_mod.default_state()
     if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
         raise dash.exceptions.PreventUpdate
-    if not any(_clicks or []):
+    trigger = ctx.triggered[0] if ctx.triggered else {}
+    if not trigger.get("value"):
         raise dash.exceptions.PreventUpdate
     run_id = ctx.triggered_id.get("run_id")
     return state_mod.open_in_explorer(state, run_id)
