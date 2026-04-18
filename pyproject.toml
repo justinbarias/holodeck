@@ -116,6 +116,14 @@ otel-all = [
 # Claude GenAI instrumentation (OTel semantic conventions)
 claude-otel = ["otel-instrumentation-claude-agent-sdk>=0.0.3,<0.1.0"]
 
+# Evaluation-runs dashboard (Dash + Plotly + pandas). Pixel-fidelity rewrite of
+# the Streamlit draft — handoff CSS tokens paste into assets/ verbatim.
+dashboard = [
+    "dash>=2.17,<3.0",
+    "plotly>=5.20,<6.0",
+    "pandas>=2.0",
+]
+
 # Deployment engine
 deploy = ["docker>=7.0.0"]
 deploy-aws = ["boto3>=1.42.0"]
@@ -188,6 +196,7 @@ known-third-party = ["docker"]  # Prevent misclassification from local docker/ d
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S603", "S607"]  # Allow assert, subprocess in tests
+"src/holodeck/dashboard/**/*.py" = ["E501"]  # Long CSS/HTML strings; guarded by CLI find_spec check
 
 [tool.mypy]
 python_version = "3.10"
@@ -207,6 +216,12 @@ warn_unreachable = true
 [[tool.mypy.overrides]]
 module = "google.*"
 ignore_missing_imports = true
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# Dash lacks type stubs; dashboard callbacks take arbitrary dicts from dcc.Store.
+# Full type annotations would be churn; visual fidelity is enforced via Chrome MCP.
+module = "holodeck.dashboard.*"
 ignore_errors = true
 
 [tool.pytest.ini_options]

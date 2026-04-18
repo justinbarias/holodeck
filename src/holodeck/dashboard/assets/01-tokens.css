@@ -1,0 +1,78 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+:root {
+  --hd-bg: #030807;
+  --hd-bg-body: #050b09;
+  --hd-bg-alt: #0c1412;
+  --hd-card: #0a110f;
+  --hd-card-2: #070c0a;
+  --hd-border: #1c2b25;
+  --hd-fg: #e8f5ec;
+  --hd-muted: #9bb3a5;
+  --hd-accent: #7bff5a;
+  --hd-accent-2: #53ff9c;
+  --hd-accent-3: #9bff5f;
+  --hd-accent-soft: #5ae0a6;
+  --hd-accent-glow: rgba(123, 255, 90, 0.18);
+  --hd-accent-halo: rgba(123, 255, 90, 0.25);
+  --hd-accent-shadow: rgba(83, 255, 156, 0.35);
+  --hd-shadow-soft: 0 20px 50px rgba(16, 255, 122, 0.22);
+  --hd-shadow-card: 0 8px 20px rgba(0, 0, 0, 0.18);
+  --hd-terminal-dot: #2ecc71;
+  --hd-code-fg: #e5e7eb;
+
+  --bg: var(--hd-bg-body);
+  --surface: var(--hd-bg-alt);
+  --surface-raised: var(--hd-card);
+  --border: var(--hd-border);
+  --fg1: var(--hd-fg);
+  --fg2: var(--hd-muted);
+  --link: var(--hd-accent);
+  --primary: var(--hd-accent);
+  --primary-on: #041208;
+
+  --hd-page-bg:
+    radial-gradient(circle at 22% 18%, rgba(123, 255, 90, 0.09), transparent 26%),
+    radial-gradient(circle at 78% 12%, rgba(123, 255, 90, 0.06), transparent 22%),
+    #050b09;
+
+  --font-sans: "Inter", -apple-system, system-ui, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", SFMono-Regular, ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+  --fs-h3: 18px;
+  --fs-body: 16px;
+  --fs-small: 15px;
+  --fs-code: 13px;
+  --fs-tag: 12px;
+  --fs-label: 11px;
+  --lh-tight: 1.05;
+  --lh-snug: 1.25;
+  --lh-body: 1.6;
+  --tracking-hx: -0.02em;
+  --tracking-label: 0.15em;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  --ease-standard: cubic-bezier(0.2, 0.7, 0.3, 1);
+  --dur-quick: 140ms;
+  --dur-base: 220ms;
+}
+
+html, body {
+  background: var(--hd-page-bg);
+  color: var(--fg1);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+* { box-sizing: border-box; }
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
