@@ -15,6 +15,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from holodeck.tools.base_tool import DatabaseConfigMixin, EmbeddingServiceMixin
 
@@ -69,7 +70,11 @@ class TestEmbeddingServiceMixin:
 
 
 class MockDatabaseConfig:
-    """Mock DatabaseConfig for testing."""
+    """Mock DatabaseConfig for testing.
+
+    Mirrors the real `DatabaseConfig.connection_string: SecretStr | None` shape
+    so the mixin's `.get_secret_value()` reads work identically under test.
+    """
 
     def __init__(
         self,
@@ -78,7 +83,9 @@ class MockDatabaseConfig:
         extra: dict[str, Any] | None = None,
     ) -> None:
         self.provider = provider
-        self.connection_string = connection_string
+        self.connection_string: SecretStr | None = (
+            SecretStr(connection_string) if connection_string is not None else None
+        )
         self.model_extra = extra or {}
 
 

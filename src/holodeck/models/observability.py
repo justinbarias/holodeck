@@ -7,7 +7,14 @@ following the no-code-first principle with YAML-based configuration.
 import re
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 
 class LogLevel(str, Enum):
@@ -226,7 +233,7 @@ class AzureMonitorExporterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = Field(default=False, description="Enable Azure Monitor exporter")
-    connection_string: str | None = Field(
+    connection_string: SecretStr | None = Field(
         default=None,
         description="Application Insights connection string",
     )

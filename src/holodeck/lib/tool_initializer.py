@@ -128,17 +128,23 @@ def create_embedding_service(agent: Agent) -> Any:
         provider,
     )
 
+    api_key_raw = (
+        model_config.api_key.get_secret_value()
+        if model_config.api_key is not None
+        else None
+    )
+
     if provider == ProviderEnum.OPENAI:
         return OpenAITextEmbedding(
             ai_model_id=embedding_model,
-            api_key=model_config.api_key,
+            api_key=api_key_raw,
         )
 
     if provider == ProviderEnum.AZURE_OPENAI:
         azure_embed_kwargs: dict[str, Any] = {
             "deployment_name": embedding_model,
             "endpoint": model_config.endpoint,
-            "api_key": model_config.api_key,
+            "api_key": api_key_raw,
             "api_version": model_config.api_version or AZURE_OPENAI_DEFAULT_API_VERSION,
         }
         return AzureTextEmbedding(**azure_embed_kwargs)
@@ -432,11 +438,17 @@ def _create_chat_service_from_config(model_config: Any) -> Any:
         OpenAIChatCompletion,
     )
 
+    api_key_raw = (
+        model_config.api_key.get_secret_value()
+        if model_config.api_key is not None
+        else None
+    )
+
     if model_config.provider == ProviderEnum.AZURE_OPENAI:
         azure_chat_kwargs: dict[str, Any] = {
             "deployment_name": model_config.name,
             "endpoint": model_config.endpoint,
-            "api_key": model_config.api_key,
+            "api_key": api_key_raw,
             "api_version": model_config.api_version or AZURE_OPENAI_DEFAULT_API_VERSION,
         }
         return AzureChatCompletion(**azure_chat_kwargs)
@@ -444,7 +456,7 @@ def _create_chat_service_from_config(model_config: Any) -> Any:
     if model_config.provider == ProviderEnum.OPENAI:
         return OpenAIChatCompletion(
             ai_model_id=model_config.name,
-            api_key=model_config.api_key,
+            api_key=api_key_raw,
         )
 
     if model_config.provider == ProviderEnum.ANTHROPIC:
@@ -459,7 +471,7 @@ def _create_chat_service_from_config(model_config: Any) -> Any:
             ) from exc
         return AnthropicChatCompletion(
             ai_model_id=model_config.name,
-            api_key=model_config.api_key,
+            api_key=api_key_raw,
         )
 
     if model_config.provider == ProviderEnum.OLLAMA:

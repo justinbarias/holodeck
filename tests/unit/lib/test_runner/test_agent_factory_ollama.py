@@ -672,7 +672,8 @@ class TestOllamaIntegration:
         # Verify all custom settings are preserved
         assert factory.agent_config.model.name == "mistral:7b-instruct"
         assert factory.agent_config.model.endpoint == "https://ollama.example.com:11434"
-        assert factory.agent_config.model.api_key == "custom-api-key"
+        assert factory.agent_config.model.api_key is not None
+        assert factory.agent_config.model.api_key.get_secret_value() == "custom-api-key"
         assert factory.agent_config.model.temperature == 0.8
         assert factory.agent_config.model.max_tokens == 2048
         assert factory.agent_config.model.top_p == 0.95

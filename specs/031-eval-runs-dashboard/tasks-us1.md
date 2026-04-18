@@ -23,8 +23,8 @@ description: "Task list — User Story 1: Persist Strongly-Typed EvalRun Per Tes
 
 ## Phase 1: Setup (US1-specific)
 
-- [ ] T001 [US1] Create package directory `src/holodeck/lib/eval_run/` with empty `__init__.py`
-- [ ] T002 [US1] Create empty module `src/holodeck/models/eval_run.py` with module docstring and future imports only
+- [x] T001 [US1] Create package directory `src/holodeck/lib/eval_run/` with empty `__init__.py`
+- [x] T002 [US1] Create empty module `src/holodeck/models/eval_run.py` with module docstring and future imports only
 
 ---
 
@@ -34,23 +34,29 @@ description: "Task list — User Story 1: Persist Strongly-Typed EvalRun Per Tes
 
 ### Tests first (TDD)
 
-- [ ] T003 [P] [US1] (TDD) Add failing unit test `tests/unit/models/test_secret_fields.py` asserting that `LLMProvider.model_fields["api_key"].annotation` is `Optional[SecretStr]` (or `SecretStr | None`) — expect failure until migration lands
-- [ ] T004 [P] [US1] (TDD) Add failing unit tests in `tests/unit/models/test_secret_fields.py` for every field enumerated below (T006): scope is limited to fields that EXIST in the current codebase. Do NOT write tests for `auth_token`, `aws_access_key_id`, `aws_secret_access_key` — those fields do not exist yet and migrating them is out-of-scope for this feature
+- [x] T003 [P] [US1] (TDD) Add failing unit test `tests/unit/models/test_secret_fields.py` asserting that `LLMProvider.model_fields["api_key"].annotation` is `Optional[SecretStr]` (or `SecretStr | None`) — expect failure until migration lands
+- [x] T004 [P] [US1] (TDD) Add failing unit tests in `tests/unit/models/test_secret_fields.py` for every field enumerated below (T006): scope is limited to fields that EXIST in the current codebase. Do NOT write tests for `auth_token`, `aws_access_key_id`, `aws_secret_access_key` — those fields do not exist yet and migrating them is out-of-scope for this feature
 
 ### Implementation
 
-- [ ] T005 [US1] Migrate `LLMProvider.api_key` from `str | None` to `SecretStr | None` in `src/holodeck/models/llm.py:44`
-- [ ] T006 [US1] Migrate the following *existing* plain-`str` secret fields to `SecretStr | None`, verified present in the codebase as of this task list:
-    - `VectorStoreConfig.connection_string` (src/holodeck/models/tool.py:212)
+- [x] T005 [US1] Migrate `LLMProvider.api_key` from `str | None` to `SecretStr | None` in `src/holodeck/models/llm.py:44`
+- [x] T006 [US1] Migrate the following *existing* plain-`str` secret fields to `SecretStr | None`, verified present in the codebase as of this task list. **Code reality-check**: the model is named `DatabaseConfig` (not `VectorStoreConfig`):
+    - `DatabaseConfig.connection_string` (src/holodeck/models/tool.py:212)
     - `KeywordIndexConfig.password` (src/holodeck/models/tool.py:250) and `KeywordIndexConfig.api_key` (src/holodeck/models/tool.py:251)
     - `AzureMonitorExporterConfig.connection_string` (src/holodeck/models/observability.py:229) — handled separately in T007 for clarity
     - **NOTE**: Anthropic `auth_token`, OAuth tokens, and AWS creds (`aws_access_key_id`, `aws_secret_access_key`) are NOT fields that currently exist in `LLMProvider` or `ClaudeConfig`. `ClaudeConfig.AuthProvider` has the ENUM value `oauth_token` but no actual token field. This feature will NOT add new secret fields; any future provider secret must be typed `SecretStr` from day one. Document this invariant in `src/holodeck/models/llm.py` via a module-level comment
-- [ ] T007 [US1] Migrate `AzureMonitorExporterConfig.connection_string` to `SecretStr | None` in `src/holodeck/models/observability.py:229`
-- [ ] T008 [US1] Audit MCP tool configuration in `src/holodeck/models/tool.py` for any header/token fields currently typed `str`; migrate to `SecretStr | None` only when the field's purpose is to carry a secret. If the audit yields no additional fields, mark T008 as N/A in the commit message (do not invent fields)
-- [ ] T009 [US1] Update every reader callsite for the migrated fields above to `.get_secret_value()`: SK backend in `src/holodeck/lib/backends/sk_backend.py`, Claude backend in `src/holodeck/lib/backends/claude_backend.py`, Azure exporter init under `src/holodeck/lib/observability/`, vector-store clients under `src/holodeck/lib/vector_store.py`, MCP bridge in `src/holodeck/lib/backends/mcp_bridge.py`, and any `KeywordIndexConfig` consumer under `src/holodeck/lib/keyword_search.py`
-- [ ] T010 [US1] Project-wide grep for attribute accesses on the migrated fields (`.api_key`, `.connection_string`, `.password`) — for each hit, confirm it's either (a) reading via `.get_secret_value()`, (b) on a non-migrated model, or (c) in a test fixture that needs updating to pass `SecretStr(...)` instead of a plain str
+- [x] T007 [US1] Migrate `AzureMonitorExporterConfig.connection_string` to `SecretStr | None` in `src/holodeck/models/observability.py:229`
+- [x] T008 [US1] Audit MCP tool configuration in `src/holodeck/models/tool.py` for any header/token fields currently typed `str`; migrate to `SecretStr | None` only when the field's purpose is to carry a secret. **Result: N/A** — `MCPTool.headers` and `MCPTool.env` are `dict[str, str]`, not single-string secret fields. Typing a dict as `SecretStr` is not shape-compatible; skipping per task wording ("do not invent fields")
+- [x] T009 [US1] Update every reader callsite for the migrated fields above to `.get_secret_value()`. **Actual callsites patched** (grep-driven vs. the anticipated list):
+    - `src/holodeck/lib/keyword_search.py:760-761` — `config.password`/`config.api_key` readers (KeywordIndexConfig)
+    - `src/holodeck/lib/test_runner/executor.py:352, 452` — LLMProvider.api_key → DeepEvalModelConfig + Azure ModelConfig
+    - `src/holodeck/lib/tool_initializer.py:131-144, 435-463` — LLMProvider.api_key → SK OpenAI/Azure/Anthropic services (factored into `api_key_raw` locals)
+    - `src/holodeck/lib/test_runner/agent_factory.py:665-686` — LLMProvider.api_key → SK services
+    - `src/holodeck/tools/base_tool.py:121-123` — DatabaseConfig.connection_string → dict kwargs
+    - **Not patched (no reader callsite exists)**: SK/Claude backends read via `tool_initializer`, so no direct patch needed. Observability exporter init is still stubbed (Phase 7 TODO in `lib/observability/config.py:125`). MCP bridge does not read secret fields.
+- [x] T010 [US1] Project-wide grep for attribute accesses on the migrated fields — fixture updates landed in: `test_llm_ollama.py` (3 sites), `test_observability.py` (1 site), `test_tool_models.py` (2 sites), `test_base_tool.py` (MockDatabaseConfig), `test_loader.py` (5 sites including `_convert_vectorstore_to_database_config` round-trip), `test_agent_factory_ollama.py` (1 site). All updated to `.get_secret_value()`.
 
-**Checkpoint**: All existing tests still pass (no regression); new `test_secret_fields.py` passes.
+**Checkpoint**: ✅ 4127 unit tests pass (1 skipped); new `test_secret_fields.py` (8 tests) passes.
 
 ---
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import SecretStr
 
 from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
@@ -626,7 +627,8 @@ class TestLoadAgentYaml:
         loader = ConfigLoader()
         agent = loader.load_agent_yaml(str(agent_yaml))
 
-        assert agent.model.api_key == "sk-test-12345"
+        assert agent.model.api_key is not None
+        assert agent.model.api_key.get_secret_value() == "sk-test-12345"
 
     def test_load_agent_yaml_with_global_config_merge(
         self, temp_dir: Path, monkeypatch: Any
@@ -660,8 +662,9 @@ class TestLoadAgentYaml:
         loader = ConfigLoader()
         agent = loader.load_agent_yaml(str(agent_yaml))
 
-        # API key should be merged from global config
-        assert agent.model.api_key == "global-api-key"
+        # API key should be merged from global config (now SecretStr-wrapped).
+        assert agent.model.api_key is not None
+        assert agent.model.api_key.get_secret_value() == "global-api-key"
 
     def test_load_agent_yaml_validation_error(self, temp_dir: Path) -> None:
         """Test that invalid agent config raises ConfigError."""
@@ -791,8 +794,12 @@ class TestMergeConfigsWithProviders:
         loader = ConfigLoader()
         result = loader.merge_configs(agent_config, global_config)
 
-        # API key should be merged (agent doesn't have it)
-        assert result["model"]["api_key"] == "sk-global-key"
+        # API key should be merged (agent doesn't have it). After SecretStr
+        # migration, the merged value round-trips through GlobalConfig as
+        # `SecretStr`, preserving the raw secret under `.get_secret_value()`.
+        merged_api_key = result["model"]["api_key"]
+        assert isinstance(merged_api_key, SecretStr)
+        assert merged_api_key.get_secret_value() == "sk-global-key"
         # Name should NOT be overwritten (agent has it)
         assert result["model"]["name"] == "gpt-4o"
 
@@ -821,8 +828,10 @@ class TestMergeConfigsWithProviders:
         loader = ConfigLoader()
         result = loader.merge_configs(agent_config, global_config)
 
-        # API key should be merged into evaluation model
-        assert result["evaluations"]["model"]["api_key"] == "sk-eval-key"
+        # API key should be merged into evaluation model (SecretStr-wrapped).
+        merged_eval_api_key = result["evaluations"]["model"]["api_key"]
+        assert isinstance(merged_eval_api_key, SecretStr)
+        assert merged_eval_api_key.get_secret_value() == "sk-eval-key"
 
 
 class TestResolveVectorstoreReferences:
@@ -851,13 +860,14 @@ class TestResolveVectorstoreReferences:
         loader = ConfigLoader()
         loader._resolve_vectorstore_references(tools, vectorstores)
 
-        # Database should be resolved to dict
+        # Database should be resolved to dict. After SecretStr migration on
+        # DatabaseConfig.connection_string, model_dump() returns the value as
+        # a SecretStr object; downstream Pydantic validation rehydrates it.
         assert isinstance(tools[0]["database"], dict)
         assert tools[0]["database"]["provider"] == "postgres"
-        assert (
-            tools[0]["database"]["connection_string"]
-            == "postgresql://localhost:5432/db"
-        )
+        conn_str = tools[0]["database"]["connection_string"]
+        assert isinstance(conn_str, SecretStr)
+        assert conn_str.get_secret_value() == "postgresql://localhost:5432/db"
 
     def test_resolve_vectorstore_unknown_reference_logs_warning(
         self, caplog: Any
@@ -988,7 +998,11 @@ class TestConvertVectorstoreToDatabaseConfig:
         result = _convert_vectorstore_to_database_config(vs_config)
 
         assert result.provider == "postgres"
-        assert result.connection_string == "postgresql://localhost:5432/db"
+        assert result.connection_string is not None
+        assert (
+            result.connection_string.get_secret_value()
+            == "postgresql://localhost:5432/db"
+        )
 
     def test_convert_chromadb_provider(self) -> None:
         """Test converting chromadb provider."""
@@ -1003,7 +1017,8 @@ class TestConvertVectorstoreToDatabaseConfig:
         result = _convert_vectorstore_to_database_config(vs_config)
 
         assert result.provider == "chromadb"
-        assert result.connection_string == "http://localhost:8000"
+        assert result.connection_string is not None
+        assert result.connection_string.get_secret_value() == "http://localhost:8000"
 
     def test_convert_with_options(self) -> None:
         """Test converting with options merged as extra fields."""

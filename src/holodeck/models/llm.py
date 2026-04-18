@@ -7,11 +7,25 @@ and global configuration files.
 import logging
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from holodeck.models.claude_config import AuthProvider
 
 logger = logging.getLogger(__name__)
+
+# Invariant (feature 031-eval-runs-dashboard): every provider secret field in
+# this model tree MUST be declared as `SecretStr` (or `SecretStr | None`) so the
+# eval-run redactor's type-driven rule covers them automatically. If a future
+# provider adds an `auth_token`, OAuth refresh token, AWS credentials, or any
+# similar field, type it `SecretStr` from day one — do NOT rely on the name
+# allowlist in `lib/eval_run/redactor.py` alone.
 
 
 class ProviderEnum(str, Enum):
@@ -41,7 +55,7 @@ class LLMProvider(BaseModel):
     endpoint: str | None = Field(
         None, description="API endpoint (required for Azure OpenAI and Ollama)"
     )
-    api_key: str | None = Field(None, description="API Key for LLM Provider")
+    api_key: SecretStr | None = Field(None, description="API Key for LLM Provider")
     api_version: str | None = Field(
         default=None,
         description="API version for Azure OpenAI (e.g., '2024-10-21')",

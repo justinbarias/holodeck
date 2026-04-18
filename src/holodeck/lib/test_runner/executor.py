@@ -349,7 +349,11 @@ class TestExecutor:
         return DeepEvalModelConfig(
             provider=llm_provider.provider,
             model_name=llm_provider.name,
-            api_key=llm_provider.api_key,
+            api_key=(
+                llm_provider.api_key.get_secret_value()
+                if llm_provider.api_key is not None
+                else None
+            ),
             endpoint=llm_provider.endpoint,
             deployment_name=deployment_name,
             temperature=0.0,  # Deterministic for evaluation
@@ -449,7 +453,7 @@ class TestExecutor:
 
                 azure_model_config = ModelConfig(
                     azure_endpoint=llm_model.endpoint,
-                    api_key=llm_model.api_key,
+                    api_key=llm_model.api_key.get_secret_value(),
                     azure_deployment=llm_model.name,
                 )
 

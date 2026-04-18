@@ -119,7 +119,9 @@ class DatabaseConfigMixin:
             provider = database.provider
             connection_kwargs: dict[str, Any] = {}
             if database.connection_string:
-                connection_kwargs["connection_string"] = database.connection_string
+                connection_kwargs["connection_string"] = (
+                    database.connection_string.get_secret_value()
+                )
             # Add extra fields from DatabaseConfig (extra="allow")
             if hasattr(database, "model_extra"):
                 extra_fields = database.model_extra or {}

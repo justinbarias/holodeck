@@ -19,6 +19,7 @@ from pydantic import (
     ConfigDict,
     Discriminator,
     Field,
+    SecretStr,
     Tag,
     field_validator,
     model_validator,
@@ -209,7 +210,7 @@ class DatabaseConfig(BaseModel):
             "sql-server, pinecone, in-memory"
         ),
     )
-    connection_string: str | None = Field(
+    connection_string: SecretStr | None = Field(
         None,
         description=(
             "Database connection string (format depends on provider). "
@@ -220,9 +221,9 @@ class DatabaseConfig(BaseModel):
 
     @field_validator("connection_string")
     @classmethod
-    def validate_connection_string(cls, v: str | None) -> str | None:
+    def validate_connection_string(cls, v: SecretStr | None) -> SecretStr | None:
         """Validate connection string is not empty if provided."""
-        if v is not None and not v.strip():
+        if v is not None and not v.get_secret_value().strip():
             raise ValueError("connection_string must be non-empty if provided")
         return v
 
@@ -247,8 +248,10 @@ class KeywordIndexConfig(BaseModel):
     endpoint: str | None = Field(default=None, description="OpenSearch endpoint URL")
     index_name: str | None = Field(default=None, description="OpenSearch index name")
     username: str | None = Field(default=None, description="Basic auth username")
-    password: str | None = Field(default=None, description="Basic auth password")
-    api_key: str | None = Field(default=None, description="API key auth (alt to basic)")
+    password: SecretStr | None = Field(default=None, description="Basic auth password")
+    api_key: SecretStr | None = Field(
+        default=None, description="API key auth (alt to basic)"
+    )
     verify_certs: bool = Field(default=True, description="Verify TLS certificates")
     timeout_seconds: int = Field(
         default=10, ge=1, le=120, description="Connection timeout (1-120s)"

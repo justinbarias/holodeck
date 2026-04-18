@@ -663,16 +663,21 @@ class AgentFactory:
                 f"model={model_config.name}"
             )
             service: Any
+            api_key_raw = (
+                model_config.api_key.get_secret_value()
+                if model_config.api_key is not None
+                else None
+            )
             if model_config.provider == ProviderEnum.AZURE_OPENAI:
                 service = AzureChatCompletion(
                     deployment_name=model_config.name,
                     endpoint=model_config.endpoint,
-                    api_key=model_config.api_key,
+                    api_key=api_key_raw,
                 )
             elif model_config.provider == ProviderEnum.OPENAI:
                 service = OpenAIChatCompletion(
                     ai_model_id=model_config.name,
-                    api_key=model_config.api_key,
+                    api_key=api_key_raw,
                 )
             elif model_config.provider == ProviderEnum.ANTHROPIC:
                 if AnthropicChatCompletion is None:
@@ -682,7 +687,7 @@ class AgentFactory:
                     )
                 service = AnthropicChatCompletion(
                     ai_model_id=model_config.name,
-                    api_key=model_config.api_key,
+                    api_key=api_key_raw,
                 )
             elif model_config.provider == ProviderEnum.OLLAMA:
                 if OllamaChatCompletion is None:
