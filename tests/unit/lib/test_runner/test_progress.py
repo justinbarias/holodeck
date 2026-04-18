@@ -422,12 +422,14 @@ class TestVerboseMode:
         result.metric_results = [
             MetricResult(
                 metric_name="groundedness",
+                kind="standard",
                 score=0.85,
                 threshold=0.80,
                 passed=True,
             ),
             MetricResult(
                 metric_name="relevance",
+                kind="standard",
                 score=0.72,
                 threshold=0.75,
                 passed=False,
@@ -458,6 +460,7 @@ class TestVerboseMode:
             result.metric_results = [
                 MetricResult(
                     metric_name="groundedness",
+                    kind="standard",
                     score=0.0,
                     error="LLM API error",
                 ),

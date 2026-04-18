@@ -39,6 +39,7 @@ def sample_metric_result() -> MetricResult:
     """Create a sample MetricResult for testing."""
     return MetricResult(
         metric_name="groundedness",
+        kind="standard",
         score=0.92,
         threshold=0.8,
         passed=True,
@@ -56,6 +57,7 @@ def sample_metric_result_failed() -> MetricResult:
     """Create a failed MetricResult with error."""
     return MetricResult(
         metric_name="completeness",
+        kind="geval",
         score=0.35,
         threshold=0.7,
         passed=False,
@@ -318,6 +320,7 @@ class TestMetricsTable:
         """Test that metric details section handles None reasoning gracefully."""
         metric = MetricResult(
             metric_name="relevance",
+            kind="standard",
             score=0.85,
             threshold=0.7,
             passed=True,
@@ -343,6 +346,7 @@ class TestMetricsTable:
         long_reasoning = "A" * 150  # 150 characters
         metric = MetricResult(
             metric_name="coherence",
+            kind="standard",
             score=0.9,
             threshold=0.7,
             passed=True,
@@ -806,6 +810,7 @@ class TestJSONReportGeneration:
         """Test that numeric values maintain precision in JSON."""
         metric = MetricResult(
             metric_name="precision_test",
+            kind="standard",
             score=0.9234567890,
             threshold=0.75,
             passed=True,

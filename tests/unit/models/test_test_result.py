@@ -113,6 +113,7 @@ class TestMetricResult:
         """Test MetricResult with basic fields."""
         result = MetricResult(
             metric_name="groundedness",
+            kind="standard",
             score=0.85,
         )
 
@@ -127,6 +128,7 @@ class TestMetricResult:
         """Test MetricResult with all fields."""
         result = MetricResult(
             metric_name="groundedness",
+            kind="standard",
             score=0.85,
             threshold=0.75,
             passed=True,
@@ -151,6 +153,7 @@ class TestMetricResult:
         """Test MetricResult with error."""
         result = MetricResult(
             metric_name="relevance",
+            kind="standard",
             score=0.0,
             error="API timeout after 3 retries",
             retry_count=3,
@@ -162,16 +165,17 @@ class TestMetricResult:
 
     def test_metric_result_score_numeric(self) -> None:
         """Test MetricResult score accepts numeric values."""
-        result = MetricResult(metric_name="f1_score", score=0.92)
+        result = MetricResult(metric_name="f1_score", kind="standard", score=0.92)
         assert result.score == 0.92
 
-        result = MetricResult(metric_name="bleu", score=0.45)
+        result = MetricResult(metric_name="bleu", kind="standard", score=0.45)
         assert result.score == 0.45
 
     def test_metric_result_threshold_comparison(self) -> None:
         """Test MetricResult with threshold for pass/fail."""
         result = MetricResult(
             metric_name="groundedness",
+            kind="standard",
             score=0.85,
             threshold=0.75,
             passed=True,
@@ -182,6 +186,7 @@ class TestMetricResult:
 
         result_fail = MetricResult(
             metric_name="groundedness",
+            kind="standard",
             score=0.65,
             threshold=0.75,
             passed=False,
@@ -193,6 +198,7 @@ class TestMetricResult:
         """Test MetricResult scale field."""
         result = MetricResult(
             metric_name="test",
+            kind="standard",
             score=0.8,
             scale="0-1",
         )
@@ -200,6 +206,7 @@ class TestMetricResult:
 
         result = MetricResult(
             metric_name="test",
+            kind="standard",
             score=85,
             scale="0-100",
         )
@@ -210,6 +217,7 @@ class TestMetricResult:
         with pytest.raises(ValidationError):
             MetricResult(  # type: ignore
                 metric_name="test",
+                kind="standard",
                 score=0.5,
                 invalid_field="value",
             )
@@ -243,7 +251,7 @@ class TestTestResult:
 
     def test_test_result_full(self) -> None:
         """Test TestResult with all fields."""
-        metric = MetricResult(metric_name="groundedness", score=0.85)
+        metric = MetricResult(metric_name="groundedness", kind="standard", score=0.85)
         result = TestResult(
             test_name="Business hours query",
             test_input="What are your business hours?",
