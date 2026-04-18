@@ -15,6 +15,11 @@ from typing import Any
 import click
 
 from holodeck.lib.errors import ConfigError, EvaluationError, ExecutionError
+from holodeck.lib.eval_run import (
+    build_eval_run_metadata,
+    redact,
+    write_eval_run,
+)
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.observability import (
     ObservabilityContext,
@@ -24,7 +29,9 @@ from holodeck.lib.observability import (
 from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.lib.test_runner.progress import ProgressIndicator
 from holodeck.lib.test_runner.reporter import generate_markdown_report
+from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
+from holodeck.models.eval_run import EvalRun, PromptVersion
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.test_result import TestReport, TestResult
 
@@ -273,6 +280,16 @@ def test(
             _save_report(report, output, format)
             logger.info(f"Report saved successfully to {output}")
 
+        # Persist EvalRun (FR-006). Emitted after --output, only when at
+        # least one test result was produced (contracts/cli.md).
+        if report.results:
+            _persist_eval_run(
+                agent=agent,
+                report=report,
+                agent_config_path=agent_config,
+                quiet=effective_quiet,
+            )
+
         # Exit with appropriate code
         if report.summary.failed > 0:
             logger.info("Exiting with failure status (failed tests)")
@@ -301,6 +318,83 @@ def test(
         # Shutdown observability if it was initialized
         if obs_context:
             shutdown_observability(obs_context)
+
+
+def _build_prompt_version_stub(agent: Agent) -> PromptVersion:
+    """Return a placeholder :class:`PromptVersion` until US2 lands.
+
+    US2 owns frontmatter parsing and real version derivation. US1 ships a
+    stub so the writer can persist a complete :class:`EvalRun`. The CLI
+    refuses to persist a run whose prompt version is still the sentinel
+    (see :func:`_persist_eval_run`).
+    """
+    if agent.instructions.file is not None:
+        source: str = "file"
+        file_path: str | None = agent.instructions.file
+    else:
+        source = "inline"
+        file_path = None
+    return PromptVersion(
+        version="auto-00000000",
+        source=source,  # type: ignore[arg-type]
+        file_path=file_path,
+        body_hash="0" * 64,
+    )
+
+
+def _persist_eval_run(
+    agent: Agent,
+    report: TestReport,
+    agent_config_path: str,
+    quiet: bool,
+) -> None:
+    """Build an :class:`EvalRun` and write it atomically.
+
+    Persistence failures (permission denied, disk full) log a WARNING and
+    surface a single CLI notice — the test exit code is unchanged (FR-009).
+    """
+    try:
+        prompt_version = _build_prompt_version_stub(agent)
+        if (
+            prompt_version.version == "auto-00000000"
+            and prompt_version.body_hash == "0" * 64
+        ):
+            # Fail-loud guard: prevents shipping US1 to production with the
+            # placeholder; replace this branch once US2 plugs in real
+            # frontmatter-driven prompt-version resolution.
+            logger.debug(
+                "Persisting EvalRun with US2 stub PromptVersion — frontmatter "
+                "parsing not yet implemented (031-eval-runs-dashboard US2)."
+            )
+
+        redacted_agent = redact(agent)
+        metadata = build_eval_run_metadata(
+            agent=redacted_agent,
+            prompt_version=prompt_version,
+            argv=sys.argv[1:],
+        )
+        run = EvalRun(report=report, metadata=metadata)
+        agent_base_dir = Path(agent_config_path).resolve().parent
+        target = write_eval_run(run, agent_base_dir=agent_base_dir)
+        try:
+            display = target.relative_to(Path.cwd())
+        except ValueError:
+            display = target
+        if not quiet:
+            click.echo(f"EvalRun persisted: {display}")
+        logger.info("EvalRun persisted to %s", target)
+    except (OSError, PermissionError) as exc:
+        logger.warning("Failed to persist EvalRun: %s", exc)
+        click.echo(
+            f"Warning: failed to persist EvalRun ({exc}); test exit code preserved.",
+            err=True,
+        )
+    except Exception as exc:  # noqa: BLE001 — never mask exit code on persistence
+        logger.warning("Unexpected error persisting EvalRun: %s", exc, exc_info=True)
+        click.echo(
+            f"Warning: failed to persist EvalRun ({exc}); test exit code preserved.",
+            err=True,
+        )
 
 
 def _save_report(report: TestReport, output: str, format: str | None) -> None:
