@@ -32,8 +32,12 @@ _SHA256_HEX = re.compile(r"^[a-f0-9]{64}$")
 class PromptVersion(BaseModel):
     """Identity of the prompt body at run time.
 
-    US1 ships a stub of this model; US2 owns derivation from frontmatter.
-    The stub still validates shape so that :class:`EvalRun` can reference it.
+    Populated by :func:`holodeck.lib.prompt_version.resolve_prompt_version`,
+    which parses optional YAML frontmatter from ``instructions.file`` via
+    ``python-frontmatter`` (or short-circuits for ``instructions.inline``) and
+    partitions recognised keys from the free-form ``extra`` dict. See
+    ``specs/031-eval-runs-dashboard/data-model.md`` §PromptVersion for the
+    authoritative schema.
     """
 
     model_config = ConfigDict(extra="forbid")
