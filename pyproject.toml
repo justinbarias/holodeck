@@ -224,6 +224,30 @@ ignore_errors = true
 module = "holodeck.dashboard.*"
 ignore_errors = true
 
+[tool.coverage.run]
+# Pin source so `--cov` (no value) in CI measures only HoloDeck code rather
+# than incidentally-imported site-packages.
+source = ["src/holodeck"]
+branch = true
+omit = [
+    # Dashboard is verified via visual-fidelity screenshots (Chrome DevTools
+    # MCP) and targeted logic unit tests in tests/unit/dashboard/. Line-level
+    # coverage of Plotly figure builders and Dash callback plumbing would
+    # require heavy mocking without catching real failure modes. Same
+    # rationale as the mypy override above.
+    "src/holodeck/dashboard/*",
+]
+
+[tool.coverage.report]
+omit = [
+    "src/holodeck/dashboard/*",
+]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "pragma: no cover",
+]
+
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
