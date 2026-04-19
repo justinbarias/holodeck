@@ -76,13 +76,16 @@ class SpinnerThread(threading.Thread):
 class _TestGroup(click.Group):
     """Click group whose default subcommand is the test runner.
 
-    Lets `holodeck test agent.yaml --verbose` keep working (legacy contract)
-    while also routing `holodeck test view --seed` to the `view` subcommand.
-    If the first positional arg isn't a registered subcommand name, we inject
-    the default subcommand (`run`) at position 0.
+    Lets `holodeck test`, `holodeck test agent.yaml`, and
+    `holodeck test agent.yaml --verbose` keep working (legacy contract) while
+    also routing `holodeck test view --seed` to the `view` subcommand.
+
+    The default-injection runs in :meth:`parse_args` so it executes *before*
+    Click's empty-args handling kicks in (which would otherwise short-circuit
+    to the group's help text and skip ``resolve_command`` entirely).
     """
 
-    def resolve_command(self, ctx, args):  # type: ignore[no-untyped-def]
+    def parse_args(self, ctx, args):  # type: ignore[no-untyped-def]
         first_positional_idx = next(
             (i for i, a in enumerate(args) if not a.startswith("-")), None
         )
@@ -90,8 +93,8 @@ class _TestGroup(click.Group):
             args[first_positional_idx] if first_positional_idx is not None else None
         )
         if candidate is None or candidate not in self.commands:
-            args.insert(0, "run")
-        return super().resolve_command(ctx, args)
+            args = ["run", *args]
+        return super().parse_args(ctx, args)
 
 
 @click.group(cls=_TestGroup)
