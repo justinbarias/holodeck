@@ -1065,7 +1065,7 @@ class TestExecutor:
         total_tests = len(results)
         passed_tests = sum(1 for r in results if r.passed)
         failed_tests = total_tests - passed_tests
-        pass_rate = (passed_tests / total_tests) if total_tests > 0 else 0.0
+        pass_rate = (passed_tests / total_tests * 100.0) if total_tests > 0 else 0.0
 
         # Calculate total duration
         total_duration_ms = sum(r.execution_time_ms for r in results)

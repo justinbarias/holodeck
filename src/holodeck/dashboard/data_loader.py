@@ -3,8 +3,10 @@
 Responsibilities:
 - Load EvalRun instances from disk (real mode) or the seed fixture.
 - Normalize codebase ↔ handoff shape drift in one place:
-  * `ReportSummary.pass_rate` is 0–100 in our model; handoff expects 0..1.
-    DataFrames expose `pass_rate` on the 0..1 scale.
+  * `ReportSummary.pass_rate` is 0..100 in the canonical model; the dashboard
+    exposes `pass_rate` on the 0..1 scale. To stay robust against legacy runs
+    that persisted 0..1 by mistake, we compute fractions from
+    ``passed / total_tests`` rather than trusting the stored number.
   * `ReportSummary.total_duration_ms` maps to the handoff's `duration_ms`.
 - Derive per-chart DataFrames (summary, metric trend, breakdown).
 - Detect regressions + prompt-version boundaries for chart annotations.
