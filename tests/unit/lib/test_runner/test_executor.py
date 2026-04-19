@@ -254,7 +254,7 @@ class TestExecutorMainFlow:
         assert report.summary.total_tests == 1
         assert report.summary.passed == 1
         assert report.summary.failed == 0
-        assert report.summary.pass_rate == 1.0
+        assert report.summary.pass_rate == 100.0
         assert len(report.results) == 1
 
         # Verify test result
@@ -1325,7 +1325,7 @@ class TestReportGeneration:
         assert report.summary.total_tests == 2
         assert report.summary.passed == 2
         assert report.summary.failed == 0
-        assert report.summary.pass_rate == 1.0
+        assert report.summary.pass_rate == 100.0
         assert "meteor" in report.summary.metrics_evaluated
 
     @pytest.mark.asyncio

@@ -196,7 +196,8 @@ class TestOllamaProvider:
         assert provider.temperature == 0.7
         assert provider.max_tokens == 2000
         assert provider.top_p == 0.9
-        assert provider.api_key == "test-key"
+        assert provider.api_key is not None
+        assert provider.api_key.get_secret_value() == "test-key"
 
     # T013 [P] [US1] - Model Name Validation
     @pytest.mark.parametrize(
@@ -292,7 +293,8 @@ class TestOllamaProvider:
             endpoint="http://192.168.1.100:11434",
             api_key="my-secret-key",
         )
-        assert provider.api_key == "my-secret-key"
+        assert provider.api_key is not None
+        assert provider.api_key.get_secret_value() == "my-secret-key"
 
     def test_ollama_all_parameters(self) -> None:
         """Test Ollama with all parameters specified."""
@@ -311,4 +313,5 @@ class TestOllamaProvider:
         assert provider.temperature == 0.8
         assert provider.max_tokens == 2048
         assert provider.top_p == 0.95
-        assert provider.api_key == "auth-token-123"
+        assert provider.api_key is not None
+        assert provider.api_key.get_secret_value() == "auth-token-123"

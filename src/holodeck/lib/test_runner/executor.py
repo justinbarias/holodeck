@@ -25,7 +25,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from holodeck.config.defaults import DEFAULT_EXECUTION_CONFIG
 from holodeck.config.loader import ConfigLoader
@@ -65,6 +65,7 @@ from holodeck.lib.test_runner.eval_kwargs_builder import (
     EvalKwargsBuilder,
     build_retrieval_context_from_tools,
 )
+from holodeck.lib.test_runner.tool_invocation_builder import pair_tool_calls
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.evaluation import (
@@ -83,8 +84,31 @@ from holodeck.models.test_result import (
     TestReport,
     TestResult,
 )
+from holodeck.models.token_usage import TokenUsage
 
 logger = get_logger(__name__)
+
+
+def _metric_kind(
+    metric_config: EvaluationMetric | GEvalMetric | RAGMetric,
+) -> Literal["standard", "rag", "geval"]:
+    """Map an evaluation metric config to its runtime kind discriminator.
+
+    The config-side discriminator (`type`) is already a `Literal` on each
+    variant (`models/evaluation.py`), so this is a one-to-one passthrough.
+    """
+    return metric_config.type
+
+
+def _detect_backend_kind(backend: AgentBackend) -> Literal["sk", "claude"]:
+    """Return the pairing strategy key for the given backend instance.
+
+    Claude's tool-call records carry `call_id` (from `ToolUseBlock.id`) and
+    must be paired by id. Everything else (SK over OpenAI / Azure / Ollama)
+    uses positional pairing on parallel lists. Detection is by class name so
+    the import can stay lazy and avoid a cycle via `BackendSelector`.
+    """
+    return "claude" if type(backend).__name__ == "ClaudeBackend" else "sk"
 
 
 class RAGEvaluatorConstructor(Protocol):
@@ -349,7 +373,11 @@ class TestExecutor:
         return DeepEvalModelConfig(
             provider=llm_provider.provider,
             model_name=llm_provider.name,
-            api_key=llm_provider.api_key,
+            api_key=(
+                llm_provider.api_key.get_secret_value()
+                if llm_provider.api_key is not None
+                else None
+            ),
             endpoint=llm_provider.endpoint,
             deployment_name=deployment_name,
             temperature=0.0,  # Deterministic for evaluation
@@ -449,7 +477,7 @@ class TestExecutor:
 
                 azure_model_config = ModelConfig(
                     azure_endpoint=llm_model.endpoint,
-                    api_key=llm_model.api_key,
+                    api_key=llm_model.api_key.get_secret_value(),
                     azure_deployment=llm_model.name,
                 )
 
@@ -588,7 +616,10 @@ class TestExecutor:
         # Step 3: Invoke agent with isolated thread run
         agent_response = None
         tool_calls: list[str] = []
+        raw_tool_calls: list[dict[str, Any]] = []
         tool_results: list[dict[str, Any]] = []
+        token_usage: TokenUsage | None = None
+        backend_kind: Literal["sk", "claude"] = "sk"
 
         logger.debug(f"Invoking agent for test: {test_case.name}")
         try:
@@ -600,15 +631,29 @@ class TestExecutor:
                 if exec_result.is_error:
                     errors.append(f"Agent error: {exec_result.error_reason}")
                 agent_response = exec_result.response
+                raw_tool_calls = list(exec_result.tool_calls)
                 tool_calls = extract_tool_names(exec_result.tool_calls)
                 tool_results = exec_result.tool_results
+                raw_usage_new: Any = exec_result.token_usage
+                token_usage = (
+                    raw_usage_new if isinstance(raw_usage_new, TokenUsage) else None
+                )
+                backend_kind = _detect_backend_kind(self._backend)
             elif self.agent_factory is not None:
                 # Legacy path: AgentFactory / AgentThreadRun
                 thread_run = await self.agent_factory.create_thread_run()
                 legacy_result = await thread_run.invoke(agent_input)
                 agent_response = legacy_result.response
+                raw_tool_calls = list(legacy_result.tool_calls)
                 tool_calls = extract_tool_names(legacy_result.tool_calls)
                 tool_results = legacy_result.tool_results
+                raw_usage_legacy: Any = legacy_result.token_usage
+                token_usage = (
+                    raw_usage_legacy
+                    if isinstance(raw_usage_legacy, TokenUsage)
+                    else None
+                )
+                backend_kind = "sk"
             else:
                 errors.append("No backend or agent_factory available")
 
@@ -667,12 +712,22 @@ class TestExecutor:
         elapsed_ms = int((time.time() - start_time) * 1000)
         logger.debug(f"Test execution completed: {test_case.name} ({elapsed_ms}ms)")
 
+        try:
+            tool_invocations = pair_tool_calls(
+                raw_tool_calls, tool_results, backend_kind=backend_kind
+            )
+        except TypeError:
+            # Defensive: mock-based tests may pass non-list sentinels through;
+            # the on-disk contract still requires a list, so fall back to [].
+            tool_invocations = []
+
         return TestResult(
             test_name=test_case.name,
             test_input=test_case.input,
             processed_files=processed_files,
             agent_response=agent_response,
             tool_calls=tool_calls,
+            tool_invocations=tool_invocations,
             expected_tools=test_case.expected_tools,
             tools_matched=tools_matched,
             metric_results=metric_results,
@@ -681,6 +736,7 @@ class TestExecutor:
             execution_time_ms=elapsed_ms,
             errors=errors,
             timestamp=datetime.now(timezone.utc).isoformat(),
+            token_usage=token_usage,
         )
 
     def _prepare_agent_input(
@@ -810,6 +866,7 @@ class TestExecutor:
                 metric_results.append(
                     MetricResult(
                         metric_name=metric_name,
+                        kind=_metric_kind(metric_config),
                         score=score,
                         threshold=threshold,
                         passed=passed,
@@ -837,6 +894,7 @@ class TestExecutor:
                 metric_results.append(
                     MetricResult(
                         metric_name=metric_name,
+                        kind=_metric_kind(metric_config),
                         score=0.0,
                         threshold=metric_config.threshold,
                         passed=False,
@@ -898,12 +956,17 @@ class TestExecutor:
 
         Retrieval tools are:
         - All vectorstore tools (type='vectorstore')
+        - All hierarchical document tools (type='hierarchical_document')
         - MCP tools with is_retrieval=True
 
         Returns:
             Set of tool names that are retrieval tools
         """
-        from holodeck.models.tool import MCPTool, VectorstoreTool
+        from holodeck.models.tool import (
+            HierarchicalDocumentToolConfig,
+            MCPTool,
+            VectorstoreTool,
+        )
 
         retrieval_tools: set[str] = set()
 
@@ -914,6 +977,11 @@ class TestExecutor:
             if isinstance(tool, VectorstoreTool):
                 # Semantic Kernel legacy naming
                 retrieval_tools.add(f"vectorstore-{tool.name}")
+                # Claude Agent SDK MCP naming
+                retrieval_tools.add(f"mcp__holodeck_tools__{tool.name}_search")
+            elif isinstance(tool, HierarchicalDocumentToolConfig):
+                # Semantic Kernel legacy naming
+                retrieval_tools.add(f"hierarchical_document-{tool.name}")
                 # Claude Agent SDK MCP naming
                 retrieval_tools.add(f"mcp__holodeck_tools__{tool.name}_search")
             elif isinstance(tool, MCPTool) and tool.is_retrieval:
@@ -1007,7 +1075,7 @@ class TestExecutor:
         total_tests = len(results)
         passed_tests = sum(1 for r in results if r.passed)
         failed_tests = total_tests - passed_tests
-        pass_rate = (passed_tests / total_tests) if total_tests > 0 else 0.0
+        pass_rate = (passed_tests / total_tests * 100.0) if total_tests > 0 else 0.0
 
         # Calculate total duration
         total_duration_ms = sum(r.execution_time_ms for r in results)

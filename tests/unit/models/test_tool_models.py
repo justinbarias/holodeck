@@ -1466,7 +1466,8 @@ class TestKeywordIndexConfig:
             password="secret",  # noqa: S106
         )
         assert config.username == "admin"
-        assert config.password == "secret"  # noqa: S105
+        assert config.password is not None
+        assert config.password.get_secret_value() == "secret"  # noqa: S105
 
     def test_opensearch_with_api_key_auth(self) -> None:
         """Test opensearch config with API key authentication."""
@@ -1476,7 +1477,8 @@ class TestKeywordIndexConfig:
             index_name="my_index",
             api_key="my-api-key-123",
         )
-        assert config.api_key == "my-api-key-123"
+        assert config.api_key is not None
+        assert config.api_key.get_secret_value() == "my-api-key-123"
 
     def test_extra_fields_allowed(self) -> None:
         """Test that extra provider-specific fields are allowed."""

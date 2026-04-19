@@ -7,6 +7,7 @@ operations such as creation, path resolution, and file writing.
 from pathlib import Path
 
 import yaml
+from pydantic import SecretStr
 
 from holodeck.models.config import (
     ExecutionConfig,
@@ -35,7 +36,7 @@ class ConfigManager:
             name="gpt-4",
             temperature=0.3,
             max_tokens=1000,
-            api_key="your-openai-api-key-here",
+            api_key=SecretStr("your-openai-api-key-here"),
             endpoint=None,
         )
 

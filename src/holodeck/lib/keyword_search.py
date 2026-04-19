@@ -757,8 +757,16 @@ class HybridSearchExecutor:
                         endpoint=config.endpoint,
                         index_name=config.index_name,
                         username=config.username,
-                        password=config.password,
-                        api_key=config.api_key,
+                        password=(
+                            config.password.get_secret_value()
+                            if config.password is not None
+                            else None
+                        ),
+                        api_key=(
+                            config.api_key.get_secret_value()
+                            if config.api_key is not None
+                            else None
+                        ),
                         verify_certs=config.verify_certs,
                         timeout_seconds=config.timeout_seconds,
                     )

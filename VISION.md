@@ -1719,15 +1719,93 @@ observability:
 
 ---
 
-## 🗺️ Roadmap
+## 🗺️ Roadmap & Delivery Status
 
-- [ ] **v0.1** - Core agent engine + CLI
-- [ ] **v0.2** - Evaluation framework
-- [ ] **v0.3** - API deployment
-- [ ] **v0.4** - Web UI (no-code editor)
-- [ ] **v0.5** - Multi-agent orchestration
-- [ ] **v0.6** - Enterprise features (SSO, audit logs, RBAC)
-- [ ] **v1.0** - Production-ready release
+### ✅ Shipped
+
+**v0.1 — Core agent engine & CLI** (2025-11)
+
+- YAML agent configuration with Pydantic v2 validation and env var substitution
+- `holodeck init` with templates and interactive wizard
+- `holodeck chat` with streaming and session management
+- Tool system: vectorstore, function, MCP (stdio), prompt
+- ChromaDB, PostgreSQL (pgvector), Pinecone, Qdrant vector stores
+- Ollama provider for local LLMs
+- Structured data ingestion (CSV/JSON)
+- `holodeck mcp` CLI for discovering and managing MCP servers
+
+**v0.2 — Evaluation framework**
+
+- NLP metrics: F1, BLEU, ROUGE, METEOR
+- Azure AI metrics: Groundedness, Relevance, Coherence
+- DeepEval metrics: G-Eval, Faithfulness, Answer Relevancy, Contextual Relevancy/Precision/Recall
+- Global, per-evaluation, and per-metric model configuration
+- Multimodal test inputs (images, PDFs, Office documents)
+- Markdown and JSON report generation
+
+**v0.3 — API deployment** (2026-01)
+
+- `holodeck serve` — FastAPI REST + AG-UI endpoints for local agent hosting
+- `holodeck deploy build` — container builds via Docker SDK with Jinja2 Dockerfile templates
+- `holodeck deploy run/status/destroy` — Azure Container Apps deployment
+- Published base image `ghcr.io/justinbarias/holodeck-base:latest` (linux/amd64, linux/arm64)
+- Cross-architecture builds (amd64 target from Apple Silicon)
+- OpenTelemetry observability with OTLP export (traces, metrics, logs)
+- Anthropic tool filtering to reduce token usage
+
+**v0.4 — Hierarchical document search** (2026-02)
+
+- `HierarchicalDocumentTool` with H1-H6 heading-chain tracking
+- LLM-based contextual embeddings (~49% retrieval accuracy improvement)
+- Domain-aware subsection recognition (legal, legislative, academic, technical, medical, patent)
+- Tiered keyword search with Reciprocal Rank Fusion (k=60)
+- Native hybrid search for azure-ai-search, weaviate, qdrant, mongodb, azure-cosmos-nosql
+- BM25 fallback (rank_bm25) for other providers
+- External OpenSearch keyword backend with configurable auth/TLS
+
+**v0.5 — Multi-backend architecture** (2026-02 → 2026-03)
+
+- Claude Agent SDK as a first-class native backend
+- Protocol-driven abstraction: `AgentBackend`, `AgentSession`, `ExecutionResult`, `ContextGenerator`
+- `BackendSelector` auto-routing by `model.provider`
+- Extended thinking, web search, bash, file system, subagents, and permission modes
+- `auth_provider` support: `api_key`, `oauth_token`, `bedrock`, `vertex`, `foundry`
+- Claude support in `holodeck serve` with pre-flight validation and session actors
+- OpenTelemetry GenAI semantic-convention instrumentation via `otel-instrumentation-claude-agent-sdk`
+- Real-time tool streaming via Claude SDK `PreToolUse`/`PostToolUse` hooks
+- Node.js-aware Dockerfile generation for Claude agent containers
+
+**v0.6 — Platform extensions & remote sources** (2026-03)
+
+- Async tool initialization REST endpoints: `POST`/`GET /tools/{name}/init`, `GET /tools`
+- RFC 7807 `ProblemDetail` error responses
+- Custom Anthropic-compatible endpoint support (Ollama, LiteLLM, etc.) via `AuthProvider.custom`
+- Remote source resolution for S3, Azure Blob, and HTTPS
+- Auto-detect deploy extras and pin Azure OpenAI API version
+
+### 🚧 In progress — specs authored, implementation pending
+
+- **#016 — GraphRAG integration** — knowledge graph retrieval with entity extraction and cross-document synthesis
+- **#023 — Additional backends** — Google ADK and Microsoft Agent Framework (beyond SK + Claude today)
+- **#024 — Claude serve/deploy parity** — remaining user stories beyond Claude `serve` + Node.js Dockerfile support
+- **#026 — Claude SDK config additions** — effort level, budget cap, fallback model, disallowed tools
+- **#027 — MCP HTTP/SSE transport** — remote MCP servers beyond stdio
+- **#028 — YAML hooks system** — declarative tool interception, logging, rejection, modification, webhooks
+- **#029 — Subagent orchestration** — multi-agent teams with isolated prompts/tools/MCP per subagent
+- **#030 — Skills support** — load custom skills from `.claude/skills/` via YAML
+
+### 📋 Planned
+
+- **Deployment engine completion** — `holodeck deploy push` (registry push) and cloud providers beyond Azure (AWS App Runner, GCP Cloud Run)
+- **Experiments & multi-agent orchestration** — `holodeck experiment` CLI with sequential, concurrent, handoff, group chat, and magentic patterns (documented above as aspirational)
+- **Plugin ecosystem** — pre-built plugin packages (`@holodeck/plugins-web`, `-data`, `-communication`)
+- **Cost tracking & alerts** — token-based cost computation with configurable thresholds and notification hooks
+- **`holodeck monitor`** — live CLI metrics view with Grafana/Prometheus dashboard exports
+- **Enterprise features** — SSO, audit logs, RBAC
+- **Web UI** — no-code visual editor for agents, tools, and evaluations
+- **v1.0** — Production-ready release
+
+> **Note:** Features illustrated elsewhere in this document as code examples (e.g., `holodeck experiment`, plugin packages, `holodeck monitor`, cost alerts, Web UI, some multi-agent orchestration patterns) describe the target vision. Consult this status matrix for the authoritative shipped/pending view, or [docs/CHANGELOG.md](docs/CHANGELOG.md) for release-level detail.
 
 ---
 

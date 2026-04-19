@@ -301,7 +301,8 @@ class TestConfigEndToEndWorkflow:
         assert agent.name == "api_key_test_agent"
         assert agent.model.provider.value == "openai"
         assert agent.model.name == "gpt-4o"
-        assert agent.model.api_key == "some-api-key"
+        assert agent.model.api_key is not None
+        assert agent.model.api_key.get_secret_value() == "some-api-key"
 
         # Verify global config was loaded as GlobalConfig model
         global_config = loader.load_global_config()
@@ -311,7 +312,11 @@ class TestConfigEndToEndWorkflow:
         # After env substitution, name should be the actual value
         assert global_config.providers["openai"].name == "gpt-4o-global"
         assert global_config.providers["openai"].temperature == 0.5
-        assert global_config.providers["openai"].api_key == "some-api-key"
+        assert global_config.providers["openai"].api_key is not None
+        assert (
+            global_config.providers["openai"].api_key.get_secret_value()
+            == "some-api-key"
+        )
 
 
 class TestConfigErrorScenarios:

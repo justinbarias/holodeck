@@ -18,6 +18,7 @@ from holodeck.models.chat import (
 from holodeck.models.config import GlobalConfig, VectorstoreConfig
 from holodeck.models.deployment import DeploymentConfig
 from holodeck.models.deployment_state import DeploymentRecord, DeploymentState
+from holodeck.models.eval_run import EvalRun, EvalRunMetadata, PromptVersion
 from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.observability import (
@@ -49,6 +50,10 @@ __all__: list[str] = [
     # Agent models
     "Agent",
     "Instructions",
+    # EvalRun models (031-eval-runs-dashboard)
+    "EvalRun",
+    "EvalRunMetadata",
+    "PromptVersion",
     # Chat models
     "ChatConfig",
     "ChatSession",

@@ -13,13 +13,13 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-dateutil>=2.8.0",
     "urllib3>=2.6.0,<3.0.0",
-    "cryptography>=46.0.6,<47.0.0",
+    "cryptography>=46.0.7,<47.0.0",
     "mkdocs-material>=9.6.22,<10.0.0",
     "twine>=6.2.0,<7.0.0",
     "jsonschema>=4.0.0,<5.0.0",
     "semantic-kernel>=1.39.4,<2.0.0",
     "markitdown[all]>=0.1.4,<0.2.0",
-    "pypdf>=6.9.1",
+    "pypdf>=6.10.2",
     "azure-ai-evaluation>=1.13.0,<2.0.0",
     "evaluate>=0.4.6,<0.5.0",
     "aiofiles>=25.1.0,<26.0.0",
@@ -44,11 +44,12 @@ dependencies = [
     "rank-bm25>=0.2.2,<0.3.0",  # BM25 sparse indexing (fallback for providers without native hybrid)
     "opensearch-py>=2.0.0,<3.0.0",  # OpenSearch client for production keyword index
     "tiktoken>=0.12.0",
-    "aiohttp>=3.13.3",
+    "aiohttp>=3.13.4",
     "httpx>=0.27",
-    "authlib>=1.6.9",
+    "authlib>=1.6.11",
     "azure-core>=1.38.0",
     "claude-agent-sdk==0.1.44",
+    "python-frontmatter>=1.1,<2.0",
 ]
 
 [project.scripts]
@@ -57,7 +58,7 @@ holodeck-ai = "holodeck.cli.main:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
+    "pytest>=9.0.3",  # CVE-2025-71176 fix (exclude 9.0.1, 9.0.2)
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.21.0",
     "pytest-mock>=3.11.0",
@@ -115,6 +116,14 @@ otel-all = [
 # Claude GenAI instrumentation (OTel semantic conventions)
 claude-otel = ["otel-instrumentation-claude-agent-sdk>=0.0.3,<0.1.0"]
 
+# Evaluation-runs dashboard (Dash + Plotly + pandas). Pixel-fidelity rewrite of
+# the Streamlit draft — handoff CSS tokens paste into assets/ verbatim.
+dashboard = [
+    "dash>=3.0,<4.0",
+    "plotly>=5.20,<7.0",
+    "pandas>=2.0",
+]
+
 # Deployment engine
 deploy = ["docker>=7.0.0"]
 deploy-aws = ["boto3>=1.42.0"]
@@ -152,9 +161,9 @@ constraint-dependencies = [
     "jaraco-context>=6.1.0",  # CVE-2026-23949 fix
     "nltk>=3.9.3",  # CVE-2025-14009 fix
     "pyopenssl>=26.0.0",  # CVE-2026-27448, CVE-2026-27459 fix
-    "pillow>=12.1.1",  # CVE-2026-25990 fix
+    "pillow>=12.2.0",  # CVE-2026-25990 + CVE-2026-40192 fix
     "protobuf>=5.29.6",  # CVE-2026-0994 fix
-    "python-multipart>=0.0.22",  # CVE-2026-24486 fix
+    "python-multipart>=0.0.26",  # CVE-2026-24486 + CVE-2026-40347 fix
 ]
 
 [tool.black]
@@ -187,6 +196,7 @@ known-third-party = ["docker"]  # Prevent misclassification from local docker/ d
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S603", "S607"]  # Allow assert, subprocess in tests
+"src/holodeck/dashboard/**/*.py" = ["E501"]  # Long CSS/HTML strings; guarded by CLI find_spec check
 
 [tool.mypy]
 python_version = "3.10"
@@ -207,6 +217,36 @@ warn_unreachable = true
 module = "google.*"
 ignore_missing_imports = true
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+# Dash lacks type stubs; dashboard callbacks take arbitrary dicts from dcc.Store.
+# Full type annotations would be churn; visual fidelity is enforced via Chrome MCP.
+module = "holodeck.dashboard.*"
+ignore_errors = true
+
+[tool.coverage.run]
+# Pin source so `--cov` (no value) in CI measures only HoloDeck code rather
+# than incidentally-imported site-packages.
+source = ["src/holodeck"]
+branch = true
+omit = [
+    # Dashboard is verified via visual-fidelity screenshots (Chrome DevTools
+    # MCP) and targeted logic unit tests in tests/unit/dashboard/. Line-level
+    # coverage of Plotly figure builders and Dash callback plumbing would
+    # require heavy mocking without catching real failure modes. Same
+    # rationale as the mypy override above.
+    "src/holodeck/dashboard/*",
+]
+
+[tool.coverage.report]
+omit = [
+    "src/holodeck/dashboard/*",
+]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "pragma: no cover",
+]
 
 [tool.pytest.ini_options]
 minversion = "7.0"

@@ -15,16 +15,23 @@ from typing import Any
 import click
 
 from holodeck.lib.errors import ConfigError, EvaluationError, ExecutionError
+from holodeck.lib.eval_run import (
+    build_eval_run_metadata,
+    write_eval_run,
+)
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.observability import (
     ObservabilityContext,
     initialize_observability,
     shutdown_observability,
 )
+from holodeck.lib.prompt_version import resolve_prompt_version
 from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.lib.test_runner.progress import ProgressIndicator
 from holodeck.lib.test_runner.reporter import generate_markdown_report
+from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
+from holodeck.models.eval_run import EvalRun
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.test_result import TestReport, TestResult
 
@@ -66,7 +73,43 @@ class SpinnerThread(threading.Thread):
             sys.stdout.flush()
 
 
-@click.command()
+class _TestGroup(click.Group):
+    """Click group whose default subcommand is the test runner.
+
+    Lets `holodeck test`, `holodeck test agent.yaml`, and
+    `holodeck test agent.yaml --verbose` keep working (legacy contract) while
+    also routing `holodeck test view --seed` to the `view` subcommand.
+
+    The default-injection runs in :meth:`parse_args` so it executes *before*
+    Click's empty-args handling kicks in (which would otherwise short-circuit
+    to the group's help text and skip ``resolve_command`` entirely).
+    """
+
+    def parse_args(self, ctx, args):  # type: ignore[no-untyped-def]
+        first_positional_idx = next(
+            (i for i, a in enumerate(args) if not a.startswith("-")), None
+        )
+        candidate = (
+            args[first_positional_idx] if first_positional_idx is not None else None
+        )
+        if candidate is None or candidate not in self.commands:
+            args = ["run", *args]
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=_TestGroup)
+def test() -> None:
+    """Execute agent test cases with evaluation metrics.
+
+    Default subcommand is `run` — so `holodeck test agent.yaml` stays valid
+    shorthand for `holodeck test run agent.yaml`. Subcommands:
+
+      run    Execute test cases (default).
+      view   Launch the Dash evaluation dashboard.
+    """
+
+
+@test.command("run")
 @click.argument("agent_config", type=click.Path(exists=True), default="agent.yaml")
 @click.option(
     "--output",
@@ -104,7 +147,7 @@ class SpinnerThread(threading.Thread):
     is_flag=True,
     help="Force re-ingestion of all vector store source files",
 )
-def test(
+def run(
     agent_config: str,
     output: str | None,
     format: str | None,
@@ -273,6 +316,16 @@ def test(
             _save_report(report, output, format)
             logger.info(f"Report saved successfully to {output}")
 
+        # Persist EvalRun (FR-006). Emitted after --output, only when at
+        # least one test result was produced (contracts/cli.md).
+        if report.results:
+            _persist_eval_run(
+                agent=agent,
+                report=report,
+                agent_config_path=agent_config,
+                quiet=effective_quiet,
+            )
+
         # Exit with appropriate code
         if report.summary.failed > 0:
             logger.info("Exiting with failure status (failed tests)")
@@ -301,6 +354,52 @@ def test(
         # Shutdown observability if it was initialized
         if obs_context:
             shutdown_observability(obs_context)
+
+
+def _persist_eval_run(
+    agent: Agent,
+    report: TestReport,
+    agent_config_path: str,
+    quiet: bool,
+) -> None:
+    """Build an :class:`EvalRun` and write it atomically.
+
+    Persistence failures (permission denied, disk full) log a WARNING and
+    surface a single CLI notice — the test exit code is unchanged (FR-009).
+    """
+    try:
+        agent_base_dir = Path(agent_config_path).resolve().parent
+        prompt_version = resolve_prompt_version(
+            agent.instructions, base_dir=agent_base_dir
+        )
+        # build_eval_run_metadata performs deep-copy + redact internally so
+        # the live ``agent`` instance used by the executor is never mutated.
+        metadata = build_eval_run_metadata(
+            agent=agent,
+            prompt_version=prompt_version,
+            argv=sys.argv[1:],
+        )
+        run = EvalRun(report=report, metadata=metadata)
+        target = write_eval_run(run, agent_base_dir=agent_base_dir)
+        try:
+            display = target.relative_to(Path.cwd())
+        except ValueError:
+            display = target
+        if not quiet:
+            click.echo(f"EvalRun persisted: {display}")
+        logger.info("EvalRun persisted to %s", target)
+    except (OSError, PermissionError) as exc:
+        logger.warning("Failed to persist EvalRun: %s", exc)
+        click.echo(
+            f"Warning: failed to persist EvalRun ({exc}); test exit code preserved.",
+            err=True,
+        )
+    except Exception as exc:  # noqa: BLE001 — never mask exit code on persistence
+        logger.warning("Unexpected error persisting EvalRun: %s", exc, exc_info=True)
+        click.echo(
+            f"Warning: failed to persist EvalRun ({exc}); test exit code preserved.",
+            err=True,
+        )
 
 
 def _save_report(report: TestReport, output: str, format: str | None) -> None:
@@ -340,3 +439,10 @@ def _save_report(report: TestReport, output: str, format: str | None) -> None:
     except OSError as e:
         logger.error(f"Failed to write report to {output}: {e}")
         raise
+
+
+# Register the `view` subcommand for the Dash dashboard launcher.
+# Imported at module bottom to avoid circular imports with the dashboard package.
+from holodeck.cli.commands.test_view import view  # noqa: E402
+
+test.add_command(view)

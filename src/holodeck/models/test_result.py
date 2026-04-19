@@ -4,11 +4,12 @@ Defines models for test results, evaluation metrics, and test reports
 generated during agent test execution.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from holodeck.models.test_case import FileInput
+from holodeck.models.token_usage import TokenUsage
 
 
 class ProcessedFileInput(BaseModel):
@@ -42,6 +43,14 @@ class MetricResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     metric_name: str = Field(..., description="Name of the metric evaluated")
+    kind: Literal["standard", "rag", "geval"] = Field(
+        ...,
+        description=(
+            "Metric family — 'standard' for NLP metrics, 'rag' for RAG pipeline "
+            "metrics, 'geval' for LLM-as-judge G-Eval. Required; drives dashboard "
+            "breakdown panels, metric-trend toggles, and compare-matrix scoring."
+        ),
+    )
     score: float = Field(..., description="Numeric score from the metric")
     threshold: float | None = Field(None, description="Pass threshold for this metric")
     passed: bool | None = Field(None, description="Whether metric passed threshold")
@@ -64,11 +73,62 @@ class MetricResult(BaseModel):
     )
 
 
+class ToolInvocation(BaseModel):
+    """One completed tool call+result pair captured during a test run.
+
+    Persisted inside `TestResult.tool_invocations` so the dashboard Explorer
+    can render `{name, args, result, bytes}` panels with collapse-by-default
+    logic on large payloads.
+
+    Named `ToolInvocation` (not `ToolEvent`) to avoid collision with the two
+    existing `ToolEvent` classes (`holodeck.models.tool_event` — streaming
+    UI events; `holodeck.lib.backends.base` — backend hook events).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(..., description="Tool name invoked by the agent.")
+    args: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Tool input parameters. Empty dict when the tool takes no args.",
+    )
+    result: Any = Field(
+        default=None,
+        description=(
+            "Tool output — JSON-safe scalar / dict / list / string. "
+            "`None` when the call raised before returning."
+        ),
+    )
+    bytes: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "`len(json.dumps(result, default=str))`. Used by the dashboard "
+            "to collapse large results by default."
+        ),
+    )
+    duration_ms: int | None = Field(
+        default=None,
+        description=(
+            "Tool execution time in milliseconds. `None` when the backend "
+            "does not report it (e.g. the SK Plugin path)."
+        ),
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message when the invocation failed; `result` is `None`.",
+    )
+
+
 class TestResult(BaseModel):
     """Result of executing a single test case.
 
     Contains the test input, agent response, tool calls, metric results,
     and overall pass/fail status along with any errors encountered.
+
+    Readers prefer `tool_invocations` (structured `{name, args, result, bytes}`)
+    when non-empty; `tool_calls: list[str]` (name-only) remains for back-compat
+    with legacy runs predating Phase 2b.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -82,7 +142,18 @@ class TestResult(BaseModel):
     agent_response: str | None = Field(None, description="Response from the agent")
     tool_calls: list[str] = Field(
         default_factory=list,
-        description="List of tool names called by the agent",
+        description=(
+            "Legacy field — list of tool names called by the agent. "
+            "Kept for back-compat; prefer `tool_invocations` for new readers."
+        ),
+    )
+    tool_invocations: list[ToolInvocation] = Field(
+        default_factory=list,
+        description=(
+            "Structured per-call records `{name, args, result, bytes}` "
+            "for the dashboard Explorer. Empty list for legacy runs or when "
+            "no tools were invoked."
+        ),
     )
     expected_tools: list[str] | None = Field(
         None,
@@ -110,6 +181,14 @@ class TestResult(BaseModel):
         description="List of errors encountered during execution",
     )
     timestamp: str = Field(..., description="ISO 8601 timestamp of test execution")
+    token_usage: TokenUsage | None = Field(
+        default=None,
+        description=(
+            "Token usage reported by the backend via ExecutionResult. "
+            "None when the backend did not report any. Consumed by the "
+            "dashboard Compare view for cost computation."
+        ),
+    )
 
 
 class ReportSummary(BaseModel):

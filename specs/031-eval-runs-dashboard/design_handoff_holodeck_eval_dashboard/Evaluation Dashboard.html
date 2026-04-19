@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=1440, initial-scale=1"/>
+  <title>HoloDeck · Test View</title>
+  <link rel="icon" href="./assets/favicon.svg"/>
+  <style id="hd-tokens">
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+:root {
+  --hd-bg:#030807; --hd-bg-body:#050b09; --hd-bg-alt:#0c1412;
+  --hd-card:#0a110f; --hd-card-2:#070c0a; --hd-border:#1c2b25;
+  --hd-fg:#e8f5ec; --hd-muted:#9bb3a5;
+  --hd-accent:#7bff5a; --hd-accent-2:#53ff9c; --hd-accent-3:#9bff5f; --hd-accent-soft:#5ae0a6;
+  --hd-accent-glow:rgba(123,255,90,.18); --hd-accent-halo:rgba(123,255,90,.25); --hd-accent-shadow:rgba(83,255,156,.35);
+  --hd-shadow-soft:0 20px 50px rgba(16,255,122,.22); --hd-shadow-card:0 8px 20px rgba(0,0,0,.18);
+  --hd-terminal-dot:#2ecc71; --hd-code-fg:#e5e7eb;
+  --bg:var(--hd-bg-body); --surface:var(--hd-bg-alt); --surface-raised:var(--hd-card); --border:var(--hd-border);
+  --fg1:var(--hd-fg); --fg2:var(--hd-muted); --link:var(--hd-accent); --primary:var(--hd-accent); --primary-on:#041208;
+  --hd-page-bg: radial-gradient(circle at 22% 18%, rgba(123,255,90,.09), transparent 26%), radial-gradient(circle at 78% 12%, rgba(123,255,90,.06), transparent 22%), #050b09;
+  --font-sans:"Inter",-apple-system,system-ui,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",SFMono-Regular,ui-monospace,Menlo,Monaco,Consolas,monospace;
+  --fs-h3:18px; --fs-body:16px; --fs-small:15px; --fs-code:13px; --fs-tag:12px; --fs-label:11px;
+  --lh-tight:1.05; --lh-snug:1.25; --lh-body:1.6;
+  --tracking-hx:-.02em; --tracking-label:.15em;
+  --radius-sm:6px; --radius-md:10px; --radius-lg:16px; --radius-pill:999px;
+  --ease-standard:cubic-bezier(.2,.7,.3,1); --dur-quick:140ms; --dur-base:220ms;
+}
+html,body { background:var(--hd-page-bg); color:var(--fg1); font-family:var(--font-sans); font-size:var(--fs-body); line-height:var(--lh-body); -webkit-font-smoothing:antialiased; }
+.hd-btn { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:var(--radius-pill); border:1px solid transparent; font-size:14px; font-family:inherit; cursor:pointer; background:transparent; color:var(--fg1); transition:filter var(--dur-quick) var(--ease-standard), border-color var(--dur-quick) var(--ease-standard); }
+.hd-btn-primary { background:linear-gradient(135deg,var(--hd-accent-2),var(--hd-accent-3)); border-color:var(--hd-accent-2); color:var(--primary-on); box-shadow:0 14px 40px var(--hd-accent-shadow); font-weight:500; }
+.hd-btn-primary:hover { filter:brightness(1.05); }
+.hd-btn-ghost { border-color:var(--hd-accent-glow); background:rgba(12,20,18,.75); color:var(--fg1); }
+.hd-btn-ghost:hover { border-color:rgba(123,255,90,.6); }
+  </style>
+  <style>
+    body { min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script src="data.js?v=8"></script>
+  <script type="text/babel" src="styles.js?v=8"></script>
+  <script type="text/babel" src="compare.js?v=8"></script>
+  <script type="text/babel" src="summary.js?v=8"></script>
+  <script type="text/babel" src="explorer.js?v=8"></script>
+  <script type="text/babel" src="app.jsx?v=8"></script>
+  <script type="text/babel">
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>

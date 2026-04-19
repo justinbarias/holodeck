@@ -481,7 +481,8 @@ class TestAzureMonitorExporterConfig:
         conn_str = "InstrumentationKey=xxx;IngestionEndpoint=https://example.com"
         config = AzureMonitorExporterConfig(enabled=True, connection_string=conn_str)
         assert config.enabled is True
-        assert config.connection_string == conn_str
+        assert config.connection_string is not None
+        assert config.connection_string.get_secret_value() == conn_str
 
     def test_custom_storage_settings(self) -> None:
         """Test custom storage configuration."""
