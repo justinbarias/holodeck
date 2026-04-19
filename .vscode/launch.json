@@ -29,16 +29,15 @@
             "args": [
                 "test",
                 "agent.yaml",
-                "--verbose",
-                "--force-ingest"
+                "--verbose"
             ],
             "console": "integratedTerminal",
             "justMyCode": false,
-            "cwd": "${workspaceFolder}/sample/content-moderation/claude",
+            "cwd": "${workspaceFolder}/sample/legal-assistant/claude",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             },
-            "envFile": "${workspaceFolder}/sample/content-moderation/claude/.env"
+            "envFile": "${workspaceFolder}/sample/legal-assistant/claude/.env"
         },
         {
             "name": "HoloDeck: Chat Agent",
