@@ -17,6 +17,7 @@ HoloDeck is an open-source experimentation platform that enables teams to create
 - **🔀 Multi-Backend Architecture** - Seamless provider routing between Semantic Kernel (OpenAI/Azure/Ollama) and Claude Agent SDK (Anthropic)
 - **🧪 Hypothesis-Driven Testing** - Test agent behaviors against structured test cases
 - **📊 Integrated Evaluations** - DeepEval LLM-as-judge metrics (GEval, RAG) plus NLP metrics (F1, BLEU, ROUGE)
+- **📈 Evaluation Dashboard** - `holodeck test view` launches an interactive Dash UI for run history, regression detection, prompt-version drift, and side-by-side run comparison
 - **🔌 Tool Ecosystem** - Extend agents with MCP servers, vector store search, and hierarchical document tools
 - **💾 RAG Support** - Native vector database integration (ChromaDB, Qdrant, PostgreSQL, Pinecone)
 - **🤖 Open-Source First** - Designed to work with Ollama for local, free inference
@@ -193,6 +194,48 @@ holodeck chat
 # With verbose output
 holodeck chat --verbose
 ```
+
+### Visualise Run History — `holodeck test view`
+
+![HoloDeck evaluation dashboard — Summary view](docs/assets/dashboard/summary.png)
+
+HoloDeck persists every `holodeck test` invocation as a timestamped JSON under `results/<agent-slug>/`. Launch the interactive dashboard to explore them:
+
+```bash
+# Install the optional extra once
+pip install 'holodeck-ai[dashboard]'
+
+# Then from any agent directory
+holodeck test view
+# → http://127.0.0.1:8501/
+
+# Demo the UI with the built-in seed dataset (no real runs required)
+holodeck test view --seed
+```
+
+The dashboard reloads dynamically — leave `holodeck test view` running in one terminal, iterate with `holodeck test` in another, and new runs appear within ~5 s without a restart. See the [Dashboard guide](docs/guides/dashboard.md) for the full feature list (Summary / Explorer / Compare views, filters, prompt-version boundaries).
+
+### Version Your System Prompt
+
+When `instructions.file` is used, optional YAML frontmatter at the top of the prompt file versions and labels the run:
+
+```markdown
+---
+version: v1.2.0
+author: your-name
+description: Shortened citation format; stricter refusal on off-topic.
+tags:
+  - rag
+  - customer-support
+---
+
+# System Prompt
+
+You are a customer support specialist.
+...
+```
+
+The dashboard groups runs by `version`, draws a boundary marker on the pass-rate chart whenever the version changes, and surfaces `tags` as filter chips. If you omit `version:`, HoloDeck derives `auto-<sha256[:8]>` from the body so every run still has a stable id.
 
 **Output:**
 
@@ -674,6 +717,7 @@ observability:
 - **[Agent Configuration](docs/guides/agent-configuration.md)** - Configure your agents
 - **[Tools Guide](docs/guides/tools.md)** - Vectorstore and MCP tools
 - **[Evaluations Guide](docs/guides/evaluations.md)** - DeepEval and NLP metrics
+- **[Dashboard Guide](docs/guides/dashboard.md)** - `holodeck test view` run-history dashboard
 - **[Global Configuration](docs/guides/global-config.md)** - Shared settings
 - **[Vector Stores](docs/guides/vector-stores.md)** - Set up vector databases
 - **[MCP CLI](docs/guides/mcp-cli.md)** - Manage MCP servers

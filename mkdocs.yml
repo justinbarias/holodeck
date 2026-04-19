@@ -40,6 +40,7 @@ nav:
     - MCP CLI: guides/mcp-cli.md
     - Vector Stores: guides/vector-stores.md
     - Evaluations: guides/evaluations.md
+    - Dashboard: guides/dashboard.md
     - Global Configuration: guides/global-config.md
     - File References: guides/file-references.md
     - Agent Server: guides/serve.md

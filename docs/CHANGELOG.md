@@ -14,6 +14,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.2] - 2026-04-19
+
+### Added
+
+- **Evaluation-Runs Dashboard** (Feature #031) --Interactive Dash UI for `holodeck test` run history
+  - `holodeck test view` CLI launches the Dash dashboard as a subprocess with SIGINT forwarding; `--seed` renders the built-in golden fixture (24 runs, 6 prompt versions) for demos
+  - **Summary view**: pass-rate time series, metric breakdown, sortable/filterable run table, CSV export, prompt-version boundary markers
+  - **Explorer view**: three-column drilldown (runs -> cases -> detail) with full conversation thread, tool-call panels, expected-tools coverage, agent-config snapshot, and metric rows
+  - **Compare view**: side-by-side diff for up to three runs with a persistent floating compare tray (quick-add buttons for 2 or 3 most-recent runs)
+  - **Dynamic reload**: mtime-aware run memo + `dcc.Interval` polls the results directory every 5 s so new `holodeck test` output appears without restarting the dashboard
+  - **Conversation rendering**: assistant bubble renders Markdown for prose replies and prettified JSON for structured-output replies (strict `{`/`[` prefix + successful `json.loads` detection)
+  - Optional `[dashboard]` extra bundling Dash >=3.0, Plotly >=5.20, pandas >=2.0; `holodeck test view` prints an install hint and exits 2 if the extra is missing
+- **Prompt Version Frontmatter** (Feature #031 US2) --Optional YAML frontmatter on `instructions.file` to version and label system prompts
+  - Recognised keys: `version`, `author`, `description`, `tags`; any other keys are preserved under `extra` on the persisted run record
+  - Auto-derives `version: auto-<sha256[:8]>` from the body hash when no manual `version:` is supplied, so every run still has a stable identifier
+  - Inline instructions (`instructions.inline`) resolve to `source: inline` and skip frontmatter parsing entirely
+  - Prompt body reaching the LLM is byte-equivalent (frontmatter is stripped); malformed frontmatter fails with a clear `ConfigError` instead of silently shipping a broken header
+- **EvalRun Persistence** (Feature #031 US1, US3) --Every `holodeck test` invocation writes `results/<slugify(agent.name)>/<ISO-timestamp>.json`
+  - `EvalRunMetadata` snapshot captures prompt version, agent config (redacted via deep-copy), git commit, HoloDeck version, environment, and timing
+  - Secrets-bearing fields on the snapshotted `Agent` are automatically redacted
+
+### Changed
+
+- **Retrieval Tool Classification** --`_get_retrieval_tool_names` in the test runner now recognises `HierarchicalDocumentToolConfig` as a retrieval source (alongside `VectorstoreTool` and `is_retrieval=True` MCP tools), so RAG metrics receive `retrieval_context` from hierarchical-document search hits
+- **Executor Pass-Rate Unit** --Aligned `ExecutionResult.pass_rate` with the canonical 0..100 scale used by `ReportSummary`; the dashboard still computes the fraction from `passed / total_tests` for producer-robustness
+
+### Fixed
+
+- **Dashboard Filter Chip Bubbling** --Filter chips, the runs-search input, and row-click handlers no longer collide with the compare-queue add button (#T442)
+- **KPI Unit Rendering** --Collapsed the pass-rate `%` and duration `ms` suffixes into a single span so the KPI tiles no longer wrap mid-number
+
+### Security
+
+- **pip-audit**: 20 CVEs resolved in direct + transitive dependencies
+  - `aiohttp` >=3.13.3 -> >=3.13.4 (10 CVEs: CVE-2026-34513 through CVE-2026-34520, CVE-2026-34525, CVE-2026-22815)
+  - `authlib` >=1.6.9 -> >=1.6.11 (GHSA-jj8c-mmj3-mmgv)
+  - `cryptography` >=46.0.6 -> >=46.0.7 (CVE-2026-39892)
+  - `pypdf` >=6.9.1 -> >=6.10.2 (CVE-2026-40260, GHSA-jj6c-8h6c-hppx, GHSA-4pxv-j86v-mhcw, GHSA-7gw9-cf7v-778f, GHSA-x284-j5p8-9c5p)
+  - `pytest` >=7.4.0 -> >=9.0.3 (CVE-2025-71176; exclude 9.0.1, 9.0.2)
+  - `pillow` constraint >=12.1.1 -> >=12.2.0 (CVE-2026-40192)
+  - `python-multipart` constraint >=0.0.22 -> >=0.0.26 (CVE-2026-40347)
+- `pygments` CVE-2026-4539 (ReDoS in AdlLexer) continues to be ignored via `--ignore-vuln` --no upstream fix yet; HoloDeck never invokes the ADL lexer
+
+### Dependencies
+
+- `python-frontmatter` >=1.1,<2.0 (new core dep for prompt-version YAML parsing)
+- `dash` >=3.0,<4.0 (new optional `[dashboard]` extra)
+- `plotly` >=5.20,<7.0 (new optional `[dashboard]` extra)
+- `pandas` >=2.0 (new optional `[dashboard]` extra)
+
+### Documentation
+
+- New [Dashboard Guide](guides/dashboard.md) covering `holodeck test view`, run-history discovery, prompt versioning, conversation rendering, filters, and security notes
+- Agent Configuration guide: Prompt Versioning section documenting supported frontmatter keys and auto-derived version behaviour
+- README: Evaluation Dashboard and prompt-versioning sections in the Quick Start
+
+### Testing
+
+- 14 new dashboard unit tests (`_render_assistant_body` across prose/JSON/mixed inputs; `_results_dir_fingerprint` + `get_runs` memo invalidation)
+- Full dashboard suite: 37 tests passing
+
+---
+
+## [0.6.1] - 2026-04-12
+
+### Added
+
+- **Auto-Detect Pip Extras for Deploy Build** (#298) --`holodeck deploy build` now inspects the agent config and installs the matching optional extras (`chromadb`, `azure-blob`, `s3`, `claude-otel`) in the generated Dockerfile, eliminating the need to modify the base image or apply runtime workarounds
+- **Explicit Azure OpenAI `api_version` Field** --New `api_version` field on `LLMProvider` for per-agent control of the Azure OpenAI API version
+
+### Changed
+
+- **Azure OpenAI Default API Version** --Pinned to `2024-10-21` (latest GA) to prevent Semantic Kernel from defaulting to unsupported preview versions (e.g., `2025-08-28` in SK 1.41.1)
+
+### Fixed
+
+- **`.gitignore`** --Added `.env.*` patterns so Docker env files with secrets are not accidentally committed
+
+---
+
 ## [0.6.0] - 2026-03-28
 
 ### Added
@@ -867,7 +947,9 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 
 ---
 
-[unreleased]: https://github.com/justinbarias/holodeck/compare/v0.6.0...HEAD
+[unreleased]: https://github.com/justinbarias/holodeck/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/justinbarias/holodeck/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/justinbarias/holodeck/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/justinbarias/holodeck/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/justinbarias/holodeck/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/justinbarias/holodeck/compare/v0.5.0...v0.5.1

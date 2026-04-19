@@ -344,6 +344,44 @@ Guidelines:
 - **Max length** (inline): 5000 characters
 - **File path**: Relative to `agent.yaml` directory (see File References guide)
 
+### Prompt Versioning (YAML Frontmatter)
+
+When you use `instructions.file`, HoloDeck also parses optional YAML frontmatter at the top of the file to version and label the prompt. The frontmatter block is stripped before the body reaches the LLM — your prompt text is unchanged.
+
+```markdown
+---
+version: v1.2.0
+author: your-name
+description: Short note describing what this prompt version does.
+tags:
+  - rag
+  - customer-support
+---
+
+# System Prompt
+
+You are a customer support specialist.
+...
+```
+
+**Recognised keys** (all optional):
+
+| Key | Type | Notes |
+| --- | --- | --- |
+| `version` | string | Your manual version identifier. If omitted, HoloDeck derives `auto-<sha256[:8]>` from the prompt body so every run still has a stable id. |
+| `author` | string | Free-form — who owns this version of the prompt. |
+| `description` | string | One-liner shown in the dashboard. |
+| `tags` | list of strings | Free-form tags surfaced as filter chips in the dashboard. |
+
+Any other keys are preserved under `extra` on the persisted run record — unknown keys don't error, they just don't populate the typed fields.
+
+**How it's used:**
+
+- Every `holodeck test` run records the resolved `PromptVersion` on the eval-run JSON, including `body_hash` (full SHA-256 of the frontmatter-stripped body) for exact reproducibility.
+- The [dashboard](dashboard.md) groups runs by `version`, draws vertical markers on the pass-rate chart whenever `version` changes between consecutive runs, and surfaces `tags` as filter chips.
+- Malformed YAML frontmatter fails the test run with a clear `ConfigError` — you cannot silently ship an unparseable prompt header.
+- Inline instructions (`instructions.inline`) skip frontmatter entirely and always resolve to `version: auto-<sha256[:8]>` with `source: inline`.
+
 ## Response Format
 
 Defines the expected structure of the agent's responses (agent-level only).
