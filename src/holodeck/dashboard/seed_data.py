@@ -44,6 +44,94 @@ def build_seed_runs() -> list[EvalRun]:
 
 
 SEED_CONVERSATIONS: dict[str, dict] = {
-    # Populated in US5 (Explorer view) — handoff data.js:160–178.
-    # Left empty here; Summary view does not consume it.
+    # Ported verbatim from the design handoff's `data.js:160–178`
+    # (`window.HD_DATA.sampleConversation`). Consumed by the Explorer view
+    # when a real run lacks structured `ToolInvocation` records — see
+    # `explorer_data.py::_build_conversation` precedence rules.
+    "refund_eligible_standard": {
+        "user": (
+            "Hi, I ordered noise-canceling headphones on April 2 (order "
+            "#A-8844) and they arrived yesterday but the right cup "
+            "rattles. I'd like a refund please."
+        ),
+        "assistant": (
+            "I'm sorry the headphones arrived faulty — I can take care of "
+            "that right away. I've pulled up order #A-8844 and confirmed "
+            "it shipped on April 3, so you're well within the 30-day "
+            "return window. I've issued a full refund of $249.00 to your "
+            "original payment method; it should appear in 3–5 business "
+            "days. I've also emailed you a prepaid return label. Anything "
+            "else?"
+        ),
+        "tool_calls": [
+            {
+                "name": "lookup_order",
+                "args": {"order_id": "A-8844"},
+                "result": {
+                    "id": "A-8844",
+                    "status": "delivered",
+                    "total": 249.00,
+                    "ship_date": "2026-04-03",
+                    "items": [{"sku": "HP-NC-770", "name": "NC-770 Headphones"}],
+                },
+            },
+            {
+                "name": "issue_refund",
+                "args": {
+                    "order_id": "A-8844",
+                    "amount": 249.00,
+                    "reason": "faulty_item",
+                },
+                "result": {
+                    "refund_id": "ref_01HX9K2PQ",
+                    "status": "processed",
+                    "eta_business_days": 5,
+                },
+            },
+            {
+                "name": "send_email",
+                "args": {
+                    "to": "dana@example.com",
+                    "template": "return_label",
+                    "order_id": "A-8844",
+                },
+                "result": {"sent": True, "message_id": "msg_a8f83c"},
+            },
+        ],
+    },
+    "refund_outside_window": {
+        "user": (
+            "I bought a desk lamp from you last November. It's now "
+            "flickering. Can I get a refund?"
+        ),
+        "assistant": (
+            "Thanks for flagging this. I looked up the order and the "
+            "purchase was on November 12, 2025, which puts it well "
+            "outside our 30-day return window. Per our return policy "
+            "(section 4.2), items purchased more than 30 days ago aren't "
+            "eligible for a refund, but the lamp carries a 12-month "
+            "manufacturer warranty which may cover the flickering. I can "
+            "point you to the warranty claim form — want me to?"
+        ),
+        "tool_calls": [
+            {
+                "name": "lookup_order",
+                "args": {"query": "desk lamp november"},
+                "result": {
+                    "id": "B-2210",
+                    "status": "delivered",
+                    "ship_date": "2025-11-12",
+                },
+            },
+            {
+                "name": "policy_lookup",
+                "args": {"topic": "return_window"},
+                "result": {
+                    "section": "4.2",
+                    "window_days": 30,
+                    "exceptions": ["manufacturer_warranty"],
+                },
+            },
+        ],
+    },
 }

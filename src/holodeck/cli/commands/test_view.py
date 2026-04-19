@@ -20,6 +20,7 @@ import click
 
 from holodeck.config.loader import load_agent_with_config
 from holodeck.lib.errors import ConfigError
+from holodeck.lib.eval_run.slugify import slugify as _slugify
 
 _INSTALL_HINT = (
     "Dashboard not installed. Install the optional extra:\n"
@@ -30,13 +31,6 @@ _NETWORK_WARNING = (
     "Warning: Dash binds to 127.0.0.1 by default; if you override --host, "
     "firewall the port on shared infra.\n"
 )
-
-
-def _slugify(name: str) -> str:
-    """Mirror the slug convention used by eval_run persistence."""
-    return "".join(c if c.isalnum() or c in "-_" else "-" for c in name.lower()).strip(
-        "-"
-    )
 
 
 @click.command("view")

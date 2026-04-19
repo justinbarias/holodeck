@@ -15,6 +15,7 @@ import dash
 from dash import Input, Output, State, callback, ctx, dcc, html
 
 from holodeck.dashboard import state as state_mod
+from holodeck.dashboard.components.compare_tray import render_tray
 from holodeck.dashboard.data_loader import load_runs_for_app, to_summary_dataframe
 from holodeck.dashboard.filters import Filters
 from holodeck.dashboard.filters import apply as apply_filters
@@ -158,6 +159,9 @@ app.layout = html.Div(
         html.Div(id="topbar-container"),
         html.Div(id="tabbar-container"),
         html.Main(id="view-container"),
+        # Compare tray floats across every view; sibling of #view-container so
+        # it survives tab-switch re-renders (T442).
+        html.Div(id="compare-tray-container"),
     ],
     className="app",
 )
@@ -167,6 +171,7 @@ app.layout = html.Div(
     Output("topbar-container", "children"),
     Output("tabbar-container", "children"),
     Output("view-container", "children"),
+    Output("compare-tray-container", "children"),
     Input("app-state", "data"),
 )
 def render_all(state):
@@ -181,7 +186,8 @@ def render_all(state):
         view = render_compare(state, runs)
     else:
         view = render_summary(state, runs, agent_display_name=AGENT_DISPLAY_NAME)
-    return _topbar(), _tabbar(tab, len(filtered), compare_n), view
+    tray = render_tray(state, runs)
+    return _topbar(), _tabbar(tab, len(filtered), compare_n), view, tray
 
 
 @callback(
@@ -321,23 +327,6 @@ def on_export_csv(_n, state):
 
 @callback(
     Output("app-state", "data", allow_duplicate=True),
-    Input({"type": "queue-btn", "run_id": dash.ALL}, "n_clicks"),
-    State("app-state", "data"),
-    prevent_initial_call=True,
-)
-def on_queue_toggle(_clicks, state):
-    state = state or state_mod.default_state()
-    if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
-        raise dash.exceptions.PreventUpdate
-    run_id = ctx.triggered_id.get("run_id")
-    queue = list(state.get("compare_queue") or [])
-    if run_id in queue:
-        return state_mod.remove_from_compare_queue(state, run_id)
-    return state_mod.push_to_compare_queue(state, run_id)
-
-
-@callback(
-    Output("app-state", "data", allow_duplicate=True),
     Input(
         {"type": "run-row", "run_id": dash.ALL, "col": dash.ALL},
         "n_clicks",
@@ -354,6 +343,175 @@ def on_row_click(_clicks, state):
         raise dash.exceptions.PreventUpdate
     run_id = ctx.triggered_id.get("run_id")
     return state_mod.open_in_explorer(state, run_id)
+
+
+# --------------------------------------------------------------------------- #
+# Explorer navigation                                                          #
+# --------------------------------------------------------------------------- #
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input({"type": "explorer-run-row", "run_id": dash.ALL}, "n_clicks"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_explorer_run_click(_clicks, state):
+    state = state or state_mod.default_state()
+    if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
+        raise dash.exceptions.PreventUpdate
+    trigger = ctx.triggered[0] if ctx.triggered else {}
+    if not trigger.get("value"):
+        raise dash.exceptions.PreventUpdate
+    run_id = ctx.triggered_id.get("run_id")
+    return {
+        **state,
+        "explorer_run_id": run_id,
+        # Clear case to auto-select the first case of the new run.
+        "explorer_case_name": None,
+    }
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input({"type": "explorer-case-row", "case_name": dash.ALL}, "n_clicks"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_explorer_case_click(_clicks, state):
+    state = state or state_mod.default_state()
+    if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
+        raise dash.exceptions.PreventUpdate
+    trigger = ctx.triggered[0] if ctx.triggered else {}
+    if not trigger.get("value"):
+        raise dash.exceptions.PreventUpdate
+    case_name = ctx.triggered_id.get("case_name")
+    return {**state, "explorer_case_name": case_name}
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input("explorer-runs-toggle", "n_clicks"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_explorer_runs_toggle(n_clicks, state):
+    if not n_clicks:
+        raise dash.exceptions.PreventUpdate
+    state = state or state_mod.default_state()
+    current = bool(state.get("explorer_runs_collapsed", True))
+    return {**state, "explorer_runs_collapsed": not current}
+
+
+# --------------------------------------------------------------------------- #
+# Compare: add button, tray, variants                                          #
+# --------------------------------------------------------------------------- #
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input({"type": "compare-add", "run_id": dash.ALL}, "n_clicks"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_compare_add(_clicks, state):
+    state = state or state_mod.default_state()
+    if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
+        raise dash.exceptions.PreventUpdate
+    trigger = ctx.triggered[0] if ctx.triggered else {}
+    if not trigger.get("value"):
+        raise dash.exceptions.PreventUpdate
+    run_id = ctx.triggered_id.get("run_id")
+    queue = list(state.get("compare_queue") or [])
+    if run_id in queue:
+        return state_mod.remove_from_compare_queue(state, run_id)
+    return state_mod.push_to_compare_queue(state, run_id)
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input({"type": "compare-slot-remove", "run_id": dash.ALL}, "n_clicks"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_compare_slot_remove(_clicks, state):
+    state = state or state_mod.default_state()
+    if not ctx.triggered_id or not isinstance(ctx.triggered_id, dict):
+        raise dash.exceptions.PreventUpdate
+    trigger = ctx.triggered[0] if ctx.triggered else {}
+    if not trigger.get("value"):
+        raise dash.exceptions.PreventUpdate
+    run_id = ctx.triggered_id.get("run_id")
+    return state_mod.remove_from_compare_queue(state, run_id)
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input("compare-tray-clear", "n_clicks"),
+    Input("compare-clear", "n_clicks"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_compare_clear(_tray, _toolbar, state):
+    trig = ctx.triggered[0] if ctx.triggered else {}
+    if not trig.get("value"):
+        raise dash.exceptions.PreventUpdate
+    state = state or state_mod.default_state()
+    return {**state, "compare_queue": []}
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input("compare-tray-open", "n_clicks"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_compare_open(n_clicks, state):
+    if not n_clicks:
+        raise dash.exceptions.PreventUpdate
+    state = state or state_mod.default_state()
+    return state_mod.set_tab(state, "compare")
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input("compare-variant", "value"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_compare_variant(value, state):
+    if value is None:
+        raise dash.exceptions.PreventUpdate
+    state = state or state_mod.default_state()
+    try:
+        v = int(value)
+    except (TypeError, ValueError) as exc:
+        raise dash.exceptions.PreventUpdate from exc
+    if v == int(state.get("compare_variant", 1) or 1):
+        raise dash.exceptions.PreventUpdate
+    return {**state, "compare_variant": v}
+
+
+@callback(
+    Output("app-state", "data", allow_duplicate=True),
+    Input("compare-quick-2", "n_clicks"),
+    Input("compare-quick-3", "n_clicks"),
+    State("app-state", "data"),
+    prevent_initial_call=True,
+)
+def on_compare_quick_pick(_n2, _n3, state):
+    trig = ctx.triggered[0] if ctx.triggered else {}
+    if not trig.get("value"):
+        raise dash.exceptions.PreventUpdate
+    state = state or state_mod.default_state()
+    source = (trig.get("prop_id") or "").split(".")[0]
+    n = 3 if source == "compare-quick-3" else 2
+    runs = get_runs()
+    sorted_runs = sorted(runs, key=lambda r: r.report.timestamp, reverse=True)
+    return {
+        **state,
+        "compare_queue": [r.report.timestamp for r in sorted_runs[:n]],
+    }
 
 
 def main(host: str = "127.0.0.1", port: int = 8501, debug: bool = False) -> None:

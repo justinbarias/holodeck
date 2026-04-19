@@ -119,8 +119,8 @@ claude-otel = ["otel-instrumentation-claude-agent-sdk>=0.0.3,<0.1.0"]
 # Evaluation-runs dashboard (Dash + Plotly + pandas). Pixel-fidelity rewrite of
 # the Streamlit draft — handoff CSS tokens paste into assets/ verbatim.
 dashboard = [
-    "dash>=2.17,<3.0",
-    "plotly>=5.20,<6.0",
+    "dash>=3.0,<4.0",
+    "plotly>=5.20,<7.0",
     "pandas>=2.0",
 ]
 

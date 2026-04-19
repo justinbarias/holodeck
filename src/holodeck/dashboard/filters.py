@@ -43,7 +43,8 @@ def _run_passes(run: EvalRun, f: Filters) -> bool:
     if f.model_names and run.metadata.agent_config.model.name not in f.model_names:
         return False
     if f.min_pass_rate > 0:
-        pr = run.report.summary.pass_rate / 100.0
+        total = run.report.summary.total_tests
+        pr = (run.report.summary.passed / total) if total > 0 else 0.0
         if pr < f.min_pass_rate:
             return False
     if f.tags:

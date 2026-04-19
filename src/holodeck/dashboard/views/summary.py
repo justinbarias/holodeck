@@ -18,6 +18,7 @@ from typing import Any
 from dash import dcc, html
 
 from holodeck.dashboard import charts
+from holodeck.dashboard.components.compare_add_button import render_add_button
 from holodeck.dashboard.data_loader import (
     distinct_values,
     to_breakdown_dataframe,
@@ -250,7 +251,14 @@ def _kpi_strip(runs: list[EvalRun]) -> html.Div:
         return html.Div(className="kpi-strip")
 
     sorted_runs = sorted(runs, key=lambda r: r.report.timestamp)
-    pr_series = [r.report.summary.pass_rate / 100.0 for r in sorted_runs]
+    pr_series = [
+        (
+            (r.report.summary.passed / r.report.summary.total_tests)
+            if r.report.summary.total_tests > 0
+            else 0.0
+        )
+        for r in sorted_runs
+    ]
     latest_pr = pr_series[-1]
     prev_pr = pr_series[-2] if len(pr_series) >= 2 else None
     delta_str, delta_cls = _fmt_delta(latest_pr, prev_pr)
@@ -563,7 +571,6 @@ def _runs_table(
         tier = row["pass_rate_tier"]
         ts = row["timestamp"]
         run_id = row["id"]
-        in_queue = run_id in compare_queue
         date_s = ts.strftime("%-d %b") if hasattr(ts, "strftime") else str(ts)
         time_s = ts.strftime("%H:%M") if hasattr(ts, "strftime") else ""
 
@@ -580,16 +587,11 @@ def _runs_table(
             html.Tr(
                 [
                     html.Td(
-                        html.Button(
-                            "−" if in_queue else "+",
-                            className=f"cmp-add cmp-add-sm{' on' if in_queue else ''}",
-                            id={"type": "queue-btn", "run_id": run_id},
-                            n_clicks=0,
-                            title="toggle compare queue",
-                        ),
+                        render_add_button(run_id, list(compare_queue)),
                         style={"width": "44px", "textAlign": "center"},
                     ),
                     _nav_td(
+                        run_id,
                         "ts",
                         html.Span(
                             [html.Span(date_s, className="date"), html.Span(time_s)],
@@ -597,6 +599,7 @@ def _runs_table(
                         ),
                     ),
                     _nav_td(
+                        run_id,
                         "pr",
                         html.Div(
                             [
@@ -616,6 +619,7 @@ def _runs_table(
                         ),
                     ),
                     _nav_td(
+                        run_id,
                         "tests",
                         html.Span(
                             [
@@ -626,6 +630,7 @@ def _runs_table(
                         ),
                     ),
                     _nav_td(
+                        run_id,
                         "prompt",
                         html.Span(
                             row["prompt_version"],
@@ -637,6 +642,7 @@ def _runs_table(
                         run_id, "model", html.Span(row["model_name"], className="mono")
                     ),
                     _nav_td(
+                        run_id,
                         "duration",
                         html.Span(
                             (
@@ -648,6 +654,7 @@ def _runs_table(
                         ),
                     ),
                     _nav_td(
+                        run_id,
                         "commit",
                         html.Span((row["git_commit"] or "")[:7], className="mono"),
                     ),

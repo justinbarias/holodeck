@@ -27,6 +27,18 @@ logger = logging.getLogger(__name__)
 MetricKind = Literal["standard", "rag", "geval"]
 
 
+def _pass_rate_fraction(run: EvalRun) -> float:
+    """Return pass_rate as a 0..1 fraction.
+
+    The persisted ``ReportSummary.pass_rate`` has inconsistent units across
+    producers — the test runner (executor.py) writes a 0..1 fraction while
+    the seed-dataset fixture writes 0..100. Computing from
+    ``passed/total_tests`` is authoritative and producer-agnostic.
+    """
+    s = run.report.summary
+    return (s.passed / s.total_tests) if s.total_tests > 0 else 0.0
+
+
 def load_all(results_dir: Path) -> list[EvalRun]:
     """Load every `*.json` file under `results_dir` as an EvalRun.
 
@@ -104,7 +116,7 @@ def to_summary_dataframe(runs: list[EvalRun]) -> pd.DataFrame:
 
     rows = []
     for run in runs:
-        pr = run.report.summary.pass_rate / 100.0
+        pr = _pass_rate_fraction(run)
         rows.append(
             {
                 "id": run.report.timestamp,
@@ -185,6 +197,8 @@ def to_breakdown_dataframe(
                 "total": e["total"],
             }
         )
+    if not rows:
+        return pd.DataFrame(columns=["metric_name", "avg_score", "pass_count", "total"])
     return (
         pd.DataFrame(rows)
         .sort_values("avg_score", ascending=False)
@@ -197,7 +211,7 @@ def detect_regressions(runs: list[EvalRun], drop_threshold: float = 0.04) -> lis
     if len(runs) < 2:
         return []
     sorted_runs = sorted(runs, key=lambda r: r.report.timestamp)
-    rates = [r.report.summary.pass_rate / 100.0 for r in sorted_runs]
+    rates = [_pass_rate_fraction(r) for r in sorted_runs]
     out = []
     for i in range(1, len(rates)):
         if rates[i] - rates[i - 1] < -drop_threshold:
