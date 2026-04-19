@@ -9,7 +9,7 @@ from __future__ import annotations
 import io
 import os
 from dataclasses import asdict
-from functools import lru_cache
+from pathlib import Path
 
 import dash
 from dash import Input, Output, State, callback, ctx, dcc, html
@@ -20,6 +20,7 @@ from holodeck.dashboard.data_loader import load_runs_for_app, to_summary_datafra
 from holodeck.dashboard.filters import Filters
 from holodeck.dashboard.filters import apply as apply_filters
 from holodeck.dashboard.views import render_compare, render_explorer, render_summary
+from holodeck.models.eval_run import EvalRun
 
 AGENT_DISPLAY_NAME = os.environ.get(
     "HOLODECK_DASHBOARD_AGENT_DISPLAY_NAME", "customer-support"
@@ -35,17 +36,44 @@ app = dash.Dash(
 )
 
 
-@lru_cache(maxsize=1)
-def _runs_cached(cache_key: str) -> list:
-    return load_runs_for_app()
+# mtime-aware memo so newly-written results files surface without restart.
+# Keyed on the env-var pair that determines the source; value is
+# ``(fingerprint, runs)``. Seed mode pins the fingerprint to 0.0 so the cache
+# never busts (deterministic fixture).
+_runs_memo: dict[str, tuple[float, list[EvalRun]]] = {}
 
 
 def _cache_key() -> str:
     return f"{os.environ.get('HOLODECK_DASHBOARD_USE_SEED', '')}::{os.environ.get('HOLODECK_DASHBOARD_RESULTS_DIR', '')}"
 
 
+def _results_dir_fingerprint() -> float:
+    """Max mtime across the results dir and its ``*.json`` children.
+
+    Returns 0.0 for seed mode, missing dir, or empty dir — callers treat any
+    change from the previously-seen fingerprint as "reload needed".
+    """
+    if os.environ.get("HOLODECK_DASHBOARD_USE_SEED") == "1":
+        return 0.0
+    results_dir = os.environ.get("HOLODECK_DASHBOARD_RESULTS_DIR")
+    if not results_dir:
+        return 0.0
+    path = Path(results_dir)
+    if not path.is_dir():
+        return 0.0
+    candidates: list[Path] = [path, *path.glob("*.json")]
+    return max((p.stat().st_mtime for p in candidates), default=0.0)
+
+
 def get_runs() -> list:
-    return _runs_cached(_cache_key())
+    key = _cache_key()
+    fp = _results_dir_fingerprint()
+    cached = _runs_memo.get(key)
+    if cached is not None and cached[0] == fp:
+        return cached[1]
+    runs = load_runs_for_app()
+    _runs_memo[key] = (fp, runs)
+    return runs
 
 
 def _topbar() -> html.Header:
@@ -156,6 +184,10 @@ app.layout = html.Div(
         dcc.Store(
             id="app-state", storage_type="memory", data=state_mod.default_state()
         ),
+        # Poll the results dir for new files every 5s. Fires n_intervals into
+        # `render_all` which already calls get_runs() — cheap no-op when the
+        # fingerprint is unchanged.
+        dcc.Interval(id="runs-poll", interval=5000, n_intervals=0),
         html.Div(id="topbar-container"),
         html.Div(id="tabbar-container"),
         html.Main(id="view-container"),
@@ -173,8 +205,9 @@ app.layout = html.Div(
     Output("view-container", "children"),
     Output("compare-tray-container", "children"),
     Input("app-state", "data"),
+    Input("runs-poll", "n_intervals"),
 )
-def render_all(state):
+def render_all(state, _n_intervals):
     state = state or state_mod.default_state()
     runs = get_runs()
     tab = state.get("tab", "summary")

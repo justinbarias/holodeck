@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from dash import html
+from dash import dcc, html
 
 from holodeck.dashboard.components.compare_add_button import render_add_button
 from holodeck.dashboard.explorer_data import (
@@ -569,6 +569,31 @@ def _tool_call_panel(tc: ToolCallView) -> html.Div:
     return html.Div(pieces, className="tool-call")
 
 
+def _render_assistant_body(text: str) -> Any:
+    """Render an agent reply as prettified JSON if JSON-shaped, else as Markdown.
+
+    JSON detection requires both a ``{`` or ``[`` prefix *and* a successful
+    ``json.loads`` — a chatty reply that happens to embed JSON mid-sentence
+    stays on the Markdown path.
+    """
+    stripped = text.lstrip()
+    if stripped.startswith(("{", "[")):
+        try:
+            parsed = json.loads(stripped)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            return html.Pre(
+                json.dumps(parsed, indent=2, ensure_ascii=False, default=str),
+                className="code lang-json",
+            )
+    return dcc.Markdown(
+        text,
+        className="md-assistant",
+        link_target="_blank",
+    )
+
+
 def _conversation_section(conv: ConversationView, model_name: str) -> html.Details:
     thread: list = []
     if conv.user:
@@ -585,7 +610,7 @@ def _conversation_section(conv: ConversationView, model_name: str) -> html.Detai
             html.Div(
                 [
                     html.Div(f"AGENT · {model_name}", className="who"),
-                    html.Div(conv.assistant),
+                    _render_assistant_body(conv.assistant),
                 ],
                 className="bubble assistant",
             )
