@@ -956,12 +956,17 @@ class TestExecutor:
 
         Retrieval tools are:
         - All vectorstore tools (type='vectorstore')
+        - All hierarchical document tools (type='hierarchical_document')
         - MCP tools with is_retrieval=True
 
         Returns:
             Set of tool names that are retrieval tools
         """
-        from holodeck.models.tool import MCPTool, VectorstoreTool
+        from holodeck.models.tool import (
+            HierarchicalDocumentToolConfig,
+            MCPTool,
+            VectorstoreTool,
+        )
 
         retrieval_tools: set[str] = set()
 
@@ -972,6 +977,11 @@ class TestExecutor:
             if isinstance(tool, VectorstoreTool):
                 # Semantic Kernel legacy naming
                 retrieval_tools.add(f"vectorstore-{tool.name}")
+                # Claude Agent SDK MCP naming
+                retrieval_tools.add(f"mcp__holodeck_tools__{tool.name}_search")
+            elif isinstance(tool, HierarchicalDocumentToolConfig):
+                # Semantic Kernel legacy naming
+                retrieval_tools.add(f"hierarchical_document-{tool.name}")
                 # Claude Agent SDK MCP naming
                 retrieval_tools.add(f"mcp__holodeck_tools__{tool.name}_search")
             elif isinstance(tool, MCPTool) and tool.is_retrieval:
