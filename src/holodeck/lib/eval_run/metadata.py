@@ -34,7 +34,7 @@ See ``specs/031-eval-runs-dashboard/data-model.md`` §"Snapshot semantics" and
 from __future__ import annotations
 
 import logging
-import subprocess
+import subprocess  # nosec B404
 import sys
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as importlib_version
@@ -52,12 +52,14 @@ _GIT_TIMEOUT_SECONDS = 2
 def _resolve_git_commit() -> str | None:
     """Best-effort ``git rev-parse HEAD``; return ``None`` on any failure."""
     try:
-        completed = subprocess.run(  # noqa: S603 — fixed argv, no shell
-            ["git", "rev-parse", "HEAD"],  # noqa: S607
-            capture_output=True,
-            text=True,
-            timeout=_GIT_TIMEOUT_SECONDS,
-            check=False,
+        completed = (
+            subprocess.run(  # noqa: S603  # nosec B603 B607 — fixed argv, no shell
+                ["git", "rev-parse", "HEAD"],  # noqa: S607
+                capture_output=True,
+                text=True,
+                timeout=_GIT_TIMEOUT_SECONDS,
+                check=False,
+            )
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
         logger.debug("git rev-parse failed: %s", exc)

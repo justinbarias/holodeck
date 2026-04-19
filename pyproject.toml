@@ -13,13 +13,13 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-dateutil>=2.8.0",
     "urllib3>=2.6.0,<3.0.0",
-    "cryptography>=46.0.6,<47.0.0",
+    "cryptography>=46.0.7,<47.0.0",
     "mkdocs-material>=9.6.22,<10.0.0",
     "twine>=6.2.0,<7.0.0",
     "jsonschema>=4.0.0,<5.0.0",
     "semantic-kernel>=1.39.4,<2.0.0",
     "markitdown[all]>=0.1.4,<0.2.0",
-    "pypdf>=6.9.1",
+    "pypdf>=6.10.2",
     "azure-ai-evaluation>=1.13.0,<2.0.0",
     "evaluate>=0.4.6,<0.5.0",
     "aiofiles>=25.1.0,<26.0.0",
@@ -44,9 +44,9 @@ dependencies = [
     "rank-bm25>=0.2.2,<0.3.0",  # BM25 sparse indexing (fallback for providers without native hybrid)
     "opensearch-py>=2.0.0,<3.0.0",  # OpenSearch client for production keyword index
     "tiktoken>=0.12.0",
-    "aiohttp>=3.13.3",
+    "aiohttp>=3.13.4",
     "httpx>=0.27",
-    "authlib>=1.6.9",
+    "authlib>=1.6.11",
     "azure-core>=1.38.0",
     "claude-agent-sdk==0.1.44",
     "python-frontmatter>=1.1,<2.0",
@@ -58,7 +58,7 @@ holodeck-ai = "holodeck.cli.main:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
+    "pytest>=9.0.3",  # CVE-2025-71176 fix (exclude 9.0.1, 9.0.2)
     "pytest-cov>=4.1.0",
     "pytest-asyncio>=0.21.0",
     "pytest-mock>=3.11.0",
@@ -161,9 +161,9 @@ constraint-dependencies = [
     "jaraco-context>=6.1.0",  # CVE-2026-23949 fix
     "nltk>=3.9.3",  # CVE-2025-14009 fix
     "pyopenssl>=26.0.0",  # CVE-2026-27448, CVE-2026-27459 fix
-    "pillow>=12.1.1",  # CVE-2026-25990 fix
+    "pillow>=12.2.0",  # CVE-2026-25990 + CVE-2026-40192 fix
     "protobuf>=5.29.6",  # CVE-2026-0994 fix
-    "python-multipart>=0.0.22",  # CVE-2026-24486 fix
+    "python-multipart>=0.0.26",  # CVE-2026-24486 + CVE-2026-40347 fix
 ]
 
 [tool.black]

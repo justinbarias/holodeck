@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import signal
-import subprocess
+import subprocess  # nosec B404
 import sys
 from importlib.util import find_spec
 from pathlib import Path
@@ -117,7 +117,7 @@ def view(
     click.echo(f"Dash serving on http://{host}:{port}/ (Ctrl+C to stop)")
 
     # 5. Launch subprocess with SIGINT forwarding (research R2).
-    proc = subprocess.Popen(argv, env=env)  # noqa: S603
+    proc = subprocess.Popen(argv, env=env)  # noqa: S603  # nosec B603
 
     def _forward_sigint(signum: int, frame: object) -> None:  # noqa: ARG001
         proc.send_signal(signal.SIGINT)
