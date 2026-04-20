@@ -954,10 +954,10 @@ Use LSP for **semantic** questions ("who calls this?", "what type is this?", "wh
 **Remember:** HoloDeck is about enabling no-code agent development. Every feature should be configurable through YAML without requiring Python code.
 
 ## Recent Changes
+- 032-multi-turn-test-cases: Added Python 3.10+ (matches existing HoloDeck target; see constitution §Code Quality). + Existing — Pydantic v2, Click, `semantic-kernel`, `claude-agent-sdk`, `deepeval`. No new runtime dependencies; all matchers and evaluators built on Python stdlib (`re`, `difflib`, `importlib`, `decimal`).
 - 031-eval-runs-dashboard: Added Python 3.10+ (matches existing HoloDeck target).
 - 025-tool-init-endpoints: Added Python 3.10+ + FastAPI (existing), Pydantic v2 (existing), asyncio (existing), OpenTelemetry (existing), httpx (new core dep), boto3 (optional extra `[s3]`), azure-storage-blob (optional extra `[azure-blob]`)
-- 025-tool-init-endpoints: Added Python 3.10+ + FastAPI (existing), Pydantic v2 (existing), asyncio (existing), OpenTelemetry (existing)
 
 ## Active Technologies
-- Python 3.10+ (matches existing HoloDeck target). (031-eval-runs-dashboard)
-- Filesystem. Runs persisted as UTF-8 JSON at `results/<slugified-agent-name>/<ISO-timestamp>.json`. No database. (031-eval-runs-dashboard)
+- Python 3.10+ (matches existing HoloDeck target; see constitution §Code Quality). + Existing — Pydantic v2, Click, `semantic-kernel`, `claude-agent-sdk`, `deepeval`. No new runtime dependencies; all matchers and evaluators built on Python stdlib (`re`, `difflib`, `importlib`, `decimal`). (032-multi-turn-test-cases)
+- No new persistence. Test reports continue to land at `results/<slugified-agent-name>/<ISO-timestamp>.json` (feature 031). `TestResult.turns` is an additive JSON field. (032-multi-turn-test-cases)
