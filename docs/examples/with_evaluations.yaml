@@ -107,7 +107,7 @@ evaluations:
 
     # F1 Score: Token-level precision/recall
     - type: standard
-      metric: f1_score
+      metric: bleu
       threshold: 0.7
       enabled: true
       fail_on_error: true  # Hard failure for this metric
@@ -166,7 +166,7 @@ test_cases:
         metric_type: answer_relevancy
         threshold: 0.7
       - type: standard
-        metric: f1_score
+        metric: bleu
         threshold: 0.6
 
   - name: "Technical documentation quality"

@@ -38,7 +38,8 @@ class TestMetricResultKindCode:
         assert rehydrated == original
 
     def test_metric_kind_helper_returns_code(self) -> None:
-        cm = CodeMetric(grader="some.module:fn")
+        # Use a real built-in module so the US4 load-time resolver succeeds.
+        cm = CodeMetric(grader="os:getcwd")
         assert _metric_kind(cm) == "code"
 
     @pytest.mark.parametrize("kind", ["standard", "rag", "geval"])

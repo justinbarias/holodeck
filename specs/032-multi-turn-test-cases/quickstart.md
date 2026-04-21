@@ -154,7 +154,7 @@ The test-case-level `token_usage.total_tokens` is the element-wise sum across tu
 The ConvFinQA dataset ships a symbolic `turn_program` per turn (e.g. `"subtract(206588, 181001), divide(#0, 181001)"`). No built-in can grade this — `#0` back-references require a graph walk. Write a code grader:
 
 ```python
-# my_benchmarks/convfinqa.py
+# my_benchmarks.py
 from holodeck.lib.test_runner.code_grader import GraderContext, GraderResult
 
 def program_equivalence(ctx: GraderContext) -> GraderResult:
@@ -178,10 +178,10 @@ Then wire it into turn 3 of `agent.yaml`:
         turn_program: "subtract(206588, 181001)"       # passed through via turn_config
         evaluations:
           - type: code
-            grader: "my_benchmarks.convfinqa:program_equivalence"
+            grader: "my_benchmarks:program_equivalence"
 ```
 
-Run again — HoloDeck imports `my_benchmarks.convfinqa` at load time (import error would surface *before* any agent call, per FR-025), runs your grader per turn, and records its result alongside the built-in `numeric` metric.
+Run again — HoloDeck imports `my_benchmarks` at load time (import error would surface *before* any agent call, per FR-025), runs your grader per turn, and records its result alongside the built-in `numeric` metric.
 
 ## 6. Back-compat sanity check (SC-002)
 
@@ -205,7 +205,7 @@ test_cases:
 |---------|--------------|
 | `ConfigError: test_cases[0] has both 'turns' and 'input'` | FR-001 — remove one. |
 | `ConfigError: invalid regex ...` at load | Malformed pattern; fix the regex. |
-| `ConfigError: cannot import 'my_benchmarks.convfinqa'` | Grader module not on PYTHONPATH; `pip install -e .` your benchmark repo. |
+| `ConfigError: cannot import 'my_benchmarks'` | Grader module not on PYTHONPATH; `pip install -e .` your benchmark repo. |
 | Turn 2 asks about "2008" but agent replies about 2009 | Your backend may be ignoring conversation state. Verify with SK+Claude dual smoke per SC-010. |
 | `parallel_test_cases=8` but test still runs serially | Check that `ExecutionConfig.parallel_test_cases` appears in the CLI > YAML > env resolution — e.g. pass `--parallel-test-cases 8`. |
 
