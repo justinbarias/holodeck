@@ -4,10 +4,22 @@ This module defines test case and file input models used in agent.yaml
 configuration for specifying test scenarios.
 """
 
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
+from holodeck.lib.errors import ConfigError
 from holodeck.models.evaluation import (
     CodeMetric,
     EvaluationMetric,
@@ -15,9 +27,143 @@ from holodeck.models.evaluation import (
     RAGMetric,
 )
 
-# TODO(US3): widen to object form {name, args?, count?}. For US1 the
-# expected_tools list accepts bare tool-name strings only.
-ExpectedTool = str
+# ----------------------------------------------------------------------
+# ArgMatcher — discriminated by shape (data-model.md §3)
+# ----------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LiteralMatcher:
+    """Literal value — exact equality (int↔float numeric equivalence)."""
+
+    value: Any
+
+
+@dataclass(frozen=True)
+class FuzzyMatcher:
+    """Case/whitespace/separator-tolerant, numeric-aware match."""
+
+    pattern: str
+
+
+@dataclass(frozen=True)
+class RegexMatcher:
+    """Anchored regex full-match over `str(actual)`."""
+
+    compiled: re.Pattern[str]
+
+
+ArgMatcher = LiteralMatcher | FuzzyMatcher | RegexMatcher
+
+
+def _coerce_arg_matcher(value: Any, field_path: str) -> ArgMatcher:
+    """Coerce a raw YAML/JSON value to an ArgMatcher.
+
+    Shape-discriminated (not key-discriminated) — a dict with exactly one of
+    `fuzzy` / `regex` becomes a FuzzyMatcher / RegexMatcher; anything else
+    (scalar, list, dict-without-matcher-keys) is a LiteralMatcher.
+
+    Args:
+        value: Raw argument specifier.
+        field_path: Dotted path used in error messages.
+
+    Returns:
+        The resolved matcher instance.
+
+    Raises:
+        ConfigError: If the dict has both matcher keys, an unknown key, or an
+            uncompilable regex.
+    """
+    if isinstance(value, (LiteralMatcher, FuzzyMatcher, RegexMatcher)):
+        return value
+    if isinstance(value, dict):
+        keys = set(value.keys())
+        matcher_keys = keys & {"fuzzy", "regex"}
+        if "fuzzy" in keys and "regex" in keys:
+            raise ConfigError(
+                field_path,
+                "matcher dict must have exactly one of 'fuzzy' or 'regex', not both",
+            )
+        if matcher_keys:
+            # Exactly one matcher key — reject any extra keys.
+            other_keys = keys - matcher_keys
+            if other_keys:
+                raise ConfigError(
+                    field_path,
+                    f"matcher dict has unknown keys: {sorted(other_keys)}",
+                )
+            if "fuzzy" in keys:
+                pattern = value["fuzzy"]
+                if not isinstance(pattern, str):
+                    raise ConfigError(
+                        f"{field_path}.fuzzy",
+                        f"fuzzy pattern must be a string, got {type(pattern).__name__}",
+                    )
+                return FuzzyMatcher(pattern=pattern)
+            # regex
+            pattern = value["regex"]
+            if not isinstance(pattern, str):
+                raise ConfigError(
+                    f"{field_path}.regex",
+                    f"regex pattern must be a string, got {type(pattern).__name__}",
+                )
+            try:
+                compiled = re.compile(pattern)
+            except re.error as exc:
+                raise ConfigError(
+                    f"{field_path}.regex",
+                    f"cannot compile regex: {exc}",
+                ) from exc
+            return RegexMatcher(compiled=compiled)
+    # Literal — scalar, list, dict without matcher keys.
+    return LiteralMatcher(value=value)
+
+
+# ----------------------------------------------------------------------
+# ExpectedTool (data-model.md §2)
+# ----------------------------------------------------------------------
+
+
+class ExpectedTool(BaseModel):
+    """Object form of an expected tool assertion (FR-003).
+
+    A bare string like `"subtract"` is promoted to
+    `ExpectedTool(name="subtract", args=None, count=1)` by the list
+    pre-validator on the enclosing model, but this class itself only holds
+    the object shape.
+    """
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    name: str = Field(..., description="Tool name — case-sensitive substring match")
+    args: dict[str, Any] | None = Field(
+        None, description="Per-arg matcher map (FR-004)"
+    )
+    count: int = Field(1, ge=1, description="Minimum number of matching calls")
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("name must be non-empty")
+        return v
+
+    @model_validator(mode="after")
+    def _coerce_args(self) -> ExpectedTool:
+        if self.args is None:
+            return self
+        coerced: dict[str, ArgMatcher] = {}
+        for key, raw in self.args.items():
+            coerced[key] = _coerce_arg_matcher(raw, f"args.{key}")
+        # Mutate in place — args is Any-typed on the model, but stores
+        # ArgMatcher dataclass values after validation.
+        object.__setattr__(self, "args", coerced)
+        return self
+
+
+# ----------------------------------------------------------------------
+# FileInput (unchanged)
+# ----------------------------------------------------------------------
 
 
 class FileInput(BaseModel):
@@ -76,6 +222,118 @@ class FileInput(BaseModel):
             raise ValueError("Must provide either 'path' or 'url'")
 
 
+# ----------------------------------------------------------------------
+# expected_tools list normalization
+# ----------------------------------------------------------------------
+
+
+def _normalize_expected_tools_list(
+    value: Any, location: str
+) -> list[str | ExpectedTool] | None:
+    """Coerce a raw `expected_tools` list into its normalized form.
+
+    Each element is kept as a `str` (legacy) or parsed into `ExpectedTool`.
+    Error messages include the provided `location` (e.g. test-case name +
+    field path).
+    """
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError("expected_tools must be a list")
+    out: list[str | ExpectedTool] = []
+    for idx, raw in enumerate(value):
+        path = f"{location}[{idx}]"
+        if isinstance(raw, (str, ExpectedTool)):
+            out.append(raw)
+        elif isinstance(raw, dict):
+            try:
+                et = _build_expected_tool(raw, path)
+            except ConfigError:
+                raise
+            except Exception as exc:
+                raise ConfigError(path, str(exc)) from exc
+            out.append(et)
+        else:
+            raise ConfigError(
+                path,
+                f"expected_tools entries must be str or object, "
+                f"got {type(raw).__name__}",
+            )
+    return out
+
+
+def _build_expected_tool(raw: dict[str, Any], path: str) -> ExpectedTool:
+    """Build an ExpectedTool, translating inner failures into path-prefixed
+    ConfigErrors."""
+    name = raw.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ConfigError(f"{path}.name", "name must be a non-empty string")
+    count = raw.get("count", 1)
+    if not isinstance(count, int) or count < 1:
+        raise ConfigError(f"{path}.count", "count must be an integer >= 1")
+    args_raw = raw.get("args")
+    args: dict[str, ArgMatcher] | None = None
+    if args_raw is not None:
+        if not isinstance(args_raw, dict):
+            raise ConfigError(f"{path}.args", "args must be a mapping")
+        args = {}
+        for key, raw_val in args_raw.items():
+            args[key] = _coerce_arg_matcher(raw_val, f"{path}.args.{key}")
+    # Allowed keys check (extra="forbid" equivalent) before building.
+    allowed = {"name", "args", "count"}
+    extra = set(raw.keys()) - allowed
+    if extra:
+        raise ConfigError(path, f"unknown keys on ExpectedTool: {sorted(extra)}")
+    # Build bypassing args re-coercion.
+    et = ExpectedTool.model_construct(name=name, args=args, count=count)
+    return et
+
+
+def _serialize_expected_tools(
+    value: list[str | ExpectedTool] | None,
+) -> list[Any] | None:
+    """Dump to wire form — bare strings emit as `str`, object forms as dict.
+
+    Legacy-promoted entries (`args is None and count == 1`) emitted via
+    pre-validator path are stored as bare strings already (FR-024 guard in
+    T014a).
+    """
+    if value is None:
+        return None
+    out: list[Any] = []
+    for entry in value:
+        if isinstance(entry, str):
+            out.append(entry)
+        elif isinstance(entry, ExpectedTool):
+            obj: dict[str, Any] = {"name": entry.name}
+            if entry.args is not None:
+                obj["args"] = _dump_args(entry.args)
+            if entry.count != 1:
+                obj["count"] = entry.count
+            out.append(obj)
+    return out
+
+
+def _dump_args(args: dict[str, Any]) -> dict[str, Any]:
+    """Dump args dict — ArgMatcher dataclasses → wire shapes."""
+    out: dict[str, Any] = {}
+    for key, val in args.items():
+        if isinstance(val, LiteralMatcher):
+            out[key] = val.value
+        elif isinstance(val, FuzzyMatcher):
+            out[key] = {"fuzzy": val.pattern}
+        elif isinstance(val, RegexMatcher):
+            out[key] = {"regex": val.compiled.pattern}
+        else:
+            out[key] = val
+    return out
+
+
+# ----------------------------------------------------------------------
+# Turn (data-model.md §1)
+# ----------------------------------------------------------------------
+
+
 class Turn(BaseModel):
     """Single exchange within a multi-turn test case (data-model.md §1).
 
@@ -84,17 +342,17 @@ class Turn(BaseModel):
     truth, expected tools, files, retrieval context, and metric overrides.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     input: str = Field(..., description="User query for this turn")
     ground_truth: str | None = Field(
         None, description="Expected output for this turn (non-empty if provided)"
     )
-    expected_tools: list[ExpectedTool] | None = Field(
+    expected_tools: list[str | ExpectedTool] | None = Field(
         None,
         description=(
-            "Tools expected to be called during this turn. "
-            "TODO(US3): widen element type to str | ExpectedToolObject."
+            "Tools expected to be called during this turn. Mixed list of "
+            "bare strings (legacy name-only) and ExpectedTool objects (US3)."
         ),
     )
     files: list[FileInput] | None = Field(
@@ -132,6 +390,22 @@ class Turn(BaseModel):
             raise ValueError("Maximum 10 files per turn")
         return v
 
+    @field_validator("expected_tools", mode="before")
+    @classmethod
+    def _normalize_expected_tools(cls, v: Any) -> Any:
+        return _normalize_expected_tools_list(v, "expected_tools")
+
+    @field_serializer("expected_tools")
+    def _dump_expected_tools(
+        self, value: list[str | ExpectedTool] | None
+    ) -> list[Any] | None:
+        return _serialize_expected_tools(value)
+
+
+# ----------------------------------------------------------------------
+# TestCaseModel
+# ----------------------------------------------------------------------
+
 
 class TestCaseModel(BaseModel):
     """Test case for agent evaluation.
@@ -140,14 +414,14 @@ class TestCaseModel(BaseModel):
     `input`) or multi-turn (with `turns`), but not both.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     name: str | None = Field(None, description="Test case identifier")
     input: str | None = Field(
         None,
         description="User query or prompt (required when `turns` is absent)",
     )
-    expected_tools: list[str] | None = Field(
+    expected_tools: list[str | ExpectedTool] | None = Field(
         None, description="Tools expected to be called"
     )
     ground_truth: str | None = Field(None, description="Expected output for comparison")
@@ -199,8 +473,52 @@ class TestCaseModel(BaseModel):
             raise ValueError("Maximum 10 files per test case")
         return v
 
+    @field_validator("expected_tools", mode="before")
+    @classmethod
+    def _normalize_top_level_expected_tools(cls, v: Any) -> Any:
+        return _normalize_expected_tools_list(v, "expected_tools")
+
+    @field_serializer("expected_tools")
+    def _dump_expected_tools(
+        self, value: list[str | ExpectedTool] | None
+    ) -> list[Any] | None:
+        return _serialize_expected_tools(value)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _prefix_path_for_turn_tools(cls, data: Any) -> Any:
+        """Enrich nested-turn validation errors with test-case name + full
+        `turns[i].expected_tools[j]...` path (FR-025).
+        """
+        if not isinstance(data, dict):
+            return data
+        name = data.get("name")
+        turns = data.get("turns")
+        if not isinstance(turns, list):
+            return data
+        # Walk turns and normalize expected_tools with precise paths so
+        # errors include the surrounding test case.
+        tc_label = name if isinstance(name, str) and name.strip() else None
+        for i, t in enumerate(turns):
+            if not isinstance(t, dict):
+                continue
+            et = t.get("expected_tools")
+            if et is None:
+                continue
+            field_base = f"turns[{i}].expected_tools"
+            try:
+                _normalize_expected_tools_list(et, field_base)
+            except ConfigError as exc:
+                # Re-raise with test-case context embedded in the message.
+                prefix = f"[{tc_label}] " if tc_label else ""
+                raise ConfigError(
+                    exc.field,
+                    f"{prefix}{exc.message}",
+                ) from exc
+        return data
+
     @model_validator(mode="after")
-    def _validate_single_vs_multi_turn(self) -> "TestCaseModel":
+    def _validate_single_vs_multi_turn(self) -> TestCaseModel:
         """Enforce mutual-exclusion rules from test-case-schema.md §2."""
         if self.turns is not None:
             if len(self.turns) == 0:

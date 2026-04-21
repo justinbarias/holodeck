@@ -214,9 +214,12 @@ class TestResult(BaseModel):
             "no tools were invoked."
         ),
     )
-    expected_tools: list[str] | None = Field(
+    expected_tools: list[Any] | None = Field(
         None,
-        description="Expected tools that should be called",
+        description=(
+            "Expected tools that should be called — bare strings (legacy) or "
+            "serialized ExpectedTool objects (US3). Mixed lists allowed."
+        ),
     )
     tools_matched: bool | None = Field(
         None,

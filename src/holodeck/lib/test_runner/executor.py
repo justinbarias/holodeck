@@ -66,6 +66,10 @@ from holodeck.lib.test_runner.eval_kwargs_builder import (
     EvalKwargsBuilder,
     build_retrieval_context_from_tools,
 )
+from holodeck.lib.test_runner.tool_arg_matcher import (
+    _tool_name_matches,
+    evaluate_expected_tools,
+)
 from holodeck.lib.test_runner.tool_invocation_builder import pair_tool_calls
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
@@ -78,7 +82,7 @@ from holodeck.models.evaluation import (
 )
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.observability import TracingConfig
-from holodeck.models.test_case import TestCaseModel, Turn
+from holodeck.models.test_case import ExpectedTool, TestCaseModel, Turn
 from holodeck.models.test_result import (
     MetricResult,
     ProcessedFileInput,
@@ -274,7 +278,9 @@ def validate_tool_calls(
 
     def is_expected_found(expected_tool: str) -> bool:
         """Check if expected tool name is found in any actual tool call."""
-        return any(expected_tool in actual_tool for actual_tool in actual)
+        return any(
+            _tool_name_matches(expected_tool, actual_tool) for actual_tool in actual
+        )
 
     matched = all(is_expected_found(exp) for exp in expected)
 
@@ -283,6 +289,83 @@ def validate_tool_calls(
     )
 
     return matched
+
+
+def _format_args_brief(args: dict[str, Any]) -> str:
+    """Short human-readable rendering of `args_asserted` for error lines."""
+    parts: list[str] = []
+    for key, val in args.items():
+        if isinstance(val, dict) and "fuzzy" in val:
+            parts.append(f"{key}≈{val['fuzzy']}")
+        elif isinstance(val, dict) and "regex" in val:
+            parts.append(f"{key}~{val['regex']}")
+        else:
+            parts.append(f"{key}={val}")
+    return ", ".join(parts)
+
+
+def _serialize_expected_tools_for_turn_result(
+    expected: list[str | ExpectedTool] | None,
+) -> list[Any] | None:
+    """Dump `expected_tools` to TurnResult wire shape (str | dict).
+
+    Mirrors the serialization TestCaseModel uses on dump so dashboards and
+    reporters see the same normalized structure.
+    """
+    if expected is None:
+        return None
+    out: list[Any] = []
+    for entry in expected:
+        if isinstance(entry, str):
+            out.append(entry)
+        elif isinstance(entry, ExpectedTool):
+            obj: dict[str, Any] = {"name": entry.name}
+            if entry.args is not None:
+                args_dump: dict[str, Any] = {}
+                from holodeck.models.test_case import (
+                    FuzzyMatcher,
+                    LiteralMatcher,
+                    RegexMatcher,
+                )
+
+                for k, v in entry.args.items():
+                    if isinstance(v, LiteralMatcher):
+                        args_dump[k] = v.value
+                    elif isinstance(v, FuzzyMatcher):
+                        args_dump[k] = {"fuzzy": v.pattern}
+                    elif isinstance(v, RegexMatcher):
+                        args_dump[k] = {"regex": v.compiled.pattern}
+                    else:
+                        args_dump[k] = v
+                obj["args"] = args_dump
+            if entry.count != 1:
+                obj["count"] = entry.count
+            out.append(obj)
+    return out
+
+
+def _partition_expected_tools(
+    expected: list[str | ExpectedTool] | None,
+) -> tuple[list[str], list[ExpectedTool]]:
+    """Split an `expected_tools` list into fast-path names vs object entries.
+
+    Per tasks-us3.md T027a: bare strings plus any `ExpectedTool(args=None,
+    count==1)` go to the fast-path name-only validator; any `ExpectedTool`
+    with `args is not None` or `count > 1` is routed through the arg-matcher.
+    """
+    if expected is None:
+        return [], []
+    names: list[str] = []
+    objects: list[ExpectedTool] = []
+    for entry in expected:
+        if isinstance(entry, str):
+            names.append(entry)
+        elif isinstance(entry, ExpectedTool):
+            if entry.args is None and entry.count == 1:
+                names.append(entry.name)
+            else:
+                objects.append(entry)
+    return names, objects
 
 
 class TestExecutor:
@@ -810,13 +893,41 @@ class TestExecutor:
             )
             errors.append(f"Agent invocation error: {str(e)}")
 
-        # Step 4: Validate tool calls
+        # Step 4: Validate tool calls. Widened to accept mixed str | ExpectedTool
+        # lists: name-only + promoted-legacy go through the fast path; richer
+        # ExpectedTool forms run through the arg matcher (US3 T027a).
         if test_case.expected_tools:
             logger.debug(
                 f"Validating tool calls: expected={test_case.expected_tools}, "
                 f"actual={tool_calls}"
             )
-        tools_matched = validate_tool_calls(tool_calls, test_case.expected_tools)
+        fast_names_st, object_expected_st = _partition_expected_tools(
+            test_case.expected_tools
+        )
+        try:
+            paired_invocations_for_args = pair_tool_calls(
+                raw_tool_calls, tool_results, backend_kind=backend_kind
+            )
+        except TypeError:
+            paired_invocations_for_args = []
+        fast_matched_st = validate_tool_calls(
+            tool_calls, fast_names_st if fast_names_st else None
+        )
+        arg_matched_st, arg_details_st = evaluate_expected_tools(
+            list(object_expected_st), paired_invocations_for_args
+        )
+        if test_case.expected_tools is None:
+            tools_matched = None
+        else:
+            name_ok = fast_matched_st is not False
+            tools_matched = bool(name_ok and arg_matched_st)
+
+        for detail in arg_details_st or []:
+            if detail["matched_call_index"] == -1:
+                args_desc = _format_args_brief(detail["args_asserted"])
+                tool_name = detail["expected_tool"]
+                reason = detail["unmatched_reason"] or "no matching call"
+                errors.append(f"expected {tool_name}({args_desc}): {reason}")
 
         # Step 5: Run evaluations
         logger.debug(f"Running evaluations for test: {test_case.name}")
@@ -862,7 +973,9 @@ class TestExecutor:
             agent_response=agent_response,
             tool_calls=tool_calls,
             tool_invocations=tool_invocations,
-            expected_tools=test_case.expected_tools,
+            expected_tools=_serialize_expected_tools_for_turn_result(
+                test_case.expected_tools
+            ),
             tools_matched=tools_matched,
             metric_results=metric_results,
             ground_truth=test_case.ground_truth,
@@ -1075,20 +1188,43 @@ class TestExecutor:
         except TypeError:
             tool_invocations = []
 
-        # Per-turn tool-name assertion (US2 T020–T021). Scoped to this turn's
-        # calls only — cross-turn credit is explicitly disallowed (FR-011).
-        tools_matched = validate_tool_calls(tool_names, turn.expected_tools)
-        if tools_matched is False and turn.expected_tools:
+        # Per-turn tool-name assertion (US2 T020–T021, US3 T027a–T030).
+        # Scoped to this turn's calls only — cross-turn credit is disallowed
+        # (FR-011). Fast-path names + object-form matchers evaluated together.
+        fast_names, object_expected = _partition_expected_tools(turn.expected_tools)
+        fast_matched = validate_tool_calls(
+            tool_names, fast_names if fast_names else None
+        )
+        arg_matched, arg_details = evaluate_expected_tools(
+            [et for et in (turn.expected_tools or []) if isinstance(et, ExpectedTool)],
+            tool_invocations,
+        )
+        if turn.expected_tools is None:
+            tools_matched: bool | None = None
+        else:
+            name_ok = fast_matched is not False
+            tools_matched = bool(name_ok and arg_matched)
+        arg_match_details_payload = arg_details if arg_details else None
+
+        if fast_matched is False and fast_names:
             missing = [
                 exp
-                for exp in turn.expected_tools
-                if not any(exp in actual for actual in tool_names)
+                for exp in fast_names
+                if not any(_tool_name_matches(exp, actual) for actual in tool_names)
             ]
             if missing:
                 missing_str = ", ".join(missing)
                 errors.append(
                     f"expected tool(s) not called in this turn: {missing_str}"
                 )
+
+        # Per-assertion summary lines for the reporter (T030).
+        for detail in arg_details or []:
+            if detail["matched_call_index"] == -1:
+                args_desc = _format_args_brief(detail["args_asserted"])
+                tool_name = detail["expected_tool"]
+                reason = detail["unmatched_reason"] or "no matching call"
+                errors.append(f"expected {tool_name}({args_desc}): {reason}")
 
         # Per-turn evaluations (US2 T009c). Skip if the turn errored before
         # producing a response — metric_results stays empty and the 4-conjunct
@@ -1127,11 +1263,13 @@ class TestExecutor:
             input=turn.input,
             response=response,
             ground_truth=turn.ground_truth,
-            expected_tools=turn.expected_tools,
+            expected_tools=_serialize_expected_tools_for_turn_result(
+                turn.expected_tools
+            ),
             tool_calls=tool_names,
             tool_invocations=tool_invocations,
             tools_matched=tools_matched,
-            arg_match_details=None,
+            arg_match_details=arg_match_details_payload,
             metric_results=metric_results,
             passed=passed,
             execution_time_ms=elapsed_ms,
