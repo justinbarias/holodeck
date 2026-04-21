@@ -32,7 +32,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from holodeck.models.eval_run import EvalRun
-from holodeck.models.test_result import MetricResult, TestResult, ToolInvocation
+from holodeck.models.test_result import (
+    MetricResult,
+    TestResult,
+    ToolInvocation,
+    TurnResult,
+)
 
 LARGE_TOOL_RESULT_BYTES: int = 500
 """Tool-result panels collapse by default when their size exceeds this many
@@ -54,6 +59,9 @@ class CaseSummary:
     geval_score: float | None
     rag_avg_score: float | None
     tools_called_count: int
+    turns_total: int | None = None
+    turns_passed: int | None = None
+    turns_failed: int | None = None
 
 
 @dataclass(frozen=True)
@@ -73,12 +81,36 @@ class ToolCallView:
 
 
 @dataclass(frozen=True)
+class TurnView:
+    """Per-turn projection inside a multi-turn conversation (US5).
+
+    Stub populated by :func:`_turn_view_from_result` when
+    ``TestResult.turns`` is present. Legacy single-turn cases leave
+    ``ConversationView.turns`` as ``None``.
+    """
+
+    turn_index: int = 0
+    input: str = ""
+    response: str | None = None
+    tool_invocations: list[ToolCallView] = field(default_factory=list)
+    metric_results: list[MetricRow] = field(default_factory=list)
+    tools_matched: bool | None = None
+    arg_match_details: list[dict[str, Any]] | None = None
+    errors: list[str] = field(default_factory=list)
+    skipped: bool = False
+    execution_time_ms: int = 0
+    token_usage: dict[str, int] | None = None
+    state: str = "ran"
+
+
+@dataclass(frozen=True)
 class ConversationView:
     """User / tool-calls / assistant projection for the detail panel."""
 
     user: str
     assistant: str
     tool_calls: list[ToolCallView]
+    turns: list[TurnView] | None = None
 
 
 @dataclass(frozen=True)
@@ -188,6 +220,13 @@ def list_case_summaries(run: EvalRun) -> list[CaseSummary]:
 
     out: list[CaseSummary] = []
     for case in run.report.results:
+        turns_total: int | None = None
+        turns_passed: int | None = None
+        turns_failed: int | None = None
+        if case.turns is not None:
+            turns_total = len(case.turns)
+            turns_passed = sum(1 for t in case.turns if t.passed)
+            turns_failed = turns_total - turns_passed
         out.append(
             CaseSummary(
                 name=case.test_name or "",
@@ -195,6 +234,9 @@ def list_case_summaries(run: EvalRun) -> list[CaseSummary]:
                 geval_score=_geval_score(case),
                 rag_avg_score=_rag_avg(case),
                 tools_called_count=len(case.tool_calls or []),
+                turns_total=turns_total,
+                turns_passed=turns_passed,
+                turns_failed=turns_failed,
             )
         )
     return out
@@ -249,12 +291,17 @@ def _build_conversation(
     case_name: str,
     conversations_map: dict[str, Any],
 ) -> ConversationView:
+    turns: list[TurnView] | None = None
+    if case.turns is not None:
+        turns = [_turn_view_from_result(t) for t in case.turns]
+
     # Precedence 1: real-run mode with ToolInvocation list (authoritative).
     if case.tool_invocations:
         return ConversationView(
             user=case.test_input or "",
             assistant=case.agent_response or "",
             tool_calls=[_tool_view_from_invocation(i) for i in case.tool_invocations],
+            turns=turns,
         )
 
     # Precedence 2: seed / dev enrichment via conversations_map.
@@ -267,6 +314,7 @@ def _build_conversation(
             user=str(entry.get("user", case.test_input or "")),
             assistant=str(entry.get("assistant", case.agent_response or "")),
             tool_calls=[_tool_view_from_seed(t) for t in tool_entries],
+            turns=turns,
         )
 
     # Precedence 3: legacy real-run with name-only tool_calls.
@@ -275,6 +323,7 @@ def _build_conversation(
             user=case.test_input or "",
             assistant=case.agent_response or "",
             tool_calls=[_legacy_tool_placeholder(n) for n in case.tool_calls],
+            turns=turns,
         )
 
     # Precedence 4: nothing at all — still surface input/response if present.
@@ -282,6 +331,40 @@ def _build_conversation(
         user=case.test_input or "",
         assistant=case.agent_response or "",
         tool_calls=[],
+        turns=turns,
+    )
+
+
+def _turn_view_from_result(turn: TurnResult) -> TurnView:
+    """Project a :class:`TurnResult` into the flat :class:`TurnView` the
+    Dash renderer consumes. Reuses existing serializers so the per-turn
+    block renders through the same helpers as the single-turn path."""
+
+    tool_views = [_tool_view_from_invocation(inv) for inv in turn.tool_invocations]
+    metric_rows = [_metric_row(m) for m in turn.metric_results]
+    token_usage: dict[str, int] | None = None
+    if turn.token_usage is not None:
+        tu = turn.token_usage
+        token_usage = {
+            "prompt_tokens": tu.prompt_tokens,
+            "completion_tokens": tu.completion_tokens,
+            "total_tokens": tu.total_tokens,
+            "cache_creation_tokens": tu.cache_creation_tokens,
+            "cache_read_tokens": tu.cache_read_tokens,
+        }
+    return TurnView(
+        turn_index=turn.turn_index,
+        input=turn.input,
+        response=turn.response,
+        tool_invocations=tool_views,
+        metric_results=metric_rows,
+        tools_matched=turn.tools_matched,
+        arg_match_details=turn.arg_match_details,
+        errors=list(turn.errors),
+        skipped=turn.skipped,
+        execution_time_ms=turn.execution_time_ms,
+        token_usage=token_usage,
+        state="skipped" if turn.skipped else "ran",
     )
 
 
