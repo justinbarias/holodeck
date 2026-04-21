@@ -207,6 +207,7 @@ Per-turn outcome stored on `TestResult.turns`.
 | `token_usage` | `TokenUsage \| None` | No | Usage for this turn (sums into test-case rollup). |
 | `errors` | `list[str]` | No | Per-turn errors (timeout, backend error, grader exception). |
 | `skipped` | `bool` | No | `true` if the session became unrecoverable before this turn ran. |
+| `grader_details` | `dict[str, Any] \| None` | No | Populated from `GraderResult.details`, keyed by `metric_name`. Surfaces grader-specific payload (e.g., program-tree diff) to dashboards. Default `None`. See contracts/code-grader-contract.md §7. |
 
 ---
 
@@ -226,6 +227,7 @@ Adds one optional field; all others unchanged.
 | `agent_response` | `turns[-1].response` (final turn) |
 | `tool_calls` | Flattened in turn order (legacy field) |
 | `tool_invocations` | Flattened in turn order |
+| `processed_files` | Flattened in turn order; per-turn `files` inputs processed via `_prepare_agent_input` and concatenated for test-case-level display. |
 | `expected_tools` | Union of all turn `expected_tools` (for dashboard display) |
 | `tools_matched` | `all(turn.tools_matched is not False for turn in turns)` — `None` if no turn asserted tools |
 | `token_usage` | Element-wise sum of `turn.token_usage` (FR-007) |

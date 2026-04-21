@@ -129,6 +129,31 @@ The eval-run dashboard (feature 031) and the CLI report both render test-case re
 
 ---
 
+### User Story 6 - Sample Agent: Financial Assistant Backed by ConvFinQA (Priority: P3)
+
+A first-time HoloDeck user clones the repo, opens `sample/financial-assistant/`, and within 15 minutes has a working financial-analyst agent answering a multi-turn conversation drawn from real ConvFinQA dialogues. The sample ships a curated subset of ConvFinQA (10 dev-split examples, committed under `data/convfinqa_subset.json`), a **user-land** converter script (`scripts/convert_convfinqa.py`) that transforms raw ConvFinQA records into HoloDeck multi-turn test cases, three function tools (`lookup`, `subtract`, `divide`), and an `agent.yaml` exercising `metric: numeric`, `expected_tools` with fuzzy arg matchers, and one illustrative `type: code` grader stub (`turn_program_equivalence`).
+
+**Why this priority**: Demonstrates every new surface from US1–US4 against a real benchmark dataset. Without a sample, the feature is abstract; with it, a new user runs `holodeck test` in the sample directory and sees the multi-turn report on day one (validates SC-001 against real ConvFinQA data, not a synthetic fixture). Ships after US1–US4 because it is end-to-end validation of their combined surface; parallel-compatible with US5 dashboard work (the sample's runs feed the dashboard). The converter stays in `sample/financial-assistant/scripts/` — user-land code, not a core HoloDeck dependency, consistent with Assumption A10 and the existing §Out of Scope bullet on corpus importers.
+
+**Independent Test**: From a fresh checkout:
+```
+cd sample/financial-assistant && holodeck test
+```
+Verify: (a) 10 multi-turn test cases execute end-to-end; (b) each prints per-turn input / response / tool-invocations / metric score; (c) at least one test case exercises `numeric` AND `expected_tools` with fuzzy matchers AND a `type: code` grader; (d) `agent.yaml` loads without error on Ollama backend (and on OpenAI / Anthropic when the respective API keys are present).
+
+**Acceptance Scenarios**:
+
+1. **Given** `sample/financial-assistant/agent.yaml` exists with 10 multi-turn test cases sourced from `data/convfinqa_subset.json`, **When** `holodeck test` runs, **Then** all 10 cases execute, per-turn reports are emitted, and the exit code reflects pass/fail of the full run (no crashes, no config errors).
+2. **Given** `sample/financial-assistant/scripts/convert_convfinqa.py` exists, **When** a user runs `python scripts/convert_convfinqa.py --source <path-to-convfinqa_dataset.json> --split dev --n 10 --out data/convfinqa_subset.json`, **Then** it emits a YAML/JSON-ready list of multi-turn test cases (one per dialogue) matching the schema in `contracts/test-case-schema.md` (turns with per-turn `ground_truth`, per-turn `expected_tools`, and optional `turn_program` passed through via `turn_config` for the code grader).
+3. **Given** at least one test case in the sample uses `expected_tools: [{name: "subtract", args: {a: {fuzzy: "..."}, b: {fuzzy: "..."}}}]`, **When** the agent calls `subtract` with matching arg values, **Then** the turn passes; with mismatching values, **Then** it fails and the report pinpoints which arg mismatched (SC-006 on a real run).
+4. **Given** one test case attaches a `type: code` grader referencing `sample.financial_assistant.graders:turn_program_equivalence`, **When** the grader is importable at load time, **Then** the sample runs green; **When** the grader path is broken, **Then** `holodeck test` exits with exit code 2 (config error) naming the bad path (FR-025).
+5. **Given** `sample/financial-assistant/README.md` explains setup and running, **When** a first-time user follows it from `git clone` to first green run, **Then** elapsed time is ≤ 15 minutes (SC-001 extended to cover the sample).
+6. **Given** the sample's default backend is Ollama, **When** the user sets `${ANTHROPIC_API_KEY}` and switches `model.provider: anthropic` in `agent.yaml`, **Then** the same test cases run green on the Claude Agent SDK backend too (real-dataset counterpart to SC-010).
+
+**Why this priority ships after US1–US4**: US1 provides multi-turn execution; US2 provides per-turn assertions; US3 provides arg matchers; US4 provides the `numeric` + `code` evaluators. Without all four, the sample cannot demonstrate the full surface. US5 and US6 can ship in either order — they are independent.
+
+---
+
 ### Edge Cases
 
 - **Empty turns list**: A test case with `turns: []` is a configuration error and must be rejected at load time with a clear message.
@@ -216,14 +241,14 @@ The eval-run dashboard (feature 031) and the CLI report both render test-case re
 
 ## Out of Scope
 
-- Importing ConvFinQA or any other corpus directly. A one-off conversion utility can be added later but is not part of this feature.
+- Importing ConvFinQA or any other corpus directly into the core HoloDeck package. User-land conversion scripts shipped inside a sample agent (e.g., `sample/financial-assistant/scripts/convert_convfinqa.py` per US6) are allowed and consistent with Assumption A10 — the core package stays dataset-agnostic.
 - Sandboxing or resource-limiting code graders. They run in-process with full Python privileges (see A9). Sandboxing can be a future hardening feature if demand exists.
 - Shipping a built-in ConvFinQA `turn_program` equivalence grader. Reference implementations may be provided as examples under `docs/` or a user-land `examples/` repo, but the HoloDeck package itself stays dataset-agnostic.
 - Automatic generation of `turns` from prior single-turn runs.
 - Assertions on the **order** of tool calls within a turn. Order-sensitive assertions can be a future extension.
 - Halt-on-first-failing-turn execution mode.
 - Cross-turn assertions (e.g., "turn 4 must reference the answer from turn 3"). The session already preserves context; evaluating cross-turn derivation is a future research question.
-- Exact-count tool-call assertions (`count: 2`). Assumed default is "at least one" (A5).
+- Exact-count (exactly-N) tool-call assertions. `count: N` on an `expected_tools` entry is a **lower bound** (turn passes when ≥ N calls in the turn satisfy the matcher, default N=1 per A5). Strict "exactly-N" semantics are the out-of-scope variant and a future extension.
 
 ## Complexity Tracking
 
