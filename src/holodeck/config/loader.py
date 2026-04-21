@@ -107,6 +107,68 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
             base[key] = override_value
 
 
+def _resolve_test_cases_file(agent_config: dict[str, Any], base_dir: Path) -> None:
+    """Resolve an external `test_cases_file` reference into inline `test_cases`.
+
+    Loads the referenced YAML (relative to the agent.yaml directory), applies
+    env-var substitution, and sets `agent_config["test_cases"]` in place. The
+    file may be either a top-level list of test-case dicts or a dict carrying
+    a `test_cases:` key. Mutually exclusive with an inline `test_cases` entry.
+
+    Args:
+        agent_config: Parsed agent-config dict, mutated in place.
+        base_dir: Directory of the agent.yaml, used to resolve relative paths.
+
+    Raises:
+        ConfigError: If both `test_cases_file` and `test_cases` are provided,
+            the referenced file is missing/invalid, or the parsed payload is
+            not a list of test cases.
+    """
+    ref = agent_config.pop("test_cases_file", None)
+    if ref is None:
+        return
+    if agent_config.get("test_cases") is not None:
+        raise ConfigError(
+            "test_cases_file",
+            "Cannot specify both 'test_cases' and 'test_cases_file'; " "choose one.",
+        )
+    if not isinstance(ref, str) or not ref.strip():
+        raise ConfigError(
+            "test_cases_file",
+            "'test_cases_file' must be a non-empty string path.",
+        )
+    ref_path = Path(ref)
+    if not ref_path.is_absolute():
+        ref_path = (base_dir / ref_path).resolve()
+    try:
+        payload = _read_yaml_with_env_substitution(ref_path)
+    except OSError as e:
+        raise ConfigError(
+            "test_cases_file",
+            f"test_cases_file not found at {ref_path}: {e}",
+        ) from e
+    except yaml.YAMLError as e:
+        raise ConfigError(
+            "test_cases_file",
+            f"Failed to parse test_cases_file {ref_path}: {e}",
+        ) from e
+    if payload is None:
+        agent_config["test_cases"] = []
+        return
+    if isinstance(payload, dict) and "test_cases" in payload:
+        cases = payload["test_cases"]
+    else:
+        cases = payload
+    if not isinstance(cases, list):
+        raise ConfigError(
+            "test_cases_file",
+            f"test_cases_file {ref_path} must contain a list of test cases "
+            f"(optionally nested under a 'test_cases:' key); got "
+            f"{type(cases).__name__}.",
+        )
+    agent_config["test_cases"] = cases
+
+
 def _read_yaml_with_env_substitution(path: Path) -> dict[str, Any] | None:
     """Read a YAML file with environment variable substitution.
 
@@ -288,6 +350,11 @@ class ConfigLoader:
 
         # Merge configurations with proper precedence
         merged_config = self.merge_configs(agent_config, config)
+
+        # Resolve external test_cases_file reference (if any) into inline
+        # `test_cases` before schema validation. Agent model uses
+        # `extra="forbid"`, so the key must be removed from the dict.
+        _resolve_test_cases_file(merged_config, path.parent)
 
         # Validate against Agent schema
         try:
