@@ -70,6 +70,14 @@ class ExecutionConfig(BaseModel):
     cache_dir: str | None = Field(default=None, description="Cache directory path")
     verbose: bool | None = Field(default=None, description="Verbose output mode")
     quiet: bool | None = Field(default=None, description="Quiet output mode")
+    parallel_test_cases: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Max concurrent multi-turn test cases (FR-009a). "
+            "Resolved via CLI > YAML > env > defaults (default 1)."
+        ),
+    )
 
 
 class GlobalConfig(BaseModel):

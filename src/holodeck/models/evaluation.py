@@ -287,9 +287,46 @@ class RAGMetric(BaseModel):
         return v
 
 
+_GRADER_PATH_RE = r"^[\w.]+:[\w_]+$"
+
+
+class CodeMetric(BaseModel):
+    """User-supplied Python grader metric (data-model.md §6).
+
+    Discriminator: `type: code`. Full grader-invocation semantics land in
+    US4; this stub ensures the YAML schema / JSON payload accepts the shape
+    and the `MetricResult.kind="code"` discriminator is reachable today.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["code"] = Field(
+        default="code",
+        description="Discriminator field — always 'code' for user graders.",
+    )
+    grader: str = Field(
+        ...,
+        pattern=_GRADER_PATH_RE,
+        description="Import path 'module.path:callable_name'.",
+    )
+    threshold: float | None = Field(
+        None,
+        description="Applied if grader returns a float without explicit passed flag.",
+    )
+    enabled: bool = Field(default=True, description="Whether metric is enabled")
+    fail_on_error: bool = Field(
+        default=False,
+        description="If true, grader exceptions fail the whole test case.",
+    )
+    name: str | None = Field(
+        None,
+        description="Optional display name; defaults to the callable name.",
+    )
+
+
 # Discriminated union type for metrics - uses 'type' field as discriminator
 MetricType = Annotated[
-    EvaluationMetric | GEvalMetric | RAGMetric,
+    EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric,
     Field(discriminator="type"),
 ]
 
@@ -314,8 +351,8 @@ class EvaluationConfig(BaseModel):
     @field_validator("metrics")
     @classmethod
     def validate_metrics(
-        cls, v: list[EvaluationMetric | GEvalMetric | RAGMetric]
-    ) -> list[EvaluationMetric | GEvalMetric | RAGMetric]:
+        cls, v: list[EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric]
+    ) -> list[EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric]:
         """Validate metrics list is not empty."""
         if not v:
             raise ValueError("metrics must have at least one metric")

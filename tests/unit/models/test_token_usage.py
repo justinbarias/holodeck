@@ -18,9 +18,23 @@ class TestTokenUsage:
         assert usage.total_tokens == 30
 
     def test_invalid_total_raises_validation_error(self) -> None:
-        """Test that mismatched total_tokens raises ValidationError."""
+        """Test that total_tokens < prompt+completion raises ValidationError.
+
+        Cache tokens may push the total above strict equality, so the
+        validator enforces `>=` rather than `==` (data-model.md §10a).
+        """
         with pytest.raises(ValidationError):
-            TokenUsage(prompt_tokens=10, completion_tokens=20, total_tokens=50)
+            TokenUsage(prompt_tokens=10, completion_tokens=20, total_tokens=5)
+
+    def test_total_above_prompt_plus_completion_allowed(self) -> None:
+        """Relaxed validator: total above prompt+completion is valid (cache reads)."""
+        usage = TokenUsage(
+            prompt_tokens=10,
+            completion_tokens=20,
+            total_tokens=50,
+            cache_read_tokens=20,
+        )
+        assert usage.total_tokens == 50
 
     def test_negative_tokens_raises_validation_error(self) -> None:
         """Test that negative token values raise ValidationError."""

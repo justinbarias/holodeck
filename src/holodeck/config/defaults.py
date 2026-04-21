@@ -28,6 +28,7 @@ DEFAULT_EXECUTION_CONFIG: dict[str, int | bool | str] = {
     "cache_dir": ".holodeck/cache",
     "verbose": False,
     "quiet": False,
+    "parallel_test_cases": 1,
 }
 
 # Embedding model dimension defaults

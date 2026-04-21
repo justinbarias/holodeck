@@ -147,6 +147,15 @@ def test() -> None:
     is_flag=True,
     help="Force re-ingestion of all vector store source files",
 )
+@click.option(
+    "--parallel-test-cases",
+    type=click.IntRange(min=1),
+    default=None,
+    help=(
+        "Max concurrent multi-turn test cases (>= 1). "
+        "Overrides YAML / env / defaults. See feature 032 FR-009a."
+    ),
+)
 def run(
     agent_config: str,
     output: str | None,
@@ -155,6 +164,7 @@ def run(
     quiet: bool,
     timeout: int | None,
     force_ingest: bool,
+    parallel_test_cases: int | None,
 ) -> None:
     """Execute agent test cases with evaluation metrics.
 
@@ -172,7 +182,7 @@ def run(
     try:
         # Create execution config from CLI options
         cli_config = None
-        if timeout is not None or verbose or quiet:
+        if timeout is not None or verbose or quiet or parallel_test_cases is not None:
             cli_config = ExecutionConfig(
                 llm_timeout=timeout,
                 file_timeout=None,
@@ -181,6 +191,7 @@ def run(
                 cache_dir=None,
                 verbose=verbose or None,
                 quiet=quiet or None,
+                parallel_test_cases=parallel_test_cases,
             )
 
         # Load agent config and resolve execution config in one call

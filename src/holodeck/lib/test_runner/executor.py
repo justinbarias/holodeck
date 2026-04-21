@@ -20,6 +20,7 @@ Test execution follows a sequential flow:
 5. Generate TestReport with summary statistics
 """
 
+import asyncio
 import logging
 import time
 from collections.abc import Callable
@@ -69,6 +70,7 @@ from holodeck.lib.test_runner.tool_invocation_builder import pair_tool_calls
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.evaluation import (
+    CodeMetric,
     EvaluationMetric,
     GEvalMetric,
     RAGMetric,
@@ -76,13 +78,14 @@ from holodeck.models.evaluation import (
 )
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.observability import TracingConfig
-from holodeck.models.test_case import TestCaseModel
+from holodeck.models.test_case import TestCaseModel, Turn
 from holodeck.models.test_result import (
     MetricResult,
     ProcessedFileInput,
     ReportSummary,
     TestReport,
     TestResult,
+    TurnResult,
 )
 from holodeck.models.token_usage import TokenUsage
 
@@ -90,14 +93,102 @@ logger = get_logger(__name__)
 
 
 def _metric_kind(
-    metric_config: EvaluationMetric | GEvalMetric | RAGMetric,
-) -> Literal["standard", "rag", "geval"]:
+    metric_config: EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric,
+) -> Literal["standard", "rag", "geval", "code"]:
     """Map an evaluation metric config to its runtime kind discriminator.
 
     The config-side discriminator (`type`) is already a `Literal` on each
     variant (`models/evaluation.py`), so this is a one-to-one passthrough.
     """
     return metric_config.type
+
+
+def _finalize_multi_turn_result(
+    *,
+    test_name: str | None,
+    turns: list[TurnResult],
+    start_ts: str,
+) -> TestResult:
+    """Roll up per-turn results into the test-case-level TestResult.
+
+    Implements the contract in contracts/turn-result-schema.md §4 and
+    data-model.md §9.
+    """
+    if not turns:
+        raise ValueError("_finalize_multi_turn_result requires at least one turn")
+
+    test_input = "\n---\n".join(t.input for t in turns)
+    agent_response = turns[-1].response
+
+    tool_calls: list[str] = []
+    tool_invocations = []
+    for t in turns:
+        tool_calls.extend(t.tool_calls)
+        tool_invocations.extend(t.tool_invocations)
+
+    errors: list[str] = []
+    for t in turns:
+        for msg in t.errors:
+            errors.append(f"[turn {t.turn_index}] {msg}")
+
+    # Token usage: element-wise sum, preserving None when no turn reported.
+    summed: TokenUsage | None = None
+    for t in turns:
+        if t.token_usage is None:
+            continue
+        summed = t.token_usage if summed is None else summed + t.token_usage
+
+    passed = all(t.passed for t in turns)
+    execution_time_ms = sum(t.execution_time_ms for t in turns)
+
+    # Per-metric rollup: each metric_name appears once; score = mean of
+    # turns that ran it; passed = all(turn_passed for that metric).
+    metric_rollup: dict[str, list[MetricResult]] = {}
+    for t in turns:
+        for m in t.metric_results:
+            metric_rollup.setdefault(m.metric_name, []).append(m)
+    rolled_metrics: list[MetricResult] = []
+    for name, records in metric_rollup.items():
+        if not records:
+            continue
+        scores = [r.score for r in records]
+        mean_score = sum(scores) / len(scores) if scores else 0.0
+        all_passed = all((r.passed is not False) for r in records)
+        first = records[0]
+        rolled_metrics.append(
+            MetricResult(
+                metric_name=name,
+                kind=first.kind,
+                score=mean_score,
+                threshold=first.threshold,
+                passed=all_passed,
+                scale=first.scale,
+                error=None,
+                retry_count=0,
+                evaluation_time_ms=sum((r.evaluation_time_ms or 0) for r in records),
+                model_used=first.model_used,
+                reasoning=None,
+            )
+        )
+
+    return TestResult(
+        test_name=test_name,
+        test_input=test_input,
+        processed_files=[],
+        agent_response=agent_response,
+        tool_calls=tool_calls,
+        tool_invocations=tool_invocations,
+        expected_tools=None,
+        tools_matched=None,
+        metric_results=rolled_metrics,
+        ground_truth=None,
+        passed=passed,
+        execution_time_ms=execution_time_ms,
+        errors=errors,
+        timestamp=start_ts,
+        token_usage=summed,
+        turns=list(turns),
+    )
 
 
 def _detect_backend_kind(backend: AgentBackend) -> Literal["sk", "claude"]:
@@ -455,6 +546,15 @@ class TestExecutor:
                     )
                 continue
 
+            # Handle code-grader metrics (US4 populates a real evaluator;
+            # US1 only reserves the config slot + MetricResult.kind).
+            if isinstance(metric_config, CodeMetric):
+                logger.debug(
+                    f"CodeMetric configured — grader={metric_config.grader} "
+                    "(execution deferred to US4)"
+                )
+                continue
+
             # Handle standard EvaluationMetric types
             metric_name = metric_config.metric
 
@@ -534,39 +634,55 @@ class TestExecutor:
     async def execute_tests(self) -> TestReport:
         """Execute all test cases and generate report.
 
-        Returns:
-            TestReport with all results and summary statistics
+        Per-test-case concurrency is controlled by `parallel_test_cases`
+        (feature 032 FR-009a). Turns within a single multi-turn case stay
+        strictly sequential. Progress callbacks and reporter emission are
+        serialised behind an asyncio.Lock so per-test-case output blocks
+        don't interleave mid-record.
         """
         await self._ensure_backend_initialized()
 
-        test_results: list[TestResult] = []
-
-        # Execute each test case sequentially
         test_cases = self.agent_config.test_cases or []
-        logger.info(f"Starting test execution: {len(test_cases)} test cases")
+        parallel = self.config.parallel_test_cases or 1
+        logger.info(
+            f"Starting test execution: {len(test_cases)} test cases "
+            f"(parallel_test_cases={parallel})"
+        )
 
-        for idx, test_case in enumerate(test_cases, 1):
-            logger.debug(f"Executing test {idx}/{len(test_cases)}: {test_case.name}")
+        # Preserve input order in the output regardless of completion order.
+        results: list[TestResult | None] = [None] * len(test_cases)
+        semaphore = asyncio.Semaphore(parallel)
+        emit_lock = asyncio.Lock()
 
-            if self.on_test_start:
-                self.on_test_start(test_case)
+        async def run_one(idx: int, test_case: TestCaseModel) -> None:
+            async with semaphore:
+                logger.debug(
+                    f"Executing test {idx + 1}/{len(test_cases)}: {test_case.name}"
+                )
+                if self.on_test_start:
+                    self.on_test_start(test_case)
+                result = await self._execute_single_test(test_case)
+                results[idx] = result
+                async with emit_lock:
+                    status = "PASS" if result.passed else "FAIL"
+                    logger.info(
+                        f"Test {idx + 1}/{len(test_cases)} {status}: "
+                        f"{test_case.name} ({result.execution_time_ms}ms)"
+                    )
+                    if self.progress_callback:
+                        self.progress_callback(result)
 
-            result = await self._execute_single_test(test_case)
-            test_results.append(result)
+        if parallel <= 1:
+            for idx, test_case in enumerate(test_cases):
+                await run_one(idx, test_case)
+        else:
+            await asyncio.gather(*[run_one(i, tc) for i, tc in enumerate(test_cases)])
 
-            status = "PASS" if result.passed else "FAIL"
-            logger.info(
-                f"Test {idx}/{len(test_cases)} {status}: {test_case.name} "
-                f"({result.execution_time_ms}ms)"
-            )
+        # Collect non-None in order (all slots should be filled).
+        ordered: list[TestResult] = [r for r in results if r is not None]
 
-            # Invoke progress callback if provided
-            if self.progress_callback:
-                self.progress_callback(result)
-
-        # Generate report with summary
         logger.debug("Generating test report")
-        return self._generate_report(test_results)
+        return self._generate_report(ordered)
 
     async def _execute_single_test(
         self,
@@ -574,12 +690,12 @@ class TestExecutor:
     ) -> TestResult:
         """Execute a single test case.
 
-        Args:
-            test_case: Test case configuration
-
-        Returns:
-            TestResult with execution details
+        Routes multi-turn test cases (`test_case.turns is not None`) through
+        ``_run_multi_turn``; legacy single-turn cases use the existing path.
         """
+        if test_case.turns is not None:
+            return await self._run_multi_turn(test_case)
+
         start_time = time.time()
         errors: list[str] = []
         processed_files: list[ProcessedFileInput] = []
@@ -723,7 +839,7 @@ class TestExecutor:
 
         return TestResult(
             test_name=test_case.name,
-            test_input=test_case.input,
+            test_input=test_case.input or "",
             processed_files=processed_files,
             agent_response=agent_response,
             tool_calls=tool_calls,
@@ -739,23 +855,243 @@ class TestExecutor:
             token_usage=token_usage,
         )
 
+    async def _run_multi_turn(self, test_case: TestCaseModel) -> TestResult:
+        """Execute a multi-turn test case through a single AgentSession.
+
+        Drives turns strictly sequentially (turn N+1 starts only after turn
+        N resolves), closes the session in a ``finally`` block, maps
+        ``asyncio.TimeoutError`` / backend errors to per-turn error entries,
+        and marks remaining turns ``skipped=True`` after two consecutive
+        ``BackendSessionError`` hits (research.md §2 heuristic).
+        """
+        if test_case.turns is None:
+            raise ValueError("_run_multi_turn requires test_case.turns to be set")
+        start_ts = datetime.now(timezone.utc).isoformat()
+        start_perf = time.time()
+
+        if self._backend is None:
+            # Legacy / factory-only path doesn't support multi-turn — return an
+            # explicit failure TurnResult so the roll-up still produces a
+            # TestResult.
+            skipped = [
+                TurnResult(
+                    turn_index=i,
+                    input=t.input,
+                    response=None,
+                    ground_truth=t.ground_truth,
+                    expected_tools=None,
+                    tool_calls=[],
+                    tool_invocations=[],
+                    tools_matched=None,
+                    arg_match_details=None,
+                    metric_results=[],
+                    passed=False,
+                    execution_time_ms=0,
+                    token_usage=None,
+                    errors=[
+                        "multi-turn dispatch requires an AgentBackend "
+                        "(no backend injected)"
+                    ],
+                    skipped=True,
+                    grader_details=None,
+                )
+                for i, t in enumerate(test_case.turns)
+            ]
+            result = _finalize_multi_turn_result(
+                test_name=test_case.name, turns=skipped, start_ts=start_ts
+            )
+            return result
+
+        backend_kind = _detect_backend_kind(self._backend)
+        llm_timeout = self.config.llm_timeout or 60
+
+        session = None
+        turn_results: list[TurnResult] = []
+        consecutive_session_errors = 0
+        session_unrecoverable = False
+
+        try:
+            session = await self._backend.create_session()
+
+            for idx, turn in enumerate(test_case.turns):
+                if session_unrecoverable:
+                    turn_results.append(
+                        TurnResult(
+                            turn_index=idx,
+                            input=turn.input,
+                            response=None,
+                            ground_truth=turn.ground_truth,
+                            expected_tools=None,
+                            tool_calls=[],
+                            tool_invocations=[],
+                            tools_matched=None,
+                            arg_match_details=None,
+                            metric_results=[],
+                            passed=False,
+                            execution_time_ms=0,
+                            token_usage=None,
+                            errors=[
+                                "session became unrecoverable after two consecutive "
+                                "BackendSessionError hits"
+                            ],
+                            skipped=True,
+                            grader_details=None,
+                        )
+                    )
+                    continue
+
+                turn_result = await self._run_single_turn(
+                    turn=turn,
+                    turn_index=idx,
+                    session=session,
+                    llm_timeout=llm_timeout,
+                    backend_kind=backend_kind,
+                )
+                turn_results.append(turn_result)
+
+                if turn_result.errors and any(
+                    "BackendSessionError" in e for e in turn_result.errors
+                ):
+                    consecutive_session_errors += 1
+                    if consecutive_session_errors >= 2:
+                        session_unrecoverable = True
+                else:
+                    consecutive_session_errors = 0
+        finally:
+            if session is not None:
+                try:
+                    await session.close()
+                except Exception as e:  # noqa: BLE001
+                    log_exception(
+                        logger,
+                        "Error closing multi-turn session",
+                        e,
+                        level=logging.WARNING,
+                    )
+
+        # Re-issue the start timestamp in the rollup so the TestResult
+        # records the moment the case *started*, matching the contract.
+        result = _finalize_multi_turn_result(
+            test_name=test_case.name, turns=turn_results, start_ts=start_ts
+        )
+        # Preserve the measured wall-clock: _finalize sums per-turn
+        # execution_time_ms; use that as-is unless all turns were zero (empty
+        # session path) — then fall back to the outer perf counter.
+        if result.execution_time_ms == 0:
+            result = result.model_copy(
+                update={"execution_time_ms": int((time.time() - start_perf) * 1000)}
+            )
+        return result
+
+    async def _run_single_turn(
+        self,
+        *,
+        turn: Turn,
+        turn_index: int,
+        session: Any,
+        llm_timeout: int,
+        backend_kind: Literal["sk", "claude"],
+    ) -> TurnResult:
+        """Execute one turn against an open session and return its TurnResult."""
+        # Per-turn file processing — residue must NOT leak into the next turn.
+        processed_files: list[ProcessedFileInput] = []
+        errors: list[str] = []
+
+        if turn.files:
+            for file_input in turn.files:
+                try:
+                    processed = self.file_processor.process_file(file_input)
+                    processed_files.append(processed)
+                    if processed.error:
+                        errors.append(f"File error: {processed.error}")
+                except Exception as e:  # noqa: BLE001
+                    log_exception(
+                        logger,
+                        "Per-turn file processing failed",
+                        e,
+                        context={"file": file_input.path or file_input.url},
+                    )
+                    errors.append(f"File processing error: {str(e)}")
+
+        message = self._compose_agent_input(turn.input, processed_files)
+
+        response: str | None = None
+        raw_tool_calls: list[dict[str, Any]] = []
+        tool_results: list[dict[str, Any]] = []
+        tool_names: list[str] = []
+        token_usage: TokenUsage | None = None
+
+        start = time.perf_counter()
+        try:
+            exec_result = await asyncio.wait_for(
+                session.send(message), timeout=llm_timeout
+            )
+            if exec_result.is_error:
+                errors.append(f"Agent error: {exec_result.error_reason}")
+            response = exec_result.response
+            raw_tool_calls = list(exec_result.tool_calls)
+            tool_results = list(exec_result.tool_results)
+            tool_names = extract_tool_names(exec_result.tool_calls)
+            raw_usage: Any = exec_result.token_usage
+            token_usage = raw_usage if isinstance(raw_usage, TokenUsage) else None
+        except asyncio.TimeoutError:
+            errors.append("timeout")
+        except BackendSessionError as e:
+            errors.append(f"BackendSessionError: {e}")
+        except Exception as e:  # noqa: BLE001
+            log_exception(
+                logger,
+                "Per-turn agent invocation failed",
+                e,
+                context={"turn_index": turn_index},
+            )
+            errors.append(f"{type(e).__name__}: {e}")
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+
+        try:
+            tool_invocations = pair_tool_calls(
+                raw_tool_calls, tool_results, backend_kind=backend_kind
+            )
+        except TypeError:
+            tool_invocations = []
+
+        passed = not errors
+
+        return TurnResult(
+            turn_index=turn_index,
+            input=turn.input,
+            response=response,
+            ground_truth=turn.ground_truth,
+            expected_tools=turn.expected_tools,
+            tool_calls=tool_names,
+            tool_invocations=tool_invocations,
+            tools_matched=None,  # US2/US3 populate this
+            arg_match_details=None,
+            metric_results=[],  # US2 populates this
+            passed=passed,
+            execution_time_ms=elapsed_ms,
+            token_usage=token_usage,
+            errors=errors,
+            skipped=False,
+            grader_details=None,
+        )
+
     def _prepare_agent_input(
         self,
         test_case: TestCaseModel,
         processed_files: list[ProcessedFileInput],
     ) -> str:
-        """Prepare agent input combining test input and file content.
+        """Prepare agent input combining test input and file content."""
+        input_text = test_case.input or ""
+        return self._compose_agent_input(input_text, processed_files)
 
-        Args:
-            test_case: Test case configuration
-            processed_files: List of processed files
-
-        Returns:
-            Combined input string for agent
-        """
+    def _compose_agent_input(
+        self,
+        input_text: str,
+        processed_files: list[ProcessedFileInput],
+    ) -> str:
+        """Join processed file contents with a free-form input string."""
         parts: list[str] = []
-
-        # Add file contents if any
         if processed_files:
             for processed in processed_files:
                 if processed.markdown_content:
@@ -763,10 +1099,7 @@ class TestExecutor:
                         processed.original.path or processed.original.url or "file"
                     )
                     parts.append(f"File: {file_name}\n{processed.markdown_content}")
-
-        # Add test input
-        parts.append(test_case.input)
-
+        parts.append(input_text)
         return "\n\n".join(parts)
 
     async def _run_evaluations(
@@ -809,6 +1142,9 @@ class TestExecutor:
                 metric_name = metric_config.name
             elif isinstance(metric_config, RAGMetric):
                 metric_name = metric_config.metric_type.value
+            elif isinstance(metric_config, CodeMetric):
+                # US4 — real grader invocation lands there; skip at runtime.
+                continue
             else:
                 metric_name = metric_config.metric
 
@@ -912,7 +1248,7 @@ class TestExecutor:
     def _get_metrics_for_test(
         self,
         test_case: TestCaseModel,
-    ) -> list[EvaluationMetric | GEvalMetric | RAGMetric]:
+    ) -> list[EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric]:
         """Resolve metrics for a test case (per-test override or global).
 
         Args:

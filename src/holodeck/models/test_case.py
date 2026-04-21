@@ -6,9 +6,18 @@ configuration for specifying test scenarios.
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from holodeck.models.evaluation import EvaluationMetric, GEvalMetric, RAGMetric
+from holodeck.models.evaluation import (
+    CodeMetric,
+    EvaluationMetric,
+    GEvalMetric,
+    RAGMetric,
+)
+
+# TODO(US3): widen to object form {name, args?, count?}. For US1 the
+# expected_tools list accepts bare tool-name strings only.
+ExpectedTool = str
 
 
 class FileInput(BaseModel):
@@ -67,17 +76,77 @@ class FileInput(BaseModel):
             raise ValueError("Must provide either 'path' or 'url'")
 
 
+class Turn(BaseModel):
+    """Single exchange within a multi-turn test case (data-model.md §1).
+
+    A multi-turn test case is an ordered list of turns driven through a
+    single AgentSession. Each turn owns its own input, optional ground
+    truth, expected tools, files, retrieval context, and metric overrides.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    input: str = Field(..., description="User query for this turn")
+    ground_truth: str | None = Field(
+        None, description="Expected output for this turn (non-empty if provided)"
+    )
+    expected_tools: list[ExpectedTool] | None = Field(
+        None,
+        description=(
+            "Tools expected to be called during this turn. "
+            "TODO(US3): widen element type to str | ExpectedToolObject."
+        ),
+    )
+    files: list[FileInput] | None = Field(
+        None, description="Multimodal file inputs for this turn"
+    )
+    retrieval_context: list[str] | None = Field(
+        None,
+        description="Retrieved text chunks for RAG evaluation on this turn",
+    )
+    evaluations: (
+        list[EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric] | None
+    ) = Field(
+        None,
+        description="Per-turn metric overrides (FR-023)",
+    )
+
+    @field_validator("input")
+    @classmethod
+    def _validate_input(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("input must be a non-empty string")
+        return v
+
+    @field_validator("ground_truth")
+    @classmethod
+    def _validate_ground_truth(cls, v: str | None) -> str | None:
+        if v is not None and (not v or not v.strip()):
+            raise ValueError("ground_truth must be non-empty if provided")
+        return v
+
+    @field_validator("files")
+    @classmethod
+    def _validate_files(cls, v: list[FileInput] | None) -> list[FileInput] | None:
+        if v is not None and len(v) > 10:
+            raise ValueError("Maximum 10 files per turn")
+        return v
+
+
 class TestCaseModel(BaseModel):
     """Test case for agent evaluation.
 
-    Represents a single test scenario with input, optional expected output,
-    expected tool usage, multimodal file inputs, and RAG context.
+    Represents a single test scenario. Either legacy single-turn (with
+    `input`) or multi-turn (with `turns`), but not both.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(None, description="Test case identifier")
-    input: str = Field(..., description="User query or prompt")
+    input: str | None = Field(
+        None,
+        description="User query or prompt (required when `turns` is absent)",
+    )
     expected_tools: list[str] | None = Field(
         None, description="Tools expected to be called"
     )
@@ -86,22 +155,32 @@ class TestCaseModel(BaseModel):
     retrieval_context: list[str] | None = Field(
         None, description="Retrieved text chunks for RAG evaluation metrics"
     )
-    evaluations: list[EvaluationMetric | GEvalMetric | RAGMetric] | None = Field(
-        None, description="Per-test metric overrides (standard, GEval, or RAG)"
+    evaluations: (
+        list[EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric] | None
+    ) = Field(
+        None,
+        description="Per-test metric overrides (standard, GEval, RAG, or code)",
+    )
+    turns: list[Turn] | None = Field(
+        None,
+        description=(
+            "Ordered multi-turn conversation (feature 032). Mutually exclusive "
+            "with `input` / `ground_truth` / top-level `expected_tools` / `files` "
+            "/ `retrieval_context`."
+        ),
     )
 
     @field_validator("input")
     @classmethod
-    def validate_input(cls, v: str) -> str:
-        """Validate input is not empty."""
-        if not v or not v.strip():
+    def validate_input(cls, v: str | None) -> str | None:
+        """Input, when supplied, must be non-empty."""
+        if v is not None and (not v or not v.strip()):
             raise ValueError("input must be a non-empty string")
         return v
 
     @field_validator("name")
     @classmethod
     def validate_name(cls, v: str | None) -> str | None:
-        """Validate name is not empty if provided."""
         if v is not None and (not v or not v.strip()):
             raise ValueError("name must be non-empty if provided")
         return v
@@ -109,7 +188,6 @@ class TestCaseModel(BaseModel):
     @field_validator("ground_truth")
     @classmethod
     def validate_ground_truth(cls, v: str | None) -> str | None:
-        """Validate ground_truth is not empty if provided."""
         if v is not None and (not v or not v.strip()):
             raise ValueError("ground_truth must be non-empty if provided")
         return v
@@ -117,10 +195,39 @@ class TestCaseModel(BaseModel):
     @field_validator("files")
     @classmethod
     def validate_files(cls, v: list[FileInput] | None) -> list[FileInput] | None:
-        """Validate files list is not empty if provided."""
         if v is not None and len(v) > 10:
             raise ValueError("Maximum 10 files per test case")
         return v
+
+    @model_validator(mode="after")
+    def _validate_single_vs_multi_turn(self) -> "TestCaseModel":
+        """Enforce mutual-exclusion rules from test-case-schema.md §2."""
+        if self.turns is not None:
+            if len(self.turns) == 0:
+                raise ValueError("turns must be a non-empty list if provided")
+            conflicts: list[str] = []
+            if self.input is not None:
+                conflicts.append("input")
+            if self.ground_truth is not None:
+                conflicts.append("ground_truth")
+            if self.expected_tools is not None:
+                conflicts.append("expected_tools")
+            if self.files is not None:
+                conflicts.append("files")
+            if self.retrieval_context is not None:
+                conflicts.append("retrieval_context")
+            if conflicts:
+                raise ValueError(
+                    "multi-turn test case (with `turns`) cannot also set "
+                    f"top-level {conflicts}; move these fields onto each turn"
+                )
+        else:
+            if self.input is None:
+                raise ValueError(
+                    "test case requires either `input` (single-turn) or "
+                    "`turns` (multi-turn)"
+                )
+        return self
 
 
 # Alias for backward compatibility

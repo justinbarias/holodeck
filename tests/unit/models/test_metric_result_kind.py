@@ -17,11 +17,11 @@ from holodeck.models.test_result import MetricResult
 class TestMetricResultKind:
     """Lock the MetricResult.kind contract consumed by US4/US5 dashboards."""
 
-    def test_kind_field_annotation_is_literal_of_three_values(self) -> None:
-        """Kind must be Literal["standard","rag","geval"] — no other values allowed."""
+    def test_kind_field_annotation_is_literal_of_four_values(self) -> None:
+        """Kind must be Literal["standard","rag","geval","code"] after feature 032."""
         annotation = MetricResult.model_fields["kind"].annotation
         assert annotation is not None
-        assert set(get_args(annotation)) == {"standard", "rag", "geval"}
+        assert set(get_args(annotation)) == {"standard", "rag", "geval", "code"}
 
     def test_kind_is_required(self) -> None:
         """Kind has no default — callers must supply it explicitly."""

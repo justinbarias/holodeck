@@ -41,10 +41,10 @@ class TestToolExecution:
 class TestTokenUsage:
     """TokenUsage validation behavior."""
 
-    def test_total_tokens_must_match_components(self) -> None:
-        """Validate total_tokens equality."""
+    def test_total_tokens_below_components_rejected(self) -> None:
+        """total_tokens must be >= prompt + completion (relaxed for cache reads)."""
         with pytest.raises(ValidationError):
-            TokenUsage(prompt_tokens=5, completion_tokens=10, total_tokens=20)
+            TokenUsage(prompt_tokens=5, completion_tokens=10, total_tokens=5)
 
     def test_valid_token_usage(self) -> None:
         """Valid token usage passes."""

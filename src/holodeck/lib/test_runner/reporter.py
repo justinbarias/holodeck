@@ -11,6 +11,7 @@ from holodeck.models.test_result import (
     ReportSummary,
     TestReport,
     TestResult,
+    TurnResult,
 )
 
 
@@ -178,6 +179,39 @@ def _format_test_section(result: TestResult) -> str:
             lines.append(f"- ❌ {error}")
         lines.append("")
 
+    # Per-turn block (multi-turn test cases only)
+    if result.turns:
+        lines.append("#### Turns\n")
+        for t in result.turns:
+            lines.append(_format_turn_section(t))
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def _format_turn_section(turn: TurnResult) -> str:
+    """Render one TurnResult as an indented markdown block."""
+    lines: list[str] = []
+    status = "✅ PASSED" if turn.passed else "❌ FAILED"
+    skip_tag = " (skipped)" if turn.skipped else ""
+    lines.append(f"##### Turn {turn.turn_index}{skip_tag} {status}\n")
+    lines.append(f"**Input:** `{turn.input}`")
+    lines.append(f"**Execution Time:** {turn.execution_time_ms}ms")
+    if turn.response is not None:
+        lines.append("")
+        lines.append("**Response:**")
+        lines.append("> " + turn.response.replace("\n", "\n> "))
+    if turn.tool_calls:
+        tools_str = ", ".join(f"`{t}`" for t in turn.tool_calls)
+        lines.append(f"**Tools Called:** {tools_str}")
+    if turn.metric_results:
+        lines.append("")
+        lines.append(_format_metrics_table(turn.metric_results))
+    if turn.errors:
+        lines.append("")
+        lines.append("**Errors:**")
+        for e in turn.errors:
+            lines.append(f"- ❌ {e}")
     return "\n".join(lines)
 
 

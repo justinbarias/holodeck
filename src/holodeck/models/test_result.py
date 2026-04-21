@@ -43,12 +43,13 @@ class MetricResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     metric_name: str = Field(..., description="Name of the metric evaluated")
-    kind: Literal["standard", "rag", "geval"] = Field(
+    kind: Literal["standard", "rag", "geval", "code"] = Field(
         ...,
         description=(
             "Metric family — 'standard' for NLP metrics, 'rag' for RAG pipeline "
-            "metrics, 'geval' for LLM-as-judge G-Eval. Required; drives dashboard "
-            "breakdown panels, metric-trend toggles, and compare-matrix scoring."
+            "metrics, 'geval' for LLM-as-judge G-Eval, 'code' for user-supplied "
+            "Python graders. Required; drives dashboard breakdown panels, "
+            "metric-trend toggles, and compare-matrix scoring."
         ),
     )
     score: float = Field(..., description="Numeric score from the metric")
@@ -120,6 +121,64 @@ class ToolInvocation(BaseModel):
     )
 
 
+class TurnResult(BaseModel):
+    """Per-turn outcome inside a multi-turn test case (data-model.md §8).
+
+    Stored on `TestResult.turns` only for multi-turn test cases. Legacy
+    single-turn runs leave `TestResult.turns` as `None`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    turn_index: int = Field(..., ge=0, description="0-based position.")
+    input: str = Field(..., description="Verbatim turn input.")
+    response: str | None = Field(
+        None, description="Agent response, or None if the turn erred."
+    )
+    ground_truth: str | None = Field(None, description="Copied from turn config.")
+    expected_tools: list[Any] | None = Field(
+        None,
+        description=(
+            "Serialized config form — bare strings today (US3 widens to objects)."
+        ),
+    )
+    tool_calls: list[str] = Field(
+        default_factory=list, description="Tool names (legacy shape)."
+    )
+    tool_invocations: list[ToolInvocation] = Field(
+        default_factory=list, description="Structured tool records."
+    )
+    tools_matched: bool | None = Field(
+        None,
+        description="None if this turn asserted no tools.",
+    )
+    arg_match_details: list[dict[str, Any]] | None = Field(
+        None,
+        description="Per-assertion arg-matcher records (US3).",
+    )
+    metric_results: list[MetricResult] = Field(
+        default_factory=list, description="Per-turn metric scores."
+    )
+    passed: bool = Field(
+        ..., description="Composition rule in §3 of turn-result-schema."
+    )
+    execution_time_ms: int = Field(..., ge=0, description="Wall-clock of this turn.")
+    token_usage: TokenUsage | None = Field(
+        None, description="Per-turn usage (sums into test-case rollup)."
+    )
+    errors: list[str] = Field(default_factory=list)
+    skipped: bool = Field(
+        default=False,
+        description="True if the session became unrecoverable before this turn.",
+    )
+    grader_details: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "Reserved for US4: map of metric_name -> grader-specific payload."
+        ),
+    )
+
+
 class TestResult(BaseModel):
     """Result of executing a single test case.
 
@@ -187,6 +246,13 @@ class TestResult(BaseModel):
             "Token usage reported by the backend via ExecutionResult. "
             "None when the backend did not report any. Consumed by the "
             "dashboard Compare view for cost computation."
+        ),
+    )
+    turns: list[TurnResult] | None = Field(
+        default=None,
+        description=(
+            "Per-turn results for multi-turn test cases (feature 032). "
+            "None for legacy single-turn cases."
         ),
     )
 
