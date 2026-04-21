@@ -204,6 +204,13 @@ def _format_turn_section(turn: TurnResult) -> str:
     if turn.tool_calls:
         tools_str = ", ".join(f"`{t}`" for t in turn.tool_calls)
         lines.append(f"**Tools Called:** {tools_str}")
+    if turn.expected_tools:
+        expected_str = ", ".join(f"`{t}`" for t in turn.expected_tools)
+        lines.append(f"**Expected Tools:** {expected_str}")
+    if turn.tools_matched is not None:
+        glyph = "✅" if turn.tools_matched else "❌"
+        label = "matched" if turn.tools_matched else "did not match"
+        lines.append(f"**Tool Match:** {glyph} {label}")
     if turn.metric_results:
         lines.append("")
         lines.append(_format_metrics_table(turn.metric_results))

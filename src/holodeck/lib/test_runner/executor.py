@@ -103,6 +103,18 @@ def _metric_kind(
     return metric_config.type
 
 
+def _rollup_tools_matched(per_turn: list[bool | None]) -> bool | None:
+    """Test-case-level tools_matched rollup per contracts §4.
+
+    - `None` if every turn is `None` (no assertions anywhere).
+    - `False` if any turn is explicitly `False`.
+    - `True` otherwise (all `True` / `None`, with at least one assertion).
+    """
+    if all(v is None for v in per_turn):
+        return None
+    return not any(v is False for v in per_turn)
+
+
 def _finalize_multi_turn_result(
     *,
     test_name: str | None,
@@ -179,7 +191,7 @@ def _finalize_multi_turn_result(
         tool_calls=tool_calls,
         tool_invocations=tool_invocations,
         expected_tools=None,
-        tools_matched=None,
+        tools_matched=_rollup_tools_matched([t.tools_matched for t in turns]),
         metric_results=rolled_metrics,
         ground_truth=None,
         passed=passed,
@@ -809,7 +821,13 @@ class TestExecutor:
         # Step 5: Run evaluations
         logger.debug(f"Running evaluations for test: {test_case.name}")
         metric_results = await self._run_evaluations(
-            test_case, agent_response, processed_files, tool_results
+            metrics=self._get_metrics_for_test(test_case),
+            agent_response=agent_response,
+            input_query=test_case.input,
+            ground_truth=test_case.ground_truth,
+            retrieval_context=test_case.retrieval_context,
+            processed_files=processed_files,
+            tool_results=tool_results,
         )
         logger.debug(
             f"Completed {len(metric_results)} evaluations for test: {test_case.name}"
@@ -941,6 +959,7 @@ class TestExecutor:
                     continue
 
                 turn_result = await self._run_single_turn(
+                    test_case=test_case,
                     turn=turn,
                     turn_index=idx,
                     session=session,
@@ -986,6 +1005,7 @@ class TestExecutor:
     async def _run_single_turn(
         self,
         *,
+        test_case: TestCaseModel,
         turn: Turn,
         turn_index: int,
         session: Any,
@@ -1055,7 +1075,52 @@ class TestExecutor:
         except TypeError:
             tool_invocations = []
 
-        passed = not errors
+        # Per-turn tool-name assertion (US2 T020–T021). Scoped to this turn's
+        # calls only — cross-turn credit is explicitly disallowed (FR-011).
+        tools_matched = validate_tool_calls(tool_names, turn.expected_tools)
+        if tools_matched is False and turn.expected_tools:
+            missing = [
+                exp
+                for exp in turn.expected_tools
+                if not any(exp in actual for actual in tool_names)
+            ]
+            if missing:
+                missing_str = ", ".join(missing)
+                errors.append(
+                    f"expected tool(s) not called in this turn: {missing_str}"
+                )
+
+        # Per-turn evaluations (US2 T009c). Skip if the turn errored before
+        # producing a response — metric_results stays empty and the 4-conjunct
+        # below catches the failure via `errors`.
+        metric_results: list[MetricResult] = []
+        if response is not None:
+            try:
+                metric_results = await self._run_evaluations(
+                    metrics=self._resolve_turn_metrics(test_case, turn),
+                    agent_response=response,
+                    input_query=turn.input,
+                    ground_truth=turn.ground_truth,
+                    retrieval_context=turn.retrieval_context,
+                    processed_files=processed_files,
+                    tool_results=tool_results,
+                    skip_metrics_without_ground_truth=True,
+                )
+            except Exception as e:  # noqa: BLE001
+                log_exception(
+                    logger,
+                    "Per-turn evaluation failed",
+                    e,
+                    context={"turn_index": turn_index},
+                )
+                errors.append(f"evaluation error: {type(e).__name__}: {e}")
+
+        # Four-conjunct pass rule per contracts/turn-result-schema.md §3.
+        passed = (
+            errors == []
+            and (tools_matched is None or tools_matched is True)
+            and all((m.passed is not False) for m in metric_results)
+        )
 
         return TurnResult(
             turn_index=turn_index,
@@ -1065,9 +1130,9 @@ class TestExecutor:
             expected_tools=turn.expected_tools,
             tool_calls=tool_names,
             tool_invocations=tool_invocations,
-            tools_matched=None,  # US2/US3 populate this
+            tools_matched=tools_matched,
             arg_match_details=None,
-            metric_results=[],  # US2 populates this
+            metric_results=metric_results,
             passed=passed,
             execution_time_ms=elapsed_ms,
             token_usage=token_usage,
@@ -1104,36 +1169,46 @@ class TestExecutor:
 
     async def _run_evaluations(
         self,
-        test_case: TestCaseModel,
+        *,
+        metrics: list[EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric],
         agent_response: str | None,
+        input_query: str | None,
+        ground_truth: str | None,
+        retrieval_context: list[str] | None,
         processed_files: list[ProcessedFileInput],
         tool_results: list[dict[str, Any]] | None = None,
+        skip_metrics_without_ground_truth: bool = False,
     ) -> list[MetricResult]:
-        """Run evaluation metrics for test case.
+        """Run evaluation metrics against a single agent exchange.
 
-        Evaluations are run with graceful degradation - if a metric fails,
+        Evaluations are run with graceful degradation — if a metric fails,
         the error is recorded but execution continues with other metrics.
 
-        For RAG metrics, retrieval_context is resolved with priority:
-        1. Manual override from test_case.retrieval_context (if provided)
-        2. Dynamic extraction from retrieval tool results
+        For RAG metrics, the caller resolves `retrieval_context`; if it is
+        `None`, this method falls back to extracting it from retrieval tool
+        results.
+
+        Text-comparison metrics (BLEU/ROUGE/METEOR/GEval/Azure AI) are
+        skipped silently when `ground_truth` is `None` — the per-turn rollup
+        (data-model.md §9) relies on this to distinguish "turn didn't run
+        this metric" from "turn ran it and failed".
 
         Args:
-            test_case: Test case configuration
-            agent_response: Agent's response text (can be None if agent failed)
-            processed_files: Processed file inputs
-            tool_results: List of tool result dicts with 'name' and 'result' keys
+            metrics: Pre-resolved metrics to evaluate (turn > test_case > agent).
+            agent_response: Agent's response text (None if the agent failed).
+            input_query: The turn / test-case input text.
+            ground_truth: Expected output for this turn; `None` skips text metrics.
+            retrieval_context: RAG context override; falls back to tool results.
+            processed_files: Processed file inputs for this turn.
+            tool_results: Per-call tool results (for RAG fallback extraction).
 
         Returns:
-            List of metric results
+            List of metric results (one per metric that actually ran).
         """
         metric_results: list[MetricResult] = []
 
-        if not self.agent_config.evaluations or not agent_response:
+        if not agent_response:
             return metric_results
-
-        # Get metrics for this test (per-test override or global)
-        metrics = self._get_metrics_for_test(test_case)
 
         # Run each metric
         for metric_config in metrics:
@@ -1165,18 +1240,36 @@ class TestExecutor:
                 file_content = self._combine_file_contents(processed_files)
 
                 # Resolve retrieval_context: manual override > dynamic from tools
-                retrieval_context = test_case.retrieval_context
-                if not retrieval_context and tool_results:
-                    retrieval_context = build_retrieval_context_from_tools(
+                effective_retrieval_context = retrieval_context
+                if not effective_retrieval_context and tool_results:
+                    effective_retrieval_context = build_retrieval_context_from_tools(
                         tool_results, self._get_retrieval_tool_names()
                     )
 
+                # Skip metrics that require ground_truth when the turn has
+                # none — the per-turn rollup treats these as "metric not run"
+                # for this turn (data-model.md §9, spec A6). Gated off for
+                # legacy single-turn callers so they keep the prior semantics.
+                if skip_metrics_without_ground_truth and ground_truth is None:
+                    spec = evaluator.get_param_spec()
+                    from holodeck.lib.evaluators.param_spec import EvalParam
+
+                    needs_ground_truth = (
+                        EvalParam.GROUND_TRUTH in spec.required
+                        or EvalParam.EXPECTED_OUTPUT in spec.required
+                    )
+                    if needs_ground_truth:
+                        logger.debug(
+                            f"Skipping metric {metric_name}: requires ground_truth"
+                        )
+                        continue
+
                 kwargs_builder = EvalKwargsBuilder(
                     agent_response=agent_response,
-                    input_query=test_case.input,
-                    ground_truth=test_case.ground_truth,
+                    input_query=input_query,
+                    ground_truth=ground_truth,
                     file_content=file_content,
-                    retrieval_context=retrieval_context,
+                    retrieval_context=effective_retrieval_context,
                 )
                 eval_kwargs = kwargs_builder.build_for(evaluator)
 
@@ -1244,6 +1337,24 @@ class TestExecutor:
                 )
 
         return metric_results
+
+    def _resolve_turn_metrics(
+        self,
+        test_case: TestCaseModel,
+        turn: Turn,
+    ) -> list[EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric]:
+        """Resolve per-turn effective metrics with precedence turn > test_case > agent.
+
+        Extends the two-level `_get_metrics_for_test` to add a turn-level rung
+        (FR-023). Returns the most-specific non-empty list.
+        """
+        if turn.evaluations:
+            return list(turn.evaluations)
+        if test_case.evaluations:
+            return list(test_case.evaluations)
+        if self.agent_config.evaluations:
+            return list(self.agent_config.evaluations.metrics)
+        return []
 
     def _get_metrics_for_test(
         self,
