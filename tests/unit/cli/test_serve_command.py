@@ -35,8 +35,7 @@ def runner() -> CliRunner:
 def temp_agent_config(tmp_path: Path) -> Path:
     """Create a temporary agent.yaml config file."""
     agent_file = tmp_path / "agent.yaml"
-    agent_file.write_text(
-        """
+    agent_file.write_text("""
 name: test-agent
 description: A test agent
 
@@ -46,8 +45,7 @@ model:
 
 instructions:
   inline: You are a helpful assistant.
-"""
-    )
+""")
     return agent_file
 
 

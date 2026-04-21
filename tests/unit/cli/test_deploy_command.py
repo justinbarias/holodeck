@@ -59,8 +59,7 @@ def runner() -> CliRunner:
 def temp_agent_config(tmp_path: Path) -> Path:
     """Create a temporary agent.yaml config file with deployment section."""
     agent_file = tmp_path / "agent.yaml"
-    agent_file.write_text(
-        """
+    agent_file.write_text("""
 name: test-agent
 description: A test agent
 
@@ -82,8 +81,7 @@ deployment:
       region: us-east-1
   protocol: rest
   port: 8080
-"""
-    )
+""")
     return agent_file
 
 
@@ -172,8 +170,7 @@ def mock_azure_agent() -> MagicMock:
 def temp_azure_agent_config(tmp_path: Path) -> Path:
     """Create a temporary agent.yaml config file with Azure deployment section."""
     agent_file = tmp_path / "agent.yaml"
-    agent_file.write_text(
-        """
+    agent_file.write_text("""
 name: test-agent
 description: A test agent
 
@@ -197,8 +194,7 @@ deployment:
       environment_name: test-env
   protocol: rest
   port: 8080
-"""
-    )
+""")
     return agent_file
 
 

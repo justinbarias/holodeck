@@ -49,8 +49,7 @@ def _make_report(passed: int = 1) -> TestReport:
 
 
 def _write_agent_yaml(path: Path, *, with_test_cases: bool = True) -> None:
-    contents = dedent(
-        """
+    contents = dedent("""
         name: my-agent
         model:
           provider: openai
@@ -58,19 +57,13 @@ def _write_agent_yaml(path: Path, *, with_test_cases: bool = True) -> None:
           api_key: ${OPENAI_API_KEY}
         instructions:
           inline: "You are a helpful assistant."
-        """
-    ).strip()
+        """).strip()
     if with_test_cases:
-        contents += (
-            "\n"
-            + dedent(
-                """
+        contents += "\n" + dedent("""
             test_cases:
               - name: greeting
                 input: "Say hi"
-            """
-            ).strip()
-        )
+            """).strip()
     path.write_text(contents)
 
 

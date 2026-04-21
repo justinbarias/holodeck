@@ -28,8 +28,7 @@ def temp_agent_config():
     """
     with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False, mode="w") as tmp:
         # Write a valid minimal agent config with one test case
-        tmp.write(
-            """name: test_agent
+        tmp.write("""name: test_agent
 description: Test agent
 model:
   provider: openai
@@ -39,8 +38,7 @@ instructions:
 test_cases:
   - name: test_1
     input: test input
-"""
-        )
+""")
         tmp_path = Path(tmp.name)
 
     yield tmp_path

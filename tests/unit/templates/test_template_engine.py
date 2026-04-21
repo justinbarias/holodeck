@@ -285,16 +285,14 @@ instructions:
     ) -> None:
         """Test render_and_validate when validation fails."""
         template_path = template_temp_dir / "agent.yaml.j2"
-        template_path.write_text(
-            """
+        template_path.write_text("""
 name: {{ project_name }}
 model:
   provider: openai
   name: gpt-4o
 instructions:
   inline: "Help"
-"""
-        )
+""")
 
         # This will render successfully but fail validation due to missing name
         with pytest.raises(ValidationError):
@@ -305,8 +303,7 @@ instructions:
     ) -> None:
         """Test that successful render_and_validate returns string."""
         template_path = template_temp_dir / "agent.yaml.j2"
-        template_path.write_text(
-            """
+        template_path.write_text("""
 name: {{ project_name }}
 description: {{ description }}
 model:
@@ -314,8 +311,7 @@ model:
   name: gpt-4o
 instructions:
   inline: "Help"
-"""
-        )
+""")
 
         result = renderer.render_and_validate(
             str(template_path),

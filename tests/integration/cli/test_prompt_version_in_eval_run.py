@@ -62,8 +62,7 @@ def test_frontmatter_version_and_tags_persisted_on_eval_run(
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-fake-not-real")
 
-    instructions = dedent(
-        """\
+    instructions = dedent("""\
         ---
         version: "1.2"
         author: jane
@@ -73,14 +72,11 @@ def test_frontmatter_version_and_tags_persisted_on_eval_run(
           - v1
         ---
         You are a helpful support agent.
-        """
-    )
+        """)
     (tmp_path / "instructions.md").write_text(instructions)
 
     agent_yaml = tmp_path / "agent.yaml"
-    agent_yaml.write_text(
-        dedent(
-            """\
+    agent_yaml.write_text(dedent("""\
             name: my-agent
             model:
               provider: openai
@@ -91,9 +87,7 @@ def test_frontmatter_version_and_tags_persisted_on_eval_run(
             test_cases:
               - name: greeting
                 input: "Say hi"
-            """
-        )
-    )
+            """))
 
     runner = CliRunner()
     result = runner.invoke(test, [str(agent_yaml)])
