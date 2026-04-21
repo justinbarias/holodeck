@@ -29,6 +29,7 @@ from holodeck.dashboard.explorer_data import (
     ExpectedToolsCoverage,
     MetricRow,
     ToolCallView,
+    TurnCoverage,
     TurnView,
     build_case_detail,
     list_case_summaries,
@@ -803,33 +804,82 @@ def _conversation_section(conv: ConversationView, model_name: str) -> html.Detai
     )
 
 
+def _expected_tool_row(name: str, ok: bool) -> html.Div:
+    return html.Div(
+        [
+            html.Span("✓" if ok else "✕", className="ind"),
+            html.Span(name, className="nm mono"),
+            html.Span("called" if ok else "not invoked", className="note"),
+        ],
+        className=f"expect-row {'ok' if ok else 'miss'}",
+    )
+
+
+def _turn_coverage_block(tc: TurnCoverage) -> html.Div:
+    expected_rows = [_expected_tool_row(name, ok) for name, ok in tc.expected] or [
+        html.Div(
+            "(no tools asserted this turn)",
+            className="mono",
+            style={"color": "var(--hd-muted)", "fontSize": "12px"},
+        )
+    ]
+    actual_body = (
+        html.Div(
+            [html.Span(a, className="nm mono") for a in tc.actual],
+            style={"display": "flex", "flexWrap": "wrap", "gap": "6px"},
+        )
+        if tc.actual
+        else html.Div(
+            "(no tool calls this turn)",
+            className="mono",
+            style={"color": "var(--hd-muted)", "fontSize": "12px"},
+        )
+    )
+    return html.Div(
+        [
+            html.Div(
+                f"Turn {tc.turn_index}",
+                className="eyebrow",
+                style={"marginTop": "8px"},
+            ),
+            html.Div("Expected", className="mono", style={"fontSize": "11px"}),
+            html.Div(
+                expected_rows,
+                style={"display": "flex", "flexDirection": "column", "gap": "4px"},
+            ),
+            html.Div(
+                "Actual",
+                className="mono",
+                style={"fontSize": "11px", "marginTop": "6px"},
+            ),
+            actual_body,
+        ],
+        style={
+            "padding": "10px 0",
+            "borderTop": "1px solid var(--hd-border)",
+        },
+    )
+
+
 def _expected_tools_section(cov: ExpectedToolsCoverage) -> html.Details:
     match_pill_cls = (
         "pill-pass" if cov.total > 0 and cov.matched == cov.total else "pill-fail"
     )
 
-    if cov.total == 0:
+    if cov.total == 0 and not cov.per_turn:
         body: Any = html.Div(
             "No expected tools configured for this case.",
             className="mono",
             style={"padding": "12px 0", "color": "var(--hd-muted)"},
         )
+    elif cov.per_turn:
+        body = html.Div(
+            [_turn_coverage_block(tc) for tc in cov.per_turn],
+            style={"display": "flex", "flexDirection": "column"},
+        )
     else:
         body = html.Div(
-            [
-                html.Div(
-                    [
-                        html.Span("✓" if ok else "✕", className="ind"),
-                        html.Span(name, className="nm mono"),
-                        html.Span(
-                            "called" if ok else "not invoked",
-                            className="note",
-                        ),
-                    ],
-                    className=f"expect-row {'ok' if ok else 'miss'}",
-                )
-                for name, ok in cov.rows
-            ],
+            [_expected_tool_row(name, ok) for name, ok in cov.rows],
             style={"display": "flex", "flexDirection": "column", "gap": "6px"},
         )
 

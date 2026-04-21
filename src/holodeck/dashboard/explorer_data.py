@@ -101,6 +101,8 @@ class TurnView:
     execution_time_ms: int = 0
     token_usage: dict[str, int] | None = None
     state: str = "ran"
+    expected_tools: list[str] = field(default_factory=list)
+    tool_calls: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -155,6 +157,16 @@ class ExpectedToolsCoverage:
     missed: int
     unexpected: int
     rows: list[tuple[str, bool]]  # (tool_name, was_called)
+    per_turn: list[TurnCoverage] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class TurnCoverage:
+    """Per-turn expected-vs-actual tool coverage (multi-turn cases)."""
+
+    turn_index: int
+    expected: list[tuple[str, bool]]  # (name, was_matched_this_turn)
+    actual: list[str]
 
 
 @dataclass(frozen=True)
@@ -365,26 +377,95 @@ def _turn_view_from_result(turn: TurnResult) -> TurnView:
         execution_time_ms=turn.execution_time_ms,
         token_usage=token_usage,
         state="skipped" if turn.skipped else "ran",
+        expected_tools=_expected_tool_names(turn.expected_tools),
+        tool_calls=list(turn.tool_calls or []),
     )
 
 
+def _expected_tool_names(expected: Any) -> list[str]:
+    """Serialize `expected_tools` (mixed str / ExpectedTool / dicts) to names."""
+    if not expected:
+        return []
+    out: list[str] = []
+    for entry in expected:
+        if isinstance(entry, str):
+            out.append(entry)
+        elif isinstance(entry, dict) and "name" in entry:
+            out.append(str(entry["name"]))
+        elif hasattr(entry, "name"):
+            out.append(str(entry.name))
+    return out
+
+
+def _tool_name_matches(expected: str, actual: str) -> bool:
+    """Case-sensitive substring match matching executor semantics."""
+    return expected in actual
+
+
 def _build_expected_tools_coverage(case: TestResult) -> ExpectedToolsCoverage:
-    expected = list(case.expected_tools or [])
+    """Build the Explorer 'Tool-call coverage' payload.
+
+    Uses case-sensitive substring match (``expected in actual``) so MCP-
+    wrapped names like ``mcp__holodeck_tools__legislation_search_search``
+    resolve to the configured ``legislation_search``, matching the
+    executor's ``tool_name_matches`` contract.
+
+    Multi-turn cases aggregate over per-turn ``expected_tools``, because
+    ``TestResult.expected_tools`` is intentionally ``None`` on multi-turn
+    results — each turn's assertion is scoped to that turn only.
+    """
+    if case.turns:
+        per_turn: list[TurnCoverage] = []
+        aggregate_expected: list[str] = []
+        aggregate_matched: set[int] = set()
+        for turn in case.turns:
+            names = _expected_tool_names(turn.expected_tools)
+            actual = list(turn.tool_calls or [])
+            rows: list[tuple[str, bool]] = []
+            for name in names:
+                hit = any(_tool_name_matches(name, a) for a in actual)
+                rows.append((name, hit))
+                idx = len(aggregate_expected)
+                aggregate_expected.append(name)
+                if hit:
+                    aggregate_matched.add(idx)
+            per_turn.append(
+                TurnCoverage(
+                    turn_index=turn.turn_index,
+                    expected=rows,
+                    actual=actual,
+                )
+            )
+        total = len(aggregate_expected)
+        matched = len(aggregate_matched)
+        flat_rows = [
+            (aggregate_expected[i], i in aggregate_matched) for i in range(total)
+        ]
+        return ExpectedToolsCoverage(
+            total=total,
+            matched=matched,
+            missed=total - matched,
+            unexpected=0,
+            rows=flat_rows,
+            per_turn=per_turn,
+        )
+
+    expected = _expected_tool_names(case.expected_tools)
     called = list(case.tool_calls or [])
-    expected_lower = {e.lower() for e in expected}
-    called_lower = {c.lower() for c in called}
 
-    matched = len(expected_lower & called_lower)
-    missed = len(expected_lower - called_lower)
-    unexpected = len(called_lower - expected_lower)
-
-    rows = [(e, e.lower() in called_lower) for e in expected]
+    rows = [(e, any(_tool_name_matches(e, c) for c in called)) for e in expected]
+    matched = sum(1 for _, ok in rows if ok)
+    missed = len(expected) - matched
+    unexpected = sum(
+        1 for c in called if not any(_tool_name_matches(e, c) for e in expected)
+    )
     return ExpectedToolsCoverage(
         total=len(expected),
         matched=matched,
         missed=missed,
         unexpected=unexpected,
         rows=rows,
+        per_turn=[],
     )
 
 
