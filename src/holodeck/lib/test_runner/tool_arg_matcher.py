@@ -164,7 +164,7 @@ def match_arg(matcher: ArgMatcher, actual: Any) -> tuple[bool, str | None]:
 # ---------------------------------------------------------------------------
 
 
-def _tool_name_matches(expected: str, actual: str) -> bool:
+def tool_name_matches(expected: str, actual: str) -> bool:
     """Case-sensitive substring match (preserves `validate_tool_calls` semantics)."""
     return expected in actual
 
@@ -210,7 +210,7 @@ def find_matching_call(
     candidates = [
         (i, inv)
         for i, inv in enumerate(invocations)
-        if _tool_name_matches(expected_tool.name, inv.name)
+        if tool_name_matches(expected_tool.name, inv.name)
     ]
     if not candidates:
         return -1, f"no call to '{expected_tool.name}' found"
@@ -262,7 +262,7 @@ def evaluate_expected_tools(
         satisfying_indices: list[int] = []
         last_reason: str | None = None
         for idx, inv in enumerate(invocations):
-            if not _tool_name_matches(et.name, inv.name):
+            if not tool_name_matches(et.name, inv.name):
                 continue
             if args:
                 ok, reason = _evaluate_call_against_args(inv, args)
@@ -287,7 +287,7 @@ def evaluate_expected_tools(
             overall = False
             # Reason selection: if no candidates at all, say so; if count
             # under-met, say how many we got; otherwise propagate arg reason.
-            if not any(_tool_name_matches(et.name, inv.name) for inv in invocations):
+            if not any(tool_name_matches(et.name, inv.name) for inv in invocations):
                 reason = f"no call to '{et.name}' found"
             elif not satisfying_indices and last_reason:
                 reason = last_reason

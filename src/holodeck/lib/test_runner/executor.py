@@ -67,8 +67,8 @@ from holodeck.lib.test_runner.eval_kwargs_builder import (
     build_retrieval_context_from_tools,
 )
 from holodeck.lib.test_runner.tool_arg_matcher import (
-    _tool_name_matches,
     evaluate_expected_tools,
+    tool_name_matches,
 )
 from holodeck.lib.test_runner.tool_invocation_builder import pair_tool_calls
 from holodeck.models.agent import Agent
@@ -89,6 +89,7 @@ from holodeck.models.test_result import (
     ReportSummary,
     TestReport,
     TestResult,
+    ToolInvocation,
     TurnResult,
 )
 from holodeck.models.token_usage import TokenUsage
@@ -137,7 +138,7 @@ def _finalize_multi_turn_result(
     agent_response = turns[-1].response
 
     tool_calls: list[str] = []
-    tool_invocations = []
+    tool_invocations: list[ToolInvocation] = []
     for t in turns:
         tool_calls.extend(t.tool_calls)
         tool_invocations.extend(t.tool_invocations)
@@ -279,7 +280,7 @@ def validate_tool_calls(
     def is_expected_found(expected_tool: str) -> bool:
         """Check if expected tool name is found in any actual tool call."""
         return any(
-            _tool_name_matches(expected_tool, actual_tool) for actual_tool in actual
+            tool_name_matches(expected_tool, actual_tool) for actual_tool in actual
         )
 
     matched = all(is_expected_found(exp) for exp in expected)
@@ -318,7 +319,7 @@ def _serialize_expected_tools_for_turn_result(
     for entry in expected:
         if isinstance(entry, str):
             out.append(entry)
-        elif isinstance(entry, ExpectedTool):
+        else:
             obj: dict[str, Any] = {"name": entry.name}
             if entry.args is not None:
                 args_dump: dict[str, Any] = {}
@@ -360,11 +361,10 @@ def _partition_expected_tools(
     for entry in expected:
         if isinstance(entry, str):
             names.append(entry)
-        elif isinstance(entry, ExpectedTool):
-            if entry.args is None and entry.count == 1:
-                names.append(entry.name)
-            else:
-                objects.append(entry)
+        elif entry.args is None and entry.count == 1:
+            names.append(entry.name)
+        else:
+            objects.append(entry)
     return names, objects
 
 
@@ -1196,7 +1196,7 @@ class TestExecutor:
             tool_names, fast_names if fast_names else None
         )
         arg_matched, arg_details = evaluate_expected_tools(
-            [et for et in (turn.expected_tools or []) if isinstance(et, ExpectedTool)],
+            object_expected,
             tool_invocations,
         )
         if turn.expected_tools is None:
@@ -1210,7 +1210,7 @@ class TestExecutor:
             missing = [
                 exp
                 for exp in fast_names
-                if not any(_tool_name_matches(exp, actual) for actual in tool_names)
+                if not any(tool_name_matches(exp, actual) for actual in tool_names)
             ]
             if missing:
                 missing_str = ", ".join(missing)
