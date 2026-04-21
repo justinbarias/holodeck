@@ -53,6 +53,10 @@ from holodeck.lib.evaluators.deepeval import (
     GEvalEvaluator,
 )
 from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
+from holodeck.lib.evaluators.deterministic import (
+    EqualityEvaluator,
+    NumericEvaluator,
+)
 from holodeck.lib.evaluators.nlp_metrics import (
     BLEUEvaluator,
     METEOREvaluator,
@@ -62,6 +66,10 @@ from holodeck.lib.file_processor import FileProcessor
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_exception
 from holodeck.lib.test_runner.agent_factory import AgentFactory
+from holodeck.lib.test_runner.code_grader import (
+    build_grader_context,
+    invoke_grader,
+)
 from holodeck.lib.test_runner.eval_kwargs_builder import (
     EvalKwargsBuilder,
     build_retrieval_context_from_tools,
@@ -95,6 +103,35 @@ from holodeck.models.test_result import (
 from holodeck.models.token_usage import TokenUsage
 
 logger = get_logger(__name__)
+
+
+class TestCaseFatal(Exception):  # noqa: N818
+    # Semantic name preferred over an `Error` suffix — this is a control-flow
+    # signal (test-case-scoped "stop" from a grader), not a typical error.
+    """Raised when a ``CodeMetric`` grader with ``fail_on_error=True`` raises.
+
+    Breaks the turn loop for **this test case only**. Other test cases still
+    run. Caught at the per-test-case level in ``_execute_single_test`` /
+    ``_run_multi_turn``. Executor-local by design — NOT part of the public API
+    and not exported from this module.
+    """
+
+    def __init__(
+        self,
+        *,
+        test_case_name: str | None,
+        turn_index: int,
+        grader_name: str,
+        underlying: Exception,
+    ) -> None:
+        self.test_case_name = test_case_name
+        self.turn_index = turn_index
+        self.grader_name = grader_name
+        self.underlying = underlying
+        super().__init__(
+            f"TestCaseFatal({grader_name}) at turn {turn_index} "
+            f"of {test_case_name!r}: {type(underlying).__name__}: {underlying}"
+        )
 
 
 def _metric_kind(
@@ -574,16 +611,38 @@ class TestExecutor:
 
         Supports standard EvaluationMetric, GEvalMetric, and RAGMetric types.
 
+        Scans all three configuration rungs — agent-global, per-test-case, and
+        per-turn — so that metrics introduced at the narrower rungs (FR-023)
+        also register an evaluator. Without this the per-turn / per-test
+        override path silently skipped metrics not declared globally.
+
         Returns:
             Dictionary mapping metric names to evaluator instances
         """
         evaluators: dict[str, BaseEvaluator] = {}
 
-        if not self.agent_config.evaluations:
+        # Collect every metric declared at any rung (agent / test-case / turn).
+        # Later duplicates are ignored — the first occurrence wins, matching
+        # the three-level resolver's precedence (turn > test_case > agent).
+        all_metrics: list[EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric] = []
+        if self.agent_config.evaluations:
+            all_metrics.extend(self.agent_config.evaluations.metrics)
+        for tc in self.agent_config.test_cases or []:
+            if tc.evaluations:
+                all_metrics.extend(tc.evaluations)
+            for turn in tc.turns or []:
+                if turn.evaluations:
+                    all_metrics.extend(turn.evaluations)
+
+        if not all_metrics:
             return evaluators
 
         # Get default model for all metrics
-        default_model = self.agent_config.evaluations.model
+        default_model = (
+            self.agent_config.evaluations.model
+            if self.agent_config.evaluations
+            else None
+        )
 
         # Get observability config for span instrumentation
         # Only pass it if observability is enabled and traces are enabled
@@ -596,8 +655,8 @@ class TestExecutor:
         ):
             observability_config = self.agent_config.observability.traces
 
-        # Create evaluators for configured metrics
-        for metric_config in self.agent_config.evaluations.metrics:
+        # Create evaluators for every configured metric across all rungs.
+        for metric_config in all_metrics:
             # Handle GEval custom criteria metrics
             if isinstance(metric_config, GEvalMetric):
                 llm_model = metric_config.model or default_model
@@ -641,13 +700,14 @@ class TestExecutor:
                     )
                 continue
 
-            # Handle code-grader metrics (US4 populates a real evaluator;
-            # US1 only reserves the config slot + MetricResult.kind).
+            # Handle code-grader metrics. CodeMetric does NOT register a
+            # BaseEvaluator — the grader callable is invoked via
+            # ``invoke_grader`` from ``code_grader.py`` inside
+            # ``_run_evaluations`` (see T043 dispatch block below). We
+            # explicitly ``continue`` here so an unknown metric_name branch
+            # doesn't silently swallow it.
             if isinstance(metric_config, CodeMetric):
-                logger.debug(
-                    f"CodeMetric configured — grader={metric_config.grader} "
-                    "(execution deferred to US4)"
-                )
+                logger.debug(f"CodeMetric configured — grader={metric_config.grader}")
                 continue
 
             # Handle standard EvaluationMetric types
@@ -704,6 +764,25 @@ class TestExecutor:
                 evaluators[metric_name] = ROUGEEvaluator()
             elif metric_name == "meteor":
                 evaluators[metric_name] = METEOREvaluator()
+
+            # US4 — deterministic evaluators (zero-LLM). Registered under the
+            # metric-name key so ``_run_evaluations`` at
+            # ``result.get(metric_name, ...)`` picks up the score.
+            elif metric_name == "equality":
+                evaluators[metric_name] = EqualityEvaluator(
+                    case_insensitive=metric_config.case_insensitive,
+                    strip_whitespace=metric_config.strip_whitespace,
+                    strip_punctuation=metric_config.strip_punctuation,
+                )
+            elif metric_name == "numeric":
+                evaluators[metric_name] = NumericEvaluator(
+                    absolute_tolerance=metric_config.absolute_tolerance,
+                    relative_tolerance=metric_config.relative_tolerance,
+                    accept_percent=metric_config.accept_percent,
+                    accept_thousands_separators=(
+                        metric_config.accept_thousands_separators
+                    ),
+                )
 
         return evaluators
 
@@ -1071,14 +1150,46 @@ class TestExecutor:
                     )
                     continue
 
-                turn_result = await self._run_single_turn(
-                    test_case=test_case,
-                    turn=turn,
-                    turn_index=idx,
-                    session=session,
-                    llm_timeout=llm_timeout,
-                    backend_kind=backend_kind,
-                )
+                try:
+                    turn_result = await self._run_single_turn(
+                        test_case=test_case,
+                        turn=turn,
+                        turn_index=idx,
+                        session=session,
+                        llm_timeout=llm_timeout,
+                        backend_kind=backend_kind,
+                    )
+                except TestCaseFatal as fatal:
+                    # fail_on_error=True grader raised — record a final
+                    # failing turn for the current index then stop the turn
+                    # loop. Remaining turns are skipped; other test cases
+                    # continue unaffected.
+                    logger.warning(
+                        "TestCaseFatal: %s",
+                        fatal,
+                    )
+                    turn_results.append(
+                        TurnResult(
+                            turn_index=idx,
+                            input=turn.input,
+                            response=None,
+                            ground_truth=turn.ground_truth,
+                            expected_tools=None,
+                            tool_calls=[],
+                            tool_invocations=[],
+                            tools_matched=None,
+                            arg_match_details=None,
+                            metric_results=[],
+                            passed=False,
+                            execution_time_ms=0,
+                            token_usage=None,
+                            errors=[str(fatal)],
+                            skipped=False,
+                            grader_details=None,
+                        )
+                    )
+                    session_unrecoverable = True
+                    continue
                 turn_results.append(turn_result)
 
                 if turn_result.errors and any(
@@ -1230,8 +1341,13 @@ class TestExecutor:
         # producing a response — metric_results stays empty and the 4-conjunct
         # below catches the failure via `errors`.
         metric_results: list[MetricResult] = []
+        grader_details_sink: dict[str, Any] = {}
         if response is not None:
             try:
+                # Build turn_config for code graders — raw per-turn YAML-like
+                # dict surfaced via ``Turn.model_dump`` (so grader-specific
+                # keys like ``turn_program`` pass through untouched).
+                turn_config_dict = turn.model_dump(mode="python")
                 metric_results = await self._run_evaluations(
                     metrics=self._resolve_turn_metrics(test_case, turn),
                     agent_response=response,
@@ -1241,7 +1357,15 @@ class TestExecutor:
                     processed_files=processed_files,
                     tool_results=tool_results,
                     skip_metrics_without_ground_truth=True,
+                    tool_invocations=list(tool_invocations),
+                    turn_index=turn_index,
+                    test_case_name=test_case.name,
+                    turn_config=turn_config_dict,
+                    grader_details_sink=grader_details_sink,
                 )
+            except TestCaseFatal:
+                # Re-raise so ``_run_multi_turn`` breaks the turn loop.
+                raise
             except Exception as e:  # noqa: BLE001
                 log_exception(
                     logger,
@@ -1276,7 +1400,7 @@ class TestExecutor:
             token_usage=token_usage,
             errors=errors,
             skipped=False,
-            grader_details=None,
+            grader_details=grader_details_sink if grader_details_sink else None,
         )
 
     def _prepare_agent_input(
@@ -1316,6 +1440,14 @@ class TestExecutor:
         processed_files: list[ProcessedFileInput],
         tool_results: list[dict[str, Any]] | None = None,
         skip_metrics_without_ground_truth: bool = False,
+        # US4 — grader-context fields used only by ``CodeMetric`` dispatch.
+        # Pulled into optional kwargs so legacy single-turn callers don't
+        # have to thread them through.
+        tool_invocations: list[Any] | None = None,
+        turn_index: int = 0,
+        test_case_name: str | None = None,
+        turn_config: dict[str, Any] | None = None,
+        grader_details_sink: dict[str, Any] | None = None,
     ) -> list[MetricResult]:
         """Run evaluation metrics against a single agent exchange.
 
@@ -1356,7 +1488,40 @@ class TestExecutor:
             elif isinstance(metric_config, RAGMetric):
                 metric_name = metric_config.metric_type.value
             elif isinstance(metric_config, CodeMetric):
-                # US4 — real grader invocation lands there; skip at runtime.
+                # US4 T043 — dispatch user-supplied grader via ``invoke_grader``.
+                # ``CodeMetric`` graders do NOT use ``self.evaluators`` — the
+                # callable is resolved at config load time and cached on the
+                # model (see ``CodeMetric._resolve_grader``).
+                if not metric_config.enabled:
+                    continue
+                grader_name = metric_config.display_name
+                ctx = build_grader_context(
+                    turn_input=input_query or "",
+                    agent_response=agent_response,
+                    ground_truth=ground_truth,
+                    tool_invocations=tool_invocations or [],
+                    retrieval_context=retrieval_context,
+                    turn_index=turn_index,
+                    test_case_name=test_case_name,
+                    turn_config=turn_config or {},
+                )
+                mr, details, captured = invoke_grader(
+                    metric_config.resolved_callable,
+                    ctx,
+                    metric_name=grader_name,
+                    threshold=metric_config.threshold,
+                )
+                metric_results.append(mr)
+                if details is not None and grader_details_sink is not None:
+                    grader_details_sink[grader_name] = details
+                # Escalate only when the grader raised AND fail_on_error=True.
+                if captured is not None and metric_config.fail_on_error:
+                    raise TestCaseFatal(
+                        test_case_name=test_case_name,
+                        turn_index=turn_index,
+                        grader_name=grader_name,
+                        underlying=captured,
+                    )
                 continue
             else:
                 metric_name = metric_config.metric

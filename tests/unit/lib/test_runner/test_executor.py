@@ -2714,10 +2714,13 @@ class TestUnconfiguredMetrics:
             expected_tools=None,
             ground_truth="Answer",
             files=None,
-            # Request a metric that won't be in evaluators
+            # Request a metric that won't be in evaluators. After US4 the
+            # ``metric`` field is a Literal — use a valid built-in name but
+            # leave the executor's ``evaluators`` dict empty to exercise the
+            # "unconfigured metric is skipped" path.
             evaluations=[
                 EvaluationMetric(
-                    metric="custom_metric",  # Not configured
+                    metric="groundedness",  # Valid name, intentionally unwired.
                     threshold=0.7,
                     enabled=True,
                 )

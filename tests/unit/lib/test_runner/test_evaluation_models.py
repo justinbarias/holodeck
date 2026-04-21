@@ -147,15 +147,21 @@ class TestEvaluationMetric:
         assert metric.custom_prompt == "Custom evaluation prompt"
 
     def test_evaluation_metric_various_metric_names(self) -> None:
-        """Test EvaluationMetric accepts various metric names."""
+        """Test EvaluationMetric accepts each built-in metric name (US4).
+
+        ``safety`` / ``f1_score`` are no longer accepted after US4 narrowed
+        ``metric`` to a Literal (see ``tasks-us4.md`` T015).
+        """
         for metric_name in [
             "groundedness",
             "relevance",
             "coherence",
-            "safety",
-            "f1_score",
+            "fluency",
             "bleu",
             "rouge",
+            "meteor",
+            "equality",
+            "numeric",
         ]:
             metric = EvaluationMetric(metric=metric_name)
             assert metric.metric == metric_name
