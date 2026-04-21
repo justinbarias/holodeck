@@ -29,6 +29,7 @@ from holodeck.dashboard.explorer_data import (
     ExpectedToolsCoverage,
     MetricRow,
     ToolCallView,
+    TurnView,
     build_case_detail,
     list_case_summaries,
     select_run,
@@ -256,6 +257,16 @@ def _cases_column(
         if c.tools_called_count > 0:
             metric_chips.append(
                 html.Span(f"{c.tools_called_count} tools", className="mini-metric")
+            )
+        if c.turns_total is not None:
+            chip_cls = "mini-metric"
+            if c.turns_failed is not None and c.turns_failed > 0:
+                chip_cls += " fail"
+            metric_chips.append(
+                html.Span(
+                    f"{c.turns_total} turns · {c.turns_passed}/{c.turns_total} passed",
+                    className=chip_cls,
+                )
             )
 
         rows.append(
@@ -594,7 +605,176 @@ def _render_assistant_body(text: str) -> Any:
     )
 
 
+def _turn_thread_block(turn: TurnView) -> html.Div:
+    """Render one turn inside a multi-turn conversation section.
+
+    Composes the existing sub-components — :func:`_tool_call_panel`,
+    :func:`_metric_row_div`, and the token-usage renderer — into a
+    per-turn ``html.Details``. Skipped turns are dimmed and carry a
+    distinct badge so the reader can spot them at a glance.
+    """
+
+    is_skipped = turn.skipped
+
+    header_pieces: list = [
+        html.Span(
+            f"Turn {turn.turn_index}",
+            className="mono",
+            style={
+                "fontWeight": 600,
+                "fontSize": "12px",
+                "letterSpacing": ".1em",
+                "textTransform": "uppercase",
+                "color": "var(--hd-muted)" if is_skipped else "var(--fg1)",
+            },
+        ),
+    ]
+    if is_skipped:
+        header_pieces.append(
+            html.Span(
+                "SKIPPED",
+                className="pill pill-fail",
+                style={"marginLeft": "8px"},
+            )
+        )
+    else:
+        header_pieces.append(
+            html.Span(
+                f"{turn.execution_time_ms}ms",
+                className="mono",
+                style={
+                    "marginLeft": "8px",
+                    "color": "var(--hd-muted)",
+                    "fontSize": "11px",
+                },
+            )
+        )
+
+    body: list = []
+    if turn.input:
+        body.append(
+            html.Div(
+                [html.Div("USER", className="who"), html.Div(turn.input)],
+                className="bubble user",
+            )
+        )
+    for tc in turn.tool_invocations:
+        body.append(_tool_call_panel(tc))
+    if turn.response is not None and turn.response != "":
+        body.append(
+            html.Div(
+                [
+                    html.Div("AGENT", className="who"),
+                    _render_assistant_body(turn.response),
+                ],
+                className="bubble assistant",
+            )
+        )
+
+    if turn.metric_results:
+        body.append(
+            html.Div(
+                [
+                    html.Div(
+                        "METRICS",
+                        className="eyebrow",
+                        style={
+                            "fontSize": "10px",
+                            "letterSpacing": ".15em",
+                            "textTransform": "uppercase",
+                            "color": "var(--hd-accent-soft)",
+                            "margin": "8px 0 6px",
+                        },
+                    ),
+                    *(_metric_row_div(m) for m in turn.metric_results),
+                ]
+            )
+        )
+
+    if turn.errors:
+        body.append(
+            html.Div(
+                [
+                    html.Div(
+                        msg,
+                        style={
+                            "background": "rgba(255,120,80,.08)",
+                            "borderLeft": "3px solid #ff9d7e",
+                            "padding": "6px 10px",
+                            "borderRadius": "4px",
+                            "fontSize": "12px",
+                            "color": "#ff9d7e",
+                            "marginTop": "4px",
+                        },
+                    )
+                    for msg in turn.errors
+                ]
+            )
+        )
+
+    if turn.token_usage is not None:
+        tu = turn.token_usage
+        body.append(
+            html.Div(
+                [
+                    html.Span(
+                        f"tokens: prompt={tu.get('prompt_tokens', 0)} · "
+                        f"completion={tu.get('completion_tokens', 0)} · "
+                        f"total={tu.get('total_tokens', 0)}",
+                        className="mono",
+                        style={
+                            "fontSize": "11px",
+                            "color": "var(--hd-muted)",
+                        },
+                    ),
+                ],
+                style={"marginTop": "6px"},
+            )
+        )
+
+    summary = html.Summary(header_pieces)
+    details_cls = "hd-explorer-turn"
+    if is_skipped:
+        details_cls += " hd-explorer-turn--skipped"
+    details = html.Details(
+        [summary, html.Div(body, className="thread")],
+        className=details_cls,
+        open=not is_skipped and bool(turn.errors),
+    )
+
+    wrapper_style = {"padding": "8px 0"}
+    if is_skipped:
+        wrapper_style["opacity"] = "0.6"
+    return html.Div(
+        [details], className="hd-explorer-turn-wrapper", style=wrapper_style
+    )
+
+
 def _conversation_section(conv: ConversationView, model_name: str) -> html.Details:
+    summary = html.Summary(
+        [
+            html.Div(
+                [
+                    html.Div("CONVERSATION", className="eyebrow"),
+                    html.H3("Thread with tool calls"),
+                    html.P(
+                        "User input, agent response, and every tool invocation that happened in between.",
+                        className="subtitle",
+                    ),
+                ],
+                className="summary-text",
+            ),
+        ],
+    )
+
+    if conv.turns is not None:
+        turn_blocks = [_turn_thread_block(t) for t in conv.turns]
+        return html.Details(
+            [summary, html.Div(turn_blocks, className="thread hd-explorer-turns")],
+            className="panel hd-explorer-section",
+            open=True,
+        )
+
     thread: list = []
     if conv.user:
         thread.append(
@@ -615,22 +795,6 @@ def _conversation_section(conv: ConversationView, model_name: str) -> html.Detai
                 className="bubble assistant",
             )
         )
-
-    summary = html.Summary(
-        [
-            html.Div(
-                [
-                    html.Div("CONVERSATION", className="eyebrow"),
-                    html.H3("Thread with tool calls"),
-                    html.P(
-                        "User input, agent response, and every tool invocation that happened in between.",
-                        className="subtitle",
-                    ),
-                ],
-                className="summary-text",
-            ),
-        ],
-    )
 
     return html.Details(
         [summary, html.Div(thread, className="thread")],

@@ -228,6 +228,69 @@ def test_failure_pinpoints_turn_index() -> None:
 
 
 @pytest.mark.unit
+def test_arg_match_details_rendered_on_failure() -> None:
+    """A failing turn's markdown row shows the asserted args and reason (T031)."""
+    turns = [
+        TurnResult(
+            turn_index=0,
+            input="q",
+            response="r",
+            metric_results=[],
+            passed=False,
+            execution_time_ms=5,
+            expected_tools=[
+                {
+                    "name": "subtract",
+                    "args": {"a": 206588, "b": {"fuzzy": "181001"}},
+                }
+            ],
+            tool_calls=["subtract"],
+            tools_matched=False,
+            arg_match_details=[
+                {
+                    "expected_tool": "subtract",
+                    "args_asserted": {"a": 206588, "b": {"fuzzy": "181001"}},
+                    "matched_call_index": -1,
+                    "unmatched_reason": (
+                        "arg 'a' mismatch: expected 206588, got 180000"
+                    ),
+                }
+            ],
+            errors=[
+                "expected subtract(a=206588, b≈181001): "
+                "arg 'a' mismatch: expected 206588, got 180000"
+            ],
+        )
+    ]
+    result = TestResult(
+        test_name="argmatch",
+        test_input="q",
+        agent_response="r",
+        passed=False,
+        execution_time_ms=5,
+        timestamp="2026-04-20T00:00:00+00:00",
+        turns=turns,
+        errors=["[turn 0] expected subtract"],
+    )
+    report = TestReport(
+        agent_name="a",
+        agent_config_path="a.yaml",
+        results=[result],
+        summary=ReportSummary(
+            total_tests=1, passed=0, failed=1, pass_rate=0.0, total_duration_ms=5
+        ),
+        timestamp="2026-04-20T00:00:01+00:00",
+        holodeck_version="0.1.0",
+    )
+    md = generate_markdown_report(report)
+    # Asserted args are visible on the failing turn.
+    assert "206588" in md
+    assert "181001" in md
+    # The unmatched_reason surfaces in the rendered errors or arg details.
+    assert "mismatch" in md or "missing" in md or "180000" in md
+
+
+@pytest.mark.unit
 def test_json_reporter_includes_turns_field() -> None:
     multi = _multi_turn_report()
     single = _single_turn_report()
@@ -236,3 +299,19 @@ def test_json_reporter_includes_turns_field() -> None:
     assert multi_json["results"][0]["turns"] is not None
     assert len(multi_json["results"][0]["turns"]) == 3
     assert single_json["results"][0]["turns"] is None
+
+
+@pytest.mark.unit
+def test_json_report_has_turns_array_cross_check() -> None:
+    """US5 T019 cross-feature guard: reporter must not drop ``turns`` from
+    JSON when the model carries it. Uses the dashboard seed builder so a
+    regression here surfaces in both the reporter and the dashboard."""
+
+    from holodeck.dashboard.seed_data import build_multi_turn_seed_case
+
+    run = build_multi_turn_seed_case()
+    report_json = json.loads(run.report.model_dump_json())
+    by_name = {r["test_name"]: r for r in report_json["results"]}
+    assert by_name["single_turn_legacy"]["turns"] is None
+    assert len(by_name["three_turn_chit_chat"]["turns"]) == 3
+    assert len(by_name["four_turn_math_failing"]["turns"]) == 4
