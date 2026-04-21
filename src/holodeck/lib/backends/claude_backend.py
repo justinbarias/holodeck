@@ -744,9 +744,16 @@ class ClaudeBackend:
             await self._initialize_tools()
 
             # 5. Tool adapters
+            from pathlib import Path
+
+            from holodeck.config.context import agent_base_dir as _agent_base_dir
+
+            _base_dir_str = _agent_base_dir.get()
+            _base_dir = Path(_base_dir_str) if _base_dir_str else None
             adapters = create_tool_adapters(
                 tool_configs=agent.tools or [],
                 tool_instances=self._tool_instances,
+                base_dir=_base_dir,
             )
             tool_server, tool_names = build_holodeck_sdk_server(adapters)
 

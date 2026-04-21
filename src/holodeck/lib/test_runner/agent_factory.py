@@ -44,6 +44,7 @@ from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import ProviderEnum
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool import (
+    FunctionTool,
     HierarchicalDocumentToolConfig,
     MCPTool,
     VectorstoreTool,
@@ -1008,6 +1009,97 @@ class AgentFactory:
 
             logger.info(f"Registered hierarchical document tool: {tool_config.name}")
 
+    def _has_function_tools(self) -> bool:
+        """Return True if any configured tool is a ``FunctionTool``."""
+        if not self.agent_config.tools:
+            return False
+        return any(isinstance(t, FunctionTool) for t in self.agent_config.tools)
+
+    async def _register_function_tools(self) -> None:
+        """Load and register every ``FunctionTool`` on the kernel.
+
+        For each configured ``FunctionTool``:
+        1. Resolve the callable via ``function_tool_loader.load_function_tool``
+           against ``agent_base_dir``.
+        2. Wrap it in an async ``@kernel_function`` with a signature that
+           mirrors the user callable (SK introspects the wrapper's signature
+           for its JSON schema).
+        3. Register under plugin ``function_tools`` using the tool's name.
+
+        Raises:
+            AgentFactoryError: If a tool fails to load.
+            ConfigError: Re-raised from the loader (missing file, missing
+                attribute, non-callable).
+        """
+        if not self._has_function_tools():
+            return
+
+        import asyncio as _asyncio
+        import functools
+        import inspect
+        from pathlib import Path
+
+        from semantic_kernel.functions.kernel_function_decorator import (
+            kernel_function as kernel_function_decorator,
+        )
+
+        from holodeck.config.context import agent_base_dir
+        from holodeck.lib.function_tool_loader import load_function_tool
+
+        base_dir_str = agent_base_dir.get()
+        base_dir = Path(base_dir_str) if base_dir_str else None
+
+        tools = self.agent_config.tools or []
+        for tool_config in tools:
+            if not isinstance(tool_config, FunctionTool):
+                continue
+
+            try:
+                func = load_function_tool(tool_config, base_dir=base_dir)
+
+                is_coro = _asyncio.iscoroutinefunction(func)
+
+                if is_coro:
+
+                    async def wrapper(
+                        *args: Any, _func: Any = func, **kwargs: Any
+                    ) -> Any:
+                        return await _func(*args, **kwargs)
+
+                else:
+
+                    async def wrapper(  # noqa: F811
+                        *args: Any, _func: Any = func, **kwargs: Any
+                    ) -> Any:
+                        return _func(*args, **kwargs)
+
+                functools.update_wrapper(wrapper, func)
+                wrapper.__signature__ = inspect.signature(func)  # type: ignore[attr-defined]
+
+                decorated = kernel_function_decorator(
+                    name=tool_config.name,
+                    description=tool_config.description,
+                )(wrapper)
+
+                kernel_function = KernelFunctionFromMethod(
+                    method=decorated,
+                    plugin_name="function_tools",
+                )
+
+                self.kernel.add_function(
+                    plugin_name="function_tools", function=kernel_function
+                )
+
+                logger.info(f"Registered function tool: {tool_config.name}")
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to register function tool {tool_config.name}: {e}"
+                )
+                raise AgentFactoryError(
+                    f"Failed to register function tool {tool_config.name}: {e}"
+                ) from e
+
     async def _ensure_tools_initialized(self) -> None:
         """Ensure all tools are initialized (called before first invoke).
 
@@ -1019,6 +1111,7 @@ class AgentFactory:
         await self._register_vectorstore_tools()
         await self._register_mcp_tools()
         await self._register_hierarchical_document_tools()
+        await self._register_function_tools()
 
         # Initialize tool filtering if enabled
         if self._is_tool_filtering_enabled():
