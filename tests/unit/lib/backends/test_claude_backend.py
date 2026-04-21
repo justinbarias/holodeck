@@ -877,6 +877,47 @@ class TestClaudeSessionSend:
         assert result.token_usage.prompt_tokens == 10
 
     @pytest.mark.asyncio
+    async def test_send_enriches_tool_results_with_name(self) -> None:
+        """Regression: ClaudeSession.send must populate `name` on tool_results.
+
+        ToolResultBlock from the SDK only carries `call_id`, while ToolUseBlock
+        carries the tool name. `build_retrieval_context_from_tools` keys on
+        name, so sessions that skipped enrichment produced empty retrieval
+        contexts and made DeepEval RAG metrics crash with 'retrieval_context
+        cannot be None'.
+        """
+        mock_client = MagicMock()
+        mock_client.query = AsyncMock()
+        tool_use = _make_tool_use_block(
+            tool_id="call_abc",
+            name="mcp__holodeck_tools__legislation_search_search",
+            inp={"query": "sec3"},
+        )
+        assistant = _make_assistant_message([_make_text_block("ok"), tool_use])
+
+        tool_result_block = _make_tool_result_block("call_abc", "chunk text", False)
+        user_msg = MagicMock()
+        user_msg.content = [tool_result_block]
+        user_msg.__class__.__name__ = "UserMessage"
+
+        def mock_receive():
+            return _async_iter([assistant, user_msg, _make_result_message()])
+
+        mock_client.receive_response = mock_receive
+        session = ClaudeSession(options=MagicMock())
+        session._client = mock_client
+
+        result = await session.send("search")
+
+        assert result.tool_calls[0]["name"] == (
+            "mcp__holodeck_tools__legislation_search_search"
+        )
+        assert result.tool_results[0]["name"] == (
+            "mcp__holodeck_tools__legislation_search_search"
+        )
+        assert result.tool_results[0]["call_id"] == "call_abc"
+
+    @pytest.mark.asyncio
     async def test_send_multi_turn_state_tracking(self) -> None:
         """T014: Multi-turn state tracking passes session_id on turn 2+."""
         mock_client = MagicMock()

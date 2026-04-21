@@ -606,6 +606,13 @@ class ClaudeSession:
 
             self._turn_count += 1
 
+            # Enrich tool results with names from tool calls so downstream
+            # consumers (eval_kwargs_builder.build_retrieval_context_from_tools)
+            # can match each result to its source tool. The SDK yields names
+            # only on ToolUseBlock; results arrive on ToolResultBlock carrying
+            # just call_id.
+            _enrich_tool_results(tool_calls, tool_results)
+
             return ExecutionResult(
                 response="".join(text_parts),
                 tool_calls=tool_calls,
