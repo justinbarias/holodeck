@@ -6,6 +6,7 @@ agent configuration from YAML files.
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -355,6 +356,14 @@ class ConfigLoader:
         # `test_cases` before schema validation. Agent model uses
         # `extra="forbid"`, so the key must be removed from the dict.
         _resolve_test_cases_file(merged_config, path.parent)
+
+        # Expose the agent directory on ``sys.path`` so ``CodeMetric``'s
+        # grader resolver (``importlib.import_module``) can locate user-land
+        # grader packages (e.g. ``graders.my_benchmarks``) placed next to
+        # ``agent.yaml``.
+        agent_dir_abs = str(path.parent.resolve())
+        if agent_dir_abs not in sys.path:
+            sys.path.insert(0, agent_dir_abs)
 
         # Validate against Agent schema
         try:

@@ -33,3 +33,20 @@ class TestTurnModel:
     def test_empty_ground_truth_rejected(self) -> None:
         with pytest.raises(ValidationError):
             Turn(input="hi", ground_truth="")
+
+    def test_turn_config_round_trip(self) -> None:
+        turn = Turn(
+            input="x",
+            turn_config={"turn_program": "subtract(a,b)"},
+        )
+        assert turn.turn_config == {"turn_program": "subtract(a,b)"}
+        rehydrated = Turn.model_validate_json(turn.model_dump_json())
+        assert rehydrated.turn_config == {"turn_program": "subtract(a,b)"}
+
+    def test_turn_config_defaults_to_none(self) -> None:
+        turn = Turn(input="hi")
+        assert turn.turn_config is None
+
+    def test_unknown_top_level_key_still_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Turn(input="hi", turn_program="subtract(a,b)")  # type: ignore[call-arg]

@@ -135,12 +135,18 @@ class DeepEvalModelConfig(BaseModel):
         elif self.provider == ProviderEnum.AZURE_OPENAI:
             from deepeval.models import AzureOpenAIModel
 
+            # DeepEval 3.7.x renamed the constructor kwargs:
+            #   model_name → model (hard-required; not aliased)
+            #   azure_endpoint → base_url (aliased, deprecation warning)
+            #   openai_api_version → api_version (not aliased — must rename)
+            #   azure_openai_api_key → api_key (aliased, deprecation warning)
+            # We use the new names directly to avoid the warnings.
             return AzureOpenAIModel(
-                model_name=self.model_name,
+                model=self.model_name,
                 deployment_name=self.deployment_name,
-                azure_endpoint=self.endpoint,
-                openai_api_version=self.api_version,
-                azure_openai_api_key=self.api_key,
+                base_url=self.endpoint,
+                api_version=self.api_version,
+                api_key=self.api_key,
                 temperature=1.0,  # reasoning models require temperature=1.0
             )
 

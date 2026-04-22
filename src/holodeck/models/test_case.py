@@ -368,6 +368,14 @@ class Turn(BaseModel):
         None,
         description="Per-turn metric overrides (FR-023)",
     )
+    turn_config: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "Free-form per-turn config surfaced to code graders as "
+            "``ctx.turn_config`` (contracts/code-grader-contract.md §3.1). "
+            "Used for grader-specific keys such as ``turn_program``."
+        ),
+    )
 
     @field_validator("input")
     @classmethod

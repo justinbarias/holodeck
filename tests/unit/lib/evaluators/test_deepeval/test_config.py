@@ -272,13 +272,16 @@ class TestToDeepEvalModel:
 
         config.to_deepeval_model()
 
-        # Azure always uses temperature=1.0 for reasoning model compatibility
+        # Azure always uses temperature=1.0 for reasoning model compatibility.
+        # DeepEval 3.7.x renamed the constructor kwargs:
+        #   model_name → model, azure_endpoint → base_url,
+        #   openai_api_version → api_version, azure_openai_api_key → api_key.
         mock_azure_model.assert_called_once_with(
-            model_name="gpt-4o",
+            model="gpt-4o",
             deployment_name="my-deployment",
-            azure_endpoint="https://test.openai.azure.com/",
-            openai_api_version="2024-02-15-preview",
-            azure_openai_api_key="azure-key",
+            base_url="https://test.openai.azure.com/",
+            api_version="2024-02-15-preview",
+            api_key="azure-key",
             temperature=1.0,
         )
 

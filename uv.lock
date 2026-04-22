@@ -1424,17 +1424,14 @@ wheels = [
 
 [[package]]
 name = "deepeval"
-version = "3.7.2"
+version = "3.7.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
-    { name = "anthropic" },
     { name = "click" },
-    { name = "google-genai" },
     { name = "grpcio" },
     { name = "jinja2" },
     { name = "nest-asyncio" },
-    { name = "ollama" },
     { name = "openai" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
@@ -1460,9 +1457,9 @@ dependencies = [
     { name = "typer" },
     { name = "wheel" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/40/c6/c3dd2779839c1e9cd2504955d04b529b98effb59ef66efe903800545f757/deepeval-3.7.2.tar.gz", hash = "sha256:5e328168082d78eec09df4e6ef7019aaf709db7fe9d122cf2affa7254abf4525", size = 513667, upload-time = "2025-11-17T06:25:37.885Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/1b/bad41d2f44cb47b459119307f09fed57fe212406881ef3cc471fe2b978aa/deepeval-3.7.9.tar.gz", hash = "sha256:8c590a224592c6eb0f0211d7dd5876bf3dd390974c47ed528a40f93054d401bc", size = 581417, upload-time = "2026-01-06T18:13:58.623Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/a8/409f5aa3a3bd4ed472c62a5177c68947271aa6a1c87f39471e49379df60f/deepeval-3.7.2-py3-none-any.whl", hash = "sha256:213a0e727cb56e0ec0e9f784ccfa09fa0d2527b76af02def5879f3ac6c90a00d", size = 724478, upload-time = "2025-11-17T06:25:35.809Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/47/fdcba293cb8d9838f481600e7697ce47d6d4bccaeaf0df489c18e4fd7038/deepeval-3.7.9-py3-none-any.whl", hash = "sha256:1f4792743feeb7722f32eb3fe5d3f7dbf5a99fa8dada967584052134d4d32392", size = 805159, upload-time = "2026-01-06T18:13:56.601Z" },
 ]
 
 [[package]]
@@ -1925,25 +1922,6 @@ wheels = [
 ]
 
 [[package]]
-name = "google-genai"
-version = "1.52.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "google-auth" },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "requests" },
-    { name = "tenacity" },
-    { name = "typing-extensions" },
-    { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/09/4e/0ad8585d05312074bb69711b2d81cfed69ce0ae441913d57bf169bed20a7/google_genai-1.52.0.tar.gz", hash = "sha256:a74e8a4b3025f23aa98d6a0f84783119012ca6c336fd68f73c5d2b11465d7fc5", size = 258743, upload-time = "2025-11-21T02:18:55.742Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/66/03f663e7bca7abe9ccfebe6cb3fe7da9a118fd723a5abb278d6117e7990e/google_genai-1.52.0-py3-none-any.whl", hash = "sha256:c8352b9f065ae14b9322b949c7debab8562982f03bf71d44130cd2b798c20743", size = 261219, upload-time = "2025-11-21T02:18:54.515Z" },
-]
-
-[[package]]
 name = "googleapis-common-protos"
 version = "1.72.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2292,7 +2270,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.0.0,<9.0.0" },
     { name = "cryptography", specifier = ">=46.0.7,<47.0.0" },
     { name = "dash", marker = "extra == 'dashboard'", specifier = ">=3.0,<4.0" },
-    { name = "deepeval", specifier = ">=3.0.0,<4.0.0" },
+    { name = "deepeval", specifier = ">=3.0.0,<3.8.0" },
     { name = "detect-secrets", marker = "extra == 'dev'", specifier = ">=1.4.0" },
     { name = "docker", marker = "extra == 'deploy'", specifier = ">=7.0.0" },
     { name = "docker", marker = "extra == 'deploy-all'", specifier = ">=7.0.0" },

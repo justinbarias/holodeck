@@ -1366,10 +1366,9 @@ class TestExecutor:
         grader_details_sink: dict[str, Any] = {}
         if response is not None:
             try:
-                # Build turn_config for code graders — raw per-turn YAML-like
-                # dict surfaced via ``Turn.model_dump`` (so grader-specific
-                # keys like ``turn_program`` pass through untouched).
-                turn_config_dict = turn.model_dump(mode="python")
+                # Per-turn free-form config surfaced to code graders as
+                # ``ctx.turn_config`` (contracts/code-grader-contract.md §3.1).
+                turn_config_dict = turn.turn_config or {}
                 # Fall back to session-accumulated retrieval context when
                 # the turn itself didn't invoke a retrieval tool (e.g.,
                 # follow-up answers from prior chunks in the conversation).
