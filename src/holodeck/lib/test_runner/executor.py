@@ -1119,6 +1119,9 @@ class TestExecutor:
         turn_results: list[TurnResult] = []
         consecutive_session_errors = 0
         session_unrecoverable = False
+        # Accumulates retrieval-tool chunks across turns so RAG metrics still
+        # have grounding in later turns that don't re-retrieve.
+        session_retrieval_context: list[str] = []
 
         try:
             session = await self._backend.create_session()
@@ -1158,6 +1161,7 @@ class TestExecutor:
                         session=session,
                         llm_timeout=llm_timeout,
                         backend_kind=backend_kind,
+                        session_retrieval_context=session_retrieval_context,
                     )
                 except TestCaseFatal as fatal:
                     # fail_on_error=True grader raised — record a final
@@ -1235,8 +1239,16 @@ class TestExecutor:
         session: Any,
         llm_timeout: int,
         backend_kind: Literal["sk", "claude"],
+        session_retrieval_context: list[str] | None = None,
     ) -> TurnResult:
-        """Execute one turn against an open session and return its TurnResult."""
+        """Execute one turn against an open session and return its TurnResult.
+
+        ``session_retrieval_context``, when provided, accumulates retrieval-tool
+        output across turns of the same session. A later turn that answers
+        from earlier-retrieved content still has grounding for RAG metrics
+        (Faithfulness, ContextualRelevancy, ...). Extended in place with any
+        new retrieval output produced by this turn.
+        """
         # Per-turn file processing — residue must NOT leak into the next turn.
         processed_files: list[ProcessedFileInput] = []
         errors: list[str] = []
@@ -1337,6 +1349,16 @@ class TestExecutor:
                 reason = detail["unmatched_reason"] or "no matching call"
                 errors.append(f"expected {tool_name}({args_desc}): {reason}")
 
+        # Extend session-scoped retrieval context with this turn's retrieval
+        # tool output BEFORE evaluating. Later turns that respond from
+        # earlier-retrieved content still have grounding for RAG metrics.
+        if session_retrieval_context is not None and tool_results:
+            new_chunks = build_retrieval_context_from_tools(
+                tool_results, self._get_retrieval_tool_names()
+            )
+            if new_chunks:
+                session_retrieval_context.extend(new_chunks)
+
         # Per-turn evaluations (US2 T009c). Skip if the turn errored before
         # producing a response — metric_results stays empty and the 4-conjunct
         # below catches the failure via `errors`.
@@ -1348,12 +1370,18 @@ class TestExecutor:
                 # dict surfaced via ``Turn.model_dump`` (so grader-specific
                 # keys like ``turn_program`` pass through untouched).
                 turn_config_dict = turn.model_dump(mode="python")
+                # Fall back to session-accumulated retrieval context when
+                # the turn itself didn't invoke a retrieval tool (e.g.,
+                # follow-up answers from prior chunks in the conversation).
+                effective_turn_retrieval = turn.retrieval_context
+                if not effective_turn_retrieval and session_retrieval_context:
+                    effective_turn_retrieval = list(session_retrieval_context)
                 metric_results = await self._run_evaluations(
                     metrics=self._resolve_turn_metrics(test_case, turn),
                     agent_response=response,
                     input_query=turn.input,
                     ground_truth=turn.ground_truth,
-                    retrieval_context=turn.retrieval_context,
+                    retrieval_context=effective_turn_retrieval,
                     processed_files=processed_files,
                     tool_results=tool_results,
                     skip_metrics_without_ground_truth=True,
@@ -1553,10 +1581,10 @@ class TestExecutor:
                 # none — the per-turn rollup treats these as "metric not run"
                 # for this turn (data-model.md §9, spec A6). Gated off for
                 # legacy single-turn callers so they keep the prior semantics.
-                if skip_metrics_without_ground_truth and ground_truth is None:
-                    spec = evaluator.get_param_spec()
-                    from holodeck.lib.evaluators.param_spec import EvalParam
+                from holodeck.lib.evaluators.param_spec import EvalParam
 
+                spec = evaluator.get_param_spec()
+                if skip_metrics_without_ground_truth and ground_truth is None:
                     needs_ground_truth = (
                         EvalParam.GROUND_TRUTH in spec.required
                         or EvalParam.EXPECTED_OUTPUT in spec.required
@@ -1566,6 +1594,22 @@ class TestExecutor:
                             f"Skipping metric {metric_name}: requires ground_truth"
                         )
                         continue
+
+                # Skip RAG metrics when retrieval_context is required but
+                # nothing was retrieved in this turn or earlier in the session.
+                # Avoids a hard DeepEval failure ("'retrieval_context' cannot
+                # be None") on turns that legitimately answer without a
+                # retrieval call.
+                needs_retrieval = (
+                    spec.uses_retrieval_context
+                    or EvalParam.RETRIEVAL_CONTEXT in spec.required
+                )
+                if needs_retrieval and not effective_retrieval_context:
+                    logger.debug(
+                        f"Skipping metric {metric_name}: "
+                        "requires retrieval_context but none available"
+                    )
+                    continue
 
                 kwargs_builder = EvalKwargsBuilder(
                     agent_response=agent_response,
