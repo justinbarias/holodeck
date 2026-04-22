@@ -1029,7 +1029,13 @@ class TestClaudeBackendLazyInit:
         """T015b: create_session() without explicit initialize() auto-inits."""
         backend = ClaudeBackend(_make_agent())
 
-        with patch.object(backend, "initialize", new_callable=AsyncMock) as mock_init:
+        with (
+            patch.object(backend, "initialize", new_callable=AsyncMock) as mock_init,
+            patch(f"{_CAS_MODULE}.ClaudeSDKClient") as mock_client_cls,
+        ):
+            mock_client = MagicMock()
+            mock_client.connect = AsyncMock()
+            mock_client_cls.return_value = mock_client
 
             async def side_effect():
                 backend._initialized = True
@@ -1039,6 +1045,8 @@ class TestClaudeBackendLazyInit:
             session = await backend.create_session()
             mock_init.assert_awaited_once()
             assert isinstance(session, ClaudeSession)
+            # Eager connect on session creation (fixes cross-task cancel scope).
+            mock_client.connect.assert_awaited_once()
 
     @pytest.mark.asyncio
     @patch(f"{_CAS_MODULE}.query")
