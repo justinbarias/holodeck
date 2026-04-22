@@ -11,10 +11,10 @@ Tools are agent capabilities defined in `agent.yaml`. HoloDeck supports six tool
 | **Vectorstore Tools**            | Semantic search over data                | ✅ Implemented |
 | **Hierarchical Document Tools**  | Structure-aware hybrid document search   | ✅ Implemented |
 | **MCP Tools**                    | Model Context Protocol servers           | ✅ Implemented |
-| **Function Tools**               | Custom Python functions                  | 🚧 Planned     |
+| **Function Tools**               | Custom Python functions                  | ✅ Implemented |
 | **Prompt Tools**                 | LLM-powered semantic functions           | 🚧 Planned     |
 
-> **Note**: **Vectorstore Tools**, **Hierarchical Document Tools**, and **MCP Tools** are fully implemented. Function and Prompt tools are defined in the configuration schema but not yet functional.
+> **Note**: **Vectorstore Tools**, **Hierarchical Document Tools**, **MCP Tools**, and **Function Tools** are fully implemented. Prompt tools are defined in the configuration schema but not yet functional.
 
 ## Tool Filtering
 
@@ -1204,131 +1204,126 @@ MCP plugins are automatically managed:
 
 ---
 
-## Function Tools 🚧
+## Function Tools ✅
 
-> **Status**: Planned - Configuration schema defined, execution not yet implemented
+> **Status**: Fully implemented (Semantic Kernel and Claude Agent SDK backends both dispatch through the same loader)
 
-Execute custom Python functions.
+Execute custom Python functions defined in your project. Function tools are imported at agent-config load time via `importlib.util.spec_from_file_location`, validated as callable, and surfaced to the model with the function's signature and docstring as the tool's parameter schema and description.
 
 ### When to Use
 
-- Custom business logic
-- Database queries
-- System operations
-- Complex calculations
-
-### Basic Example
-
-```yaml
-- name: get-user
-  description: Look up user information
-  type: function
-  file: tools/users.py
-  function: get_user
-```
+- Custom business logic the agent needs to call deterministically
+- Pure functions (math, parsing, formatting) that don't need an MCP wrapper
+- Lightweight integrations with libraries you already have in the venv
+- Anything where MCP would be overkill (no separate process, no protocol overhead)
 
 ### Required Fields
 
-#### File
-
-- **Type**: String (path)
-- **Purpose**: Python file containing the function
-- **Path**: Relative to `agent.yaml` directory
-- **Format**: Standard Python module
-
-```yaml
-file: tools/users.py
-```
-
-#### Function
-
-- **Type**: String
-- **Purpose**: Function name to call
-- **Format**: Valid Python identifier
-
-```yaml
-function: get_user
-```
+| Field      | Type   | Required | Notes                                                                 |
+|------------|--------|----------|-----------------------------------------------------------------------|
+| `name`     | string | Yes      | Tool identifier (alphanumeric + underscores, must be unique on agent) |
+| `description` | string | Yes   | Shown to the model — kept short, the function's docstring complements it |
+| `type`     | `"function"` | Yes | Discriminator                                                         |
+| `file`     | string (path) | Yes | Python file containing the function. Resolved relative to the directory containing `agent.yaml` (absolute paths also work) |
+| `function` | string | Yes      | Name of the callable inside `file`                                    |
 
 ### Optional Fields
 
-#### Parameters
+| Field         | Type | Default | Notes                                                                                       |
+|---------------|------|---------|---------------------------------------------------------------------------------------------|
+| `parameters`  | dict | None    | Parameter schema for introspection. Optional — backends derive the JSON schema from the function's type annotations when omitted |
+| `defer_loading` | bool | `true` | When `true`, the tool is excluded from the initial tool context and surfaced via tool filtering on demand. Set to `false` for tools the agent should always have available |
 
-- **Type**: Object mapping parameter names to schemas
-- **Purpose**: Define function parameters the agent can pass
-- **Default**: No parameters (function takes no args)
+See `src/holodeck/models/tool.py:FunctionTool` for the full Pydantic model.
 
-```yaml
-parameters:
-  user_id:
-    type: string
-    description: User identifier
-  include_details:
-    type: boolean
-    description: Include detailed information
-```
+### Basic Example
 
-Parameter schema fields:
-
-- `type`: `string`, `integer`, `float`, `boolean`, `array`, `object`
-- `description`: What the parameter is for
-- `enum`: Optional list of allowed values
-- `default`: Optional default value
-
-### Complete Example
+`agent.yaml`:
 
 ```yaml
-- name: create-ticket
-  description: Create a support ticket
-  type: function
-  file: tools/support.py
-  function: create_ticket
-  parameters:
-    title:
-      type: string
-      description: Ticket title (required)
-    priority:
-      type: string
-      description: Ticket priority
-      enum: [low, medium, high]
-    description:
-      type: string
-      description: Detailed description
+tools:
+  - name: subtract
+    type: function
+    description: "Compute a - b. Pass a and b as numeric strings; returns the difference as a string."
+    file: tools/financial_tools.py
+    function: subtract
 ```
 
-### Python Function Format
+`tools/financial_tools.py`:
 
 ```python
-# tools/support.py
-
-def create_ticket(title: str, priority: str = "medium", description: str = "") -> dict:
-    """
-    Create a support ticket.
+def subtract(a: str, b: str) -> str:
+    """Compute ``a - b`` for two numeric string operands.
 
     Args:
-        title: Ticket title
-        priority: low|medium|high
-        description: Detailed description
+        a: Minuend as a numeric string (e.g. ``"206588"`` or ``"1,234.56"``).
+        b: Subtrahend as a numeric string.
 
     Returns:
-        Created ticket data
+        The difference ``a - b`` as a string.
     """
-    return {
-        "id": "TICKET-123",
-        "status": "open",
-        "title": title,
-        "priority": priority,
-    }
+    return str(float(a.replace(",", "")) - float(b.replace(",", "")))
 ```
+
+A complete working sample lives at `sample/financial-assistant/claude/` — `agent.yaml` wires `subtract` and `divide` into a Claude agent, and `tools/financial_tools.py` implements them.
+
+### How Loading Works
+
+`src/holodeck/lib/function_tool_loader.py:load_function_tool` is shared by both backends. At agent-startup (not first call) it:
+
+1. Resolves `tool.file` relative to the agent project root (the directory holding `agent.yaml`); absolute paths pass through unchanged.
+2. Builds an import spec via `importlib.util.spec_from_file_location` and executes the module in isolation under a synthesized module name (`holodeck_function_tool_<tool.name>`), so two tools with the same source file don't collide.
+3. Looks up `tool.function` on the loaded module and verifies the attribute is callable.
+4. Returns the callable to the backend, which then wraps it as a Semantic Kernel function or a Claude SDK in-process MCP tool.
+
+Any failure — missing file, import error, missing attribute, attribute that isn't callable — is re-raised as a `ConfigError` keyed on `tools.<tool.name>`, so the agent fails to start with a clear, actionable message instead of crashing mid-test (FR-025).
+
+### Adding a New Function Tool — Checklist
+
+1. **Create the Python file** under your agent project (commonly `tools/`):
+
+   ```python
+   # tools/my_tool.py
+   def my_tool(query: str, limit: int = 10) -> list[dict]:
+       """One-line description shown to the model alongside `description`.
+
+       Args:
+           query: ...
+           limit: ...
+
+       Returns:
+           List of result records.
+       """
+       ...
+   ```
+
+2. **Use type hints** on every parameter and the return — the backends generate the tool's JSON schema from them.
+
+3. **Make the function self-contained**. The loader executes the module fresh; relying on side-effects from other modules in your project may not work as expected.
+
+4. **Return JSON-serializable data**. Strings, numbers, booleans, lists, and dicts are safe; arbitrary objects will fail when the backend serializes the tool result for the model.
+
+5. **Wire it into `agent.yaml`**:
+
+   ```yaml
+   tools:
+     - name: my_tool
+       type: function
+       description: "Search the local catalog for matching records."
+       file: tools/my_tool.py
+       function: my_tool
+   ```
+
+6. **Run** `holodeck test agent.yaml` (or `holodeck chat`) — a load-time `ConfigError` here means the path or function name is wrong; fix and re-run.
 
 ### Best Practices
 
-- Keep functions focused on single tasks
-- Use clear parameter names
-- Add type hints and docstrings
-- Handle errors gracefully (return error messages)
-- Return JSON-serializable data
-- Avoid long-running operations (prefer async tools in future versions)
+- Keep each function focused on a single task — small, well-named tools are easier for the model to pick.
+- Always add type hints + a short docstring; both feed the model's tool description.
+- Validate inputs and raise a meaningful `ValueError` — the runtime captures it as the tool error and surfaces it to the agent.
+- Return JSON-serializable values (strings, numbers, dicts, lists). Avoid returning complex objects.
+- Avoid long-running calls inside a function tool; prefer an MCP server when you need a separate process or async I/O at scale.
+- Prefer pure functions where possible — they're trivially testable in isolation (e.g., `tests/unit/sample/test_financial_tools.py`).
 
 ---
 
@@ -1480,7 +1475,7 @@ Loops (if parameter is array):
 
 | Feature        | Vectorstore             | Hierarchical Document       | MCP                     | Function        | Prompt          |
 | -------------- | ----------------------- | --------------------------- | ----------------------- | --------------- | --------------- |
-| **Status**     | ✅ Implemented          | ✅ Implemented               | ✅ Implemented          | 🚧 Planned      | 🚧 Planned      |
+| **Status**     | ✅ Implemented          | ✅ Implemented               | ✅ Implemented          | ✅ Implemented  | 🚧 Planned      |
 | **Use Case**   | Search data             | Structured document search  | External integrations   | Custom logic    | Template-based  |
 | **Execution**  | Vector similarity       | Hybrid RRF fusion           | MCP protocol (stdio)    | Python function | LLM generation  |
 | **Setup**      | Data files              | Document files              | Server config + runtime | Python files    | Template text   |
@@ -1579,9 +1574,13 @@ Loops (if parameter is array):
 
 ### Function Tool Errors
 
-- **Function not found**: Error during agent startup
-- **Runtime error**: Caught and returned as error message
-- **Type mismatch**: Type checking during agent startup
+All resolution failures raise `ConfigError` at agent startup (keyed on `tools.<name>`), so a misconfigured function tool fails fast instead of mid-test:
+
+- **File not found**: `tool.file` does not resolve to an existing path (relative paths are resolved against the agent project root)
+- **Import failure**: The module raised an exception during `exec_module` — the original traceback is chained into the `ConfigError`
+- **Function not found**: The module loaded but has no attribute matching `tool.function`
+- **Not callable**: The attribute exists but is not callable (e.g., a constant rather than a function)
+- **Runtime error inside the function**: Caught by the backend, surfaced to the model as a tool error response so the agent can recover or retry
 
 ### MCP Tool Errors
 
