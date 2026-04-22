@@ -2714,10 +2714,13 @@ class TestUnconfiguredMetrics:
             expected_tools=None,
             ground_truth="Answer",
             files=None,
-            # Request a metric that won't be in evaluators
+            # Request a metric that won't be in evaluators. After US4 the
+            # ``metric`` field is a Literal — use a valid built-in name but
+            # leave the executor's ``evaluators`` dict empty to exercise the
+            # "unconfigured metric is skipped" path.
             evaluations=[
                 EvaluationMetric(
-                    metric="custom_metric",  # Not configured
+                    metric="groundedness",  # Valid name, intentionally unwired.
                     threshold=0.7,
                     enabled=True,
                 )
@@ -3244,6 +3247,126 @@ class TestDynamicRetrievalContext:
             "Dynamic context from vectorstore search"
             in evaluation_kwargs["retrieval_context"][0]
         )
+
+    @pytest.mark.asyncio
+    async def test_rag_metric_skipped_when_no_retrieval_context(self):
+        """RAG metrics that require retrieval_context are skipped cleanly.
+
+        Regression: previously, a turn that invoked only non-retrieval tools
+        (or no tools at all) produced ``retrieval_context=None``, which
+        DeepEval Faithfulness rejected with a hard
+        ``'retrieval_context' cannot be None`` error. The expected behavior
+        is to skip the metric for that turn (no MetricResult emitted).
+        """
+        from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
+        from holodeck.models.agent import Instructions
+        from holodeck.models.evaluation import (
+            EvaluationConfig,
+            RAGMetric,
+            RAGMetricType,
+        )
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+        from holodeck.models.tool import VectorstoreTool
+
+        test_case = TestCaseModel(
+            name="test_no_retrieval",
+            input="What is AI?",
+            expected_tools=None,
+            ground_truth=None,
+            files=None,
+            evaluations=None,
+            retrieval_context=None,
+        )
+
+        vectorstore_tool = VectorstoreTool(
+            name="knowledge_base",
+            description="Search knowledge base",
+            source="data/docs",
+        )
+
+        eval_config = EvaluationConfig(
+            model=None,
+            metrics=[
+                RAGMetric(
+                    metric_type=RAGMetricType.FAITHFULNESS,
+                    threshold=0.7,
+                ),
+            ],
+        )
+
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI,
+                name="gpt-4",
+                api_key="test-key",
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[test_case],
+            evaluations=eval_config,
+            tools=[vectorstore_tool],
+        )
+
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig(
+            llm_timeout=60
+        )
+
+        mock_file_processor = Mock(spec=FileProcessor)
+
+        # Agent produced a response but invoked only a non-retrieval tool.
+        mock_chat_history = Mock()
+        mock_message = Mock()
+        mock_message.role = "assistant"
+        mock_message.content = "AI is artificial intelligence."
+        mock_chat_history.messages = [mock_message]
+
+        mock_result = Mock()
+        mock_result.tool_calls = [{"name": "format_citation"}]
+        mock_result.tool_results = [
+            {"name": "format_citation", "result": "formatted"},
+        ]
+        mock_result.chat_history = mock_chat_history
+        mock_result.response = "AI is artificial intelligence."
+
+        mock_thread_run = Mock(spec=AgentThreadRun)
+        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
+        mock_factory = Mock(spec=AgentFactory)
+        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+
+        mock_evaluator = Mock()
+        mock_evaluator.name = "faithfulness"
+        mock_evaluator.get_param_spec = Mock(
+            return_value=ParamSpec(
+                required=frozenset(
+                    {
+                        EvalParam.ACTUAL_OUTPUT,
+                        EvalParam.INPUT,
+                        EvalParam.RETRIEVAL_CONTEXT,
+                    }
+                ),
+                uses_retrieval_context=True,
+            )
+        )
+        mock_evaluator.evaluate = AsyncMock()
+
+        executor = TestExecutor(
+            agent_config_path="test.yaml",
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            agent_factory=mock_factory,
+            evaluators={"faithfulness": mock_evaluator},
+        )
+
+        report = await executor.execute_tests()
+
+        # Evaluator must not be invoked without retrieval_context.
+        mock_evaluator.evaluate.assert_not_called()
+        # No MetricResult recorded for a metric that didn't run.
+        assert len(report.results) == 1
+        assert report.results[0].metric_results == []
 
 
 class TestEmptyEvaluationsConfig:

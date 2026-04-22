@@ -19,7 +19,6 @@ from holodeck.lib.backends.tool_adapters import (
 )
 from holodeck.lib.hybrid_search import SearchResult
 from holodeck.models.tool import (
-    FunctionTool,
     HierarchicalDocumentToolConfig,
     MCPTool,
     PromptTool,
@@ -463,7 +462,7 @@ class TestCreateToolAdapters:
         assert isinstance(adapters[1], HierarchicalDocToolAdapter)
 
     def test_filters_only_vectorstore_and_hierarchical(self) -> None:
-        """Ignores MCP, Function, and Prompt tool types."""
+        """Ignores MCP and Prompt tool types (FunctionTool now produces an adapter)."""
         vs_config = _make_vectorstore_config(name="kb")
         mcp_config = MCPTool(
             name="api",
@@ -471,13 +470,6 @@ class TestCreateToolAdapters:
             type="mcp",
             command="npx",
             args=["server"],
-        )
-        fn_config = FunctionTool(
-            name="calc",
-            description="A calculator",
-            type="function",
-            file="math_utils.py",
-            function="add",
         )
         prompt_config = PromptTool(
             name="summarize",
@@ -489,7 +481,7 @@ class TestCreateToolAdapters:
         instances = {"kb": _make_mock_vectorstore_tool(vs_config)}
 
         adapters = create_tool_adapters(
-            tool_configs=[vs_config, mcp_config, fn_config, prompt_config],
+            tool_configs=[vs_config, mcp_config, prompt_config],
             tool_instances=instances,
         )
 

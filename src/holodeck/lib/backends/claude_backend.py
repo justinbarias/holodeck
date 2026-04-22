@@ -606,6 +606,13 @@ class ClaudeSession:
 
             self._turn_count += 1
 
+            # Enrich tool results with names from tool calls so downstream
+            # consumers (eval_kwargs_builder.build_retrieval_context_from_tools)
+            # can match each result to its source tool. The SDK yields names
+            # only on ToolUseBlock; results arrive on ToolResultBlock carrying
+            # just call_id.
+            _enrich_tool_results(tool_calls, tool_results)
+
             return ExecutionResult(
                 response="".join(text_parts),
                 tool_calls=tool_calls,
@@ -744,9 +751,16 @@ class ClaudeBackend:
             await self._initialize_tools()
 
             # 5. Tool adapters
+            from pathlib import Path
+
+            from holodeck.config.context import agent_base_dir as _agent_base_dir
+
+            _base_dir_str = _agent_base_dir.get()
+            _base_dir = Path(_base_dir_str) if _base_dir_str else None
             adapters = create_tool_adapters(
                 tool_configs=agent.tools or [],
                 tool_instances=self._tool_instances,
+                base_dir=_base_dir,
             )
             tool_server, tool_names = build_holodeck_sdk_server(adapters)
 
@@ -956,15 +970,23 @@ class ClaudeBackend:
     async def create_session(self) -> ClaudeSession:
         """Create a new multi-turn session.
 
-        Automatically initializes if not yet done.
+        Automatically initializes if not yet done. Eagerly connects the SDK
+        client so the anyio cancel scope is entered on the caller's task.
+        Deferring connect() to the first ``send()`` would bind the scope to
+        whatever task wraps ``send`` (e.g., an inner task spawned by
+        ``asyncio.wait_for`` on Python <3.11) and a later ``close()`` on the
+        outer task would raise ``RuntimeError: Attempted to exit cancel scope
+        in a different task``.
 
         Returns:
-            A new ``ClaudeSession`` instance.
+            A new, connected ``ClaudeSession`` instance.
         """
         await self._ensure_initialized()
         if self._options is None:
             raise BackendInitError("Backend options not set after initialization")
-        return ClaudeSession(options=self._options)
+        session = ClaudeSession(options=self._options)
+        await session._ensure_client()
+        return session
 
     async def _initialize_tools(self) -> None:
         """Initialize vectorstore/hierarchical-doc tools using shared module.

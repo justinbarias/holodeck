@@ -9,6 +9,7 @@ Tests cover core functionality through the public API:
 """
 
 import asyncio
+from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -24,6 +25,10 @@ from holodeck.lib.test_runner.agent_factory import (
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import LLMProvider, ProviderEnum
+
+_ECHO_FIXTURE = str(
+    Path(__file__).parent.parent.parent.parent / "fixtures" / "tools" / "echo.py"
+)
 
 # Check if anthropic is available
 try:
@@ -839,8 +844,8 @@ class TestAgentFactoryIntegration:
                     "type": "function",
                     "name": "search",
                     "description": "Search function",
-                    "file": "search.py",
-                    "function": "search",
+                    "file": _ECHO_FIXTURE,
+                    "function": "echo",
                 }
             ],
         )

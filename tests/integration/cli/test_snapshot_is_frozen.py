@@ -46,8 +46,7 @@ def _make_report() -> TestReport:
 
 
 def _agent_yaml(temperature: float) -> str:
-    return dedent(
-        f"""
+    return dedent(f"""
         name: snapshot-agent
         model:
           provider: openai
@@ -58,8 +57,7 @@ def _agent_yaml(temperature: float) -> str:
         test_cases:
           - name: smoke
             input: "Say hi"
-        """
-    ).strip()
+        """).strip()
 
 
 @pytest.fixture

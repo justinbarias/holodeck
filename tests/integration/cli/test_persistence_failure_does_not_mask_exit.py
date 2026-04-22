@@ -56,9 +56,7 @@ def _make_report(passed: int = 1, failed: int = 0) -> TestReport:
 
 
 def _write_agent_yaml(path: Path) -> None:
-    path.write_text(
-        dedent(
-            """
+    path.write_text(dedent("""
             name: my-agent
             model:
               provider: openai
@@ -68,9 +66,7 @@ def _write_agent_yaml(path: Path) -> None:
             test_cases:
               - name: greeting
                 input: "Say hi"
-            """
-        ).strip()
-    )
+            """).strip())
 
 
 @pytest.mark.integration

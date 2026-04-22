@@ -4,12 +4,41 @@ This module defines the EvaluationMetric, GEvalMetric, RAGMetric and related
 models used in agent.yaml configuration for specifying evaluation criteria.
 """
 
+import importlib
+import logging
 from enum import Enum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
+from holodeck.lib.errors import ConfigError
 from holodeck.models.llm import LLMProvider
+
+_logger = logging.getLogger(__name__)
+
+# Literal set of built-in metric names accepted on ``EvaluationMetric.metric``.
+# Narrowed from ``str`` in US4 to give config authors early, precise feedback
+# when they typo a metric name (see data-model.md §5 and tasks-us4.md T015).
+# ``equality`` and ``numeric`` are new in US4; the rest preserve pre-existing
+# behaviour so existing fixtures / user YAMLs keep parsing.
+BuiltInMetricName = Literal[
+    "groundedness",
+    "relevance",
+    "coherence",
+    "fluency",
+    "bleu",
+    "rouge",
+    "meteor",
+    "equality",
+    "numeric",
+]
 
 # Valid evaluation parameter names for GEval metrics
 VALID_EVALUATION_PARAMS = frozenset(
@@ -44,7 +73,13 @@ class EvaluationMetric(BaseModel):
         default="standard",
         description="Discriminator field - 'standard' for built-in metrics",
     )
-    metric: str = Field(..., description="Metric name (e.g., groundedness)")
+    metric: BuiltInMetricName = Field(
+        ...,
+        description=(
+            "Built-in metric name. One of: groundedness, relevance, coherence, "
+            "fluency, bleu, rouge, meteor, equality, numeric."
+        ),
+    )
     threshold: float | None = Field(None, description="Minimum passing score")
     enabled: bool = Field(default=True, description="Whether metric is enabled")
     scale: int | None = Field(None, description="Score scale (e.g., 5 for 1-5 scale)")
@@ -62,13 +97,45 @@ class EvaluationMetric(BaseModel):
     )
     custom_prompt: str | None = Field(None, description="Custom evaluation prompt")
 
-    @field_validator("metric")
-    @classmethod
-    def validate_metric(cls, v: str) -> str:
-        """Validate metric is not empty."""
-        if not v or not v.strip():
-            raise ValueError("metric must be a non-empty string")
-        return v
+    # US4 — equality / numeric deterministic evaluator flags (data-model.md §5).
+    # Each is meaningful only for its named metric; unused flags are tolerated
+    # elsewhere so migrations don't have to touch unrelated YAML.
+    case_insensitive: bool = Field(
+        default=False,
+        description="[equality] Lowercase both sides before compare.",
+    )
+    strip_whitespace: bool = Field(
+        default=False,
+        description="[equality] Collapse whitespace + trim before compare.",
+    )
+    strip_punctuation: bool = Field(
+        default=False,
+        description="[equality] Remove string.punctuation before compare.",
+    )
+    absolute_tolerance: float = Field(
+        default=1e-6,
+        ge=0.0,
+        description=(
+            "[numeric] Pass when abs(actual - expected) <= absolute_tolerance "
+            "(inclusive; FR-018)."
+        ),
+    )
+    relative_tolerance: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "[numeric] Pass when abs(actual - expected) <= "
+            "relative_tolerance * abs(expected)."
+        ),
+    )
+    accept_percent: bool = Field(
+        default=False,
+        description="[numeric] Parse trailing '%' as /100.",
+    )
+    accept_thousands_separators: bool = Field(
+        default=False,
+        description="[numeric] Strip ',' / '_' / NBSP before parse.",
+    )
 
     @field_validator("threshold")
     @classmethod
@@ -125,6 +192,21 @@ class EvaluationMetric(BaseModel):
         if v is not None and (not v or not v.strip()):
             raise ValueError("custom_prompt must be non-empty if provided")
         return v
+
+    @model_validator(mode="after")
+    def _warn_model_on_deterministic(self) -> "EvaluationMetric":
+        """Warn (don't fail) if ``model`` is set on a deterministic metric.
+
+        ``equality`` / ``numeric`` run entirely in-process with no LLM; an
+        ``model`` override is a no-op. We log a warning rather than raise so
+        migrations carrying a shared default model config don't break.
+        """
+        if self.metric in ("equality", "numeric") and self.model is not None:
+            _logger.warning(
+                "metric %r is deterministic; the 'model' override is ignored.",
+                self.metric,
+            )
+        return self
 
 
 class GEvalMetric(BaseModel):
@@ -287,9 +369,104 @@ class RAGMetric(BaseModel):
         return v
 
 
+_GRADER_PATH_RE = r"^[\w.]+:[\w_]+$"
+
+
+class CodeMetric(BaseModel):
+    """User-supplied Python grader metric (data-model.md §6).
+
+    Discriminator: ``type: code``. The ``grader`` path is resolved at config
+    load time — ``importlib.import_module`` + ``getattr`` — so bad references
+    surface as ``ConfigError`` *before* any agent call (FR-025).
+
+    The resolved callable is cached in a private attribute so each turn's
+    grader invocation doesn't re-import.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["code"] = Field(
+        default="code",
+        description="Discriminator field — always 'code' for user graders.",
+    )
+    grader: str = Field(
+        ...,
+        pattern=_GRADER_PATH_RE,
+        description="Import path 'module.path:callable_name'.",
+    )
+    threshold: float | None = Field(
+        None,
+        description="Applied if grader returns a float without explicit passed flag.",
+    )
+    enabled: bool = Field(default=True, description="Whether metric is enabled")
+    fail_on_error: bool = Field(
+        default=False,
+        description="If true, grader exceptions fail the whole test case.",
+    )
+    name: str | None = Field(
+        None,
+        description="Optional display name; defaults to the callable name.",
+    )
+
+    # Private attr — the resolved callable, cached after the first import.
+    _resolved_callable: Any = PrivateAttr(default=None)
+
+    @model_validator(mode="after")
+    def _resolve_grader(self) -> "CodeMetric":
+        """Resolve ``grader`` at load time per contracts/code-grader-contract.md §2.
+
+        Raises:
+            ConfigError: if the module fails to import, the attribute is
+                missing, or the resolved object is not callable.
+        """
+        module_path, _, callable_name = self.grader.partition(":")
+        try:
+            module = importlib.import_module(module_path)
+        except ImportError as exc:
+            raise ConfigError(
+                f"evaluations.metrics[{self.grader}]",
+                (
+                    f"cannot import grader module {module_path!r}: "
+                    f"{type(exc).__name__}: {exc}"
+                ),
+            ) from exc
+        try:
+            fn = getattr(module, callable_name)
+        except AttributeError as exc:
+            raise ConfigError(
+                f"evaluations.metrics[{self.grader}]",
+                (
+                    f"module {module_path!r} has no attribute "
+                    f"{callable_name!r}: {exc}"
+                ),
+            ) from exc
+        if not callable(fn):
+            raise ConfigError(
+                f"evaluations.metrics[{self.grader}]",
+                (
+                    f"resolved object {self.grader!r} is not callable "
+                    f"(got {type(fn).__name__})"
+                ),
+            )
+        self._resolved_callable = fn
+        return self
+
+    @property
+    def resolved_callable(self) -> Any:
+        """Return the resolved grader callable (cached at load time)."""
+        return self._resolved_callable
+
+    @property
+    def display_name(self) -> str:
+        """Return the ``name`` override, falling back to the callable name."""
+        if self.name:
+            return self.name
+        return self.grader.partition(":")[2]
+
+
 # Discriminated union type for metrics - uses 'type' field as discriminator
 MetricType = Annotated[
-    EvaluationMetric | GEvalMetric | RAGMetric,
+    EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric,
     Field(discriminator="type"),
 ]
 
@@ -314,8 +491,8 @@ class EvaluationConfig(BaseModel):
     @field_validator("metrics")
     @classmethod
     def validate_metrics(
-        cls, v: list[EvaluationMetric | GEvalMetric | RAGMetric]
-    ) -> list[EvaluationMetric | GEvalMetric | RAGMetric]:
+        cls, v: list[EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric]
+    ) -> list[EvaluationMetric | GEvalMetric | RAGMetric | CodeMetric]:
         """Validate metrics list is not empty."""
         if not v:
             raise ValueError("metrics must have at least one metric")

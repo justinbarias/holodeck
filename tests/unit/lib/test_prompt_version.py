@@ -50,14 +50,12 @@ class TestResolvePromptVersionInline:
     def test_inline_looking_frontmatter_is_not_parsed(self) -> None:
         """Even if the inline text contains ``---`` fences, they are NOT parsed
         as YAML frontmatter (FR-014)."""
-        text = dedent(
-            """\
+        text = dedent("""\
             ---
             version: "1.2"
             ---
             Body here.
-            """
-        )
+            """)
         pv = resolve_prompt_version(Instructions(inline=text), base_dir=None)
         # The entire inline string (fences + body) is hashed as-is.
         assert pv.version == f"auto-{_sha256(text)[:8]}"
@@ -70,9 +68,7 @@ class TestResolvePromptVersionFileFullFrontmatter:
 
     def test_all_recognised_keys_returned_verbatim(self, tmp_path: Path) -> None:
         body = "You are a helpful agent.\n"
-        content = (
-            dedent(
-                """\
+        content = dedent("""\
             ---
             version: "1.2"
             author: jane
@@ -81,10 +77,7 @@ class TestResolvePromptVersionFileFullFrontmatter:
               - a
               - b
             ---
-            """
-            )
-            + body
-        )
+            """) + body
         md = tmp_path / "instructions.md"
         md.write_text(content)
 
@@ -107,16 +100,11 @@ class TestResolvePromptVersionAutoVersion:
 
     def test_no_version_key_yields_auto_hash(self, tmp_path: Path) -> None:
         body = "Body content.\n"
-        content = (
-            dedent(
-                """\
+        content = dedent("""\
             ---
             author: jane
             ---
-            """
-            )
-            + body
-        )
+            """) + body
         md = tmp_path / "instructions.md"
         md.write_text(content)
 
@@ -177,8 +165,7 @@ class TestResolvePromptVersionExtraKeys:
     """T110 — unknown frontmatter keys go to ``extra``."""
 
     def test_unknown_keys_preserved_in_extra(self, tmp_path: Path) -> None:
-        content = dedent(
-            """\
+        content = dedent("""\
             ---
             version: "1.0"
             author: jane
@@ -186,8 +173,7 @@ class TestResolvePromptVersionExtraKeys:
             another: 42
             ---
             body
-            """
-        )
+            """)
         md = tmp_path / "instructions.md"
         md.write_text(content)
 
@@ -207,14 +193,12 @@ class TestResolvePromptVersionMalformedYAML:
     """T111 — malformed frontmatter → ConfigError."""
 
     def test_malformed_yaml_raises_config_error(self, tmp_path: Path) -> None:
-        content = dedent(
-            """\
+        content = dedent("""\
             ---
             tags: [unclosed
             ---
             body
-            """
-        )
+            """)
         md = tmp_path / "instructions.md"
         md.write_text(content)
 
@@ -256,15 +240,13 @@ class TestResolveInstructionsUnaffected:
     def test_resolve_instructions_returns_full_file_unchanged(
         self, tmp_path: Path
     ) -> None:
-        raw = dedent(
-            """\
+        raw = dedent("""\
             ---
             version: "1.2"
             author: jane
             ---
             Body goes here.
-            """
-        )
+            """)
         md = tmp_path / "instructions.md"
         md.write_text(raw)
 

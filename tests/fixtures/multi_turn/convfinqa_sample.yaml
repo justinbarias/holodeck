@@ -1,0 +1,15 @@
+name: convfinqa-sample
+description: ConvFinQA-shaped 4-turn fixture (no ground truths yet — US1 scope).
+model:
+  provider: ollama
+  name: qwen3:0.6b
+instructions: |
+  You are a financial analyst. Answer numerically when asked.
+
+test_cases:
+  - name: convfinqa-0
+    turns:
+      - input: "what is the net cash from operating activities in 2009?"
+      - input: "what about in 2008?"
+      - input: "what is the difference?"
+      - input: "what percentage change does this represent?"

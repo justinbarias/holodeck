@@ -107,16 +107,14 @@ class TestDeployBuildCommand:
         """Test error when agent.yaml has no deployment section."""
         # Create agent.yaml without deployment section
         agent_yaml = tmp_path / "agent.yaml"
-        agent_yaml.write_text(
-            """
+        agent_yaml.write_text("""
 name: test-agent
 model:
   provider: openai
   name: gpt-4o
 instructions:
   inline: "You are a test agent."
-"""
-        )
+""")
 
         result = cli_runner.invoke(
             main,

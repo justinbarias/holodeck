@@ -115,6 +115,8 @@ The detail panel shows the full thread (user message → tool calls with args/re
 
 The assistant reply itself adapts to the response shape — Markdown renders cleanly for prose, structured JSON renders as an indented code block.
 
+Multi-turn test cases render with a turn-count chip (e.g. `4 turns · 3/4 passed`) in the cases column; the right detail pane's conversation section expands each turn independently so you can inspect every per-turn input, tool invocation, metric, and error in place.
+
 ## Compare view
 
 Queue 2 or 3 runs from the compare tray (click the **+** button on any run row), then open Compare:

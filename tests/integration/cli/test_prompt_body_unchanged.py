@@ -25,8 +25,7 @@ from holodeck.models.agent import Instructions
 
 @pytest.mark.integration
 def test_prompt_body_unchanged_by_us2(tmp_path: Path) -> None:
-    raw = dedent(
-        """\
+    raw = dedent("""\
         ---
         version: "1.2"
         author: jane
@@ -35,8 +34,7 @@ def test_prompt_body_unchanged_by_us2(tmp_path: Path) -> None:
         ---
         You are a helpful support agent.
         Always greet the user politely.
-        """
-    )
+        """)
     md = tmp_path / "instructions.md"
     md.write_text(raw)
 

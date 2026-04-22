@@ -196,8 +196,20 @@ class TestEvaluationMetricTypeDiscriminator:
         assert metric.type == "standard"
 
     def test_evaluation_metric_accepts_various_names(self):
-        """EvaluationMetric accepts various metric names."""
-        for metric_name in ["groundedness", "relevance", "bleu", "custom_metric"]:
+        """EvaluationMetric accepts each built-in metric name (US4 narrowing)."""
+        # After US4, `metric` is a Literal of the known built-ins — free-form
+        # strings (e.g. "custom_metric") no longer parse. See tasks-us4.md T015.
+        for metric_name in [
+            "groundedness",
+            "relevance",
+            "coherence",
+            "fluency",
+            "bleu",
+            "rouge",
+            "meteor",
+            "equality",
+            "numeric",
+        ]:
             metric = EvaluationMetric(metric=metric_name, threshold=0.7)
             assert metric.metric == metric_name
             assert metric.type == "standard"

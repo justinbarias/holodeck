@@ -46,8 +46,7 @@ def _make_report() -> TestReport:
     )
 
 
-_AGENT_YAML = dedent(
-    """
+_AGENT_YAML = dedent("""
     name: repro-agent
     description: "Reproducible snapshot demo"
     model:
@@ -71,8 +70,7 @@ _AGENT_YAML = dedent(
     test_cases:
       - name: smoke
         input: "Say hi"
-    """
-).strip()
+    """).strip()
 
 
 @pytest.fixture

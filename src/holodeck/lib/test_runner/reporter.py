@@ -11,6 +11,7 @@ from holodeck.models.test_result import (
     ReportSummary,
     TestReport,
     TestResult,
+    TurnResult,
 )
 
 
@@ -178,7 +179,74 @@ def _format_test_section(result: TestResult) -> str:
             lines.append(f"- ❌ {error}")
         lines.append("")
 
+    # Per-turn block (multi-turn test cases only)
+    if result.turns:
+        lines.append("#### Turns\n")
+        for t in result.turns:
+            lines.append(_format_turn_section(t))
+            lines.append("")
+
     return "\n".join(lines)
+
+
+def _format_turn_section(turn: TurnResult) -> str:
+    """Render one TurnResult as an indented markdown block."""
+    lines: list[str] = []
+    status = "✅ PASSED" if turn.passed else "❌ FAILED"
+    skip_tag = " (skipped)" if turn.skipped else ""
+    lines.append(f"##### Turn {turn.turn_index}{skip_tag} {status}\n")
+    lines.append(f"**Input:** `{turn.input}`")
+    lines.append(f"**Execution Time:** {turn.execution_time_ms}ms")
+    if turn.response is not None:
+        lines.append("")
+        lines.append("**Response:**")
+        lines.append("> " + turn.response.replace("\n", "\n> "))
+    if turn.tool_calls:
+        tools_str = ", ".join(f"`{t}`" for t in turn.tool_calls)
+        lines.append(f"**Tools Called:** {tools_str}")
+    if turn.expected_tools:
+        expected_str = ", ".join(f"`{t}`" for t in turn.expected_tools)
+        lines.append(f"**Expected Tools:** {expected_str}")
+    if turn.tools_matched is not None:
+        glyph = "✅" if turn.tools_matched else "❌"
+        label = "matched" if turn.tools_matched else "did not match"
+        lines.append(f"**Tool Match:** {glyph} {label}")
+    if turn.arg_match_details:
+        lines.append("")
+        lines.append("**Arg Match Details:**")
+        for entry in turn.arg_match_details:
+            tool = entry.get("expected_tool", "?")
+            args = entry.get("args_asserted") or {}
+            args_desc = _format_args_brief_md(args) if args else ""
+            idx = entry.get("matched_call_index", -1)
+            reason = entry.get("unmatched_reason")
+            if idx >= 0:
+                lines.append(f"- ✅ `{tool}({args_desc})` — matched call #{idx}")
+            else:
+                reason_text = reason or "no matching call"
+                lines.append(f"- ❌ `{tool}({args_desc})` — {reason_text}")
+    if turn.metric_results:
+        lines.append("")
+        lines.append(_format_metrics_table(turn.metric_results))
+    if turn.errors:
+        lines.append("")
+        lines.append("**Errors:**")
+        for e in turn.errors:
+            lines.append(f"- ❌ {e}")
+    return "\n".join(lines)
+
+
+def _format_args_brief_md(args: dict) -> str:
+    """Short rendering of `args_asserted` for per-turn markdown display."""
+    parts: list[str] = []
+    for key, val in args.items():
+        if isinstance(val, dict) and "fuzzy" in val:
+            parts.append(f"{key}≈{val['fuzzy']}")
+        elif isinstance(val, dict) and "regex" in val:
+            parts.append(f"{key}~/{val['regex']}/")
+        else:
+            parts.append(f"{key}={val}")
+    return ", ".join(parts)
 
 
 def _format_processed_files(files: list[ProcessedFileInput]) -> str:

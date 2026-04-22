@@ -6,11 +6,12 @@ This guide explains HoloDeck's evaluation system for measuring agent quality.
 
 Evaluations measure how well your agent performs. You define metrics in `agent.yaml` to automatically grade agent responses against test cases.
 
-HoloDeck supports three categories of metrics (in order of recommendation):
+HoloDeck supports four categories of metrics (in order of recommendation):
 
 1. **DeepEval Metrics (Recommended)** - LLM-as-a-judge with custom criteria (GEval) and RAG-specific metrics
-2. **NLP Metrics (Standard)** - Text comparison algorithms (F1, BLEU, ROUGE, METEOR)
-3. **Legacy AI Metrics (Deprecated)** - Azure AI-based metrics (groundedness, relevance, coherence, safety)
+2. **Code Graders** - User-supplied Python callables that score per-turn behavior with full access to tool calls
+3. **NLP & Deterministic Metrics (Standard)** - Text comparison algorithms (F1, BLEU, ROUGE, METEOR) and zero-LLM evaluators (equality, numeric)
+4. **Legacy AI Metrics (Deprecated)** - Azure AI-based metrics (groundedness, relevance, coherence, safety)
 
 ## Basic Structure
 
@@ -323,9 +324,14 @@ RAG (Retrieval-Augmented Generation) metrics evaluate the quality of responses g
 
 ---
 
-## NLP Metrics (Standard)
+## NLP & Deterministic Metrics (Standard)
 
-NLP metrics compare response text to expected output using algorithms. They're fast, free (no LLM calls), and deterministic.
+Standard metrics compare the agent response to `ground_truth` (or its tokens) without an LLM call — they're fast, free, and reproducible. They split into two families:
+
+- **NLP metrics** — token / n-gram overlap (F1, BLEU, ROUGE, METEOR).
+- **Deterministic evaluators** — `equality` (string match with normalization flags) and `numeric` (tolerance-based number compare). Implemented in `src/holodeck/lib/evaluators/deterministic.py`.
+
+All standard metrics use `type: standard` with a `metric:` discriminator and emit `score` in the 0.0-1.0 range.
 
 ### F1 Score
 
@@ -398,6 +404,162 @@ Similar to BLEU but with better handling of synonyms.
 - Word order
 
 **When to use**: For translation, paraphrase with synonyms
+
+### Equality (Deterministic)
+
+Strict string equality with optional normalization. Score is `1.0` on match, `0.0` otherwise.
+
+```yaml
+- type: standard
+  metric: equality
+  case_insensitive: true
+  strip_whitespace: true
+  strip_punctuation: false
+```
+
+**Optional flags** (all default to `false`):
+
+| Flag | Effect |
+|------|--------|
+| `case_insensitive` | Lowercase both sides before compare |
+| `strip_whitespace` | Collapse whitespace runs and trim before compare |
+| `strip_punctuation` | Remove `string.punctuation` before compare |
+
+**Required test-case fields**: `ground_truth`.
+
+**When to use**: Closed-form answers where the agent must return an exact token (slot-filling, classification labels, "yes"/"no", enum values). Setting an LLM `model` override on this metric is a no-op (a warning is logged).
+
+### Numeric (Deterministic)
+
+Number compare with absolute and/or relative tolerance. Score is `1.0` if either tolerance passes, `0.0` otherwise.
+
+```yaml
+- type: standard
+  metric: numeric
+  absolute_tolerance: 0.5
+  relative_tolerance: 0.0
+  accept_percent: true
+  accept_thousands_separators: true
+```
+
+**Optional flags**:
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `absolute_tolerance` | `1e-6` | Pass when `abs(actual - expected) <= absolute_tolerance` (inclusive) |
+| `relative_tolerance` | `0.0` | Pass when `abs(actual - expected) <= relative_tolerance * abs(expected)` |
+| `accept_percent` | `false` | Parse a trailing `%` as `/100` (so `"35%"` ↔ `0.35`) |
+| `accept_thousands_separators` | `false` | Strip `,`, `_`, and NBSP characters before parsing |
+
+**Required test-case fields**: `ground_truth` (must parse to a number).
+
+**When to use**: Financial / quantitative answers where the agent's reply is a number. Common pairing: enable both `accept_percent` and `accept_thousands_separators` for filings-style data (`"1,234.56"`, `"35.8%"`). See `sample/financial-assistant/claude/agent.yaml` for a working example.
+
+---
+
+## Code Graders
+
+Code graders are user-supplied Python callables that score a turn's behavior. Unlike standard / DeepEval metrics — which only see the textual response — a code grader receives the full per-turn context: the input, the agent response, the ground truth, **all tool invocations with their args and results**, and a free-form `turn_config` payload from the test case.
+
+Code graders run in-process, so they're free, deterministic, and as fast as the user's Python.
+
+### When to use
+
+- Verifying tool-call ordering or argument shapes (e.g., "did the agent call `subtract(60.94, 25.14)`?")
+- Domain logic that needs the actual values returned by tools (program equivalence, schema-aware diff, structured equality)
+- Anything that doesn't reduce to a single LLM-judgeable string
+
+### YAML schema
+
+```yaml
+- type: code
+  grader: "graders.turn_program_equivalence:turn_program_equivalence"
+  threshold: 0.7         # Optional — used when grader returns a bare float
+  enabled: true          # Optional — default true
+  fail_on_error: false   # Optional — true = grader exception fails the case
+  name: "Turn Program"   # Optional — defaults to the callable name
+```
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `type` | `"code"` | Yes | Discriminator |
+| `grader` | string | Yes | `"module.path:callable_name"`. Resolved at config-load time via `importlib.import_module` + `getattr`; a missing module / attribute / non-callable raises `ConfigError` *before* any agent runs |
+| `threshold` | float | No | Applied when the grader returns a bare float without `passed=...` |
+| `enabled` | bool | No | Default `true` |
+| `fail_on_error` | bool | No | Default `false`; if `true`, an unhandled exception inside the grader fails the whole test case |
+| `name` | string | No | Display name in reports / dashboard; defaults to the callable name |
+
+The grader path's module must be importable from the working directory when the test is run (e.g., a `graders/` package next to `agent.yaml`).
+
+### Grader contract
+
+A grader is any callable with this signature:
+
+```python
+from holodeck.lib.test_runner.code_grader import GraderContext, GraderResult
+
+def my_grader(ctx: GraderContext) -> GraderResult | bool | float:
+    ...
+```
+
+`GraderContext` (frozen dataclass — `holodeck.lib.test_runner.code_grader.GraderContext`):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `turn_input` | `str` | The user message for this turn |
+| `agent_response` | `str` | What the agent said |
+| `ground_truth` | `str \| None` | From the turn's `ground_truth` |
+| `tool_invocations` | `tuple[ToolInvocation, ...]` | Every tool call this turn made, in order. Immutable; each entry exposes `name`, `args`, `result`, `bytes`, `duration_ms`, `error` |
+| `retrieval_context` | `tuple[str, ...] \| None` | Carried-over RAG context |
+| `turn_index` | `int` | 0-based position in the conversation |
+| `test_case_name` | `str \| None` | The enclosing test case's `name` |
+| `turn_config` | `dict[str, Any]` | The turn's `turn_config:` payload — your scratchpad for grader-specific keys (e.g., `turn_program`, expected counts) |
+
+`GraderResult` (frozen dataclass):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `score` | `float` | Normalized to `[0.0, 1.0]` |
+| `passed` | `bool \| None` | Optional; `None` defers to `threshold` (or `>= 0.5` if no threshold set) |
+| `reason` | `str \| None` | Surfaced in the report / dashboard |
+| `details` | `dict[str, Any] \| None` | Free-form payload for the dashboard's grader drilldown |
+
+**Shortcut returns** (the runner normalizes them):
+
+- `True` → `GraderResult(score=1.0, passed=True)`
+- `False` → `GraderResult(score=0.0, passed=False)`
+- bare `float` / `int` → `GraderResult(score=value, passed=None)` — caller derives `passed` from `threshold`
+
+### Minimal example
+
+```python
+# graders/exact_tool_call.py
+from holodeck.lib.test_runner.code_grader import GraderContext, GraderResult
+
+def called_subtract_with(ctx: GraderContext) -> GraderResult:
+    expected_a = ctx.turn_config.get("expected_a")
+    expected_b = ctx.turn_config.get("expected_b")
+    for inv in ctx.tool_invocations:
+        if inv.name == "subtract" and inv.args.get("a") == expected_a and inv.args.get("b") == expected_b:
+            return GraderResult(score=1.0, passed=True, reason="exact match")
+    return GraderResult(
+        score=0.0,
+        passed=False,
+        reason=f"no subtract({expected_a}, {expected_b}) call observed",
+    )
+```
+
+```yaml
+# in the test case
+turn_config:
+  expected_a: "60.94"
+  expected_b: "25.14"
+evaluations:
+  - type: code
+    grader: "graders.exact_tool_call:called_subtract_with"
+```
+
+A complete production-style example lives at `sample/financial-assistant/claude/graders/turn_program_equivalence.py`, which walks ConvFinQA `turn_program` strings against the actual `subtract` / `divide` tool calls.
 
 ---
 
@@ -681,6 +843,115 @@ test_cases:
       # Skip faithfulness since no retrieval context
 ```
 
+### Multi-Turn Test Cases
+
+A test case is **multi-turn** when it carries a `turns:` list instead of a top-level `input` / `ground_truth` / `expected_tools`. Each turn drives one exchange through the same agent session, so retrieval context, conversation history, and tool state carry forward as the user would expect.
+
+```yaml
+test_cases:
+  - name: "ConvFinQA · MRO 2007"
+    turns:
+      - input: "What was the weighted average exercise price per share in 2007?"
+        ground_truth: "60.94"
+        turn_config:
+          turn_program: "60.94"
+      - input: "And in 2005?"
+        ground_truth: "25.14"
+        turn_config:
+          turn_program: "25.14"
+      - input: "What was the change over the years?"
+        ground_truth: "35.8"
+        turn_config:
+          turn_program: "subtract(60.94, 25.14)"
+        expected_tools:
+          - name: subtract
+            args:
+              a: { fuzzy: "60.94" }
+              b: { fuzzy: "25.14" }
+        evaluations:
+          - type: code
+            grader: "graders.turn_program_equivalence:turn_program_equivalence"
+```
+
+**Per-turn fields** (from `holodeck.models.test_case.Turn`):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `input` | string | Required, non-empty |
+| `ground_truth` | string | Optional expected reply for this turn |
+| `expected_tools` | list[str \| ExpectedTool] | Per-turn tool assertions; bare strings are promoted to `ExpectedTool(name=..., count=1)` |
+| `files` | list[FileInput] | Up to 10 multimodal inputs per turn |
+| `retrieval_context` | list[str] | RAG context for this turn |
+| `evaluations` | list[metric] | Per-turn metric overrides — same `type` discriminators as top-level metrics (`standard` / `geval` / `rag` / `code`) |
+| `turn_config` | dict | Free-form payload passed to code graders as `ctx.turn_config` |
+
+**Mutual exclusivity**: when `turns:` is present, the top-level `input`, `ground_truth`, `expected_tools`, `files`, and `retrieval_context` keys must not be set. Pick one shape per case.
+
+**Argument matchers** in `expected_tools[*].args` use a shape-discriminated mapping:
+
+| YAML shape | Matcher | Behavior |
+|------------|---------|----------|
+| `key: 42` (scalar/list/dict) | `LiteralMatcher` | Exact equality (int↔float numeric equivalence) |
+| `key: { fuzzy: "60.94" }` | `FuzzyMatcher` | Case / whitespace / separator-tolerant, numeric-aware |
+| `key: { regex: "^\\d+$" }` | `RegexMatcher` | Anchored full-match against `str(actual)` |
+
+A bare string in `expected_tools` (e.g., `expected_tools: [subtract, divide]`) is shorthand for `ExpectedTool(name="…", count=1)` with no argument matchers.
+
+The dashboard renders multi-turn results with per-turn input / response / tool-call / metric blocks; see the Explorer view for a working example.
+
+### External Test-Case Files (`test_cases_file`)
+
+For large or shared test suites, lift `test_cases:` out of `agent.yaml` and reference an external file with `test_cases_file:` instead.
+
+```yaml
+# agent.yaml
+name: financial-assistant
+model: { provider: anthropic, name: claude-sonnet-4-6 }
+
+evaluations:
+  metrics:
+    - type: standard
+      metric: numeric
+      absolute_tolerance: 0.5
+      accept_percent: true
+      accept_thousands_separators: true
+
+test_cases_file: data/convfinqa_subset.yaml
+```
+
+```yaml
+# data/convfinqa_subset.yaml — top-level list of cases
+- name: Single_MRO/2007/page_134.pdf-1
+  turns:
+    - input: "..."
+      ground_truth: "60.94"
+      turn_config: { turn_program: "60.94" }
+```
+
+Or, for tooling that wants a wrapping document:
+
+```yaml
+# data/convfinqa_subset.yaml — wrapped form
+test_cases:
+  - name: case-1
+    input: "..."
+    ground_truth: "..."
+```
+
+**Resolution rules** (`src/holodeck/config/loader.py:_resolve_test_cases_file`):
+
+- The path is resolved relative to the directory containing `agent.yaml` (absolute paths also work).
+- The referenced file is parsed as YAML with environment-variable substitution applied to its raw text — the same `${VAR}` expansion that runs on `agent.yaml` itself.
+- The file's payload may be either a top-level **list** of test cases or a **dict** with a `test_cases:` key — both shapes are accepted.
+- `test_cases_file` is mutually exclusive with an inline `test_cases:` block on the same agent. Specifying both raises a `ConfigError` at load time.
+- Missing files, parse errors, and non-list payloads also raise `ConfigError` before any test runs.
+
+**When to use**:
+
+- Large suites (hundreds of cases) you don't want to scroll past in `agent.yaml`.
+- Generated fixtures (e.g., `scripts/convert_convfinqa.py` writing `data/convfinqa_subset.yaml`).
+- Sharing one corpus across multiple agent variants — point each variant's `agent.yaml` at the same file.
+
 ---
 
 ## Test Execution
@@ -800,9 +1071,10 @@ model:
 ### Error: "invalid metric type"
 
 - Check metric type is valid
-- Valid types: `geval`, `rag`, `standard`
-- For standard metrics: f1_score, bleu, rouge, meteor
+- Valid types: `geval`, `rag`, `standard`, `code`
+- For standard metrics: f1_score, bleu, rouge, meteor, equality, numeric
 - For RAG metrics: faithfulness, answer_relevancy, contextual_relevancy, contextual_precision, contextual_recall
+- For code metrics: provide a `grader: "module.path:callable"` reference
 
 ### Metric always fails
 

@@ -21,7 +21,7 @@ from holodeck.dashboard.data_loader import (
 )
 from holodeck.models.eval_run import EvalRun
 
-MetricKind = Literal["standard", "rag", "geval"]
+MetricKind = Literal["standard", "rag", "geval", "code"]
 
 PALETTE = ["#7bff5a", "#5ae0a6", "#53ff9c", "#9bff5f", "#a7f0ba", "#ffcf5a"]
 ACCENT = "#7bff5a"
