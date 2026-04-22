@@ -968,8 +968,49 @@ def _metric_row_div(row: MetricRow) -> html.Div:
     return html.Div(pieces, className="eval-row")
 
 
-def _evaluations_section(groups: dict[str, list[MetricRow]]) -> html.Details:
-    blocks = []
+def _code_average_header(avg_count: tuple[float, int]) -> html.Div:
+    avg, count = avg_count
+    label = "score" if count == 1 else "scores"
+    return html.Div(
+        [
+            html.Span(
+                "CODE GRADER AVERAGE",
+                className="eyebrow",
+                style={
+                    "fontSize": "10px",
+                    "letterSpacing": ".15em",
+                    "color": "var(--hd-accent-soft)",
+                    "marginRight": "10px",
+                },
+            ),
+            html.Span(
+                f"{avg:.2f}",
+                className="mono fg",
+                style={"fontSize": "16px", "fontWeight": 600},
+            ),
+            html.Span(
+                f" · {count} {label}",
+                className="mono",
+                style={"color": "var(--hd-muted)", "marginLeft": "6px"},
+            ),
+        ],
+        style={
+            "padding": "10px 12px",
+            "border": "1px solid var(--hd-border)",
+            "borderRadius": "6px",
+            "marginBottom": "14px",
+            "background": "#050b09",
+        },
+    )
+
+
+def _evaluations_section(
+    groups: dict[str, list[MetricRow]],
+    code_metric_average: tuple[float, int] | None = None,
+) -> html.Details:
+    blocks: list[Any] = []
+    if code_metric_average is not None:
+        blocks.append(_code_average_header(code_metric_average))
     for kind, rows in groups.items():
         blocks.append(
             html.Div(
@@ -1029,7 +1070,7 @@ def _detail_panel(run: EvalRun, detail: CaseDetail) -> html.Div:
                 detail.conversation, detail.agent_snapshot.model_name
             ),
             _expected_tools_section(detail.expected_tools_coverage),
-            _evaluations_section(detail.evaluations),
+            _evaluations_section(detail.evaluations, detail.code_metric_average),
         ],
         className="detail hd-explorer-detail",
     )

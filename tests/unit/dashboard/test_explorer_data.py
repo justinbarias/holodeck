@@ -203,8 +203,8 @@ def test_evaluations_ordering_and_omits_empty(seed_runs):
     detail = build_case_detail(run, case_name, {})
     assert detail is not None
     keys = list(detail.evaluations.keys())
-    # geval → rag → standard order where present
-    expected_order = [k for k in ("geval", "rag", "standard") if k in keys]
+    # geval → rag → standard → code order where present
+    expected_order = [k for k in ("geval", "rag", "standard", "code") if k in keys]
     assert keys == expected_order
     # no empty groups
     assert all(len(v) > 0 for v in detail.evaluations.values())

@@ -143,3 +143,23 @@ def test_metric_kind_code_surfaced_on_turn_view(multi_turn_run) -> None:
         m.kind == "code" and m.passed is False and isinstance(m, MetricRow)
         for m in tv2.metric_results
     )
+
+
+# ---------- code-grader average aggregate (per-case) ----------------------
+
+
+@pytest.mark.unit
+def test_code_metric_average_present_when_code_metrics_exist(multi_turn_run) -> None:
+    detail = build_case_detail(multi_turn_run, "four_turn_math_failing", {})
+    assert detail is not None
+    assert detail.code_metric_average is not None
+    avg, count = detail.code_metric_average
+    assert count >= 1
+    assert 0.0 <= avg <= 1.0
+
+
+@pytest.mark.unit
+def test_code_metric_average_none_when_no_code_metrics(multi_turn_run) -> None:
+    detail = build_case_detail(multi_turn_run, "single_turn_legacy", {})
+    assert detail is not None
+    assert detail.code_metric_average is None

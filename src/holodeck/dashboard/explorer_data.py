@@ -190,6 +190,7 @@ class CaseDetail:
     conversation: ConversationView
     expected_tools_coverage: ExpectedToolsCoverage
     evaluations: dict[str, list[MetricRow]] = field(default_factory=dict)
+    code_metric_average: tuple[float, int] | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -482,11 +483,23 @@ def _metric_row(m: MetricResult) -> MetricRow:
 
 def _group_evaluations(case: TestResult) -> dict[str, list[MetricRow]]:
     ordered: dict[str, list[MetricRow]] = {}
-    for kind in ("geval", "rag", "standard"):
+    for kind in ("geval", "rag", "standard", "code"):
         rows = [_metric_row(m) for m in case.metric_results if m.kind == kind]
         if rows:
             ordered[kind] = rows
     return ordered
+
+
+def _code_metric_average(case: TestResult) -> tuple[float, int] | None:
+    """Mean of all code-kind metric scores across the case-level results
+    AND every TurnResult.metric_results. Returns ``(avg, count)``, or
+    ``None`` when the case has no code metrics."""
+    scores = [float(m.score) for m in case.metric_results if m.kind == "code"]
+    for turn in case.turns or []:
+        scores.extend(float(m.score) for m in turn.metric_results if m.kind == "code")
+    if not scores:
+        return None
+    return sum(scores) / len(scores), len(scores)
 
 
 def _agent_snapshot(run: EvalRun) -> AgentSnapshot:
@@ -556,4 +569,5 @@ def build_case_detail(
         conversation=_build_conversation(case, case_name, conversations_map),
         expected_tools_coverage=_build_expected_tools_coverage(case),
         evaluations=_group_evaluations(case),
+        code_metric_average=_code_metric_average(case),
     )

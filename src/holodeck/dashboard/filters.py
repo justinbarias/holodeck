@@ -14,7 +14,7 @@ import pandas as pd
 
 from holodeck.models.eval_run import EvalRun
 
-MetricKind = Literal["standard", "rag", "geval"]
+MetricKind = Literal["standard", "rag", "geval", "code"]
 
 
 @dataclass

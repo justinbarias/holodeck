@@ -26,7 +26,7 @@ from holodeck.models.eval_run import EvalRun
 
 logger = logging.getLogger(__name__)
 
-MetricKind = Literal["standard", "rag", "geval"]
+MetricKind = Literal["standard", "rag", "geval", "code"]
 
 
 def _pass_rate_fraction(run: EvalRun) -> float:
