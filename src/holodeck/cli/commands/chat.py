@@ -5,8 +5,8 @@ including message validation, tool execution streaming, and optional observabili
 """
 
 import asyncio
+import contextlib
 import sys
-import threading
 import time
 from contextlib import nullcontext
 from pathlib import Path
@@ -14,9 +14,10 @@ from typing import Any
 
 import click
 
-from holodeck.chat import ChatSessionManager
-from holodeck.chat.executor import AgentResponse
+from holodeck.chat import ChatSessionManager, ToolsPanel
+from holodeck.chat.executor import AgentExecutor, AgentResponse
 from holodeck.chat.progress import ChatProgressIndicator
+from holodeck.lib.backends.base import ToolEvent
 from holodeck.lib.errors import AgentInitializationError, ConfigError, ExecutionError
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.observability import (
@@ -24,45 +25,108 @@ from holodeck.lib.observability import (
     initialize_observability,
     shutdown_observability,
 )
+from holodeck.lib.ui import is_tty
 from holodeck.models.agent import Agent
 from holodeck.models.chat import ChatConfig
 from holodeck.models.config import ExecutionConfig
 
 logger = get_logger(__name__)
 
+_RENDER_INTERVAL_SEC = 0.1
 
-class ChatSpinnerThread(threading.Thread):
-    """Background thread for displaying animated spinner during agent execution."""
 
-    def __init__(self, progress: ChatProgressIndicator) -> None:
-        """Initialize spinner thread.
+async def _drain_tool_events(
+    queue: asyncio.Queue[ToolEvent],
+    panel: ToolsPanel,
+    stop_event: asyncio.Event,
+) -> None:
+    """Forward tool events into *panel* until *stop_event* is set.
 
-        Args:
-            progress: ChatProgressIndicator instance for spinner animation.
-        """
-        super().__init__(daemon=True)
-        self.progress = progress
-        self._stop_event = threading.Event()
-        self._running = False
+    Uses a short timeout on each ``get`` so the loop exits promptly when
+    the chat turn ends, even if no further events arrive.
+    """
+    while not stop_event.is_set():
+        try:
+            evt = await asyncio.wait_for(queue.get(), timeout=0.1)
+        except asyncio.TimeoutError:
+            continue
+        panel.apply(evt)
 
-    def run(self) -> None:
-        """Run spinner animation loop."""
-        self._running = True
-        while not self._stop_event.is_set():
-            line = self.progress.get_spinner_line()
-            if line:
-                sys.stdout.write(f"\r{line}")
-                sys.stdout.flush()
-            time.sleep(0.1)  # 10 FPS update rate
-        self._running = False
 
-    def stop(self) -> None:
-        """Stop spinner animation and clear spinner line."""
-        self._stop_event.set()
-        if self._running:
-            # Clear spinner line
-            sys.stdout.write("\r" + " " * 80 + "\r")
-            sys.stdout.flush()
+def _drain_remaining(queue: asyncio.Queue[ToolEvent], panel: ToolsPanel) -> None:
+    """Apply any events buffered between the last drainer tick and now."""
+    while True:
+        try:
+            evt = queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return
+        panel.apply(evt)
+
+
+async def _render_tools_panel(
+    panel: ToolsPanel,
+    progress: ChatProgressIndicator,
+    stop_event: asyncio.Event,
+) -> int:
+    """Repaint the tools panel + spinner above the prompt at 10 fps.
+
+    Returns:
+        The number of lines occupied by the last paint, so the caller can
+        clear them before streaming agent text.
+    """
+    if not is_tty():
+        return 0
+
+    last_lines = 0
+    try:
+        while not stop_event.is_set():
+            new_lines = list(panel.render_lines())
+            spinner = progress.get_spinner_line()
+            if spinner:
+                new_lines.append(spinner)
+
+            _repaint(new_lines, last_lines)
+            last_lines = len(new_lines)
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=_RENDER_INTERVAL_SEC)
+            except asyncio.TimeoutError:
+                continue
+    finally:
+        # Don't leave the cursor parked at the start of the rendered region;
+        # caller is responsible for clearing via the returned line count.
+        pass
+    return last_lines
+
+
+def _repaint(new_lines: list[str], last_lines: int) -> None:
+    """Overwrite the previously drawn region with *new_lines* in place."""
+    if last_lines:
+        sys.stdout.write(f"\r\033[{last_lines}A\033[J")
+    elif new_lines:
+        sys.stdout.write("\r")
+    if new_lines:
+        sys.stdout.write("\n".join(new_lines))
+    sys.stdout.flush()
+
+
+def _clear_panel(line_count: int) -> None:
+    """Clear *line_count* lines from the current paint region."""
+    if line_count <= 0:
+        return
+    sys.stdout.write(f"\r\033[{line_count}A\033[J")
+    sys.stdout.flush()
+
+
+async def _ensure_executor_ready(executor: AgentExecutor) -> None:
+    """Eagerly initialise backend + session so ``tool_event_queue`` is live.
+
+    Mirrors :func:`holodeck.serve.protocols.agui.AGUIProtocol.handle_request`'s
+    eager-init pattern.  Gracefully degrades if the executor doesn't expose
+    the private hook (e.g. test mocks).
+    """
+    ensure = getattr(executor, "_ensure_backend_and_session", None)
+    if callable(ensure) and asyncio.iscoroutinefunction(ensure):
+        await ensure()
 
 
 @click.command()
@@ -309,30 +373,63 @@ async def _run_chat_session(
                     try:
                         logger.debug(f"Processing user message: {user_input[:50]}...")
 
-                        # Show spinner while waiting for first token
-                        spinner = ChatSpinnerThread(progress)
-                        spinner.start()
+                        # Eager-init so the backend's tool_event_queue is
+                        # live before we spawn the drainer (mirrors the
+                        # AGUI protocol path in holodeck serve).
+                        executor = session_manager._executor
+                        if executor is not None:
+                            await _ensure_executor_ready(executor)
+                        queue = (
+                            executor.tool_event_queue if executor is not None else None
+                        )
+
+                        panel = ToolsPanel()
+                        stop_event = asyncio.Event()
+                        drain_task: asyncio.Task[None] | None = None
+                        if queue is not None:
+                            drain_task = asyncio.create_task(
+                                _drain_tool_events(queue, panel, stop_event)
+                            )
+                        render_task: asyncio.Task[int] = asyncio.create_task(
+                            _render_tools_panel(panel, progress, stop_event)
+                        )
 
                         start_time = time.time()
                         chunks: list[str] = []
                         first_chunk = True
-                        async for chunk in session_manager.process_message_streaming(
-                            user_input
-                        ):
-                            if first_chunk:
-                                spinner.stop()
-                                spinner.join()
-                                click.echo("Agent: ", nl=False)
-                                first_chunk = False
-                            sys.stdout.write(chunk)
-                            sys.stdout.flush()
-                            chunks.append(chunk)
+                        try:
+                            async for (
+                                chunk
+                            ) in session_manager.process_message_streaming(user_input):
+                                if first_chunk:
+                                    stop_event.set()
+                                    last_lines = await render_task
+                                    _clear_panel(last_lines)
+                                    click.echo("Agent: ", nl=False)
+                                    first_chunk = False
+                                sys.stdout.write(chunk)
+                                sys.stdout.flush()
+                                chunks.append(chunk)
+                        finally:
+                            stop_event.set()
+                            if not render_task.done():
+                                last_lines = await render_task
+                                if first_chunk:
+                                    _clear_panel(last_lines)
+                            if drain_task is not None:
+                                try:
+                                    await asyncio.wait_for(drain_task, timeout=0.25)
+                                except asyncio.TimeoutError:
+                                    drain_task.cancel()
+                                    with contextlib.suppress(asyncio.CancelledError):
+                                        await drain_task
+                            if queue is not None:
+                                _drain_remaining(queue, panel)
+
                         elapsed = time.time() - start_time
 
-                        # Stop spinner if no chunks arrived at all
+                        # Print "Agent: " if no chunks ever arrived.
                         if first_chunk:
-                            spinner.stop()
-                            spinner.join()
                             click.echo("Agent: ", nl=False)
 
                         click.echo()  # newline after streamed content
@@ -348,6 +445,7 @@ async def _run_chat_session(
 
                         # Update progress
                         progress.update(response)
+                        progress.set_active_snapshot(panel.snapshot())
 
                         # Display status
                         if verbose:
