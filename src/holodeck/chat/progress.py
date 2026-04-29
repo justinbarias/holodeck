@@ -42,6 +42,9 @@ class ChatProgressIndicator(SpinnerMixin):
         # Tool execution tracking
         self.last_tool_executions: list[ToolExecution] = []
         self.total_tool_calls: int = 0
+        # Snapshot of tools observed via the live panel for the verbose
+        # post-turn summary.  Populated by :meth:`set_active_snapshot`.
+        self._panel_snapshot: list[tuple[str, bool, str | None]] = []
 
     def get_spinner_line(self) -> str:
         """Get current spinner animation frame.
@@ -54,6 +57,24 @@ class ChatProgressIndicator(SpinnerMixin):
 
         spinner_char = self.get_spinner_char()
         return f"{spinner_char} Thinking..."
+
+    def set_active_snapshot(self, entries: Any) -> None:
+        """Record the panel's view of tools that ran this turn.
+
+        Streaming responses don't surface ``tool_executions`` (they always
+        return ``[]``), so the verbose summary panel uses this snapshot
+        from :class:`holodeck.chat.tools_panel.ToolsPanel` instead.
+
+        Args:
+            entries: Iterable of objects exposing ``tool_name``,
+                ``is_subagent``, and ``subagent_type`` attributes (i.e. the
+                ``_Active`` records returned by ``ToolsPanel.snapshot()``).
+        """
+        self._panel_snapshot = [
+            (e.tool_name, e.is_subagent, e.subagent_type) for e in entries
+        ]
+        # Count every tool the panel saw towards the cumulative total.
+        self.total_tool_calls += len(self._panel_snapshot)
 
     def update(self, response: Any) -> None:
         """Update progress after agent response.
@@ -152,8 +173,24 @@ class ChatProgressIndicator(SpinnerMixin):
         content = f"Tool Calls (Total): {self.total_tool_calls}"
         lines.append(f"│ {content:<{content_width}} │")
 
-        # Last tool executions (if any)
-        if self.last_tool_executions:
+        # Last tool executions (if any) — prefer the live-panel snapshot
+        # when available since streaming responses never populate
+        # ``last_tool_executions``.
+        if self._panel_snapshot:
+            lines.append(f"│ {'Last Tools Called:':<{content_width}} │")
+            status_icon = self._get_status_icon(ToolStatus.SUCCESS)
+            for tool_name, is_subagent, subagent_type in self._panel_snapshot:
+                label = (
+                    f"Task[{subagent_type}]"
+                    if is_subagent and subagent_type
+                    else tool_name
+                )
+                max_name_len = content_width - 6
+                if len(label) > max_name_len:
+                    label = label[: max_name_len - 3] + "..."
+                content = f"  └─ {status_icon} {label}"
+                lines.append(f"│ {content:<{content_width}} │")
+        elif self.last_tool_executions:
             lines.append(f"│ {'Last Tools Called:':<{content_width}} │")
             for tool_exec in self.last_tool_executions:
                 # Get status indicator

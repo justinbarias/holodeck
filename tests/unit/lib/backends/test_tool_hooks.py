@@ -2,6 +2,7 @@
 
 Tests for:
 - _build_tool_hooks() — PreToolUse, PostToolUse, PostToolUseFailure hooks
+- _maybe_emit_subagent_message() — subagent_message events from msg stream
 - ClaudeSession.tool_events — queue property
 - _TaskBoundSession.tool_events — passthrough property
 - AgentExecutor.tool_event_queue — passthrough property
@@ -15,7 +16,42 @@ from unittest.mock import MagicMock
 import pytest
 
 from holodeck.lib.backends.base import ToolEvent
-from holodeck.lib.backends.claude_backend import _build_tool_hooks
+from holodeck.lib.backends.claude_backend import (
+    _build_tool_hooks,
+    _maybe_emit_subagent_message,
+)
+
+# ---------------------------------------------------------------------------
+# Lightweight stand-ins for SDK message types — only the class name and the
+# attributes used by the production code are reproduced here.
+# ---------------------------------------------------------------------------
+
+
+class TextBlock:
+    """Stand-in for ``claude_agent_sdk.TextBlock``."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class AssistantMessage:
+    """Stand-in for ``claude_agent_sdk.AssistantMessage``."""
+
+    def __init__(
+        self,
+        content: list[object],
+        parent_tool_use_id: str | None = None,
+    ) -> None:
+        self.content = content
+        self.parent_tool_use_id = parent_tool_use_id
+
+
+class ResultMessage:
+    """Stand-in for ``claude_agent_sdk.ResultMessage``."""
+
+    def __init__(self, parent_tool_use_id: str | None = None) -> None:
+        self.parent_tool_use_id = parent_tool_use_id
+
 
 # ---------------------------------------------------------------------------
 # _build_tool_hooks
@@ -116,6 +152,55 @@ class TestBuildToolHooks:
         assert event.tool_name == "search"
         assert event.tool_use_id == "tu_456"
         assert event.error == "connection timeout"
+
+
+# ---------------------------------------------------------------------------
+# _maybe_emit_subagent_message
+# ---------------------------------------------------------------------------
+
+
+class TestMaybeEmitSubagentMessage:
+    """Tests for the message-stream tap that surfaces subagent text."""
+
+    def test_pushes_subagent_message_event_when_parent_id_set(self) -> None:
+        queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        msg = AssistantMessage(
+            content=[TextBlock("Reading src/foo.py")],
+            parent_tool_use_id="task_42",
+        )
+
+        _maybe_emit_subagent_message(msg, queue)
+
+        evt = queue.get_nowait()
+        assert evt.kind == "subagent_message"
+        assert evt.tool_name == "Task"
+        assert evt.tool_use_id == "task_42"
+        assert evt.parent_tool_use_id == "task_42"
+        assert evt.text == "Reading src/foo.py"
+
+    def test_no_event_when_parent_id_missing(self) -> None:
+        queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        msg = AssistantMessage(content=[TextBlock("hi")], parent_tool_use_id=None)
+
+        _maybe_emit_subagent_message(msg, queue)
+
+        assert queue.empty()
+
+    def test_no_event_for_non_assistant_messages(self) -> None:
+        queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        msg = ResultMessage(parent_tool_use_id="task_1")
+
+        _maybe_emit_subagent_message(msg, queue)
+
+        assert queue.empty()
+
+    def test_no_event_for_empty_text(self) -> None:
+        queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        msg = AssistantMessage(content=[TextBlock("   \n  ")], parent_tool_use_id="t")
+
+        _maybe_emit_subagent_message(msg, queue)
+
+        assert queue.empty()
 
 
 # ---------------------------------------------------------------------------
