@@ -1,10 +1,12 @@
 """Tests for Claude-specific configuration models in holodeck.models.claude_config."""
 
 import warnings
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from holodeck.config.context import agent_base_dir
 from holodeck.models.claude_config import (
     KNOWN_BUILTIN_TOOLS,
     AuthProvider,
@@ -24,6 +26,15 @@ from holodeck.models.claude_config import (
 @pytest.mark.unit
 class TestFoundationalSubagentMigration:
     """Foundational tests for SubagentSpec / ClaudeConfig.agents scaffolding."""
+
+    @pytest.mark.parametrize("value", ["", "   "], ids=["empty", "whitespace"])
+    def test_subagent_description_required_non_empty(self, value: str) -> None:
+        """T003a: description must be non-empty after strip with the spec'd message.
+
+        Traces to FR-004, SC-004, quickstart.md §5.
+        """
+        with pytest.raises(ValidationError, match="subagent requires description"):
+            SubagentSpec(description=value, prompt="x")
 
     def test_legacy_subagents_block_rejected(self) -> None:
         """T002: Loading claude.subagents produces a targeted migration error.
@@ -562,3 +573,94 @@ class TestSubagentSpecToolWarning:
                 prompt="Think carefully without tools.",
                 tools=[],
             )
+
+
+# ---------------------------------------------------------------------------
+# US3 tests — T010-T016 (prompt sourcing & validation)
+# ---------------------------------------------------------------------------
+
+
+_FIXTURE_PROMPTS_DIR = Path(__file__).parent / "fixtures" / "subagent_prompts"
+
+
+@pytest.mark.unit
+class TestSubagentPromptSourcing:
+    """US3: prompt / prompt_file sourcing and validation rules."""
+
+    def test_subagent_inline_prompt_loads(self) -> None:
+        """T010: Inline prompt round-trips and prompt_file stays None."""
+        spec = SubagentSpec(description="x", prompt="You are a financial analyst.")
+        assert spec.prompt == "You are a financial analyst."
+        assert spec.prompt_file is None
+
+    def test_subagent_inline_prompt_empty_after_strip_rejected(self) -> None:
+        """T011: Whitespace-only inline prompt is rejected."""
+        with pytest.raises(ValidationError):
+            SubagentSpec(description="x", prompt="   ")
+
+    def test_subagent_prompt_file_inlined(self) -> None:
+        """T012: prompt_file contents inline into prompt; prompt_file becomes None."""
+        token = agent_base_dir.set(str(_FIXTURE_PROMPTS_DIR))
+        try:
+            spec = SubagentSpec(description="x", prompt_file="./analyst.md")
+        finally:
+            agent_base_dir.reset(token)
+        expected = (_FIXTURE_PROMPTS_DIR / "analyst.md").read_text(encoding="utf-8")
+        assert spec.prompt == expected
+        assert spec.prompt_file is None
+
+    def test_subagent_prompt_file_resolves_relative_to_agent_base_dir(
+        self, tmp_path: Path
+    ) -> None:
+        """T013: relative paths resolve under agent_base_dir; absolute paths pass."""
+        nested = tmp_path / "subdir"
+        nested.mkdir()
+        prompt_file = nested / "analyst.md"
+        prompt_file.write_text("nested prompt body", encoding="utf-8")
+
+        # Relative path under base_dir
+        token = agent_base_dir.set(str(tmp_path))
+        try:
+            spec_rel = SubagentSpec(description="x", prompt_file="subdir/analyst.md")
+        finally:
+            agent_base_dir.reset(token)
+        assert spec_rel.prompt == "nested prompt body"
+        assert spec_rel.prompt_file is None
+
+        # Absolute path is honoured even if base_dir is unrelated
+        unrelated_base = tmp_path / "unrelated"
+        unrelated_base.mkdir()
+        token = agent_base_dir.set(str(unrelated_base))
+        try:
+            spec_abs = SubagentSpec(description="x", prompt_file=str(prompt_file))
+        finally:
+            agent_base_dir.reset(token)
+        assert spec_abs.prompt == "nested prompt body"
+        assert spec_abs.prompt_file is None
+
+    def test_subagent_prompt_file_not_found_rejected(self, tmp_path: Path) -> None:
+        """T014: Missing prompt_file produces a ValidationError naming the path."""
+        token = agent_base_dir.set(str(tmp_path))
+        try:
+            with pytest.raises(ValidationError) as exc_info:
+                SubagentSpec(description="x", prompt_file="./does-not-exist.md")
+        finally:
+            agent_base_dir.reset(token)
+        message = str(exc_info.value)
+        assert "prompt_file not found" in message
+        assert "does-not-exist.md" in message
+
+    def test_subagent_prompt_and_prompt_file_mutually_exclusive(self) -> None:
+        """T015: Setting both prompt and prompt_file raises the documented error."""
+        with pytest.raises(
+            ValidationError, match="prompt and prompt_file are mutually exclusive"
+        ):
+            SubagentSpec(description="x", prompt="hi", prompt_file="./analyst.md")
+
+    def test_subagent_neither_prompt_nor_prompt_file_rejected(self) -> None:
+        """T016: Omitting both prompt and prompt_file raises the documented error."""
+        with pytest.raises(
+            ValidationError,
+            match="subagent requires either prompt or prompt_file",
+        ):
+            SubagentSpec(description="x")

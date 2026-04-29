@@ -7,9 +7,12 @@ All capabilities default to disabled (least-privilege).
 
 import warnings
 from enum import Enum
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from holodeck.config.context import agent_base_dir
 
 # Known built-in SDK tool names used for tool-name typo warnings (data-model.md rule 5).
 KNOWN_BUILTIN_TOOLS: frozenset[str] = frozenset(
@@ -132,7 +135,36 @@ class SubagentSpec(BaseModel):
     def _validate_description_non_empty(self) -> "SubagentSpec":
         """Validate description is non-empty after strip (data-model.md rule 4)."""
         if not self.description.strip():
-            raise ValueError("description must not be empty or whitespace")
+            raise ValueError("subagent requires description")
+        return self
+
+    @model_validator(mode="after")
+    def _resolve_prompt_sources(self) -> "SubagentSpec":
+        """Enforce prompt/prompt_file rules and inline prompt_file contents.
+
+        Order matters: mutual-exclusion → at-least-one → file resolution →
+        post-strip non-empty check. After this validator returns, ``prompt`` is
+        always a non-empty string and ``prompt_file`` is always ``None``
+        (data-model.md §1 invariants).
+        """
+        if self.prompt is not None and self.prompt_file is not None:
+            raise ValueError("prompt and prompt_file are mutually exclusive")
+        if self.prompt is None and self.prompt_file is None:
+            raise ValueError("subagent requires either prompt or prompt_file")
+
+        if self.prompt_file is not None:
+            base_dir_value = agent_base_dir.get()
+            base_dir = Path.cwd() if base_dir_value is None else Path(base_dir_value)
+            path = Path(self.prompt_file)
+            if not path.is_absolute():
+                path = base_dir / path
+            if not path.exists():
+                raise ValueError(f"prompt_file not found: {path}")
+            self.prompt = path.read_text(encoding="utf-8")
+            self.prompt_file = None
+
+        if self.prompt is not None and not self.prompt.strip():
+            raise ValueError("subagent prompt must be non-empty")
         return self
 
     @model_validator(mode="after")
