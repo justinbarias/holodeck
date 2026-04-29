@@ -155,24 +155,37 @@
       },
       "description": "File read/write/edit access settings"
     },
-    "SubagentConfig": {
+    "SubagentSpec": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["description"],
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable parallel sub-agent execution"
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable description used by the parent agent for routing decisions. Required by the SDK."
         },
-        "max_parallel": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 16,
-          "default": 4,
-          "description": "Maximum parallel sub-agents (1-16)"
+        "prompt": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "Inline system prompt for the subagent. Mutually exclusive with prompt_file. Either prompt or prompt_file is required."
+        },
+        "prompt_file": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "Path to a file containing the subagent's system prompt. Resolved relative to the agent.yaml directory. Mutually exclusive with prompt. File contents are inlined at config-load time."
+        },
+        "tools": {
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "description": "Allowlist of tool names. When null/omitted, the subagent inherits all parent tools. Unknown entries produce a warning at load time, not an error."
+        },
+        "model": {
+          "type": ["string", "null"],
+          "description": "Model override for this subagent. Passed through to the SDK verbatim (e.g. 'sonnet', 'haiku', 'inherit', or a full model id). The SDK is the source of truth for valid values."
         }
       },
-      "description": "Parallel sub-agent execution settings"
+      "description": "A single subagent definition for multi-agent orchestration."
     },
     "ClaudeConfig": {
       "type": "object",
@@ -209,9 +222,10 @@
           "$ref": "#/$defs/FileSystemConfig",
           "description": "File read/write/edit access settings"
         },
-        "subagents": {
-          "$ref": "#/$defs/SubagentConfig",
-          "description": "Parallel sub-agent execution settings"
+        "agents": {
+          "type": ["object", "null"],
+          "additionalProperties": { "$ref": "#/$defs/SubagentSpec" },
+          "description": "Named subagent definitions. Each entry becomes an AgentDefinition on ClaudeAgentOptions.agents. Subagents share parent MCP server registrations and use their `tools` allowlist to scope MCP tool access (`mcp__<server>__<tool>`). Per-subagent MCP server registration is NOT supported by the SDK."
         },
         "allowed_tools": {
           "type": ["array", "null"],

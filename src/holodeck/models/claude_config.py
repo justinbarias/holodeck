@@ -7,9 +7,26 @@ All capabilities default to disabled (least-privilege).
 
 import warnings
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# Known built-in SDK tool names used for tool-name typo warnings (data-model.md rule 5).
+KNOWN_BUILTIN_TOOLS: frozenset[str] = frozenset(
+    {
+        "Read",
+        "Write",
+        "Edit",
+        "Bash",
+        "Glob",
+        "Grep",
+        "WebSearch",
+        "WebFetch",
+        "Task",
+        "TodoWrite",
+        "NotebookEdit",
+    }
+)
 
 
 class AuthProvider(str, Enum):
@@ -60,13 +77,97 @@ class FileSystemConfig(BaseModel):
     edit: bool = False
 
 
-class SubagentConfig(BaseModel):
-    """Parallel sub-agent execution settings."""
+class SubagentSpec(BaseModel):
+    """A single subagent definition for multi-agent orchestration.
+
+    Each entry under ``claude.agents`` becomes an
+    ``claude_agent_sdk.types.AgentDefinition`` on
+    ``ClaudeAgentOptions.agents``. The SDK uses ``description`` for routing.
+
+    US3 validators (prompt/prompt_file mutual exclusion and file resolution)
+    are deliberately omitted here — they belong to the US3 task slice.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    enabled: bool = False
-    max_parallel: int = Field(default=4, ge=1, le=16)
+    description: str = Field(
+        description=(
+            "Human-readable description used by the parent agent for routing "
+            "decisions. Required by the SDK."
+        )
+    )
+    prompt: str | None = Field(
+        default=None,
+        description=(
+            "Inline system prompt for the subagent. "
+            "Mutually exclusive with prompt_file."
+        ),
+    )
+    prompt_file: str | None = Field(
+        default=None,
+        description=(
+            "Path to a file containing the subagent's system prompt. "
+            "Resolved relative to the agent.yaml directory. "
+            "Mutually exclusive with prompt. "
+            "File contents are inlined at config-load time."
+        ),
+    )
+    tools: list[str] | None = Field(
+        default=None,
+        description=(
+            "Allowlist of tool names. When null/omitted, the subagent "
+            "inherits all parent tools."
+        ),
+    )
+    model: str | None = Field(
+        default=None,
+        description=(
+            "Model override for this subagent. Passed through to the SDK verbatim "
+            "(e.g. 'sonnet', 'haiku', 'inherit', or a full model id). "
+            "The SDK is the source of truth for valid values."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_description_non_empty(self) -> "SubagentSpec":
+        """Validate description is non-empty after strip (data-model.md rule 4)."""
+        if not self.description.strip():
+            raise ValueError("description must not be empty or whitespace")
+        return self
+
+    @model_validator(mode="after")
+    def _warn_unknown_tool_names(self) -> "SubagentSpec":
+        """Emit UserWarning for tool names that don't match a known pattern.
+
+        Three accepted patterns (research.md §3):
+          1. Known SDK built-ins — names in ``KNOWN_BUILTIN_TOOLS``.
+          2. MCP tool names — entries prefixed with ``mcp__``.
+          3. HoloDeck-bridged tool names — entries registered in the parent
+             agent's top-level ``tools`` field.
+
+        NOTE: Pattern 3 (HoloDeck-bridged tools) cannot be checked here because
+        this model validator runs in isolation and does not have access to the
+        parent ``Agent`` context.  The warning message names all three accepted
+        patterns so users understand bridged names are valid and won't trigger
+        a hard error.  Cross-checking against the parent ``Agent.tools`` list is
+        intentionally deferred — it would require ``Agent``-level context.
+
+        Traces to data-model.md rule #5, research.md §3.
+        """
+        for entry in self.tools or []:
+            if entry in KNOWN_BUILTIN_TOOLS:
+                continue
+            if entry.startswith("mcp__"):
+                continue
+            warnings.warn(
+                f"Subagent tool '{entry}' does not match a known built-in "
+                f"(one of {sorted(KNOWN_BUILTIN_TOOLS)}), an MCP tool name "
+                f"(mcp__<server>__<tool>), or a HoloDeck-bridged tool. "
+                f"This may be a typo.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self
 
 
 class ClaudeConfig(BaseModel):
@@ -112,9 +213,13 @@ class ClaudeConfig(BaseModel):
         default=None,
         description="File read/write/edit access settings.",
     )
-    subagents: SubagentConfig | None = Field(
+    agents: dict[str, SubagentSpec] | None = Field(
         default=None,
-        description="Parallel sub-agent execution settings.",
+        description=(
+            "Named subagent definitions. Each entry becomes an AgentDefinition "
+            "on ClaudeAgentOptions.agents. Subagents share parent MCP servers "
+            "and use their `tools` allowlist to scope MCP tool access."
+        ),
     )
     allowed_tools: list[str] | None = Field(
         default=None,
@@ -139,6 +244,30 @@ class ClaudeConfig(BaseModel):
             "Tools that must never be used; takes precedence over allowed_tools."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_subagents_block(cls, data: Any) -> Any:
+        """Raise a targeted error when the legacy claude.subagents block is present.
+
+        Runs before extra="forbid" so the user gets a helpful message instead of
+        a generic "extra fields not permitted" error. Traces to FR-011, SC-005.
+        """
+        if isinstance(data, dict) and "subagents" in data:
+            raise ValueError(
+                "`claude.subagents` is no longer supported; remove this block. "
+                "Subagent forwarding is gated solely by the presence of "
+                "`claude.agents`. To cap HoloDeck-side test concurrency, set "
+                "`execution.parallel_test_cases` instead."
+            )
+        return data
+
+    @model_validator(mode="after")
+    def _normalize_agents_empty_map(self) -> "ClaudeConfig":
+        """Normalize agents={} to agents=None (data-model.md rule 1)."""
+        if self.agents == {}:
+            self.agents = None
+        return self
 
     @model_validator(mode="after")
     def _warn_effort_with_extended_thinking(self) -> "ClaudeConfig":

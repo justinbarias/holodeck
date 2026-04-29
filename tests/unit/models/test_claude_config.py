@@ -6,14 +6,45 @@ import pytest
 from pydantic import ValidationError
 
 from holodeck.models.claude_config import (
+    KNOWN_BUILTIN_TOOLS,
     AuthProvider,
     BashConfig,
     ClaudeConfig,
     ExtendedThinkingConfig,
     FileSystemConfig,
     PermissionMode,
-    SubagentConfig,
+    SubagentSpec,
 )
+
+# ---------------------------------------------------------------------------
+# Foundational tests — T002 and T003 (written first, must FAIL before T008/T007)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFoundationalSubagentMigration:
+    """Foundational tests for SubagentSpec / ClaudeConfig.agents scaffolding."""
+
+    def test_legacy_subagents_block_rejected(self) -> None:
+        """T002: Loading claude.subagents produces a targeted migration error.
+
+        Traces to SC-005, FR-011.
+        """
+        with pytest.raises(ValidationError) as exc_info:
+            ClaudeConfig(**{"subagents": {"enabled": True}})
+        error_text = str(exc_info.value)
+        assert "claude.subagents" in error_text
+        assert "no longer supported" in error_text
+        assert "claude.agents" in error_text
+        assert "execution.parallel_test_cases" in error_text
+
+    def test_claude_config_agents_empty_map_normalized_to_none(self) -> None:
+        """T003: ClaudeConfig(agents={}).agents is None after normalization.
+
+        Traces to FR-010, edge case "empty agents map", research.md §5.
+        """
+        config = ClaudeConfig(agents={})
+        assert config.agents is None
 
 
 class TestAuthProvider:
@@ -155,46 +186,6 @@ class TestFileSystemConfig:
             FileSystemConfig(execute=True)
 
 
-class TestSubagentConfig:
-    """Tests for SubagentConfig model."""
-
-    def test_defaults(self) -> None:
-        """Test default values."""
-        config = SubagentConfig()
-        assert config.enabled is False
-        assert config.max_parallel == 4
-
-    def test_custom_max_parallel(self) -> None:
-        """Test with custom max_parallel."""
-        config = SubagentConfig(enabled=True, max_parallel=8)
-        assert config.max_parallel == 8
-
-    @pytest.mark.parametrize(
-        "max_parallel",
-        [0, 17],
-        ids=["below_min", "above_max"],
-    )
-    def test_max_parallel_out_of_range(self, max_parallel: int) -> None:
-        """Test that max_parallel outside 1-16 is rejected."""
-        with pytest.raises(ValidationError):
-            SubagentConfig(max_parallel=max_parallel)
-
-    @pytest.mark.parametrize(
-        "max_parallel",
-        [1, 16],
-        ids=["at_min", "at_max"],
-    )
-    def test_max_parallel_at_boundaries(self, max_parallel: int) -> None:
-        """Test that max_parallel at boundaries is accepted."""
-        config = SubagentConfig(max_parallel=max_parallel)
-        assert config.max_parallel == max_parallel
-
-    def test_extra_fields_rejected(self) -> None:
-        """Test that extra fields are rejected."""
-        with pytest.raises(ValidationError):
-            SubagentConfig(unknown="value")
-
-
 class TestClaudeConfig:
     """Tests for ClaudeConfig model."""
 
@@ -208,7 +199,7 @@ class TestClaudeConfig:
         assert config.web_search is False
         assert config.bash is None
         assert config.file_system is None
-        assert config.subagents is None
+        assert config.agents is None
         assert config.allowed_tools is None
         assert config.effort is None
         assert config.max_budget_usd is None
@@ -245,15 +236,6 @@ class TestClaudeConfig:
         assert config.file_system.write is True
         assert config.file_system.edit is True
 
-    def test_with_subagents(self) -> None:
-        """Test ClaudeConfig with subagents configured."""
-        config = ClaudeConfig(
-            subagents=SubagentConfig(enabled=True, max_parallel=8),
-        )
-        assert config.subagents is not None
-        assert config.subagents.enabled is True
-        assert config.subagents.max_parallel == 8
-
     def test_with_all_fields(self) -> None:
         """Test ClaudeConfig with all fields populated."""
         config = ClaudeConfig(
@@ -266,7 +248,6 @@ class TestClaudeConfig:
             web_search=True,
             bash=BashConfig(enabled=True, excluded_commands=["sudo"]),
             file_system=FileSystemConfig(read=True, write=True, edit=True),
-            subagents=SubagentConfig(enabled=True, max_parallel=16),
             allowed_tools=["bash", "file_read", "web_search"],
         )
         assert config.working_directory == "/home/user/workspace"
@@ -276,7 +257,6 @@ class TestClaudeConfig:
         assert config.web_search is True
         assert config.bash.enabled is True
         assert config.file_system.read is True
-        assert config.subagents.max_parallel == 16
         assert len(config.allowed_tools) == 3
 
     def test_max_turns_must_be_positive(self) -> None:
@@ -412,4 +392,173 @@ class TestClaudeConfig:
             ClaudeConfig(
                 effort="high",
                 extended_thinking=ExtendedThinkingConfig(enabled=False),
+            )
+
+
+# ---------------------------------------------------------------------------
+# US1 tests — T012 and T013 (SubagentSpec model round-trip + literal validation)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSubagentSpec:
+    """US1 tests for SubagentSpec model fields and validation."""
+
+    def test_subagent_spec_round_trip_minimal(self) -> None:
+        """T012 (US1): SubagentSpec round-trips description and prompt correctly.
+
+        Traces to FR-001, FR-002, US1 acceptance scenario 1.
+        """
+        spec = SubagentSpec(description="x", prompt="y")
+        assert spec.description == "x"
+        assert spec.prompt == "y"
+        assert spec.tools is None
+        assert spec.model is None
+
+    @pytest.mark.parametrize(
+        "model_value",
+        ["sonnet", "opus", "haiku", "inherit", "claude-3-5-sonnet-20241022"],
+        ids=["sonnet", "opus", "haiku", "inherit", "full_model_id"],
+    )
+    def test_subagent_spec_model_passes_through(self, model_value: str) -> None:
+        """T013 (US1): SubagentSpec accepts any string for model and passes it through.
+
+        The SDK is the source of truth for valid model values; HoloDeck does not
+        gate on a fixed literal set so the surface stays compatible as the SDK
+        adds new model aliases. Traces to FR-008, US1 acceptance scenario 2.
+        """
+        spec = SubagentSpec(
+            description="agent", prompt="Do something.", model=model_value
+        )
+        assert spec.model == model_value
+
+    def test_subagent_spec_description_empty_rejected(self) -> None:
+        """description must be non-empty after strip (data-model.md rule 4)."""
+        with pytest.raises(ValidationError):
+            SubagentSpec(description="   ", prompt="Some prompt.")
+
+    def test_subagent_spec_extra_fields_rejected(self) -> None:
+        """SubagentSpec rejects unknown extra fields (extra='forbid')."""
+        with pytest.raises(ValidationError):
+            SubagentSpec(description="agent", prompt="Hello.", unknown_field="oops")
+
+    def test_subagent_spec_tools_list_accepted(self) -> None:
+        """SubagentSpec accepts a tools allowlist."""
+        spec = SubagentSpec(
+            description="researcher",
+            prompt="Search the web.",
+            tools=["WebSearch", "WebFetch"],
+        )
+        assert spec.tools == ["WebSearch", "WebFetch"]
+
+    def test_subagent_spec_tools_none_means_inherit(self) -> None:
+        """Omitting tools defaults to None (subagent inherits all parent tools).
+
+        Traces to FR-007.
+        """
+        spec = SubagentSpec(description="writer", prompt="Write the report.")
+        assert spec.tools is None
+
+
+# ---------------------------------------------------------------------------
+# KNOWN_BUILTIN_TOOLS constant (foundational — needed by US2 tool-name warnings)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestKnownBuiltinTools:
+    """KNOWN_BUILTIN_TOOLS module constant (data-model.md rule #5)."""
+
+    def test_known_builtin_tools_is_frozenset(self) -> None:
+        """KNOWN_BUILTIN_TOOLS must be a frozenset."""
+        assert isinstance(KNOWN_BUILTIN_TOOLS, frozenset)
+
+    def test_known_builtin_tools_exact_members(self) -> None:
+        """KNOWN_BUILTIN_TOOLS must match the canonical set from data-model.md."""
+        expected = frozenset(
+            {
+                "Read",
+                "Write",
+                "Edit",
+                "Bash",
+                "Glob",
+                "Grep",
+                "WebSearch",
+                "WebFetch",
+                "Task",
+                "TodoWrite",
+                "NotebookEdit",
+            }
+        )
+        assert expected == KNOWN_BUILTIN_TOOLS
+
+
+# ---------------------------------------------------------------------------
+# T008 — SubagentSpec tool-name typo warning (US2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSubagentSpecToolWarning:
+    """T008: SubagentSpec emits UserWarning for unknown tool names.
+
+    Traces to data-model.md rule #5, research.md §3.
+    """
+
+    def test_no_warning_for_known_builtins(self) -> None:
+        """No warning when tools are valid built-in names (e.g. Read, WebSearch)."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            SubagentSpec(
+                description="analyst",
+                prompt="You are an analyst.",
+                tools=["Read", "WebSearch"],
+            )
+
+    def test_no_warning_for_mcp_prefix(self) -> None:
+        """No warning when all tools have the mcp__ prefix."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            SubagentSpec(
+                description="db analyst",
+                prompt="Query the database.",
+                tools=["mcp__db__query", "mcp__db__describe"],
+            )
+
+    def test_warning_for_unknown_bare_name(self) -> None:
+        """UserWarning is emitted for an unknown bare name (e.g. WebSerach — typo)."""
+        with pytest.warns(UserWarning) as rec:
+            SubagentSpec(
+                description="researcher",
+                prompt="Research the topic.",
+                tools=["WebSerach"],
+            )
+        messages = [str(w.message) for w in rec.list]
+        assert any("WebSerach" in m for m in messages)
+        # Warning must reference all three accepted patterns
+        combined = " ".join(messages)
+        assert "mcp__" in combined or "MCP" in combined or "mcp" in combined
+        assert any(
+            builtin in combined
+            for builtin in ("WebSearch", "Read", "Write", "Bash", "Glob")
+        )
+
+    def test_no_warning_when_tools_is_none(self) -> None:
+        """No warning when tools is None (FR-007 inheritance path)."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            SubagentSpec(
+                description="inheriting subagent",
+                prompt="Inherit all parent tools.",
+                tools=None,
+            )
+
+    def test_no_warning_when_tools_is_empty_list(self) -> None:
+        """No warning when tools is [] (pure-reasoning subagent per quickstart §7)."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            SubagentSpec(
+                description="pure reasoner",
+                prompt="Think carefully without tools.",
+                tools=[],
             )

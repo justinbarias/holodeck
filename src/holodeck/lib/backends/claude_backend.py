@@ -23,6 +23,7 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
 from claude_agent_sdk.types import (
+    AgentDefinition,
     HookContext,
     HookEvent,
     McpSdkServerConfig,
@@ -352,6 +353,21 @@ def build_options(
             opts_kwargs["fallback_model"] = claude.fallback_model
         if claude.disallowed_tools:
             opts_kwargs["disallowed_tools"] = list(claude.disallowed_tools)
+        if claude.agents:
+            # HoloDeck keeps `SubagentSpec.model` as `str | None` so the SDK
+            # remains the source of truth for valid model names; cast at the
+            # boundary to satisfy AgentDefinition's narrower Literal type.
+            # `prompt or ""` is a stopgap until US3 lands the at-least-one /
+            # prompt_file inlining validator that guarantees a non-empty prompt.
+            opts_kwargs["agents"] = {
+                name: AgentDefinition(
+                    description=spec.description,
+                    prompt=spec.prompt or "",
+                    tools=spec.tools,
+                    model=cast(Any, spec.model),
+                )
+                for name, spec in claude.agents.items()
+            }
 
     return ClaudeAgentOptions(**opts_kwargs)
 
