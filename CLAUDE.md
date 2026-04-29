@@ -211,3 +211,10 @@ Always `source .venv/bin/activate` before Python commands.
 
 - Do NOT attribute Claude Code or include "Generated with Claude Code".
 - Conventional, focused on the change.
+
+## Active Technologies
+- Python 3.10+ + `claude-agent-sdk==0.1.44` (provides `AgentDefinition`, `ClaudeAgentOptions.agents`), Pydantic v2, PyYAML, Click (029-subagent-orchestration)
+- N/A (config-only feature; no persistent state) (029-subagent-orchestration)
+
+## Recent Changes
+- 029-subagent-orchestration: Added Python 3.10+ + `claude-agent-sdk==0.1.44` (provides `AgentDefinition`, `ClaudeAgentOptions.agents`), Pydantic v2, PyYAML, Click

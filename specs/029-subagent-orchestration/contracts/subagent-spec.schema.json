@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://holodeck.dev/schemas/029/subagent-spec.schema.json",
+  "title": "SubagentSpec",
+  "description": "JSON schema fragment to merge into schemas/agent.schema.json. Adds a SubagentSpec $def and an `agents` property under ClaudeConfig. Strict (additionalProperties: false) — typos are caught at config-load time.",
+  "$defs": {
+    "SubagentSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable description used by the parent agent for routing decisions. Required by the SDK."
+        },
+        "prompt": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "Inline system prompt for the subagent. Mutually exclusive with prompt_file. Either prompt or prompt_file is required."
+        },
+        "prompt_file": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "Path to a file containing the subagent's system prompt. Resolved relative to the agent.yaml directory. Mutually exclusive with prompt. File contents are inlined at config-load time."
+        },
+        "tools": {
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "description": "Allowlist of tool names. May include built-in SDK tools (Read, Write, WebSearch, ...), parent-registered MCP tools as `mcp__<server>__<tool>`, or HoloDeck-bridged tool names. When null/omitted, the subagent inherits all parent tools. Unknown entries produce a warning at load time, not an error."
+        },
+        "model": {
+          "type": ["string", "null"],
+          "enum": ["sonnet", "opus", "haiku", "inherit", null],
+          "description": "Model override for this subagent. Restricted to the SDK's literal set. Any other value is rejected at config-load time."
+        }
+      }
+    }
+  },
+  "validationOwnership": {
+    "description": "JSON Schema declares structural shape only. The mutual-exclusion rule (exactly one of prompt/prompt_file) and the at-least-one rule are enforced by the Pydantic SubagentSpec model validator at config-load time. JSON Schema's oneOf does not handle nullable fields cleanly (explicit-null counts as 'present'), so encoding the constraint here would produce false negatives. See research.md §7."
+  },
+  "patches": {
+    "description": "Apply these patches to schemas/agent.schema.json.",
+    "ClaudeConfig.properties.agents": {
+      "type": ["object", "null"],
+      "additionalProperties": { "$ref": "#/$defs/SubagentSpec" },
+      "description": "Named subagent definitions. Each entry becomes an AgentDefinition on ClaudeAgentOptions.agents. Subagents share parent MCP server registrations and use their `tools` allowlist to scope MCP tool access (`mcp__<server>__<tool>`). Per-subagent MCP server registration is NOT supported by the SDK."
+    }
+  }
+}

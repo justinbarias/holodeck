@@ -41,22 +41,7 @@ A user wants a subagent to only see a subset of the parent agent's tools, includ
 
 ---
 
-### User Story 3 - Limit HoloDeck-Side Subagent Concurrency (Priority: P3)
-
-A user wants to cap how many HoloDeck-driven invocations of a multi-agent configuration run in parallel (e.g., during evaluation runs or batch test execution). They set `max_parallel` on the existing `subagents` config so the HoloDeck test runner throttles its own dispatch.
-
-**Why this priority**: Resource management still matters for batch/test workflows. **However**, `max_parallel` does **not** control the SDK's internal subagent dispatch — once the parent agent starts orchestrating subagents via the Task tool, the SDK manages concurrency itself, and HoloDeck cannot intercede. This story therefore scopes `max_parallel` to HoloDeck-side concurrency only (e.g., the test runner's semaphore), not to the SDK.
-
-**Independent Test**: Set `claude.subagents.max_parallel: 2` alongside subagent definitions, dispatch three test cases that each invoke the agent, and verify HoloDeck holds at most two concurrent agent sessions open at any time.
-
-**Acceptance Scenarios**:
-
-1. **Given** `claude.subagents.max_parallel: 2` and three concurrent test cases targeting an agent with subagent definitions, **When** the test runner executes them, **Then** at most two test cases hold an agent session simultaneously.
-2. **Given** `claude.subagents.enabled: false` and subagent definitions present, **When** the config is loaded, **Then** a validation warning is raised that subagent definitions exist but subagents are disabled.
-
----
-
-### User Story 4 - Define Subagent with Custom System Prompt (Priority: P1)
+### User Story 3 - Define Subagent with Custom System Prompt (Priority: P1)
 
 A user wants each subagent to have specialized instructions. They provide a `prompt` field (inline text or file path) for each subagent definition, giving each subagent a distinct personality and expertise area.
 
@@ -75,7 +60,6 @@ A user wants each subagent to have specialized instructions. They provide a `pro
 ### Edge Cases
 
 - What happens when a subagent definition references a model not available to the user's API key? The SDK surfaces the error at runtime; HoloDeck should propagate it clearly.
-- What happens when `claude.agents` is defined but `claude.subagents.enabled` is not set? Default to enabled if agent definitions are present.
 - What happens when a subagent's tool list references tools not defined in the parent's tool configuration? Validation warning at config load time -- the tools may be built-in SDK tools (Read, Write, etc.), MCP-provided tools (`mcp__<server>__<tool>`), or the user may have made a mistake.
 - What happens when subagent definitions are empty (no agents listed)? Treated the same as not having the `agents` section at all.
 - What happens when a subagent's `prompt_file` path doesn't exist? A validation error is raised at config load time.
@@ -95,15 +79,13 @@ A user wants each subagent to have specialized instructions. They provide a `pro
 - **FR-007**: When `tools` is omitted from a subagent, the subagent MUST inherit all tools from the parent agent (achieved by passing `tools=None` to the SDK).
 - **FR-008**: System MUST validate `model` against the SDK-allowed set `{sonnet, opus, haiku, inherit}` and surface a clear error for any other value.
 - **FR-009**: System MUST allow subagent `tools` lists to reference parent-registered MCP tools by their fully qualified names (`mcp__<server>__<tool>`), so subagents share the parent's MCP server registrations but only see the tools enumerated in their `tools` list. Per-subagent MCP server registration is **not supported** by the SDK and MUST NOT be modeled in YAML.
-- **FR-010**: The existing `subagents.max_parallel` field, when set, MUST cap HoloDeck-side concurrent agent-session dispatch (e.g., test runner / batch execution). It MUST NOT be claimed to control SDK-internal subagent dispatch — the SDK manages that concurrency itself.
-- **FR-011**: System MUST default `subagents.enabled` to `true` when `claude.agents` definitions are present, unless explicitly set to `false`.
-- **FR-012**: System MUST raise a validation warning when `subagents.enabled: false` but agent definitions are present.
+- **FR-010**: System MUST treat the presence of one or more entries in `claude.agents` as the only gate for forwarding subagent definitions to the SDK. There is no separate `subagents.enabled` flag; HoloDeck does not throttle SDK-internal subagent dispatch (the SDK manages that itself), and HoloDeck-side test concurrency continues to be controlled exclusively by the existing top-level `execution.parallel_test_cases`.
+- **FR-011**: System MUST remove the existing `claude.subagents` config block (`enabled`, `max_parallel`) entirely. The block has no remaining semantics under spec 029 — `enabled` is redundant with `agents` presence, and `max_parallel` was never a meaningful SDK control. Removal is acceptable because the block is freshly introduced and not yet load-bearing in shipped configs.
 
 ### Key Entities
 
 - **SubagentDefinition**: A named subagent specification with `description`, `prompt`/`prompt_file`, `tools`, and `model`. (Note: no per-subagent MCP servers — the SDK does not support that.)
 - **ClaudeConfig.agents**: A dictionary mapping subagent names to their definitions; translated 1-to-1 to `ClaudeAgentOptions.agents` on the SDK side.
-- **SubagentConfig**: Existing config (`enabled`, `max_parallel`); `enabled` gates whether YAML-defined `agents` are forwarded to the SDK, and `max_parallel` is a HoloDeck-side concurrency cap (not an SDK concurrency control).
 
 ## Success Criteria *(mandatory)*
 
@@ -113,7 +95,7 @@ A user wants each subagent to have specialized instructions. They provide a `pro
 - **SC-002**: Subagent definitions are correctly translated to SDK `AgentDefinition` objects, verified by unit tests asserting on the four fields (`description`, `prompt`, `tools`, `model`) of the built options.
 - **SC-003**: Subagents with restricted `tools` lists (including MCP tool names) only see those tools, verified by unit tests asserting on each `AgentDefinition.tools` value.
 - **SC-004**: Invalid subagent configurations (missing description, both prompt and prompt_file set, neither prompt nor prompt_file set, nonexistent prompt_file, model outside the allowed literal set) produce clear validation errors at config load time.
-- **SC-005**: HoloDeck-side test runner / batch execution honors `max_parallel` as a session-dispatch cap, verified by an integration test that asserts on the maximum number of simultaneously open agent sessions.
+- **SC-005**: The `claude.subagents` config block is removed; loading an `agent.yaml` that still contains `claude.subagents` produces a clear validation error pointing users at the new model (presence of `claude.agents` is the only gate).
 
 ## Assumptions
 
@@ -122,4 +104,4 @@ A user wants each subagent to have specialized instructions. They provide a `pro
 - Subagent definitions are static (defined at config load time) -- dynamic subagent creation at runtime is out of scope.
 - The `model` field on subagent definitions is restricted to the SDK's literal set `{sonnet, opus, haiku, inherit}`; full model IDs are not accepted by the SDK type.
 - All MCP servers are registered at the parent (top-level `ClaudeAgentOptions.mcp_servers`); subagents share that registration and use their `tools` allowlist to scope which MCP tools they can call (`mcp__<server>__<tool>`).
-- The SDK manages subagent-dispatch concurrency internally; HoloDeck does not control how many subagents the SDK runs in parallel during a single agent session. `max_parallel` only constrains HoloDeck-driven concurrent agent sessions (e.g., test runner).
+- The SDK manages subagent-dispatch concurrency internally; HoloDeck does not and cannot control how many subagents the SDK runs in parallel during a single agent session. HoloDeck-side test concurrency is controlled exclusively by `execution.parallel_test_cases`; no separate subagent-specific knob is provided.
