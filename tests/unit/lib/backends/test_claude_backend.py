@@ -321,6 +321,79 @@ class TestBuildOptions:
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_sdk_extras_omitted_when_unset(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Spec 026 FR-006: 4 SDK extras not passed when unset (preserve defaults)."""
+        build_options(
+            agent=_make_agent(claude=ClaudeConfig()),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "effort" not in kwargs
+        assert "max_budget_usd" not in kwargs
+        assert "fallback_model" not in kwargs
+        assert "disallowed_tools" not in kwargs
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_sdk_extras_passed_when_set(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Spec 026 FR-005: 4 SDK extras forwarded to ClaudeAgentOptions when set."""
+        claude = ClaudeConfig(
+            effort="high",
+            max_budget_usd=2.5,
+            fallback_model="haiku",
+            disallowed_tools=["Bash", "Write"],
+        )
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["effort"] == "high"
+        assert kwargs["max_budget_usd"] == 2.5
+        assert kwargs["fallback_model"] == "haiku"
+        assert kwargs["disallowed_tools"] == ["Bash", "Write"]
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_disallowed_tools_empty_list_omitted(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Spec 026: disallowed_tools=[] is equivalent to omitted (SDK default [])."""
+        claude = ClaudeConfig(disallowed_tools=[])
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "disallowed_tools" not in kwargs
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
     def test_build_options_env_merges_auth_and_otel(
         self,
         mock_resolve: MagicMock,

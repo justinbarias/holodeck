@@ -74,10 +74,11 @@ A user wants to prevent the agent from ever using certain tools, regardless of o
 
 ### Edge Cases
 
-- What happens when `effort` is set alongside `extended_thinking.budget_tokens`? Both are passed to the SDK; the SDK determines precedence. Document this interaction.
+- What happens when `effort` is set alongside `extended_thinking.budget_tokens`? The SDK exposes `effort` and `thinking` (which carries `budget_tokens`) as independent parameters and does not publicly document precedence between them. To avoid ambiguity, HoloDeck MUST raise a validation warning when both are set on the same agent, instructing the user to pick one. (See FR-009.)
 - What happens when `max_budget_usd` is set to a very small value (e.g., 0.01)? The agent may fail on the first turn. The system should surface the SDK's budget-exhausted error clearly.
 - What happens when `fallback_model` is set to the same value as the primary model? Passed through as-is; the SDK handles this case.
 - What happens when a tool appears in both `allowed_tools` and `disallowed_tools`? Passed through as-is; the SDK's precedence rules apply (disallowed wins).
+- What happens when `disallowed_tools` is set to an empty list (`[]`)? Equivalent to omitting the field — the SDK's default is an empty list, not `None`.
 
 ## Requirements *(mandatory)*
 
@@ -88,9 +89,10 @@ A user wants to prevent the agent from ever using certain tools, regardless of o
 - **FR-003**: System MUST accept a `fallback_model` field on `ClaudeConfig` as a string.
 - **FR-004**: System MUST accept a `disallowed_tools` field on `ClaudeConfig` as a list of strings.
 - **FR-005**: System MUST pass all four fields through to the Claude SDK options when present.
-- **FR-006**: System MUST NOT pass any of the four fields when they are not set (preserve SDK defaults).
+- **FR-006**: System MUST NOT pass any of the four fields when they are not set (preserve SDK defaults). Note: `disallowed_tools`'s SDK default is an empty list (`[]`), so passing `[]` is equivalent to omitting it; the implementation MAY pass either form.
 - **FR-007**: System MUST reject invalid `effort` values at config validation time with a clear error message.
 - **FR-008**: System MUST reject non-positive `max_budget_usd` values at config validation time.
+- **FR-009**: System MUST raise a validation warning when both `effort` and `extended_thinking` are configured on the same agent, since the SDK does not publicly document precedence between `effort` and `thinking.budget_tokens` and the combination is ambiguous.
 
 ### Key Entities
 
@@ -108,6 +110,8 @@ A user wants to prevent the agent from ever using certain tools, regardless of o
 
 ## Assumptions
 
-- The Claude Agent SDK's Python client (`ClaudeAgentOptions`) already supports `fallback_model`, `effort`, `disallowed_tools`, and `max_budget_usd` as parameters. If any are not yet available in the installed SDK version, the implementation should be gated behind a version check or documented as requiring a minimum SDK version.
-- The `effort` field in the SDK accepts string literals ("low", "medium", "high", "max"), not numeric values.
-- The `disallowed_tools` list uses the same tool naming convention as `allowed_tools` (e.g., "Bash", "Write", "mcp__server__tool").
+- The Claude Agent SDK's Python client (`ClaudeAgentOptions`) already supports `fallback_model`, `effort`, `disallowed_tools`, and `max_budget_usd` as parameters (verified against `claude_agent_sdk/types.py`: `max_budget_usd: float | None`, `disallowed_tools: list[str]` defaulting to `[]`, `fallback_model: str | None`, `effort: Literal["low", "medium", "high", "max"] | None`).
+- The `effort` field in the SDK accepts the four string literals `low | medium | high | max`, not numeric values, and not arbitrary strings.
+- The `fallback_model` field accepts any string (no SDK-side literal restriction), so values like `haiku` or full model IDs like `claude-haiku-4-5` are both valid. HoloDeck SHOULD pass the value through unchanged.
+- The `disallowed_tools` list uses the same tool naming convention as `allowed_tools` (e.g., `Bash`, `Write`, `mcp__server__tool`).
+- The SDK's `effort` and `thinking` parameters are independent — neither's docstring describes precedence over the other — so HoloDeck treats simultaneous use as a configuration ambiguity (see FR-009).

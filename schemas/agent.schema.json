@@ -217,6 +217,25 @@
           "type": ["array", "null"],
           "items": { "type": "string" },
           "description": "Explicit tool allowlist (null = all configured tools)"
+        },
+        "effort": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "max", null],
+          "description": "Thinking effort level (low | medium | high | max)"
+        },
+        "max_budget_usd": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0,
+          "description": "Hard cap on session spend in USD. Must be > 0."
+        },
+        "fallback_model": {
+          "type": ["string", "null"],
+          "description": "Model used when the primary model is unavailable"
+        },
+        "disallowed_tools": {
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "description": "Tools that must never be used; takes precedence over allowed_tools"
         }
       },
       "description": "Claude Agent SDK-specific settings. All capabilities default to disabled (least-privilege)."

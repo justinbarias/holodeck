@@ -1,5 +1,7 @@
 """Tests for Claude-specific configuration models in holodeck.models.claude_config."""
 
+import warnings
+
 import pytest
 from pydantic import ValidationError
 
@@ -208,6 +210,10 @@ class TestClaudeConfig:
         assert config.file_system is None
         assert config.subagents is None
         assert config.allowed_tools is None
+        assert config.effort is None
+        assert config.max_budget_usd is None
+        assert config.fallback_model is None
+        assert config.disallowed_tools is None
 
     def test_with_extended_thinking(self) -> None:
         """Test ClaudeConfig with extended thinking configured."""
@@ -326,3 +332,84 @@ class TestClaudeConfig:
         """Test that extra fields are rejected."""
         with pytest.raises(ValidationError):
             ClaudeConfig(unknown_setting="value")
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "value", ["low", "medium", "high", "max"], ids=["low", "medium", "high", "max"]
+    )
+    def test_effort_valid_values(self, value: str) -> None:
+        """Test effort accepts the four SDK literal values."""
+        config = ClaudeConfig(effort=value)
+        assert config.effort == value
+
+    @pytest.mark.unit
+    def test_effort_invalid_value_rejected(self) -> None:
+        """Test effort rejects values outside the SDK literal set."""
+        with pytest.raises(ValidationError):
+            ClaudeConfig(effort="extreme")
+
+    @pytest.mark.unit
+    def test_max_budget_usd_positive_accepted(self) -> None:
+        """Test max_budget_usd accepts positive floats."""
+        config = ClaudeConfig(max_budget_usd=5.0)
+        assert config.max_budget_usd == 5.0
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "value", [0, -1.0, -0.01], ids=["zero", "negative_one", "negative_small"]
+    )
+    def test_max_budget_usd_non_positive_rejected(self, value: float) -> None:
+        """Test max_budget_usd rejects 0 and negative values."""
+        with pytest.raises(ValidationError):
+            ClaudeConfig(max_budget_usd=value)
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "value",
+        ["haiku", "sonnet", "claude-haiku-4-5"],
+        ids=["literal_haiku", "literal_sonnet", "full_model_id"],
+    )
+    def test_fallback_model_accepts_any_string(self, value: str) -> None:
+        """Test fallback_model has no SDK-side literal restriction."""
+        config = ClaudeConfig(fallback_model=value)
+        assert config.fallback_model == value
+
+    @pytest.mark.unit
+    def test_disallowed_tools_list_accepted(self) -> None:
+        """Test disallowed_tools accepts a list of tool names."""
+        config = ClaudeConfig(disallowed_tools=["Bash", "Write"])
+        assert config.disallowed_tools == ["Bash", "Write"]
+
+    @pytest.mark.unit
+    def test_disallowed_tools_empty_list_accepted(self) -> None:
+        """Test disallowed_tools accepts [] (equivalent to omitted at SDK layer)."""
+        config = ClaudeConfig(disallowed_tools=[])
+        assert config.disallowed_tools == []
+
+    @pytest.mark.unit
+    def test_effort_with_extended_thinking_warns(self) -> None:
+        """FR-009: Setting both effort and extended_thinking emits a warning."""
+        with pytest.warns(UserWarning, match=r"effort.*extended_thinking"):
+            ClaudeConfig(
+                effort="high",
+                extended_thinking=ExtendedThinkingConfig(
+                    enabled=True, budget_tokens=20_000
+                ),
+            )
+
+    @pytest.mark.unit
+    def test_effort_alone_does_not_warn(self) -> None:
+        """effort without extended_thinking should not warn."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # Any warning becomes an error
+            ClaudeConfig(effort="high")
+
+    @pytest.mark.unit
+    def test_extended_thinking_disabled_does_not_warn(self) -> None:
+        """extended_thinking with enabled=False should not warn even with effort."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            ClaudeConfig(
+                effort="high",
+                extended_thinking=ExtendedThinkingConfig(enabled=False),
+            )

@@ -5,9 +5,11 @@ including authentication, permissions, and capability settings.
 All capabilities default to disabled (least-privilege).
 """
 
+import warnings
 from enum import Enum
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AuthProvider(str, Enum):
@@ -118,3 +120,39 @@ class ClaudeConfig(BaseModel):
         default=None,
         description="Explicit tool allowlist. None = all configured tools.",
     )
+    effort: Literal["low", "medium", "high", "max"] | None = Field(
+        default=None,
+        description="Thinking effort level. SDK accepts low|medium|high|max.",
+    )
+    max_budget_usd: float | None = Field(
+        default=None,
+        gt=0,
+        description="Hard cap on session spend in USD. Must be > 0.",
+    )
+    fallback_model: str | None = Field(
+        default=None,
+        description="Model used when the primary model is unavailable.",
+    )
+    disallowed_tools: list[str] | None = Field(
+        default=None,
+        description=(
+            "Tools that must never be used; takes precedence over allowed_tools."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _warn_effort_with_extended_thinking(self) -> "ClaudeConfig":
+        if (
+            self.effort is not None
+            and self.extended_thinking is not None
+            and self.extended_thinking.enabled
+        ):
+            warnings.warn(
+                "Both `effort` and `extended_thinking` are set on ClaudeConfig. "
+                "The Claude Agent SDK does not document precedence between "
+                "`effort` and `thinking.budget_tokens`; pick one to avoid "
+                "ambiguity.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self

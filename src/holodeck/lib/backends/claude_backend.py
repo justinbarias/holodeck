@@ -343,6 +343,16 @@ def build_options(
     if max_thinking_tokens is not None:
         opts_kwargs["max_thinking_tokens"] = max_thinking_tokens
 
+    if claude is not None:
+        if claude.effort is not None:
+            opts_kwargs["effort"] = claude.effort
+        if claude.max_budget_usd is not None:
+            opts_kwargs["max_budget_usd"] = claude.max_budget_usd
+        if claude.fallback_model is not None:
+            opts_kwargs["fallback_model"] = claude.fallback_model
+        if claude.disallowed_tools:
+            opts_kwargs["disallowed_tools"] = list(claude.disallowed_tools)
+
     return ClaudeAgentOptions(**opts_kwargs)
 
 
