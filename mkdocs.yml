@@ -36,6 +36,8 @@ nav:
   - Guides:
     - Agent Configuration: guides/agent-configuration.md
     - LLM Providers: guides/llm-providers.md
+    - Claude Backend: guides/claude-backend.md
+    - Semantic Kernel Backend: guides/semantic-kernel-backend.md
     - Tools: guides/tools.md
     - MCP CLI: guides/mcp-cli.md
     - Vector Stores: guides/vector-stores.md

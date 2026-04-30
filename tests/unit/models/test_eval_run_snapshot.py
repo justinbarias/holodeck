@@ -25,7 +25,6 @@ from holodeck.models.claude_config import (
     ExtendedThinkingConfig,
     FileSystemConfig,
     PermissionMode,
-    SubagentConfig,
 )
 from holodeck.models.eval_run import EvalRun, EvalRunMetadata, PromptVersion
 from holodeck.models.evaluation import (
@@ -402,7 +401,6 @@ class TestClaudeBlockRoundTrip:
                 allow_unsafe=False,
             ),
             file_system=FileSystemConfig(read=True, write=True, edit=False),
-            subagents=SubagentConfig(enabled=True, max_parallel=4),
             allowed_tools=["Read", "Write", "Bash"],
         )
         agent = Agent(
@@ -429,9 +427,6 @@ class TestClaudeBlockRoundTrip:
         assert snap.claude.file_system.read is True
         assert snap.claude.file_system.write is True
         assert snap.claude.file_system.edit is False
-        assert snap.claude.subagents is not None
-        assert snap.claude.subagents.enabled is True
-        assert snap.claude.subagents.max_parallel == 4
         assert snap.claude.allowed_tools == ["Read", "Write", "Bash"]
 
 

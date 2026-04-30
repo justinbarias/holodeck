@@ -42,6 +42,7 @@ from holodeck.models.claude_config import (
     ClaudeConfig,
     ExtendedThinkingConfig,
     PermissionMode,
+    SubagentSpec,
 )
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.observability import (
@@ -321,6 +322,79 @@ class TestBuildOptions:
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_sdk_extras_omitted_when_unset(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Spec 026 FR-006: 4 SDK extras not passed when unset (preserve defaults)."""
+        build_options(
+            agent=_make_agent(claude=ClaudeConfig()),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "effort" not in kwargs
+        assert "max_budget_usd" not in kwargs
+        assert "fallback_model" not in kwargs
+        assert "disallowed_tools" not in kwargs
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_sdk_extras_passed_when_set(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Spec 026 FR-005: 4 SDK extras forwarded to ClaudeAgentOptions when set."""
+        claude = ClaudeConfig(
+            effort="high",
+            max_budget_usd=2.5,
+            fallback_model="haiku",
+            disallowed_tools=["Bash", "Write"],
+        )
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["effort"] == "high"
+        assert kwargs["max_budget_usd"] == 2.5
+        assert kwargs["fallback_model"] == "haiku"
+        assert kwargs["disallowed_tools"] == ["Bash", "Write"]
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_disallowed_tools_empty_list_omitted(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Spec 026: disallowed_tools=[] is equivalent to omitted (SDK default [])."""
+        claude = ClaudeConfig(disallowed_tools=[])
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "disallowed_tools" not in kwargs
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
     def test_build_options_env_merges_auth_and_otel(
         self,
         mock_resolve: MagicMock,
@@ -450,6 +524,191 @@ class TestBuildOptions:
 
         kwargs = mock_opts_cls.call_args[1]
         assert "ANTHROPIC_BASE_URL" not in kwargs["env"]
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_no_agents_omits_field(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """T004 (foundational): claude.agents is None → agents absent from opts.
+
+        Traces to FR-010.
+        """
+        agent = _make_agent(claude=ClaudeConfig())
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "agents" not in kwargs
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_translates_three_named_subagents(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """T014a (US1): Three named subagents round-trip into AgentDefinition objects.
+
+        Traces to US1 acceptance scenario 1, SC-002.
+        """
+        from claude_agent_sdk.types import AgentDefinition as RealAgentDefinition
+
+        from holodeck.models.claude_config import SubagentSpec
+
+        claude = ClaudeConfig(
+            agents={
+                "researcher": SubagentSpec(
+                    description="Search the web for information.",
+                    prompt="You are a researcher. Search the web thoroughly.",
+                ),
+                "analyst": SubagentSpec(
+                    description="Analyze the findings.",
+                    prompt="You are a data analyst. Analyze findings carefully.",
+                ),
+                "writer": SubagentSpec(
+                    description="Write the final report.",
+                    prompt="You are a technical writer. Produce clear reports.",
+                ),
+            }
+        )
+        agent = _make_agent(claude=claude)
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        agents = kwargs["agents"]
+        assert len(agents) == 3
+        assert "researcher" in agents
+        assert "analyst" in agents
+        assert "writer" in agents
+        # Each value is an AgentDefinition
+        assert isinstance(agents["researcher"], RealAgentDefinition)
+        assert agents["researcher"].description == "Search the web for information."
+        assert (
+            agents["researcher"].prompt
+            == "You are a researcher. Search the web thoroughly."
+        )
+        assert agents["analyst"].description == "Analyze the findings."
+        assert agents["writer"].description == "Write the final report."
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_subagent_model_override_haiku(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """T014b (US1): model='haiku' → AgentDefinition(model='haiku').
+
+        Traces to US1 acceptance scenario 2, SC-002.
+        """
+        from holodeck.models.claude_config import SubagentSpec
+
+        claude = ClaudeConfig(
+            agents={
+                "fast-agent": SubagentSpec(
+                    description="A fast, lightweight agent.",
+                    prompt="You are a fast helper.",
+                    model="haiku",
+                ),
+            }
+        )
+        agent = _make_agent(claude=claude)
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["agents"]["fast-agent"].model == "haiku"
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_subagent_tools_allowlist(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """T014c (US1): tools list → AgentDefinition with that list.
+
+        Traces to US1 acceptance scenario 3, SC-003.
+        """
+        from holodeck.models.claude_config import SubagentSpec
+
+        claude = ClaudeConfig(
+            agents={
+                "web-researcher": SubagentSpec(
+                    description="Searches the web.",
+                    prompt="You are a web researcher.",
+                    tools=["WebSearch", "WebFetch"],
+                ),
+            }
+        )
+        agent = _make_agent(claude=claude)
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["agents"]["web-researcher"].tools == ["WebSearch", "WebFetch"]
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_subagent_tools_omitted_inherits_all(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """T014d (US1): Subagent with no tools produces AgentDefinition(tools=None).
+
+        Traces to US1 acceptance scenario 4, FR-007.
+        """
+        from holodeck.models.claude_config import SubagentSpec
+
+        claude = ClaudeConfig(
+            agents={
+                "omniscient": SubagentSpec(
+                    description="Has access to all parent tools.",
+                    prompt="You have access to all parent tools.",
+                ),
+            }
+        )
+        agent = _make_agent(claude=claude)
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["agents"]["omniscient"].tools is None
 
 
 # ---------------------------------------------------------------------------
@@ -2495,4 +2754,148 @@ class TestClaudeBackendTeardownToolCleanup:
         # Should not raise
         await backend.teardown()
 
-        assert backend._owned_tools == []
+
+# ---------------------------------------------------------------------------
+# T009 — build_options() AgentDefinition.tools translation (US2 / SC-003)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuildOptionsSubagentTools:
+    """T009: build_options() translates SubagentSpec.tools → AgentDefinition.tools.
+
+    Traces to SC-003, FR-007, FR-009, data-model.md §2.
+    The three states (None, [], populated list) must pass through verbatim.
+    """
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_ac1_single_subagent_mcp_tools(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """AC-1: One subagent with MCP tools → AgentDefinition.tools matches exactly."""
+        claude = ClaudeConfig(
+            agents={
+                "db_analyst": SubagentSpec(
+                    description="Queries the database.",
+                    prompt="You are a database analyst.",
+                    tools=["mcp__db__query", "mcp__db__describe"],
+                ),
+            }
+        )
+        agent = _make_agent(claude=claude)
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert "agents" in kwargs
+        db_analyst = kwargs["agents"]["db_analyst"]
+        assert db_analyst.tools == ["mcp__db__query", "mcp__db__describe"]
+        assert isinstance(db_analyst.tools, list)
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_ac2_disjoint_isolation_two_subagents(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """AC-2: Two subagents with disjoint tools stay isolated from each other."""
+        claude = ClaudeConfig(
+            agents={
+                "db_analyst": SubagentSpec(
+                    description="Queries the database.",
+                    prompt="You are a database analyst.",
+                    tools=["mcp__db__query"],
+                ),
+                "researcher": SubagentSpec(
+                    description="Researches online.",
+                    prompt="You are a researcher.",
+                    tools=["WebSearch", "WebFetch"],
+                ),
+            }
+        )
+        agent = _make_agent(claude=claude)
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        agents = kwargs["agents"]
+        assert agents["db_analyst"].tools == ["mcp__db__query"]
+        assert agents["researcher"].tools == ["WebSearch", "WebFetch"]
+        assert "mcp__db__query" not in agents["researcher"].tools
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_fr007_inheritance_tools_none(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """FR-007: tools=None on subagent → AgentDefinition.tools is None."""
+        claude = ClaudeConfig(
+            agents={
+                "inheritor": SubagentSpec(
+                    description="Inherits all parent tools.",
+                    prompt="Use all parent tools.",
+                    tools=None,
+                ),
+            }
+        )
+        agent = _make_agent(claude=claude)
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["agents"]["inheritor"].tools is None
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_pure_reasoning_tools_empty_list(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Pure-reasoning: tools=[] on subagent → AgentDefinition.tools == []."""
+        claude = ClaudeConfig(
+            agents={
+                "thinker": SubagentSpec(
+                    description="Pure reasoning agent.",
+                    prompt="Think step by step without tools.",
+                    tools=[],
+                ),
+            }
+        )
+        agent = _make_agent(claude=claude)
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+            allow_side_effects=False,
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["agents"]["thinker"].tools == []
+        assert kwargs["agents"]["thinker"].tools is not None

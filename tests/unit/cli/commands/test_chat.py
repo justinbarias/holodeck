@@ -6,17 +6,20 @@ Tests cover:
 - Exit code logic (0=normal exit, 1=config error, 2=agent error, 130=interrupt)
 - Multi-turn conversation flow
 - Tool execution display (standard and verbose modes)
-- Spinner thread animation and lifecycle
+- Async drainer + renderer helpers for the live tools panel
 """
 
+import asyncio
 import tempfile
-import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from holodeck.chat.progress import ChatProgressIndicator
+from holodeck.chat.tools_panel import ToolsPanel
+from holodeck.lib.backends.base import ToolEvent
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
 
@@ -708,201 +711,111 @@ class TestCLIHappyPath:
             Path(tmp_path).unlink(missing_ok=True)
 
 
-class TestChatSpinnerThread:
-    """Tests for ChatSpinnerThread spinner animation."""
+class TestToolEventDrainer:
+    """Tests for the chat REPL's tool-event drainer task."""
 
-    def test_spinner_thread_initializes(self) -> None:
-        """ChatSpinnerThread initializes with progress indicator."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
+    @pytest.mark.asyncio
+    async def test_drainer_applies_events_to_panel(self) -> None:
+        """Events on the queue are forwarded into the panel."""
+        from holodeck.cli.commands.chat import _drain_tool_events
 
+        queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        panel = ToolsPanel()
+        stop_event = asyncio.Event()
+
+        await queue.put(ToolEvent(kind="start", tool_name="Read", tool_use_id="tu_1"))
+        await queue.put(
+            ToolEvent(
+                kind="start",
+                tool_name="Task",
+                tool_use_id="task_1",
+                tool_input={"subagent_type": "rev"},
+            )
+        )
+
+        task = asyncio.create_task(_drain_tool_events(queue, panel, stop_event))
+        # Yield enough times for the drainer to consume both items.
+        for _ in range(5):
+            await asyncio.sleep(0)
+        stop_event.set()
+        await task
+
+        names = {e.tool_name for e in panel.snapshot()}
+        assert names == {"Read", "Task"}
+
+    @pytest.mark.asyncio
+    async def test_drainer_exits_promptly_when_stop_event_set(self) -> None:
+        """Drainer must not block forever waiting on an empty queue."""
+        from holodeck.cli.commands.chat import _drain_tool_events
+
+        queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        panel = ToolsPanel()
+        stop_event = asyncio.Event()
+
+        task = asyncio.create_task(_drain_tool_events(queue, panel, stop_event))
+        stop_event.set()
+        # Should return well within the per-iteration timeout.
+        await asyncio.wait_for(task, timeout=1.0)
+
+
+class TestRemainingDrain:
+    """Tests for ``_drain_remaining`` that consumes buffered events."""
+
+    def test_drains_all_buffered_events(self) -> None:
+        from holodeck.cli.commands.chat import _drain_remaining
+
+        queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        panel = ToolsPanel()
+        queue.put_nowait(ToolEvent(kind="start", tool_name="Read", tool_use_id="tu_1"))
+        queue.put_nowait(ToolEvent(kind="end", tool_name="Read", tool_use_id="tu_1"))
+
+        _drain_remaining(queue, panel)
+
+        assert queue.empty()
+        assert panel.snapshot() == []
+
+
+class TestPaintPanelLoop:
+    """Tests for the ``_paint_panel_loop`` driver task."""
+
+    @pytest.mark.asyncio
+    async def test_loop_exits_promptly_when_stop_event_set(self) -> None:
+        from holodeck.chat.composer import LiveComposer
+        from holodeck.cli.commands.chat import _paint_panel_loop
+
+        panel = ToolsPanel()
         progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
+        composer = LiveComposer()
+        stop_event = asyncio.Event()
 
-        assert spinner.progress is progress
-        assert spinner.daemon is True
+        await composer.begin()
+        task = asyncio.create_task(
+            _paint_panel_loop(panel, progress, composer, stop_event)
+        )
+        stop_event.set()
+        # Should return well within one paint interval + final paint.
+        await asyncio.wait_for(task, timeout=1.0)
+        await composer.end()
 
-    def test_spinner_thread_has_stop_event(self) -> None:
-        """ChatSpinnerThread has _stop_event for thread control."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
+    @pytest.mark.asyncio
+    async def test_loop_pushes_panel_lines_to_composer(self) -> None:
+        from holodeck.chat.composer import LiveComposer
+        from holodeck.cli.commands.chat import _paint_panel_loop
 
+        panel = ToolsPanel()
+        panel.apply(ToolEvent(kind="start", tool_name="Read", tool_use_id="tu_1"))
         progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
+        composer = LiveComposer()
+        composer.update_panel = AsyncMock()  # type: ignore[method-assign]
+        stop_event = asyncio.Event()
 
-        assert hasattr(spinner, "_stop_event")
-        assert spinner._stop_event.is_set() is False
+        await composer.begin()
+        task = asyncio.create_task(
+            _paint_panel_loop(panel, progress, composer, stop_event)
+        )
+        # Let it tick once.
+        await asyncio.sleep(0.15)
+        stop_event.set()
+        await asyncio.wait_for(task, timeout=1.0)
 
-    def test_spinner_thread_has_running_flag(self) -> None:
-        """ChatSpinnerThread has _running flag."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        assert hasattr(spinner, "_running")
-        assert spinner._running is False
-
-    def test_spinner_thread_stop_sets_event(self) -> None:
-        """ChatSpinnerThread.stop() sets the stop event."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        spinner.stop()
-
-        assert spinner._stop_event.is_set() is True
-
-    def test_spinner_thread_run_sets_running_flag(self) -> None:
-        """ChatSpinnerThread.run() sets _running flag to True."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        # Mock the progress.get_spinner_line to return immediately
-        with patch.object(progress, "get_spinner_line", return_value=""):
-            spinner._stop_event.set()
-            spinner.run()
-
-            # After run completes, _running should be False
-            assert spinner._running is False
-
-    def test_spinner_thread_clears_line_on_stop(self) -> None:
-        """ChatSpinnerThread.stop() clears the spinner line from output."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        with patch("sys.stdout.write") as mock_write, patch("sys.stdout.flush"):
-            # Mark as running so stop will clear the line
-            spinner._running = True
-            spinner.stop()
-
-            # Should write clear sequence with spaces and carriage returns
-            assert mock_write.called
-            # Verify clear sequence was written (carriage return + spaces)
-            call_args = [call[0][0] for call in mock_write.call_args_list]
-            assert any("\r" in str(arg) for arg in call_args)
-
-    def test_spinner_thread_with_tty_writes_spinner(self) -> None:
-        """ChatSpinnerThread writes spinner text when spinner line is not empty."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        with (
-            patch.object(progress, "get_spinner_line", return_value="⠋ Thinking..."),
-            patch("sys.stdout.write"),
-            patch("sys.stdout.flush"),
-        ):
-            # Set up to run for just one iteration
-            spinner._stop_event.set()
-            spinner.run()
-
-            # Spinner runs even if loop exits immediately
-            assert spinner is not None
-
-    def test_spinner_thread_without_tty_no_output(self) -> None:
-        """ChatSpinnerThread produces no output when spinner returns empty."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        with (
-            patch.object(progress, "get_spinner_line", return_value=""),
-            patch("sys.stdout.write"),
-            patch("sys.stdout.flush"),
-        ):
-            # Set up to run for one iteration with empty output
-            spinner._stop_event.set()
-            spinner.run()
-
-            # Should complete without error
-            assert spinner is not None
-
-    def test_spinner_thread_respects_stop_event(self) -> None:
-        """ChatSpinnerThread stops when stop_event is set."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        with patch.object(progress, "get_spinner_line", return_value="⠋ Thinking..."):
-            # Immediately set stop event
-            spinner._stop_event.set()
-
-            # Run should exit quickly
-            spinner.run()
-
-            # Verify _running is now False
-            assert spinner._running is False
-
-    def test_spinner_thread_runs_in_background(self) -> None:
-        """ChatSpinnerThread is a daemon thread."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        assert spinner.daemon is True
-
-    def test_spinner_thread_updates_progress_spinner_index(self) -> None:
-        """ChatSpinnerThread calls progress.get_spinner_line repeatedly."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        initial_index = progress._spinner_index
-
-        with patch("sys.stdout.write"), patch("sys.stdout.flush"):
-            # Set up to run briefly
-            def stop_after_calls():
-                # Give it a few iterations
-                time.sleep(0.15)  # Longer sleep to ensure multiple iterations
-                spinner.stop()
-
-            import threading as t
-
-            stop_thread = t.Thread(target=stop_after_calls)
-            stop_thread.start()
-            spinner.run()
-            stop_thread.join()
-
-            # Spinner index should have advanced (at least 1 iteration)
-            assert progress._spinner_index >= initial_index
-
-    def test_spinner_thread_multiple_stop_calls_safe(self) -> None:
-        """Calling stop() multiple times is safe."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        # Should not raise
-        spinner.stop()
-        spinner.stop()
-        spinner.stop()
-
-        assert spinner._stop_event.is_set() is True
-
-    def test_spinner_thread_flushes_output(self) -> None:
-        """ChatSpinnerThread flushes stdout after writing spinner."""
-        from holodeck.cli.commands.chat import ChatSpinnerThread
-
-        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
-        spinner = ChatSpinnerThread(progress)
-
-        with (
-            patch.object(progress, "get_spinner_line", return_value="⠋ Thinking..."),
-            patch("sys.stdout.write"),
-            patch("sys.stdout.flush"),
-        ):
-            spinner._stop_event.set()
-            spinner.run()
-
-            # Spinner completed successfully
-            assert spinner is not None
+        assert composer.update_panel.await_count >= 1

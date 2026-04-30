@@ -8,6 +8,7 @@ top-level ``query()`` function; multi-turn chat sessions use ``ClaudeSDKClient``
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -23,6 +24,7 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
 from claude_agent_sdk.types import (
+    AgentDefinition,
     HookContext,
     HookEvent,
     McpSdkServerConfig,
@@ -343,6 +345,26 @@ def build_options(
     if max_thinking_tokens is not None:
         opts_kwargs["max_thinking_tokens"] = max_thinking_tokens
 
+    if claude is not None:
+        if claude.effort is not None:
+            opts_kwargs["effort"] = claude.effort
+        if claude.max_budget_usd is not None:
+            opts_kwargs["max_budget_usd"] = claude.max_budget_usd
+        if claude.fallback_model is not None:
+            opts_kwargs["fallback_model"] = claude.fallback_model
+        if claude.disallowed_tools:
+            opts_kwargs["disallowed_tools"] = list(claude.disallowed_tools)
+        if claude.agents:
+            opts_kwargs["agents"] = {
+                name: AgentDefinition(
+                    description=spec.description,
+                    prompt=spec.prompt or "",
+                    tools=spec.tools,
+                    model=spec.model,
+                )
+                for name, spec in claude.agents.items()
+            }
+
     return ClaudeAgentOptions(**opts_kwargs)
 
 
@@ -482,6 +504,59 @@ def _build_tool_hooks(
     }
 
 
+def _maybe_emit_subagent_message(
+    msg: Any,
+    queue: asyncio.Queue[ToolEvent],
+) -> None:
+    """Push ``subagent_message`` and ``parent_link`` events for subagent traffic.
+
+    The Claude SDK yields nested messages from subagents (Task tool) on the
+    same response stream as the parent.  Each subagent ``AssistantMessage``
+    carries a non-null ``parent_tool_use_id`` pointing at the launching
+    Task's tool use id.  We use it for two things:
+
+    1. Surface the latest assistant-text snapshot via ``subagent_message`` so
+       the chat tools panel can display in-flight subagent activity.
+    2. Emit a ``parent_link`` for every ``ToolUseBlock`` carried by the
+       subagent message, so the panel knows which top-level tool entries are
+       actually nested under a subagent and can render them indented.
+
+    Args:
+        msg: A message from ``client.receive_response()``.
+        queue: Destination event queue.
+    """
+    if msg.__class__.__name__ != "AssistantMessage":
+        return
+    parent_id = getattr(msg, "parent_tool_use_id", None)
+    if not parent_id:
+        return
+    content = getattr(msg, "content", []) or []
+    text = _extract_result_text(content).strip()
+    # Best-effort surface; never block message processing on a full queue.
+    with contextlib.suppress(asyncio.QueueFull):
+        if text:
+            queue.put_nowait(
+                ToolEvent(
+                    kind="subagent_message",
+                    tool_name="Task",
+                    tool_use_id=parent_id,
+                    parent_tool_use_id=parent_id,
+                    text=text,
+                )
+            )
+        for block in content:
+            if block.__class__.__name__ != "ToolUseBlock":
+                continue
+            queue.put_nowait(
+                ToolEvent(
+                    kind="parent_link",
+                    tool_name=getattr(block, "name", ""),
+                    tool_use_id=getattr(block, "id", ""),
+                    parent_tool_use_id=parent_id,
+                )
+            )
+
+
 class ClaudeSession:
     """Stateful multi-turn session backed by ``ClaudeSDKClient``.
 
@@ -588,6 +663,7 @@ class ClaudeSession:
             num_turns = 1
 
             async for msg in client.receive_response():
+                _maybe_emit_subagent_message(msg, self._tool_event_queue)
                 text_parts, tool_calls, tool_results = _process_message(
                     msg, text_parts, tool_calls, tool_results
                 )
@@ -642,6 +718,7 @@ class ClaudeSession:
             await client.query(message, session_id=self._get_session_id())
 
             async for msg in client.receive_response():
+                _maybe_emit_subagent_message(msg, self._tool_event_queue)
                 if msg.__class__.__name__ == "AssistantMessage":
                     for block in cast(Any, msg).content:
                         if block.__class__.__name__ == "TextBlock" and block.text:

@@ -70,7 +70,7 @@ All capabilities default to disabled (least-privilege).
       docstring_style: google
       show_source: true
 
-::: holodeck.models.claude_config.SubagentConfig
+::: holodeck.models.claude_config.SubagentSpec
     options:
       docstring_style: google
       show_source: true

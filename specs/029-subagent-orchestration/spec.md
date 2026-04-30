@@ -5,7 +5,7 @@
 **Created**: 2026-03-28
 **Status**: Draft
 **Input**: Enable users to define full subagent specifications in YAML and wire them into the Claude SDK's agent orchestration system, allowing multi-agent teams to be configured without code.
-**Dependencies**: 026-sdk-config-additions (fallback_model per subagent), 027-mcp-http-sse-transport (subagents may use HTTP/SSE MCP servers)
+**Dependencies**: 027-mcp-http-sse-transport (parent agent may use HTTP/SSE MCP servers; subagents inherit access to those servers via their `tools` allowlist)
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -26,37 +26,22 @@ A user wants to create a research agent that delegates to specialized subagents:
 
 ---
 
-### User Story 2 - Configure Subagent with Custom MCP Servers (Priority: P2)
+### User Story 2 - Restrict Subagent Tool Access (Priority: P2)
 
-A user wants a subagent to have access to MCP servers that the parent agent doesn't use. For example, a "Database Analyst" subagent connects to a database MCP server while the parent agent has no database access.
+A user wants a subagent to only see a subset of the parent agent's tools, including a subset of MCP-provided tools. For example, a "Database Analyst" subagent receives the database MCP server's tools (e.g., `mcp__db__query`) while a "Researcher" subagent does not — even though both subagents share the same MCP server registration on the parent.
 
-**Why this priority**: MCP isolation per subagent is a key security and capability pattern -- subagents should only access the resources they need.
+**Why this priority**: Tool-level isolation is the core security and capability boundary the SDK provides for subagents. The SDK does **not** support per-subagent MCP server registration — all MCP servers register at the parent level, and isolation is enforced via each subagent's `tools` allowlist.
 
-**Independent Test**: Define a subagent with its own `mcp_servers` section, initialize the agent, and verify the subagent's SDK definition includes the MCP server config.
-
-**Acceptance Scenarios**:
-
-1. **Given** a subagent definition with `mcp_servers` containing a database MCP server (STDIO or HTTP/SSE), **When** the agent is initialized, **Then** the subagent's SDK definition includes the MCP server configuration.
-2. **Given** a subagent with MCP servers and the parent agent with different MCP servers, **When** both are initialized, **Then** each has only its own configured MCP servers.
-
----
-
-### User Story 3 - Control Parallel Subagent Execution (Priority: P2)
-
-A user wants to limit how many subagents run concurrently to control resource usage. They set `max_parallel` on the existing `subagents` config to cap concurrency.
-
-**Why this priority**: Resource management is important for production but the existing `SubagentConfig.max_parallel` field already exists -- this story ensures it works with the new subagent definitions.
-
-**Independent Test**: Set `claude.subagents.max_parallel: 2` alongside subagent definitions, initialize the agent, and verify the SDK options reflect the concurrency limit.
+**Independent Test**: Define two subagents whose `tools` lists name different MCP tool identifiers (`mcp__<server>__<tool>`); initialize the agent and verify each subagent's `AgentDefinition.tools` contains only the named entries.
 
 **Acceptance Scenarios**:
 
-1. **Given** `claude.subagents.max_parallel: 2` and three subagent definitions, **When** the agent is initialized, **Then** the SDK is configured to run at most 2 subagents concurrently.
-2. **Given** `claude.subagents.enabled: false` and subagent definitions present, **When** the config is loaded, **Then** a validation warning is raised that subagent definitions exist but subagents are disabled.
+1. **Given** a parent agent with an MCP server registered and a subagent definition whose `tools` list includes `mcp__db__query`, **When** the agent is initialized, **Then** the subagent's `AgentDefinition.tools` contains `mcp__db__query` and the SDK enforces that only those tools are usable from the subagent.
+2. **Given** two subagents sharing one parent-level MCP server but with different `tools` lists, **When** both are initialized, **Then** each subagent only has access to the tool names it explicitly enumerates.
 
 ---
 
-### User Story 4 - Define Subagent with Custom System Prompt (Priority: P1)
+### User Story 3 - Define Subagent with Custom System Prompt (Priority: P1)
 
 A user wants each subagent to have specialized instructions. They provide a `prompt` field (inline text or file path) for each subagent definition, giving each subagent a distinct personality and expertise area.
 
@@ -75,46 +60,48 @@ A user wants each subagent to have specialized instructions. They provide a `pro
 ### Edge Cases
 
 - What happens when a subagent definition references a model not available to the user's API key? The SDK surfaces the error at runtime; HoloDeck should propagate it clearly.
-- What happens when `claude.agents` is defined but `claude.subagents.enabled` is not set? Default to enabled if agent definitions are present.
-- What happens when a subagent's tool list references tools not defined in the parent's tool configuration? Validation warning at config load time -- the tools may be built-in SDK tools (Read, Write, etc.) or the user may have made a mistake.
+- What happens when a subagent's tool list references tools not defined in the parent's tool configuration? Validation warning at config load time -- the tools may be built-in SDK tools (Read, Write, etc.), MCP-provided tools (`mcp__<server>__<tool>`), or the user may have made a mistake.
 - What happens when subagent definitions are empty (no agents listed)? Treated the same as not having the `agents` section at all.
 - What happens when a subagent's `prompt_file` path doesn't exist? A validation error is raised at config load time.
+- What happens when neither `prompt` nor `prompt_file` is provided? A validation error is raised at config load time -- the SDK requires a non-empty prompt on every `AgentDefinition`.
+- What happens when a subagent's `model` value is outside `{sonnet, opus, haiku, inherit}`? A validation error is raised at config load time -- the SDK's `AgentDefinition.model` only accepts those four literal values.
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: System MUST accept an `agents` section under `claude` in agent YAML containing named subagent definitions.
-- **FR-002**: Each subagent definition MUST support: `description` (string, required), `prompt` (inline string, optional), `prompt_file` (file path, optional), `tools` (list of tool names, optional), `model` (string, optional), and `mcp_servers` (list of MCP configs, optional).
-- **FR-003**: System MUST translate each subagent definition into the Claude SDK's `AgentDefinition` format.
+- **FR-002**: Each subagent definition MUST support: `description` (string, required), `prompt` (inline string, required-if-no-`prompt_file`), `prompt_file` (file path, required-if-no-`prompt`), `tools` (list of tool names, optional), and `model` (string, optional, restricted to `sonnet | opus | haiku | inherit`).
+- **FR-003**: System MUST translate each subagent definition into the Claude SDK's `AgentDefinition` dataclass with exactly its four supported fields: `description`, `prompt`, `tools`, `model`.
 - **FR-004**: System MUST validate that each subagent has a `description` field (required by the SDK for routing decisions).
 - **FR-005**: System MUST resolve `prompt_file` paths relative to the agent YAML directory and load file contents as the prompt.
-- **FR-006**: System MUST validate that `prompt` and `prompt_file` are not both specified on the same subagent (mutually exclusive).
-- **FR-007**: When `tools` is omitted from a subagent, the subagent MUST inherit all tools from the parent agent.
-- **FR-008**: System MUST translate subagent `mcp_servers` using the same MCP bridge logic as the parent (supporting STDIO, SSE, and HTTP transports).
-- **FR-009**: The existing `subagents.max_parallel` field MUST be passed to the SDK to control concurrency.
-- **FR-010**: System MUST default `subagents.enabled` to `true` when `claude.agents` definitions are present, unless explicitly set to `false`.
-- **FR-011**: System MUST raise a validation warning when `subagents.enabled: false` but agent definitions are present.
+- **FR-006**: System MUST validate that `prompt` and `prompt_file` are not both specified on the same subagent (mutually exclusive) and that at least one of them is set (the SDK requires a non-empty prompt on every `AgentDefinition`).
+- **FR-007**: When `tools` is omitted from a subagent, the subagent MUST inherit all tools from the parent agent (achieved by passing `tools=None` to the SDK).
+- **FR-008**: System MUST validate `model` against the SDK-allowed set `{sonnet, opus, haiku, inherit}` and surface a clear error for any other value.
+- **FR-009**: System MUST allow subagent `tools` lists to reference parent-registered MCP tools by their fully qualified names (`mcp__<server>__<tool>`), so subagents share the parent's MCP server registrations but only see the tools enumerated in their `tools` list. Per-subagent MCP server registration is **not supported** by the SDK and MUST NOT be modeled in YAML.
+- **FR-010**: System MUST treat the presence of one or more entries in `claude.agents` as the only gate for forwarding subagent definitions to the SDK. There is no separate `subagents.enabled` flag; HoloDeck does not throttle SDK-internal subagent dispatch (the SDK manages that itself), and HoloDeck-side test concurrency continues to be controlled exclusively by the existing top-level `execution.parallel_test_cases`.
+- **FR-011**: System MUST remove the existing `claude.subagents` config block (`enabled`, `max_parallel`) entirely. The block has no remaining semantics under spec 029 — `enabled` is redundant with `agents` presence, and `max_parallel` was never a meaningful SDK control. Removal is acceptable because the block is freshly introduced and not yet load-bearing in shipped configs.
 
 ### Key Entities
 
-- **SubagentDefinition**: A named subagent specification with description, prompt, tools, model, and MCP servers.
-- **ClaudeConfig.agents**: A dictionary mapping subagent names to their definitions.
-- **SubagentConfig**: Existing config extended to interact with the new agent definitions.
+- **SubagentDefinition**: A named subagent specification with `description`, `prompt`/`prompt_file`, `tools`, and `model`. (Note: no per-subagent MCP servers — the SDK does not support that.)
+- **ClaudeConfig.agents**: A dictionary mapping subagent names to their definitions; translated 1-to-1 to `ClaudeAgentOptions.agents` on the SDK side.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
 - **SC-001**: Users can define multi-agent teams entirely in YAML with distinct prompts, models, and tool access per subagent.
-- **SC-002**: Subagent definitions are correctly translated to SDK `AgentDefinition` objects, verified by unit tests asserting on the built options.
-- **SC-003**: Subagents with custom MCP servers receive only their configured servers, not the parent's.
-- **SC-004**: Invalid subagent configurations (missing description, both prompt and prompt_file set, nonexistent prompt_file) produce clear validation errors at config load time.
-- **SC-005**: The concurrency limit (`max_parallel`) is respected by the SDK when multiple subagents are active.
+- **SC-002**: Subagent definitions are correctly translated to SDK `AgentDefinition` objects, verified by unit tests asserting on the four fields (`description`, `prompt`, `tools`, `model`) of the built options.
+- **SC-003**: Subagents with restricted `tools` lists (including MCP tool names) only see those tools, verified by unit tests asserting on each `AgentDefinition.tools` value.
+- **SC-004**: Invalid subagent configurations (missing description, both prompt and prompt_file set, neither prompt nor prompt_file set, nonexistent prompt_file, model outside the allowed literal set) produce clear validation errors at config load time.
+- **SC-005**: The `claude.subagents` config block is removed; loading an `agent.yaml` that still contains `claude.subagents` produces a clear validation error pointing users at the new model (presence of `claude.agents` is the only gate).
 
 ## Assumptions
 
-- The Claude Agent SDK's `AgentDefinition` type supports `description`, `prompt`, `tools`, `model`, `skills`, `memory`, and `mcpServers` fields.
+- The Claude Agent SDK's `AgentDefinition` dataclass exposes exactly four fields: `description: str` (required), `prompt: str` (required), `tools: list[str] | None`, `model: Literal["sonnet", "opus", "haiku", "inherit"] | None`. There are **no** `skills`, `memory`, `mcp_servers`, or `fallback_model` fields on `AgentDefinition`; these are top-level `ClaudeAgentOptions` concerns or are not exposed by the SDK at all.
 - The parent agent automatically delegates to subagents based on their `description` fields -- no explicit routing logic is needed in HoloDeck.
 - Subagent definitions are static (defined at config load time) -- dynamic subagent creation at runtime is out of scope.
-- The `model` field on subagent definitions accepts the same values as the SDK (e.g., "sonnet", "opus", "haiku", "inherit").
+- The `model` field on subagent definitions is restricted to the SDK's literal set `{sonnet, opus, haiku, inherit}`; full model IDs are not accepted by the SDK type.
+- All MCP servers are registered at the parent (top-level `ClaudeAgentOptions.mcp_servers`); subagents share that registration and use their `tools` allowlist to scope which MCP tools they can call (`mcp__<server>__<tool>`).
+- The SDK manages subagent-dispatch concurrency internally; HoloDeck does not and cannot control how many subagents the SDK runs in parallel during a single agent session. HoloDeck-side test concurrency is controlled exclusively by `execution.parallel_test_cases`; no separate subagent-specific knob is provided.
