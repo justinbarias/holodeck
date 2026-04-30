@@ -39,7 +39,7 @@ evaluations:                      # Optional: Quality metrics
 test_cases: []                    # Optional: Test scenarios
 ```
 
-> **Backend auto-selection**: HoloDeck automatically selects the execution backend based on the `provider` field. `anthropic` routes to the Claude Agent SDK backend; all other providers route to the Semantic Kernel backend.
+> **Backend auto-selection**: HoloDeck picks the execution backend from the `provider` field. `anthropic` routes to the [Claude Backend](claude-backend.md); everything else (`openai`, `azure_openai`, `ollama`) routes to the [Semantic Kernel Backend](semantic-kernel-backend.md). See those guides for backend-specific configuration.
 
 ## Agent Name
 
@@ -200,104 +200,9 @@ embedding_provider:
 
 ## Claude Agent SDK Settings
 
-When using `model.provider: anthropic`, you can configure Claude Agent SDK-specific capabilities via the `claude` section. All capabilities default to disabled (least-privilege).
+When using `model.provider: anthropic`, the agent.yaml accepts a top-level `claude:` section for backend-specific capabilities (permission modes, extended thinking, web search, subagents, bash, file_system, working_directory, max_turns, allowed_tools).
 
-### Permission Mode
-
-| Value | Description |
-|-------|-------------|
-| `manual` | Requires manual approval for all actions (default, safest) |
-| `acceptEdits` | Auto-approve file edits, manual approval for other actions |
-| `acceptAll` | Auto-approve all tool calls and actions |
-
-### Configuration Reference
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `permission_mode` | Enum | `manual` | Level of autonomous action |
-| `working_directory` | String | None | Scope file access to this path; subprocess cwd |
-| `max_turns` | Integer (>=1) | None (SDK default) | Maximum agent loop iterations |
-| `extended_thinking` | Object | None | Extended reasoning configuration |
-| `web_search` | Boolean | `false` | Enable built-in web search |
-| `bash` | Object | None | Shell command execution settings |
-| `file_system` | Object | None | File read/write/edit access |
-| `subagents` | Object | None | Parallel sub-agent execution |
-| `allowed_tools` | List[String] | None (all tools) | Explicit tool allowlist |
-
-### Extended Thinking
-
-Enable deep reasoning for complex tasks:
-
-```yaml
-claude:
-  extended_thinking:
-    enabled: true
-    budget_tokens: 10000  # 1,000 - 100,000
-```
-
-### Bash Access
-
-```yaml
-claude:
-  bash:
-    enabled: true
-    excluded_commands: ["rm", "shutdown"]  # Commands to block
-    allow_unsafe: false                    # Dangerous commands require explicit opt-in
-```
-
-### File System Access
-
-```yaml
-claude:
-  file_system:
-    read: true
-    write: true
-    edit: true
-```
-
-### Sub-agents
-
-```yaml
-claude:
-  subagents:
-    enabled: true
-    max_parallel: 4  # 1-16 parallel sub-agents
-```
-
-### Full Annotated Example
-
-```yaml
-claude:
-  permission_mode: acceptAll       # Auto-approve actions
-  working_directory: ./workspace   # Restrict file access
-  max_turns: 15                    # Limit agent loop iterations
-
-  extended_thinking:
-    enabled: true
-    budget_tokens: 20000           # Deep reasoning token budget
-
-  web_search: true                 # Enable web search
-
-  bash:
-    enabled: true
-    excluded_commands: ["rm -rf", "shutdown"]
-    allow_unsafe: false
-
-  file_system:
-    read: true
-    write: true
-    edit: true
-
-  subagents:
-    enabled: true
-    max_parallel: 8
-
-  allowed_tools:                   # Only expose these tools to the agent
-    - knowledge-base
-    - web-search
-```
-
-> **Note**: The `claude` section is ignored when using non-Anthropic providers.
+See [Claude Backend](claude-backend.md) for the full reference and examples. The `claude` block is ignored for non-Anthropic providers.
 
 ## Instructions
 

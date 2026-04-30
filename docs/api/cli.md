@@ -81,15 +81,6 @@ Start an interactive multi-turn chat session with an agent.
       docstring_style: google
       show_source: true
 
-::: holodeck.cli.commands.chat.ChatSpinnerThread
-    options:
-      docstring_style: google
-      show_source: true
-      members:
-        - __init__
-        - run
-        - stop
-
 ::: holodeck.cli.commands.chat._run_chat_session
     options:
       docstring_style: google
