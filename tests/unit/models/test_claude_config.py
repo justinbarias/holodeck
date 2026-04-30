@@ -428,20 +428,32 @@ class TestSubagentSpec:
 
     @pytest.mark.parametrize(
         "model_value",
-        ["sonnet", "opus", "haiku", "inherit", "claude-3-5-sonnet-20241022"],
-        ids=["sonnet", "opus", "haiku", "inherit", "full_model_id"],
+        ["sonnet", "opus", "haiku", "inherit"],
     )
-    def test_subagent_spec_model_passes_through(self, model_value: str) -> None:
-        """T013 (US1): SubagentSpec accepts any string for model and passes it through.
+    def test_subagent_spec_model_accepts_sdk_literals(self, model_value: str) -> None:
+        """T013 (US1): SubagentSpec accepts the SDK's literal model aliases.
 
-        The SDK is the source of truth for valid model values; HoloDeck does not
-        gate on a fixed literal set so the surface stays compatible as the SDK
-        adds new model aliases. Traces to FR-008, US1 acceptance scenario 2.
+        Traces to FR-008, US1 acceptance scenario 2, data-model.md rule 3.
         """
         spec = SubagentSpec(
             description="agent", prompt="Do something.", model=model_value
         )
         assert spec.model == model_value
+
+    def test_subagent_spec_full_model_id_rejected(self) -> None:
+        """Full model IDs must fail at load time.
+
+        The Claude CLI silently drops AgentDefinitions whose ``model`` is not
+        in the SDK's literal set, so allowing them through would mean the
+        subagent never registers and the parent quietly falls back to the
+        general-purpose agent.
+        """
+        with pytest.raises(ValidationError):
+            SubagentSpec(
+                description="agent",
+                prompt="Do something.",
+                model="claude-haiku-4-5",
+            )
 
     def test_subagent_spec_description_empty_rejected(self) -> None:
         """description must be non-empty after strip (data-model.md rule 4)."""

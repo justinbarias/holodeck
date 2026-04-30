@@ -122,12 +122,14 @@ class SubagentSpec(BaseModel):
             "inherits all parent tools."
         ),
     )
-    model: str | None = Field(
+    model: Literal["sonnet", "opus", "haiku", "inherit"] | None = Field(
         default=None,
         description=(
-            "Model override for this subagent. Passed through to the SDK verbatim "
-            "(e.g. 'sonnet', 'haiku', 'inherit', or a full model id). "
-            "The SDK is the source of truth for valid values."
+            "Model override for this subagent. Must be one of the SDK's "
+            "literal aliases: 'sonnet', 'opus', 'haiku', 'inherit'. Full "
+            "model IDs (e.g. 'claude-haiku-4-5') are rejected — the Claude "
+            "CLI silently drops AgentDefinitions whose `model` is not in "
+            "this set, so the validator catches it at config-load time."
         ),
     )
 
