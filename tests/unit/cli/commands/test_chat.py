@@ -775,36 +775,47 @@ class TestRemainingDrain:
         assert panel.snapshot() == []
 
 
-class TestPanelRenderer:
-    """Tests for ``_render_tools_panel`` and ``_clear_panel`` helpers."""
+class TestPaintPanelLoop:
+    """Tests for the ``_paint_panel_loop`` driver task."""
 
     @pytest.mark.asyncio
-    async def test_renderer_returns_immediately_when_not_tty(self) -> None:
-        from holodeck.cli.commands.chat import _render_tools_panel
+    async def test_loop_exits_promptly_when_stop_event_set(self) -> None:
+        from holodeck.chat.composer import LiveComposer
+        from holodeck.cli.commands.chat import _paint_panel_loop
 
         panel = ToolsPanel()
         progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
+        composer = LiveComposer()
         stop_event = asyncio.Event()
 
-        with patch("holodeck.cli.commands.chat.is_tty", return_value=False):
-            last_lines = await asyncio.wait_for(
-                _render_tools_panel(panel, progress, stop_event), timeout=1.0
-            )
-        assert last_lines == 0
+        await composer.begin()
+        task = asyncio.create_task(
+            _paint_panel_loop(panel, progress, composer, stop_event)
+        )
+        stop_event.set()
+        # Should return well within one paint interval + final paint.
+        await asyncio.wait_for(task, timeout=1.0)
+        await composer.end()
 
-    def test_clear_panel_emits_no_output_for_zero_lines(self) -> None:
-        from holodeck.cli.commands.chat import _clear_panel
+    @pytest.mark.asyncio
+    async def test_loop_pushes_panel_lines_to_composer(self) -> None:
+        from holodeck.chat.composer import LiveComposer
+        from holodeck.cli.commands.chat import _paint_panel_loop
 
-        with patch("sys.stdout.write") as mock_write, patch("sys.stdout.flush"):
-            _clear_panel(0)
-        mock_write.assert_not_called()
+        panel = ToolsPanel()
+        panel.apply(ToolEvent(kind="start", tool_name="Read", tool_use_id="tu_1"))
+        progress = ChatProgressIndicator(max_messages=50, quiet=False, verbose=False)
+        composer = LiveComposer()
+        composer.update_panel = AsyncMock()  # type: ignore[method-assign]
+        stop_event = asyncio.Event()
 
-    def test_clear_panel_writes_ansi_clear_for_positive_lines(self) -> None:
-        from holodeck.cli.commands.chat import _clear_panel
+        await composer.begin()
+        task = asyncio.create_task(
+            _paint_panel_loop(panel, progress, composer, stop_event)
+        )
+        # Let it tick once.
+        await asyncio.sleep(0.15)
+        stop_event.set()
+        await asyncio.wait_for(task, timeout=1.0)
 
-        with patch("sys.stdout.write") as mock_write, patch("sys.stdout.flush"):
-            _clear_panel(3)
-        mock_write.assert_called_once()
-        written = mock_write.call_args.args[0]
-        # ANSI: CR + cursor up 3 + erase from cursor down
-        assert written == "\r\033[3A\033[J"
+        assert composer.update_panel.await_count >= 1

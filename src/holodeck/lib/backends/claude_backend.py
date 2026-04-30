@@ -355,17 +355,12 @@ def build_options(
         if claude.disallowed_tools:
             opts_kwargs["disallowed_tools"] = list(claude.disallowed_tools)
         if claude.agents:
-            # HoloDeck keeps `SubagentSpec.model` as `str | None` so the SDK
-            # remains the source of truth for valid model names; cast at the
-            # boundary to satisfy AgentDefinition's narrower Literal type.
-            # `prompt or ""` is a stopgap until US3 lands the at-least-one /
-            # prompt_file inlining validator that guarantees a non-empty prompt.
             opts_kwargs["agents"] = {
                 name: AgentDefinition(
                     description=spec.description,
                     prompt=spec.prompt or "",
                     tools=spec.tools,
-                    model=cast(Any, spec.model),
+                    model=spec.model,
                 )
                 for name, spec in claude.agents.items()
             }
@@ -513,14 +508,18 @@ def _maybe_emit_subagent_message(
     msg: Any,
     queue: asyncio.Queue[ToolEvent],
 ) -> None:
-    """Push a ``subagent_message`` event when *msg* is subagent assistant text.
+    """Push ``subagent_message`` and ``parent_link`` events for subagent traffic.
 
     The Claude SDK yields nested messages from subagents (Task tool) on the
     same response stream as the parent.  Each subagent ``AssistantMessage``
     carries a non-null ``parent_tool_use_id`` pointing at the launching
-    Task's tool use id.  We use that to surface the latest text snapshot to
-    consumers (e.g. the chat tools panel) without filtering anything out of
-    the user-facing stream.
+    Task's tool use id.  We use it for two things:
+
+    1. Surface the latest assistant-text snapshot via ``subagent_message`` so
+       the chat tools panel can display in-flight subagent activity.
+    2. Emit a ``parent_link`` for every ``ToolUseBlock`` carried by the
+       subagent message, so the panel knows which top-level tool entries are
+       actually nested under a subagent and can render them indented.
 
     Args:
         msg: A message from ``client.receive_response()``.
@@ -531,20 +530,31 @@ def _maybe_emit_subagent_message(
     parent_id = getattr(msg, "parent_tool_use_id", None)
     if not parent_id:
         return
-    text = _extract_result_text(getattr(msg, "content", []) or []).strip()
-    if not text:
-        return
+    content = getattr(msg, "content", []) or []
+    text = _extract_result_text(content).strip()
     # Best-effort surface; never block message processing on a full queue.
     with contextlib.suppress(asyncio.QueueFull):
-        queue.put_nowait(
-            ToolEvent(
-                kind="subagent_message",
-                tool_name="Task",
-                tool_use_id=parent_id,
-                parent_tool_use_id=parent_id,
-                text=text,
+        if text:
+            queue.put_nowait(
+                ToolEvent(
+                    kind="subagent_message",
+                    tool_name="Task",
+                    tool_use_id=parent_id,
+                    parent_tool_use_id=parent_id,
+                    text=text,
+                )
             )
-        )
+        for block in content:
+            if block.__class__.__name__ != "ToolUseBlock":
+                continue
+            queue.put_nowait(
+                ToolEvent(
+                    kind="parent_link",
+                    tool_name=getattr(block, "name", ""),
+                    tool_use_id=getattr(block, "id", ""),
+                    parent_tool_use_id=parent_id,
+                )
+            )
 
 
 class ClaudeSession:

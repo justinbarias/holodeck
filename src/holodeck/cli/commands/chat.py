@@ -14,7 +14,7 @@ from typing import Any
 
 import click
 
-from holodeck.chat import ChatSessionManager, ToolsPanel
+from holodeck.chat import ChatSessionManager, LiveComposer, ToolsPanel
 from holodeck.chat.executor import AgentExecutor, AgentResponse
 from holodeck.chat.progress import ChatProgressIndicator
 from holodeck.lib.backends.base import ToolEvent
@@ -25,7 +25,6 @@ from holodeck.lib.observability import (
     initialize_observability,
     shutdown_observability,
 )
-from holodeck.lib.ui import is_tty
 from holodeck.models.agent import Agent
 from holodeck.models.chat import ChatConfig
 from holodeck.models.config import ExecutionConfig
@@ -63,58 +62,35 @@ def _drain_remaining(queue: asyncio.Queue[ToolEvent], panel: ToolsPanel) -> None
         panel.apply(evt)
 
 
-async def _render_tools_panel(
+async def _paint_panel_loop(
     panel: ToolsPanel,
     progress: ChatProgressIndicator,
+    composer: LiveComposer,
     stop_event: asyncio.Event,
-) -> int:
-    """Repaint the tools panel + spinner above the prompt at 10 fps.
+) -> None:
+    """Drive panel repaints via *composer* at 10 fps until *stop_event*.
 
-    Returns:
-        The number of lines occupied by the last paint, so the caller can
-        clear them before streaming agent text.
+    The composer keeps the panel pinned below the streaming-text cursor,
+    so this task can run for the full turn — text writes interleave with
+    panel repaints without trampling each other.
     """
-    if not is_tty():
-        return 0
-
-    last_lines = 0
-    try:
-        while not stop_event.is_set():
-            new_lines = list(panel.render_lines())
-            spinner = progress.get_spinner_line()
-            if spinner:
-                new_lines.append(spinner)
-
-            _repaint(new_lines, last_lines)
-            last_lines = len(new_lines)
-            try:
-                await asyncio.wait_for(stop_event.wait(), timeout=_RENDER_INTERVAL_SEC)
-            except asyncio.TimeoutError:
-                continue
-    finally:
-        # Don't leave the cursor parked at the start of the rendered region;
-        # caller is responsible for clearing via the returned line count.
-        pass
-    return last_lines
-
-
-def _repaint(new_lines: list[str], last_lines: int) -> None:
-    """Overwrite the previously drawn region with *new_lines* in place."""
-    if last_lines:
-        sys.stdout.write(f"\r\033[{last_lines}A\033[J")
-    elif new_lines:
-        sys.stdout.write("\r")
-    if new_lines:
-        sys.stdout.write("\n".join(new_lines))
-    sys.stdout.flush()
-
-
-def _clear_panel(line_count: int) -> None:
-    """Clear *line_count* lines from the current paint region."""
-    if line_count <= 0:
-        return
-    sys.stdout.write(f"\r\033[{line_count}A\033[J")
-    sys.stdout.flush()
+    while not stop_event.is_set():
+        lines = list(panel.render_lines())
+        spinner = progress.get_spinner_line()
+        if spinner:
+            lines.append(spinner)
+        await composer.update_panel(lines)
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=_RENDER_INTERVAL_SEC)
+        except asyncio.TimeoutError:
+            continue
+    # One last paint so end-of-turn state (e.g. final tool just finished)
+    # is reflected before the composer tears the panel down.
+    lines = list(panel.render_lines())
+    spinner = progress.get_spinner_line()
+    if spinner:
+        lines.append(spinner)
+    await composer.update_panel(lines)
 
 
 async def _ensure_executor_ready(executor: AgentExecutor) -> None:
@@ -384,38 +360,32 @@ async def _run_chat_session(
                         )
 
                         panel = ToolsPanel()
+                        composer = LiveComposer()
                         stop_event = asyncio.Event()
                         drain_task: asyncio.Task[None] | None = None
                         if queue is not None:
                             drain_task = asyncio.create_task(
                                 _drain_tool_events(queue, panel, stop_event)
                             )
-                        render_task: asyncio.Task[int] = asyncio.create_task(
-                            _render_tools_panel(panel, progress, stop_event)
+
+                        await composer.begin()
+                        click.echo("Agent: ", nl=False)
+                        sys.stdout.flush()
+                        paint_task: asyncio.Task[None] = asyncio.create_task(
+                            _paint_panel_loop(panel, progress, composer, stop_event)
                         )
 
                         start_time = time.time()
                         chunks: list[str] = []
-                        first_chunk = True
                         try:
                             async for (
                                 chunk
                             ) in session_manager.process_message_streaming(user_input):
-                                if first_chunk:
-                                    stop_event.set()
-                                    last_lines = await render_task
-                                    _clear_panel(last_lines)
-                                    click.echo("Agent: ", nl=False)
-                                    first_chunk = False
-                                sys.stdout.write(chunk)
-                                sys.stdout.flush()
+                                await composer.write_text(chunk)
                                 chunks.append(chunk)
                         finally:
                             stop_event.set()
-                            if not render_task.done():
-                                last_lines = await render_task
-                                if first_chunk:
-                                    _clear_panel(last_lines)
+                            await paint_task
                             if drain_task is not None:
                                 try:
                                     await asyncio.wait_for(drain_task, timeout=0.25)
@@ -425,12 +395,9 @@ async def _run_chat_session(
                                         await drain_task
                             if queue is not None:
                                 _drain_remaining(queue, panel)
+                            await composer.end()
 
                         elapsed = time.time() - start_time
-
-                        # Print "Agent: " if no chunks ever arrived.
-                        if first_chunk:
-                            click.echo("Agent: ", nl=False)
 
                         click.echo()  # newline after streamed content
 

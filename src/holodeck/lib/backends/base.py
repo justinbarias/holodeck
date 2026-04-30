@@ -56,22 +56,25 @@ class ToolEvent:
         kind: Event type — ``"start"`` before execution, ``"end"`` after
             success, ``"error"`` after failure, ``"subagent_message"`` for an
             assistant text snapshot streamed by an in-flight subagent (Task
-            tool).
+            tool), ``"parent_link"`` to declare that a tool invocation was
+            spawned by a subagent (so the panel can annotate it).
         tool_name: Name of the tool being invoked.
         tool_use_id: Unique identifier correlating start/end/error for the
             same invocation. For ``"subagent_message"`` events this is the
             parent Task's ``tool_use_id`` so consumers can attach the
-            snapshot to the corresponding active entry.
+            snapshot to the corresponding active entry. For ``"parent_link"``
+            this is the *child* tool's id.
         tool_input: Tool input parameters (present on ``"start"``).
         tool_response: Tool output (present on ``"end"``).
         error: Error description (present on ``"error"``).
         parent_tool_use_id: For nested events, the parent Task's
-            ``tool_use_id``.  Present on ``"subagent_message"``.
+            ``tool_use_id``.  Present on ``"subagent_message"`` and
+            ``"parent_link"``.
         text: Latest assistant text snapshot from a subagent (present on
             ``"subagent_message"``).
     """
 
-    kind: Literal["start", "end", "error", "subagent_message"]
+    kind: Literal["start", "end", "error", "subagent_message", "parent_link"]
     tool_name: str
     tool_use_id: str
     tool_input: dict[str, Any] | None = None

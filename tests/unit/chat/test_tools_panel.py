@@ -198,6 +198,226 @@ class TestSubagentLifecycle:
             assert panel.render_lines() == []
 
 
+class TestToolArgsRendering:
+    """Tool input args render as a compact ``k=v`` line under the entry."""
+
+    def test_string_args_render_under_entry(self) -> None:
+        panel = ToolsPanel()
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="Read",
+                tool_use_id="tu_1",
+                tool_input={"file_path": "/etc/hosts"},
+            )
+        )
+        with _force_tty(True):
+            lines = panel.render_lines()
+            count = panel.line_count
+        assert any("file_path=/etc/hosts" in line for line in lines)
+        # 2 borders + 1 entry + 1 args line
+        assert count == 4
+
+    def test_subagent_type_is_omitted_from_args(self) -> None:
+        panel = ToolsPanel()
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="Task",
+                tool_use_id="task_1",
+                tool_input={"subagent_type": "reviewer", "description": "Review code"},
+            )
+        )
+        with _force_tty(True):
+            joined = "\n".join(panel.render_lines())
+        assert "description=Review code" in joined
+        assert "subagent_type=" not in joined
+
+    def test_subagent_status_replaces_args_line(self) -> None:
+        panel = ToolsPanel()
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="Task",
+                tool_use_id="task_1",
+                tool_input={"subagent_type": "rev", "description": "Review"},
+            )
+        )
+        # Before status arrives: args line shows description.
+        with _force_tty(True):
+            joined = "\n".join(panel.render_lines())
+        assert "description=Review" in joined
+
+        panel.apply(
+            ToolEvent(
+                kind="subagent_message",
+                tool_name="Task",
+                tool_use_id="task_1",
+                parent_tool_use_id="task_1",
+                text="Reading src/foo.py",
+            )
+        )
+        with _force_tty(True):
+            joined = "\n".join(panel.render_lines())
+        assert "Reading src/foo.py" in joined
+        assert "description=Review" not in joined
+
+    def test_long_args_truncated_within_panel(self) -> None:
+        panel = ToolsPanel()
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="Bash",
+                tool_use_id="tu_1",
+                tool_input={"command": "x" * 500},
+            )
+        )
+        with _force_tty(True):
+            lines = panel.render_lines()
+        args_line = next(line for line in lines if "command=" in line)
+        # Stripped of border padding the line still respects the panel width.
+        assert len(args_line) <= 60
+        assert "…" in args_line
+
+    def test_dict_value_renders_as_compact_json(self) -> None:
+        panel = ToolsPanel()
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="WebSearch",
+                tool_use_id="tu_1",
+                tool_input={"params": {"q": "claude code", "n": 5}},
+            )
+        )
+        with _force_tty(True):
+            joined = "\n".join(panel.render_lines())
+        assert '{"q":"claude code","n":5}' in joined
+
+    def test_newlines_in_string_args_collapse_to_single_line(self) -> None:
+        panel = ToolsPanel()
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="Edit",
+                tool_use_id="tu_1",
+                tool_input={"old_string": "line1\nline2"},
+            )
+        )
+        with _force_tty(True):
+            args_line = next(
+                line for line in panel.render_lines() if "old_string=" in line
+            )
+        assert "\n" not in args_line.strip("│ ").strip()
+        assert "line1 line2" in args_line
+
+
+class TestParentLink:
+    """`parent_link` events nest child tools under their parent subagent."""
+
+    def test_parent_link_after_start_indents_child(self) -> None:
+        panel = ToolsPanel()
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="Task",
+                tool_use_id="task_1",
+                tool_input={"subagent_type": "researcher"},
+            )
+        )
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="WebSearch",
+                tool_use_id="tu_child",
+                tool_input={"query": "claude"},
+            )
+        )
+        panel.apply(
+            ToolEvent(
+                kind="parent_link",
+                tool_name="WebSearch",
+                tool_use_id="tu_child",
+                parent_tool_use_id="task_1",
+            )
+        )
+        with _force_tty(True):
+            lines = panel.render_lines()
+        # Find the WebSearch row — must be indented (leading "│  " + space).
+        web_row = next(line for line in lines if "WebSearch" in line)
+        # Border + at least 2 indent spaces before the spinner/label.
+        assert web_row.startswith("│   ")
+        # Task entry sits above the WebSearch row in render order.
+        joined = "\n".join(lines)
+        assert joined.index("Task[researcher]") < joined.index("WebSearch")
+
+    def test_parent_link_before_start_still_indents(self) -> None:
+        """parent_link can race ahead of the child's PreToolUse hook."""
+        panel = ToolsPanel()
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="Task",
+                tool_use_id="task_1",
+                tool_input={"subagent_type": "x"},
+            )
+        )
+        panel.apply(
+            ToolEvent(
+                kind="parent_link",
+                tool_name="Read",
+                tool_use_id="tu_child",
+                parent_tool_use_id="task_1",
+            )
+        )
+        # Child start arrives later — pending parent must apply.
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="Read",
+                tool_use_id="tu_child",
+                tool_input={"file_path": "/etc/hosts"},
+            )
+        )
+        with _force_tty(True):
+            lines = panel.render_lines()
+        read_row = next(line for line in lines if "Read" in line)
+        assert read_row.startswith("│   ")
+
+    def test_child_renders_at_top_level_when_parent_already_ended(self) -> None:
+        """If the parent ended before the child appears, child shows flat."""
+        panel = ToolsPanel()
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="Task",
+                tool_use_id="task_1",
+                tool_input={"subagent_type": "x"},
+            )
+        )
+        panel.apply(ToolEvent(kind="end", tool_name="Task", tool_use_id="task_1"))
+        panel.apply(
+            ToolEvent(
+                kind="start",
+                tool_name="Read",
+                tool_use_id="tu_child",
+                tool_input={"file_path": "/etc/hosts"},
+            )
+        )
+        panel.apply(
+            ToolEvent(
+                kind="parent_link",
+                tool_name="Read",
+                tool_use_id="tu_child",
+                parent_tool_use_id="task_1",
+            )
+        )
+        with _force_tty(True):
+            lines = panel.render_lines()
+        read_row = next(line for line in lines if "Read" in line)
+        # Top-level entries start with "│ ⠋ ..." (single space indent only).
+        assert not read_row.startswith("│   ")
+
+
 class TestSnapshot:
     """`snapshot()` returns the current in-flight entries."""
 

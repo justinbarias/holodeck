@@ -1,5 +1,6 @@
 """Chat runtime package for interactive chat."""
 
+from holodeck.chat.composer import LiveComposer
 from holodeck.chat.executor import AgentExecutor, AgentResponse
 from holodeck.chat.message import MessageValidator
 from holodeck.chat.session import ChatSessionManager
@@ -10,6 +11,7 @@ __all__ = [
     "AgentExecutor",
     "AgentResponse",
     "ChatSessionManager",
+    "LiveComposer",
     "MessageValidator",
     "ToolEvent",
     "ToolEventType",
