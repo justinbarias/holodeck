@@ -406,14 +406,34 @@ class TestBookmarkMatchingNormalized:
         assert level == 1
 
     def test_substring_match_title_in_line(self) -> None:
-        """Test that bookmark title substring of line matches."""
+        """Long enough bookmark title appearing inside a line still matches."""
+        # "chapter one" is 11 chars (>= the 8-char substring gate)
         level = _match_bookmark("1. chapter one - introduction", [("chapter one", 1)])
         assert level == 1
 
-    def test_substring_match_line_in_title(self) -> None:
-        """Test that line substring of bookmark title matches."""
+    def test_short_title_substring_no_match(self) -> None:
+        """Short titles (< 8 chars) are not matched as substrings.
+
+        Guards against the convfinqa-source.pdf regression where year
+        bookmarks like "2005" were tagging every paragraph that mentioned
+        the year as a heading.
+        """
+        level = _match_bookmark(
+            "in the quarter ended december 31 , 2005 . part ii",
+            [("2005", 2)],
+        )
+        assert level is None
+
+    def test_line_in_title_no_longer_matches(self) -> None:
+        """Reverse-substring (line is a fragment of the title) does not match.
+
+        Previously a body word like "." or "disca" matched long
+        ``Document ID: …`` bookmarks because the body fragment appeared
+        inside the title; that produced spurious ``###`` headings on
+        single-character lines in the convfinqa-source.pdf output.
+        """
         level = _match_bookmark("chapter", [("chapter one", 1)])
-        assert level == 1
+        assert level is None
 
     def test_no_match_returns_none(self) -> None:
         """Test that unrelated text returns None."""

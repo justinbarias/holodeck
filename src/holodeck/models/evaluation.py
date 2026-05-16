@@ -136,6 +136,33 @@ class EvaluationMetric(BaseModel):
         default=False,
         description="[numeric] Strip ',' / '_' / NBSP before parse.",
     )
+    response_path: str | None = Field(
+        default=None,
+        description=(
+            "Optional path into a JSON-encoded response. When set, the "
+            "evaluator grades the leaf value at this path (coerced to str) "
+            "instead of the raw response. Grammar: dotted keys with optional "
+            "bracketed indices — 'answer', 'result.value', 'items[0].score'."
+        ),
+    )
+
+    @field_validator("response_path")
+    @classmethod
+    def validate_response_path(cls, v: str | None) -> str | None:
+        """Validate response_path matches the supported grammar."""
+        if v is None:
+            return v
+        # Local import — keeps the model layer free of evaluator runtime
+        # imports during cold-start config loads.
+        from holodeck.lib.evaluators.response_path import is_valid_path
+
+        if not v.strip() or not is_valid_path(v):
+            raise ValueError(
+                "response_path must match dotted/bracketed grammar "
+                "(e.g. 'answer', 'result.value', 'items[0].score'); "
+                f"got {v!r}"
+            )
+        return v
 
     @field_validator("threshold")
     @classmethod

@@ -48,16 +48,19 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from holodeck.lib.collection_filter import find_all_records, find_records_by_field
 from holodeck.lib.keyword_search import HybridSearchExecutor
 
 if TYPE_CHECKING:
     from holodeck.lib.backends.base import ContextGenerator
     from holodeck.lib.definition_extractor import DefinitionEntry
+    from holodeck.lib.file_processor import FileProcessor
     from holodeck.lib.structured_chunker import (
         DocumentChunk,
         StructuredChunker,
         SubsectionPattern,
     )
+    from holodeck.models.config import ExecutionConfig
 
 from holodeck.lib.hybrid_search import SearchResult
 from holodeck.lib.structured_chunker import DOMAIN_PATTERNS, ChunkType
@@ -109,6 +112,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self,
         config: HierarchicalDocumentToolConfig,
         base_dir: str | None = None,
+        execution_config: ExecutionConfig | None = None,
     ) -> None:
         """Initialize the hierarchical document tool.
 
@@ -117,9 +121,17 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             base_dir: Optional base directory for resolving relative source paths.
                 If None, source paths are resolved relative to current working
                 directory or agent_base_dir context variable.
+            execution_config: Execution configuration for file processing
+                timeouts and caching. When provided, the lazy FileProcessor
+                used by ``_convert_to_markdown`` is built via
+                ``FileProcessor.from_execution_config`` so that
+                ``execution.file_timeout`` (and download_timeout / cache_dir)
+                from agent.yaml are honored. When None, FileProcessor's
+                hardcoded defaults (30s timeouts) apply.
         """
         self.config = config
         self._base_dir = base_dir
+        self._execution_config = execution_config
         self._chunker: StructuredChunker | None = None
         self._searcher: Any = None  # HybridSearcher (future)
         self._context_generator: ContextGenerator | None = None
@@ -134,12 +146,34 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self._provider: str = "in-memory"
         self._embedding_dimensions: int | None = None
 
+        # Lazily constructed FileProcessor (see _get_file_processor)
+        self._file_processor: FileProcessor | None = None
+
         # Hybrid search executor (initialized during ingestion)
         self._hybrid_executor: HybridSearchExecutor | None = None
 
         # Source context for stable record keys (remote sources)
         self._source_root: Path | None = None
         self._is_remote: bool = False
+
+    def _get_file_processor(self) -> FileProcessor:
+        """Get or create the FileProcessor instance (lazy init).
+
+        Mirrors VectorStoreTool._get_file_processor: when an
+        ``execution_config`` was supplied at construction, build via the
+        ``from_execution_config`` factory so per-agent timeout/cache
+        settings reach the processor; otherwise fall back to defaults.
+        """
+        from holodeck.lib.file_processor import FileProcessor
+
+        if self._file_processor is None:
+            if self._execution_config is not None:
+                self._file_processor = FileProcessor.from_execution_config(
+                    self._execution_config
+                )
+            else:
+                self._file_processor = FileProcessor()
+        return self._file_processor
 
     # set_embedding_service is inherited from EmbeddingServiceMixin
 
@@ -236,6 +270,69 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             for block in iter(lambda: f.read(8192), b""):
                 h.update(block)
         return h.hexdigest()
+
+    @staticmethod
+    def _build_searchable_text(chunk: DocumentChunk) -> str:
+        """Build the concatenated text indexed for native hybrid keyword search.
+
+        SK's ``QdrantCollection.hybrid_search`` only consults one
+        ``additional_property_name``, so we fold every text-bearing field
+        into a single ``searchable_text`` string and let qdrant's Tantivy
+        payload index handle the lexical pass.
+
+        The boost recipe mirrors :func:`_build_bm25_document` so the
+        BM25-fallback path and the qdrant-native path index the same shape:
+
+        * contextualized_content (or content fallback) — 1× (the body)
+        * parent_chain — 2× (heading-path queries)
+        * section_id — 2× (section lookups)
+        * defined_term — 3× (definition queries)
+        * cross_references — 1×
+        * source filename — 1×
+
+        ``content`` is intentionally omitted: ``contextualized_content``
+        already contains it verbatim when context-gen is on, and equals it
+        when off (see ``_ingest_documents`` line 710).
+        """
+        primary = chunk.contextualized_content or chunk.content
+        parent_chain = " > ".join(chunk.parent_chain)
+        cross_refs = " ".join(chunk.cross_references)
+        source_file = Path(chunk.source_path).name if chunk.source_path else ""
+
+        parts: list[str] = []
+        if primary:
+            parts.append(primary)
+        if parent_chain:
+            parts.extend([parent_chain, parent_chain])  # 2×
+        if chunk.section_id:
+            parts.extend([chunk.section_id, chunk.section_id])  # 2×
+        if chunk.defined_term:
+            parts.extend([chunk.defined_term] * 3)  # 3×
+        if cross_refs:
+            parts.append(cross_refs)
+        if source_file:
+            parts.append(source_file)
+
+        return "\n\n".join(parts)
+
+    def _coerce_chunk_ids_to_uuid(self, chunks: list[DocumentChunk]) -> None:
+        """Rewrite chunk IDs to deterministic UUIDv5 for qdrant compatibility.
+
+        Qdrant point IDs must be UUIDs or unsigned 64-bit ints; the chunker
+        emits human-readable IDs like ``{path}_chunk_{N}``. UUIDv5 over
+        (tool-name, original-id) is stable across runs, so re-ingestion of
+        unchanged content lands on the same point.
+
+        Mutates ``chunks`` in place.
+        """
+        import uuid
+
+        namespace = uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"holodeck/hierarchical_document/{self.config.name}",
+        )
+        for chunk in chunks:
+            chunk.id = str(uuid.uuid5(namespace, chunk.id))
 
     def _remap_chunk_keys(self, chunks: list[DocumentChunk], file_path: Path) -> None:
         """Remap chunk source_path and id to use stable source keys.
@@ -345,9 +442,11 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         async with self._collection as collection:
             try:
-                # Get first available record for this file to check mtime/hash
-                records = await collection.get(
-                    filter=lambda r: r.source_path == source_key,
+                # SK's keyless collection.get(filter=...) raises NotImplementedError
+                # on every backend we ship; collection_filter dispatches to each
+                # backend's native client. See holodeck.lib.collection_filter.
+                records = await find_records_by_field(
+                    self._provider, collection, "source_path", source_key
                 )
 
                 if not records:
@@ -356,14 +455,14 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 if self._is_remote:
                     # For remote sources, compare content hash
                     current_hash = self._compute_content_hash(file_path)
-                    stored_hash = getattr(records[0], "content_hash", "")
+                    stored_hash = records[0].get("content_hash") or ""
                     if not stored_hash:
                         return True  # No hash stored (old record)
                     return current_hash != stored_hash
                 else:
                     # For local sources, compare mtime (backward compat)
                     current_mtime = file_path.stat().st_mtime
-                    stored_mtime = float(records[0].mtime)
+                    stored_mtime = float(records[0]["mtime"])
                     return current_mtime - stored_mtime > 0.001
 
             except Exception as e:
@@ -387,15 +486,13 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         async with self._collection as collection:
             try:
-                # Get all records for this file
-                records = await collection.get(
-                    top=10000,  # Large limit to get all chunks
-                    filter=lambda r: r.source_path == source_key,
+                records = await find_records_by_field(
+                    self._provider, collection, "source_path", source_key
                 )
 
                 if records:
                     # Delete all records by their IDs
-                    record_ids = [r.id for r in records]
+                    record_ids = [r["id"] for r in records]
                     await collection.delete(record_ids)
                     deleted_count = len(record_ids)
 
@@ -429,7 +526,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 if not await collection.collection_exists():
                     return []
 
-                records = await collection.get(top=10000)
+                records = await find_all_records(self._provider, collection)
 
                 if not records:
                     return []
@@ -438,41 +535,48 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 for record in records:
                     # Parse JSON fields with graceful fallback
                     try:
-                        parent_chain = json.loads(record.parent_chain)
+                        parent_chain = json.loads(record.get("parent_chain") or "[]")
                     except (json.JSONDecodeError, TypeError):
                         parent_chain = []
 
                     try:
-                        cross_references = json.loads(record.cross_references)
+                        cross_references = json.loads(
+                            record.get("cross_references") or "[]"
+                        )
                     except (json.JSONDecodeError, TypeError):
                         cross_references = []
 
                     try:
-                        subsection_ids = json.loads(record.subsection_ids)
+                        subsection_ids = json.loads(
+                            record.get("subsection_ids") or "[]"
+                        )
                     except (json.JSONDecodeError, TypeError):
                         subsection_ids = []
 
                     # Map chunk_type string to ChunkType enum
                     try:
-                        chunk_type = ChunkType(record.chunk_type)
+                        chunk_type = ChunkType(record.get("chunk_type"))
                     except (ValueError, KeyError):
                         chunk_type = ChunkType.CONTENT
 
                     chunks.append(
                         DocumentChunk(
-                            id=record.id,
-                            source_path=record.source_path,
-                            chunk_index=record.chunk_index,
-                            content=record.content,
+                            id=record["id"],
+                            source_path=record.get("source_path", ""),
+                            chunk_index=record.get("chunk_index", 0),
+                            content=record.get("content", ""),
                             parent_chain=parent_chain,
-                            section_id=record.section_id,
+                            section_id=record.get("section_id", ""),
                             chunk_type=chunk_type,
                             cross_references=cross_references,
                             heading_level=0,
-                            contextualized_content=record.contextualized_content or "",
-                            mtime=float(record.mtime),
-                            defined_term=record.defined_term or "",
-                            defined_term_normalized=record.defined_term_normalized
+                            contextualized_content=record.get("contextualized_content")
+                            or "",
+                            mtime=float(record.get("mtime") or 0.0),
+                            defined_term=record.get("defined_term") or "",
+                            defined_term_normalized=record.get(
+                                "defined_term_normalized"
+                            )
                             or "",
                             subsection_ids=subsection_ids,
                         )
@@ -494,7 +598,6 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Returns:
             Markdown content string.
         """
-        from holodeck.lib.file_processor import FileProcessor
         from holodeck.models.test_case import FileInput
 
         path = Path(file_path)
@@ -510,7 +613,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             cache=None,
         )
 
-        processor = FileProcessor()
+        processor = self._get_file_processor()
         processed = processor.process_file(file_input)
 
         if processed.error:
@@ -637,6 +740,13 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
             # Remap chunk keys for stable record IDs (remote sources)
             self._remap_chunk_keys(chunks, file_path)
+
+            # Qdrant rejects arbitrary-string point IDs (only UUID/uint64).
+            # Coerce human-readable chunk IDs to deterministic UUIDv5 so
+            # re-ingestion stays idempotent and the chunk_map (built later
+            # from these same chunks) matches what qdrant returns at search.
+            if self._provider == "qdrant":
+                self._coerce_chunk_ids_to_uuid(chunks)
 
             # 3.5 Filter out header-only chunks (no substantive content)
             chunks = [c for c in chunks if c.chunk_type != ChunkType.HEADER]
@@ -782,6 +892,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 defined_term_normalized=chunk.defined_term_normalized or "",
                 subsection_ids=json.dumps(chunk.subsection_ids),
                 content_hash=content_hash,
+                searchable_text=self._build_searchable_text(chunk),
             )
             records.append(record)
 

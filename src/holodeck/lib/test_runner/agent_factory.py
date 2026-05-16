@@ -983,6 +983,7 @@ class AgentFactory:
                 chat_service=self._llm_service,
                 force_ingest=self._force_ingest,
                 provider_type=provider_type,
+                execution_config=self._execution_config,
             )
         except ToolInitializerError as e:
             raise AgentFactoryError(

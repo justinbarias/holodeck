@@ -3520,6 +3520,7 @@ class TestRegisterHierarchicalDocumentToolsDelegation:
                 chat_service=factory._llm_service,
                 force_ingest=factory._force_ingest,
                 provider_type="openai",
+                execution_config=None,
             )
 
     @pytest.mark.asyncio

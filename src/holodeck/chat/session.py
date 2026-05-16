@@ -58,7 +58,10 @@ class ChatSessionManager:
         logger.info(f"Starting chat session for agent: {self.agent_config.name}")
 
         # Constructor does no I/O — errors surface on first turn (lazy-init)
-        self._executor = AgentExecutor(self.agent_config)
+        self._executor = AgentExecutor(
+            self.agent_config,
+            llm_timeout=self.config.llm_timeout,
+        )
 
         # Create chat session with empty history
         self.session = ChatSession(

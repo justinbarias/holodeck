@@ -52,6 +52,33 @@ logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("holodeck.keyword_search")
 
 
+# Tokens shorter than this are dropped from the Qdrant full-text leg. Single
+# characters and one-letter tokens generate too many false matches when ORed
+# across thousands of chunks; two chars is the smallest useful unit (covers
+# short tickers like "K", "C" would still get caught via vector similarity).
+_QDRANT_MIN_TOKEN_LEN = 2
+_QDRANT_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def _tokenize_qdrant_query(query: str) -> list[str]:
+    """Tokenize a free-text query into terms for Qdrant ``MatchText`` clauses.
+
+    Splits on word boundaries, lowercases, and drops tokens shorter than
+    :data:`_QDRANT_MIN_TOKEN_LEN`. Duplicates are removed while preserving
+    first-seen order so ``MatchText`` clauses don't blow up for repeated
+    keywords. Returns an empty list for queries that contain no usable
+    tokens (e.g. punctuation only).
+    """
+    seen: set[str] = set()
+    tokens: list[str] = []
+    for raw in _QDRANT_TOKEN_RE.findall(query.lower()):
+        if len(raw) < _QDRANT_MIN_TOKEN_LEN or raw in seen:
+            continue
+        seen.add(raw)
+        tokens.append(raw)
+    return tokens
+
+
 class KeywordSearchStrategy(str, Enum):
     """Keyword search strategy based on provider capabilities.
 
@@ -878,10 +905,17 @@ class HybridSearchExecutor:
         query_embedding: list[float],
         top_k: int,
     ) -> list[tuple[str, float]]:
-        """Execute native hybrid search using SK's hybrid_search() API.
+        """Execute native hybrid search using the provider's hybrid API.
 
-        Uses the provider's native hybrid search capability which combines
-        vector similarity and full-text search in a single query.
+        Dispatches by provider because SK's generic ``coll.hybrid_search()``
+        is broken for Qdrant: it builds the keyword leg with
+        ``MatchAny(any=[kw])`` (exact-value equality) over a single ``values``
+        argument that gets iterated character-by-character when a string is
+        passed. The result is a keyword filter that matches zero documents
+        in a free-text field, silently degrading hybrid → vector-only.
+        For Qdrant we drop down to the raw client and use ``MatchText``
+        (Qdrant's full-text primitive) per whitespace-tokenized query term.
+        Other native-hybrid providers keep the SK path.
 
         Args:
             query: Search query string
@@ -891,6 +925,11 @@ class HybridSearchExecutor:
         Returns:
             List of (chunk_id, score) tuples
         """
+        if self.provider == "qdrant":
+            return await self._native_hybrid_search_qdrant(
+                query, query_embedding, top_k
+            )
+
         results: list[tuple[str, float]] = []
 
         async with self.collection as coll:
@@ -898,7 +937,12 @@ class HybridSearchExecutor:
                 query,
                 vector=query_embedding,
                 vector_property_name="embedding",
-                additional_property_name="content",  # needs is_full_text_indexed=True
+                # `searchable_text` is the concat field carrying
+                # contextualized_content + parent_chain + section_id +
+                # defined_term + cross_refs + filename. Built at write
+                # time by HierarchicalDocumentTool._build_searchable_text;
+                # marked is_full_text_indexed=True on the record class.
+                additional_property_name="searchable_text",
                 top=top_k,
             )
 
@@ -908,6 +952,75 @@ class HybridSearchExecutor:
                 results.append((record.id, float(score)))
 
         return results
+
+    async def _native_hybrid_search_qdrant(
+        self,
+        query: str,
+        query_embedding: list[float],
+        top_k: int,
+    ) -> list[tuple[str, float]]:
+        """Qdrant-native hybrid search bypassing SK's broken keyword leg.
+
+        Builds a two-source RRF fusion query directly against the Qdrant
+        client: one vector prefetch and one full-text prefetch where each
+        token from the query is matched with ``MatchText`` (the correct
+        full-text primitive) and OR-combined via ``should=``. Uses a wider
+        prefetch pool than SK's hardcoded ``limit=options.top`` so the
+        fusion stage actually has candidates to merge.
+
+        If the query tokenizes to nothing (e.g. punctuation only), falls
+        back to vector-only so ``FusionQuery`` still has a non-empty source.
+
+        Args:
+            query: Search query string
+            query_embedding: Pre-computed query embedding vector
+            top_k: Maximum number of results
+
+        Returns:
+            List of (chunk_id, score) tuples
+        """
+        from qdrant_client.http import models as qm
+
+        tokens = _tokenize_qdrant_query(query)
+        # Prefetch ~4x the requested top_k (min 20) so RRF has enough
+        # candidates from each leg to find overlap. SK hardcodes top_k,
+        # which makes hybrid degenerate to vector-only on narrow queries.
+        prefetch_limit = max(top_k * 4, 20)
+
+        prefetch: list[qm.Prefetch] = [
+            qm.Prefetch(
+                query=query_embedding,
+                using="embedding",
+                limit=prefetch_limit,
+            ),
+        ]
+        if tokens:
+            text_clauses = [
+                qm.FieldCondition(
+                    key="searchable_text",
+                    match=qm.MatchText(text=tok),
+                )
+                for tok in tokens
+            ]
+            prefetch.append(
+                qm.Prefetch(
+                    filter=qm.Filter(should=text_clauses),
+                    limit=prefetch_limit,
+                )
+            )
+
+        async with self.collection as coll:
+            client = coll.qdrant_client
+            response = await client.query_points(
+                collection_name=coll.collection_name,
+                prefetch=prefetch,
+                query=qm.FusionQuery(fusion=qm.Fusion.RRF),
+                limit=top_k,
+                with_payload=False,
+                with_vectors=False,
+            )
+
+        return [(str(p.id), float(p.score)) for p in response.points]
 
     async def _fallback_hybrid_search(
         self,

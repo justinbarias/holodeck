@@ -180,6 +180,7 @@ class AgentServer:
         return _Executor(
             self.agent_config,
             release_transport_after_turn=self._release_transport,
+            llm_timeout=self._get_timeout(),
         )
 
     def _get_or_create_session(
@@ -399,7 +400,10 @@ class AgentServer:
 
             # Create protocol with accept header for format negotiation
             accept_header = request.headers.get("accept")
-            protocol = AGUIProtocol(accept_header=accept_header)
+            protocol = AGUIProtocol(
+                accept_header=accept_header,
+                execution_config=self.execution_config,
+            )
 
             # Stream response
             return StreamingResponse(

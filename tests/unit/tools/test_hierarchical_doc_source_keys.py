@@ -4,7 +4,7 @@ Tests stable record keys and content-hash change detection for remote sources.
 """
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -135,16 +135,16 @@ class TestNeedsReingestRemote:
         test_file.write_text("hello")
         content_hash = tool._compute_content_hash(test_file)
 
-        mock_record = MagicMock()
-        mock_record.content_hash = content_hash
-
         mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=[mock_record])
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=False)
         tool._collection = mock_collection
 
-        result = await tool._needs_reingest(test_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(return_value=[{"content_hash": content_hash}]),
+        ):
+            result = await tool._needs_reingest(test_file)
         assert result is False
 
     @pytest.mark.asyncio
@@ -155,16 +155,16 @@ class TestNeedsReingestRemote:
         test_file = tmp_path / "file.txt"
         test_file.write_text("new content")
 
-        mock_record = MagicMock()
-        mock_record.content_hash = "old_hash"
-
         mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=[mock_record])
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=False)
         tool._collection = mock_collection
 
-        result = await tool._needs_reingest(test_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(return_value=[{"content_hash": "old_hash"}]),
+        ):
+            result = await tool._needs_reingest(test_file)
         assert result is True
 
     @pytest.mark.asyncio
@@ -175,16 +175,16 @@ class TestNeedsReingestRemote:
         test_file = tmp_path / "file.txt"
         test_file.write_text("content")
 
-        mock_record = MagicMock()
-        mock_record.content_hash = ""
-
         mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=[mock_record])
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=False)
         tool._collection = mock_collection
 
-        result = await tool._needs_reingest(test_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(return_value=[{"content_hash": ""}]),
+        ):
+            result = await tool._needs_reingest(test_file)
         assert result is True
 
 
@@ -199,16 +199,16 @@ class TestNeedsReingestLocal:
         test_file.write_text("content")
         mtime = test_file.stat().st_mtime
 
-        mock_record = MagicMock()
-        mock_record.mtime = mtime
-
         mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=[mock_record])
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=False)
         tool._collection = mock_collection
 
-        result = await tool._needs_reingest(test_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(return_value=[{"mtime": mtime}]),
+        ):
+            result = await tool._needs_reingest(test_file)
         assert result is False
 
     @pytest.mark.asyncio
@@ -218,14 +218,14 @@ class TestNeedsReingestLocal:
         test_file = tmp_path / "file.txt"
         test_file.write_text("content")
 
-        mock_record = MagicMock()
-        mock_record.mtime = 1000.0
-
         mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=[mock_record])
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=False)
         tool._collection = mock_collection
 
-        result = await tool._needs_reingest(test_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(return_value=[{"mtime": 1000.0}]),
+        ):
+            result = await tool._needs_reingest(test_file)
         assert result is True

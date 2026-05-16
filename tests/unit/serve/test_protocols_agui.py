@@ -427,6 +427,27 @@ class TestAGUIProtocolProperties:
         protocol = AGUIProtocol(accept_header="text/event-stream")
         assert protocol._accept_header == "text/event-stream"
 
+    def test_protocol_default_execution_config_is_none(self) -> None:
+        """When omitted, the multimodal FileProcessor path falls back to
+        FileProcessor's hardcoded defaults — regression guard for the prior
+        agui.py:663 bug that hardcoded ``execution_config=None`` even when
+        the server had one configured."""
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        protocol = AGUIProtocol()
+        assert protocol._execution_config is None
+
+    def test_protocol_stores_execution_config(self) -> None:
+        """The AgentServer-provided ExecutionConfig must reach the protocol
+        so file_timeout / download_timeout from agent.yaml apply to
+        binary attachments."""
+        from holodeck.models.config import ExecutionConfig
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        cfg = ExecutionConfig(file_timeout=180, download_timeout=90)
+        protocol = AGUIProtocol(execution_config=cfg)
+        assert protocol._execution_config is cfg
+
 
 # =============================================================================
 # Additional coverage tests for message extraction edge cases

@@ -228,6 +228,16 @@ class TestCLIArgumentParsing:
                 id="timeout_option",
             ),
             pytest.param(
+                ["--limit", "2"],
+                "limit option (long form)",
+                id="limit_long",
+            ),
+            pytest.param(
+                ["-n", "2"],
+                "limit option (short form)",
+                id="limit_short",
+            ),
+            pytest.param(
                 [
                     "--output",
                     "report.json",
@@ -269,6 +279,70 @@ class TestCLIArgumentParsing:
 
                 # Should not complain about invalid option
                 assert "no such option" not in result.output.lower()
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+
+class TestCLILimitOption:
+    """Tests for the ``--limit`` / ``-n`` flag that caps the number of test
+    cases executed in a single run."""
+
+    @pytest.mark.parametrize(
+        "limit, total, expected_after",
+        [
+            (2, 5, 2),  # cap < total → truncate
+            (5, 5, 5),  # cap == total → no change
+            (10, 3, 3),  # cap > total → no change
+        ],
+    )
+    def test_limit_truncates_test_cases(
+        self, limit: int, total: int, expected_after: int
+    ):
+        """``--limit N`` slices ``agent.test_cases`` to the first N before
+        the executor runs."""
+        runner = CliRunner()
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        agent = _create_agent_with_tests(total)
+        try:
+            with (
+                patch("holodeck.config.loader.ConfigLoader") as mock_loader_class,
+                patch("holodeck.cli.commands.test.TestExecutor") as mock_executor,
+                patch("holodeck.cli.commands.test.ProgressIndicator"),
+            ):
+                mock_loader = MagicMock()
+                mock_loader.load_agent_yaml.return_value = agent
+                mock_loader_class.return_value = mock_loader
+
+                mock_instance = MagicMock()
+                mock_instance.execute_tests = AsyncMock(
+                    return_value=_create_mock_report(tmp_path)
+                )
+                mock_instance.shutdown = AsyncMock()
+                mock_executor.return_value = mock_instance
+
+                runner.invoke(test, [tmp_path, "--limit", str(limit)])
+
+                # The command mutates agent.test_cases in place, then constructs
+                # TestExecutor with it. Verify both the live list and the
+                # constructor arg agree.
+                assert agent.test_cases is not None
+                assert len(agent.test_cases) == expected_after
+                _, kwargs = mock_executor.call_args
+                assert len(kwargs["agent_config"].test_cases) == expected_after
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+
+    def test_limit_zero_rejected_by_click(self):
+        """``--limit 0`` is rejected by Click's IntRange validator (min=1)."""
+        runner = CliRunner()
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            result = runner.invoke(test, [tmp_path, "--limit", "0"])
+            assert result.exit_code != 0
+            assert "limit" in result.output.lower()
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 

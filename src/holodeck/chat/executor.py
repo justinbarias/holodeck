@@ -143,6 +143,7 @@ class AgentExecutor:
         on_execution_start: Callable[[str], None] | None = None,
         on_execution_complete: Callable[[AgentResponse], None] | None = None,
         release_transport_after_turn: bool = False,
+        llm_timeout: int | float | None = None,
     ) -> None:
         """Initialize executor with agent configuration.
 
@@ -158,6 +159,10 @@ class AgentExecutor:
                 in a ``_TaskBoundSession`` actor so the SDK client stays in
                 a single background task.  Required for HTTP servers where
                 each request runs in a different async task context.
+            llm_timeout: Per-turn LLM invocation timeout in seconds. When
+                set, ``session.send`` / ``session.send_streaming`` are
+                wrapped with ``asyncio.wait_for(timeout=llm_timeout)``.
+                Mirrors the pattern used by ``TestExecutor``.
         """
         self.agent_config = agent_config
         self._backend: AgentBackend | None = backend
@@ -166,6 +171,7 @@ class AgentExecutor:
         self.on_execution_start = on_execution_start
         self.on_execution_complete = on_execution_complete
         self._use_task_bound_session = release_transport_after_turn
+        self._llm_timeout = float(llm_timeout) if llm_timeout else None
 
         logger.info(f"AgentExecutor initialized for agent: {agent_config.name}")
 
@@ -232,8 +238,14 @@ class AgentExecutor:
             # Lazy initialize backend and session
             await self._ensure_backend_and_session()
 
-            # Invoke agent via backend session
-            result: ExecutionResult = await self._session.send(message)  # type: ignore[union-attr]
+            # Invoke agent via backend session (timeout-wrapped when configured)
+            if self._llm_timeout is not None:
+                result: ExecutionResult = await asyncio.wait_for(
+                    self._session.send(message),  # type: ignore[union-attr]
+                    timeout=self._llm_timeout,
+                )
+            else:
+                result = await self._session.send(message)  # type: ignore[union-attr]
             elapsed = time.time() - start_time
 
             # Extract content from execution result
@@ -272,6 +284,14 @@ class AgentExecutor:
         except BackendInitError as e:
             logger.error(f"Agent execution failed: {e}", exc_info=True)
             raise RuntimeError(f"Agent execution failed: {e}") from e
+        except asyncio.TimeoutError:
+            # llm_timeout exceeded — let the caller distinguish timeout
+            # from crash instead of wrapping it as a generic RuntimeError.
+            logger.warning(
+                "Agent invocation exceeded llm_timeout=%ss",
+                self._llm_timeout,
+            )
+            raise
         except RuntimeError:
             raise
         except Exception as e:
@@ -293,7 +313,34 @@ class AgentExecutor:
         try:
             await self._ensure_backend_and_session()
             collected: list[str] = []
-            async for chunk in self._session.send_streaming(message):  # type: ignore[union-attr]
+            stream = self._session.send_streaming(message)  # type: ignore[union-attr]
+            # Enforce llm_timeout as a deadline across the whole stream —
+            # each chunk must arrive within the remaining budget; otherwise
+            # the next __anext__ is cancelled and TimeoutError propagates.
+            deadline = (
+                time.monotonic() + self._llm_timeout
+                if self._llm_timeout is not None
+                else None
+            )
+            while True:
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise asyncio.TimeoutError(
+                            f"streaming response exceeded llm_timeout="
+                            f"{self._llm_timeout}s"
+                        )
+                    try:
+                        chunk = await asyncio.wait_for(
+                            stream.__anext__(), timeout=remaining
+                        )
+                    except StopAsyncIteration:
+                        break
+                else:
+                    try:
+                        chunk = await stream.__anext__()
+                    except StopAsyncIteration:
+                        break
                 collected.append(chunk)
                 yield chunk
             # Update history after stream completes

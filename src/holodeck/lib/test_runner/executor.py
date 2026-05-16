@@ -62,6 +62,7 @@ from holodeck.lib.evaluators.nlp_metrics import (
     METEOREvaluator,
     ROUGEEvaluator,
 )
+from holodeck.lib.evaluators.response_path import extract as _extract_response_path
 from holodeck.lib.file_processor import FileProcessor
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_exception
@@ -1610,8 +1611,42 @@ class TestExecutor:
                     )
                     continue
 
+                # Per-metric JSON extraction. Only ``EvaluationMetric``
+                # carries ``response_path``; other metric variants (GEval,
+                # RAG, Code) don't. On extraction failure we record a
+                # failed MetricResult with a descriptive error and skip
+                # the evaluator call — running it against a garbled string
+                # would just produce a duplicate, less informative failure.
+                effective_response = agent_response
+                if (
+                    isinstance(metric_config, EvaluationMetric)
+                    and metric_config.response_path is not None
+                ):
+                    extracted, extract_err = _extract_response_path(
+                        agent_response, metric_config.response_path
+                    )
+                    if extract_err is not None:
+                        elapsed_ms = int((time.time() - start_time) * 1000)
+                        metric_results.append(
+                            MetricResult(
+                                metric_name=metric_name,
+                                kind=_metric_kind(metric_config),
+                                score=0.0,
+                                threshold=metric_config.threshold,
+                                passed=False,
+                                scale="0-1",
+                                error=extract_err,
+                                retry_count=0,
+                                evaluation_time_ms=elapsed_ms,
+                                model_used=None,
+                                reasoning=None,
+                            )
+                        )
+                        continue
+                    effective_response = extracted or ""
+
                 kwargs_builder = EvalKwargsBuilder(
-                    agent_response=agent_response,
+                    agent_response=effective_response,
                     input_query=input_query,
                     ground_truth=ground_truth,
                     file_content=file_content,
@@ -1628,7 +1663,18 @@ class TestExecutor:
                 # (e.g., "bleu", "meteor"). Azure AI metrics use "score".
                 score = result.get(metric_name, result.get("score", 0.0))
                 threshold = metric_config.threshold
-                passed = score >= threshold if threshold else True
+                # When an explicit threshold is configured, treat it as the
+                # source of truth and compare directly against the score.
+                # Otherwise trust the evaluator's own `passed` verdict
+                # (deterministic evaluators like numeric/equality return a
+                # meaningful boolean); fall back to ``score > 0`` for
+                # evaluators that don't emit one. The previous unconditional
+                # ``True`` default produced false-positive PASS rows when an
+                # evaluator scored 0.0 but no threshold was set.
+                if threshold is not None:
+                    passed = score >= threshold
+                else:
+                    passed = bool(result.get("passed", score > 0))
                 # Extract reasoning (DeepEval metrics return this, NLP metrics don't)
                 reasoning = result.get("reasoning")
 

@@ -326,6 +326,7 @@ class ToolInitManager:
                         source_override=(
                             resolved.local_path if resolved.is_remote else None
                         ),
+                        execution_config=self._agent.execution,
                     )
 
                 job.state = InitJobState.COMPLETED

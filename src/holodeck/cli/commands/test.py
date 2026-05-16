@@ -156,6 +156,16 @@ def test() -> None:
         "Overrides YAML / env / defaults. See feature 032 FR-009a."
     ),
 )
+@click.option(
+    "--limit",
+    "-n",
+    type=click.IntRange(min=1),
+    default=None,
+    help=(
+        "Run only the first N test cases (in the order they appear in the "
+        "configuration). Useful for smoke tests."
+    ),
+)
 def run(
     agent_config: str,
     output: str | None,
@@ -165,6 +175,7 @@ def run(
     timeout: int | None,
     force_ingest: bool,
     parallel_test_cases: int | None,
+    limit: int | None,
 ) -> None:
     """Execute agent test cases with evaluation metrics.
 
@@ -223,6 +234,24 @@ def run(
             f"Resolved execution config: verbose={resolved_config.verbose}, "
             f"quiet={resolved_config.quiet}, llm_timeout={resolved_config.llm_timeout}"
         )
+
+        # Apply --limit cap (slice the first N test cases). Done after the
+        # agent is loaded so the executor, progress indicator, and EvalRun
+        # persistence all see the truncated list consistently.
+        if limit is not None and agent.test_cases:
+            original_count = len(agent.test_cases)
+            if limit < original_count:
+                agent.test_cases = agent.test_cases[:limit]
+                logger.info(
+                    "Test cases capped by --limit: keeping %d of %d",
+                    limit,
+                    original_count,
+                )
+                if not effective_quiet:
+                    click.echo(
+                        f"--limit {limit}: running {limit} of "
+                        f"{original_count} test cases"
+                    )
 
         # Get total test count
         total_tests = len(agent.test_cases) if agent.test_cases else 0

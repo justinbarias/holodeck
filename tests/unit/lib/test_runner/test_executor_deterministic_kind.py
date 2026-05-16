@@ -26,7 +26,18 @@ from holodeck.models.test_case import TestCaseModel as _TestCaseModel
 from holodeck.models.token_usage import TokenUsage
 
 
-def _agent_for(metric: str) -> Agent:
+def _agent_for(
+    metric: str,
+    *,
+    ground_truth: str = "hello",
+    response_path: str | None = None,
+    relative_tolerance: float = 0.0,
+) -> Agent:
+    metric_kwargs: dict[str, object] = {"metric": metric}
+    if response_path is not None:
+        metric_kwargs["response_path"] = response_path
+    if relative_tolerance:
+        metric_kwargs["relative_tolerance"] = relative_tolerance
     return Agent(
         name="determ-agent",
         description="deterministic evaluator wiring",
@@ -38,18 +49,30 @@ def _agent_for(metric: str) -> Agent:
             _TestCaseModel(
                 name="single",
                 input="q",
-                ground_truth="hello",
+                ground_truth=ground_truth,
             )
         ],
         evaluations=EvaluationConfig(
-            metrics=[EvaluationMetric(metric=metric)],
+            metrics=[EvaluationMetric(**metric_kwargs)],  # type: ignore[arg-type]
         ),
         execution=None,
     )
 
 
-async def _run(metric: str, agent_response: str) -> list:
-    agent = _agent_for(metric)
+async def _run(
+    metric: str,
+    agent_response: str,
+    *,
+    ground_truth: str = "hello",
+    response_path: str | None = None,
+    relative_tolerance: float = 0.0,
+) -> list:
+    agent = _agent_for(
+        metric,
+        ground_truth=ground_truth,
+        response_path=response_path,
+        relative_tolerance=relative_tolerance,
+    )
     loader = Mock(spec=ConfigLoader)
     loader.load_agent_yaml.return_value = agent
     loader.resolve_execution_config.return_value = ExecutionConfig(llm_timeout=60)
@@ -88,6 +111,106 @@ async def test_equality_produces_metric_result_with_kind_standard() -> None:
     assert mr.metric_name == "equality"
     assert mr.kind == "standard"
     assert 0.0 <= mr.score <= 1.0
+    assert mr.score == 1.0
+    assert mr.passed is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_numeric_failed_parse_reports_passed_false_without_threshold() -> None:
+    """Regression: when an evaluator returns ``passed=False`` (e.g. the
+    numeric parse rejected a prose response) and no ``threshold:`` is set
+    on the metric, the executor must propagate ``passed=False`` instead of
+    blindly defaulting to ``True``.
+
+    Previously the executor used
+    ``passed = score >= threshold if threshold else True``, which masked
+    every score-0 failure as a PASS whenever no threshold was configured.
+    """
+    # Agent emits a prose response that NumericEvaluator cannot parse.
+    # Expected: score=0.0, passed=False.
+    results = await _run("numeric", agent_response="approximately 31903.6 million")
+    assert len(results) == 1
+    mr = results[0]
+    assert mr.metric_name == "numeric"
+    assert mr.score == 0.0
+    assert mr.passed is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_numeric_response_path_grades_json_leaf() -> None:
+    """``response_path`` on a numeric metric should grade the leaf field
+    of a JSON envelope instead of the raw string. Without the path,
+    ``float('{"answer": 0.5}')`` would fail.
+    """
+    results = await _run(
+        "numeric",
+        agent_response='{"answer": 0.5}',
+        ground_truth="0.5",
+        response_path="answer",
+    )
+    assert len(results) == 1
+    mr = results[0]
+    assert mr.metric_name == "numeric"
+    assert mr.kind == "standard"
+    assert mr.score == 1.0
+    assert mr.passed is True
+    assert mr.error is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_numeric_response_path_non_json_fails_with_explanatory_error() -> None:
+    """When ``response_path`` is set but the response is not JSON, the
+    executor should record a failed MetricResult naming the path and
+    explaining the parse failure — not silently grade the prose.
+    """
+    results = await _run(
+        "numeric",
+        agent_response="approximately 0.5",
+        ground_truth="0.5",
+        response_path="answer",
+    )
+    assert len(results) == 1
+    mr = results[0]
+    assert mr.score == 0.0
+    assert mr.passed is False
+    assert mr.error is not None
+    assert "response_path='answer'" in mr.error
+    assert "not JSON" in mr.error
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_numeric_response_path_missing_key_fails() -> None:
+    results = await _run(
+        "numeric",
+        agent_response='{"other": 0.5}',
+        ground_truth="0.5",
+        response_path="answer",
+    )
+    assert len(results) == 1
+    mr = results[0]
+    assert mr.passed is False
+    assert mr.error is not None
+    assert "'answer'" in mr.error
+    assert "not found" in mr.error
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_equality_response_path_grades_json_leaf() -> None:
+    """``response_path`` is generic across standard metrics — equality too."""
+    results = await _run(
+        "equality",
+        agent_response='{"answer": "hello"}',
+        ground_truth="hello",
+        response_path="answer",
+    )
+    assert len(results) == 1
+    mr = results[0]
+    assert mr.metric_name == "equality"
     assert mr.score == 1.0
     assert mr.passed is True
 

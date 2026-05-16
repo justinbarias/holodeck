@@ -310,8 +310,8 @@ class TestAgent:
         assert len(agent.tools) == 50
 
     def test_agent_test_cases_max_limit(self) -> None:
-        """Test that agent cannot have more than 100 test cases."""
-        test_cases = [TestCase(input=f"Test case {i}") for i in range(101)]
+        """Test that agent cannot have more than 1000 test cases."""
+        test_cases = [TestCase(input=f"Test case {i}") for i in range(1001)]
         with pytest.raises(ValidationError) as exc_info:
             Agent(
                 name="test",
@@ -319,18 +319,18 @@ class TestAgent:
                 instructions=Instructions(inline="Test"),
                 test_cases=test_cases,
             )
-        assert "100" in str(exc_info.value).lower()
+        assert "1000" in str(exc_info.value).lower()
 
     def test_agent_test_cases_at_max_limit(self) -> None:
-        """Test that agent can have exactly 100 test cases."""
-        test_cases = [TestCase(input=f"Test case {i}") for i in range(100)]
+        """Test that agent can have exactly 1000 test cases."""
+        test_cases = [TestCase(input=f"Test case {i}") for i in range(1000)]
         agent = Agent(
             name="test",
             model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
             instructions=Instructions(inline="Test"),
             test_cases=test_cases,
         )
-        assert len(agent.test_cases) == 100
+        assert len(agent.test_cases) == 1000
 
     def test_agent_no_extra_fields(self) -> None:
         """Test that Agent rejects extra fields."""

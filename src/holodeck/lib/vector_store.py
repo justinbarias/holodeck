@@ -737,9 +737,13 @@ def create_hierarchical_document_record_class(
         section_id: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(
             default=""
         )
-        content: Annotated[str, VectorStoreField("data", is_full_text_indexed=True)] = (
-            field(default="")
-        )
+        # Display-only fields. Keyword search targets `searchable_text` below
+        # (built from a concat of contextualized_content + parent_chain +
+        # section_id + defined_term + cross_refs + filename, with implicit
+        # boost via repetition — see _build_searchable_text in
+        # hierarchical_document_tool.py). SK's hybrid_search only takes one
+        # additional_property_name, so we route everything through one field.
+        content: Annotated[str, VectorStoreField("data")] = field(default="")
         embedding: Annotated[
             list[float] | None,
             VectorStoreField(
@@ -754,6 +758,9 @@ def create_hierarchical_document_record_class(
         contextualized_content: Annotated[str, VectorStoreField("data")] = field(
             default=""
         )
+        searchable_text: Annotated[
+            str, VectorStoreField("data", is_full_text_indexed=True)
+        ] = field(default="")
         mtime: Annotated[float, VectorStoreField("data")] = field(default=0.0)
         file_type: Annotated[str, VectorStoreField("data")] = field(default="")
         defined_term: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(
@@ -1119,11 +1126,21 @@ def get_collection_factory(
                 **base_kwargs,
             )
 
-        # Qdrant - pass parsed parameters directly to QdrantCollection
+        # Qdrant - construct the AsyncQdrantClient ourselves and pass it as
+        # `client=` so SK marks it managed_client=False. Otherwise SK calls
+        # `qdrant_client.close()` on every `async with collection: …` exit,
+        # and the second `async with` on the same collection fails with
+        # "Cannot send a request, as the client has been closed." Multiple
+        # enter/exit cycles per tool are normal (load → needs_reingest →
+        # store → search), so we keep client lifetime tied to the tool, not
+        # to the context manager.
         if provider == "qdrant":
+            from qdrant_client import AsyncQdrantClient
+
+            qdrant_client = AsyncQdrantClient(**qdrant_params)
             return collection_class[str, record_class](
+                client=qdrant_client,
                 **base_kwargs,
-                **qdrant_params,
             )
 
         # Pinecone - pass parsed parameters to PineconeCollection

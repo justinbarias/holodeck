@@ -849,7 +849,7 @@ class TestInitializeSingleTool:
             await initialize_single_tool(agent, "vs_single")
 
             mock_embed.assert_called_once_with(agent)
-            mock_vs_cls.assert_called_once_with(tool)
+            mock_vs_cls.assert_called_once_with(tool, execution_config=None)
             mock_vs_instance.set_embedding_service.assert_called_once()
             mock_vs_instance.initialize.assert_called_once()
 
@@ -873,7 +873,7 @@ class TestInitializeSingleTool:
         ):
             await initialize_single_tool(agent, "hd_single")
 
-            mock_hd_cls.assert_called_once_with(tool)
+            mock_hd_cls.assert_called_once_with(tool, execution_config=None)
             mock_hd_instance.set_embedding_service.assert_called_once()
             mock_hd_instance.initialize.assert_called_once()
 

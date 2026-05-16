@@ -6,6 +6,10 @@
   "type": "object",
   "required": ["name", "model", "instructions"],
   "additionalProperties": false,
+  "not": {
+    "required": ["test_cases", "test_cases_file"],
+    "description": "test_cases and test_cases_file are mutually exclusive"
+  },
   "properties": {
     "name": {
       "type": "string",
@@ -52,6 +56,10 @@
       "maxItems": 50,
       "description": "Agent tools (vectorstore, function, mcp, prompt)"
     },
+    "tool_filtering": {
+      "$ref": "#/$defs/ToolFilterConfig",
+      "description": "Automatic tool filtering configuration. When enabled, dynamically filters tools per request based on semantic similarity to reduce token usage."
+    },
     "evaluations": {
       "$ref": "#/$defs/EvaluationConfig",
       "description": "Evaluation configuration with 'model' (optional default LLM) and 'metrics' array"
@@ -60,7 +68,12 @@
       "type": "array",
       "items": { "$ref": "#/$defs/TestCase" },
       "maxItems": 100,
-      "description": "Test scenarios"
+      "description": "Test scenarios. Mutually exclusive with 'test_cases_file'."
+    },
+    "test_cases_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path to an external YAML file containing test cases (resolved relative to the agent.yaml directory). The file may be a top-level list of test-case dicts or a dict with a 'test_cases:' key. Mutually exclusive with the inline 'test_cases' field."
     },
     "execution": {
       "$ref": "#/$defs/ExecutionConfig"
@@ -861,8 +874,18 @@
             },
             "metric": {
               "type": "string",
-              "minLength": 1,
-              "description": "Metric name (e.g., groundedness)"
+              "enum": [
+                "groundedness",
+                "relevance",
+                "coherence",
+                "fluency",
+                "bleu",
+                "rouge",
+                "meteor",
+                "equality",
+                "numeric"
+              ],
+              "description": "Built-in metric name. 'equality' and 'numeric' are deterministic in-process evaluators (US4); the rest are LLM-judged."
             },
             "threshold": {
               "type": "number",
@@ -898,6 +921,48 @@
             "custom_prompt": {
               "type": "string",
               "description": "Custom evaluation prompt"
+            },
+            "case_insensitive": {
+              "type": "boolean",
+              "default": false,
+              "description": "[equality] Lowercase both sides before compare."
+            },
+            "strip_whitespace": {
+              "type": "boolean",
+              "default": false,
+              "description": "[equality] Collapse whitespace and trim before compare."
+            },
+            "strip_punctuation": {
+              "type": "boolean",
+              "default": false,
+              "description": "[equality] Remove string.punctuation before compare."
+            },
+            "absolute_tolerance": {
+              "type": "number",
+              "minimum": 0.0,
+              "default": 1e-6,
+              "description": "[numeric] Pass when abs(actual - expected) <= absolute_tolerance (FR-018)."
+            },
+            "relative_tolerance": {
+              "type": "number",
+              "minimum": 0.0,
+              "default": 0.0,
+              "description": "[numeric] Pass when abs(actual - expected) <= relative_tolerance * abs(expected)."
+            },
+            "accept_percent": {
+              "type": "boolean",
+              "default": false,
+              "description": "[numeric] Parse trailing '%' as /100."
+            },
+            "accept_thousands_separators": {
+              "type": "boolean",
+              "default": false,
+              "description": "[numeric] Strip ',' / '_' / NBSP before parse."
+            },
+            "response_path": {
+              "type": ["string", "null"],
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(\\[\\d+\\])*(\\.[A-Za-z_][A-Za-z0-9_-]*(\\[\\d+\\])*)*$",
+              "description": "Optional path into a JSON-encoded response (e.g. 'answer', 'items[0].score'). When set, the evaluator grades response[<path>] instead of the raw string."
             }
           }
         },
@@ -998,9 +1063,43 @@
               "description": "Fail test if metric fails"
             }
           }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "grader"],
+          "properties": {
+            "type": {
+              "const": "code",
+              "description": "User-supplied Python grader metric"
+            },
+            "grader": {
+              "type": "string",
+              "pattern": "^[\\w.]+:[\\w_]+$",
+              "description": "Import path 'module.path:callable_name'. Resolved at config load time."
+            },
+            "threshold": {
+              "type": ["number", "null"],
+              "description": "Applied if grader returns a float without explicit passed flag."
+            },
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether metric is enabled"
+            },
+            "fail_on_error": {
+              "type": "boolean",
+              "default": false,
+              "description": "If true, grader exceptions fail the whole test case."
+            },
+            "name": {
+              "type": ["string", "null"],
+              "description": "Optional display name; defaults to the callable name."
+            }
+          }
         }
       ],
-      "description": "Evaluation metric (discriminated by 'type' field: standard, geval, or rag)"
+      "description": "Evaluation metric (discriminated by 'type' field: standard, geval, rag, or code)"
     },
     "EvaluationConfig": {
       "type": "object",
@@ -1050,31 +1149,219 @@
       "oneOf": [{ "required": ["path"] }, { "required": ["url"] }],
       "description": "Multimodal file input (path OR url required)"
     },
-    "TestCase": {
+    "ToolFilterConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable tool filtering globally."
+        },
+        "top_k": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 5,
+          "description": "Maximum tools per request (1-50)."
+        },
+        "similarity_threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.3,
+          "description": "Minimum similarity score for inclusion (0.0-1.0)."
+        },
+        "always_include": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": [],
+          "description": "Tool names always included in context regardless of score."
+        },
+        "always_include_top_n_used": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20,
+          "default": 3,
+          "description": "Number of most-used tools to always include (0-20)."
+        },
+        "search_method": {
+          "type": "string",
+          "enum": ["semantic", "bm25", "hybrid"],
+          "default": "semantic",
+          "description": "Tool search method."
+        }
+      },
+      "description": "Configuration for automatic tool filtering. Reduces token usage by selecting only the most relevant tools per request."
+    },
+    "ArgMatcher": {
+      "description": "Per-argument matcher used inside ExpectedTool.args. A scalar/list/dict-without-matcher-keys is treated as a literal value (exact equality, with int/float numeric equivalence). A single-key object {fuzzy: <pattern>} or {regex: <pattern>} selects a tolerant or anchored-regex match. Discrimination is shape-based — `anyOf` is intentional.",
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fuzzy"],
+          "properties": {
+            "fuzzy": {
+              "type": "string",
+              "description": "Case/whitespace/separator-tolerant numeric-aware match pattern."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["regex"],
+          "properties": {
+            "regex": {
+              "type": "string",
+              "format": "regex",
+              "description": "Anchored regex full-match over str(actual)."
+            }
+          }
+        },
+        { "type": ["string", "number", "boolean", "null", "array"] },
+        { "type": "object" }
+      ]
+    },
+    "ExpectedTool": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Tool name — case-sensitive substring match (FR-003)."
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/ArgMatcher" },
+          "description": "Per-arg matcher map (FR-004). Each value is an ArgMatcher (literal, fuzzy, or regex)."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Minimum number of matching calls."
+        }
+      },
+      "description": "Object form of an expected tool assertion (FR-003)."
+    },
+    "ExpectedToolEntry": {
+      "description": "Either a bare tool name string (legacy) or an ExpectedTool object (US3).",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "$ref": "#/$defs/ExpectedTool" }
+      ]
+    },
+    "Turn": {
       "type": "object",
       "required": ["input"],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string", "description": "Test case identifier" },
         "input": {
           "type": "string",
           "minLength": 1,
-          "description": "User query/prompt"
+          "description": "User query for this turn."
         },
-        "expected_tools": { "type": "array", "items": { "type": "string" } },
-        "ground_truth": { "type": "string", "description": "Expected output" },
+        "ground_truth": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Expected output for this turn (non-empty if provided)."
+        },
+        "expected_tools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ExpectedToolEntry" },
+          "description": "Tools expected to be called during this turn. Mixed list of bare strings and ExpectedTool objects."
+        },
         "files": {
           "type": "array",
           "items": { "$ref": "#/$defs/FileInput" },
-          "maxItems": 10
+          "maxItems": 10,
+          "description": "Multimodal file inputs for this turn."
         },
-        "retrieval_context": { "type": "array", "items": { "type": "string" } },
+        "retrieval_context": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Retrieved text chunks for RAG evaluation on this turn."
+        },
         "evaluations": {
           "type": "array",
-          "items": { "$ref": "#/$defs/MetricType" }
+          "items": { "$ref": "#/$defs/MetricType" },
+          "description": "Per-turn metric overrides (FR-023)."
+        },
+        "turn_config": {
+          "type": "object",
+          "description": "Free-form per-turn config surfaced to code graders as `ctx.turn_config` (e.g. `turn_program`)."
         }
       },
-      "description": "Test case with multimodal support"
+      "description": "Single exchange within a multi-turn test case (feature 032)."
+    },
+    "TestCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": ["input"],
+          "not": { "required": ["turns"] }
+        },
+        {
+          "required": ["turns"],
+          "allOf": [
+            { "not": { "required": ["input"] } },
+            { "not": { "required": ["ground_truth"] } },
+            { "not": { "required": ["expected_tools"] } },
+            { "not": { "required": ["files"] } },
+            { "not": { "required": ["retrieval_context"] } }
+          ]
+        }
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Test case identifier"
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "description": "User query/prompt (single-turn). Mutually exclusive with `turns`."
+        },
+        "expected_tools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ExpectedToolEntry" },
+          "description": "Tools expected to be called. Mixed list of bare strings (legacy) and ExpectedTool objects (US3). Single-turn only."
+        },
+        "ground_truth": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Expected output for comparison. Single-turn only."
+        },
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FileInput" },
+          "maxItems": 10,
+          "description": "Multimodal file inputs. Single-turn only."
+        },
+        "retrieval_context": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Retrieved text chunks for RAG evaluation. Single-turn only."
+        },
+        "evaluations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/MetricType" },
+          "description": "Per-test metric overrides (standard, geval, rag, or code)."
+        },
+        "turns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Turn" },
+          "minItems": 1,
+          "description": "Ordered multi-turn conversation (feature 032). Mutually exclusive with single-turn fields (`input`, `ground_truth`, top-level `expected_tools`, `files`, `retrieval_context`)."
+        }
+      },
+      "description": "Test case — either single-turn (with `input`) or multi-turn (with `turns`)."
     },
     "ExecutionConfig": {
       "type": "object",
@@ -1101,7 +1388,12 @@
           "description": "Cache directory path"
         },
         "verbose": { "type": "boolean", "description": "Verbose output mode" },
-        "quiet": { "type": "boolean", "description": "Quiet output mode" }
+        "quiet": { "type": "boolean", "description": "Quiet output mode" },
+        "parallel_test_cases": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum concurrent multi-turn test cases (FR-009a). Resolved via CLI > YAML > env > defaults (default 1)."
+        }
       },
       "description": "Test execution configuration"
     },
