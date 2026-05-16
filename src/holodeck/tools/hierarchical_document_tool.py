@@ -270,6 +270,50 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 h.update(block)
         return h.hexdigest()
 
+    @staticmethod
+    def _build_searchable_text(chunk: DocumentChunk) -> str:
+        """Build the concatenated text indexed for native hybrid keyword search.
+
+        SK's ``QdrantCollection.hybrid_search`` only consults one
+        ``additional_property_name``, so we fold every text-bearing field
+        into a single ``searchable_text`` string and let qdrant's Tantivy
+        payload index handle the lexical pass.
+
+        The boost recipe mirrors :func:`_build_bm25_document` so the
+        BM25-fallback path and the qdrant-native path index the same shape:
+
+        * contextualized_content (or content fallback) — 1× (the body)
+        * parent_chain — 2× (heading-path queries)
+        * section_id — 2× (section lookups)
+        * defined_term — 3× (definition queries)
+        * cross_references — 1×
+        * source filename — 1×
+
+        ``content`` is intentionally omitted: ``contextualized_content``
+        already contains it verbatim when context-gen is on, and equals it
+        when off (see ``_ingest_documents`` line 710).
+        """
+        primary = chunk.contextualized_content or chunk.content
+        parent_chain = " > ".join(chunk.parent_chain)
+        cross_refs = " ".join(chunk.cross_references)
+        source_file = Path(chunk.source_path).name if chunk.source_path else ""
+
+        parts: list[str] = []
+        if primary:
+            parts.append(primary)
+        if parent_chain:
+            parts.extend([parent_chain, parent_chain])  # 2×
+        if chunk.section_id:
+            parts.extend([chunk.section_id, chunk.section_id])  # 2×
+        if chunk.defined_term:
+            parts.extend([chunk.defined_term] * 3)  # 3×
+        if cross_refs:
+            parts.append(cross_refs)
+        if source_file:
+            parts.append(source_file)
+
+        return "\n\n".join(parts)
+
     def _coerce_chunk_ids_to_uuid(self, chunks: list[DocumentChunk]) -> None:
         """Rewrite chunk IDs to deterministic UUIDv5 for qdrant compatibility.
 
@@ -840,6 +884,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 defined_term_normalized=chunk.defined_term_normalized or "",
                 subsection_ids=json.dumps(chunk.subsection_ids),
                 content_hash=content_hash,
+                searchable_text=self._build_searchable_text(chunk),
             )
             records.append(record)
 

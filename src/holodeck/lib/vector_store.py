@@ -737,9 +737,13 @@ def create_hierarchical_document_record_class(
         section_id: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(
             default=""
         )
-        content: Annotated[str, VectorStoreField("data", is_full_text_indexed=True)] = (
-            field(default="")
-        )
+        # Display-only fields. Keyword search targets `searchable_text` below
+        # (built from a concat of contextualized_content + parent_chain +
+        # section_id + defined_term + cross_refs + filename, with implicit
+        # boost via repetition — see _build_searchable_text in
+        # hierarchical_document_tool.py). SK's hybrid_search only takes one
+        # additional_property_name, so we route everything through one field.
+        content: Annotated[str, VectorStoreField("data")] = field(default="")
         embedding: Annotated[
             list[float] | None,
             VectorStoreField(
@@ -754,6 +758,9 @@ def create_hierarchical_document_record_class(
         contextualized_content: Annotated[str, VectorStoreField("data")] = field(
             default=""
         )
+        searchable_text: Annotated[
+            str, VectorStoreField("data", is_full_text_indexed=True)
+        ] = field(default="")
         mtime: Annotated[float, VectorStoreField("data")] = field(default=0.0)
         file_type: Annotated[str, VectorStoreField("data")] = field(default="")
         defined_term: Annotated[str, VectorStoreField("data", is_indexed=True)] = field(

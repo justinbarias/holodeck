@@ -898,7 +898,12 @@ class HybridSearchExecutor:
                 query,
                 vector=query_embedding,
                 vector_property_name="embedding",
-                additional_property_name="content",  # needs is_full_text_indexed=True
+                # `searchable_text` is the concat field carrying
+                # contextualized_content + parent_chain + section_id +
+                # defined_term + cross_refs + filename. Built at write
+                # time by HierarchicalDocumentTool._build_searchable_text;
+                # marked is_full_text_indexed=True on the record class.
+                additional_property_name="searchable_text",
                 top=top_k,
             )
 
