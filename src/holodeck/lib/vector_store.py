@@ -1119,11 +1119,21 @@ def get_collection_factory(
                 **base_kwargs,
             )
 
-        # Qdrant - pass parsed parameters directly to QdrantCollection
+        # Qdrant - construct the AsyncQdrantClient ourselves and pass it as
+        # `client=` so SK marks it managed_client=False. Otherwise SK calls
+        # `qdrant_client.close()` on every `async with collection: …` exit,
+        # and the second `async with` on the same collection fails with
+        # "Cannot send a request, as the client has been closed." Multiple
+        # enter/exit cycles per tool are normal (load → needs_reingest →
+        # store → search), so we keep client lifetime tied to the tool, not
+        # to the context manager.
         if provider == "qdrant":
+            from qdrant_client import AsyncQdrantClient
+
+            qdrant_client = AsyncQdrantClient(**qdrant_params)
             return collection_class[str, record_class](
+                client=qdrant_client,
                 **base_kwargs,
-                **qdrant_params,
             )
 
         # Pinecone - pass parsed parameters to PineconeCollection

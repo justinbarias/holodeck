@@ -6,7 +6,7 @@ only during module import to avoid polluting the rest of the test suite.
 """
 
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # Save original modules before mocking (these will be restored after import)
 _saved_modules: dict[str, object] = {}
@@ -1521,8 +1521,15 @@ class TestGetCollectionFactoryQdrant:
         assert callable(factory)
 
     def test_factory_qdrant_calls_collection_class(self) -> None:
-        """Test that factory() for Qdrant provider calls collection properly."""
+        """Connection params go to AsyncQdrantClient; client= is passed to collection.
+
+        We construct the AsyncQdrantClient ourselves so SK marks
+        managed_client=False — otherwise SK closes the underlying httpx client
+        on every `async with collection: …` exit, breaking subsequent uses.
+        """
         mock_collection_class = MagicMock()
+        mock_client_instance = MagicMock(name="async_qdrant_client_instance")
+        mock_client_class = MagicMock(return_value=mock_client_instance)
 
         import importlib
 
@@ -1537,29 +1544,36 @@ class TestGetCollectionFactoryQdrant:
 
         try:
             importlib.import_module = mock_import  # type: ignore[method-assign]
+            with patch("qdrant_client.AsyncQdrantClient", mock_client_class):
+                factory = get_collection_factory(
+                    "qdrant",
+                    dimensions=768,
+                    connection_string="http://localhost:6333",
+                )
+                factory()
 
-            factory = get_collection_factory(
-                "qdrant",
-                dimensions=768,
-                connection_string="http://localhost:6333",
-            )
+            # AsyncQdrantClient receives the parsed connection params
+            mock_client_class.assert_called_once()
+            client_kwargs = mock_client_class.call_args.kwargs
+            assert client_kwargs["host"] == "localhost"
+            assert client_kwargs["port"] == 6333
 
-            # Call the factory
-            factory()
-
-            # Verify QdrantCollection was instantiated
+            # QdrantCollection receives the pre-built client (no host/port)
             mock_collection_class.__getitem__.return_value.assert_called_once()
-            call_kwargs = mock_collection_class.__getitem__.return_value.call_args
-            assert call_kwargs is not None
-            # Should have host and port from parsed connection string
-            assert call_kwargs.kwargs["host"] == "localhost"
-            assert call_kwargs.kwargs["port"] == 6333
+            coll_kwargs = (
+                mock_collection_class.__getitem__.return_value.call_args.kwargs
+            )
+            assert coll_kwargs["client"] is mock_client_instance
+            assert "host" not in coll_kwargs
+            assert "port" not in coll_kwargs
         finally:
             importlib.import_module = original_import
 
     def test_factory_qdrant_with_grpc(self) -> None:
-        """Test factory creates Qdrant collection with gRPC preference."""
+        """gRPC connection params route to AsyncQdrantClient, not the collection."""
         mock_collection_class = MagicMock()
+        mock_client_instance = MagicMock(name="async_qdrant_client_instance")
+        mock_client_class = MagicMock(return_value=mock_client_instance)
 
         import importlib
 
@@ -1574,20 +1588,23 @@ class TestGetCollectionFactoryQdrant:
 
         try:
             importlib.import_module = mock_import  # type: ignore[method-assign]
+            with patch("qdrant_client.AsyncQdrantClient", mock_client_class):
+                factory = get_collection_factory(
+                    "qdrant",
+                    dimensions=768,
+                    connection_string="qdrant+grpc://localhost:6334",
+                )
+                factory()
 
-            factory = get_collection_factory(
-                "qdrant",
-                dimensions=768,
-                connection_string="qdrant+grpc://localhost:6334",
+            client_kwargs = mock_client_class.call_args.kwargs
+            assert client_kwargs["host"] == "localhost"
+            assert client_kwargs["grpc_port"] == 6334
+            assert client_kwargs["prefer_grpc"] is True
+
+            coll_kwargs = (
+                mock_collection_class.__getitem__.return_value.call_args.kwargs
             )
-
-            factory()
-
-            call_kwargs = mock_collection_class.__getitem__.return_value.call_args
-            assert call_kwargs is not None
-            assert call_kwargs.kwargs["host"] == "localhost"
-            assert call_kwargs.kwargs["grpc_port"] == 6334
-            assert call_kwargs.kwargs["prefer_grpc"] is True
+            assert coll_kwargs["client"] is mock_client_instance
         finally:
             importlib.import_module = original_import
 
