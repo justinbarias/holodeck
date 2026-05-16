@@ -171,8 +171,8 @@ class Agent(BaseModel):
         cls, v: list[TestCaseModel] | None
     ) -> list[TestCaseModel] | None:
         """Validate test cases list."""
-        if v is not None and len(v) > 100:
-            raise ValueError("Maximum 100 test cases per agent")
+        if v is not None and len(v) > 1000:
+            raise ValueError("Maximum 1000 test cases per agent")
         return v
 
     @model_validator(mode="after")
