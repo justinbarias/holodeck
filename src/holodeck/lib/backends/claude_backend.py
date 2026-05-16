@@ -661,6 +661,7 @@ class ClaudeSession:
             tool_results: list[dict[str, Any]] = []
             token_usage = TokenUsage.zero()
             num_turns = 1
+            structured_output: Any = None
 
             async for msg in client.receive_response():
                 _maybe_emit_subagent_message(msg, self._tool_event_queue)
@@ -679,6 +680,7 @@ class ClaudeSession:
                     )
                     num_turns = rm.num_turns
                     self._session_id = rm.session_id
+                    structured_output = rm.structured_output
 
             self._turn_count += 1
 
@@ -689,11 +691,26 @@ class ClaudeSession:
             # just call_id.
             _enrich_tool_results(tool_calls, tool_results)
 
+            response_text = "".join(text_parts)
+
+            # When ``response_format`` is set the SDK delivers the validated
+            # payload on ``ResultMessage.structured_output``; the text
+            # content blocks carry the model's prose reasoning, which the
+            # CLI does NOT constrain to the schema. The structured payload
+            # is the authoritative answer — prefer it so downstream graders
+            # (response_path, equality/numeric over JSON envelopes) operate
+            # on the schema-validated value, not the unconstrained prose.
+            # Mirrors ``invoke_once`` which routes through
+            # ``_validate_structured_output``.
+            if structured_output is not None:
+                response_text = json.dumps(structured_output)
+
             return ExecutionResult(
-                response="".join(text_parts),
+                response=response_text,
                 tool_calls=tool_calls,
                 tool_results=tool_results,
                 token_usage=token_usage,
+                structured_output=structured_output,
                 num_turns=num_turns,
             )
         except (ProcessError, CLIConnectionError) as exc:
