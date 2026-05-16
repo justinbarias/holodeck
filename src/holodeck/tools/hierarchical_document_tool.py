@@ -270,6 +270,25 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 h.update(block)
         return h.hexdigest()
 
+    def _coerce_chunk_ids_to_uuid(self, chunks: list[DocumentChunk]) -> None:
+        """Rewrite chunk IDs to deterministic UUIDv5 for qdrant compatibility.
+
+        Qdrant point IDs must be UUIDs or unsigned 64-bit ints; the chunker
+        emits human-readable IDs like ``{path}_chunk_{N}``. UUIDv5 over
+        (tool-name, original-id) is stable across runs, so re-ingestion of
+        unchanged content lands on the same point.
+
+        Mutates ``chunks`` in place.
+        """
+        import uuid
+
+        namespace = uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"holodeck/hierarchical_document/{self.config.name}",
+        )
+        for chunk in chunks:
+            chunk.id = str(uuid.uuid5(namespace, chunk.id))
+
     def _remap_chunk_keys(self, chunks: list[DocumentChunk], file_path: Path) -> None:
         """Remap chunk source_path and id to use stable source keys.
 
@@ -669,6 +688,13 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
             # Remap chunk keys for stable record IDs (remote sources)
             self._remap_chunk_keys(chunks, file_path)
+
+            # Qdrant rejects arbitrary-string point IDs (only UUID/uint64).
+            # Coerce human-readable chunk IDs to deterministic UUIDv5 so
+            # re-ingestion stays idempotent and the chunk_map (built later
+            # from these same chunks) matches what qdrant returns at search.
+            if self._provider == "qdrant":
+                self._coerce_chunk_ids_to_uuid(chunks)
 
             # 3.5 Filter out header-only chunks (no substantive content)
             chunks = [c for c in chunks if c.chunk_type != ChunkType.HEADER]
