@@ -1628,7 +1628,18 @@ class TestExecutor:
                 # (e.g., "bleu", "meteor"). Azure AI metrics use "score".
                 score = result.get(metric_name, result.get("score", 0.0))
                 threshold = metric_config.threshold
-                passed = score >= threshold if threshold else True
+                # When an explicit threshold is configured, treat it as the
+                # source of truth and compare directly against the score.
+                # Otherwise trust the evaluator's own `passed` verdict
+                # (deterministic evaluators like numeric/equality return a
+                # meaningful boolean); fall back to ``score > 0`` for
+                # evaluators that don't emit one. The previous unconditional
+                # ``True`` default produced false-positive PASS rows when an
+                # evaluator scored 0.0 but no threshold was set.
+                if threshold is not None:
+                    passed = score >= threshold
+                else:
+                    passed = bool(result.get("passed", score > 0))
                 # Extract reasoning (DeepEval metrics return this, NLP metrics don't)
                 reasoning = result.get("reasoning")
 

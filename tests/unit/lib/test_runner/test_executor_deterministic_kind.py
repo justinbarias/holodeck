@@ -94,6 +94,28 @@ async def test_equality_produces_metric_result_with_kind_standard() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_numeric_failed_parse_reports_passed_false_without_threshold() -> None:
+    """Regression: when an evaluator returns ``passed=False`` (e.g. the
+    numeric parse rejected a prose response) and no ``threshold:`` is set
+    on the metric, the executor must propagate ``passed=False`` instead of
+    blindly defaulting to ``True``.
+
+    Previously the executor used
+    ``passed = score >= threshold if threshold else True``, which masked
+    every score-0 failure as a PASS whenever no threshold was configured.
+    """
+    # Agent emits a prose response that NumericEvaluator cannot parse.
+    # Expected: score=0.0, passed=False.
+    results = await _run("numeric", agent_response="approximately 31903.6 million")
+    assert len(results) == 1
+    mr = results[0]
+    assert mr.metric_name == "numeric"
+    assert mr.score == 0.0
+    assert mr.passed is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_numeric_produces_metric_result_with_kind_standard() -> None:
     # ground_truth is "hello" — numeric parse will fail, so score=0 / passed=False.
     # Using a numeric-parseable gt instead:
