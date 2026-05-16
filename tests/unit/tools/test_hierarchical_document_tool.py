@@ -212,6 +212,60 @@ class TestHierarchicalDocumentToolInit:
         assert tool._chat_service == mock_service
 
 
+class TestExecutionConfigPlumbing:
+    """Verify ``execution.file_timeout`` reaches the FileProcessor.
+
+    Regression guard for the bug where ``HierarchicalDocumentTool``
+    instantiated ``FileProcessor()`` with no args, hardcoding the 30s
+    default and silently dropping ``execution.file_timeout`` from
+    agent.yaml. The fix routes construction through
+    ``FileProcessor.from_execution_config`` via ``_get_file_processor``.
+    """
+
+    def test_file_processor_uses_execution_config_when_provided(
+        self, tmp_path: Path
+    ) -> None:
+        from holodeck.models.config import ExecutionConfig
+
+        config = create_config(tmp_path)
+        exec_cfg = ExecutionConfig(file_timeout=180, download_timeout=90)
+        tool = HierarchicalDocumentTool(config, execution_config=exec_cfg)
+
+        fp = tool._get_file_processor()
+
+        # file_timeout (s) → processing_timeout_ms (ms)
+        assert fp.processing_timeout_ms == 180 * 1000
+        assert fp.download_timeout_ms == 90 * 1000
+
+    def test_file_processor_falls_back_to_defaults_without_execution_config(
+        self, tmp_path: Path
+    ) -> None:
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+
+        fp = tool._get_file_processor()
+
+        # FileProcessor() default — see FileProcessor.__init__
+        assert fp.processing_timeout_ms == 30000
+        assert fp.download_timeout_ms == 30000
+
+    def test_file_processor_is_lazily_constructed_and_cached(
+        self, tmp_path: Path
+    ) -> None:
+        from holodeck.models.config import ExecutionConfig
+
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(
+            config, execution_config=ExecutionConfig(file_timeout=60)
+        )
+
+        assert tool._file_processor is None
+        first = tool._get_file_processor()
+        second = tool._get_file_processor()
+        assert first is second
+        assert tool._file_processor is first
+
+
 class TestIngestDocuments:
     """T37: Tests for document ingestion pipeline orchestration."""
 

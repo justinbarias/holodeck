@@ -255,6 +255,7 @@ async def initialize_tools(
             provider_type=provider_type,
             base_dir=effective_base_dir,
             context_generator=context_generator,
+            execution_config=execution_config,
         )
         instances.update(hd_instances)
 
@@ -593,6 +594,7 @@ async def initialize_hierarchical_doc_tools(
     provider_type: str,
     base_dir: str | None = None,
     context_generator: Any | None = None,
+    execution_config: ExecutionConfig | None = None,
 ) -> dict[str, Any]:
     """Initialize all hierarchical document tools from agent config.
 
@@ -604,6 +606,9 @@ async def initialize_hierarchical_doc_tools(
         provider_type: Provider type string for dimension resolution.
         base_dir: Base directory for resolving relative source paths.
         context_generator: Optional pre-built ContextGenerator instance.
+        execution_config: Execution configuration forwarded to each tool so
+            ``execution.file_timeout`` (and download_timeout / cache_dir)
+            from agent.yaml reaches the FileProcessor used during ingest.
 
     Returns:
         Dict mapping tool name to initialized HierarchicalDocumentTool instance.
@@ -638,7 +643,11 @@ async def initialize_hierarchical_doc_tools(
                         update={"source": str(resolved_local_path)}
                     )
 
-                tool = HierarchicalDocumentTool(effective_config, base_dir=base_dir)
+                tool = HierarchicalDocumentTool(
+                    effective_config,
+                    base_dir=base_dir,
+                    execution_config=execution_config,
+                )
                 if is_remote and resolved_local_path is not None:
                     tool.set_source_context(
                         source_root=resolved_local_path,
@@ -683,6 +692,7 @@ async def initialize_single_tool(
     force_ingest: bool = False,
     progress_callback: Callable[[int, int | None], None] | None = None,
     source_override: Path | None = None,
+    execution_config: ExecutionConfig | None = None,
 ) -> None:
     """Initialize a single tool by name.
 
@@ -695,6 +705,9 @@ async def initialize_single_tool(
         force_ingest: If True, force re-ingestion of all source files.
         progress_callback: Optional callback for progress reporting.
         source_override: Optional path to use instead of the configured source.
+        execution_config: Execution configuration forwarded to the tool so
+            ``execution.file_timeout`` (and download_timeout / cache_dir)
+            from agent.yaml reaches the FileProcessor used during ingest.
 
     Raises:
         ToolInitializerError: If tool not found, not initializable, or init fails.
@@ -742,7 +755,10 @@ async def initialize_single_tool(
     provider_type = _resolve_embedding_provider(agent).value
 
     if is_vectorstore:
-        vs_tool = VectorStoreTool(cast(VectorstoreToolConfig, tool_config))
+        vs_tool = VectorStoreTool(
+            cast(VectorstoreToolConfig, tool_config),
+            execution_config=execution_config,
+        )
         if is_remote and source_override is not None:
             vs_tool.set_source_context(source_root=source_override, is_remote=True)
         vs_tool.set_embedding_service(embedding_service)
@@ -753,7 +769,8 @@ async def initialize_single_tool(
         )
     else:
         hd_tool = HierarchicalDocumentTool(
-            cast(HierarchicalDocumentToolConfig, tool_config)
+            cast(HierarchicalDocumentToolConfig, tool_config),
+            execution_config=execution_config,
         )
         if is_remote and source_override is not None:
             hd_tool.set_source_context(source_root=source_override, is_remote=True)

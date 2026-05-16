@@ -53,11 +53,13 @@ from holodeck.lib.keyword_search import HybridSearchExecutor
 if TYPE_CHECKING:
     from holodeck.lib.backends.base import ContextGenerator
     from holodeck.lib.definition_extractor import DefinitionEntry
+    from holodeck.lib.file_processor import FileProcessor
     from holodeck.lib.structured_chunker import (
         DocumentChunk,
         StructuredChunker,
         SubsectionPattern,
     )
+    from holodeck.models.config import ExecutionConfig
 
 from holodeck.lib.hybrid_search import SearchResult
 from holodeck.lib.structured_chunker import DOMAIN_PATTERNS, ChunkType
@@ -109,6 +111,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self,
         config: HierarchicalDocumentToolConfig,
         base_dir: str | None = None,
+        execution_config: ExecutionConfig | None = None,
     ) -> None:
         """Initialize the hierarchical document tool.
 
@@ -117,9 +120,17 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             base_dir: Optional base directory for resolving relative source paths.
                 If None, source paths are resolved relative to current working
                 directory or agent_base_dir context variable.
+            execution_config: Execution configuration for file processing
+                timeouts and caching. When provided, the lazy FileProcessor
+                used by ``_convert_to_markdown`` is built via
+                ``FileProcessor.from_execution_config`` so that
+                ``execution.file_timeout`` (and download_timeout / cache_dir)
+                from agent.yaml are honored. When None, FileProcessor's
+                hardcoded defaults (30s timeouts) apply.
         """
         self.config = config
         self._base_dir = base_dir
+        self._execution_config = execution_config
         self._chunker: StructuredChunker | None = None
         self._searcher: Any = None  # HybridSearcher (future)
         self._context_generator: ContextGenerator | None = None
@@ -134,12 +145,34 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self._provider: str = "in-memory"
         self._embedding_dimensions: int | None = None
 
+        # Lazily constructed FileProcessor (see _get_file_processor)
+        self._file_processor: FileProcessor | None = None
+
         # Hybrid search executor (initialized during ingestion)
         self._hybrid_executor: HybridSearchExecutor | None = None
 
         # Source context for stable record keys (remote sources)
         self._source_root: Path | None = None
         self._is_remote: bool = False
+
+    def _get_file_processor(self) -> FileProcessor:
+        """Get or create the FileProcessor instance (lazy init).
+
+        Mirrors VectorStoreTool._get_file_processor: when an
+        ``execution_config`` was supplied at construction, build via the
+        ``from_execution_config`` factory so per-agent timeout/cache
+        settings reach the processor; otherwise fall back to defaults.
+        """
+        from holodeck.lib.file_processor import FileProcessor
+
+        if self._file_processor is None:
+            if self._execution_config is not None:
+                self._file_processor = FileProcessor.from_execution_config(
+                    self._execution_config
+                )
+            else:
+                self._file_processor = FileProcessor()
+        return self._file_processor
 
     # set_embedding_service is inherited from EmbeddingServiceMixin
 
@@ -494,7 +527,6 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Returns:
             Markdown content string.
         """
-        from holodeck.lib.file_processor import FileProcessor
         from holodeck.models.test_case import FileInput
 
         path = Path(file_path)
@@ -510,7 +542,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             cache=None,
         )
 
-        processor = FileProcessor()
+        processor = self._get_file_processor()
         processed = processor.process_file(file_input)
 
         if processed.error:
