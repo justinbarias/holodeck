@@ -958,6 +958,11 @@
               "type": "boolean",
               "default": false,
               "description": "[numeric] Strip ',' / '_' / NBSP before parse."
+            },
+            "response_path": {
+              "type": ["string", "null"],
+              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(\\[\\d+\\])*(\\.[A-Za-z_][A-Za-z0-9_-]*(\\[\\d+\\])*)*$",
+              "description": "Optional path into a JSON-encoded response (e.g. 'answer', 'items[0].score'). When set, the evaluator grades response[<path>] instead of the raw string."
             }
           }
         },
