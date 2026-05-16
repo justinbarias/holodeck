@@ -53,6 +53,63 @@ class TestAgentExecutorInitialization:
         assert executor.get_history() == []
 
 
+class TestAgentExecutorLLMTimeout:
+    """Verify ``llm_timeout`` propagates to session invocations via
+    ``asyncio.wait_for`` (regression guard for the dead-field bug)."""
+
+    def test_default_llm_timeout_is_none(self, make_agent) -> None:
+        executor = AgentExecutor(make_agent())
+        assert executor._llm_timeout is None
+
+    def test_llm_timeout_coerced_to_float(self, make_agent) -> None:
+        executor = AgentExecutor(make_agent(), llm_timeout=15)
+        assert executor._llm_timeout == 15.0
+        assert isinstance(executor._llm_timeout, float)
+
+    def test_zero_llm_timeout_treated_as_none(self, make_agent) -> None:
+        # ``int(0)`` is falsy — consistent with TestExecutor's behaviour where
+        # missing/zero timeouts mean "no wrapper".
+        executor = AgentExecutor(make_agent(), llm_timeout=0)
+        assert executor._llm_timeout is None
+
+    @pytest.mark.asyncio
+    async def test_execute_turn_timeout_cancels_send(
+        self, make_agent, make_mock_backend
+    ) -> None:
+        import asyncio
+
+        mock_backend, mock_session = make_mock_backend()
+
+        async def _slow_send(message: str):
+            await asyncio.sleep(0.5)
+            return None  # never reached
+
+        mock_session.send = _slow_send
+
+        executor = AgentExecutor(make_agent(), backend=mock_backend, llm_timeout=0.05)
+        with pytest.raises(asyncio.TimeoutError):
+            await executor.execute_turn("hi")
+
+    @pytest.mark.asyncio
+    async def test_execute_turn_streaming_timeout_cancels(
+        self, make_agent, make_mock_backend
+    ) -> None:
+        import asyncio
+
+        mock_backend, mock_session = make_mock_backend()
+
+        async def _slow_stream(message: str):
+            await asyncio.sleep(0.5)
+            yield "should never arrive"
+
+        mock_session.send_streaming = _slow_stream
+
+        executor = AgentExecutor(make_agent(), backend=mock_backend, llm_timeout=0.05)
+        with pytest.raises(asyncio.TimeoutError):
+            async for _ in executor.execute_turn_streaming("hi"):
+                pass
+
+
 # ---------------------------------------------------------------------------
 # T022: TestAgentExecutorExecution
 # ---------------------------------------------------------------------------

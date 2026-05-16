@@ -150,6 +150,48 @@ class TestAgentServerInit:
         assert server.sessions.max_sessions == 10
 
 
+class TestAgentServerExecutorTimeoutWiring:
+    """Verify ``execution.llm_timeout`` reaches the per-session AgentExecutor.
+
+    Regression guard for the previous behaviour where ``_get_timeout`` only
+    logged the value but ``_create_executor`` constructed AgentExecutor
+    without ``llm_timeout=``, so the configured cap never applied to LLM
+    calls served via REST / AG-UI.
+    """
+
+    def test_get_timeout_returns_configured_value(
+        self, mock_agent_config: MagicMock, mock_execution_config: ExecutionConfig
+    ) -> None:
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            execution_config=mock_execution_config,
+        )
+        assert server._get_timeout() == 120.0
+
+    def test_get_timeout_returns_none_without_config(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        server = AgentServer(agent_config=mock_agent_config)
+        assert server._get_timeout() is None
+
+    def test_create_executor_passes_llm_timeout(
+        self, mock_agent_config: MagicMock, mock_execution_config: ExecutionConfig
+    ) -> None:
+        server = AgentServer(
+            agent_config=mock_agent_config,
+            execution_config=mock_execution_config,
+        )
+        executor = server._create_executor()
+        assert executor._llm_timeout == 120.0
+
+    def test_create_executor_propagates_no_timeout_when_absent(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        server = AgentServer(agent_config=mock_agent_config)
+        executor = server._create_executor()
+        assert executor._llm_timeout is None
+
+
 class TestAgentServerProperties:
     """Tests for AgentServer properties."""
 

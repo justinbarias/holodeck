@@ -43,6 +43,7 @@ from holodeck.serve.file_utils import (
 from holodeck.serve.protocols.base import Protocol
 
 if TYPE_CHECKING:
+    from holodeck.models.config import ExecutionConfig
     from holodeck.models.tool_execution import ToolExecution
     from holodeck.serve.session_store import ServerSession
 
@@ -580,13 +581,22 @@ class AGUIProtocol(Protocol):
     6. RunFinishedEvent/RunErrorEvent - Signals completion
     """
 
-    def __init__(self, accept_header: str | None = None) -> None:
+    def __init__(
+        self,
+        accept_header: str | None = None,
+        execution_config: ExecutionConfig | None = None,
+    ) -> None:
         """Initialize the AG-UI protocol.
 
         Args:
             accept_header: HTTP Accept header for format negotiation.
+            execution_config: Execution configuration forwarded to
+                ``process_multimodal_files`` so ``execution.file_timeout``
+                and ``execution.download_timeout`` from agent.yaml reach
+                the FileProcessor used for binary attachments.
         """
         self._accept_header = accept_header
+        self._execution_config = execution_config
 
     @property
     def name(self) -> str:
@@ -660,7 +670,7 @@ class AGUIProtocol(Protocol):
                 )
                 file_content, file_inputs_to_cleanup = process_multimodal_files(
                     files=binary_parts,
-                    execution_config=None,
+                    execution_config=self._execution_config,
                     is_agui_format=True,
                 )
                 if file_content:
