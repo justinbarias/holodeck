@@ -866,6 +866,163 @@ class TestHybridSearchExecutor:
         assert len(results) > 0
 
 
+class TestTokenizeQdrantQuery:
+    """Tests for the Qdrant-side tokenizer used by the native-hybrid path."""
+
+    def test_splits_on_whitespace_and_lowercases(self) -> None:
+        from holodeck.lib.keyword_search import _tokenize_qdrant_query
+
+        assert _tokenize_qdrant_query("Abiomed ABMD") == ["abiomed", "abmd"]
+
+    def test_drops_one_char_tokens(self) -> None:
+        from holodeck.lib.keyword_search import _tokenize_qdrant_query
+
+        # "a" is one char, dropped; "of" is two chars, kept
+        assert _tokenize_qdrant_query("A pile of foo") == ["pile", "of", "foo"]
+
+    def test_drops_pure_punctuation(self) -> None:
+        from holodeck.lib.keyword_search import _tokenize_qdrant_query
+
+        assert _tokenize_qdrant_query("... ?!") == []
+
+    def test_handles_punctuation_inside_words(self) -> None:
+        from holodeck.lib.keyword_search import _tokenize_qdrant_query
+
+        # commas and periods get split on word boundaries
+        assert _tokenize_qdrant_query("Apple, Inc. 2024") == [
+            "apple",
+            "inc",
+            "2024",
+        ]
+
+    def test_deduplicates_repeated_tokens(self) -> None:
+        from holodeck.lib.keyword_search import _tokenize_qdrant_query
+
+        assert _tokenize_qdrant_query("apple apple AAPL apple") == ["apple", "aapl"]
+
+    def test_empty_string(self) -> None:
+        from holodeck.lib.keyword_search import _tokenize_qdrant_query
+
+        assert _tokenize_qdrant_query("") == []
+
+
+class TestNativeHybridSearchQdrant:
+    """Tests for the Qdrant-specific native-hybrid dispatch path.
+
+    Validates that the executor builds a ``query_points`` call with the
+    correct prefetch shape: one vector leg + one full-text leg whose
+    filter uses ``MatchText`` (not ``MatchAny``) per tokenized term.
+    """
+
+    @pytest.mark.asyncio
+    async def test_qdrant_uses_match_text_per_token(self) -> None:
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+
+        # Mock the SK collection as an async context manager exposing
+        # the underlying qdrant client + collection_name.
+        mock_client = MagicMock()
+        mock_client.query_points = AsyncMock(
+            return_value=MagicMock(points=[MagicMock(id="chunk-1", score=0.9)])
+        )
+        mock_collection_obj = MagicMock()
+        mock_collection_obj.qdrant_client = mock_client
+        mock_collection_obj.collection_name = "test_coll"
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection_obj)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        executor = HybridSearchExecutor("qdrant", mock_collection)
+
+        results = await executor._native_hybrid_search(
+            "Abiomed ABMD", [0.1] * 1536, top_k=5
+        )
+
+        # Result mapping is correct
+        assert results == [("chunk-1", 0.9)]
+
+        # Inspect the query_points call shape
+        mock_client.query_points.assert_awaited_once()
+        kwargs = mock_client.query_points.await_args.kwargs
+        assert kwargs["collection_name"] == "test_coll"
+        assert kwargs["limit"] == 5
+
+        prefetch = kwargs["prefetch"]
+        assert len(prefetch) == 2, "expected vector + keyword prefetch legs"
+
+        # Vector leg
+        from qdrant_client.http import models as qm
+
+        vector_leg, keyword_leg = prefetch
+        assert vector_leg.using == "embedding"
+        assert vector_leg.limit >= 20  # wider than top_k
+
+        # Keyword leg: one MatchText per token, ORed via should=
+        assert isinstance(keyword_leg.filter, qm.Filter)
+        should = keyword_leg.filter.should
+        assert should is not None and len(should) == 2
+        for cond, expected_token in zip(should, ["abiomed", "abmd"], strict=True):
+            assert isinstance(cond, qm.FieldCondition)
+            assert cond.key == "searchable_text"
+            assert isinstance(cond.match, qm.MatchText)
+            assert cond.match.text == expected_token
+
+        # Fusion is RRF
+        assert isinstance(kwargs["query"], qm.FusionQuery)
+        assert kwargs["query"].fusion == qm.Fusion.RRF
+
+    @pytest.mark.asyncio
+    async def test_qdrant_empty_tokens_falls_back_to_vector_only(self) -> None:
+        """If the query has no usable tokens, keyword leg is omitted."""
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+
+        mock_client = MagicMock()
+        mock_client.query_points = AsyncMock(return_value=MagicMock(points=[]))
+        mock_collection_obj = MagicMock()
+        mock_collection_obj.qdrant_client = mock_client
+        mock_collection_obj.collection_name = "test_coll"
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection_obj)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        executor = HybridSearchExecutor("qdrant", mock_collection)
+        await executor._native_hybrid_search("... ?!", [0.1] * 1536, top_k=5)
+
+        prefetch = mock_client.query_points.await_args.kwargs["prefetch"]
+        assert len(prefetch) == 1  # vector only — no keyword leg
+
+    @pytest.mark.asyncio
+    async def test_non_qdrant_provider_uses_sk_hybrid_search(self) -> None:
+        """Other native-hybrid providers stay on SK's coll.hybrid_search()."""
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+
+        # Build a fake SK collection with hybrid_search returning one record
+        record = MagicMock(id="ax-1")
+        result = MagicMock()
+        result.record = record
+        result.score = 0.7
+
+        async def async_iter():
+            yield result
+
+        search_results = MagicMock()
+        search_results.results = async_iter()
+
+        mock_collection_obj = MagicMock()
+        mock_collection_obj.hybrid_search = AsyncMock(return_value=search_results)
+
+        mock_collection = MagicMock()
+        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection_obj)
+        mock_collection.__aexit__ = AsyncMock(return_value=None)
+
+        executor = HybridSearchExecutor("azure-ai-search", mock_collection)
+        results = await executor._native_hybrid_search("query", [0.1] * 8, top_k=5)
+
+        assert results == [("ax-1", 0.7)]
+        mock_collection_obj.hybrid_search.assert_awaited_once()
+
+
 class TestOpenTelemetry:
     """Test OpenTelemetry instrumentation."""
 
