@@ -1088,7 +1088,7 @@ class ClaudeBackend:
             instances = await initialize_tools(
                 agent=self._agent,
                 force_ingest=False,  ##TODO: figure out how to pass this down
-                execution_config=None,
+                execution_config=self._agent.execution,
                 base_dir=agent_base_dir.get(),
             )
             self._tool_instances = instances
