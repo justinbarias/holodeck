@@ -48,6 +48,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from holodeck.lib.collection_filter import find_all_records, find_records_by_field
 from holodeck.lib.keyword_search import HybridSearchExecutor
 
 if TYPE_CHECKING:
@@ -441,9 +442,11 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         async with self._collection as collection:
             try:
-                # Get first available record for this file to check mtime/hash
-                records = await collection.get(
-                    filter=lambda r: r.source_path == source_key,
+                # SK's keyless collection.get(filter=...) raises NotImplementedError
+                # on every backend we ship; collection_filter dispatches to each
+                # backend's native client. See holodeck.lib.collection_filter.
+                records = await find_records_by_field(
+                    self._provider, collection, "source_path", source_key
                 )
 
                 if not records:
@@ -452,14 +455,14 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 if self._is_remote:
                     # For remote sources, compare content hash
                     current_hash = self._compute_content_hash(file_path)
-                    stored_hash = getattr(records[0], "content_hash", "")
+                    stored_hash = records[0].get("content_hash") or ""
                     if not stored_hash:
                         return True  # No hash stored (old record)
                     return current_hash != stored_hash
                 else:
                     # For local sources, compare mtime (backward compat)
                     current_mtime = file_path.stat().st_mtime
-                    stored_mtime = float(records[0].mtime)
+                    stored_mtime = float(records[0]["mtime"])
                     return current_mtime - stored_mtime > 0.001
 
             except Exception as e:
@@ -483,15 +486,13 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         async with self._collection as collection:
             try:
-                # Get all records for this file
-                records = await collection.get(
-                    top=10000,  # Large limit to get all chunks
-                    filter=lambda r: r.source_path == source_key,
+                records = await find_records_by_field(
+                    self._provider, collection, "source_path", source_key
                 )
 
                 if records:
                     # Delete all records by their IDs
-                    record_ids = [r.id for r in records]
+                    record_ids = [r["id"] for r in records]
                     await collection.delete(record_ids)
                     deleted_count = len(record_ids)
 
@@ -525,7 +526,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 if not await collection.collection_exists():
                     return []
 
-                records = await collection.get(top=10000)
+                records = await find_all_records(self._provider, collection)
 
                 if not records:
                     return []
@@ -534,41 +535,48 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 for record in records:
                     # Parse JSON fields with graceful fallback
                     try:
-                        parent_chain = json.loads(record.parent_chain)
+                        parent_chain = json.loads(record.get("parent_chain") or "[]")
                     except (json.JSONDecodeError, TypeError):
                         parent_chain = []
 
                     try:
-                        cross_references = json.loads(record.cross_references)
+                        cross_references = json.loads(
+                            record.get("cross_references") or "[]"
+                        )
                     except (json.JSONDecodeError, TypeError):
                         cross_references = []
 
                     try:
-                        subsection_ids = json.loads(record.subsection_ids)
+                        subsection_ids = json.loads(
+                            record.get("subsection_ids") or "[]"
+                        )
                     except (json.JSONDecodeError, TypeError):
                         subsection_ids = []
 
                     # Map chunk_type string to ChunkType enum
                     try:
-                        chunk_type = ChunkType(record.chunk_type)
+                        chunk_type = ChunkType(record.get("chunk_type"))
                     except (ValueError, KeyError):
                         chunk_type = ChunkType.CONTENT
 
                     chunks.append(
                         DocumentChunk(
-                            id=record.id,
-                            source_path=record.source_path,
-                            chunk_index=record.chunk_index,
-                            content=record.content,
+                            id=record["id"],
+                            source_path=record.get("source_path", ""),
+                            chunk_index=record.get("chunk_index", 0),
+                            content=record.get("content", ""),
                             parent_chain=parent_chain,
-                            section_id=record.section_id,
+                            section_id=record.get("section_id", ""),
                             chunk_type=chunk_type,
                             cross_references=cross_references,
                             heading_level=0,
-                            contextualized_content=record.contextualized_content or "",
-                            mtime=float(record.mtime),
-                            defined_term=record.defined_term or "",
-                            defined_term_normalized=record.defined_term_normalized
+                            contextualized_content=record.get("contextualized_content")
+                            or "",
+                            mtime=float(record.get("mtime") or 0.0),
+                            defined_term=record.get("defined_term") or "",
+                            defined_term_normalized=record.get(
+                                "defined_term_normalized"
+                            )
                             or "",
                             subsection_ids=subsection_ids,
                         )

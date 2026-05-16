@@ -1805,10 +1805,13 @@ class TestNeedsReingest:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = AsyncMock(return_value=[])  # No records found
         tool._collection = mock_collection
 
-        result = await tool._needs_reingest(doc_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(return_value=[]),
+        ):
+            result = await tool._needs_reingest(doc_file)
         assert result is True
 
     @pytest.mark.asyncio
@@ -1821,16 +1824,16 @@ class TestNeedsReingest:
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
 
-        mock_record = MagicMock()
-        mock_record.mtime = current_mtime  # Same mtime
-
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = AsyncMock(return_value=[mock_record])
         tool._collection = mock_collection
 
-        result = await tool._needs_reingest(doc_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(return_value=[{"mtime": current_mtime}]),
+        ):
+            result = await tool._needs_reingest(doc_file)
         assert result is False
 
     @pytest.mark.asyncio
@@ -1843,16 +1846,16 @@ class TestNeedsReingest:
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
 
-        mock_record = MagicMock()
-        mock_record.mtime = current_mtime - 100  # Older mtime
-
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = AsyncMock(return_value=[mock_record])
         tool._collection = mock_collection
 
-        result = await tool._needs_reingest(doc_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(return_value=[{"mtime": current_mtime - 100}]),
+        ):
+            result = await tool._needs_reingest(doc_file)
         assert result is True
 
 
@@ -1881,21 +1884,23 @@ class TestDeleteFileRecords:
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
 
-        # Mock records
         mock_records = [
-            MagicMock(id="chunk_0"),
-            MagicMock(id="chunk_1"),
-            MagicMock(id="chunk_2"),
+            {"id": "chunk_0"},
+            {"id": "chunk_1"},
+            {"id": "chunk_2"},
         ]
 
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = AsyncMock(return_value=mock_records)
         mock_collection.delete = AsyncMock()
         tool._collection = mock_collection
 
-        result = await tool._delete_file_records(doc_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(return_value=mock_records),
+        ):
+            result = await tool._delete_file_records(doc_file)
 
         assert result == 3
         mock_collection.delete.assert_called_once()
@@ -1946,7 +1951,7 @@ class TestNeedsReingestExceptionHandling:
     async def test_needs_reingest_returns_true_on_exception(
         self, tmp_path: Path
     ) -> None:
-        """Test needs_reingest returns True when collection.get raises exception."""
+        """Test needs_reingest returns True when the filter helper raises."""
         doc_file = tmp_path / "test.md"
         doc_file.write_text("# Test")
 
@@ -1956,10 +1961,13 @@ class TestNeedsReingestExceptionHandling:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = AsyncMock(side_effect=Exception("Database error"))
         tool._collection = mock_collection
 
-        result = await tool._needs_reingest(doc_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(side_effect=Exception("Database error")),
+        ):
+            result = await tool._needs_reingest(doc_file)
         assert result is True  # Should return True on error
 
 
@@ -1978,10 +1986,13 @@ class TestDeleteFileRecordsExceptionHandling:
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
-        mock_collection.get = AsyncMock(side_effect=Exception("Database error"))
         tool._collection = mock_collection
 
-        result = await tool._delete_file_records(doc_file)
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_records_by_field",
+            AsyncMock(side_effect=Exception("Database error")),
+        ):
+            result = await tool._delete_file_records(doc_file)
         assert result == 0  # Should return 0 on error
 
 
@@ -2669,7 +2680,7 @@ class TestLoadChunksFromStore:
 
     @pytest.mark.asyncio
     async def test_load_chunks_empty_store(self, tmp_path: Path) -> None:
-        """Test returns [] when collection.get() returns no records."""
+        """Test returns [] when the filter helper returns no records."""
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
 
@@ -2677,10 +2688,13 @@ class TestLoadChunksFromStore:
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=True)
-        mock_collection.get = AsyncMock(return_value=[])
         tool._collection = mock_collection
 
-        result = await tool._load_chunks_from_store()
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_all_records",
+            AsyncMock(return_value=[]),
+        ):
+            result = await tool._load_chunks_from_store()
         assert result == []
 
     @pytest.mark.asyncio
@@ -2691,29 +2705,33 @@ class TestLoadChunksFromStore:
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
 
-        mock_record = MagicMock()
-        mock_record.id = "chunk_0"
-        mock_record.source_path = "/test.md"
-        mock_record.chunk_index = 0
-        mock_record.content = "Test content"
-        mock_record.parent_chain = '["Chapter 1", "Section 1.1"]'
-        mock_record.section_id = "1.1"
-        mock_record.chunk_type = "content"
-        mock_record.cross_references = '["2.1", "3.0"]'
-        mock_record.contextualized_content = "Contextualized test content"
-        mock_record.mtime = 12345.0
-        mock_record.defined_term = "TestTerm"
-        mock_record.defined_term_normalized = "testterm"
-        mock_record.subsection_ids = '["1.1.1", "1.1.2"]'
+        mock_record = {
+            "id": "chunk_0",
+            "source_path": "/test.md",
+            "chunk_index": 0,
+            "content": "Test content",
+            "parent_chain": '["Chapter 1", "Section 1.1"]',
+            "section_id": "1.1",
+            "chunk_type": "content",
+            "cross_references": '["2.1", "3.0"]',
+            "contextualized_content": "Contextualized test content",
+            "mtime": 12345.0,
+            "defined_term": "TestTerm",
+            "defined_term_normalized": "testterm",
+            "subsection_ids": '["1.1.1", "1.1.2"]',
+        }
 
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=True)
-        mock_collection.get = AsyncMock(return_value=[mock_record])
         tool._collection = mock_collection
 
-        result = await tool._load_chunks_from_store()
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_all_records",
+            AsyncMock(return_value=[mock_record]),
+        ):
+            result = await tool._load_chunks_from_store()
 
         assert len(result) == 1
         chunk = result[0]
@@ -2738,29 +2756,33 @@ class TestLoadChunksFromStore:
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
 
-        mock_record = MagicMock()
-        mock_record.id = "chunk_0"
-        mock_record.source_path = "/test.md"
-        mock_record.chunk_index = 0
-        mock_record.content = "Content"
-        mock_record.parent_chain = "not valid json"
-        mock_record.section_id = ""
-        mock_record.chunk_type = "content"
-        mock_record.cross_references = "{broken"
-        mock_record.contextualized_content = ""
-        mock_record.mtime = 0.0
-        mock_record.defined_term = ""
-        mock_record.defined_term_normalized = ""
-        mock_record.subsection_ids = "also broken"
+        mock_record = {
+            "id": "chunk_0",
+            "source_path": "/test.md",
+            "chunk_index": 0,
+            "content": "Content",
+            "parent_chain": "not valid json",
+            "section_id": "",
+            "chunk_type": "content",
+            "cross_references": "{broken",
+            "contextualized_content": "",
+            "mtime": 0.0,
+            "defined_term": "",
+            "defined_term_normalized": "",
+            "subsection_ids": "also broken",
+        }
 
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=True)
-        mock_collection.get = AsyncMock(return_value=[mock_record])
         tool._collection = mock_collection
 
-        result = await tool._load_chunks_from_store()
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_all_records",
+            AsyncMock(return_value=[mock_record]),
+        ):
+            result = await tool._load_chunks_from_store()
 
         assert len(result) == 1
         assert result[0].parent_chain == []
@@ -2775,29 +2797,33 @@ class TestLoadChunksFromStore:
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
 
-        mock_record = MagicMock()
-        mock_record.id = "chunk_0"
-        mock_record.source_path = "/test.md"
-        mock_record.chunk_index = 0
-        mock_record.content = "Content"
-        mock_record.parent_chain = "[]"
-        mock_record.section_id = ""
-        mock_record.chunk_type = "unknown_type"
-        mock_record.cross_references = "[]"
-        mock_record.contextualized_content = ""
-        mock_record.mtime = 0.0
-        mock_record.defined_term = ""
-        mock_record.defined_term_normalized = ""
-        mock_record.subsection_ids = "[]"
+        mock_record = {
+            "id": "chunk_0",
+            "source_path": "/test.md",
+            "chunk_index": 0,
+            "content": "Content",
+            "parent_chain": "[]",
+            "section_id": "",
+            "chunk_type": "unknown_type",
+            "cross_references": "[]",
+            "contextualized_content": "",
+            "mtime": 0.0,
+            "defined_term": "",
+            "defined_term_normalized": "",
+            "subsection_ids": "[]",
+        }
 
         mock_collection = MagicMock()
         mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
         mock_collection.__aexit__ = AsyncMock(return_value=None)
         mock_collection.collection_exists = AsyncMock(return_value=True)
-        mock_collection.get = AsyncMock(return_value=[mock_record])
         tool._collection = mock_collection
 
-        result = await tool._load_chunks_from_store()
+        with patch(
+            "holodeck.tools.hierarchical_document_tool.find_all_records",
+            AsyncMock(return_value=[mock_record]),
+        ):
+            result = await tool._load_chunks_from_store()
 
         assert len(result) == 1
         assert result[0].chunk_type == ChunkType.CONTENT
