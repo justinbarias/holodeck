@@ -272,6 +272,9 @@ def _extract_with_bookmarks(
     return "\n".join(output_lines)
 
 
+_MIN_SUBSTRING_TITLE_LEN = 8
+
+
 def _match_bookmark(
     normalized_line: str,
     bookmark_entries: list[tuple[str, int]],
@@ -279,31 +282,40 @@ def _match_bookmark(
     """Check if a normalized text line matches any bookmark title.
 
     Matching strategy (in priority order):
-    1. Exact match
-    2. Substring match (longest matching title wins to avoid short-title
-       false positives, e.g. "section" matching "subsection")
+    1. Exact match.
+    2. Substring match where the bookmark title appears inside the line and
+       the title is at least :data:`_MIN_SUBSTRING_TITLE_LEN` characters long.
+       Longest matching title wins.
+
+    Short titles (e.g. years like "2005" or single-letter chapter labels) are
+    intentionally excluded from substring matching because they collide with
+    arbitrary occurrences in body text. The reverse direction
+    (``line in title``) is also excluded for the same reason — body
+    fragments are frequently substrings of long titles. Lines that do not
+    match by exact comparison or by the length-gated forward substring rule
+    are treated as body text.
 
     Args:
-        normalized_line: Normalized text line to check
-        bookmark_entries: List of (normalized_title, level) tuples
+        normalized_line: Normalized text line to check.
+        bookmark_entries: List of ``(normalized_title, level)`` tuples.
 
     Returns:
-        Heading level if matched, None otherwise.
+        Heading level if matched, ``None`` otherwise.
     """
     if not normalized_line:
         return None
 
-    # 1. Exact match (highest priority)
+    # 1. Exact match (highest priority, any title length)
     for norm_title, level in bookmark_entries:
         if norm_title and norm_title == normalized_line:
             return level
 
-    # 2. Substring match — prefer longest matching title
+    # 2. Forward substring match, length-gated. Longest title wins.
     best_match: tuple[int, int] | None = None  # (title_len, level)
     for norm_title, level in bookmark_entries:
-        if not norm_title:
+        if len(norm_title) < _MIN_SUBSTRING_TITLE_LEN:
             continue
-        if norm_title in normalized_line or normalized_line in norm_title:
+        if norm_title in normalized_line:
             title_len = len(norm_title)
             if best_match is None or title_len > best_match[0]:
                 best_match = (title_len, level)

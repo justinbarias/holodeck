@@ -124,8 +124,11 @@ def setup_logging(
     # Create formatter
     formatter = logging.Formatter(log_format, datefmt=DEFAULT_DATE_FORMAT)
 
-    # Add console handler
-    console_handler = logging.StreamHandler(sys.stdout)
+    # Add console handler. Use stderr so log lines never interleave with
+    # stdout writers that own cursor positioning (e.g. holodeck.chat.LiveComposer
+    # pins a panel below the streaming cursor and breaks if anything else writes
+    # to stdout between paints).
+    console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setLevel(log_level)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
