@@ -866,6 +866,89 @@ class TestHybridSearchExecutor:
         assert len(results) > 0
 
 
+class TestNativeHybridIndexBuild:
+    """build_keyword_index skips in-process indexing for native-hybrid providers."""
+
+    @pytest.mark.asyncio
+    async def test_native_hybrid_skips_in_process_index_build(self) -> None:
+        """Qdrant + friends own keyword retrieval in-store; no BM25 to build."""
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        mock_collection = MagicMock()
+        executor = HybridSearchExecutor("qdrant", mock_collection)
+
+        chunks = [
+            DocumentChunk(
+                id="chunk_a",
+                source_path="/test.md",
+                chunk_index=0,
+                content="alpha",
+                contextualized_content="alpha",
+            ),
+            DocumentChunk(
+                id="chunk_b",
+                source_path="/test.md",
+                chunk_index=1,
+                content="beta",
+                contextualized_content="beta",
+            ),
+        ]
+
+        await executor.build_keyword_index(chunks)
+
+        # No in-process keyword index materialized.
+        assert executor._keyword_index is None
+        # _chunk_map is still populated so cached lookups work for any
+        # callers that pre-warm the cache or feed chunks in directly.
+        assert executor.get_chunk("chunk_a") is chunks[0]
+        assert executor.get_chunk("chunk_b") is chunks[1]
+
+    @pytest.mark.asyncio
+    async def test_fallback_provider_still_builds_in_process_index(self) -> None:
+        """Regression: non-native-hybrid path still builds the index."""
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        mock_collection = MagicMock()
+        executor = HybridSearchExecutor("chromadb", mock_collection)
+
+        chunks = [
+            DocumentChunk(
+                id="chunk_a",
+                source_path="/test.md",
+                chunk_index=0,
+                content="alpha",
+                contextualized_content="alpha",
+            ),
+        ]
+
+        await executor.build_keyword_index(chunks)
+
+        assert executor._keyword_index is not None
+
+
+class TestCacheChunk:
+    """cache_chunk supports the lazy-fetch path for native-hybrid providers."""
+
+    def test_cache_chunk_inserts_by_id(self) -> None:
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        executor = HybridSearchExecutor("qdrant", MagicMock())
+        chunk = DocumentChunk(
+            id="lazy_id",
+            source_path="/test.md",
+            chunk_index=0,
+            content="lazy",
+            contextualized_content="lazy",
+        )
+
+        assert executor.get_chunk("lazy_id") is None
+        executor.cache_chunk(chunk)
+        assert executor.get_chunk("lazy_id") is chunk
+
+
 class TestTokenizeQdrantQuery:
     """Tests for the Qdrant-side tokenizer used by the native-hybrid path."""
 

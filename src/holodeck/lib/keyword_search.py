@@ -758,6 +758,20 @@ class HybridSearchExecutor:
         # Store chunk map for ID-based lookups
         self._chunk_map = {c.id: c for c in chunks}
 
+        # Native-hybrid providers (qdrant) handle the keyword leg inside the
+        # vector store at query time (see _native_hybrid_search_*). The
+        # in-process BM25/OpenSearch index would never be read, so skip the
+        # tokenize-and-build pass entirely. _chunk_map is still useful as a
+        # cache for get_chunks() lookups; it just doesn't need to be the
+        # source of truth for the keyword index.
+        if self.strategy == KeywordSearchStrategy.NATIVE_HYBRID:
+            logger.debug(
+                "Skipping in-process keyword index build for native-hybrid "
+                f"provider '{self.provider}' "
+                f"(strategy={self.strategy.value})"
+            )
+            return
+
         # Convert chunks to structured keyword documents
         docs = [_chunk_to_keyword_document(c) for c in chunks]
 
@@ -826,6 +840,18 @@ class HybridSearchExecutor:
             The DocumentChunk if found, or None.
         """
         return self._chunk_map.get(chunk_id)
+
+    def cache_chunk(self, chunk: DocumentChunk) -> None:
+        """Insert a chunk into the in-memory cache by id.
+
+        Used by the native-hybrid path (qdrant) which lazily fetches chunks
+        on cache miss instead of preloading the entire corpus at startup.
+        Subsequent ``get_chunk`` calls for the same id resolve locally.
+
+        Args:
+            chunk: The DocumentChunk to cache. Indexed by ``chunk.id``.
+        """
+        self._chunk_map[chunk.id] = chunk
 
     async def keyword_search(
         self, query: str, top_k: int = 10

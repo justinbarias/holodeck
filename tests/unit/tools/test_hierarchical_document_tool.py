@@ -17,6 +17,7 @@ semantic_kernel library is not available in the test environment.
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Save original modules before mocking (these will be restored after import)
@@ -2851,12 +2852,18 @@ class TestInitializeRebuild:
 
     @pytest.mark.asyncio
     async def test_initialize_rebuilds_when_files_skipped(self, tmp_path: Path) -> None:
-        """Test rebuild when provider is persistent and files were skipped."""
+        """Persistent non-native-hybrid provider reloads + rebuilds on skip.
+
+        Uses chromadb (in-process BM25 fallback path) because the in-memory
+        BM25 index dies with the process and must be rebuilt from the store
+        on restart. Native-hybrid providers (qdrant) skip this path — see
+        ``test_initialize_skips_reload_for_native_hybrid``.
+        """
         from holodeck.lib.structured_chunker import DocumentChunk
 
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
-        tool._provider = "qdrant"
+        tool._provider = "chromadb"
 
         stored_chunks = [
             DocumentChunk(
@@ -2893,6 +2900,48 @@ class TestInitializeRebuild:
             mock_load.assert_called_once()
             mock_build.assert_called_once()
             assert tool._chunks == stored_chunks
+            assert tool._initialized is True
+
+    @pytest.mark.asyncio
+    async def test_initialize_skips_reload_for_native_hybrid(
+        self, tmp_path: Path
+    ) -> None:
+        """Native-hybrid providers (qdrant) skip the startup corpus reload.
+
+        Keyword retrieval happens inside the vector store, so the in-process
+        BM25/OpenSearch index is never read — loading every chunk into Python
+        on every restart is pure waste. Chunk lookup is lazy on query miss.
+        """
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._provider = "qdrant"
+
+        with (
+            patch.object(tool, "_setup_collection"),
+            patch.object(
+                tool,
+                "_ingest_documents",
+                new_callable=AsyncMock,
+                return_value=2,  # files skipped — pre-fix this triggered reload
+            ),
+            patch.object(
+                tool,
+                "_load_chunks_from_store",
+                new_callable=AsyncMock,
+            ) as mock_load,
+            patch.object(
+                tool,
+                "_build_hybrid_indices",
+                new_callable=AsyncMock,
+            ) as mock_build,
+            patch.object(tool, "_setup_hybrid_executor") as mock_setup_executor,
+        ):
+            await tool.initialize()
+
+            mock_load.assert_not_called()
+            mock_build.assert_not_called()
+            # Executor is still set up (search routes through it)
+            mock_setup_executor.assert_called_once()
             assert tool._initialized is True
 
     @pytest.mark.asyncio
@@ -2964,6 +3013,77 @@ class TestInitializeRebuild:
             result = await tool._ingest_documents(force_ingest=False)
 
             assert result == 1  # One file discovered, one skipped
+
+
+class TestFetchChunksByIds:
+    """Lazy chunk-fetch path used by native-hybrid providers."""
+
+    @pytest.mark.asyncio
+    async def test_fetch_chunks_by_ids_qdrant_retrieves_and_reconstructs(
+        self, tmp_path: Path
+    ) -> None:
+        """Qdrant lazy fetch issues a single retrieve(ids=...) and rebuilds chunks."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._provider = "qdrant"
+
+        fake_point = SimpleNamespace(
+            id="chunk_x",
+            payload={
+                "id": "chunk_x",
+                "source_path": "/src.md",
+                "chunk_index": 3,
+                "content": "lazy content",
+                "parent_chain": "[]",
+                "section_id": "s",
+                "chunk_type": "content",
+                "cross_references": "[]",
+                "subsection_ids": "[]",
+                "contextualized_content": "",
+                "mtime": 0.0,
+                "defined_term": "",
+                "defined_term_normalized": "",
+            },
+        )
+        fake_client = MagicMock()
+        fake_client.retrieve = AsyncMock(return_value=[fake_point])
+
+        fake_collection_ctx = MagicMock()
+        fake_collection_ctx.qdrant_client = fake_client
+        fake_collection_ctx.collection_name = "test_collection"
+        fake_collection_ctx.collection_exists = AsyncMock(return_value=True)
+
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=fake_collection_ctx)
+        cm.__aexit__ = AsyncMock(return_value=None)
+        tool._collection = cm
+
+        chunks = await tool._fetch_chunks_by_ids(["chunk_x"])
+
+        fake_client.retrieve.assert_awaited_once_with(
+            collection_name="test_collection",
+            ids=["chunk_x"],
+            with_payload=True,
+            with_vectors=False,
+        )
+        assert len(chunks) == 1
+        assert chunks[0].id == "chunk_x"
+        assert chunks[0].content == "lazy content"
+        assert chunks[0].chunk_index == 3
+
+    @pytest.mark.asyncio
+    async def test_fetch_chunks_by_ids_skips_non_qdrant_providers(
+        self, tmp_path: Path
+    ) -> None:
+        """Only qdrant supports lazy fetch today; other providers return []."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._provider = "chromadb"
+        tool._collection = MagicMock()
+
+        result = await tool._fetch_chunks_by_ids(["any_id"])
+
+        assert result == []
 
 
 class TestEnsureQdrantPayloadIndexes:

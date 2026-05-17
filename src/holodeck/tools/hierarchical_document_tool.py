@@ -505,20 +505,65 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         return deleted_count
 
+    @staticmethod
+    def _chunk_from_record(record: dict[str, Any]) -> DocumentChunk:
+        """Reconstruct a DocumentChunk from a stored payload record.
+
+        Centralizes the JSON-field parsing + ChunkType coercion shared by
+        the full-corpus reload path and the per-id lazy-fetch path.
+        """
+        from holodeck.lib.structured_chunker import DocumentChunk
+
+        try:
+            parent_chain = json.loads(record.get("parent_chain") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            parent_chain = []
+
+        try:
+            cross_references = json.loads(record.get("cross_references") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            cross_references = []
+
+        try:
+            subsection_ids = json.loads(record.get("subsection_ids") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            subsection_ids = []
+
+        try:
+            chunk_type = ChunkType(record.get("chunk_type"))
+        except (ValueError, KeyError):
+            chunk_type = ChunkType.CONTENT
+
+        return DocumentChunk(
+            id=record["id"],
+            source_path=record.get("source_path", ""),
+            chunk_index=record.get("chunk_index", 0),
+            content=record.get("content", ""),
+            parent_chain=parent_chain,
+            section_id=record.get("section_id", ""),
+            chunk_type=chunk_type,
+            cross_references=cross_references,
+            heading_level=0,
+            contextualized_content=record.get("contextualized_content") or "",
+            mtime=float(record.get("mtime") or 0.0),
+            defined_term=record.get("defined_term") or "",
+            defined_term_normalized=record.get("defined_term_normalized") or "",
+            subsection_ids=subsection_ids,
+        )
+
     async def _load_chunks_from_store(self) -> list[DocumentChunk]:
         """Load all document chunks from the vector store.
 
         Reconstructs DocumentChunk objects from stored records, enabling
         BM25 index rebuild on startup when files are unchanged (skipped
         via mtime check). This is necessary because the BM25 index is
-        in-memory only and does not survive restarts.
+        in-memory only and does not survive restarts. Native-hybrid
+        providers (qdrant) skip this path entirely — see ``initialize``.
 
         Returns:
             List of reconstructed DocumentChunk objects, or empty list
             if collection doesn't exist or an error occurs.
         """
-        from holodeck.lib.structured_chunker import DocumentChunk
-
         if self._collection is None:
             return []
 
@@ -532,62 +577,57 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 if not records:
                     return []
 
-                chunks: list[DocumentChunk] = []
-                for record in records:
-                    # Parse JSON fields with graceful fallback
-                    try:
-                        parent_chain = json.loads(record.get("parent_chain") or "[]")
-                    except (json.JSONDecodeError, TypeError):
-                        parent_chain = []
-
-                    try:
-                        cross_references = json.loads(
-                            record.get("cross_references") or "[]"
-                        )
-                    except (json.JSONDecodeError, TypeError):
-                        cross_references = []
-
-                    try:
-                        subsection_ids = json.loads(
-                            record.get("subsection_ids") or "[]"
-                        )
-                    except (json.JSONDecodeError, TypeError):
-                        subsection_ids = []
-
-                    # Map chunk_type string to ChunkType enum
-                    try:
-                        chunk_type = ChunkType(record.get("chunk_type"))
-                    except (ValueError, KeyError):
-                        chunk_type = ChunkType.CONTENT
-
-                    chunks.append(
-                        DocumentChunk(
-                            id=record["id"],
-                            source_path=record.get("source_path", ""),
-                            chunk_index=record.get("chunk_index", 0),
-                            content=record.get("content", ""),
-                            parent_chain=parent_chain,
-                            section_id=record.get("section_id", ""),
-                            chunk_type=chunk_type,
-                            cross_references=cross_references,
-                            heading_level=0,
-                            contextualized_content=record.get("contextualized_content")
-                            or "",
-                            mtime=float(record.get("mtime") or 0.0),
-                            defined_term=record.get("defined_term") or "",
-                            defined_term_normalized=record.get(
-                                "defined_term_normalized"
-                            )
-                            or "",
-                            subsection_ids=subsection_ids,
-                        )
-                    )
-
+                chunks = [self._chunk_from_record(r) for r in records]
                 logger.info(f"Loaded {len(chunks)} chunks from vector store")
                 return chunks
 
         except Exception as e:
             logger.warning(f"Failed to load chunks from store: {e}")
+            return []
+
+    async def _fetch_chunks_by_ids(self, chunk_ids: list[str]) -> list[DocumentChunk]:
+        """Lazily retrieve chunks by id from the vector store.
+
+        Used by the native-hybrid search path (qdrant) which skips the
+        startup corpus reload: search returns ids, then this batches a
+        single retrieve call so the per-query overhead is one round-trip.
+
+        Currently qdrant-only — the only provider in NATIVE_HYBRID_PROVIDERS
+        today. Other providers can be added when they grow native hybrid
+        support.
+        """
+        if not chunk_ids or self._collection is None:
+            return []
+
+        if self._provider != "qdrant":
+            logger.debug(
+                f"Lazy chunk fetch not implemented for provider '{self._provider}'"
+            )
+            return []
+
+        try:
+            async with self._collection as collection:
+                if not await collection.collection_exists():
+                    return []
+
+                client = collection.qdrant_client
+                points = await client.retrieve(
+                    collection_name=collection.collection_name,
+                    ids=chunk_ids,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+
+                records: list[dict[str, Any]] = []
+                for point in points:
+                    payload = dict(point.payload) if point.payload else {}
+                    payload.setdefault("id", str(point.id))
+                    records.append(payload)
+
+                return [self._chunk_from_record(r) for r in records]
+
+        except Exception as e:
+            logger.warning(f"Failed to lazy-fetch chunks by id: {e}")
             return []
 
     async def _convert_to_markdown(self, file_path: str) -> str:
@@ -1060,20 +1100,20 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         results.sort(key=lambda r: r.fused_score, reverse=True)
         return results
 
-    async def _build_hybrid_indices(self) -> None:
-        """Build hybrid search indices (BM25 and exact match).
+    def _setup_hybrid_executor(self) -> None:
+        """Create the HybridSearchExecutor (idempotent).
 
-        Creates the HybridSearchExecutor with BM25 fallback index
-        and exact match index from the stored chunks. This enables
-        keyword search, exact match, and hybrid search modes.
+        Splits executor construction from keyword-index building so
+        native-hybrid providers (e.g. qdrant) can route search through
+        the executor without paying for an in-process BM25/OpenSearch
+        index build. Safe to call multiple times — second call is a
+        no-op.
         """
         from holodeck.lib.keyword_search import HybridSearchExecutor
 
-        if not self._chunks:
-            logger.debug("No chunks to build hybrid indices from")
+        if self._hybrid_executor is not None:
             return
 
-        # Create hybrid search executor with configured weights
         self._hybrid_executor = HybridSearchExecutor(
             self._provider,
             self._collection,
@@ -1083,7 +1123,25 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             keyword_index_config=self.config.keyword_index,
         )
 
-        # Build keyword index (executor now owns chunk data)
+    async def _build_hybrid_indices(self) -> None:
+        """Build hybrid search indices (BM25 and exact match).
+
+        Ensures the HybridSearchExecutor exists, then populates the
+        in-process keyword index (BM25 fallback or OpenSearch) from
+        the stored chunks. For native-hybrid providers, the executor
+        skips the index build internally — the retrieval store owns
+        the keyword leg.
+        """
+        if not self._chunks:
+            logger.debug("No chunks to build hybrid indices from")
+            return
+
+        self._setup_hybrid_executor()
+        if self._hybrid_executor is None:  # defensive — _setup_ already sets it
+            return
+
+        # Build keyword index (no-op for native-hybrid providers — they
+        # bypass the in-process index at query time).
         await self._hybrid_executor.build_keyword_index(self._chunks)
 
         logger.info(
@@ -1118,6 +1176,19 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         fused_results = await self._hybrid_executor.search(
             query, query_embedding, top_k
         )
+
+        # Resolve any chunk_ids the executor doesn't have cached. Native-hybrid
+        # providers skip the startup corpus reload, so _chunk_map starts empty;
+        # batch-fetch missing chunks in a single round-trip.
+        missing_ids = [
+            chunk_id
+            for chunk_id, _ in fused_results
+            if self._hybrid_executor.get_chunk(chunk_id) is None
+        ]
+        if missing_ids:
+            fetched = await self._fetch_chunks_by_ids(missing_ids)
+            for fetched_chunk in fetched:
+                self._hybrid_executor.cache_chunk(fetched_chunk)
 
         # Convert to SearchResult objects via executor's chunk map
         results: list[SearchResult] = []
@@ -1242,17 +1313,34 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             force_ingest=force_ingest, progress_callback=progress_callback
         )
 
-        # Rebuild BM25 index from stored chunks when files were skipped.
-        # The BM25 index is in-memory only and doesn't survive restarts.
-        # For persistent providers (Qdrant, Postgres, etc.), we need to
-        # reload chunks from the store to rebuild keyword search indices.
-        # Skip for in-memory provider: collections don't survive restarts,
-        # so _needs_reingest() returns True for all files (nothing skipped).
-        if skipped_files > 0 and self._provider != "in-memory":
+        # Always set up the hybrid executor — search routes through it.
+        self._setup_hybrid_executor()
+
+        # Decide whether to reload the corpus and rebuild the in-process
+        # keyword index. Only the in-process BM25 fallback actually needs
+        # this: it's ephemeral and dies with the process. For native-hybrid
+        # providers (qdrant), keyword retrieval happens inside the store —
+        # the in-process index is never read, so loading every chunk into
+        # Python on every restart is pure waste. For in-memory providers,
+        # the collection itself is reseeded by _ingest_documents (nothing
+        # is "skipped"), so there's no reload to do.
+        from holodeck.lib.keyword_search import NATIVE_HYBRID_PROVIDERS
+
+        is_native_hybrid = self._provider in NATIVE_HYBRID_PROVIDERS
+        needs_corpus_reload = (
+            skipped_files > 0 and self._provider != "in-memory" and not is_native_hybrid
+        )
+
+        if needs_corpus_reload:
             stored_chunks = await self._load_chunks_from_store()
             if stored_chunks:
                 self._chunks = stored_chunks
                 await self._build_hybrid_indices()
+        elif is_native_hybrid:
+            logger.debug(
+                "Skipped startup corpus reload for native-hybrid provider "
+                f"'{self._provider}'; lazy chunk fetch on miss."
+            )
 
         self._initialized = True
         logger.info(
