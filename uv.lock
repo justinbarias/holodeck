@@ -2318,8 +2318,8 @@ requires-dist = [
     { name = "python-frontmatter", specifier = ">=1.1,<2.0" },
     { name = "python-ulid", specifier = ">=3.1.0,<4.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
-    { name = "qdrant-client", marker = "extra == 'qdrant'", specifier = "~=1.9" },
-    { name = "qdrant-client", marker = "extra == 'vectorstores'", specifier = "~=1.9" },
+    { name = "qdrant-client", marker = "extra == 'qdrant'", specifier = ">=1.18,<2.0" },
+    { name = "qdrant-client", marker = "extra == 'vectorstores'", specifier = ">=1.18,<2.0" },
     { name = "rank-bm25", specifier = ">=0.2.2,<0.3.0" },
     { name = "requests", specifier = ">=2.32.5,<3.0.0" },
     { name = "rouge-score", specifier = ">=0.1.2,<0.2.0" },
@@ -6350,7 +6350,7 @@ wheels = [
 
 [[package]]
 name = "qdrant-client"
-version = "1.16.1"
+version = "1.18.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "grpcio" },
@@ -6362,9 +6362,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/68/fec3816a223c0b73b0e0036460be45c61ce2770ffb9197ac371e4f615ddc/qdrant_client-1.16.1.tar.gz", hash = "sha256:676c7c10fd4d4cb2981b8fcb32fd764f5f661b04b7334d024034d07212f971fd", size = 332130, upload-time = "2025-11-25T04:31:54.212Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/45/5b1bdd15a3c7730eefb9c113600829e20d689b82b5a23f9e07d107094004/qdrant_client-1.18.0.tar.gz", hash = "sha256:52e8ece1a7d40519801bf0b70713bfa0f6b7ae28c7275bbe0b0286fbed7f6db4", size = 352580, upload-time = "2026-05-11T14:12:38.702Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/60/e2/60a20d04b0595c641516463168909c5bbcc192d3d6eacb637c1677109c6a/qdrant_client-1.16.1-py3-none-any.whl", hash = "sha256:1eefe89f66e8a468ba0de1680e28b441e69825cfb62e8fb2e457c15e24ce5e3b", size = 378481, upload-time = "2025-11-25T04:31:52.629Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/10/c437bd2ac41ef30d3019063e6ce537dc111e9214473b337ee88f7fa6359a/qdrant_client-1.18.0-py3-none-any.whl", hash = "sha256:093aa8cf8a420ee3ad2a68b007e1378d7992b2600e0b53c193fc172674f659cd", size = 398126, upload-time = "2026-05-11T14:12:36.998Z" },
 ]
 
 [[package]]
