@@ -145,6 +145,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         self._collection: Any = None
         self._provider: str = "in-memory"
         self._embedding_dimensions: int | None = None
+        self._qdrant_indexes_ensured: bool = False
 
         # Lazily constructed FileProcessor (see _get_file_processor)
         self._file_processor: FileProcessor | None = None
@@ -899,10 +900,77 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         async with self._collection as collection:
             if not await collection.collection_exists():
                 await collection.ensure_collection_exists()
+            await self._ensure_qdrant_payload_indexes(collection)
             await collection.upsert(records)
 
         logger.debug(f"Stored {len(records)} chunks")
         return len(records)
+
+    async def _ensure_qdrant_payload_indexes(self, collection: Any) -> None:
+        """Create payload indexes on qdrant for filter-required fields.
+
+        Semantic Kernel's qdrant connector (`ensure_collection_exists`) only
+        configures vectors; it never translates ``is_indexed=True`` /
+        ``is_full_text_indexed=True`` field flags into qdrant payload-index
+        API calls. Qdrant <=1.17 silently fell back to a brute-force payload
+        scan for un-indexed fields; qdrant >=1.18 rejects such filters with
+        ``400 Index required but not found``.
+
+        This patches over the gap by explicitly creating the indexes
+        declared on ``HierarchicalDocumentRecord`` (see
+        ``holodeck/lib/vector_store.py``: ``section_id``, ``defined_term``,
+        ``defined_term_normalized`` as keyword; ``searchable_text`` as
+        full-text). ``create_payload_index`` is idempotent for matching
+        params, so a no-op on subsequent ingests.
+
+        Args:
+            collection: An SK ``QdrantCollection`` already entered as
+                an async context manager (so ``qdrant_client`` is live).
+        """
+        if self._provider != "qdrant" or self._qdrant_indexes_ensured:
+            return
+
+        from qdrant_client.http import models
+
+        client = collection.qdrant_client
+        coll_name = collection.collection_name
+
+        keyword_fields = ("section_id", "defined_term", "defined_term_normalized")
+        for field_name in keyword_fields:
+            try:
+                await client.create_payload_index(
+                    collection_name=coll_name,
+                    field_name=field_name,
+                    field_schema=models.KeywordIndexParams(
+                        type=models.KeywordIndexType.KEYWORD,
+                    ),
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Qdrant payload-index create failed for '{field_name}' "
+                    f"on '{coll_name}': {e}"
+                )
+
+        try:
+            await client.create_payload_index(
+                collection_name=coll_name,
+                field_name="searchable_text",
+                field_schema=models.TextIndexParams(
+                    type="text",
+                    tokenizer=models.TokenizerType.WORD,
+                    min_token_len=2,
+                    max_token_len=20,
+                    lowercase=True,
+                ),
+            )
+        except Exception as e:
+            logger.warning(
+                f"Qdrant full-text index create failed for 'searchable_text' "
+                f"on '{coll_name}': {e}"
+            )
+
+        self._qdrant_indexes_ensured = True
+        logger.info(f"Ensured qdrant payload indexes on collection '{coll_name}'")
 
     async def _embed_query(self, query: str) -> list[float]:
         """Generate embedding for a query string.
