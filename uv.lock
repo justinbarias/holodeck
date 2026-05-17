@@ -2270,7 +2270,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.0.0,<9.0.0" },
     { name = "cryptography", specifier = ">=46.0.7,<47.0.0" },
     { name = "dash", marker = "extra == 'dashboard'", specifier = ">=3.0,<4.0" },
-    { name = "deepeval", specifier = ">=3.0.0,<3.8.0" },
+    { name = "deepeval", specifier = ">=3.7.9,<3.8.0" },
     { name = "detect-secrets", marker = "extra == 'dev'", specifier = ">=1.4.0" },
     { name = "docker", marker = "extra == 'deploy'", specifier = ">=7.0.0" },
     { name = "docker", marker = "extra == 'deploy-all'", specifier = ">=7.0.0" },
