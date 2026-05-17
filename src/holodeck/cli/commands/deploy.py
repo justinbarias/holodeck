@@ -163,9 +163,12 @@ def build(
         if not quiet:
             click.echo(f"Loading agent configuration from {agent_config}...")
 
-        # Load and validate agent using standard ConfigLoader
+        # Load and validate agent using standard ConfigLoader. The build is
+        # structural (it just needs the YAML shape — tools, deployment block,
+        # file paths); secrets aren't required, so skip env-var substitution
+        # to avoid forcing the operator to export every runtime var.
         loader = ConfigLoader()
-        agent = loader.load_agent_yaml(agent_config)
+        agent = loader.load_agent_yaml(agent_config, substitute_env=False)
         agent_name = agent.name
 
         # Get deployment configuration from agent (merged by ConfigLoader)
@@ -212,7 +215,10 @@ def build(
 
             # Show generated Dockerfile
             dockerfile_content = _generate_dockerfile_content(
-                agent, deployment_config, image_tag
+                agent,
+                deployment_config,
+                image_tag,
+                test_cases_file=_read_raw_test_cases_file(agent_path),
             )
             click.echo()
             click.secho("Generated Dockerfile:", bold=True)
@@ -531,10 +537,28 @@ def destroy(agent_config: str, force: bool, verbose: bool, quiet: bool) -> None:
         click.echo()
 
 
+def _read_raw_test_cases_file(agent_yaml_path: Path) -> str | None:
+    """Read the (unresolved) `test_cases_file` key from raw agent.yaml.
+
+    The loader inlines and discards this key, so it isn't visible on the
+    Agent model — we need the raw YAML to know which file to bundle.
+    """
+    import yaml
+
+    try:
+        with open(agent_yaml_path, encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    ref = raw.get("test_cases_file")
+    return ref if isinstance(ref, str) and ref else None
+
+
 def _generate_dockerfile_content(
     agent: Agent,
     deployment_config: DeploymentConfig,
     version: str,
+    test_cases_file: str | None = None,
 ) -> str:
     """Generate Dockerfile content for the agent.
 
@@ -547,29 +571,47 @@ def _generate_dockerfile_content(
         Generated Dockerfile content
     """
     from holodeck.deploy.dockerfile import generate_dockerfile
-    from holodeck.models.tool import HierarchicalDocumentToolConfig, VectorstoreTool
+    from holodeck.models.tool import (
+        FunctionTool,
+        HierarchicalDocumentToolConfig,
+        VectorstoreTool,
+    )
 
-    # Collect instruction files
+    # Collect leaf files needing an identical `COPY src /app/src` directive:
+    # instructions, function tool Python files, single-file tool sources, and
+    # the test_cases_file (eagerly resolved by the loader at serve time).
     instruction_files: list[str] = []
     if agent.instructions.file:
         instruction_files.append(agent.instructions.file)
+    for tool in agent.tools or []:
+        if isinstance(tool, FunctionTool):
+            instruction_files.append(tool.file)
 
-    # Collect data directories (from vectorstore tools, etc.)
+    # Collect data directories (from vectorstore + hierarchical_document tools).
+    # Skip remote sources (az://, s3://) — those are fetched at runtime.
     data_directories: list[str] = []
+    data_files: list[str] = []
     if agent.tools:
         for tool in agent.tools:
-            if isinstance(tool, VectorstoreTool):
+            if isinstance(tool, VectorstoreTool | HierarchicalDocumentToolConfig):
                 source_path = tool.source
-                if source_path:
-                    # Get parent directory if it's a file
-                    path = Path(source_path)
-                    if path.suffix:
-                        # It's a file, add parent directory
-                        parent = str(path.parent)
-                        if parent and parent != ".":
-                            data_directories.append(parent + "/")
-                    else:
-                        data_directories.append(str(path) + "/")
+                if not source_path or "://" in source_path:
+                    continue
+                path = Path(source_path)
+                if path.suffix:
+                    # Single file source — copy the file directly.
+                    data_files.append(source_path)
+                else:
+                    data_directories.append(str(path) + "/")
+
+    # test_cases_file is resolved eagerly by the loader at serve time, so it
+    # has to be present in the image even though serve never uses it.
+    if test_cases_file and "://" not in test_cases_file:
+        data_files.append(test_cases_file)
+
+    # Treat data_files as instruction_files (same `COPY src /app/src` shape).
+    instruction_files.extend(data_files)
+    instruction_files = sorted(set(instruction_files))
 
     # Remove duplicates
     data_directories = list(set(data_directories))
@@ -579,12 +621,17 @@ def _generate_dockerfile_content(
 
     needs_nodejs = agent.model.provider == ProviderEnum.ANTHROPIC
 
-    # Detect required extras from agent config
+    # Detect required extras from agent config. Vector-store provider names
+    # match the optional-dependency group names in pyproject.toml 1:1.
+    vectorstore_extras = {"chromadb", "qdrant", "pinecone", "postgres"}
     extras: list[str] = []
     for tool in agent.tools or []:
         if isinstance(tool, VectorstoreTool | HierarchicalDocumentToolConfig):
-            if tool.database and getattr(tool.database, "provider", None) == "chromadb":
-                extras.append("chromadb")
+            provider = (
+                getattr(tool.database, "provider", None) if tool.database else None
+            )
+            if provider in vectorstore_extras:
+                extras.append(provider)
             if tool.source:
                 if tool.source.startswith("az://"):
                     extras.append("azure-blob")
@@ -624,41 +671,61 @@ def _prepare_build_context(
     Returns:
         Path to temporary build context directory
     """
-    from holodeck.models.tool import VectorstoreTool
+    from holodeck.models.tool import (
+        FunctionTool,
+        HierarchicalDocumentToolConfig,
+        VectorstoreTool,
+    )
 
     # Create temporary build directory
     build_dir = Path(tempfile.mkdtemp(prefix="holodeck-build-"))
 
     # Generate and write Dockerfile
-    dockerfile_content = _generate_dockerfile_content(agent, deployment_config, version)
+    test_cases_file = _read_raw_test_cases_file(agent_dir / "agent.yaml")
+    dockerfile_content = _generate_dockerfile_content(
+        agent, deployment_config, version, test_cases_file=test_cases_file
+    )
     (build_dir / "Dockerfile").write_text(dockerfile_content)
 
     # Copy agent.yaml
     shutil.copy2(agent_dir / "agent.yaml", build_dir / "agent.yaml")
 
-    # Copy instruction files
+    # Collect leaf files: instructions, function tool sources, single-file
+    # tool sources (hierarchical_document / vectorstore), and test_cases_file.
+    files_to_copy: list[str] = []
     if agent.instructions.file:
-        instruction_file = agent.instructions.file
-        src_path = agent_dir / instruction_file
+        files_to_copy.append(agent.instructions.file)
+    for tool in agent.tools or []:
+        if isinstance(tool, FunctionTool):
+            files_to_copy.append(tool.file)
+        elif isinstance(tool, VectorstoreTool | HierarchicalDocumentToolConfig):
+            source_path = tool.source
+            if source_path and "://" not in source_path and Path(source_path).suffix:
+                files_to_copy.append(source_path)
+    if test_cases_file and "://" not in test_cases_file:
+        files_to_copy.append(test_cases_file)
+
+    for rel_path in sorted(set(files_to_copy)):
+        src_path = agent_dir / rel_path
         if src_path.exists():
-            dst_path = build_dir / instruction_file
+            dst_path = build_dir / rel_path
             dst_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_path, dst_path)
 
-    # Copy data directories
+    # Copy data directories (directory-typed tool sources)
     if agent.tools:
         for tool in agent.tools:
-            if isinstance(tool, VectorstoreTool):
+            if isinstance(tool, VectorstoreTool | HierarchicalDocumentToolConfig):
                 source_path = tool.source
-                if source_path:
+                if (
+                    source_path
+                    and "://" not in source_path
+                    and not Path(source_path).suffix
+                ):
                     src = agent_dir / source_path
-                    if src.exists():
+                    if src.exists() and src.is_dir():
                         dst = build_dir / source_path
-                        if src.is_dir():
-                            shutil.copytree(src, dst, dirs_exist_ok=True)
-                        else:
-                            dst.parent.mkdir(parents=True, exist_ok=True)
-                            shutil.copy2(src, dst)
+                        shutil.copytree(src, dst, dirs_exist_ok=True)
 
     # Create entrypoint script
     entrypoint_content = """#!/bin/bash
