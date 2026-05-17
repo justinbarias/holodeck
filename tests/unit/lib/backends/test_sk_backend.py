@@ -161,6 +161,30 @@ class TestSKBackend:
 
     @pytest.mark.asyncio
     @patch("holodeck.lib.backends.sk_backend.AgentFactory")
+    async def test_create_session_accepts_and_ignores_eager_connect(
+        self, mock_factory_cls: Any
+    ) -> None:
+        """SKBackend.create_session accepts eager_connect for protocol parity.
+
+        SK has no lazy-connect path (thread runs are constructed synchronously
+        in ``AgentFactory.create_thread_run``), so the kwarg is accepted and
+        discarded. The session returned with eager_connect=False is identical
+        to the one returned with the default.
+        """
+        mock_thread_run = MagicMock()
+        self._setup_factory_mock(mock_factory_cls, thread_run=mock_thread_run)
+
+        backend = SKBackend(agent_config=_make_agent())
+        await backend.initialize()
+
+        session_default = await backend.create_session()
+        session_lazy = await backend.create_session(eager_connect=False)
+
+        assert isinstance(session_default, SKSession)
+        assert isinstance(session_lazy, SKSession)
+
+    @pytest.mark.asyncio
+    @patch("holodeck.lib.backends.sk_backend.AgentFactory")
     async def test_invoke_once_returns_execution_result(
         self, mock_factory_cls: Any
     ) -> None:
@@ -280,6 +304,13 @@ class TestSKSession:
         session = SKSession(thread_run=self._make_thread_run())
 
         assert isinstance(session, AgentSession)
+
+    @pytest.mark.asyncio
+    async def test_prepare_is_noop(self) -> None:
+        """SKSession.prepare() is a documented no-op (SK has no lazy connect)."""
+        session = SKSession(thread_run=self._make_thread_run())
+
+        assert await session.prepare() is None
 
     @pytest.mark.asyncio
     async def test_send_returns_execution_result(self) -> None:

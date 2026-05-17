@@ -1314,6 +1314,53 @@ class TestClaudeBackendLazyInit:
             mock_client.connect.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_create_session_eager_connect_false_skips_connect(self) -> None:
+        """create_session(eager_connect=False) returns an unconnected session.
+
+        Used by ``_TaskBoundSession``: the actor task — not the caller — must
+        own the SDK's ``connect()`` so the anyio task group binds correctly.
+        """
+        backend = ClaudeBackend(_make_agent())
+
+        with (
+            patch.object(backend, "initialize", new_callable=AsyncMock) as mock_init,
+            patch(f"{_CAS_MODULE}.ClaudeSDKClient") as mock_client_cls,
+        ):
+            mock_client = MagicMock()
+            mock_client.connect = AsyncMock()
+            mock_client_cls.return_value = mock_client
+
+            async def side_effect():
+                backend._initialized = True
+                backend._options = MagicMock()
+
+            mock_init.side_effect = side_effect
+
+            session = await backend.create_session(eager_connect=False)
+
+            assert isinstance(session, ClaudeSession)
+            mock_client.connect.assert_not_called()
+            assert session._client is None
+
+    @pytest.mark.asyncio
+    async def test_session_prepare_invokes_connect(self) -> None:
+        """ClaudeSession.prepare() is the public entry that connects the client.
+
+        Used by ``_TaskBoundSession._loop`` startup to bind the SDK's anyio
+        task group to the actor task rather than the request task.
+        """
+        with patch(f"{_CAS_MODULE}.ClaudeSDKClient") as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.connect = AsyncMock()
+            mock_client_cls.return_value = mock_client
+
+            session = ClaudeSession(options=MagicMock())
+            await session.prepare()
+
+            mock_client.connect.assert_awaited_once()
+            assert session._client is mock_client
+
+    @pytest.mark.asyncio
     @patch(f"{_CAS_MODULE}.query")
     async def test_no_double_init(self, mock_query: MagicMock) -> None:
         """T015c: Explicit initialize() + invoke_once() → no second init."""

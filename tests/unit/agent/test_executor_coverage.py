@@ -462,6 +462,16 @@ class TestTaskBoundSession:
             await actor.start()
 
     @pytest.mark.asyncio
+    async def test_prepare_on_actor_is_noop(self) -> None:
+        """_TaskBoundSession.prepare() is a no-op; actor handles inner.prepare()
+        inside ``start()`` to bind the connect to the actor task.
+        """
+        inner = AsyncMock(spec=AgentSession)
+
+        actor = _TaskBoundSession(inner)
+        assert await actor.prepare() is None
+
+    @pytest.mark.asyncio
     async def test_close_idempotent_when_task_done(self) -> None:
         """close() handles already-finished task gracefully."""
         inner = AsyncMock(spec=AgentSession)
