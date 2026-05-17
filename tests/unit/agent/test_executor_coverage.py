@@ -432,32 +432,30 @@ class TestTaskBoundSession:
         await actor.close()
 
     @pytest.mark.asyncio
-    async def test_start_rebinds_transport_when_session_supports_it(self) -> None:
-        """Actor calls release_transport+_ensure_client at startup.
+    async def test_start_connects_inner_session_in_actor_task(self) -> None:
+        """Actor calls _ensure_client at startup so connect() binds to its task.
 
         Regression: the SDK's anyio task group is bound to whichever task
         called ``connect()``. If that's an HTTP request task, the request
         ends after turn 1 and the SDK's ``_read_messages`` background task
         gets cancelled, leaving turn 2's ``receive_response()`` hanging on
-        a memory stream nobody fills. The actor must own the transport.
+        a memory stream nobody fills. The actor must own the connect call.
         """
         inner = AsyncMock(spec=AgentSession)
-        inner.release_transport = AsyncMock()
         inner._ensure_client = AsyncMock()
         inner.send.return_value = ExecutionResult(response="ok")
 
         actor = _TaskBoundSession(inner)
         await actor.start()
 
-        inner.release_transport.assert_awaited_once()
         inner._ensure_client.assert_awaited_once()
         await actor.close()
 
     @pytest.mark.asyncio
-    async def test_start_skips_rebind_for_sessions_without_transport_api(
+    async def test_start_skips_connect_for_sessions_without_ensure_client(
         self,
     ) -> None:
-        """SK / non-Claude sessions don't expose the rebind hooks — no-op."""
+        """SK / non-Claude sessions don't expose _ensure_client — no-op."""
         inner = AsyncMock(spec=AgentSession)
         inner.send.return_value = ExecutionResult(response="ok")
 
@@ -469,10 +467,9 @@ class TestTaskBoundSession:
         await actor.close()
 
     @pytest.mark.asyncio
-    async def test_start_propagates_rebind_failure(self) -> None:
-        """If reconnect fails during startup, start() raises the error."""
+    async def test_start_propagates_connect_failure(self) -> None:
+        """If connect fails during startup, start() raises the error."""
         inner = AsyncMock(spec=AgentSession)
-        inner.release_transport = AsyncMock()
         inner._ensure_client = AsyncMock(side_effect=RuntimeError("connect boom"))
 
         actor = _TaskBoundSession(inner)

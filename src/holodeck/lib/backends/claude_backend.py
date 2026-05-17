@@ -1088,25 +1088,40 @@ class ClaudeBackend:
                 ),
             }
 
-    async def create_session(self) -> ClaudeSession:
+    async def create_session(self, *, eager_connect: bool = True) -> ClaudeSession:
         """Create a new multi-turn session.
 
-        Automatically initializes if not yet done. Eagerly connects the SDK
-        client so the anyio cancel scope is entered on the caller's task.
-        Deferring connect() to the first ``send()`` would bind the scope to
-        whatever task wraps ``send`` (e.g., an inner task spawned by
-        ``asyncio.wait_for`` on Python <3.11) and a later ``close()`` on the
-        outer task would raise ``RuntimeError: Attempted to exit cancel scope
-        in a different task``.
+        Automatically initializes if not yet done. By default eagerly
+        connects the SDK client so the anyio cancel scope is entered on
+        the caller's task — required for non-actor callers because
+        deferring ``connect()`` to the first ``send()`` would bind the
+        scope to whatever task wraps ``send`` (e.g. an inner task spawned
+        by ``asyncio.wait_for`` on Python <3.11) and a later ``close()``
+        on the outer task would raise ``RuntimeError: Attempted to exit
+        cancel scope in a different task``.
+
+        Pass ``eager_connect=False`` when the caller will own the
+        connect/disconnect lifecycle in a different task (e.g. when
+        wrapping the session in ``_TaskBoundSession`` — that actor must
+        be the task that calls ``connect()`` so the SDK's anyio task
+        group + ``_read_messages`` background reader live as long as
+        the actor, not the HTTP request task that created the session).
+
+        Args:
+            eager_connect: When True (default), connect the SDK client
+                synchronously before returning. When False, return an
+                unconnected session; the first ``send()`` will connect.
 
         Returns:
-            A new, connected ``ClaudeSession`` instance.
+            A new ``ClaudeSession`` instance, connected unless
+            ``eager_connect=False``.
         """
         await self._ensure_initialized()
         if self._options is None:
             raise BackendInitError("Backend options not set after initialization")
         session = ClaudeSession(options=self._options)
-        await session._ensure_client()
+        if eager_connect:
+            await session._ensure_client()
         return session
 
     async def _initialize_tools(self) -> None:

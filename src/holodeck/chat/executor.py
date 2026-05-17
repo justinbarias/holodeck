@@ -90,25 +90,24 @@ class _TaskBoundSession:
         subsequent call from a different task can deadlock when reading
         the shared anyio memory stream.
 
-        Startup: if the inner session exposes ``release_transport`` and
-        ``_ensure_client`` (i.e. it's a ``ClaudeSession``), tear down any
-        pre-existing transport (likely bound to the HTTP request task that
-        created the session) and reconnect inside this task. Otherwise the
-        SDK's ``_read_messages`` background task dies with the request task
-        after turn 1 and turn 2's ``receive_response()`` hangs forever
-        while the CLI subprocess happily writes responses to a stdout that
-        nobody is reading. SK/other backends without these methods skip
-        the rebind.
+        Startup: if the inner session exposes ``_ensure_client`` (i.e.
+        it's a ``ClaudeSession`` constructed via ``eager_connect=False``),
+        call it here so the SDK's ``connect()`` runs in this task. That
+        binds the SDK's anyio task group + ``_read_messages`` background
+        reader to the actor — they live as long as the actor does, not
+        as long as the HTTP request task that created the session.
+        Without this, turn 2 hangs forever in ``receive_response()``
+        while the CLI subprocess writes to a stdout nobody is reading,
+        because the reader task was cancelled when turn 1's request
+        task ended. SK / non-Claude sessions skip this cleanly.
         """
-        release = getattr(self._session, "release_transport", None)
         ensure = getattr(self._session, "_ensure_client", None)
-        if callable(release) and callable(ensure):
+        if callable(ensure):
             try:
                 logger.debug(
-                    "[trace] _TaskBoundSession._loop: rebinding inner session "
-                    "transport to actor task"
+                    "[trace] _TaskBoundSession._loop: connecting inner session "
+                    "in actor task"
                 )
-                await release()
                 await ensure()
             except BaseException as exc:
                 self._startup_error = exc
@@ -293,13 +292,24 @@ class AgentExecutor:
                 mode="chat",
                 allow_side_effects=False,
             )
-        session = await self._backend.create_session()
 
         if self._use_task_bound_session:
+            # Ask the backend NOT to eagerly connect — the actor task
+            # must be the one that calls ``connect()`` so the SDK's
+            # anyio task group binds to it and survives across HTTP
+            # request tasks. Fall back to plain ``create_session()`` for
+            # backends that don't expose the kwarg (only Claude needs it).
+            try:
+                session = await self._backend.create_session(  # type: ignore[call-arg]
+                    eager_connect=False,
+                )
+            except TypeError:
+                session = await self._backend.create_session()
             actor = _TaskBoundSession(session)
             await actor.start()
             self._session = actor
         else:
+            session = await self._backend.create_session()
             self._session = session
 
     async def execute_turn(self, message: str) -> AgentResponse:
