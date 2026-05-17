@@ -886,3 +886,134 @@ class TestExtrasDetection:
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
         assert "holodeck-ai[" not in content
+
+    def test_qdrant_provider_detected(self, tmp_path: Path) -> None:
+        """qdrant database provider triggers the qdrant extra."""
+        from holodeck.cli.commands.deploy import _generate_dockerfile_content
+        from holodeck.config.loader import ConfigLoader
+
+        agent_yaml = tmp_path / "agent.yaml"
+        agent_yaml.write_text(
+            "name: extras-test\n"
+            "model:\n"
+            "  provider: openai\n"
+            "  name: gpt-4o\n"
+            "instructions:\n"
+            '  inline: "Test"\n'
+            "tools:\n"
+            "  - name: search_docs\n"
+            "    type: vectorstore\n"
+            "    description: Search docs\n"
+            "    source: ./data\n"
+            "    database:\n"
+            "      provider: qdrant\n"
+            "      connection_string: http://stub:6333\n"
+            "      collection: test\n"
+            "deployment:\n"
+            "  registry:\n"
+            "    url: ghcr.io\n"
+            "    repository: test/extras\n"
+            "    tag_strategy: latest\n"
+            "  target:\n"
+            "    provider: aws\n"
+            "    aws:\n"
+            "      region: us-east-1\n"
+            "      cpu: 1\n"
+            "      memory: 2048\n"
+        )
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml))
+        content = _generate_dockerfile_content(agent, agent.deployment, "test")
+
+        assert "qdrant" in content
+
+
+class TestBuildContextFileCopying:
+    """Tests for _prepare_build_context bundling tool sources + test_cases_file."""
+
+    def _write_agent(self, tmp_path: Path, *, with_tool_file: bool) -> Path:
+        agent_dir = tmp_path / "agent"
+        agent_dir.mkdir()
+        (agent_dir / "instructions").mkdir()
+        (agent_dir / "instructions" / "sys.md").write_text("System prompt.")
+        (agent_dir / "tools").mkdir()
+        (agent_dir / "tools" / "my_tools.py").write_text("def f(): return 1\n")
+        (agent_dir / "data").mkdir()
+        (agent_dir / "data" / "cases.yaml").write_text("- input: hi\n")
+
+        tools_block = (
+            (
+                "tools:\n"
+                "  - name: f\n"
+                "    type: function\n"
+                "    description: f\n"
+                "    file: tools/my_tools.py\n"
+                "    function: f\n"
+            )
+            if with_tool_file
+            else ""
+        )
+
+        (agent_dir / "agent.yaml").write_text(
+            "name: bundling-test\n"
+            "model:\n"
+            "  provider: openai\n"
+            "  name: gpt-4o\n"
+            "instructions:\n"
+            "  file: instructions/sys.md\n"
+            + tools_block
+            + "test_cases_file: data/cases.yaml\n"
+            "deployment:\n"
+            "  registry:\n"
+            "    url: ghcr.io\n"
+            "    repository: test/bundling\n"
+            "    tag_strategy: latest\n"
+            "  target:\n"
+            "    provider: aws\n"
+            "    aws:\n"
+            "      region: us-east-1\n"
+            "      cpu: 1\n"
+            "      memory: 2048\n"
+        )
+        return agent_dir
+
+    def test_function_tool_and_test_cases_file_bundled(self, tmp_path: Path) -> None:
+        """Function tool .py + test_cases_file land in the build context."""
+        import shutil
+
+        from holodeck.cli.commands.deploy import _prepare_build_context
+        from holodeck.config.loader import ConfigLoader
+
+        agent_dir = self._write_agent(tmp_path, with_tool_file=True)
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(
+            str(agent_dir / "agent.yaml"), substitute_env=False
+        )
+
+        build_dir = _prepare_build_context(agent, agent.deployment, agent_dir, "v1")
+        try:
+            assert (build_dir / "agent.yaml").is_file()
+            assert (build_dir / "instructions" / "sys.md").is_file()
+            assert (build_dir / "tools" / "my_tools.py").is_file()
+            assert (build_dir / "data" / "cases.yaml").is_file()
+            assert (build_dir / "entrypoint.sh").is_file()
+            assert (build_dir / "Dockerfile").read_text().startswith("# HoloDeck")
+        finally:
+            shutil.rmtree(build_dir, ignore_errors=True)
+
+    def test_read_raw_test_cases_file_returns_unresolved_ref(
+        self, tmp_path: Path
+    ) -> None:
+        """_read_raw_test_cases_file pulls the YAML key directly."""
+        from holodeck.cli.commands.deploy import _read_raw_test_cases_file
+
+        agent_dir = self._write_agent(tmp_path, with_tool_file=False)
+        assert _read_raw_test_cases_file(agent_dir / "agent.yaml") == "data/cases.yaml"
+
+    def test_read_raw_test_cases_file_missing_returns_none(
+        self, tmp_path: Path
+    ) -> None:
+        """Missing or unreadable file returns None instead of raising."""
+        from holodeck.cli.commands.deploy import _read_raw_test_cases_file
+
+        assert _read_raw_test_cases_file(tmp_path / "nope.yaml") is None

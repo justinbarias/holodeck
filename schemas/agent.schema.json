@@ -1960,6 +1960,16 @@
           "type": "object",
           "additionalProperties": { "type": "string" },
           "description": "Environment variables for the container"
+        },
+        "health_check_path": {
+          "type": "string",
+          "default": "/health",
+          "description": "HTTP path for health checks (e.g., /health, /healthz)"
+        },
+        "platform": {
+          "type": "string",
+          "default": "linux/amd64",
+          "description": "Target platform for container image (e.g., linux/amd64, linux/arm64)"
         }
       },
       "description": "Main deployment configuration for containerizing and deploying agents"

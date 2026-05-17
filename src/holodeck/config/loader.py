@@ -108,7 +108,11 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
             base[key] = override_value
 
 
-def _resolve_test_cases_file(agent_config: dict[str, Any], base_dir: Path) -> None:
+def _resolve_test_cases_file(
+    agent_config: dict[str, Any],
+    base_dir: Path,
+    substitute_env: bool = True,
+) -> None:
     """Resolve an external `test_cases_file` reference into inline `test_cases`.
 
     Loads the referenced YAML (relative to the agent.yaml directory), applies
@@ -142,7 +146,9 @@ def _resolve_test_cases_file(agent_config: dict[str, Any], base_dir: Path) -> No
     if not ref_path.is_absolute():
         ref_path = (base_dir / ref_path).resolve()
     try:
-        payload = _read_yaml_with_env_substitution(ref_path)
+        payload = _read_yaml_with_env_substitution(
+            ref_path, substitute_env=substitute_env
+        )
     except OSError as e:
         raise ConfigError(
             "test_cases_file",
@@ -170,14 +176,21 @@ def _resolve_test_cases_file(agent_config: dict[str, Any], base_dir: Path) -> No
     agent_config["test_cases"] = cases
 
 
-def _read_yaml_with_env_substitution(path: Path) -> dict[str, Any] | None:
-    """Read a YAML file with environment variable substitution.
+def _read_yaml_with_env_substitution(
+    path: Path, substitute_env: bool = True
+) -> dict[str, Any] | None:
+    """Read a YAML file, optionally substituting environment variables.
 
-    Reads raw text, substitutes env vars, then parses YAML once.
-    Avoids the lossy dict→YAML→regex→dict roundtrip.
+    Reads raw text, substitutes env vars (when enabled), then parses YAML
+    once. Avoids the lossy dict→YAML→regex→dict roundtrip.
 
     Args:
         path: Path to YAML file
+        substitute_env: When True (default), `${VAR}` references are resolved
+            against the process environment and missing vars raise
+            ``ConfigError``. When False, the raw `${VAR}` literal is kept —
+            useful for structural-only consumers (e.g. ``holodeck deploy
+            build``) that don't need runtime values.
 
     Returns:
         Parsed dictionary or None if empty
@@ -185,11 +198,13 @@ def _read_yaml_with_env_substitution(path: Path) -> dict[str, Any] | None:
     Raises:
         OSError: If file cannot be read
         yaml.YAMLError: If YAML parsing fails
-        ConfigError: If env var substitution fails
+        ConfigError: If env var substitution fails (only when
+            ``substitute_env`` is True)
     """
     raw_text = path.read_text(encoding="utf-8")
-    substituted = substitute_env_vars(raw_text)
-    content = yaml.safe_load(substituted)
+    if substitute_env:
+        raw_text = substitute_env_vars(raw_text)
+    content = yaml.safe_load(raw_text)
     return content if content else None
 
 
@@ -298,7 +313,7 @@ class ConfigLoader:
                 f"Failed to parse YAML file {file_path}: {str(e)}",
             ) from e
 
-    def load_agent_yaml(self, file_path: str) -> Agent:
+    def load_agent_yaml(self, file_path: str, substitute_env: bool = True) -> Agent:
         """Load and validate an agent configuration from YAML.
 
         This method:
@@ -316,6 +331,11 @@ class ConfigLoader:
 
         Args:
             file_path: Path to agent.yaml file
+            substitute_env: When True (default), ``${VAR}`` references in both
+                the agent YAML and any referenced ``test_cases_file`` are
+                resolved against the process environment. When False, the raw
+                ``${VAR}`` literal is preserved — used by structural consumers
+                like ``holodeck deploy build`` that don't need runtime secrets.
 
         Returns:
             Validated Agent instance
@@ -327,7 +347,9 @@ class ConfigLoader:
         """
         path = Path(file_path)
         try:
-            agent_config = _read_yaml_with_env_substitution(path)
+            agent_config = _read_yaml_with_env_substitution(
+                path, substitute_env=substitute_env
+            )
         except OSError as e:
             raise FileNotFoundError(
                 file_path,
@@ -355,7 +377,9 @@ class ConfigLoader:
         # Resolve external test_cases_file reference (if any) into inline
         # `test_cases` before schema validation. Agent model uses
         # `extra="forbid"`, so the key must be removed from the dict.
-        _resolve_test_cases_file(merged_config, path.parent)
+        _resolve_test_cases_file(
+            merged_config, path.parent, substitute_env=substitute_env
+        )
 
         # Expose the agent directory on ``sys.path`` so ``CodeMetric``'s
         # grader resolver (``importlib.import_module``) can locate user-land
