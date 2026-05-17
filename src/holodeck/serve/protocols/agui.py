@@ -708,22 +708,49 @@ class AGUIProtocol(Protocol):
             #    before execution starts. Gracefully degrade if the executor
             #    does not expose this method (e.g. in tests with mocks).
             executor = session.agent_executor
+            logger.info(
+                "[trace] agui.handle_request: session=%s, executor_id=%s, "
+                "session_attached=%s",
+                session.session_id,
+                id(executor),
+                getattr(executor, "_session", None) is not None,
+            )
             _ensure = getattr(executor, "_ensure_backend_and_session", None)
             if callable(_ensure) and asyncio.iscoroutinefunction(_ensure):
                 await _ensure()
             tool_queue = getattr(executor, "tool_event_queue", None)
+            logger.info(
+                "[trace] agui.handle_request: ensure done, tool_queue=%s",
+                (
+                    "Queue"
+                    if isinstance(tool_queue, asyncio.Queue)
+                    else type(tool_queue).__name__
+                ),
+            )
 
             # 3. Execute agent — drain tool events concurrently if supported.
             #    Each tool call is wrapped in its own assistant message so
             #    CopilotKit renders a separate card per tool invocation.
-            logger.debug("Executing agent for session %s", session.session_id)
+            logger.info(
+                "[trace] agui.handle_request: executing agent for session %s",
+                session.session_id,
+            )
             tool_msg_ids: dict[str, str] = {}
 
             if isinstance(tool_queue, asyncio.Queue):
                 # Real-time path: run execute_turn as a task, drain events
                 execute_task = asyncio.create_task(executor.execute_turn(full_message))
 
+                poll_count = 0
                 while not execute_task.done():
+                    poll_count += 1
+                    if poll_count % 50 == 0:
+                        logger.info(
+                            "[trace] agui.handle_request: still polling "
+                            "tool_queue (%d iters, ~%.1fs)",
+                            poll_count,
+                            poll_count * 0.1,
+                        )
                     try:
                         event = await asyncio.wait_for(tool_queue.get(), timeout=0.1)
                         for agui_evt in _tool_event_to_agui(event, tool_msg_ids):
@@ -731,7 +758,11 @@ class AGUIProtocol(Protocol):
                     except asyncio.TimeoutError:
                         continue
 
+                logger.info(
+                    "[trace] agui.handle_request: execute_task done, awaiting result"
+                )
                 response = await execute_task
+                logger.info("[trace] agui.handle_request: execute_task result received")
 
                 # Drain any events that arrived between last poll and completion
                 while not tool_queue.empty():

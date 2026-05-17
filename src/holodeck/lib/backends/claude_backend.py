@@ -652,9 +652,28 @@ class ClaudeSession:
         Raises:
             BackendSessionError: On subprocess or SDK error.
         """
+        turn_no = self._turn_count + 1
+        logger.info(
+            "[trace] ClaudeSession.send turn=%d: entering, session_id=%s, "
+            "client_cached=%s",
+            turn_no,
+            self._session_id,
+            self._client is not None,
+        )
         try:
             client = await self._ensure_client()
+            logger.info(
+                "[trace] ClaudeSession.send turn=%d: client ready, calling "
+                "query (session_id=%s)",
+                turn_no,
+                self._get_session_id(),
+            )
             await client.query(message, session_id=self._get_session_id())
+            logger.info(
+                "[trace] ClaudeSession.send turn=%d: query written, awaiting "
+                "receive_response",
+                turn_no,
+            )
 
             text_parts: list[str] = []
             tool_calls: list[dict[str, Any]] = []
@@ -663,7 +682,15 @@ class ClaudeSession:
             num_turns = 1
             structured_output: Any = None
 
+            msg_count = 0
             async for msg in client.receive_response():
+                msg_count += 1
+                logger.info(
+                    "[trace] ClaudeSession.send turn=%d: msg #%d type=%s",
+                    turn_no,
+                    msg_count,
+                    msg.__class__.__name__,
+                )
                 _maybe_emit_subagent_message(msg, self._tool_event_queue)
                 text_parts, tool_calls, tool_results = _process_message(
                     msg, text_parts, tool_calls, tool_results
@@ -682,6 +709,13 @@ class ClaudeSession:
                     self._session_id = rm.session_id
                     structured_output = rm.structured_output
 
+            logger.info(
+                "[trace] ClaudeSession.send turn=%d: receive_response exited, "
+                "msg_count=%d, new_session_id=%s",
+                turn_no,
+                msg_count,
+                self._session_id,
+            )
             self._turn_count += 1
 
             # Enrich tool results with names from tool calls so downstream
