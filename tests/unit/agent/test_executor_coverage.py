@@ -7,6 +7,7 @@ shutdown/clear_history edge cases, and streaming history.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -403,6 +404,32 @@ class TestTaskBoundSession:
         inner.close.assert_awaited_once()
         assert actor._task is not None
         assert actor._task.done()
+
+    @pytest.mark.asyncio
+    async def test_cancelled_future_at_pickup_is_skipped(self) -> None:
+        """Items cancelled before the actor picks them up don't burn a turn."""
+
+        inner = AsyncMock(spec=AgentSession)
+        inner.send = AsyncMock(return_value=ExecutionResult(response="ok"))
+
+        actor = _TaskBoundSession(inner)
+        # Don't start the loop yet — queue an already-cancelled item first.
+        future: asyncio.Future[ExecutionResult] = (
+            asyncio.get_running_loop().create_future()
+        )
+        future.cancel()
+        await actor._queue.put(("ghost", future, None))
+
+        await actor.start()
+
+        # A real send should still go through.
+        result = await actor.send("real")
+        assert result.response == "ok"
+        # Inner.send must have been called exactly once — the cancelled item
+        # was skipped, not dispatched.
+        assert inner.send.await_count == 1
+
+        await actor.close()
 
     @pytest.mark.asyncio
     async def test_close_idempotent_when_task_done(self) -> None:

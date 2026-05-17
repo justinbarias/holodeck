@@ -71,12 +71,27 @@ class _TaskBoundSession:
         self._task = asyncio.create_task(self._loop())
 
     async def _loop(self) -> None:
-        """Process messages sequentially in this task's context."""
+        """Process messages sequentially in this task's context.
+
+        The inner ``self._session.send(...)`` MUST be awaited directly in
+        this task, not wrapped in a child task — the Claude SDK's anyio
+        task group is bound to the task that called ``connect()``, and any
+        subsequent call from a different task can deadlock when reading
+        the shared anyio memory stream.
+        """
         while True:
             item = await self._queue.get()
             if item is None:
                 break
             message, future, chunk_queue = item
+
+            # Caller already gave up (e.g. ``wait_for`` timed out) before we
+            # picked this item up — don't burn an SDK turn whose result no
+            # one will read. Otherwise the next request would queue behind
+            # an abandoned turn and inherit its latency.
+            if future.cancelled():
+                continue
+
             try:
                 if chunk_queue is not None:
                     # Streaming mode — push chunks to the caller's queue
@@ -90,7 +105,8 @@ class _TaskBoundSession:
                         future.set_result(None)
                 else:
                     result = await self._session.send(message)
-                    future.set_result(result)
+                    if not future.done():
+                        future.set_result(result)
             except Exception as e:
                 if not future.done():
                     future.set_exception(e)
