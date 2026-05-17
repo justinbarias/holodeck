@@ -1178,7 +1178,21 @@ class TestClaudeSessionSend:
 
     @pytest.mark.asyncio
     async def test_send_multi_turn_state_tracking(self) -> None:
-        """T014: Multi-turn state tracking passes session_id on turn 2+."""
+        """Multi-turn: every ``client.query()`` uses session_id="default".
+
+        Regression test for an AGUI multi-turn hang. The CLI subprocess
+        tracks conversation state implicitly across queries on the same
+        connection, so every ``client.query()`` for the lifetime of a
+        connected ``ClaudeSDKClient`` must pass the same ``session_id``.
+        Rotating it to the CLI-assigned id from ``ResultMessage`` (the
+        previous behavior) wedges the CLI on the second turn — its
+        ``query()`` write succeeds but no responses ever come back.
+
+        ``session._session_id`` is still updated from each ResultMessage
+        for diagnostics and for the future ``release_transport``-driven
+        reconnect path (which spawns a new CLI process and would need to
+        ``--resume`` the conversation by id).
+        """
         mock_client = MagicMock()
         mock_client.query = AsyncMock()
 
@@ -1197,11 +1211,10 @@ class TestClaudeSessionSend:
 
         await session.send("Turn 1")
 
-        # After first turn, session_id should be captured
+        # CLI-assigned id is captured for diagnostics/reconnect.
         assert session._session_id == "sess-001"
         assert session._turn_count == 1
-
-        # First turn uses default session_id
+        # First turn uses session_id="default".
         mock_client.query.assert_called_with("Turn 1", session_id="default")
 
         # Second turn
@@ -1215,8 +1228,9 @@ class TestClaudeSessionSend:
 
         await session.send("Turn 2")
 
-        # Second turn should pass captured session_id
-        mock_client.query.assert_called_with("Turn 2", session_id="sess-001")
+        # Turn 2 must ALSO pass session_id="default" — not the captured
+        # "sess-001" — otherwise the CLI hangs.
+        mock_client.query.assert_called_with("Turn 2", session_id="default")
         assert session._session_id == "sess-002"
         assert session._turn_count == 2
 

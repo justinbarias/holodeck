@@ -631,14 +631,29 @@ class ClaudeSession:
         return self._client
 
     def _get_session_id(self) -> str:
-        """Return the session ID for the current query.
+        """Return the ``session_id`` to pass on ``client.query()``.
 
-        SDK 0.1.37 uses the ``session_id`` parameter on ``client.query()``
-        to maintain multi-turn conversation state.  The first turn uses the
-        default ``"default"``; subsequent turns reuse the session ID returned
-        by the ``ResultMessage``.
+        For ``ClaudeSDKClient`` in interactive streaming mode (which is what
+        HoloDeck uses), the CLI subprocess tracks the conversation
+        implicitly across calls on the same connection — every
+        ``client.query()`` for the lifetime of a connected client must use
+        the **same** ``session_id``. The id surfaced on ``ResultMessage`` is
+        informational (the CLI's own id for the conversation it created), it
+        is **not** a key the same CLI process will accept back as a
+        ``session_id`` argument on a follow-up query — doing so wedges the
+        CLI: the next ``query()`` writes successfully but no messages ever
+        come back on stdout, and the SDK's ``receive_response()`` hangs
+        until the per-turn timeout fires.
+
+        Earlier SDK builds (≤ 0.1.37) appeared to tolerate the rotation;
+        from 0.1.44 onward it deadlocks the second turn. We therefore pin
+        the session id to ``"default"`` for the connected lifetime, and
+        only record the CLI-assigned id (``self._session_id``) for
+        diagnostic purposes and for ``release_transport()``-driven
+        reconnects (where we want to ``resume`` the conversation in a
+        *new* CLI process, which is a different code path).
         """
-        return self._session_id or "default"
+        return "default"
 
     async def send(self, message: str) -> ExecutionResult:
         """Send a message and collect the full response.
