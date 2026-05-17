@@ -65,10 +65,21 @@ class _TaskBoundSession:
             tuple[str, asyncio.Future[Any], asyncio.Queue[Any] | None] | None
         ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
+        self._ready: asyncio.Event = asyncio.Event()
+        self._startup_error: BaseException | None = None
 
     async def start(self) -> None:
-        """Start the background actor task."""
+        """Start the actor and block until it has bound the SDK to its task.
+
+        The actor's first job is to rebind the underlying session's
+        transport (the SDK's anyio task group + ``_read_messages``
+        background task) to this actor task. We block here until that's
+        done so the caller can safely enqueue a ``send`` afterwards.
+        """
         self._task = asyncio.create_task(self._loop())
+        await self._ready.wait()
+        if self._startup_error is not None:
+            raise self._startup_error
 
     async def _loop(self) -> None:
         """Process messages sequentially in this task's context.
@@ -78,7 +89,33 @@ class _TaskBoundSession:
         task group is bound to the task that called ``connect()``, and any
         subsequent call from a different task can deadlock when reading
         the shared anyio memory stream.
+
+        Startup: if the inner session exposes ``release_transport`` and
+        ``_ensure_client`` (i.e. it's a ``ClaudeSession``), tear down any
+        pre-existing transport (likely bound to the HTTP request task that
+        created the session) and reconnect inside this task. Otherwise the
+        SDK's ``_read_messages`` background task dies with the request task
+        after turn 1 and turn 2's ``receive_response()`` hangs forever
+        while the CLI subprocess happily writes responses to a stdout that
+        nobody is reading. SK/other backends without these methods skip
+        the rebind.
         """
+        release = getattr(self._session, "release_transport", None)
+        ensure = getattr(self._session, "_ensure_client", None)
+        if callable(release) and callable(ensure):
+            try:
+                logger.debug(
+                    "[trace] _TaskBoundSession._loop: rebinding inner session "
+                    "transport to actor task"
+                )
+                await release()
+                await ensure()
+            except BaseException as exc:
+                self._startup_error = exc
+                self._ready.set()
+                return
+        self._ready.set()
+
         turn_no = 0
         logger.debug("[trace] _TaskBoundSession._loop: started")
         while True:
