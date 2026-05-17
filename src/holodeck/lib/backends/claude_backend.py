@@ -65,6 +65,13 @@ logger = logging.getLogger(__name__)
 _MAX_RETRIES = 3
 _BACKOFF_BASE_SECONDS = 1
 
+# Session ID passed to every ``client.query()`` for the lifetime of a
+# connected ``ClaudeSDKClient``. The CLI subprocess tracks conversation
+# state internally in interactive streaming mode; rotating to the
+# CLI-assigned id surfaced on ``ResultMessage`` wedges the CLI on the
+# next turn (query write succeeds but no response messages arrive).
+_DEFAULT_SESSION_ID = "default"
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
@@ -566,9 +573,10 @@ class ClaudeSession:
     writes one user message on stdin and reads the response stream off
     stdout. The CLI tracks conversation history internally, so every
     ``client.query()`` for that connected lifetime uses
-    ``session_id="default"`` — rotating it to the CLI-assigned id surfaced
-    on ``ResultMessage`` wedges the CLI on the next turn (the query write
-    succeeds but no response messages ever come back).
+    ``session_id=_DEFAULT_SESSION_ID`` (the module-level constant) —
+    rotating it to the CLI-assigned id surfaced on ``ResultMessage``
+    wedges the CLI on the next turn (the query write succeeds but no
+    response messages ever come back).
 
     The ``_base_options`` reference is **never mutated**. Turn-specific
     options are created as new ``ClaudeAgentOptions`` instances.
@@ -615,6 +623,17 @@ class ClaudeSession:
             self._base_options.hooks = merged
             return self._base_options
 
+    async def prepare(self) -> None:
+        """Open the SDK transport in the calling task's context.
+
+        Connects the underlying ``ClaudeSDKClient`` if not already
+        connected. The SDK's anyio task group + ``_read_messages``
+        background reader bind to whichever task calls ``connect()``,
+        so callers needing a specific task to own that lifecycle should
+        call ``prepare()`` from that task before the first ``send``.
+        """
+        await self._ensure_client()
+
     async def _ensure_client(self) -> ClaudeSDKClient:
         """Lazily create, connect, and return the SDK client.
 
@@ -659,7 +678,7 @@ class ClaudeSession:
                 "[trace] ClaudeSession.send turn=%d: client ready, calling query",
                 turn_no,
             )
-            await client.query(message, session_id="default")
+            await client.query(message, session_id=_DEFAULT_SESSION_ID)
             logger.debug(
                 "[trace] ClaudeSession.send turn=%d: query written, awaiting "
                 "receive_response",
@@ -756,7 +775,7 @@ class ClaudeSession:
         """
         try:
             client = await self._ensure_client()
-            await client.query(message, session_id="default")
+            await client.query(message, session_id=_DEFAULT_SESSION_ID)
 
             async for msg in client.receive_response():
                 _maybe_emit_subagent_message(msg, self._tool_event_queue)

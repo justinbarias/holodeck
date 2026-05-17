@@ -54,6 +54,10 @@ class SKSession:
         """
         self._thread_run = thread_run
 
+    async def prepare(self) -> None:
+        """No-op. SK thread runs are connected at construction time."""
+        return None
+
     async def send(self, message: str) -> ExecutionResult:
         """Send a message and receive a single-turn result.
 
@@ -137,12 +141,18 @@ class SKBackend:
             token_usage=token_usage,
         )
 
-    async def create_session(self) -> AgentSession:
+    async def create_session(self, *, eager_connect: bool = True) -> AgentSession:
         """Create a new stateful multi-turn session.
+
+        Args:
+            eager_connect: Accepted for protocol compatibility with
+                backends that have lazy-connect semantics (Claude).
+                SK creates its thread run synchronously regardless.
 
         Returns:
             An SKSession instance bound to a fresh thread run.
         """
+        del eager_connect  # SK has no lazy connect path
         thread_run = await self._factory.create_thread_run()
         return SKSession(thread_run=thread_run)
 

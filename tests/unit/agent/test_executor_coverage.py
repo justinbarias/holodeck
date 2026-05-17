@@ -432,45 +432,30 @@ class TestTaskBoundSession:
         await actor.close()
 
     @pytest.mark.asyncio
-    async def test_start_connects_inner_session_in_actor_task(self) -> None:
-        """Actor calls _ensure_client at startup so connect() binds to its task.
+    async def test_start_prepares_inner_session_in_actor_task(self) -> None:
+        """Actor calls session.prepare() at startup so connect() binds here.
 
         Regression: the SDK's anyio task group is bound to whichever task
         called ``connect()``. If that's an HTTP request task, the request
         ends after turn 1 and the SDK's ``_read_messages`` background task
         gets cancelled, leaving turn 2's ``receive_response()`` hanging on
-        a memory stream nobody fills. The actor must own the connect call.
+        a memory stream nobody fills. The actor must own the connect call,
+        which it performs by invoking ``session.prepare()`` in its own task.
         """
         inner = AsyncMock(spec=AgentSession)
-        inner._ensure_client = AsyncMock()
         inner.send.return_value = ExecutionResult(response="ok")
 
         actor = _TaskBoundSession(inner)
         await actor.start()
 
-        inner._ensure_client.assert_awaited_once()
+        inner.prepare.assert_awaited_once()
         await actor.close()
 
     @pytest.mark.asyncio
-    async def test_start_skips_connect_for_sessions_without_ensure_client(
-        self,
-    ) -> None:
-        """SK / non-Claude sessions don't expose _ensure_client — no-op."""
+    async def test_start_propagates_prepare_failure(self) -> None:
+        """If prepare() fails during startup, start() raises the error."""
         inner = AsyncMock(spec=AgentSession)
-        inner.send.return_value = ExecutionResult(response="ok")
-
-        actor = _TaskBoundSession(inner)
-        await actor.start()
-
-        result = await actor.send("hi")
-        assert result.response == "ok"
-        await actor.close()
-
-    @pytest.mark.asyncio
-    async def test_start_propagates_connect_failure(self) -> None:
-        """If connect fails during startup, start() raises the error."""
-        inner = AsyncMock(spec=AgentSession)
-        inner._ensure_client = AsyncMock(side_effect=RuntimeError("connect boom"))
+        inner.prepare = AsyncMock(side_effect=RuntimeError("connect boom"))
 
         actor = _TaskBoundSession(inner)
         with pytest.raises(RuntimeError, match="connect boom"):

@@ -90,29 +90,28 @@ class _TaskBoundSession:
         subsequent call from a different task can deadlock when reading
         the shared anyio memory stream.
 
-        Startup: if the inner session exposes ``_ensure_client`` (i.e.
-        it's a ``ClaudeSession`` constructed via ``eager_connect=False``),
-        call it here so the SDK's ``connect()`` runs in this task. That
-        binds the SDK's anyio task group + ``_read_messages`` background
-        reader to the actor — they live as long as the actor does, not
-        as long as the HTTP request task that created the session.
+        Startup: invoke ``self._session.prepare()`` so any lazy connect
+        runs in this task. For ``ClaudeSession`` (constructed with
+        ``eager_connect=False``) this calls the SDK's ``connect()``,
+        which binds the SDK's anyio task group + ``_read_messages``
+        background reader to the actor — they live as long as the actor
+        does, not the HTTP request task that created the session.
         Without this, turn 2 hangs forever in ``receive_response()``
         while the CLI subprocess writes to a stdout nobody is reading,
         because the reader task was cancelled when turn 1's request
-        task ended. SK / non-Claude sessions skip this cleanly.
+        task ended. Sessions whose ``prepare()`` is a no-op (SK and the
+        default protocol stub) skip the connect step cleanly.
         """
-        ensure = getattr(self._session, "_ensure_client", None)
-        if callable(ensure):
-            try:
-                logger.debug(
-                    "[trace] _TaskBoundSession._loop: connecting inner session "
-                    "in actor task"
-                )
-                await ensure()
-            except BaseException as exc:
-                self._startup_error = exc
-                self._ready.set()
-                return
+        try:
+            logger.debug(
+                "[trace] _TaskBoundSession._loop: preparing inner session "
+                "in actor task"
+            )
+            await self._session.prepare()
+        except BaseException as exc:
+            self._startup_error = exc
+            self._ready.set()
+            return
         self._ready.set()
 
         turn_no = 0
@@ -184,6 +183,10 @@ class _TaskBoundSession:
                 )
                 if not future.done():
                     future.set_exception(e)
+
+    async def prepare(self) -> None:
+        """No-op. The inner session is prepared during ``start()``."""
+        return None
 
     async def send(self, message: str) -> ExecutionResult:
         """Send a message via the actor task and await the result."""
@@ -295,16 +298,11 @@ class AgentExecutor:
 
         if self._use_task_bound_session:
             # Ask the backend NOT to eagerly connect — the actor task
-            # must be the one that calls ``connect()`` so the SDK's
-            # anyio task group binds to it and survives across HTTP
-            # request tasks. Fall back to plain ``create_session()`` for
-            # backends that don't expose the kwarg (only Claude needs it).
-            try:
-                session = await self._backend.create_session(  # type: ignore[call-arg]
-                    eager_connect=False,
-                )
-            except TypeError:
-                session = await self._backend.create_session()
+            # must be the one that calls the underlying transport's
+            # ``connect()`` so anyio task-group state binds to it and
+            # survives across HTTP request tasks. The actor invokes
+            # ``session.prepare()`` from inside its own task.
+            session = await self._backend.create_session(eager_connect=False)
             actor = _TaskBoundSession(session)
             await actor.start()
             self._session = actor
