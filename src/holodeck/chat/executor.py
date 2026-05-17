@@ -65,18 +65,89 @@ class _TaskBoundSession:
             tuple[str, asyncio.Future[Any], asyncio.Queue[Any] | None] | None
         ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
+        self._ready: asyncio.Event = asyncio.Event()
+        self._startup_error: BaseException | None = None
 
     async def start(self) -> None:
-        """Start the background actor task."""
+        """Start the actor and block until it has bound the SDK to its task.
+
+        The actor's first job is to rebind the underlying session's
+        transport (the SDK's anyio task group + ``_read_messages``
+        background task) to this actor task. We block here until that's
+        done so the caller can safely enqueue a ``send`` afterwards.
+        """
         self._task = asyncio.create_task(self._loop())
+        await self._ready.wait()
+        if self._startup_error is not None:
+            raise self._startup_error
 
     async def _loop(self) -> None:
-        """Process messages sequentially in this task's context."""
+        """Process messages sequentially in this task's context.
+
+        The inner ``self._session.send(...)`` MUST be awaited directly in
+        this task, not wrapped in a child task — the Claude SDK's anyio
+        task group is bound to the task that called ``connect()``, and any
+        subsequent call from a different task can deadlock when reading
+        the shared anyio memory stream.
+
+        Startup: invoke ``self._session.prepare()`` so any lazy connect
+        runs in this task. For ``ClaudeSession`` (constructed with
+        ``eager_connect=False``) this calls the SDK's ``connect()``,
+        which binds the SDK's anyio task group + ``_read_messages``
+        background reader to the actor — they live as long as the actor
+        does, not the HTTP request task that created the session.
+        Without this, turn 2 hangs forever in ``receive_response()``
+        while the CLI subprocess writes to a stdout nobody is reading,
+        because the reader task was cancelled when turn 1's request
+        task ended. Sessions whose ``prepare()`` is a no-op (SK and the
+        default protocol stub) skip the connect step cleanly.
+        """
+        try:
+            logger.debug(
+                "[trace] _TaskBoundSession._loop: preparing inner session "
+                "in actor task"
+            )
+            await self._session.prepare()
+        except BaseException as exc:
+            self._startup_error = exc
+            self._ready.set()
+            return
+        self._ready.set()
+
+        turn_no = 0
+        logger.debug("[trace] _TaskBoundSession._loop: started")
         while True:
+            logger.debug(
+                "[trace] _TaskBoundSession._loop: awaiting next queue item "
+                "(completed=%d)",
+                turn_no,
+            )
             item = await self._queue.get()
             if item is None:
+                logger.debug("[trace] _TaskBoundSession._loop: sentinel — exit")
                 break
+            turn_no += 1
             message, future, chunk_queue = item
+            logger.debug(
+                "[trace] _TaskBoundSession._loop turn=%d: dequeued, "
+                "future_cancelled=%s, streaming=%s",
+                turn_no,
+                future.cancelled(),
+                chunk_queue is not None,
+            )
+
+            # Caller already gave up (e.g. ``wait_for`` timed out) before we
+            # picked this item up — don't burn an SDK turn whose result no
+            # one will read. Otherwise the next request would queue behind
+            # an abandoned turn and inherit its latency.
+            if future.cancelled():
+                logger.debug(
+                    "[trace] _TaskBoundSession._loop turn=%d: skipping "
+                    "(future already cancelled)",
+                    turn_no,
+                )
+                continue
+
             try:
                 if chunk_queue is not None:
                     # Streaming mode — push chunks to the caller's queue
@@ -89,11 +160,33 @@ class _TaskBoundSession:
                     if not future.done():
                         future.set_result(None)
                 else:
+                    logger.debug(
+                        "[trace] _TaskBoundSession._loop turn=%d: calling "
+                        "inner send",
+                        turn_no,
+                    )
                     result = await self._session.send(message)
-                    future.set_result(result)
+                    logger.debug(
+                        "[trace] _TaskBoundSession._loop turn=%d: inner send "
+                        "returned (future_done=%s)",
+                        turn_no,
+                        future.done(),
+                    )
+                    if not future.done():
+                        future.set_result(result)
             except Exception as e:
+                logger.debug(
+                    "[trace] _TaskBoundSession._loop turn=%d: exception %s: %s",
+                    turn_no,
+                    type(e).__name__,
+                    e,
+                )
                 if not future.done():
                     future.set_exception(e)
+
+    async def prepare(self) -> None:
+        """No-op. The inner session is prepared during ``start()``."""
+        return None
 
     async def send(self, message: str) -> ExecutionResult:
         """Send a message via the actor task and await the result."""
@@ -202,13 +295,19 @@ class AgentExecutor:
                 mode="chat",
                 allow_side_effects=False,
             )
-        session = await self._backend.create_session()
 
         if self._use_task_bound_session:
+            # Ask the backend NOT to eagerly connect — the actor task
+            # must be the one that calls the underlying transport's
+            # ``connect()`` so anyio task-group state binds to it and
+            # survives across HTTP request tasks. The actor invokes
+            # ``session.prepare()`` from inside its own task.
+            session = await self._backend.create_session(eager_connect=False)
             actor = _TaskBoundSession(session)
             await actor.start()
             self._session = actor
         else:
+            session = await self._backend.create_session()
             self._session = session
 
     async def execute_turn(self, message: str) -> AgentResponse:

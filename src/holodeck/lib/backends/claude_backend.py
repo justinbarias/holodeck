@@ -65,6 +65,13 @@ logger = logging.getLogger(__name__)
 _MAX_RETRIES = 3
 _BACKOFF_BASE_SECONDS = 1
 
+# Session ID passed to every ``client.query()`` for the lifetime of a
+# connected ``ClaudeSDKClient``. The CLI subprocess tracks conversation
+# state internally in interactive streaming mode; rotating to the
+# CLI-assigned id surfaced on ``ResultMessage`` wedges the CLI on the
+# next turn (query write succeeds but no response messages arrive).
+_DEFAULT_SESSION_ID = "default"
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
@@ -560,12 +567,19 @@ def _maybe_emit_subagent_message(
 class ClaudeSession:
     """Stateful multi-turn session backed by ``ClaudeSDKClient``.
 
-    Each session maintains a ``session_id`` across turns. Multi-turn state is
-    opt-in: after the first turn, subsequent turns pass
-    ``continue_conversation=True`` and ``resume=session_id`` to the SDK.
+    Multi-turn state lives **inside the connected CLI subprocess**, not on
+    this object. ``ClaudeSDKClient`` in interactive streaming mode keeps a
+    single subprocess open for the session's lifetime; each ``send()``
+    writes one user message on stdin and reads the response stream off
+    stdout. The CLI tracks conversation history internally, so every
+    ``client.query()`` for that connected lifetime uses
+    ``session_id=_DEFAULT_SESSION_ID`` (the module-level constant) —
+    rotating it to the CLI-assigned id surfaced on ``ResultMessage``
+    wedges the CLI on the next turn (the query write succeeds but no
+    response messages ever come back).
 
-    The ``_base_options`` reference is **never mutated**. Turn-specific options
-    are created as new ``ClaudeAgentOptions`` instances.
+    The ``_base_options`` reference is **never mutated**. Turn-specific
+    options are created as new ``ClaudeAgentOptions`` instances.
     """
 
     def __init__(self, options: ClaudeAgentOptions) -> None:
@@ -575,7 +589,6 @@ class ClaudeSession:
             options: Base options (immutable reference for the session lifetime).
         """
         self._base_options = options
-        self._session_id: str | None = None
         self._client: ClaudeSDKClient | None = None
         self._turn_count: int = 0
         self._tool_event_queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
@@ -610,6 +623,17 @@ class ClaudeSession:
             self._base_options.hooks = merged
             return self._base_options
 
+    async def prepare(self) -> None:
+        """Open the SDK transport in the calling task's context.
+
+        Connects the underlying ``ClaudeSDKClient`` if not already
+        connected. The SDK's anyio task group + ``_read_messages``
+        background reader bind to whichever task calls ``connect()``,
+        so callers needing a specific task to own that lifecycle should
+        call ``prepare()`` from that task before the first ``send``.
+        """
+        await self._ensure_client()
+
     async def _ensure_client(self) -> ClaudeSDKClient:
         """Lazily create, connect, and return the SDK client.
 
@@ -630,16 +654,6 @@ class ClaudeSession:
             await self._client.connect()
         return self._client
 
-    def _get_session_id(self) -> str:
-        """Return the session ID for the current query.
-
-        SDK 0.1.37 uses the ``session_id`` parameter on ``client.query()``
-        to maintain multi-turn conversation state.  The first turn uses the
-        default ``"default"``; subsequent turns reuse the session ID returned
-        by the ``ResultMessage``.
-        """
-        return self._session_id or "default"
-
     async def send(self, message: str) -> ExecutionResult:
         """Send a message and collect the full response.
 
@@ -652,9 +666,24 @@ class ClaudeSession:
         Raises:
             BackendSessionError: On subprocess or SDK error.
         """
+        turn_no = self._turn_count + 1
+        logger.debug(
+            "[trace] ClaudeSession.send turn=%d: entering, client_cached=%s",
+            turn_no,
+            self._client is not None,
+        )
         try:
             client = await self._ensure_client()
-            await client.query(message, session_id=self._get_session_id())
+            logger.debug(
+                "[trace] ClaudeSession.send turn=%d: client ready, calling query",
+                turn_no,
+            )
+            await client.query(message, session_id=_DEFAULT_SESSION_ID)
+            logger.debug(
+                "[trace] ClaudeSession.send turn=%d: query written, awaiting "
+                "receive_response",
+                turn_no,
+            )
 
             text_parts: list[str] = []
             tool_calls: list[dict[str, Any]] = []
@@ -663,7 +692,15 @@ class ClaudeSession:
             num_turns = 1
             structured_output: Any = None
 
+            msg_count = 0
             async for msg in client.receive_response():
+                msg_count += 1
+                logger.debug(
+                    "[trace] ClaudeSession.send turn=%d: msg #%d type=%s",
+                    turn_no,
+                    msg_count,
+                    msg.__class__.__name__,
+                )
                 _maybe_emit_subagent_message(msg, self._tool_event_queue)
                 text_parts, tool_calls, tool_results = _process_message(
                     msg, text_parts, tool_calls, tool_results
@@ -679,9 +716,15 @@ class ClaudeSession:
                         total_tokens=prompt + completion,
                     )
                     num_turns = rm.num_turns
-                    self._session_id = rm.session_id
                     structured_output = rm.structured_output
 
+            logger.debug(
+                "[trace] ClaudeSession.send turn=%d: receive_response exited, "
+                "msg_count=%d, num_turns=%d",
+                turn_no,
+                msg_count,
+                num_turns,
+            )
             self._turn_count += 1
 
             # Enrich tool results with names from tool calls so downstream
@@ -732,7 +775,7 @@ class ClaudeSession:
         """
         try:
             client = await self._ensure_client()
-            await client.query(message, session_id=self._get_session_id())
+            await client.query(message, session_id=_DEFAULT_SESSION_ID)
 
             async for msg in client.receive_response():
                 _maybe_emit_subagent_message(msg, self._tool_event_queue)
@@ -741,8 +784,6 @@ class ClaudeSession:
                         if block.__class__.__name__ == "TextBlock" and block.text:
                             yield block.text
                 elif msg.__class__.__name__ == "ResultMessage":
-                    rm = cast(Any, msg)
-                    self._session_id = rm.session_id
                     self._turn_count += 1
         except (ProcessError, CLIConnectionError) as exc:
             raise BackendSessionError(
@@ -750,15 +791,20 @@ class ClaudeSession:
             ) from exc
 
     async def release_transport(self) -> None:
-        """Disconnect the SDK client without losing session state.
+        """Disconnect the underlying ``ClaudeSDKClient`` connection.
 
-        After calling this, the next ``send()`` or ``send_streaming()`` call
-        will create a fresh ``ClaudeSDKClient`` and reconnect, resuming the
-        conversation via the preserved ``session_id``.
+        After calling this, the next ``send()`` / ``send_streaming()`` call
+        will create and connect a fresh ``ClaudeSDKClient``. Note that the
+        new client starts a new CLI subprocess with no awareness of the
+        prior conversation — any conversation continuity needs to be
+        rebuilt at the application layer (e.g., by replaying history).
 
-        This is required when the session is used across different async task
-        contexts (e.g., HTTP requests in ``holodeck serve``), because the
-        SDK's anyio task group is bound to the task that called ``connect()``.
+        Provided primarily for cross-task migration scenarios (the SDK's
+        anyio task group is bound to the task that called ``connect()``)
+        and for explicit resource release in tests; it is **not** part of
+        the normal per-turn flow in ``holodeck serve`` — that path keeps
+        one connected client for the session's lifetime via
+        ``_TaskBoundSession``.
         """
         if self._client is not None:
             await self._client.disconnect()
@@ -1061,25 +1107,40 @@ class ClaudeBackend:
                 ),
             }
 
-    async def create_session(self) -> ClaudeSession:
+    async def create_session(self, *, eager_connect: bool = True) -> ClaudeSession:
         """Create a new multi-turn session.
 
-        Automatically initializes if not yet done. Eagerly connects the SDK
-        client so the anyio cancel scope is entered on the caller's task.
-        Deferring connect() to the first ``send()`` would bind the scope to
-        whatever task wraps ``send`` (e.g., an inner task spawned by
-        ``asyncio.wait_for`` on Python <3.11) and a later ``close()`` on the
-        outer task would raise ``RuntimeError: Attempted to exit cancel scope
-        in a different task``.
+        Automatically initializes if not yet done. By default eagerly
+        connects the SDK client so the anyio cancel scope is entered on
+        the caller's task — required for non-actor callers because
+        deferring ``connect()`` to the first ``send()`` would bind the
+        scope to whatever task wraps ``send`` (e.g. an inner task spawned
+        by ``asyncio.wait_for`` on Python <3.11) and a later ``close()``
+        on the outer task would raise ``RuntimeError: Attempted to exit
+        cancel scope in a different task``.
+
+        Pass ``eager_connect=False`` when the caller will own the
+        connect/disconnect lifecycle in a different task (e.g. when
+        wrapping the session in ``_TaskBoundSession`` — that actor must
+        be the task that calls ``connect()`` so the SDK's anyio task
+        group + ``_read_messages`` background reader live as long as
+        the actor, not the HTTP request task that created the session).
+
+        Args:
+            eager_connect: When True (default), connect the SDK client
+                synchronously before returning. When False, return an
+                unconnected session; the first ``send()`` will connect.
 
         Returns:
-            A new, connected ``ClaudeSession`` instance.
+            A new ``ClaudeSession`` instance, connected unless
+            ``eager_connect=False``.
         """
         await self._ensure_initialized()
         if self._options is None:
             raise BackendInitError("Backend options not set after initialization")
         session = ClaudeSession(options=self._options)
-        await session._ensure_client()
+        if eager_connect:
+            await session._ensure_client()
         return session
 
     async def _initialize_tools(self) -> None:

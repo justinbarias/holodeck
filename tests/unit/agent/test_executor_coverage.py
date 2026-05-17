@@ -7,6 +7,7 @@ shutdown/clear_history edge cases, and streaming history.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -403,6 +404,72 @@ class TestTaskBoundSession:
         inner.close.assert_awaited_once()
         assert actor._task is not None
         assert actor._task.done()
+
+    @pytest.mark.asyncio
+    async def test_cancelled_future_at_pickup_is_skipped(self) -> None:
+        """Items cancelled before the actor picks them up don't burn a turn."""
+
+        inner = AsyncMock(spec=AgentSession)
+        inner.send = AsyncMock(return_value=ExecutionResult(response="ok"))
+
+        actor = _TaskBoundSession(inner)
+        # Don't start the loop yet — queue an already-cancelled item first.
+        future: asyncio.Future[ExecutionResult] = (
+            asyncio.get_running_loop().create_future()
+        )
+        future.cancel()
+        await actor._queue.put(("ghost", future, None))
+
+        await actor.start()
+
+        # A real send should still go through.
+        result = await actor.send("real")
+        assert result.response == "ok"
+        # Inner.send must have been called exactly once — the cancelled item
+        # was skipped, not dispatched.
+        assert inner.send.await_count == 1
+
+        await actor.close()
+
+    @pytest.mark.asyncio
+    async def test_start_prepares_inner_session_in_actor_task(self) -> None:
+        """Actor calls session.prepare() at startup so connect() binds here.
+
+        Regression: the SDK's anyio task group is bound to whichever task
+        called ``connect()``. If that's an HTTP request task, the request
+        ends after turn 1 and the SDK's ``_read_messages`` background task
+        gets cancelled, leaving turn 2's ``receive_response()`` hanging on
+        a memory stream nobody fills. The actor must own the connect call,
+        which it performs by invoking ``session.prepare()`` in its own task.
+        """
+        inner = AsyncMock(spec=AgentSession)
+        inner.send.return_value = ExecutionResult(response="ok")
+
+        actor = _TaskBoundSession(inner)
+        await actor.start()
+
+        inner.prepare.assert_awaited_once()
+        await actor.close()
+
+    @pytest.mark.asyncio
+    async def test_start_propagates_prepare_failure(self) -> None:
+        """If prepare() fails during startup, start() raises the error."""
+        inner = AsyncMock(spec=AgentSession)
+        inner.prepare = AsyncMock(side_effect=RuntimeError("connect boom"))
+
+        actor = _TaskBoundSession(inner)
+        with pytest.raises(RuntimeError, match="connect boom"):
+            await actor.start()
+
+    @pytest.mark.asyncio
+    async def test_prepare_on_actor_is_noop(self) -> None:
+        """_TaskBoundSession.prepare() is a no-op; actor handles inner.prepare()
+        inside ``start()`` to bind the connect to the actor task.
+        """
+        inner = AsyncMock(spec=AgentSession)
+
+        actor = _TaskBoundSession(inner)
+        assert await actor.prepare() is None
 
     @pytest.mark.asyncio
     async def test_close_idempotent_when_task_done(self) -> None:

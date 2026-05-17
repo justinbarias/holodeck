@@ -93,6 +93,21 @@ class AgentSession(Protocol):
     to release any held resources (connections, subprocesses, etc.).
     """
 
+    async def prepare(self) -> None:
+        """Connect or otherwise ready the session before the first ``send``.
+
+        Called by callers that need the session's underlying transport
+        opened in a specific async task context (e.g.
+        ``_TaskBoundSession`` requires the SDK's ``connect()`` to run in
+        the actor task so the anyio task group binds correctly).
+
+        Default behavior is a no-op. Implementations that have lazy
+        connect semantics — like ``ClaudeSession`` — should override
+        this to perform the connect explicitly. Implementations that
+        connect at construction time can leave this as a no-op.
+        """
+        return None
+
     async def send(self, message: str) -> ExecutionResult:
         """Send a message and receive a single-turn result.
 
@@ -160,8 +175,19 @@ class AgentBackend(Protocol):
         """
         ...
 
-    async def create_session(self) -> AgentSession:
+    async def create_session(self, *, eager_connect: bool = True) -> AgentSession:
         """Create a new stateful multi-turn session.
+
+        Args:
+            eager_connect: When True (default), the backend may open its
+                underlying transport before returning. When False, the
+                backend must return a session whose transport is opened
+                lazily — typically by ``AgentSession.prepare()`` invoked
+                from a specific async task. Used by callers that need
+                connection lifecycle bound to a different task than the
+                one calling ``create_session`` (e.g.
+                ``_TaskBoundSession`` actor). Backends without lazy
+                connect semantics may accept and ignore this argument.
 
         Returns:
             A fresh AgentSession instance bound to this backend.
