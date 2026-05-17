@@ -80,20 +80,20 @@ class _TaskBoundSession:
         the shared anyio memory stream.
         """
         turn_no = 0
-        logger.info("[trace] _TaskBoundSession._loop: started")
+        logger.debug("[trace] _TaskBoundSession._loop: started")
         while True:
-            logger.info(
+            logger.debug(
                 "[trace] _TaskBoundSession._loop: awaiting next queue item "
                 "(completed=%d)",
                 turn_no,
             )
             item = await self._queue.get()
             if item is None:
-                logger.info("[trace] _TaskBoundSession._loop: sentinel — exit")
+                logger.debug("[trace] _TaskBoundSession._loop: sentinel — exit")
                 break
             turn_no += 1
             message, future, chunk_queue = item
-            logger.info(
+            logger.debug(
                 "[trace] _TaskBoundSession._loop turn=%d: dequeued, "
                 "future_cancelled=%s, streaming=%s",
                 turn_no,
@@ -106,7 +106,7 @@ class _TaskBoundSession:
             # one will read. Otherwise the next request would queue behind
             # an abandoned turn and inherit its latency.
             if future.cancelled():
-                logger.info(
+                logger.debug(
                     "[trace] _TaskBoundSession._loop turn=%d: skipping "
                     "(future already cancelled)",
                     turn_no,
@@ -125,13 +125,13 @@ class _TaskBoundSession:
                     if not future.done():
                         future.set_result(None)
                 else:
-                    logger.info(
+                    logger.debug(
                         "[trace] _TaskBoundSession._loop turn=%d: calling "
                         "inner send",
                         turn_no,
                     )
                     result = await self._session.send(message)
-                    logger.info(
+                    logger.debug(
                         "[trace] _TaskBoundSession._loop turn=%d: inner send "
                         "returned (future_done=%s)",
                         turn_no,
@@ -140,7 +140,7 @@ class _TaskBoundSession:
                     if not future.done():
                         future.set_result(result)
             except Exception as e:
-                logger.info(
+                logger.debug(
                     "[trace] _TaskBoundSession._loop turn=%d: exception %s: %s",
                     turn_no,
                     type(e).__name__,

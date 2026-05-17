@@ -1187,11 +1187,6 @@ class TestClaudeSessionSend:
         Rotating it to the CLI-assigned id from ``ResultMessage`` (the
         previous behavior) wedges the CLI on the second turn — its
         ``query()`` write succeeds but no responses ever come back.
-
-        ``session._session_id`` is still updated from each ResultMessage
-        for diagnostics and for the future ``release_transport``-driven
-        reconnect path (which spawns a new CLI process and would need to
-        ``--resume`` the conversation by id).
         """
         mock_client = MagicMock()
         mock_client.query = AsyncMock()
@@ -1211,8 +1206,6 @@ class TestClaudeSessionSend:
 
         await session.send("Turn 1")
 
-        # CLI-assigned id is captured for diagnostics/reconnect.
-        assert session._session_id == "sess-001"
         assert session._turn_count == 1
         # First turn uses session_id="default".
         mock_client.query.assert_called_with("Turn 1", session_id="default")
@@ -1228,10 +1221,9 @@ class TestClaudeSessionSend:
 
         await session.send("Turn 2")
 
-        # Turn 2 must ALSO pass session_id="default" — not the captured
+        # Turn 2 must ALSO pass session_id="default" — not the CLI-assigned
         # "sess-001" — otherwise the CLI hangs.
         mock_client.query.assert_called_with("Turn 2", session_id="default")
-        assert session._session_id == "sess-002"
         assert session._turn_count == 2
 
 

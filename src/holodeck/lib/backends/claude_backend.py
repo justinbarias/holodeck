@@ -560,12 +560,18 @@ def _maybe_emit_subagent_message(
 class ClaudeSession:
     """Stateful multi-turn session backed by ``ClaudeSDKClient``.
 
-    Each session maintains a ``session_id`` across turns. Multi-turn state is
-    opt-in: after the first turn, subsequent turns pass
-    ``continue_conversation=True`` and ``resume=session_id`` to the SDK.
+    Multi-turn state lives **inside the connected CLI subprocess**, not on
+    this object. ``ClaudeSDKClient`` in interactive streaming mode keeps a
+    single subprocess open for the session's lifetime; each ``send()``
+    writes one user message on stdin and reads the response stream off
+    stdout. The CLI tracks conversation history internally, so every
+    ``client.query()`` for that connected lifetime uses
+    ``session_id="default"`` — rotating it to the CLI-assigned id surfaced
+    on ``ResultMessage`` wedges the CLI on the next turn (the query write
+    succeeds but no response messages ever come back).
 
-    The ``_base_options`` reference is **never mutated**. Turn-specific options
-    are created as new ``ClaudeAgentOptions`` instances.
+    The ``_base_options`` reference is **never mutated**. Turn-specific
+    options are created as new ``ClaudeAgentOptions`` instances.
     """
 
     def __init__(self, options: ClaudeAgentOptions) -> None:
@@ -575,7 +581,6 @@ class ClaudeSession:
             options: Base options (immutable reference for the session lifetime).
         """
         self._base_options = options
-        self._session_id: str | None = None
         self._client: ClaudeSDKClient | None = None
         self._turn_count: int = 0
         self._tool_event_queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
@@ -630,31 +635,6 @@ class ClaudeSession:
             await self._client.connect()
         return self._client
 
-    def _get_session_id(self) -> str:
-        """Return the ``session_id`` to pass on ``client.query()``.
-
-        For ``ClaudeSDKClient`` in interactive streaming mode (which is what
-        HoloDeck uses), the CLI subprocess tracks the conversation
-        implicitly across calls on the same connection — every
-        ``client.query()`` for the lifetime of a connected client must use
-        the **same** ``session_id``. The id surfaced on ``ResultMessage`` is
-        informational (the CLI's own id for the conversation it created), it
-        is **not** a key the same CLI process will accept back as a
-        ``session_id`` argument on a follow-up query — doing so wedges the
-        CLI: the next ``query()`` writes successfully but no messages ever
-        come back on stdout, and the SDK's ``receive_response()`` hangs
-        until the per-turn timeout fires.
-
-        Earlier SDK builds (≤ 0.1.37) appeared to tolerate the rotation;
-        from 0.1.44 onward it deadlocks the second turn. We therefore pin
-        the session id to ``"default"`` for the connected lifetime, and
-        only record the CLI-assigned id (``self._session_id``) for
-        diagnostic purposes and for ``release_transport()``-driven
-        reconnects (where we want to ``resume`` the conversation in a
-        *new* CLI process, which is a different code path).
-        """
-        return "default"
-
     async def send(self, message: str) -> ExecutionResult:
         """Send a message and collect the full response.
 
@@ -668,23 +648,19 @@ class ClaudeSession:
             BackendSessionError: On subprocess or SDK error.
         """
         turn_no = self._turn_count + 1
-        logger.info(
-            "[trace] ClaudeSession.send turn=%d: entering, session_id=%s, "
-            "client_cached=%s",
+        logger.debug(
+            "[trace] ClaudeSession.send turn=%d: entering, client_cached=%s",
             turn_no,
-            self._session_id,
             self._client is not None,
         )
         try:
             client = await self._ensure_client()
-            logger.info(
-                "[trace] ClaudeSession.send turn=%d: client ready, calling "
-                "query (session_id=%s)",
+            logger.debug(
+                "[trace] ClaudeSession.send turn=%d: client ready, calling query",
                 turn_no,
-                self._get_session_id(),
             )
-            await client.query(message, session_id=self._get_session_id())
-            logger.info(
+            await client.query(message, session_id="default")
+            logger.debug(
                 "[trace] ClaudeSession.send turn=%d: query written, awaiting "
                 "receive_response",
                 turn_no,
@@ -700,7 +676,7 @@ class ClaudeSession:
             msg_count = 0
             async for msg in client.receive_response():
                 msg_count += 1
-                logger.info(
+                logger.debug(
                     "[trace] ClaudeSession.send turn=%d: msg #%d type=%s",
                     turn_no,
                     msg_count,
@@ -721,15 +697,14 @@ class ClaudeSession:
                         total_tokens=prompt + completion,
                     )
                     num_turns = rm.num_turns
-                    self._session_id = rm.session_id
                     structured_output = rm.structured_output
 
-            logger.info(
+            logger.debug(
                 "[trace] ClaudeSession.send turn=%d: receive_response exited, "
-                "msg_count=%d, new_session_id=%s",
+                "msg_count=%d, num_turns=%d",
                 turn_no,
                 msg_count,
-                self._session_id,
+                num_turns,
             )
             self._turn_count += 1
 
@@ -781,7 +756,7 @@ class ClaudeSession:
         """
         try:
             client = await self._ensure_client()
-            await client.query(message, session_id=self._get_session_id())
+            await client.query(message, session_id="default")
 
             async for msg in client.receive_response():
                 _maybe_emit_subagent_message(msg, self._tool_event_queue)
@@ -790,8 +765,6 @@ class ClaudeSession:
                         if block.__class__.__name__ == "TextBlock" and block.text:
                             yield block.text
                 elif msg.__class__.__name__ == "ResultMessage":
-                    rm = cast(Any, msg)
-                    self._session_id = rm.session_id
                     self._turn_count += 1
         except (ProcessError, CLIConnectionError) as exc:
             raise BackendSessionError(
@@ -799,15 +772,20 @@ class ClaudeSession:
             ) from exc
 
     async def release_transport(self) -> None:
-        """Disconnect the SDK client without losing session state.
+        """Disconnect the underlying ``ClaudeSDKClient`` connection.
 
-        After calling this, the next ``send()`` or ``send_streaming()`` call
-        will create a fresh ``ClaudeSDKClient`` and reconnect, resuming the
-        conversation via the preserved ``session_id``.
+        After calling this, the next ``send()`` / ``send_streaming()`` call
+        will create and connect a fresh ``ClaudeSDKClient``. Note that the
+        new client starts a new CLI subprocess with no awareness of the
+        prior conversation — any conversation continuity needs to be
+        rebuilt at the application layer (e.g., by replaying history).
 
-        This is required when the session is used across different async task
-        contexts (e.g., HTTP requests in ``holodeck serve``), because the
-        SDK's anyio task group is bound to the task that called ``connect()``.
+        Provided primarily for cross-task migration scenarios (the SDK's
+        anyio task group is bound to the task that called ``connect()``)
+        and for explicit resource release in tests; it is **not** part of
+        the normal per-turn flow in ``holodeck serve`` — that path keeps
+        one connected client for the session's lifetime via
+        ``_TaskBoundSession``.
         """
         if self._client is not None:
             await self._client.disconnect()
