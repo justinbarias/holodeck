@@ -630,6 +630,30 @@ class TestLoadAgentYaml:
         assert agent.model.api_key is not None
         assert agent.model.api_key.get_secret_value() == "sk-test-12345"
 
+    def test_load_agent_yaml_substitute_env_false_keeps_literal(
+        self, temp_dir: Path, monkeypatch: Any
+    ) -> None:
+        """substitute_env=False preserves ${VAR} literals — no env var needed."""
+        monkeypatch.delenv("MISSING_AT_BUILD_TIME", raising=False)
+
+        agent_yaml = temp_dir / "agent.yaml"
+        agent_content = {
+            "name": "test-agent",
+            "model": {
+                "provider": "openai",
+                "name": "gpt-4o",
+                "api_key": "${MISSING_AT_BUILD_TIME}",
+            },
+            "instructions": {"inline": "Test."},
+        }
+        agent_yaml.write_text(yaml.dump(agent_content))
+
+        loader = ConfigLoader()
+        agent = loader.load_agent_yaml(str(agent_yaml), substitute_env=False)
+
+        assert agent.model.api_key is not None
+        assert agent.model.api_key.get_secret_value() == "${MISSING_AT_BUILD_TIME}"
+
     def test_load_agent_yaml_with_global_config_merge(
         self, temp_dir: Path, monkeypatch: Any
     ) -> None:
