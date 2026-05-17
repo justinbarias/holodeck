@@ -2964,3 +2964,108 @@ class TestInitializeRebuild:
             result = await tool._ingest_documents(force_ingest=False)
 
             assert result == 1  # One file discovered, one skipped
+
+
+class TestEnsureQdrantPayloadIndexes:
+    """Tests for the qdrant payload-index workaround.
+
+    SK's qdrant connector doesn't translate ``is_indexed`` /
+    ``is_full_text_indexed`` field flags into payload-index API calls.
+    Qdrant >=1.18 then rejects MatchText / keyword filters on those fields
+    with ``400 Index required but not found``. The tool patches over the
+    gap by explicitly calling ``create_payload_index`` after
+    ``ensure_collection_exists``.
+    """
+
+    @pytest.mark.asyncio
+    async def test_creates_keyword_and_text_indexes_for_qdrant(
+        self, tmp_path: Path
+    ) -> None:
+        """Qdrant provider gets indexes on the four declared fields."""
+        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+
+        tool = HierarchicalDocumentTool.__new__(HierarchicalDocumentTool)
+        tool._provider = "qdrant"
+        tool._qdrant_indexes_ensured = False
+
+        client = MagicMock()
+        client.create_payload_index = AsyncMock()
+        collection = MagicMock()
+        collection.qdrant_client = client
+        collection.collection_name = "test-coll"
+
+        await tool._ensure_qdrant_payload_indexes(collection)
+
+        # 3 keyword fields + 1 full-text field = 4 calls
+        assert client.create_payload_index.await_count == 4
+        called_fields = {
+            kwargs["field_name"]
+            for _, kwargs in client.create_payload_index.await_args_list
+        }
+        assert called_fields == {
+            "section_id",
+            "defined_term",
+            "defined_term_normalized",
+            "searchable_text",
+        }
+        assert tool._qdrant_indexes_ensured is True
+
+    @pytest.mark.asyncio
+    async def test_skip_for_non_qdrant_providers(self, tmp_path: Path) -> None:
+        """In-memory / other providers don't get qdrant index calls."""
+        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+
+        tool = HierarchicalDocumentTool.__new__(HierarchicalDocumentTool)
+        tool._provider = "in-memory"
+        tool._qdrant_indexes_ensured = False
+
+        client = MagicMock()
+        client.create_payload_index = AsyncMock()
+        collection = MagicMock()
+        collection.qdrant_client = client
+
+        await tool._ensure_qdrant_payload_indexes(collection)
+
+        client.create_payload_index.assert_not_called()
+        assert tool._qdrant_indexes_ensured is False  # left untouched
+
+    @pytest.mark.asyncio
+    async def test_idempotent_after_first_call(self, tmp_path: Path) -> None:
+        """Second call is a no-op (flag prevents re-issuing API calls)."""
+        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+
+        tool = HierarchicalDocumentTool.__new__(HierarchicalDocumentTool)
+        tool._provider = "qdrant"
+        tool._qdrant_indexes_ensured = True  # already done
+
+        client = MagicMock()
+        client.create_payload_index = AsyncMock()
+        collection = MagicMock()
+        collection.qdrant_client = client
+
+        await tool._ensure_qdrant_payload_indexes(collection)
+
+        client.create_payload_index.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_index_failure_is_logged_not_raised(self, tmp_path: Path) -> None:
+        """If qdrant rejects a single index, the rest still proceed."""
+        from holodeck.tools.hierarchical_document_tool import HierarchicalDocumentTool
+
+        tool = HierarchicalDocumentTool.__new__(HierarchicalDocumentTool)
+        tool._provider = "qdrant"
+        tool._qdrant_indexes_ensured = False
+
+        client = MagicMock()
+        client.create_payload_index = AsyncMock(side_effect=RuntimeError("boom"))
+        collection = MagicMock()
+        collection.qdrant_client = client
+        collection.collection_name = "test-coll"
+
+        # Doesn't raise even though every call fails.
+        await tool._ensure_qdrant_payload_indexes(collection)
+
+        # All four attempts were made.
+        assert client.create_payload_index.await_count == 4
+        # Flag still set (idempotency works even on failures).
+        assert tool._qdrant_indexes_ensured is True
