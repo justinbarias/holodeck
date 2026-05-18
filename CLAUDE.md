@@ -207,6 +207,67 @@ Always `source .venv/bin/activate` before Python commands.
 6. Implement with Claude tasks.
 7. Run `make format`, `make lint`, `make type-check`, `make security` after each task.
 
+## End-to-End Deploy Validation Loop
+
+**Run only when the user explicitly asks** (e.g. "run the deploy validation loop", "do the local base + deploy build + deploy run validation"). **Do NOT run automatically** after every change — it builds a docker image, pushes to GHCR, and rolls a live Azure Container Apps revision. Unit tests are the default contract; this loop is reserved for verifying that a fix actually takes effect end-to-end (the `FROM ghcr.io/justinbarias/holodeck-base:latest` chain pins the published wheel by default, so local source changes are invisible until baked into the base).
+
+The default sample for this loop is `sample/financial-assistant/claude` (qdrant cloud + Aspire OTEL + Azure Container Apps). Substitute the path if the user names a different agent.
+
+### Sequence
+
+```bash
+# 1. Build local wheel (reflects working-tree source)
+rm -rf dist && uv build --wheel
+
+# 2. Build local base image with the wheel baked in.
+#    docker/Dockerfile.local exists for this — it installs from dist/*.whl
+#    instead of PyPI. --no-cache is required because docker buildx will
+#    happily reuse the layer that did the PyPI install.
+docker buildx build --platform linux/amd64 --no-cache \
+    -f docker/Dockerfile.local \
+    -t ghcr.io/justinbarias/holodeck-base:latest --load .
+
+# Verify the base actually carries the local wheel:
+docker run --rm --entrypoint python ghcr.io/justinbarias/holodeck-base:latest \
+    -c "import holodeck; print(holodeck.__version__)"
+# Expect a dev version (e.g. 0.6.35.dev1), NOT the published release.
+
+# 3. Temporarily disable the pull=True in src/holodeck/deploy/builder.py
+#    (search for `pull=True,  # Always pull base image`). Otherwise
+#    `holodeck deploy build` re-pulls the registry base and clobbers
+#    your locally tagged image. Revert this edit before committing.
+
+# 4. Build + push the agent image.
+cd sample/financial-assistant/claude
+holodeck deploy build
+docker push ghcr.io/justinbarias/holodeck-financial-assistant:<tag>
+# Tag is `git_sha` by default — first 7 chars of HEAD. Confirm via
+# the build output's "Image:" line.
+
+# 5. Deploy to Azure Container Apps.
+holodeck deploy run
+
+# 6. Wait until /health is up, then exercise the AG-UI endpoint with
+#    a known-good query and confirm a 200 + sensible content. For the
+#    financial-assistant sample, a single ConvFinQA turn (e.g. ALXN/2007
+#    rental payments) covers ingestion + hybrid search + tool-loop.
+URL=https://financial-assistant.nicemoss-50caf9f5.eastus.azurecontainerapps.io
+until curl -sf -o /dev/null --max-time 5 "$URL/health"; do sleep 3; done
+curl -sS -X POST "$URL/awp" -H 'content-type: application/json' \
+    -d '{"threadId":"v","runId":"r","state":{},"messages":[{"id":"m1","role":"user","content":"<your query>"}],"tools":[],"context":[],"forwardedProps":{}}' \
+    --max-time 180
+
+# 7. Revert the builder.py edit (re-enable pull=True) before committing.
+```
+
+### Caveats
+
+- **`pull=True` clobbering**: `holodeck deploy build` calls Docker SDK with `pull=True` so it gets the right platform — but this overrides your local tag with whatever's on GHCR. Either flip the flag temporarily (step 3) or accept that the local base won't be used.
+- **arm64 vs amd64**: Container Apps run amd64. Build the base + agent for `linux/amd64` even on Apple Silicon (use `--platform linux/amd64`). For local docker-network testing, arm64 is fine.
+- **Tag re-use**: Image tag stays `<git_sha>` across iterations, but each rebuild produces a new digest. ACA picks up the new digest on `deploy run` (it inspects the image rather than caching by tag).
+- **Cold-start latency**: First post-deploy query is 40–70s (image pull + tool init + first ingestion check). Subsequent queries are sub-10s.
+- **Validation queries should be deterministic**: prefer questions with a single grounded answer from the corpus (e.g. a specific filing's table value) so a regression is unambiguous.
+
 ## Git Commits
 
 - Do NOT attribute Claude Code or include "Generated with Claude Code".

@@ -1,0 +1,57 @@
+# Local-source variant of docker/Dockerfile.
+# Installs HoloDeck from a wheel built from the current working tree
+# (../dist/*.whl) instead of PyPI. Tag the resulting image with the same
+# name as the published base so `holodeck deploy build` picks it up
+# locally before reaching for ghcr.io.
+#
+# Build (from repo root):
+#   uv build --wheel
+#   docker buildx build --platform linux/arm64 \
+#     -f docker/Dockerfile.local \
+#     -t ghcr.io/justinbarias/holodeck-base:latest \
+#     --load .
+
+FROM python:3.10-slim
+
+LABEL org.opencontainers.image.title="HoloDeck Base Image (local)"
+LABEL com.holodeck.managed="true"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HOLODECK_PORT=8080 \
+    HOLODECK_PROTOCOL=rest \
+    HOLODECK_AGENT_CONFIG=/app/agent.yaml
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && mv /root/.local/bin/uv /usr/local/bin/uv \
+    && chmod +x /usr/local/bin/uv
+
+RUN groupadd --gid 1000 holodeck \
+    && useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home holodeck
+
+WORKDIR /app
+
+COPY dist/*.whl /tmp/wheels/
+RUN uv pip install --system --no-cache --prerelease=allow /tmp/wheels/*.whl \
+    && rm -rf /tmp/wheels
+
+COPY docker/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+RUN chown -R holodeck:holodeck /app
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${HOLODECK_PORT}/health || exit 1
+
+USER holodeck
+
+ENTRYPOINT ["/app/entrypoint.sh"]
