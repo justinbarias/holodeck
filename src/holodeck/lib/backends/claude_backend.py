@@ -52,6 +52,7 @@ from holodeck.lib.backends.validators import (
     validate_tool_filtering,
     validate_working_directory,
 )
+from holodeck.lib.errors import ConfigError
 from holodeck.lib.instruction_resolver import resolve_instructions
 from holodeck.lib.observability import get_observability_context
 from holodeck.models.agent import Agent
@@ -187,37 +188,108 @@ def _process_message(
     return text_parts, tool_calls, tool_results
 
 
+_RISKY_BUILTIN_TOOLS: frozenset[str] = frozenset({"Bash", "Write", "Edit", "WebFetch"})
+
+
+def _declared_builtin_tools(claude: Any) -> set[str]:
+    """Return the set of risky built-in SDK tools the operator has declared.
+
+    A tool counts as declared when the HoloDeck schema explicitly opts in
+    via a dedicated field (claude.bash.enabled, claude.file_system.write,
+    etc.) or when the tool name appears in claude.allowed_tools.
+
+    Args:
+        claude: ``ClaudeConfig`` instance or ``None``.
+
+    Returns:
+        Subset of ``_RISKY_BUILTIN_TOOLS`` that the operator has declared.
+    """
+    declared: set[str] = set()
+    if claude is None:
+        return declared
+    if claude.bash is not None and claude.bash.enabled:
+        declared.add("Bash")
+    if claude.file_system is not None:
+        if claude.file_system.write:
+            declared.add("Write")
+        if claude.file_system.edit:
+            declared.add("Edit")
+    if claude.allowed_tools:
+        declared.update(claude.allowed_tools)
+    return declared
+
+
 def _build_permission_mode(
-    permission_mode: PermissionMode | None,
+    claude: Any,
     mode: str,
-    allow_side_effects: bool,
 ) -> str | None:
     """Map HoloDeck permission mode to SDK permission literal.
 
+    Decision tree (P1b — spec 034):
+      * ``manual`` + serve/chat context -> SDK ``acceptEdits``. The legacy
+        mapping to ``default`` wedges in serve mode because there is no
+        operator at the terminal to answer the SDK's permission prompts.
+        ``acceptEdits`` respects ``allowed_tools``/``disallowed_tools``
+        and auto-approves Edit/Write/MultiEdit; the auto-disallow of
+        dangerous built-ins (see ``_declared_builtin_tools``) is what
+        actually fails closed for un-declared tools.
+      * ``manual`` + test -> SDK ``default``. Unchanged; ``holodeck test
+        run`` has an operator at the terminal who can answer prompts.
+      * ``acceptEdits`` -> SDK ``acceptEdits``. Unchanged.
+      * ``acceptAll`` -> SDK ``bypassPermissions`` **only when**
+        ``claude.i_understand_this_is_unsafe`` is ``True``; else raise
+        ``ConfigError`` with a migration message. ``bypassPermissions``
+        disables the SDK permission system entirely.
+
+    Removed: the legacy ``if mode == "test" and permission_mode !=
+    manual: sdk_mode = bypassPermissions`` escalation silently turned
+    every test-mode ``acceptEdits`` into ``bypassPermissions``, so an
+    operator who declared "auto-approve edits, prompt for Bash" got
+    "approve everything" in ``holodeck test run``. ``acceptAll`` +
+    explicit ``i_understand_this_is_unsafe`` is now the only path to
+    ``bypassPermissions`` in any mode.
+
     Args:
-        permission_mode: HoloDeck ``PermissionMode`` enum value, or ``None``.
+        claude: ``ClaudeConfig`` instance or ``None``.
         mode: Execution mode (``"test"`` or ``"chat"``).
-        allow_side_effects: Whether side effects are allowed in test mode.
 
     Returns:
-        SDK permission mode string, or ``None`` if not configured.
+        SDK permission mode literal, or ``None`` when no claude config.
+
+    Raises:
+        ConfigError: When ``permission_mode=acceptAll`` is set without
+            ``i_understand_this_is_unsafe=true``.
     """
-    if permission_mode is None:
+    if claude is None:
         return None
 
-    mapping: dict[PermissionMode, str] = {
-        PermissionMode.manual: "default",
-        PermissionMode.acceptEdits: "acceptEdits",
-        PermissionMode.acceptAll: "bypassPermissions",
-    }
+    permission_mode: PermissionMode = claude.permission_mode
 
-    sdk_mode = mapping[permission_mode]
+    if permission_mode == PermissionMode.acceptAll:
+        if not claude.i_understand_this_is_unsafe:
+            raise ConfigError(
+                field="claude.permission_mode",
+                message=(
+                    "permission_mode='acceptAll' disables the Claude SDK "
+                    "permission system entirely, allowing any tool (including "
+                    "Bash, Write, Edit, WebFetch) to execute without "
+                    "restriction. Add `claude.i_understand_this_is_unsafe: "
+                    "true` to opt in, or — preferred — declare the specific "
+                    "tools your agent needs via `claude.bash.enabled`, "
+                    "`claude.file_system.*`, `claude.web_search`, or "
+                    "`claude.allowed_tools` and use `permission_mode: manual` "
+                    "(the default)."
+                ),
+            )
+        return "bypassPermissions"
 
-    # In test mode, override non-manual to bypassPermissions for automation
-    if mode == "test" and permission_mode != PermissionMode.manual:
-        sdk_mode = "bypassPermissions"
+    if permission_mode == PermissionMode.acceptEdits:
+        return "acceptEdits"
 
-    return sdk_mode
+    # PermissionMode.manual
+    if mode == "chat":
+        return "acceptEdits"
+    return "default"
 
 
 def _build_output_format(
@@ -254,6 +326,15 @@ def _build_output_format(
 # ---------------------------------------------------------------------------
 
 
+_DEFAULT_MAX_TURNS = 20
+"""Bound on agent loop iterations when the operator does not set one.
+
+The hosting guide explicitly calls out maxTurns as the way to prevent
+the SDK from getting stuck in a tool-call loop. 20 is high enough for
+multi-step ConvFinQA-style reasoning and low enough to bound runaway loops.
+"""
+
+
 def build_options(
     *,
     agent: Agent,
@@ -263,7 +344,6 @@ def build_options(
     auth_env: dict[str, str],
     otel_env: dict[str, str],
     mode: str,
-    allow_side_effects: bool,
 ) -> ClaudeAgentOptions:
     """Assemble ``ClaudeAgentOptions`` from agent config and bridge outputs.
 
@@ -275,7 +355,6 @@ def build_options(
         auth_env: Auth env vars from ``validate_credentials()``.
         otel_env: OTel env vars from ``translate_observability()``.
         mode: Execution mode (``"test"`` or ``"chat"``).
-        allow_side_effects: Whether side effects are allowed in test mode.
 
     Returns:
         Configured ``ClaudeAgentOptions`` ready for ``query()`` or ``ClaudeSDKClient``.
@@ -301,12 +380,8 @@ def build_options(
     if agent.model.endpoint and agent.model.auth_provider == AuthProvider.custom:
         env["ANTHROPIC_BASE_URL"] = agent.model.endpoint
 
-    # Permission mode
-    perm_mode = None
-    if claude is not None:
-        perm_mode = _build_permission_mode(
-            claude.permission_mode, mode, allow_side_effects
-        )
+    # Permission mode (raises ConfigError for acceptAll without unsafe opt-in)
+    perm_mode = _build_permission_mode(claude, mode)
 
     # Extended thinking
     max_thinking_tokens = None
@@ -333,8 +408,35 @@ def build_options(
     if cwd is None:
         cwd = agent_base_dir.get()
 
-    # Max turns
-    max_turns = claude.max_turns if claude else None
+    # Max turns — default to _DEFAULT_MAX_TURNS when unset (spec 034 P1a)
+    max_turns = (
+        claude.max_turns
+        if claude and claude.max_turns is not None
+        else _DEFAULT_MAX_TURNS
+    )
+
+    # Disallowed tools (P1b — spec 034). Auto-disallow risky built-in SDK
+    # tools (Bash, Write, Edit, WebFetch) that the operator has not declared
+    # via the dedicated schema fields or claude.allowed_tools. This is the
+    # real fail-closed lever — permission_mode is only a tiebreaker for tools
+    # not covered by either list.
+    declared = _declared_builtin_tools(claude)
+    auto_disallow = sorted(_RISKY_BUILTIN_TOOLS - declared)
+    explicit_disallow = (
+        list(claude.disallowed_tools) if claude and claude.disallowed_tools else []
+    )
+    disallowed_tools: list[str] | None = (
+        sorted(set(explicit_disallow) | set(auto_disallow))
+        if (explicit_disallow or auto_disallow)
+        else None
+    )
+    if auto_disallow:
+        logger.info(
+            "Auto-disallowed risky built-in SDK tools not declared in agent "
+            "config: %s. Declare them via claude.bash.enabled, "
+            "claude.file_system.*, or claude.allowed_tools to opt in.",
+            ", ".join(auto_disallow),
+        )
 
     # Build the options dict
     opts_kwargs: dict[str, Any] = {
@@ -348,6 +450,8 @@ def build_options(
         "cwd": cwd,
         "output_format": output_format,
     }
+    if disallowed_tools is not None:
+        opts_kwargs["disallowed_tools"] = disallowed_tools
 
     if max_thinking_tokens is not None:
         opts_kwargs["max_thinking_tokens"] = max_thinking_tokens
@@ -359,8 +463,6 @@ def build_options(
             opts_kwargs["max_budget_usd"] = claude.max_budget_usd
         if claude.fallback_model is not None:
             opts_kwargs["fallback_model"] = claude.fallback_model
-        if claude.disallowed_tools:
-            opts_kwargs["disallowed_tools"] = list(claude.disallowed_tools)
         if claude.agents:
             opts_kwargs["agents"] = {
                 name: AgentDefinition(
@@ -836,7 +938,6 @@ class ClaudeBackend:
         agent: Agent,
         tool_instances: dict[str, Any] | None = None,
         mode: str = "test",
-        allow_side_effects: bool = False,
     ) -> None:
         """Store configuration without performing any I/O.
 
@@ -844,12 +945,10 @@ class ClaudeBackend:
             agent: Agent configuration.
             tool_instances: Initialized vectorstore/hierarchical-doc tool instances.
             mode: Execution mode (``"test"`` or ``"chat"``).
-            allow_side_effects: Allow bash/file_system.write in test mode.
         """
         self._agent = agent
         self._tool_instances = tool_instances or {}
         self._mode = mode
-        self._allow_side_effects = allow_side_effects
         self._initialized = False
         self._options: ClaudeAgentOptions | None = None
         self._owned_tools: list[Any] = []  # Tools created during initialize()
@@ -922,7 +1021,6 @@ class ClaudeBackend:
                 auth_env=auth_env,
                 otel_env=otel_env,
                 mode=self._mode,
-                allow_side_effects=self._allow_side_effects,
             )
 
             # 9. Working directory collision check

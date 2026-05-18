@@ -117,7 +117,7 @@ class TestAgentServerInit:
     def test_session_cap_anthropic_with_max_concurrent_sessions(
         self, mock_agent_config: MagicMock
     ) -> None:
-        """T015: Anthropic provider uses claude.max_concurrent_sessions."""
+        """Explicit claude.max_concurrent_sessions overrides CPU derivation."""
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
         mock_agent_config.claude = MagicMock()
         mock_agent_config.claude.max_concurrent_sessions = 5
@@ -138,16 +138,60 @@ class TestAgentServerInit:
         assert server.sessions.max_sessions == 1000
 
     @pytest.mark.unit
-    def test_session_cap_anthropic_without_claude_config_defaults_to_10(
-        self, mock_agent_config: MagicMock
+    def test_session_cap_anthropic_default_derives_from_cpu_quota(
+        self,
+        mock_agent_config: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """T015: Anthropic provider without claude config defaults to 10."""
+        """spec 034 P1a: default cap is max(1, floor(cpu_quota * 2))."""
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
-        mock_agent_config.claude = None
+        mock_agent_config.claude = MagicMock()
+        mock_agent_config.claude.max_concurrent_sessions = None
+        # Pin the CPU quota so the test isn't sensitive to host hardware.
+        monkeypatch.setattr(
+            "holodeck.serve.server.cpu_quota",
+            lambda: 1.0,
+        )
 
         server = AgentServer(agent_config=mock_agent_config)
 
-        assert server.sessions.max_sessions == 10
+        assert server.sessions.max_sessions == 2
+
+    @pytest.mark.unit
+    def test_session_cap_anthropic_without_claude_config_derives_from_cpu(
+        self,
+        mock_agent_config: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """spec 034 P1a: missing claude block falls through to CPU derivation."""
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude = None
+        monkeypatch.setattr(
+            "holodeck.serve.server.cpu_quota",
+            lambda: 2.0,
+        )
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        assert server.sessions.max_sessions == 4
+
+    @pytest.mark.unit
+    def test_session_cap_tiny_cpu_quota_floors_at_one(
+        self,
+        mock_agent_config: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Sub-CPU replicas still get a cap of 1 (never zero)."""
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude = None
+        monkeypatch.setattr(
+            "holodeck.serve.server.cpu_quota",
+            lambda: 0.25,
+        )
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        assert server.sessions.max_sessions == 1
 
 
 class TestAgentServerExecutorTimeoutWiring:

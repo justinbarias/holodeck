@@ -216,6 +216,15 @@ class TestClaudeConfig:
         assert config.max_budget_usd is None
         assert config.fallback_model is None
         assert config.disallowed_tools is None
+        assert config.i_understand_this_is_unsafe is False
+
+    def test_i_understand_this_is_unsafe_accepts_true(self) -> None:
+        """spec 034 P1b: opt-in flag for permission_mode=acceptAll."""
+        config = ClaudeConfig(
+            permission_mode=PermissionMode.acceptAll,
+            i_understand_this_is_unsafe=True,
+        )
+        assert config.i_understand_this_is_unsafe is True
 
     def test_with_extended_thinking(self) -> None:
         """Test ClaudeConfig with extended thinking configured."""
@@ -286,10 +295,12 @@ class TestClaudeConfig:
         assert config.permission_mode == PermissionMode.manual
 
     @pytest.mark.unit
-    def test_max_concurrent_sessions_default_is_10(self) -> None:
-        """T012: Test that max_concurrent_sessions defaults to 10."""
+    def test_max_concurrent_sessions_default_is_none_for_cpu_derivation(
+        self,
+    ) -> None:
+        """spec 034 P1a: default is None so the serve layer derives from CPU."""
         config = ClaudeConfig()
-        assert config.max_concurrent_sessions == 10
+        assert config.max_concurrent_sessions is None
 
     @pytest.mark.unit
     def test_max_concurrent_sessions_valid_value(self) -> None:

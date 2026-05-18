@@ -169,14 +169,14 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         mock_opts_cls.assert_called_once()
         kwargs = mock_opts_cls.call_args[1]
         assert kwargs["model"] == "claude-sonnet-4-6"
         assert kwargs["system_prompt"] == "Be helpful."
-        assert kwargs["max_turns"] is None
+        # spec 034 P1a: max_turns defaults to 20 when unset
+        assert kwargs["max_turns"] == 20
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
@@ -187,6 +187,7 @@ class TestBuildOptions:
         claude = ClaudeConfig(
             working_directory="/var/holodeck/test",
             permission_mode=PermissionMode.acceptAll,
+            i_understand_this_is_unsafe=True,
             max_turns=5,
             extended_thinking=ExtendedThinkingConfig(
                 enabled=True, budget_tokens=20_000
@@ -202,7 +203,6 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="chat",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -226,7 +226,6 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -247,7 +246,6 @@ class TestBuildOptions:
             auth_env={"CLAUDE_CODE_USE_BEDROCK": "1", "AWS_REGION": "us-east-1"},
             otel_env={"CLAUDE_CODE_ENABLE_TELEMETRY": "1"},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -271,7 +269,6 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -293,7 +290,6 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -314,7 +310,6 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -334,14 +329,14 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
         assert "effort" not in kwargs
         assert "max_budget_usd" not in kwargs
         assert "fallback_model" not in kwargs
-        assert "disallowed_tools" not in kwargs
+        # spec 034 P1b: empty ClaudeConfig auto-disallows risky built-in tools
+        assert kwargs["disallowed_tools"] == ["Bash", "Edit", "WebFetch", "Write"]
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
@@ -363,21 +358,21 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
         assert kwargs["effort"] == "high"
         assert kwargs["max_budget_usd"] == 2.5
         assert kwargs["fallback_model"] == "haiku"
-        assert kwargs["disallowed_tools"] == ["Bash", "Write"]
+        # spec 034 P1b: explicit disallow merges with auto-disallow set
+        assert kwargs["disallowed_tools"] == ["Bash", "Edit", "WebFetch", "Write"]
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
-    def test_build_options_disallowed_tools_empty_list_omitted(
+    def test_build_options_disallowed_tools_empty_list_yields_auto_disallow(
         self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
     ) -> None:
-        """Spec 026: disallowed_tools=[] is equivalent to omitted (SDK default [])."""
+        """spec 034 P1b: disallowed_tools=[] still yields the auto-disallow set."""
         claude = ClaudeConfig(disallowed_tools=[])
         build_options(
             agent=_make_agent(claude=claude),
@@ -387,11 +382,10 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
-        assert "disallowed_tools" not in kwargs
+        assert kwargs["disallowed_tools"] == ["Bash", "Edit", "WebFetch", "Write"]
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
@@ -425,7 +419,6 @@ class TestBuildOptions:
             auth_env=auth_env,
             otel_env=otel_env,
             mode="chat",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -466,7 +459,6 @@ class TestBuildOptions:
             auth_env={"ANTHROPIC_AUTH_TOKEN": "ollama"},
             otel_env={},
             mode="chat",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -489,7 +481,6 @@ class TestBuildOptions:
             auth_env={"ANTHROPIC_API_KEY": "test-key"},
             otel_env={},
             mode="chat",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -519,7 +510,6 @@ class TestBuildOptions:
             auth_env={"ANTHROPIC_API_KEY": "test-key"},
             otel_env={},
             mode="chat",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -543,7 +533,6 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -587,7 +576,6 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -635,7 +623,6 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -670,7 +657,6 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -704,7 +690,6 @@ class TestBuildOptions:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -718,40 +703,160 @@ class TestBuildOptions:
 
 @pytest.mark.unit
 class TestBuildPermissionMode:
-    """Tests for _build_permission_mode() — HoloDeck enum → SDK literals."""
+    """Tests for _build_permission_mode() — spec 034 P1b decision tree.
 
-    def test_manual_maps_to_default(self) -> None:
-        """manual → 'default'."""
-        assert _build_permission_mode(PermissionMode.manual, "chat", False) == "default"
+    HoloDeck enum + mode → SDK literal:
+      manual + chat   → acceptEdits   (no operator to prompt in serve)
+      manual + test   → default       (operator at terminal can prompt)
+      acceptEdits + * → acceptEdits   (unchanged)
+      acceptAll + *   → bypassPermissions, only with i_understand_this_is_unsafe=True
+    """
 
-    def test_accept_edits_maps_to_accept_edits(self) -> None:
-        """acceptEdits → 'acceptEdits'."""
-        assert (
-            _build_permission_mode(PermissionMode.acceptEdits, "chat", False)
-            == "acceptEdits"
+    def test_manual_in_chat_maps_to_accept_edits(self) -> None:
+        """manual + chat → 'acceptEdits' (no wedge in serve)."""
+        claude = ClaudeConfig(permission_mode=PermissionMode.manual)
+        assert _build_permission_mode(claude, "chat") == "acceptEdits"
+
+    def test_manual_in_test_maps_to_default(self) -> None:
+        """manual + test → 'default' (operator at terminal answers prompts)."""
+        claude = ClaudeConfig(permission_mode=PermissionMode.manual)
+        assert _build_permission_mode(claude, "test") == "default"
+
+    def test_accept_edits_in_chat_maps_to_accept_edits(self) -> None:
+        """acceptEdits + chat → 'acceptEdits'."""
+        claude = ClaudeConfig(permission_mode=PermissionMode.acceptEdits)
+        assert _build_permission_mode(claude, "chat") == "acceptEdits"
+
+    def test_accept_edits_in_test_no_longer_escalates_to_bypass(self) -> None:
+        """acceptEdits + test → 'acceptEdits' (silent escalation removed)."""
+        claude = ClaudeConfig(permission_mode=PermissionMode.acceptEdits)
+        assert _build_permission_mode(claude, "test") == "acceptEdits"
+
+    def test_accept_all_without_unsafe_flag_raises(self) -> None:
+        """acceptAll without i_understand_this_is_unsafe → ConfigError."""
+        from holodeck.lib.errors import ConfigError
+
+        claude = ClaudeConfig(permission_mode=PermissionMode.acceptAll)
+        with pytest.raises(ConfigError, match="i_understand_this_is_unsafe"):
+            _build_permission_mode(claude, "chat")
+
+    def test_accept_all_without_unsafe_flag_raises_in_test_mode(self) -> None:
+        """acceptAll guard applies uniformly across modes."""
+        from holodeck.lib.errors import ConfigError
+
+        claude = ClaudeConfig(permission_mode=PermissionMode.acceptAll)
+        with pytest.raises(ConfigError, match="i_understand_this_is_unsafe"):
+            _build_permission_mode(claude, "test")
+
+    def test_accept_all_with_unsafe_flag_maps_to_bypass(self) -> None:
+        """acceptAll + i_understand_this_is_unsafe → 'bypassPermissions'."""
+        claude = ClaudeConfig(
+            permission_mode=PermissionMode.acceptAll,
+            i_understand_this_is_unsafe=True,
         )
+        assert _build_permission_mode(claude, "chat") == "bypassPermissions"
 
-    def test_accept_all_maps_to_bypass_permissions(self) -> None:
-        """acceptAll → 'bypassPermissions'."""
-        assert (
-            _build_permission_mode(PermissionMode.acceptAll, "chat", False)
-            == "bypassPermissions"
+    def test_none_claude_config(self) -> None:
+        """No claude config → None."""
+        assert _build_permission_mode(None, "test") is None
+
+
+# ---------------------------------------------------------------------------
+# T002b — Auto-disallow of risky built-in SDK tools (spec 034 P1b)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAutoDisallowBuiltinTools:
+    """build_options() auto-disallows {Bash, Write, Edit, WebFetch} when not declared.
+
+    A tool counts as declared when (a) the schema field opts in
+    (claude.bash.enabled, claude.file_system.write/edit, claude.web_search)
+    or (b) the tool name appears in claude.allowed_tools.
+    """
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_undeclared_builtins_are_auto_disallowed(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """No claude config → full risky set in disallowed_tools."""
+        build_options(
+            agent=_make_agent(),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
         )
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["disallowed_tools"] == ["Bash", "Edit", "WebFetch", "Write"]
 
-    def test_test_mode_overrides_to_bypass(self) -> None:
-        """In test mode, non-manual permission → 'bypassPermissions'."""
-        assert (
-            _build_permission_mode(PermissionMode.acceptEdits, "test", False)
-            == "bypassPermissions"
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_bash_declared_via_bash_config_drops_from_disallow(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """claude.bash.enabled=True → Bash not auto-disallowed."""
+        from holodeck.models.claude_config import BashConfig
+
+        claude = ClaudeConfig(bash=BashConfig(enabled=True))
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
         )
+        kwargs = mock_opts_cls.call_args[1]
+        assert "Bash" not in kwargs["disallowed_tools"]
+        assert set(kwargs["disallowed_tools"]) == {"Edit", "WebFetch", "Write"}
 
-    def test_test_mode_manual_keeps_default(self) -> None:
-        """In test mode, manual keeps 'default' (no override)."""
-        assert _build_permission_mode(PermissionMode.manual, "test", False) == "default"
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_write_and_edit_declared_via_file_system_drop_from_disallow(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """claude.file_system.write/edit → Write/Edit not auto-disallowed."""
+        from holodeck.models.claude_config import FileSystemConfig
 
-    def test_none_permission_mode(self) -> None:
-        """No permission mode configured → None."""
-        assert _build_permission_mode(None, "test", False) is None
+        claude = ClaudeConfig(
+            file_system=FileSystemConfig(read=True, write=True, edit=True)
+        )
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+        kwargs = mock_opts_cls.call_args[1]
+        assert set(kwargs["disallowed_tools"]) == {"Bash", "WebFetch"}
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_webfetch_declared_via_allowed_tools_drops_from_disallow(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """claude.allowed_tools includes 'WebFetch' → not auto-disallowed."""
+        claude = ClaudeConfig(allowed_tools=["WebFetch"])
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+        kwargs = mock_opts_cls.call_args[1]
+        assert "WebFetch" not in kwargs["disallowed_tools"]
+        assert set(kwargs["disallowed_tools"]) == {"Bash", "Edit", "Write"}
 
 
 # ---------------------------------------------------------------------------
@@ -776,13 +881,10 @@ class TestClaudeBackendInit:
         """Constructor stores tool_instances."""
         agent = _make_agent()
         tools = {"kb": MagicMock()}
-        backend = ClaudeBackend(
-            agent=agent, tool_instances=tools, mode="chat", allow_side_effects=True
-        )
+        backend = ClaudeBackend(agent=agent, tool_instances=tools, mode="chat")
 
         assert backend._tool_instances is tools
         assert backend._mode == "chat"
-        assert backend._allow_side_effects is True
 
     def test_implements_backend_protocol(self) -> None:
         """ClaudeBackend satisfies the AgentBackend protocol."""
@@ -1914,7 +2016,6 @@ class TestBuildOptionsAllowedTools:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -2845,7 +2946,6 @@ class TestBuildOptionsSubagentTools:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -2883,7 +2983,6 @@ class TestBuildOptionsSubagentTools:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -2916,7 +3015,6 @@ class TestBuildOptionsSubagentTools:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]
@@ -2946,7 +3044,6 @@ class TestBuildOptionsSubagentTools:
             auth_env={},
             otel_env={},
             mode="test",
-            allow_side_effects=False,
         )
 
         kwargs = mock_opts_cls.call_args[1]

@@ -1342,12 +1342,14 @@ class TestAGUIProtocolErrorMapping:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_capacity_exceeded_yields_sse_capacity_error(self) -> None:
-        """T017: Capacity exceeded at server level yields SSE capacity_exceeded event.
+    async def test_capacity_exceeded_returns_429(self) -> None:
+        """spec 034 P1a: capacity exceeded surfaces as HTTP 429, not an SSE frame.
 
-        When SessionStore.create raises RuntimeError (capacity full), the
-        AG-UI /awp endpoint should return a StreamingResponse containing
-        an SSE error event with type "capacity_exceeded".
+        Previously the AG-UI path converted capacity errors into an
+        ``event: error`` SSE frame returned with HTTP 200, which hid the
+        backpressure from fronting load balancers and client retry
+        logic. P1a returns the 429 directly so the wire-level signal
+        matches the REST path.
         """
         from unittest.mock import MagicMock, patch
 
@@ -1402,10 +1404,12 @@ class TestAGUIProtocolErrorMapping:
                     },
                 )
 
-        # Assert — response should be SSE with capacity_exceeded
-        assert response.status_code == 200
-        body = response.text
-        assert "capacity_exceeded" in body
+        # Assert — response should be HTTP 429 with Retry-After
+        assert response.status_code == 429
+        assert response.headers.get("retry-after") == "5"
+        body = response.json()
+        assert body["error"] == "capacity_exceeded"
+        assert "max_sessions" in body
 
     @pytest.mark.asyncio
     @pytest.mark.unit

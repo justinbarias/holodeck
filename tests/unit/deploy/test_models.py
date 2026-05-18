@@ -310,6 +310,10 @@ class TestAzureContainerAppsConfig:
         assert config.subscription_id == "00000000-0000-0000-0000-000000000000"
         assert config.resource_group == "my-rg"
         assert config.location == "eastus"  # default
+        # spec 034 P1a: safer/larger defaults for Claude-backed agents
+        assert config.cpu == 1.0
+        assert config.memory == "2Gi"
+        assert config.ingress_external is False
 
     def test_azure_config_with_all_options(self) -> None:
         """Test Azure config with all options specified."""

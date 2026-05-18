@@ -442,7 +442,6 @@ class TestExecutor:
         agent_config: Agent | None = None,
         resolved_execution_config: ExecutionConfig | None = None,
         backend: AgentBackend | None = None,
-        allow_side_effects: bool = False,
     ) -> None:
         """Initialize test executor with optional dependency injection.
 
@@ -470,8 +469,6 @@ class TestExecutor:
                                        (auto-resolved if None)
             backend: Optional AgentBackend instance. When provided, the executor
                      uses invoke_once() instead of AgentFactory.
-            allow_side_effects: Allow bash/file_system.write in test mode
-                                (passed to BackendSelector when auto-selecting).
         """
         self.agent_config_path = agent_config_path
         self.cli_config = execution_config
@@ -480,7 +477,6 @@ class TestExecutor:
         self.on_test_start = on_test_start
         self._force_ingest = force_ingest
         self._backend: AgentBackend | None = backend
-        self._allow_side_effects = allow_side_effects
 
         logger.debug(f"Initializing TestExecutor for config: {agent_config_path}")
 
@@ -803,7 +799,6 @@ class TestExecutor:
             self.agent_config,
             tool_instances=None,
             mode="test",
-            allow_side_effects=self._allow_side_effects,
         )
 
     async def execute_tests(self) -> TestReport:

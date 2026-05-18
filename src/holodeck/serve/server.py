@@ -7,8 +7,6 @@ for exposing agents via HTTP.
 from __future__ import annotations
 
 import asyncio
-import json
-from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -20,6 +18,7 @@ from holodeck.lib.backends import BackendInitError, BackendSessionError
 from holodeck.lib.backends.validators import validate_credentials, validate_nodejs
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.logging_config import get_logger
+from holodeck.lib.runtime import cpu_quota, derived_session_cap
 from holodeck.models.llm import ProviderEnum
 from holodeck.serve.middleware import ErrorHandlingMiddleware, LoggingMiddleware
 from holodeck.serve.models import (
@@ -48,6 +47,7 @@ _CAPACITY_MSG_TEMPLATE = (
     "Maximum concurrent Claude sessions ({max}) reached. "
     "Retry after existing sessions complete."
 )
+_CAPACITY_RETRY_AFTER_SECONDS = 5
 
 
 class AgentServer:
@@ -114,13 +114,33 @@ class AgentServer:
             self.agent_config.model.provider == ProviderEnum.ANTHROPIC
         )
 
-        # Determine max sessions based on provider
-        max_sessions = 1000  # Default for non-Claude providers
+        # Determine max sessions based on provider.
+        # For Claude, derive the default from the container's cgroup CPU
+        # quota (spec 034 P1a) so per-replica concurrency scales with
+        # container sizing — the SDK's ~300 MiB-per-subprocess footprint
+        # means a 0.5 CPU / 1 GiB replica cannot safely run 10 sessions.
+        max_sessions = 1000  # Non-Claude providers don't spawn subprocesses
         if self.agent_config.model.provider == ProviderEnum.ANTHROPIC:
-            if self.agent_config.claude is not None:
-                max_sessions = self.agent_config.claude.max_concurrent_sessions or 10
+            explicit_cap = (
+                self.agent_config.claude.max_concurrent_sessions
+                if self.agent_config.claude is not None
+                else None
+            )
+            if explicit_cap is not None:
+                max_sessions = explicit_cap
+                logger.info(
+                    "Claude session cap: %d (explicit from "
+                    "claude.max_concurrent_sessions)",
+                    max_sessions,
+                )
             else:
-                max_sessions = 10  # Default when claude section absent
+                cores = cpu_quota()
+                max_sessions = derived_session_cap(cores)
+                logger.info(
+                    "Claude session cap: %d (derived from %.2f CPU cores)",
+                    max_sessions,
+                    cores,
+                )
         self.sessions = SessionStore(max_sessions=max_sessions)
         self._tool_init_manager = ToolInitManager(
             agent=self.agent_config, max_concurrent=max_concurrent_init_jobs
@@ -212,9 +232,16 @@ class AgentServer:
             return self._capacity_exceeded_response()
 
     def _capacity_exceeded_response(self) -> JSONResponse:
-        """Build a 503 JSON response for capacity-exceeded errors."""
+        """Build a 429 JSON response for capacity-exceeded errors.
+
+        Returns HTTP 429 with ``Retry-After`` so clients (and any fronting
+        load balancer) recognise the backpressure and retry against
+        another replica. Spec 034 P1a switched this from 503 because most
+        HTTP client libraries treat 429 as a transient retryable signal
+        out of the box, whereas 503 often surfaces as a hard error.
+        """
         return JSONResponse(
-            status_code=503,
+            status_code=429,
             content={
                 "error": "capacity_exceeded",
                 "message": _CAPACITY_MSG_TEMPLATE.format(
@@ -223,7 +250,7 @@ class AgentServer:
                 "active_sessions": self.sessions.active_count,
                 "max_sessions": self.sessions.max_sessions,
             },
-            headers={"Retry-After": "5"},
+            headers={"Retry-After": str(_CAPACITY_RETRY_AFTER_SECONDS)},
         )
 
     async def _handle_backend_session_error(
@@ -370,29 +397,14 @@ class AgentServer:
             except ValidationError as e:
                 raise HTTPException(status_code=422, detail=e.errors()) from e
 
-            # Get session by thread_id or create new one
+            # Get session by thread_id or create new one.
+            # Capacity exceeded surfaces as a real HTTP 429 (not an SSE
+            # error frame inside a 200) so fronting load balancers and
+            # client retry logic see the backpressure (spec 034 P1a).
             session_id = input_data.thread_id
             result = self._get_or_create_session(session_id)
             if isinstance(result, JSONResponse):
-                # Convert capacity error to AG-UI SSE format
-                cap = self.sessions.max_sessions
-
-                async def capacity_error_stream() -> AsyncGenerator[bytes, None]:
-                    payload = json.dumps(
-                        {
-                            "type": "capacity_exceeded",
-                            "message": (
-                                f"Maximum concurrent Claude sessions "
-                                f"({cap}) reached."
-                            ),
-                        }
-                    )
-                    yield f"event: error\ndata: {payload}\n\n".encode()
-
-                return StreamingResponse(
-                    capacity_error_stream(),
-                    media_type="text/event-stream",
-                )
+                return result  # type: ignore[return-value]
             session = result
 
             self.sessions.touch(session_id)

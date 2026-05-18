@@ -363,7 +363,6 @@ class TestBackendExecutorExecution:
                 executor.agent_config,
                 tool_instances=None,
                 mode="chat",
-                allow_side_effects=False,
             )
 
     @pytest.mark.asyncio

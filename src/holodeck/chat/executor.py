@@ -293,7 +293,6 @@ class AgentExecutor:
                 self.agent_config,
                 tool_instances=None,
                 mode="chat",
-                allow_side_effects=False,
             )
 
         if self._use_task_bound_session:
