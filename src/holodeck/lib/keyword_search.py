@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Callable
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol, TypedDict, runtime_checkable
 
@@ -700,6 +701,7 @@ class HybridSearchExecutor:
         keyword_weight: float = 0.3,
         rrf_k: int = 60,
         keyword_index_config: KeywordIndexConfig | None = None,
+        chunk_decoder: Callable[[dict[str, Any]], DocumentChunk] | None = None,
     ) -> None:
         """Initialize the hybrid search executor.
 
@@ -711,6 +713,12 @@ class HybridSearchExecutor:
             rrf_k: RRF ranking constant (default 60)
             keyword_index_config: Keyword index backend configuration.
                 If None, defaults to in-memory BM25.
+            chunk_decoder: Optional callback to reconstruct a
+                ``DocumentChunk`` from a raw payload dict. Required for
+                native-hybrid providers — search pulls payloads inline
+                and the executor populates ``_chunk_map`` so the caller
+                can resolve ids via ``get_chunk`` without a second
+                round-trip. Unused by the BM25 fallback path.
         """
         self.provider = provider
         self.collection = collection
@@ -719,6 +727,7 @@ class HybridSearchExecutor:
         self.keyword_weight = keyword_weight
         self.rrf_k = rrf_k
         self.keyword_index_config = keyword_index_config
+        self._chunk_decoder = chunk_decoder
         self._keyword_index: (
             InMemoryBM25KeywordProvider | OpenSearchKeywordProvider | None
         ) = None
@@ -757,6 +766,20 @@ class HybridSearchExecutor:
         """
         # Store chunk map for ID-based lookups
         self._chunk_map = {c.id: c for c in chunks}
+
+        # Native-hybrid providers (qdrant) handle the keyword leg inside the
+        # vector store at query time (see _native_hybrid_search_*). The
+        # in-process BM25/OpenSearch index would never be read, so skip the
+        # tokenize-and-build pass entirely. _chunk_map is still useful as a
+        # cache for get_chunks() lookups; it just doesn't need to be the
+        # source of truth for the keyword index.
+        if self.strategy == KeywordSearchStrategy.NATIVE_HYBRID:
+            logger.debug(
+                "Skipping in-process keyword index build for native-hybrid "
+                f"provider '{self.provider}' "
+                f"(strategy={self.strategy.value})"
+            )
+            return
 
         # Convert chunks to structured keyword documents
         docs = [_chunk_to_keyword_document(c) for c in chunks]
@@ -949,7 +972,30 @@ class HybridSearchExecutor:
             async for result in search_results.results:
                 record = result.record if hasattr(result, "record") else result[0]
                 score = result.score if hasattr(result, "score") else result[1]
-                results.append((record.id, float(score)))
+                # SK records are HierarchicalDocumentRecord instances — feed
+                # them through chunk_decoder so the tool can resolve via
+                # get_chunk(id) without a second round-trip. Decoder is
+                # tolerant of either a dict or a record-with-fields, since
+                # different SK backends shape the record differently.
+                if self._chunk_decoder is not None:
+                    try:
+                        payload: dict[str, Any]
+                        if hasattr(record, "__dict__"):
+                            payload = {
+                                k: v
+                                for k, v in record.__dict__.items()
+                                if not k.startswith("_")
+                            }
+                        elif isinstance(record, dict):
+                            payload = dict(record)
+                        else:
+                            payload = {}
+                        payload.setdefault("id", str(record.id))
+                        chunk = self._chunk_decoder(payload)
+                        self._chunk_map[chunk.id] = chunk
+                    except Exception as e:
+                        logger.debug(f"chunk_decoder failed for id={record.id}: {e}")
+                results.append((str(record.id), float(score)))
 
         return results
 
@@ -1016,11 +1062,26 @@ class HybridSearchExecutor:
                 prefetch=prefetch,
                 query=qm.FusionQuery(fusion=qm.Fusion.RRF),
                 limit=top_k,
-                with_payload=False,
+                with_payload=self._chunk_decoder is not None,
                 with_vectors=False,
             )
 
-        return [(str(p.id), float(p.score)) for p in response.points]
+        # Inline-decode payloads so the tool can resolve ids via
+        # get_chunk() without a follow-up retrieve. Native-hybrid skips
+        # the startup corpus reload, so _chunk_map is otherwise empty.
+        results: list[tuple[str, float]] = []
+        for p in response.points:
+            chunk_id = str(p.id)
+            if self._chunk_decoder is not None and p.payload:
+                payload = dict(p.payload)
+                payload.setdefault("id", chunk_id)
+                try:
+                    chunk = self._chunk_decoder(payload)
+                    self._chunk_map[chunk.id] = chunk
+                except Exception as e:  # decoder failures shouldn't sink the query
+                    logger.debug(f"chunk_decoder failed for id={chunk_id}: {e}")
+            results.append((chunk_id, float(p.score)))
+        return results
 
     async def _fallback_hybrid_search(
         self,

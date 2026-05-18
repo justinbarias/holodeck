@@ -2851,12 +2851,18 @@ class TestInitializeRebuild:
 
     @pytest.mark.asyncio
     async def test_initialize_rebuilds_when_files_skipped(self, tmp_path: Path) -> None:
-        """Test rebuild when provider is persistent and files were skipped."""
+        """Persistent non-native-hybrid provider reloads + rebuilds on skip.
+
+        Uses chromadb (in-process BM25 fallback path) because the in-memory
+        BM25 index dies with the process and must be rebuilt from the store
+        on restart. Native-hybrid providers (qdrant) skip this path — see
+        ``test_initialize_skips_reload_for_native_hybrid``.
+        """
         from holodeck.lib.structured_chunker import DocumentChunk
 
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
-        tool._provider = "qdrant"
+        tool._provider = "chromadb"
 
         stored_chunks = [
             DocumentChunk(
@@ -2893,6 +2899,48 @@ class TestInitializeRebuild:
             mock_load.assert_called_once()
             mock_build.assert_called_once()
             assert tool._chunks == stored_chunks
+            assert tool._initialized is True
+
+    @pytest.mark.asyncio
+    async def test_initialize_skips_reload_for_native_hybrid(
+        self, tmp_path: Path
+    ) -> None:
+        """Native-hybrid providers (qdrant) skip the startup corpus reload.
+
+        Keyword retrieval happens inside the vector store, so the in-process
+        BM25/OpenSearch index is never read — loading every chunk into Python
+        on every restart is pure waste. Chunk lookup is lazy on query miss.
+        """
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._provider = "qdrant"
+
+        with (
+            patch.object(tool, "_setup_collection"),
+            patch.object(
+                tool,
+                "_ingest_documents",
+                new_callable=AsyncMock,
+                return_value=2,  # files skipped — pre-fix this triggered reload
+            ),
+            patch.object(
+                tool,
+                "_load_chunks_from_store",
+                new_callable=AsyncMock,
+            ) as mock_load,
+            patch.object(
+                tool,
+                "_build_hybrid_indices",
+                new_callable=AsyncMock,
+            ) as mock_build,
+            patch.object(tool, "_setup_hybrid_executor") as mock_setup_executor,
+        ):
+            await tool.initialize()
+
+            mock_load.assert_not_called()
+            mock_build.assert_not_called()
+            # Executor is still set up (search routes through it)
+            mock_setup_executor.assert_called_once()
             assert tool._initialized is True
 
     @pytest.mark.asyncio
@@ -2996,8 +3044,9 @@ class TestEnsureQdrantPayloadIndexes:
 
         await tool._ensure_qdrant_payload_indexes(collection)
 
-        # 3 keyword fields + 1 full-text field = 4 calls
-        assert client.create_payload_index.await_count == 4
+        # 4 keyword fields (incl. source_path used by _check_if_already_ingested
+        # and _delete_file_records) + 1 full-text field = 5 calls
+        assert client.create_payload_index.await_count == 5
         called_fields = {
             kwargs["field_name"]
             for _, kwargs in client.create_payload_index.await_args_list
@@ -3006,6 +3055,7 @@ class TestEnsureQdrantPayloadIndexes:
             "section_id",
             "defined_term",
             "defined_term_normalized",
+            "source_path",
             "searchable_text",
         }
         assert tool._qdrant_indexes_ensured is True
@@ -3065,7 +3115,7 @@ class TestEnsureQdrantPayloadIndexes:
         # Doesn't raise even though every call fails.
         await tool._ensure_qdrant_payload_indexes(collection)
 
-        # All four attempts were made.
-        assert client.create_payload_index.await_count == 4
+        # All five attempts were made.
+        assert client.create_payload_index.await_count == 5
         # Flag still set (idempotency works even on failures).
         assert tool._qdrant_indexes_ensured is True
