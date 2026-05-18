@@ -17,7 +17,6 @@ semantic_kernel library is not available in the test environment.
 
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Save original modules before mocking (these will be restored after import)
@@ -3015,77 +3014,6 @@ class TestInitializeRebuild:
             assert result == 1  # One file discovered, one skipped
 
 
-class TestFetchChunksByIds:
-    """Lazy chunk-fetch path used by native-hybrid providers."""
-
-    @pytest.mark.asyncio
-    async def test_fetch_chunks_by_ids_qdrant_retrieves_and_reconstructs(
-        self, tmp_path: Path
-    ) -> None:
-        """Qdrant lazy fetch issues a single retrieve(ids=...) and rebuilds chunks."""
-        config = create_config(tmp_path)
-        tool = HierarchicalDocumentTool(config)
-        tool._provider = "qdrant"
-
-        fake_point = SimpleNamespace(
-            id="chunk_x",
-            payload={
-                "id": "chunk_x",
-                "source_path": "/src.md",
-                "chunk_index": 3,
-                "content": "lazy content",
-                "parent_chain": "[]",
-                "section_id": "s",
-                "chunk_type": "content",
-                "cross_references": "[]",
-                "subsection_ids": "[]",
-                "contextualized_content": "",
-                "mtime": 0.0,
-                "defined_term": "",
-                "defined_term_normalized": "",
-            },
-        )
-        fake_client = MagicMock()
-        fake_client.retrieve = AsyncMock(return_value=[fake_point])
-
-        fake_collection_ctx = MagicMock()
-        fake_collection_ctx.qdrant_client = fake_client
-        fake_collection_ctx.collection_name = "test_collection"
-        fake_collection_ctx.collection_exists = AsyncMock(return_value=True)
-
-        cm = MagicMock()
-        cm.__aenter__ = AsyncMock(return_value=fake_collection_ctx)
-        cm.__aexit__ = AsyncMock(return_value=None)
-        tool._collection = cm
-
-        chunks = await tool._fetch_chunks_by_ids(["chunk_x"])
-
-        fake_client.retrieve.assert_awaited_once_with(
-            collection_name="test_collection",
-            ids=["chunk_x"],
-            with_payload=True,
-            with_vectors=False,
-        )
-        assert len(chunks) == 1
-        assert chunks[0].id == "chunk_x"
-        assert chunks[0].content == "lazy content"
-        assert chunks[0].chunk_index == 3
-
-    @pytest.mark.asyncio
-    async def test_fetch_chunks_by_ids_skips_non_qdrant_providers(
-        self, tmp_path: Path
-    ) -> None:
-        """Only qdrant supports lazy fetch today; other providers return []."""
-        config = create_config(tmp_path)
-        tool = HierarchicalDocumentTool(config)
-        tool._provider = "chromadb"
-        tool._collection = MagicMock()
-
-        result = await tool._fetch_chunks_by_ids(["any_id"])
-
-        assert result == []
-
-
 class TestEnsureQdrantPayloadIndexes:
     """Tests for the qdrant payload-index workaround.
 
@@ -3116,8 +3044,9 @@ class TestEnsureQdrantPayloadIndexes:
 
         await tool._ensure_qdrant_payload_indexes(collection)
 
-        # 3 keyword fields + 1 full-text field = 4 calls
-        assert client.create_payload_index.await_count == 4
+        # 4 keyword fields (incl. source_path used by _check_if_already_ingested
+        # and _delete_file_records) + 1 full-text field = 5 calls
+        assert client.create_payload_index.await_count == 5
         called_fields = {
             kwargs["field_name"]
             for _, kwargs in client.create_payload_index.await_args_list
@@ -3126,6 +3055,7 @@ class TestEnsureQdrantPayloadIndexes:
             "section_id",
             "defined_term",
             "defined_term_normalized",
+            "source_path",
             "searchable_text",
         }
         assert tool._qdrant_indexes_ensured is True
@@ -3185,7 +3115,7 @@ class TestEnsureQdrantPayloadIndexes:
         # Doesn't raise even though every call fails.
         await tool._ensure_qdrant_payload_indexes(collection)
 
-        # All four attempts were made.
-        assert client.create_payload_index.await_count == 4
+        # All five attempts were made.
+        assert client.create_payload_index.await_count == 5
         # Flag still set (idempotency works even on failures).
         assert tool._qdrant_indexes_ensured is True

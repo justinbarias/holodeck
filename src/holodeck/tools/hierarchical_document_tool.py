@@ -585,51 +585,6 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             logger.warning(f"Failed to load chunks from store: {e}")
             return []
 
-    async def _fetch_chunks_by_ids(self, chunk_ids: list[str]) -> list[DocumentChunk]:
-        """Lazily retrieve chunks by id from the vector store.
-
-        Used by the native-hybrid search path (qdrant) which skips the
-        startup corpus reload: search returns ids, then this batches a
-        single retrieve call so the per-query overhead is one round-trip.
-
-        Currently qdrant-only — the only provider in NATIVE_HYBRID_PROVIDERS
-        today. Other providers can be added when they grow native hybrid
-        support.
-        """
-        if not chunk_ids or self._collection is None:
-            return []
-
-        if self._provider != "qdrant":
-            logger.debug(
-                f"Lazy chunk fetch not implemented for provider '{self._provider}'"
-            )
-            return []
-
-        try:
-            async with self._collection as collection:
-                if not await collection.collection_exists():
-                    return []
-
-                client = collection.qdrant_client
-                points = await client.retrieve(
-                    collection_name=collection.collection_name,
-                    ids=chunk_ids,
-                    with_payload=True,
-                    with_vectors=False,
-                )
-
-                records: list[dict[str, Any]] = []
-                for point in points:
-                    payload = dict(point.payload) if point.payload else {}
-                    payload.setdefault("id", str(point.id))
-                    records.append(payload)
-
-                return [self._chunk_from_record(r) for r in records]
-
-        except Exception as e:
-            logger.warning(f"Failed to lazy-fetch chunks by id: {e}")
-            return []
-
     async def _convert_to_markdown(self, file_path: str) -> str:
         """Convert a file to markdown using FileProcessor.
 
@@ -975,7 +930,16 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         client = collection.qdrant_client
         coll_name = collection.collection_name
 
-        keyword_fields = ("section_id", "defined_term", "defined_term_normalized")
+        # source_path is filtered by _check_if_already_ingested and
+        # _delete_file_records; qdrant >=1.18 rejects un-indexed filter fields
+        # with a 400, causing those methods to silently fall through and
+        # re-ingest the corpus (+ orphan stale chunks) on every cold start.
+        keyword_fields = (
+            "section_id",
+            "defined_term",
+            "defined_term_normalized",
+            "source_path",
+        )
         for field_name in keyword_fields:
             try:
                 await client.create_payload_index(
@@ -1121,6 +1085,11 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             keyword_weight=self.config.keyword_weight,
             rrf_k=self.config.rrf_k,
             keyword_index_config=self.config.keyword_index,
+            # Native-hybrid providers pull payloads inline and need to
+            # reconstruct chunks from raw qdrant/SK payloads. Inject the
+            # decoder so the executor can populate _chunk_map as it
+            # ranks results — no separate retrieve call required.
+            chunk_decoder=self._chunk_from_record,
         )
 
     async def _build_hybrid_indices(self) -> None:
@@ -1172,23 +1141,12 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             logger.warning("Hybrid executor not initialized, using semantic search")
             return await self._semantic_search(query_embedding, top_k)
 
-        # Get fused results from hybrid executor
+        # Get fused results from hybrid executor. Native-hybrid paths
+        # populate _chunk_map inline from the qdrant/SK payload, so the
+        # lookup below is a pure dict hit — no follow-up retrieve needed.
         fused_results = await self._hybrid_executor.search(
             query, query_embedding, top_k
         )
-
-        # Resolve any chunk_ids the executor doesn't have cached. Native-hybrid
-        # providers skip the startup corpus reload, so _chunk_map starts empty;
-        # batch-fetch missing chunks in a single round-trip.
-        missing_ids = [
-            chunk_id
-            for chunk_id, _ in fused_results
-            if self._hybrid_executor.get_chunk(chunk_id) is None
-        ]
-        if missing_ids:
-            fetched = await self._fetch_chunks_by_ids(missing_ids)
-            for fetched_chunk in fetched:
-                self._hybrid_executor.cache_chunk(fetched_chunk)
 
         # Convert to SearchResult objects via executor's chunk map
         results: list[SearchResult] = []

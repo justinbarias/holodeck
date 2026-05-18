@@ -928,25 +928,86 @@ class TestNativeHybridIndexBuild:
         assert executor._keyword_index is not None
 
 
-class TestCacheChunk:
-    """cache_chunk supports the lazy-fetch path for native-hybrid providers."""
+class TestNativeHybridInlineChunkDecode:
+    """Native-hybrid populates _chunk_map inline from query payloads."""
 
-    def test_cache_chunk_inserts_by_id(self) -> None:
+    @pytest.mark.asyncio
+    async def test_qdrant_search_decodes_payloads_into_chunk_map(self) -> None:
+        from types import SimpleNamespace
+
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import DocumentChunk
 
-        executor = HybridSearchExecutor("qdrant", MagicMock())
-        chunk = DocumentChunk(
-            id="lazy_id",
-            source_path="/test.md",
-            chunk_index=0,
-            content="lazy",
-            contextualized_content="lazy",
+        def decoder(payload: dict[str, object]) -> DocumentChunk:
+            return DocumentChunk(
+                id=str(payload["id"]),
+                source_path=str(payload.get("source_path", "")),
+                chunk_index=0,
+                content=str(payload.get("content", "")),
+                contextualized_content=str(payload.get("content", "")),
+            )
+
+        qdrant_client = AsyncMock()
+        qdrant_client.query_points.return_value = SimpleNamespace(
+            points=[
+                SimpleNamespace(
+                    id="chunk_a",
+                    score=0.9,
+                    payload={"content": "hello", "source_path": "/a.md"},
+                ),
+                SimpleNamespace(
+                    id="chunk_b",
+                    score=0.7,
+                    payload={"content": "world", "source_path": "/b.md"},
+                ),
+            ]
         )
 
-        assert executor.get_chunk("lazy_id") is None
-        executor.cache_chunk(chunk)
-        assert executor.get_chunk("lazy_id") is chunk
+        coll_ctx = AsyncMock()
+        coll_ctx.__aenter__.return_value = SimpleNamespace(
+            qdrant_client=qdrant_client,
+            collection_name="test",
+        )
+        coll_ctx.__aexit__.return_value = None
+
+        executor = HybridSearchExecutor("qdrant", coll_ctx, chunk_decoder=decoder)
+        results = await executor._native_hybrid_search_qdrant(
+            query="hello world",
+            query_embedding=[0.1, 0.2],
+            top_k=2,
+        )
+
+        qdrant_client.query_points.assert_called_once()
+        kwargs = qdrant_client.query_points.call_args.kwargs
+        assert kwargs["with_payload"] is True
+        assert results == [("chunk_a", 0.9), ("chunk_b", 0.7)]
+        # _chunk_map populated inline so the caller can resolve ids
+        # without a follow-up retrieve call.
+        assert executor.get_chunk("chunk_a") is not None
+        assert executor.get_chunk("chunk_a").content == "hello"
+        assert executor.get_chunk("chunk_b").source_path == "/b.md"
+
+    @pytest.mark.asyncio
+    async def test_qdrant_search_skips_payload_when_no_decoder(self) -> None:
+        from types import SimpleNamespace
+
+        from holodeck.lib.keyword_search import HybridSearchExecutor
+
+        qdrant_client = AsyncMock()
+        qdrant_client.query_points.return_value = SimpleNamespace(points=[])
+        coll_ctx = AsyncMock()
+        coll_ctx.__aenter__.return_value = SimpleNamespace(
+            qdrant_client=qdrant_client,
+            collection_name="test",
+        )
+        coll_ctx.__aexit__.return_value = None
+
+        executor = HybridSearchExecutor("qdrant", coll_ctx, chunk_decoder=None)
+        await executor._native_hybrid_search_qdrant(
+            query="hello", query_embedding=[0.1], top_k=2
+        )
+        kwargs = qdrant_client.query_points.call_args.kwargs
+        assert kwargs["with_payload"] is False
 
 
 class TestTokenizeQdrantQuery:
