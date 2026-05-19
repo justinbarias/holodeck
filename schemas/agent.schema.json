@@ -218,6 +218,19 @@
           "minimum": 1,
           "description": "Maximum agent loop iterations (null = SDK default)"
         },
+        "max_concurrent_sessions": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum concurrent Claude SDK subprocesses per serve instance. When unset, the serve layer derives the cap from the replica's cgroup memory limit divided by session_memory_estimate_mib (spec 034 P1a)."
+        },
+        "session_memory_estimate_mib": {
+          "type": "integer",
+          "minimum": 50,
+          "maximum": 2000,
+          "default": 200,
+          "description": "Estimated resident memory (MiB) per active Claude SDK subprocess, used to derive max_concurrent_sessions from the replica's cgroup memory limit. Default 200 MiB (spec 034 P1a)."
+        },
         "extended_thinking": {
           "$ref": "#/$defs/ExtendedThinkingConfig",
           "description": "Extended reasoning (deep thinking) configuration"

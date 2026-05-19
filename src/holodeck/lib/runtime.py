@@ -3,16 +3,22 @@
 The Python stdlib's :func:`os.cpu_count` reports the host's CPU count, which
 is wrong inside a container with cgroup CPU limits — Java's
 ``Runtime.availableProcessors()`` has handled this correctly since Java 10,
-but Python has not caught up. This module reads cgroup CPU quotas directly
-so HoloDeck can size in-process concurrency to whatever the container was
-actually allocated.
+but Python has not caught up. This module reads cgroup CPU and memory
+limits directly so HoloDeck can size in-process concurrency to whatever the
+container was actually allocated.
 
 Used by the serve layer to derive per-replica session caps (spec 034 P1a).
+The Claude session cap is derived from **memory**, not CPU: Azure Container
+Apps (and some other managed runtimes) do not expose CPU limits via
+``/sys/fs/cgroup/cpu.max``, but the kernel enforces memory limits so
+``memory.max`` is reliably populated. The thing we're protecting against
+(SDK subprocess OOM) is a memory constraint anyway.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import os
 from pathlib import Path
 
@@ -21,6 +27,14 @@ logger = logging.getLogger(__name__)
 _CGROUP_V2_CPU_MAX = Path("/sys/fs/cgroup/cpu.max")
 _CGROUP_V1_QUOTA = Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
 _CGROUP_V1_PERIOD = Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
+
+_CGROUP_V2_MEMORY_MAX = Path("/sys/fs/cgroup/memory.max")
+_CGROUP_V1_MEMORY_LIMIT = Path("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+
+# Per-SDK-subprocess and serve-baseline footprints observed in the spec 034
+# P1 investigation. Used to derive the default session cap from memory.
+DEFAULT_BASELINE_BYTES = 400 * 1024 * 1024  # 400 MiB: server + tools + OTEL
+DEFAULT_PER_SESSION_BYTES = 200 * 1024 * 1024  # 200 MiB: one SDK subprocess
 
 
 def cpu_quota() -> float:
@@ -81,20 +95,84 @@ def _read_cgroup_v1_quota() -> float | None:
 
 
 def derived_session_cap(cpu_cores: float, multiplier: int = 2) -> int:
-    """Derive the default per-replica Claude session cap from CPU quota.
+    """Derive a CPU-based session cap (legacy).
 
-    Calibrated against the ~300 MiB resident-per-subprocess footprint
-    observed in the spec 034 P1 investigation: one SDK subprocess plus
-    headroom for the serve process fits comfortably in 1 GiB per core when
-    capped at two sessions per core.
+    Kept for compatibility with the original spec 034 P1a derivation;
+    superseded by :func:`derived_session_cap_from_memory` which maps more
+    directly to the OOM constraint. Not used in the default serve path.
+    """
+    return max(1, math.floor(cpu_cores * multiplier))
+
+
+def memory_limit_bytes() -> int | None:
+    """Return the memory limit (bytes) available to this process.
+
+    Reads the cgroup memory limit directly. Returns ``None`` when no
+    cgroup limit is set or cgroup files cannot be read — caller should
+    fall back to a conservative default.
+
+    Returns:
+        Memory limit in bytes, or ``None`` when unbounded/unavailable.
+    """
+    limit = _read_cgroup_v2_memory()
+    if limit is not None:
+        return limit
+    return _read_cgroup_v1_memory()
+
+
+def _read_cgroup_v2_memory() -> int | None:
+    """Read /sys/fs/cgroup/memory.max (cgroups v2).
+
+    Contains an integer byte count or the literal ``"max"`` (unconstrained).
+    """
+    try:
+        raw = _CGROUP_V2_MEMORY_MAX.read_text().strip()
+    except OSError:
+        return None
+    if raw == "max":
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        logger.debug("Unparseable cgroups v2 memory.max: %r", raw)
+        return None
+
+
+def _read_cgroup_v1_memory() -> int | None:
+    """Read /sys/fs/cgroup/memory/memory.limit_in_bytes (cgroups v1).
+
+    Kernels report an effectively-unlimited sentinel (very large int) when
+    no limit is set; we treat anything ≥ 1 PiB as unbounded.
+    """
+    try:
+        raw = int(_CGROUP_V1_MEMORY_LIMIT.read_text().strip())
+    except (OSError, ValueError):
+        return None
+    if raw >= 1 << 50:  # ≥ 1 PiB → effectively unbounded
+        return None
+    return raw
+
+
+def derived_session_cap_from_memory(
+    memory_bytes: int,
+    baseline_bytes: int = DEFAULT_BASELINE_BYTES,
+    per_session_bytes: int = DEFAULT_PER_SESSION_BYTES,
+) -> int:
+    """Derive the per-replica Claude session cap from a memory budget.
+
+    The SDK subprocess footprint is the binding constraint for concurrent
+    sessions (~300 MiB resident each — observed in the spec 034 P1
+    investigation). After reserving a baseline for the serve process,
+    tools and OTEL exporter, the remaining headroom divided by the
+    per-session footprint gives the cap.
 
     Args:
-        cpu_cores: Fractional CPU quota for this replica.
-        multiplier: Sessions allowed per CPU core (default 2).
+        memory_bytes: Total memory limit available to the replica.
+        baseline_bytes: Bytes reserved for non-session overhead.
+        per_session_bytes: Estimated bytes per active SDK subprocess.
 
     Returns:
         Integer session cap, always ≥ 1.
     """
-    import math
-
-    return max(1, math.floor(cpu_cores * multiplier))
+    usable = max(0, memory_bytes - baseline_bytes)
+    return max(1, usable // per_session_bytes)

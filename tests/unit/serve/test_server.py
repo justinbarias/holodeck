@@ -117,10 +117,11 @@ class TestAgentServerInit:
     def test_session_cap_anthropic_with_max_concurrent_sessions(
         self, mock_agent_config: MagicMock
     ) -> None:
-        """Explicit claude.max_concurrent_sessions overrides CPU derivation."""
+        """Explicit claude.max_concurrent_sessions overrides memory derivation."""
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
         mock_agent_config.claude = MagicMock()
         mock_agent_config.claude.max_concurrent_sessions = 5
+        mock_agent_config.claude.session_memory_estimate_mib = 200
 
         server = AgentServer(agent_config=mock_agent_config)
 
@@ -138,55 +139,82 @@ class TestAgentServerInit:
         assert server.sessions.max_sessions == 1000
 
     @pytest.mark.unit
-    def test_session_cap_anthropic_default_derives_from_cpu_quota(
+    def test_session_cap_anthropic_default_derives_from_memory(
         self,
         mock_agent_config: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """spec 034 P1a: default cap is max(1, floor(cpu_quota * 2))."""
+        """spec 034 P1a: default cap = (mem - baseline) / per_session_bytes."""
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
         mock_agent_config.claude = MagicMock()
         mock_agent_config.claude.max_concurrent_sessions = None
-        # Pin the CPU quota so the test isn't sensitive to host hardware.
+        mock_agent_config.claude.session_memory_estimate_mib = 200
+        # Pin memory at 2 GiB → (2048 - 400) / 200 = 8
         monkeypatch.setattr(
-            "holodeck.serve.server.cpu_quota",
-            lambda: 1.0,
+            "holodeck.serve.server.memory_limit_bytes",
+            lambda: 2 * 1024 * 1024 * 1024,
         )
 
         server = AgentServer(agent_config=mock_agent_config)
 
-        assert server.sessions.max_sessions == 2
+        assert server.sessions.max_sessions == 8
 
     @pytest.mark.unit
-    def test_session_cap_anthropic_without_claude_config_derives_from_cpu(
+    def test_session_cap_anthropic_respects_session_memory_estimate(
         self,
         mock_agent_config: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """spec 034 P1a: missing claude block falls through to CPU derivation."""
+        """A larger per-session estimate yields a smaller cap."""
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
-        mock_agent_config.claude = None
+        mock_agent_config.claude = MagicMock()
+        mock_agent_config.claude.max_concurrent_sessions = None
+        mock_agent_config.claude.session_memory_estimate_mib = 400  # bigger
         monkeypatch.setattr(
-            "holodeck.serve.server.cpu_quota",
-            lambda: 2.0,
+            "holodeck.serve.server.memory_limit_bytes",
+            lambda: 2 * 1024 * 1024 * 1024,
         )
 
         server = AgentServer(agent_config=mock_agent_config)
 
+        # (2048 - 400) / 400 = 4
         assert server.sessions.max_sessions == 4
 
     @pytest.mark.unit
-    def test_session_cap_tiny_cpu_quota_floors_at_one(
+    def test_session_cap_anthropic_no_cgroup_memory_uses_fallback(
         self,
         mock_agent_config: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Sub-CPU replicas still get a cap of 1 (never zero)."""
+        """Unbounded memory (None) → static fallback cap, not infinite."""
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
-        mock_agent_config.claude = None
+        mock_agent_config.claude = MagicMock()
+        mock_agent_config.claude.max_concurrent_sessions = None
+        mock_agent_config.claude.session_memory_estimate_mib = 200
         monkeypatch.setattr(
-            "holodeck.serve.server.cpu_quota",
-            lambda: 0.25,
+            "holodeck.serve.server.memory_limit_bytes",
+            lambda: None,
+        )
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        # _FALLBACK_SESSION_CAP
+        assert server.sessions.max_sessions == 50
+
+    @pytest.mark.unit
+    def test_session_cap_tiny_memory_floors_at_one(
+        self,
+        mock_agent_config: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Sub-baseline memory still gets a cap of 1 (never zero)."""
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude = MagicMock()
+        mock_agent_config.claude.max_concurrent_sessions = None
+        mock_agent_config.claude.session_memory_estimate_mib = 200
+        monkeypatch.setattr(
+            "holodeck.serve.server.memory_limit_bytes",
+            lambda: 100 * 1024 * 1024,  # 100 MiB
         )
 
         server = AgentServer(agent_config=mock_agent_config)

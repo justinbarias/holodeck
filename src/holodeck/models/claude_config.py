@@ -232,8 +232,22 @@ class ClaudeConfig(BaseModel):
         description=(
             "Maximum concurrent Claude SDK subprocesses per serve instance. "
             "When unset, the serve layer derives the cap from the replica's "
-            "cgroup CPU quota (max(1, floor(cpu_cores * 2))) so the default "
-            "scales with container sizing — see spec 034 P1a."
+            "cgroup memory limit divided by `session_memory_estimate_mib` — "
+            "memory is the OOM constraint and Azure Container Apps exposes "
+            "memory limits but not CPU limits via cgroup. Spec 034 P1a."
+        ),
+    )
+    session_memory_estimate_mib: int = Field(
+        default=200,
+        ge=50,
+        le=2000,
+        description=(
+            "Estimated resident memory (MiB) per active Claude SDK subprocess, "
+            "used by the serve layer to derive `max_concurrent_sessions` from "
+            "the replica's cgroup memory limit. Tune up for agents whose tool "
+            "state inflates the SDK subprocess footprint, down for lighter "
+            "agents. Spec 034 P1a measured ~200 MiB for the financial-assistant "
+            "sample at steady state."
         ),
     )
     extended_thinking: ExtendedThinkingConfig | None = Field(

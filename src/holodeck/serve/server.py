@@ -18,7 +18,10 @@ from holodeck.lib.backends import BackendInitError, BackendSessionError
 from holodeck.lib.backends.validators import validate_credentials, validate_nodejs
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.logging_config import get_logger
-from holodeck.lib.runtime import cpu_quota, derived_session_cap
+from holodeck.lib.runtime import (
+    derived_session_cap_from_memory,
+    memory_limit_bytes,
+)
 from holodeck.models.llm import ProviderEnum
 from holodeck.serve.middleware import ErrorHandlingMiddleware, LoggingMiddleware
 from holodeck.serve.models import (
@@ -48,6 +51,12 @@ _CAPACITY_MSG_TEMPLATE = (
     "Retry after existing sessions complete."
 )
 _CAPACITY_RETRY_AFTER_SECONDS = 5
+
+# Fallback session cap when neither an explicit
+# claude.max_concurrent_sessions nor a cgroup memory limit is available
+# (local dev, unconstrained Linux). Keep this conservative: this number is
+# only reached when we can't introspect the runtime at all.
+_FALLBACK_SESSION_CAP = 50
 
 
 class AgentServer:
@@ -115,16 +124,23 @@ class AgentServer:
         )
 
         # Determine max sessions based on provider.
-        # For Claude, derive the default from the container's cgroup CPU
-        # quota (spec 034 P1a) so per-replica concurrency scales with
-        # container sizing — the SDK's ~300 MiB-per-subprocess footprint
-        # means a 0.5 CPU / 1 GiB replica cannot safely run 10 sessions.
+        # For Claude, derive the default from the container's cgroup memory
+        # limit (spec 034 P1a) so per-replica concurrency scales with
+        # container sizing — the SDK's ~200 MiB-per-subprocess footprint
+        # is what triggers cgroup OOMKill when over-provisioned. Memory is
+        # the binding constraint and is reliably exposed via cgroup files
+        # in every runtime we care about (including Azure Container Apps,
+        # which does *not* expose CPU limits the same way).
         max_sessions = 1000  # Non-Claude providers don't spawn subprocesses
         if self.agent_config.model.provider == ProviderEnum.ANTHROPIC:
-            explicit_cap = (
-                self.agent_config.claude.max_concurrent_sessions
-                if self.agent_config.claude is not None
-                else None
+            claude = self.agent_config.claude
+            explicit_cap = claude.max_concurrent_sessions if claude else None
+            per_session_mib = claude.session_memory_estimate_mib if claude else 200
+            per_session_bytes = per_session_mib * 1024 * 1024
+            mem_bytes = memory_limit_bytes()
+            logger.info(
+                "Claude cgroup memory limit: %s",
+                f"{mem_bytes} bytes" if mem_bytes is not None else "unbounded",
             )
             if explicit_cap is not None:
                 max_sessions = explicit_cap
@@ -133,13 +149,23 @@ class AgentServer:
                     "claude.max_concurrent_sessions)",
                     max_sessions,
                 )
-            else:
-                cores = cpu_quota()
-                max_sessions = derived_session_cap(cores)
+            elif mem_bytes is not None:
+                max_sessions = derived_session_cap_from_memory(
+                    mem_bytes, per_session_bytes=per_session_bytes
+                )
                 logger.info(
-                    "Claude session cap: %d (derived from %.2f CPU cores)",
+                    "Claude session cap: %d (derived from %d MiB memory "
+                    "limit @ %d MiB/session)",
                     max_sessions,
-                    cores,
+                    mem_bytes // (1024 * 1024),
+                    per_session_mib,
+                )
+            else:
+                max_sessions = _FALLBACK_SESSION_CAP
+                logger.info(
+                    "Claude session cap: %d (fallback — no cgroup memory "
+                    "limit detected)",
+                    max_sessions,
                 )
         self.sessions = SessionStore(max_sessions=max_sessions)
         self._tool_init_manager = ToolInitManager(

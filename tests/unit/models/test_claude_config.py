@@ -295,10 +295,10 @@ class TestClaudeConfig:
         assert config.permission_mode == PermissionMode.manual
 
     @pytest.mark.unit
-    def test_max_concurrent_sessions_default_is_none_for_cpu_derivation(
+    def test_max_concurrent_sessions_default_is_none_for_memory_derivation(
         self,
     ) -> None:
-        """spec 034 P1a: default is None so the serve layer derives from CPU."""
+        """spec 034 P1a: default is None so the serve layer derives from memory."""
         config = ClaudeConfig()
         assert config.max_concurrent_sessions is None
 
@@ -329,6 +329,23 @@ class TestClaudeConfig:
         """T012: Test that max_concurrent_sessions accepts None."""
         config = ClaudeConfig(max_concurrent_sessions=None)
         assert config.max_concurrent_sessions is None
+
+    @pytest.mark.unit
+    def test_session_memory_estimate_mib_defaults_to_200(self) -> None:
+        """spec 034 P1a: per-session memory estimate defaults to 200 MiB."""
+        config = ClaudeConfig()
+        assert config.session_memory_estimate_mib == 200
+
+    @pytest.mark.unit
+    def test_session_memory_estimate_mib_accepts_valid_value(self) -> None:
+        config = ClaudeConfig(session_memory_estimate_mib=400)
+        assert config.session_memory_estimate_mib == 400
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("value", [49, 2001])
+    def test_session_memory_estimate_mib_out_of_range(self, value: int) -> None:
+        with pytest.raises(ValidationError):
+            ClaudeConfig(session_memory_estimate_mib=value)
 
     def test_extra_fields_rejected(self) -> None:
         """Test that extra fields are rejected."""
