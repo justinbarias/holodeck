@@ -83,10 +83,27 @@ The plan replaces each row of "Today" with a specific change, grouped into four 
 │   • Envoy sidecar holds credentials; agent has none                 │
 │   • Domain allowlist derived from agent.yaml                        │
 │   • ANTHROPIC_BASE_URL → localhost sidecar                          │
+├─────────────────────────────────────────────────────────────────────┤
+│ P4 — Hybrid sessions / SDK subprocess pooling   (1–2 sprints)       │
+│   • Switch claude_backend to per-turn `query(resume=session_id)`    │
+│   • Memory scales with concurrent **turns**, not open sessions      │
+│   • Transcript on disk is the durable state; subprocess is ephemeral│
+│   • Aligns with SDK's documented "Pattern 3 — Hybrid Sessions"      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-P1 is one focused PR (and probably ships under a feature branch within days). P2 and P3 land independently after P1 stabilises trunk.
+P1 is one focused PR (and probably ships under a feature branch within days). P2 and P3 land independently after P1 stabilises trunk. P4 is the biggest memory-headroom win after P1 but requires reshaping `claude_backend.py`'s session model.
+
+### Status tracker
+
+| Phase | Status | Branch / PR | Notes |
+|-------|--------|-------------|-------|
+| P1a — OOM stability | ✅ shipped | `feature/034-p1-stability-permissions` (commits `a391c7d`, `b344684`) | ACA defaults bumped, memory-derived session cap, 429 backpressure, readiness probe. Memory derivation (not CPU) confirmed in ACA via `Claude cgroup memory limit: 2147483648 bytes` startup log. |
+| P1b — Permission posture | ✅ shipped | same branch | `manual → acceptEdits` mapping in serve, auto-disallow risky built-ins, `i_understand_this_is_unsafe` gate on `acceptAll`, silent test-mode escalation removed. |
+| P2a — Container hardening | ⏳ not started | — | — |
+| P2b — Prompt-injection defenses | ⏳ not started | — | — |
+| P3 — Credential boundary | ⏳ not started | — | — |
+| P4 — Hybrid sessions / pooling | ⏳ design only (see Phase 4 below) | — | Spike `query(resume=…)` latency vs. persistent `ClaudeSDKClient` first; MCP server reinit cost is the binary risk. |
 
 ## Phase 1a — Stop the OOM
 
@@ -158,7 +175,7 @@ ACA routes traffic only to ready replicas. First requests no longer race tool in
 ```
 Deploying financial-assistant to Container App 'financial-assistant'
   Replica: 1.0 CPU / 2 GiB memory
-  Concurrent sessions per replica: 2 (derived from CPU)
+  Concurrent sessions per replica: 4 (derived from 2048 MiB memory limit @ 400 MiB/session)
   Max turns per session: 20 (default)
   Ingress: internal
   Readiness probe: /ready (initial delay 5s)
@@ -176,6 +193,7 @@ WARNING: replica CPU (0.25) is below Anthropic's recommended minimum of 1 CPU pe
 - Burst traffic past `max_replicas × max_concurrent_sessions`. The 429 surfaces this honestly; raising replica count is on the operator.
 - One absurdly large prompt that single-handedly OOMs a replica. The semaphore caps process count, not per-process memory.
 - Cold-start latency. P1 surfaces a readiness probe but doesn't make init faster. That's separate work folded into P2.
+- **Idle sessions costing one full SDK subprocess each.** P1 caps concurrent *open sessions* because each one holds a persistent `ClaudeSDKClient`. A user who opens 5 chat windows and walks away pins 5 × ~330 MiB even though nothing is running. Fixing this structurally is **Phase 4** (hybrid sessions — see below). P1 is a ceiling, not an architectural fix.
 
 ## Phase 1b — Permission posture
 
@@ -478,11 +496,66 @@ The Claude backend, on detecting `security_profile: hardened`, requires `ANTHROP
 - **TLS interception of arbitrary HTTPS.** The doc is clear: for non-Anthropic HTTPS without a TLS-terminating proxy, the sidecar only sees opaque TLS tunnels. We don't ship a CA-injection setup in v1. MCP servers needed at the application layer are handled via the `custom tool` pattern from the secure-deployment doc — they expose an HTTP endpoint inside the sidecar and the agent calls them via plain HTTP.
 - **Multi-tenant-per-container isolation.** This profile assumes one tenant per replica. Multiple end-customers concurrently inside the same container with hard isolation between them is a separate spec (would require per-session ephemeral containers, Pattern 1 in the hosting doc).
 
+## Phase 4 — Hybrid sessions / SDK subprocess pooling
+
+P1 caps concurrent SDK subprocesses to whatever fits in cgroup memory. That cap is binding on **open sessions**, not on **active turns** — a 2 GiB replica with 5 idle chat sessions is at the cap even though the CPU and most of the memory is idle. Phase 4 removes that cliff by aligning HoloDeck with the SDK's documented **Pattern 3 — Hybrid Sessions**: each turn is its own subprocess, conversation state lives in a transcript file, idle sessions cost ~zero resident memory.
+
+### What the SDK actually supports
+
+From the SDK sessions doc (verified during P1 validation):
+
+1. **Session state is a JSONL transcript on disk**, written automatically to `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`. Not opaque in-subprocess state.
+2. **`ClaudeAgentOptions.resume=<session_id>`** rehydrates a subprocess from that transcript at spawn time. Fully supported on the top-level `query()` function.
+3. **`ClaudeSDKClient`** (what HoloDeck uses today) keeps one subprocess for its lifetime and locks to one session_id internally. **Cannot be reused across distinct sessions** — confirmed both by the docs and by the existing codebase comment in `claude_backend.py` (rotating session_id wedges the CLI).
+4. There is **no public API for subprocess pooling** in the conventional warm-worker sense. The SDK owns subprocess lifecycle; the only pooling lever the SDK gives you is "make subprocesses ephemeral via `resume=`."
+
+### Current model vs. Phase 4 model
+
+```
+Today (P1):                       Phase 4 (Hybrid):
+1 session = 1 ClaudeSDKClient     1 session = 1 transcript file
+        = 1 persistent subprocess         (cheap, on disk)
+        = ~330 MiB resident       1 turn   = spawn subprocess
+                                          + query(resume=session_id)
+N idle sessions: N × 330 MiB              + run turn, exit
+                                  Resident memory tracks *active turns*.
+```
+
+For typical chat duty cycle (sessions spend ≥90% of wall time waiting on the user), this is 5–10× less resident memory.
+
+### Architecture sketch
+
+- Replace `ClaudeSession._ensure_client()` and `ClaudeSession.send()` so each `send()` calls the top-level `query(prompt, options=ClaudeAgentOptions(resume=session_id, ...))` and drains the async-iterable.
+- On first turn, capture `session_id` from `ResultMessage` and store it on the HoloDeck `ServerSession`.
+- The HoloDeck `SessionStore` cap changes meaning: it now tracks **concurrent turns** in flight, not open sessions. Probably rename to `max_concurrent_turns` to be honest. Cap can be much higher (e.g. 20–50 on a 2 GiB replica) because idle sessions are free.
+- Transcript cleanup: on `ServerSession.close()` and on an idle TTL (e.g. 1h), delete the JSONL. Otherwise `~/.claude/projects/` grows unboundedly.
+- AG-UI streaming: the top-level `query()` async-iterable yields the same SDK message types as `client.send_streaming()`, so the AG-UI bridge mapping should be near-identical. Worth confirming on the spike.
+
+### Risks to validate before committing
+
+| Risk | Why it matters | Validation |
+|------|----------------|------------|
+| **MCP server reinit cost per turn** | qdrant client reconnect + hierarchical-doc tool warmup + ingestion idempotency check on every spawn. Could push P50 mid-conversation latency from ~30s to ~40s. The financial-assistant's first-turn warmup is currently ~3-5s; if that's load-bearing per-turn, chat UX gets ugly. | Spike: time five sequential turns of the same session under both models on the financial-assistant. |
+| **AG-UI stream-shape compat** | The current AG-UI bridge consumes `client.send_streaming()` output. If `query()` yields a different message ordering (e.g. `SystemMessage` placement) the bridge breaks subtly. | Run the existing AG-UI test suite against a `query()`-backed session implementation. |
+| **Subprocess spawn jitter under burst** | Spawning 5 subprocesses at once = 5 simultaneous Node.js CLI starts + 5 MCP server inits. Could cause CPU saturation despite memory headroom. | Re-run the 5-concurrent burst test from P1 validation; measure end-to-end latency distribution. |
+| **Transcript disk pressure** | Long-lived deployments accumulate JSONLs forever without cleanup. | Implement TTL job; size estimate per session before committing. |
+| **Lost session state on transcript corruption** | A corrupted transcript bricks the session permanently (no in-memory fallback as we have today). | Catch decode errors at resume; surface as "session lost, please reconnect" rather than 500. |
+
+### Why this didn't ship in v1
+
+The two-week diagnostic loop that produced P1 surfaced this as the natural next move, but P1 was already a bounded scope with clear success criteria (no more OOM, cap is binding, permissions tightened). Stuffing a subprocess-lifecycle rewrite into the same PR would have made it un-reviewable. P1 gets us to "no OOM at our current scale" — P4 gets us to "no OOM as scale grows."
+
+### Open questions
+
+1. **Does `query(resume=session_id)` actually round-trip every option** (hooks, MCP servers, allowed_tools, permission_mode) cleanly, or do some options reset on resume? Verify in the spike.
+2. **Does the SDK serialize tool-use blocks faithfully in the transcript?** If a tool's response was 200 KiB of text, does that bloat every resume? May need pruning.
+3. **Streaming-mode vs query() in the SDK** — is there a documented difference in latency, message ordering, or error semantics? Skim `code.claude.com/docs/en/agent-sdk/python` for the distinction.
+4. **OTel context propagation across spawned subprocesses** — today the OTel instrumentor patches `ClaudeSDKClient` instances. With `query()` we get a fresh client each turn; need to verify the instrumentor still wires the trace context.
+
 ## What we are deliberately *not* doing in v1
 
 - **Per-session ephemeral containers (Pattern 1).** That's the strongest isolation pattern in the hosting doc but requires a new deployer (Modal, Fly Machines, etc.) and per-session billing infrastructure. Documented as a follow-up spec.
 - **gVisor / Firecracker runtime.** ACA doesn't support gVisor. Self-hosted Docker users could opt into `runsc`, but we don't template it.
-- **SDK process pooling across sessions.** The hosting doc's Pattern 4 ("multiple Claude Agent SDK processes in one global container") is what we already do; *reusing* one warm process across multiple sessions would let one container serve >N concurrent threads. Real win, but it's a redesign of `claude_backend.py`'s session model — separate spec.
 - **Statistical anomaly detection on tool calls.** Out of scope; the hook layer is the right abstraction for layering this later.
 - **Auto-derived domain allowlist from prompt content.** P3 derives the allowlist from explicit YAML fields. Inferring it from prompt text or runtime behavior is brittle and is not what the secure-deployment doc recommends.
 - **Per-tool credential mapping in default profile.** P3 moves credentials behind the sidecar. The default profile keeps the existing env-var model; we don't try to half-implement credential separation.
@@ -510,7 +583,8 @@ claude:
     permission_mode: plan | acceptEdits | manual
   disable_default_hooks: false    # NEW (P2b)
   i_understand_this_is_unsafe: false  # NEW (P1b) — required for bypassPermissions
-  max_concurrent_sessions: null   # existing — default now derived from CPU
+  max_concurrent_sessions: null   # existing — default now derived from cgroup memory
+  session_memory_estimate_mib: 200  # NEW (P1a) — per-session memory budget for derivation
 ```
 
 New field under `deployment:`:
@@ -608,7 +682,7 @@ $ holodeck serve agent.yaml
 Loading agent…
   Permission mode: plan (auto-mapped from `manual`)
   Disallowed tools (auto): Bash, Write, Edit, WebFetch
-  Max concurrent sessions: 2 (derived from CPU=1.0)
+  Max concurrent sessions: 4 (derived from 2048 MiB memory limit @ 400 MiB/session)
   Max turns per session: 20
   Default hooks: enabled
 Listening on 0.0.0.0:8080…
@@ -644,7 +718,6 @@ Each phase merges independently. P1 is one PR. P2a and P2b can be parallel PRs. 
 
 | Out-of-scope | Why deferred | Path forward |
 |---|---|---|
-| SDK subprocess pooling across sessions | Significant redesign of `claude_backend.py` session model; requires a way to inject conversation history per turn into a warm process | Separate spec (`spec-XXX-sdk-process-pool`); biggest perf lever after P1 |
 | Ephemeral per-session containers (Pattern 1) | New deployer (Modal / Fly Machines) + per-session billing | Separate spec; the right pattern for hostile multi-tenant workloads |
 | gVisor runtime templating | ACA doesn't support it; self-hosted users can adopt without HoloDeck help | Docs note in `docs/security/` |
 | TLS-terminating proxy with CA injection | Significant cert management; only needed for arbitrary HTTPS service auth | Follow-up to P3; document the custom-tool pattern for now |
