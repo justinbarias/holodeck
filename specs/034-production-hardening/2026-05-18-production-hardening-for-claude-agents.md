@@ -98,7 +98,7 @@ P1 is one focused PR (and probably ships under a feature branch within days). P2
 
 | Phase | Status | Branch / PR | Notes |
 |-------|--------|-------------|-------|
-| P1a — OOM stability | ✅ shipped | `feature/034-p1-stability-permissions` (commits `a391c7d`, `b344684`) | ACA defaults bumped, memory-derived session cap, 429 backpressure, readiness probe. Memory derivation (not CPU) confirmed in ACA via `Claude cgroup memory limit: 2147483648 bytes` startup log. |
+| P1a — OOM stability | ✅ shipped | `feature/034-p1-stability-permissions` (commits `a391c7d`, `b344684`, `777ece1`) | ACA defaults bumped, memory-derived session cap, 429 backpressure, readiness probe. Memory derivation (not CPU) confirmed in ACA via `Claude cgroup memory limit: 2147483648 bytes` startup log. `max_concurrent_sessions` upper bound widened to 500 as an explicit-override escape hatch for warm-only workloads (P4 makes this a concurrent-turn cap). |
 | P1b — Permission posture | ✅ shipped | same branch | `manual → acceptEdits` mapping in serve, auto-disallow risky built-ins, `i_understand_this_is_unsafe` gate on `acceptAll`, silent test-mode escalation removed. |
 | P2a — Container hardening | ⏳ not started | — | — |
 | P2b — Prompt-injection defenses | ⏳ not started | — | — |
