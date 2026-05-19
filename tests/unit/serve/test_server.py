@@ -803,55 +803,81 @@ class TestActiveTurnSemaphore:
     """
 
     @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_acquire_turn_slot_noop_for_non_anthropic(
+    def test_try_acquire_turn_slot_noop_for_non_anthropic(
         self, mock_agent_config: MagicMock
     ) -> None:
-        """No semaphore configured → context manager is a no-op."""
+        """No semaphore configured → try-acquire always succeeds."""
         mock_agent_config.model.provider = ProviderEnum.OPENAI
 
         server = AgentServer(agent_config=mock_agent_config)
 
         assert server._active_turn_semaphore is None
-        async with server._acquire_turn_slot():
-            assert server._turn_capacity_exceeded() is False
+        assert server._try_acquire_turn_slot() is True
+        # Release is a no-op; calling many times must not raise.
+        server._release_turn_slot()
+        server._release_turn_slot()
 
     @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_acquire_turn_slot_tracks_in_flight(
+    def test_try_acquire_turn_slot_tracks_in_flight(
         self, mock_agent_config: MagicMock
     ) -> None:
-        """Acquiring slot increments in-flight, releasing decrements."""
+        """Each try-acquire increments in-flight, each release decrements."""
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
         mock_agent_config.claude.max_concurrent_sessions = 3
 
         server = AgentServer(agent_config=mock_agent_config)
 
         assert server._active_turn_in_flight() == 0
-        async with server._acquire_turn_slot():
-            assert server._active_turn_in_flight() == 1
-            async with server._acquire_turn_slot():
-                assert server._active_turn_in_flight() == 2
-            assert server._active_turn_in_flight() == 1
+        assert server._try_acquire_turn_slot() is True
+        assert server._active_turn_in_flight() == 1
+        assert server._try_acquire_turn_slot() is True
+        assert server._active_turn_in_flight() == 2
+        server._release_turn_slot()
+        assert server._active_turn_in_flight() == 1
+        server._release_turn_slot()
         assert server._active_turn_in_flight() == 0
 
     @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_turn_capacity_exceeded_at_cap(
+    def test_try_acquire_returns_false_at_capacity(
         self, mock_agent_config: MagicMock
     ) -> None:
-        """When all slots are held, _turn_capacity_exceeded() is True."""
+        """spec 034 P4: 5 try-acquires against cap=2 → 2 succeed, 3 fail.
+
+        This is the regression that the original ``async with sem.acquire()``
+        pattern violated — under concurrent load it would QUEUE the
+        overflow requests instead of failing fast with 429.
+        """
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
         mock_agent_config.claude.max_concurrent_sessions = 2
 
         server = AgentServer(agent_config=mock_agent_config)
 
-        assert server._turn_capacity_exceeded() is False
-        async with server._acquire_turn_slot():
-            assert server._turn_capacity_exceeded() is False
-            async with server._acquire_turn_slot():
-                assert server._turn_capacity_exceeded() is True
-            assert server._turn_capacity_exceeded() is False
+        results = [server._try_acquire_turn_slot() for _ in range(5)]
+        assert results == [True, True, False, False, False]
+        assert server._turn_capacity_exceeded() is True
+        # Releasing one frees exactly one slot.
+        server._release_turn_slot()
+        assert server._try_acquire_turn_slot() is True
+        assert server._try_acquire_turn_slot() is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_acquire_turn_slot_context_manager_yields_bool(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """``async with _acquire_turn_slot() as acquired`` yields the result."""
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude.max_concurrent_sessions = 1
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        async with server._acquire_turn_slot() as acquired:
+            assert acquired is True
+            async with server._acquire_turn_slot() as second:
+                assert second is False
+            # Failed acquire must NOT release on context exit.
+            assert server._active_turn_in_flight() == 1
+        assert server._active_turn_in_flight() == 0
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -866,7 +892,9 @@ class TestActiveTurnSemaphore:
 
         server = AgentServer(agent_config=mock_agent_config)
 
-        async with server._acquire_turn_slot(), server._acquire_turn_slot():
+        assert server._try_acquire_turn_slot() is True
+        assert server._try_acquire_turn_slot() is True
+        try:
             response = server._capacity_exceeded_response()
             body = json.loads(response.body)
             assert response.status_code == 429
@@ -874,13 +902,20 @@ class TestActiveTurnSemaphore:
             assert body["active_sessions"] == 2
             assert "active turns" in body["message"]
             assert response.headers["Retry-After"] == "5"
+        finally:
+            server._release_turn_slot()
+            server._release_turn_slot()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_turn_gated_stream_holds_slot_for_generator_lifetime(
+    async def test_turn_gated_stream_releases_after_exhaustion(
         self, mock_agent_config: MagicMock
     ) -> None:
-        """Streaming generator wrapper keeps slot acquired across yields."""
+        """Streaming wrapper releases the pre-acquired slot when done.
+
+        Caller (the endpoint) acquires synchronously before constructing
+        the response; the wrapper owns the matching release.
+        """
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
         mock_agent_config.claude.max_concurrent_sessions = 1
 
@@ -892,6 +927,7 @@ class TestActiveTurnSemaphore:
             yield b"b"
             assert server._turn_capacity_exceeded() is True
 
+        assert server._try_acquire_turn_slot() is True
         chunks: list[bytes] = []
         async for chunk in server._turn_gated_stream(inner()):
             chunks.append(chunk)
@@ -901,8 +937,7 @@ class TestActiveTurnSemaphore:
         assert server._turn_capacity_exceeded() is False
 
     @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_open_session_count_does_not_trigger_429(
+    def test_open_session_count_does_not_trigger_429(
         self, mock_agent_config: MagicMock
     ) -> None:
         """spec 034 P4: opening many sessions while no turns are active
