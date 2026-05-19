@@ -313,14 +313,14 @@ class TestClaudeConfig:
         ("value", "reason"),
         [
             (0, "below_min"),
-            (101, "above_max"),
+            (501, "above_max"),
         ],
-        ids=["below_min_ge1", "above_max_le100"],
+        ids=["below_min_ge1", "above_max_le500"],
     )
     def test_max_concurrent_sessions_out_of_range(
         self, value: int, reason: str
     ) -> None:
-        """T012: Test that max_concurrent_sessions outside 1-100 is rejected."""
+        """T012: Test that max_concurrent_sessions outside 1-500 is rejected."""
         with pytest.raises(ValidationError):
             ClaudeConfig(max_concurrent_sessions=value)
 

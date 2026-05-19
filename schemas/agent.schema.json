@@ -221,7 +221,7 @@
         "max_concurrent_sessions": {
           "type": ["integer", "null"],
           "minimum": 1,
-          "maximum": 100,
+          "maximum": 500,
           "description": "Maximum concurrent Claude SDK subprocesses per serve instance. When unset, the serve layer derives the cap from the replica's cgroup memory limit divided by session_memory_estimate_mib (spec 034 P1a)."
         },
         "session_memory_estimate_mib": {

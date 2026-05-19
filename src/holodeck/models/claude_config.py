@@ -228,13 +228,17 @@ class ClaudeConfig(BaseModel):
     max_concurrent_sessions: int | None = Field(
         default=None,
         ge=1,
-        le=100,
+        le=500,
         description=(
             "Maximum concurrent Claude SDK subprocesses per serve instance. "
             "When unset, the serve layer derives the cap from the replica's "
             "cgroup memory limit divided by `session_memory_estimate_mib` — "
             "memory is the OOM constraint and Azure Container Apps exposes "
-            "memory limits but not CPU limits via cgroup. Spec 034 P1a."
+            "memory limits but not CPU limits via cgroup. Upper bound 500 "
+            "exists to allow operators to admit many warm threads under the "
+            "current persistent-session model; under cold-spawn bursts the "
+            "real ceiling is much lower. Spec 034 P1a (P4 makes this a "
+            "concurrent-turn cap instead)."
         ),
     )
     session_memory_estimate_mib: int = Field(
