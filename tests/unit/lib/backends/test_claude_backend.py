@@ -3079,3 +3079,16 @@ class TestStreamingUserEnvelope:
         assert msg["session_id"] == ""
         assert msg["message"] == {"role": "user", "content": "hello"}
         assert msg["parent_tool_use_id"] is None
+
+
+@pytest.mark.unit
+class TestClaudeSessionP4Fields:
+    """P4 session model: session_id captures CLI-assigned id on turn 1,
+    feeds it into ``options.resume`` on turn 2+. Lock serialises concurrent
+    sends to prevent transcript-write races.
+    """
+
+    def test_init_sets_p4_fields(self) -> None:
+        session = ClaudeSession(options=MagicMock())
+        assert session._sdk_session_id is None
+        assert isinstance(session._send_lock, asyncio.Lock)

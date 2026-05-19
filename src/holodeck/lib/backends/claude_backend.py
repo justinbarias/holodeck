@@ -716,6 +716,15 @@ class ClaudeSession:
         self._client: ClaudeSDKClient | None = None
         self._turn_count: int = 0
         self._tool_event_queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        # spec 034 P4 — hybrid-session state.
+        # CLI-assigned conversation id; captured from ResultMessage on turn 1
+        # and fed into ``options.resume`` on turn 2+ so each fresh subprocess
+        # rehydrates the JSONL transcript at
+        # ``~/.claude/projects/<encoded-cwd>/<sdk_session_id>.jsonl``.
+        self._sdk_session_id: str | None = None
+        # Serialises concurrent send() / send_streaming() on the same session.
+        # Two concurrent turns with the same resume= would race the transcript.
+        self._send_lock: asyncio.Lock = asyncio.Lock()
 
     @property
     def tool_events(self) -> asyncio.Queue[ToolEvent]:
