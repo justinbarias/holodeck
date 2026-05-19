@@ -19,6 +19,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk import ClaudeAgentOptions
 from exceptiongroup import BaseExceptionGroup
 
 from holodeck.lib.backends.base import (
@@ -1213,44 +1214,38 @@ class TestClaudeSessionStreaming:
 
 @pytest.mark.unit
 class TestClaudeSessionSend:
-    """Tests for ClaudeSession.send() — non-streaming, full response."""
+    """ClaudeSession.send() under spec 034 P4 (hybrid sessions).
+
+    send() calls top-level claude_agent_sdk.query() with a streaming-mode
+    prompt envelope and ``options.resume = self._sdk_session_id``. session_id
+    is captured from ResultMessage on turn 1.
+    """
 
     @pytest.mark.asyncio
     async def test_send_returns_execution_result(self) -> None:
-        """T012: send() returns ExecutionResult with concatenated text."""
-        mock_client = MagicMock()
-        mock_client.query = AsyncMock()
         assistant = _make_assistant_message(
             [_make_text_block("Hello "), _make_text_block("world!")]
         )
-        result_msg = _make_result_message()
+        result_msg = _make_result_message(session_id="sdk-sess-001")
 
-        def mock_receive():
-            return _async_iter([assistant, result_msg])
+        async def fake_query(prompt, options):
+            for m in (assistant, result_msg):
+                yield m
 
-        mock_client.receive_response = mock_receive
-
-        session = ClaudeSession(options=MagicMock())
-        session._client = mock_client
-
-        result = await session.send("Hi")
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        with patch(
+            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+        ):
+            result = await session.send("Hi")
 
         assert isinstance(result, ExecutionResult)
         assert result.response == "Hello world!"
         assert result.token_usage.prompt_tokens == 10
+        assert session._sdk_session_id == "sdk-sess-001"
 
     @pytest.mark.asyncio
     async def test_send_enriches_tool_results_with_name(self) -> None:
-        """Regression: ClaudeSession.send must populate `name` on tool_results.
-
-        ToolResultBlock from the SDK only carries `call_id`, while ToolUseBlock
-        carries the tool name. `build_retrieval_context_from_tools` keys on
-        name, so sessions that skipped enrichment produced empty retrieval
-        contexts and made DeepEval RAG metrics crash with 'retrieval_context
-        cannot be None'.
-        """
-        mock_client = MagicMock()
-        mock_client.query = AsyncMock()
+        """Regression: tool_results must carry tool name (call_id → name lookup)."""
         tool_use = _make_tool_use_block(
             tool_id="call_abc",
             name="mcp__holodeck_tools__legislation_search_search",
@@ -1263,14 +1258,15 @@ class TestClaudeSessionSend:
         user_msg.content = [tool_result_block]
         user_msg.__class__.__name__ = "UserMessage"
 
-        def mock_receive():
-            return _async_iter([assistant, user_msg, _make_result_message()])
+        async def fake_query(prompt, options):
+            for m in (assistant, user_msg, _make_result_message()):
+                yield m
 
-        mock_client.receive_response = mock_receive
-        session = ClaudeSession(options=MagicMock())
-        session._client = mock_client
-
-        result = await session.send("search")
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        with patch(
+            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+        ):
+            result = await session.send("search")
 
         assert result.tool_calls[0]["name"] == (
             "mcp__holodeck_tools__legislation_search_search"
@@ -1281,54 +1277,58 @@ class TestClaudeSessionSend:
         assert result.tool_results[0]["call_id"] == "call_abc"
 
     @pytest.mark.asyncio
-    async def test_send_multi_turn_state_tracking(self) -> None:
-        """Multi-turn: every ``client.query()`` uses session_id="default".
-
-        Regression test for an AGUI multi-turn hang. The CLI subprocess
-        tracks conversation state implicitly across queries on the same
-        connection, so every ``client.query()`` for the lifetime of a
-        connected ``ClaudeSDKClient`` must pass the same ``session_id``.
-        Rotating it to the CLI-assigned id from ``ResultMessage`` (the
-        previous behavior) wedges the CLI on the second turn — its
-        ``query()`` write succeeds but no responses ever come back.
+    async def test_send_propagates_session_id_into_resume_on_turn_2(
+        self,
+    ) -> None:
+        """Turn 1 captures session_id from ResultMessage; turn 2's query() call
+        must pass that id back as ``options.resume`` so the SDK rehydrates the
+        on-disk transcript.
         """
-        mock_client = MagicMock()
-        mock_client.query = AsyncMock()
+        captured_resume: list[Any] = []
 
-        # First turn
-        result_msg_1 = _make_result_message(session_id="sess-001")
-        turn1_items = [_make_assistant_message(), result_msg_1]
+        async def fake_query(prompt, options):
+            captured_resume.append(getattr(options, "resume", None))
+            yield _make_assistant_message()
+            yield _make_result_message(session_id="sdk-sess-XYZ")
 
-        def mock_receive_turn1():
-            return _async_iter(turn1_items)
+        # Use a real ClaudeAgentOptions instance so dataclasses.replace works
+        # and produces a fresh, non-aliased options per turn.
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with patch(
+            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+        ):
+            await session.send("Turn 1")
+            await session.send("Turn 2")
 
-        mock_client.receive_response = mock_receive_turn1
-
-        base_options = MagicMock()
-        session = ClaudeSession(options=base_options)
-        session._client = mock_client
-
-        await session.send("Turn 1")
-
-        assert session._turn_count == 1
-        # First turn uses session_id="default".
-        mock_client.query.assert_called_with("Turn 1", session_id="default")
-
-        # Second turn
-        result_msg_2 = _make_result_message(session_id="sess-002")
-        turn2_items = [_make_assistant_message(), result_msg_2]
-
-        def mock_receive_turn2():
-            return _async_iter(turn2_items)
-
-        mock_client.receive_response = mock_receive_turn2
-
-        await session.send("Turn 2")
-
-        # Turn 2 must ALSO pass session_id="default" — not the CLI-assigned
-        # "sess-001" — otherwise the CLI hangs.
-        mock_client.query.assert_called_with("Turn 2", session_id="default")
+        assert len(captured_resume) == 2
+        assert captured_resume[0] is None
+        assert captured_resume[1] == "sdk-sess-XYZ"
+        assert session._sdk_session_id == "sdk-sess-XYZ"
         assert session._turn_count == 2
+
+    @pytest.mark.asyncio
+    async def test_send_uses_streaming_mode_prompt(self) -> None:
+        """The prompt passed to query() must be an AsyncIterable, not a str —
+        string-mode closes stdin and deadlocks SDK MCP tool callbacks (spec
+        034 P4 spike v1).
+        """
+        captured_prompts: list[Any] = []
+
+        async def fake_query(prompt, options):
+            captured_prompts.append(prompt)
+            async for _ in prompt:
+                pass
+            yield _make_result_message()
+
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        with patch(
+            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+        ):
+            await session.send("Hi")
+
+        assert len(captured_prompts) == 1
+        assert not isinstance(captured_prompts[0], str)
+        assert hasattr(captured_prompts[0], "__aiter__")
 
 
 # ---------------------------------------------------------------------------

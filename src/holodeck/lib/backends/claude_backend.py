@@ -21,6 +21,7 @@ from claude_agent_sdk import (
     ClaudeSDKClient,
     HookMatcher,
     ProcessError,
+    query,
 )
 from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
 from claude_agent_sdk.types import (
@@ -799,100 +800,93 @@ class ClaudeSession:
         Raises:
             BackendSessionError: On subprocess or SDK error.
         """
-        turn_no = self._turn_count + 1
-        logger.debug(
-            "[trace] ClaudeSession.send turn=%d: entering, client_cached=%s",
-            turn_no,
-            self._client is not None,
-        )
-        try:
-            client = await self._ensure_client()
+        async with self._send_lock:
+            turn_no = self._turn_count + 1
             logger.debug(
-                "[trace] ClaudeSession.send turn=%d: client ready, calling query",
+                "[trace] ClaudeSession.send turn=%d: entering, resume=%s",
                 turn_no,
+                self._sdk_session_id,
             )
-            await client.query(message, session_id=_DEFAULT_SESSION_ID)
-            logger.debug(
-                "[trace] ClaudeSession.send turn=%d: query written, awaiting "
-                "receive_response",
-                turn_no,
-            )
+            try:
+                options = self._options_with_hooks()
+                if self._sdk_session_id is not None:
+                    import dataclasses
 
-            text_parts: list[str] = []
-            tool_calls: list[dict[str, Any]] = []
-            tool_results: list[dict[str, Any]] = []
-            token_usage = TokenUsage.zero()
-            num_turns = 1
-            structured_output: Any = None
+                    try:
+                        options = dataclasses.replace(
+                            options, resume=self._sdk_session_id
+                        )
+                    except TypeError:
+                        # Fallback for non-dataclass options (test mocks).
+                        options.resume = self._sdk_session_id
 
-            msg_count = 0
-            async for msg in client.receive_response():
-                msg_count += 1
+                text_parts: list[str] = []
+                tool_calls: list[dict[str, Any]] = []
+                tool_results: list[dict[str, Any]] = []
+                token_usage = TokenUsage.zero()
+                num_turns = 1
+                structured_output: Any = None
+
+                msg_count = 0
+                async for msg in query(
+                    prompt=_streaming_user_envelope(message), options=options
+                ):
+                    msg_count += 1
+                    logger.debug(
+                        "[trace] ClaudeSession.send turn=%d: msg #%d type=%s",
+                        turn_no,
+                        msg_count,
+                        msg.__class__.__name__,
+                    )
+                    _maybe_emit_subagent_message(msg, self._tool_event_queue)
+                    text_parts, tool_calls, tool_results = _process_message(
+                        msg, text_parts, tool_calls, tool_results
+                    )
+                    if msg.__class__.__name__ == "ResultMessage":
+                        rm = cast(Any, msg)
+                        usage = rm.usage or {}
+                        prompt_tokens = usage.get("input_tokens", 0)
+                        completion = usage.get("output_tokens", 0)
+                        token_usage = TokenUsage(
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion,
+                            total_tokens=prompt_tokens + completion,
+                        )
+                        num_turns = rm.num_turns
+                        structured_output = rm.structured_output
+                        if self._sdk_session_id is None:
+                            captured = getattr(rm, "session_id", None)
+                            if isinstance(captured, str) and captured:
+                                self._sdk_session_id = captured
+
                 logger.debug(
-                    "[trace] ClaudeSession.send turn=%d: msg #%d type=%s",
+                    "[trace] ClaudeSession.send turn=%d: exited, "
+                    "msg_count=%d, num_turns=%d, sdk_session_id=%s",
                     turn_no,
                     msg_count,
-                    msg.__class__.__name__,
+                    num_turns,
+                    self._sdk_session_id,
                 )
-                _maybe_emit_subagent_message(msg, self._tool_event_queue)
-                text_parts, tool_calls, tool_results = _process_message(
-                    msg, text_parts, tool_calls, tool_results
+                self._turn_count += 1
+
+                _enrich_tool_results(tool_calls, tool_results)
+
+                response_text = "".join(text_parts)
+                if structured_output is not None:
+                    response_text = json.dumps(structured_output)
+
+                return ExecutionResult(
+                    response=response_text,
+                    tool_calls=tool_calls,
+                    tool_results=tool_results,
+                    token_usage=token_usage,
+                    structured_output=structured_output,
+                    num_turns=num_turns,
                 )
-                if msg.__class__.__name__ == "ResultMessage":
-                    rm = cast(Any, msg)
-                    usage = rm.usage or {}
-                    prompt = usage.get("input_tokens", 0)
-                    completion = usage.get("output_tokens", 0)
-                    token_usage = TokenUsage(
-                        prompt_tokens=prompt,
-                        completion_tokens=completion,
-                        total_tokens=prompt + completion,
-                    )
-                    num_turns = rm.num_turns
-                    structured_output = rm.structured_output
-
-            logger.debug(
-                "[trace] ClaudeSession.send turn=%d: receive_response exited, "
-                "msg_count=%d, num_turns=%d",
-                turn_no,
-                msg_count,
-                num_turns,
-            )
-            self._turn_count += 1
-
-            # Enrich tool results with names from tool calls so downstream
-            # consumers (eval_kwargs_builder.build_retrieval_context_from_tools)
-            # can match each result to its source tool. The SDK yields names
-            # only on ToolUseBlock; results arrive on ToolResultBlock carrying
-            # just call_id.
-            _enrich_tool_results(tool_calls, tool_results)
-
-            response_text = "".join(text_parts)
-
-            # When ``response_format`` is set the SDK delivers the validated
-            # payload on ``ResultMessage.structured_output``; the text
-            # content blocks carry the model's prose reasoning, which the
-            # CLI does NOT constrain to the schema. The structured payload
-            # is the authoritative answer — prefer it so downstream graders
-            # (response_path, equality/numeric over JSON envelopes) operate
-            # on the schema-validated value, not the unconstrained prose.
-            # Mirrors ``invoke_once`` which routes through
-            # ``_validate_structured_output``.
-            if structured_output is not None:
-                response_text = json.dumps(structured_output)
-
-            return ExecutionResult(
-                response=response_text,
-                tool_calls=tool_calls,
-                tool_results=tool_results,
-                token_usage=token_usage,
-                structured_output=structured_output,
-                num_turns=num_turns,
-            )
-        except (ProcessError, CLIConnectionError) as exc:
-            raise BackendSessionError(
-                f"subprocess terminated unexpectedly: {exc}"
-            ) from exc
+            except (ProcessError, CLIConnectionError) as exc:
+                raise BackendSessionError(
+                    f"subprocess terminated unexpectedly: {exc}"
+                ) from exc
 
     async def send_streaming(self, message: str) -> AsyncGenerator[str, None]:
         """Send a message and yield text chunks progressively.
