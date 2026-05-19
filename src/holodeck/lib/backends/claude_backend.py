@@ -96,6 +96,28 @@ async def _wrap_prompt(message: str) -> AsyncGenerator[dict[str, Any], None]:
     }
 
 
+async def _streaming_user_envelope(
+    message: str,
+) -> AsyncGenerator[dict[str, Any], None]:
+    """Wrap a user message in the streaming-mode envelope ``query()`` expects.
+
+    ``query()`` accepts either a ``str`` prompt or an ``AsyncIterable[dict]``.
+    The ``str`` form writes the message and immediately closes stdin via
+    ``end_input()``, which deadlocks any subsequent SDK-MCP tool callback
+    (control-channel writes fail with ``ProcessTransport is not ready for
+    writing``). Streaming mode keeps stdin open via the SDK's background
+    ``stream_input`` task, so tool callbacks can write responses back.
+
+    See spec 034 P4 spike v1 (2026-05-19) for the surfacing.
+    """
+    yield {
+        "type": "user",
+        "session_id": "",
+        "message": {"role": "user", "content": message},
+        "parent_tool_use_id": None,
+    }
+
+
 def _enrich_tool_results(
     tool_calls: list[dict[str, Any]],
     tool_results: list[dict[str, Any]],

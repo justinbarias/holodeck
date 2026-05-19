@@ -10,9 +10,11 @@ Tests T001–T016 covering:
 
 from __future__ import annotations
 
+import asyncio  # noqa: F401  (used by P4 tasks 2/5/7)
 import json
 import logging
 import sys
+from pathlib import Path  # noqa: F401  (used by P4 task 5)
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -3049,3 +3051,31 @@ class TestBuildOptionsSubagentTools:
         kwargs = mock_opts_cls.call_args[1]
         assert kwargs["agents"]["thinker"].tools == []
         assert kwargs["agents"]["thinker"].tools is not None
+
+
+# ---------------------------------------------------------------------------
+# Streaming-mode envelope (spec 034 P4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestStreamingUserEnvelope:
+    """The envelope wraps a string into the AsyncIterable[dict] shape that
+    ``query()`` needs in streaming mode. String-mode prompts cause query()
+    to call end_input() after writing, deadlocking SDK MCP tool callbacks.
+    """
+
+    @pytest.mark.asyncio
+    async def test_yields_single_user_message(self) -> None:
+        from holodeck.lib.backends.claude_backend import (
+            _streaming_user_envelope,
+        )
+
+        msgs = [m async for m in _streaming_user_envelope("hello")]
+
+        assert len(msgs) == 1
+        msg = msgs[0]
+        assert msg["type"] == "user"
+        assert msg["session_id"] == ""
+        assert msg["message"] == {"role": "user", "content": "hello"}
+        assert msg["parent_tool_use_id"] is None
