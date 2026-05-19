@@ -230,15 +230,16 @@ class ClaudeConfig(BaseModel):
         ge=1,
         le=500,
         description=(
-            "Maximum concurrent Claude SDK subprocesses per serve instance. "
-            "When unset, the serve layer derives the cap from the replica's "
-            "cgroup memory limit divided by `session_memory_estimate_mib` — "
-            "memory is the OOM constraint and Azure Container Apps exposes "
-            "memory limits but not CPU limits via cgroup. Upper bound 500 "
-            "exists to allow operators to admit many warm threads under the "
-            "current persistent-session model; under cold-spawn bursts the "
-            "real ceiling is much lower. Spec 034 P1a (P4 makes this a "
-            "concurrent-turn cap instead)."
+            "Maximum concurrent active turns per serve instance — under spec "
+            "034 P4 each in-flight turn spawns a fresh SDK subprocess, so this "
+            "gates memory exposure. When unset, the serve layer derives the "
+            "cap from the replica's cgroup memory limit divided by "
+            "`session_memory_estimate_mib`. Field name retained for backward "
+            "compatibility with existing agent.yaml files. Upper bound 500 "
+            "allows operators to admit many idle threads (open sessions are "
+            "now nearly free — JSONL transcripts on disk, no resident "
+            "subprocess) while the semaphore enforces the actual memory cap "
+            "on concurrent active turns. Spec 034 P1a + P4."
         ),
     )
     session_memory_estimate_mib: int = Field(
@@ -246,12 +247,17 @@ class ClaudeConfig(BaseModel):
         ge=50,
         le=2000,
         description=(
-            "Estimated resident memory (MiB) per active Claude SDK subprocess, "
-            "used by the serve layer to derive `max_concurrent_sessions` from "
-            "the replica's cgroup memory limit. Tune up for agents whose tool "
-            "state inflates the SDK subprocess footprint, down for lighter "
-            "agents. Spec 034 P1a measured ~200 MiB for the financial-assistant "
-            "sample at steady state."
+            "Estimated peak resident memory (MiB) per *concurrent active turn* "
+            "(SDK subprocess + tool state during a single in-flight query). "
+            "Under spec 034 P4 this is no longer per-idle-session — idle "
+            "sessions cost ~30 MiB each (Python object + JSONL handle) since "
+            "the subprocess is spawned per turn and torn down at turn end. "
+            "Used by the serve layer to derive `max_concurrent_sessions` from "
+            "the replica's cgroup memory limit. Tune up for tool-heavy agents "
+            "(qdrant connection pools, hierarchical-doc caches inflate "
+            "subprocess footprint), down for thin agents. Spec 034 P1a "
+            "measured ~200 MiB baseline; financial-assistant sample uses 400 "
+            "to account for hybrid retrieval state."
         ),
     )
     extended_thinking: ExtendedThinkingConfig | None = Field(

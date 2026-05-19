@@ -7,6 +7,8 @@ for exposing agents via HTTP.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -47,16 +49,23 @@ _BACKEND_ERROR_MSG = (
     "Start a new session to retry."
 )
 _CAPACITY_MSG_TEMPLATE = (
-    "Maximum concurrent Claude sessions ({max}) reached. "
-    "Retry after existing sessions complete."
+    "Maximum concurrent active turns ({max}) reached. "
+    "Retry after in-flight turns complete."
 )
 _CAPACITY_RETRY_AFTER_SECONDS = 5
 
-# Fallback session cap when neither an explicit
+# Fallback active-turn cap when neither an explicit
 # claude.max_concurrent_sessions nor a cgroup memory limit is available
 # (local dev, unconstrained Linux). Keep this conservative: this number is
 # only reached when we can't introspect the runtime at all.
-_FALLBACK_SESSION_CAP = 50
+_FALLBACK_ACTIVE_TURN_CAP = 50
+
+# Open-session ceiling. Under spec 034 P4, idle sessions cost ~30 MiB each
+# (a Python object + JSONL transcript reference, no persistent subprocess),
+# so the real binding constraint is concurrent active turns — not open
+# session count. This cap exists only to bound disk usage from JSONL
+# transcripts and to prevent unbounded dict growth.
+_OPEN_SESSION_CEILING = 1000
 
 
 class AgentServer:
@@ -123,51 +132,53 @@ class AgentServer:
             self.agent_config.model.provider == ProviderEnum.ANTHROPIC
         )
 
-        # Determine max sessions based on provider.
-        # For Claude, derive the default from the container's cgroup memory
-        # limit (spec 034 P1a) so per-replica concurrency scales with
-        # container sizing — the SDK's ~200 MiB-per-subprocess footprint
-        # is what triggers cgroup OOMKill when over-provisioned. Memory is
-        # the binding constraint and is reliably exposed via cgroup files
-        # in every runtime we care about (including Azure Container Apps,
-        # which does *not* expose CPU limits the same way).
-        max_sessions = 1000  # Non-Claude providers don't spawn subprocesses
+        # Spec 034 P4 changed the binding constraint: the SDK subprocess
+        # is now spawned per *turn* (not per session), so memory-bounded
+        # capacity must gate concurrent active turns rather than open
+        # session count. We derive the active-turn cap from the cgroup
+        # memory limit using the same formula previously used for the
+        # session cap — only the semantic shifted.
+        self._active_turn_cap: int | None = None
+        self._active_turn_semaphore: asyncio.BoundedSemaphore | None = None
         if self.agent_config.model.provider == ProviderEnum.ANTHROPIC:
             claude = self.agent_config.claude
             explicit_cap = claude.max_concurrent_sessions if claude else None
-            per_session_mib = claude.session_memory_estimate_mib if claude else 200
-            per_session_bytes = per_session_mib * 1024 * 1024
+            per_turn_mib = claude.session_memory_estimate_mib if claude else 200
+            per_turn_bytes = per_turn_mib * 1024 * 1024
             mem_bytes = memory_limit_bytes()
             logger.info(
                 "Claude cgroup memory limit: %s",
                 f"{mem_bytes} bytes" if mem_bytes is not None else "unbounded",
             )
             if explicit_cap is not None:
-                max_sessions = explicit_cap
+                self._active_turn_cap = explicit_cap
                 logger.info(
-                    "Claude session cap: %d (explicit from "
+                    "Claude active-turn cap: %d (explicit from "
                     "claude.max_concurrent_sessions)",
-                    max_sessions,
+                    self._active_turn_cap,
                 )
             elif mem_bytes is not None:
-                max_sessions = derived_session_cap_from_memory(
-                    mem_bytes, per_session_bytes=per_session_bytes
+                self._active_turn_cap = derived_session_cap_from_memory(
+                    mem_bytes, per_session_bytes=per_turn_bytes
                 )
                 logger.info(
-                    "Claude session cap: %d (derived from %d MiB memory "
-                    "limit @ %d MiB/session)",
-                    max_sessions,
+                    "Claude active-turn cap: %d (derived from %d MiB memory "
+                    "limit @ %d MiB/turn)",
+                    self._active_turn_cap,
                     mem_bytes // (1024 * 1024),
-                    per_session_mib,
+                    per_turn_mib,
                 )
             else:
-                max_sessions = _FALLBACK_SESSION_CAP
+                self._active_turn_cap = _FALLBACK_ACTIVE_TURN_CAP
                 logger.info(
-                    "Claude session cap: %d (fallback — no cgroup memory "
+                    "Claude active-turn cap: %d (fallback — no cgroup memory "
                     "limit detected)",
-                    max_sessions,
+                    self._active_turn_cap,
                 )
-        self.sessions = SessionStore(max_sessions=max_sessions)
+            self._active_turn_semaphore = asyncio.BoundedSemaphore(
+                self._active_turn_cap
+            )
+        self.sessions = SessionStore(max_sessions=_OPEN_SESSION_CEILING)
         self._tool_init_manager = ToolInitManager(
             agent=self.agent_config, max_concurrent=max_concurrent_init_jobs
         )
@@ -258,26 +269,80 @@ class AgentServer:
             return self._capacity_exceeded_response()
 
     def _capacity_exceeded_response(self) -> JSONResponse:
-        """Build a 429 JSON response for capacity-exceeded errors.
+        """Build a 429 JSON response for active-turn capacity exhaustion.
 
         Returns HTTP 429 with ``Retry-After`` so clients (and any fronting
         load balancer) recognise the backpressure and retry against
         another replica. Spec 034 P1a switched this from 503 because most
         HTTP client libraries treat 429 as a transient retryable signal
         out of the box, whereas 503 often surfaces as a hard error.
+
+        Spec 034 P4 repurposed the cap from "open sessions" to "concurrent
+        active turns" — the field stays ``max_sessions`` in the response
+        body for client/dashboard compatibility, but reflects the
+        active-turn cap.
         """
+        cap = self._active_turn_cap or 0
+        in_flight = self._active_turn_in_flight()
         return JSONResponse(
             status_code=429,
             content={
                 "error": "capacity_exceeded",
-                "message": _CAPACITY_MSG_TEMPLATE.format(
-                    max=self.sessions.max_sessions,
-                ),
-                "active_sessions": self.sessions.active_count,
-                "max_sessions": self.sessions.max_sessions,
+                "message": _CAPACITY_MSG_TEMPLATE.format(max=cap),
+                "active_sessions": in_flight,
+                "max_sessions": cap,
             },
             headers={"Retry-After": str(_CAPACITY_RETRY_AFTER_SECONDS)},
         )
+
+    def _active_turn_in_flight(self) -> int:
+        """Return the count of currently-acquired turn slots.
+
+        Reads ``BoundedSemaphore`` internals (``_value``) since the public
+        API doesn't expose in-flight count. Safe because asyncio
+        primitives are single-threaded.
+        """
+        sem = self._active_turn_semaphore
+        if sem is None:
+            return 0
+        return self._active_turn_cap - sem._value  # type: ignore[operator]
+
+    def _turn_capacity_exceeded(self) -> bool:
+        """Return True iff acquiring a turn slot would block right now."""
+        sem = self._active_turn_semaphore
+        return sem is not None and sem.locked()
+
+    @contextlib.asynccontextmanager
+    async def _acquire_turn_slot(self) -> AsyncGenerator[None, None]:
+        """Acquire one active-turn slot for the duration of this context.
+
+        No-op when no semaphore is configured (non-Claude providers).
+        The slot is released even if the wrapped work raises or the
+        request generator is cancelled by the client.
+        """
+        sem = self._active_turn_semaphore
+        if sem is None:
+            yield
+            return
+        await sem.acquire()
+        try:
+            yield
+        finally:
+            sem.release()
+
+    async def _turn_gated_stream(
+        self,
+        gen: AsyncGenerator[bytes, None],
+    ) -> AsyncGenerator[bytes, None]:
+        """Wrap a streaming response generator so it holds a turn slot.
+
+        The slot is acquired before the first chunk is produced and
+        released after the generator is exhausted (or cancelled). Keeps
+        the gating logic symmetric with the sync path.
+        """
+        async with self._acquire_turn_slot():
+            async for chunk in gen:
+                yield chunk
 
     async def _handle_backend_session_error(
         self,
@@ -427,6 +492,12 @@ class AgentServer:
             # Capacity exceeded surfaces as a real HTTP 429 (not an SSE
             # error frame inside a 200) so fronting load balancers and
             # client retry logic see the backpressure (spec 034 P1a).
+            # Spec 034 P4: the cap is now concurrent active turns, not
+            # open sessions — open sessions are nearly free under hybrid
+            # session model.
+            if self._turn_capacity_exceeded():
+                return self._capacity_exceeded_response()  # type: ignore[return-value]
+
             session_id = input_data.thread_id
             result = self._get_or_create_session(session_id)
             if isinstance(result, JSONResponse):
@@ -443,9 +514,10 @@ class AgentServer:
                 execution_config=self.execution_config,
             )
 
-            # Stream response
+            # Stream response, holding a turn slot for the lifetime of
+            # the generator (released on exhaustion or client disconnect).
             return StreamingResponse(
-                protocol.handle_request(input_data, session),
+                self._turn_gated_stream(protocol.handle_request(input_data, session)),
                 media_type=protocol.content_type,
             )
 
@@ -475,6 +547,9 @@ class AgentServer:
             Accepts a message, processes it through the agent, and returns
             the complete response as JSON.
             """
+            if self._turn_capacity_exceeded():
+                return self._capacity_exceeded_response()  # type: ignore[return-value,no-any-return]
+
             result = self._get_or_create_session(request.session_id)
             if isinstance(result, JSONResponse):
                 return result  # type: ignore[return-value,no-any-return]
@@ -485,7 +560,8 @@ class AgentServer:
 
             protocol = RESTProtocol()
             try:
-                return await protocol.handle_sync_request(request, session)
+                async with self._acquire_turn_slot():
+                    return await protocol.handle_sync_request(request, session)
             except BackendSessionError:
                 return await self._handle_backend_session_error(  # type: ignore[return-value,no-any-return]
                     session.session_id,
@@ -501,9 +577,12 @@ class AgentServer:
             Accepts a message, processes it through the agent, and streams
             SSE events back to the client.
             """
+            if self._turn_capacity_exceeded():
+                return self._capacity_exceeded_response()  # type: ignore[return-value]
+
             result = self._get_or_create_session(request.session_id)
             if isinstance(result, JSONResponse):
-                return result  # type: ignore[return-value,no-any-return]
+                return result  # type: ignore[return-value]
             session = result
 
             self.sessions.touch(session.session_id)
@@ -511,7 +590,7 @@ class AgentServer:
 
             protocol = RESTProtocol()
             return StreamingResponse(
-                protocol.handle_request(request, session),
+                self._turn_gated_stream(protocol.handle_request(request, session)),
                 media_type=protocol.content_type,
             )
 
@@ -554,6 +633,9 @@ class AgentServer:
                 files=file_contents if file_contents else None,
             )
 
+            if self._turn_capacity_exceeded():
+                return self._capacity_exceeded_response()  # type: ignore[return-value,no-any-return]
+
             result = self._get_or_create_session(session_id)
             if isinstance(result, JSONResponse):
                 return result  # type: ignore[return-value,no-any-return]
@@ -564,7 +646,8 @@ class AgentServer:
 
             protocol = RESTProtocol()
             try:
-                return await protocol.handle_sync_request(chat_request, session)
+                async with self._acquire_turn_slot():
+                    return await protocol.handle_sync_request(chat_request, session)
             except BackendSessionError:
                 return await self._handle_backend_session_error(  # type: ignore[return-value,no-any-return]
                     session.session_id,
@@ -607,9 +690,12 @@ class AgentServer:
                 files=file_contents if file_contents else None,
             )
 
+            if self._turn_capacity_exceeded():
+                return self._capacity_exceeded_response()  # type: ignore[return-value]
+
             result = self._get_or_create_session(session_id)
             if isinstance(result, JSONResponse):
-                return result  # type: ignore[return-value,no-any-return]
+                return result  # type: ignore[return-value]
             session = result
 
             self.sessions.touch(session.session_id)
@@ -617,7 +703,7 @@ class AgentServer:
 
             protocol = RESTProtocol()
             return StreamingResponse(
-                protocol.handle_request(chat_request, session),
+                self._turn_gated_stream(protocol.handle_request(chat_request, session)),
                 media_type=protocol.content_type,
             )
 

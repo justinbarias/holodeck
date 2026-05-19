@@ -5,6 +5,7 @@ lifecycle management, and state transitions.
 """
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,9 +21,18 @@ from holodeck.serve.server import AgentServer
 
 @pytest.fixture
 def mock_agent_config() -> MagicMock:
-    """Create a mock agent configuration."""
+    """Create a mock agent configuration.
+
+    Defaults ``claude.max_concurrent_sessions=None`` and
+    ``session_memory_estimate_mib=200`` so tests that switch provider to
+    ANTHROPIC without overriding the claude submock get a valid
+    BoundedSemaphore from AgentServer.__init__.
+    """
     agent = MagicMock()
     agent.name = "test-agent"
+    agent.claude = MagicMock()
+    agent.claude.max_concurrent_sessions = None
+    agent.claude.session_memory_estimate_mib = 200
     return agent
 
 
@@ -114,10 +124,13 @@ class TestAgentServerInit:
         assert server.sessions.active_count == 0
 
     @pytest.mark.unit
-    def test_session_cap_anthropic_with_max_concurrent_sessions(
+    def test_active_turn_cap_anthropic_with_max_concurrent_sessions(
         self, mock_agent_config: MagicMock
     ) -> None:
-        """Explicit claude.max_concurrent_sessions overrides memory derivation."""
+        """Explicit claude.max_concurrent_sessions overrides memory derivation.
+
+        Spec 034 P4: the field gates active-turn slots, not open sessions.
+        """
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
         mock_agent_config.claude = MagicMock()
         mock_agent_config.claude.max_concurrent_sessions = 5
@@ -125,26 +138,31 @@ class TestAgentServerInit:
 
         server = AgentServer(agent_config=mock_agent_config)
 
-        assert server.sessions.max_sessions == 5
+        assert server._active_turn_cap == 5
+        assert server._active_turn_semaphore is not None
+        # Open-session ceiling is now uniform and unrelated to memory.
+        assert server.sessions.max_sessions == 1000
 
     @pytest.mark.unit
-    def test_session_cap_non_anthropic_defaults_to_1000(
+    def test_active_turn_semaphore_absent_for_non_anthropic(
         self, mock_agent_config: MagicMock
     ) -> None:
-        """T015: Non-Anthropic provider defaults to 1000 max sessions."""
+        """Non-Anthropic providers don't spawn subprocesses → no turn gate."""
         mock_agent_config.model.provider = ProviderEnum.OPENAI
 
         server = AgentServer(agent_config=mock_agent_config)
 
+        assert server._active_turn_cap is None
+        assert server._active_turn_semaphore is None
         assert server.sessions.max_sessions == 1000
 
     @pytest.mark.unit
-    def test_session_cap_anthropic_default_derives_from_memory(
+    def test_active_turn_cap_anthropic_default_derives_from_memory(
         self,
         mock_agent_config: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """spec 034 P1a: default cap = (mem - baseline) / per_session_bytes."""
+        """spec 034 P4: default cap = (mem - baseline) / per_turn_bytes."""
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
         mock_agent_config.claude = MagicMock()
         mock_agent_config.claude.max_concurrent_sessions = None
@@ -157,15 +175,15 @@ class TestAgentServerInit:
 
         server = AgentServer(agent_config=mock_agent_config)
 
-        assert server.sessions.max_sessions == 8
+        assert server._active_turn_cap == 8
 
     @pytest.mark.unit
-    def test_session_cap_anthropic_respects_session_memory_estimate(
+    def test_active_turn_cap_anthropic_respects_session_memory_estimate(
         self,
         mock_agent_config: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """A larger per-session estimate yields a smaller cap."""
+        """A larger per-turn estimate yields a smaller cap."""
         mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
         mock_agent_config.claude = MagicMock()
         mock_agent_config.claude.max_concurrent_sessions = None
@@ -178,10 +196,10 @@ class TestAgentServerInit:
         server = AgentServer(agent_config=mock_agent_config)
 
         # (2048 - 400) / 400 = 4
-        assert server.sessions.max_sessions == 4
+        assert server._active_turn_cap == 4
 
     @pytest.mark.unit
-    def test_session_cap_anthropic_no_cgroup_memory_uses_fallback(
+    def test_active_turn_cap_anthropic_no_cgroup_memory_uses_fallback(
         self,
         mock_agent_config: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
@@ -198,11 +216,11 @@ class TestAgentServerInit:
 
         server = AgentServer(agent_config=mock_agent_config)
 
-        # _FALLBACK_SESSION_CAP
-        assert server.sessions.max_sessions == 50
+        # _FALLBACK_ACTIVE_TURN_CAP
+        assert server._active_turn_cap == 50
 
     @pytest.mark.unit
-    def test_session_cap_tiny_memory_floors_at_one(
+    def test_active_turn_cap_tiny_memory_floors_at_one(
         self,
         mock_agent_config: MagicMock,
         monkeypatch: pytest.MonkeyPatch,
@@ -219,7 +237,7 @@ class TestAgentServerInit:
 
         server = AgentServer(agent_config=mock_agent_config)
 
-        assert server.sessions.max_sessions == 1
+        assert server._active_turn_cap == 1
 
 
 class TestAgentServerExecutorTimeoutWiring:
@@ -773,6 +791,134 @@ class TestToolInitShutdownWiring:
         await server.start()
 
         mock_cleanup.assert_awaited_once()
+
+
+class TestActiveTurnSemaphore:
+    """Tests for the spec 034 P4 active-turn semaphore.
+
+    The cap was repurposed from "max open sessions" to "max concurrent
+    active turns" because the SDK subprocess is spawned per-turn under
+    P4 hybrid sessions, not per-session. Memory pressure tracks active
+    turns, not idle session count.
+    """
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_acquire_turn_slot_noop_for_non_anthropic(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """No semaphore configured → context manager is a no-op."""
+        mock_agent_config.model.provider = ProviderEnum.OPENAI
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        assert server._active_turn_semaphore is None
+        async with server._acquire_turn_slot():
+            assert server._turn_capacity_exceeded() is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_acquire_turn_slot_tracks_in_flight(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """Acquiring slot increments in-flight, releasing decrements."""
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude.max_concurrent_sessions = 3
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        assert server._active_turn_in_flight() == 0
+        async with server._acquire_turn_slot():
+            assert server._active_turn_in_flight() == 1
+            async with server._acquire_turn_slot():
+                assert server._active_turn_in_flight() == 2
+            assert server._active_turn_in_flight() == 1
+        assert server._active_turn_in_flight() == 0
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_turn_capacity_exceeded_at_cap(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """When all slots are held, _turn_capacity_exceeded() is True."""
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude.max_concurrent_sessions = 2
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        assert server._turn_capacity_exceeded() is False
+        async with server._acquire_turn_slot():
+            assert server._turn_capacity_exceeded() is False
+            async with server._acquire_turn_slot():
+                assert server._turn_capacity_exceeded() is True
+            assert server._turn_capacity_exceeded() is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_capacity_exceeded_response_reflects_active_turns(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """429 body reports active-turn counts, not open-session counts."""
+        import json
+
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude.max_concurrent_sessions = 2
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        async with server._acquire_turn_slot(), server._acquire_turn_slot():
+            response = server._capacity_exceeded_response()
+            body = json.loads(response.body)
+            assert response.status_code == 429
+            assert body["max_sessions"] == 2
+            assert body["active_sessions"] == 2
+            assert "active turns" in body["message"]
+            assert response.headers["Retry-After"] == "5"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_turn_gated_stream_holds_slot_for_generator_lifetime(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """Streaming generator wrapper keeps slot acquired across yields."""
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude.max_concurrent_sessions = 1
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        async def inner() -> Any:
+            yield b"a"
+            assert server._active_turn_in_flight() == 1
+            yield b"b"
+            assert server._turn_capacity_exceeded() is True
+
+        chunks: list[bytes] = []
+        async for chunk in server._turn_gated_stream(inner()):
+            chunks.append(chunk)
+        assert chunks == [b"a", b"b"]
+        # Slot released after generator exhausts.
+        assert server._active_turn_in_flight() == 0
+        assert server._turn_capacity_exceeded() is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_open_session_count_does_not_trigger_429(
+        self, mock_agent_config: MagicMock
+    ) -> None:
+        """spec 034 P4: opening many sessions while no turns are active
+        must NOT trigger 429 — the gate is concurrent turns, not session count.
+        """
+        mock_agent_config.model.provider = ProviderEnum.ANTHROPIC
+        mock_agent_config.claude.max_concurrent_sessions = 2
+
+        server = AgentServer(agent_config=mock_agent_config)
+
+        # No active turns → never exceeded, regardless of open session count.
+        assert server._turn_capacity_exceeded() is False
+        for _ in range(20):
+            server.sessions.create(MagicMock())
+        assert server._turn_capacity_exceeded() is False
+        assert server.sessions.active_count == 20
 
 
 class TestValidateBackendPrerequisites:
