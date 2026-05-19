@@ -86,6 +86,38 @@ plugins:
               - "!^_"  # private
             show_root_heading: true
             show_root_full_path: false
+  - llmstxt:
+      markdown_description: |
+        HoloDeck is an open-source, no-code platform for building, testing,
+        and deploying AI agents via YAML. This index points LLMs at the
+        canonical docs for the CLI, agent schema, backends (Claude / SK),
+        tools (vectorstore, MCP, hierarchical_document), evaluations,
+        and the agent server.
+      full_output: llms-full.txt
+      sections:
+        Getting Started:
+          - getting-started/installation.md
+          - getting-started/quickstart.md
+        Guides:
+          - guides/agent-configuration.md
+          - guides/llm-providers.md
+          - guides/claude-backend.md
+          - guides/semantic-kernel-backend.md
+          - guides/tools.md
+          - guides/mcp-cli.md
+          - guides/vector-stores.md
+          - guides/evaluations.md
+          - guides/dashboard.md
+          - guides/global-config.md
+          - guides/file-references.md
+          - guides/serve.md
+          - guides/deployment.md
+          - guides/observability.md
+        API Reference:
+          - api/*.md
+        Developer:
+          - contributing.md
+          - CHANGELOG.md
 
 markdown_extensions:
   - pymdownx.highlight:
