@@ -19,7 +19,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from claude_agent_sdk import ClaudeAgentOptions
+from claude_agent_sdk import ClaudeAgentOptions, ProcessError
+from claude_agent_sdk._errors import CLIConnectionError
 from exceptiongroup import BaseExceptionGroup
 
 from holodeck.lib.backends.base import (
@@ -1232,6 +1233,73 @@ class TestClaudeSessionStreaming:
         assert captured_resume[0] is None
         assert captured_resume[1] == "sdk-stream-XYZ"
         assert session._sdk_session_id == "sdk-stream-XYZ"
+
+
+@pytest.mark.unit
+class TestClaudeSessionErrorTranslation:
+    """spec 034 P4: send() / send_streaming() translate SDK transport
+    errors (``ProcessError`` / ``CLIConnectionError``) into the public
+    ``BackendSessionError`` so callers don't have to depend on
+    claude_agent_sdk internals.
+
+    The old TestClaudeSessionErrorHandling exercised this via the
+    deleted persistent-client mock; the P4 injection point is the
+    top-level ``query`` symbol.
+    """
+
+    @pytest.mark.asyncio
+    async def test_send_translates_process_error(self) -> None:
+        async def fake_query(prompt, options):
+            raise ProcessError("boom")
+            yield  # pragma: no cover  (make this an async generator)
+
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        with (
+            patch("holodeck.lib.backends.claude_backend.query", side_effect=fake_query),
+            pytest.raises(BackendSessionError, match="subprocess terminated"),
+        ):
+            await session.send("hi")
+
+    @pytest.mark.asyncio
+    async def test_send_translates_cli_connection_error(self) -> None:
+        async def fake_query(prompt, options):
+            raise CLIConnectionError("disconnected")
+            yield  # pragma: no cover
+
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        with (
+            patch("holodeck.lib.backends.claude_backend.query", side_effect=fake_query),
+            pytest.raises(BackendSessionError, match="subprocess terminated"),
+        ):
+            await session.send("hi")
+
+    @pytest.mark.asyncio
+    async def test_send_streaming_translates_process_error(self) -> None:
+        async def fake_query(prompt, options):
+            raise ProcessError("boom")
+            yield  # pragma: no cover
+
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        with (
+            patch("holodeck.lib.backends.claude_backend.query", side_effect=fake_query),
+            pytest.raises(BackendSessionError, match="subprocess terminated"),
+        ):
+            async for _ in session.send_streaming("hi"):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_send_streaming_translates_cli_connection_error(self) -> None:
+        async def fake_query(prompt, options):
+            raise CLIConnectionError("disconnected")
+            yield  # pragma: no cover
+
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        with (
+            patch("holodeck.lib.backends.claude_backend.query", side_effect=fake_query),
+            pytest.raises(BackendSessionError, match="subprocess terminated"),
+        ):
+            async for _ in session.send_streaming("hi"):
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -2969,3 +3037,32 @@ class TestClaudeSessionP4Fields:
         session = ClaudeSession(options=MagicMock())
         assert session._sdk_session_id is None
         assert isinstance(session._send_lock, asyncio.Lock)
+
+    @pytest.mark.asyncio
+    async def test_concurrent_sends_serialise(self) -> None:
+        """Two concurrent send() calls must not invoke query() in parallel.
+        The lock prevents transcript-write races under the resume= model.
+        """
+        in_flight = 0
+        max_concurrent = 0
+
+        async def fake_query(prompt, options):
+            nonlocal in_flight, max_concurrent
+            in_flight += 1
+            max_concurrent = max(max_concurrent, in_flight)
+            # Yield control so the second send() has a chance to enter.
+            await asyncio.sleep(0)
+            yield _make_assistant_message()
+            yield _make_result_message(session_id="sess-conc")
+            in_flight -= 1
+
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        with patch(
+            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+        ):
+            await asyncio.gather(session.send("a"), session.send("b"))
+
+        assert max_concurrent == 1, (
+            "expected lock to serialise concurrent sends, "
+            f"got max_concurrent={max_concurrent}"
+        )
