@@ -103,7 +103,7 @@ P1 is one focused PR (and probably ships under a feature branch within days). P2
 | P2a — Container hardening | ⏳ not started | — | — |
 | P2b — Prompt-injection defenses | ⏳ not started | — | — |
 | P3 — Credential boundary | ⏳ not started | — | — |
-| P4 — Hybrid sessions / pooling | 🟢 spikes complete, ready to implement | — | Both binary risks resolved 2026-05-19: per-turn `query(resume=)` latency is *faster* than persistent `ClaudeSDKClient` (-2.32s/turn over 5 turns), and the transcript replay faithfully restores user/assistant/tool-use/tool-result blocks across spawned subprocesses. Streaming-mode prompts mandatory (string mode deadlocks SDK MCP callbacks). See Phase 4 risks table for spike data. |
+| P4 — Hybrid sessions / pooling | ✅ shipped | `feature/034-p4-hybrid-sessions` (commits `6a2ad9c` → `72bba40`) | 9 surgical commits, 124 unit tests green. `ClaudeSession` now uses top-level `query(resume=sdk_session_id)` per turn; `_send_lock` serialises concurrent sends; `close()` deletes the on-disk JSONL transcript. End-to-end ACA deploy validated 2026-05-19: AG-UI single-turn + multi-turn `resume=` + 3 concurrent threads all 200 with no OOM. **Follow-up still open:** SessionStore cap remains binding on open-session count (not concurrent turns), so 5-concurrent cold burst against the 2 GiB / cap-4 replica returned 2 × 429 as expected; the structural-pool win lands when the cap is repurposed (separate PR). |
 
 ## Phase 1a — Stop the OOM
 
