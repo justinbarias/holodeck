@@ -59,7 +59,6 @@ from holodeck.models.observability import (
 # ---------------------------------------------------------------------------
 
 _SDK_MODULE = "holodeck.lib.backends.claude_backend"
-_CAS_MODULE = "claude_agent_sdk"
 
 
 def _make_agent(
@@ -991,7 +990,7 @@ class TestClaudeBackendInvokeOnce:
     """Tests for ClaudeBackend.invoke_once() — execution and result mapping."""
 
     @pytest.mark.asyncio
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_invoke_once_happy_path(self, mock_query: MagicMock) -> None:
         """T005: Mocked query() → correct ExecutionResult fields."""
         assistant = _make_assistant_message([_make_text_block("Hello world")])
@@ -1012,7 +1011,7 @@ class TestClaudeBackendInvokeOnce:
         assert result.num_turns == 1
 
     @pytest.mark.asyncio
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_invoke_once_tool_extraction(self, mock_query: MagicMock) -> None:
         """T006: Tool calls and results extracted from content blocks."""
         tool_use = _make_tool_use_block("toolu_01", "kb_search", {"query": "refund"})
@@ -1042,7 +1041,7 @@ class TestClaudeBackendInvokeOnce:
         }
 
     @pytest.mark.asyncio
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_invoke_once_structured_output(self, mock_query: MagicMock) -> None:
         """T007: Structured output returned and response set to JSON string."""
         structured = {"name": "Widget", "price": 9.99}
@@ -1067,7 +1066,7 @@ class TestClaudeBackendInvokeOnce:
         assert result.response == json.dumps(structured)
 
     @pytest.mark.asyncio
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_invoke_once_structured_output_schema_failure(
         self, mock_query: MagicMock
     ) -> None:
@@ -1092,7 +1091,7 @@ class TestClaudeBackendInvokeOnce:
         assert "schema validation" in result.error_reason.lower()
 
     @pytest.mark.asyncio
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_invoke_once_max_turns_exceeded(self, mock_query: MagicMock) -> None:
         """T008: max_turns exceeded → is_error=True with partial response."""
         assistant = _make_assistant_message([_make_text_block("Partial response")])
@@ -1122,7 +1121,7 @@ class TestClaudeBackendRetry:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.asyncio")
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_retry_on_process_error_then_success(
         self, mock_query: MagicMock, mock_asyncio: MagicMock
     ) -> None:
@@ -1151,7 +1150,7 @@ class TestClaudeBackendRetry:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.asyncio")
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_retry_all_failures_raises(
         self, mock_query: MagicMock, mock_asyncio: MagicMock
     ) -> None:
@@ -1518,7 +1517,7 @@ class TestClaudeBackendLazyInit:
     """Tests for lazy-init — auto-initialize on first use."""
 
     @pytest.mark.asyncio
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_invoke_once_auto_initializes(self, mock_query: MagicMock) -> None:
         """T015a: invoke_once() without explicit initialize() auto-inits."""
         mock_query.return_value = _async_iter(
@@ -1543,13 +1542,7 @@ class TestClaudeBackendLazyInit:
         """T015b: create_session() without explicit initialize() auto-inits."""
         backend = ClaudeBackend(_make_agent())
 
-        with (
-            patch.object(backend, "initialize", new_callable=AsyncMock) as mock_init,
-            patch(f"{_CAS_MODULE}.ClaudeSDKClient") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.connect = AsyncMock()
-            mock_client_cls.return_value = mock_client
+        with patch.object(backend, "initialize", new_callable=AsyncMock) as mock_init:
 
             async def side_effect():
                 backend._initialized = True
@@ -1559,25 +1552,18 @@ class TestClaudeBackendLazyInit:
             session = await backend.create_session()
             mock_init.assert_awaited_once()
             assert isinstance(session, ClaudeSession)
-            # Eager connect on session creation (fixes cross-task cancel scope).
-            mock_client.connect.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_create_session_eager_connect_false_skips_connect(self) -> None:
-        """create_session(eager_connect=False) returns an unconnected session.
+        """create_session(eager_connect=False) returns a session.
 
-        Used by ``_TaskBoundSession``: the actor task — not the caller — must
-        own the SDK's ``connect()`` so the anyio task group binds correctly.
+        spec 034 P4: there is no persistent client to connect; ``eager_connect``
+        is retained as a no-op flag for API compatibility. The session is
+        usable regardless.
         """
         backend = ClaudeBackend(_make_agent())
 
-        with (
-            patch.object(backend, "initialize", new_callable=AsyncMock) as mock_init,
-            patch(f"{_CAS_MODULE}.ClaudeSDKClient") as mock_client_cls,
-        ):
-            mock_client = MagicMock()
-            mock_client.connect = AsyncMock()
-            mock_client_cls.return_value = mock_client
+        with patch.object(backend, "initialize", new_callable=AsyncMock) as mock_init:
 
             async def side_effect():
                 backend._initialized = True
@@ -1588,29 +1574,21 @@ class TestClaudeBackendLazyInit:
             session = await backend.create_session(eager_connect=False)
 
             assert isinstance(session, ClaudeSession)
-            mock_client.connect.assert_not_called()
-            assert session._client is None
+            assert not hasattr(session, "_client")
 
     @pytest.mark.asyncio
-    async def test_session_prepare_invokes_connect(self) -> None:
-        """ClaudeSession.prepare() is the public entry that connects the client.
-
-        Used by ``_TaskBoundSession._loop`` startup to bind the SDK's anyio
-        task group to the actor task rather than the request task.
+    async def test_session_prepare_is_noop(self) -> None:
+        """spec 034 P4: ClaudeSession.prepare() no longer connects a client —
+        each query() call manages its own transport. prepare() must succeed
+        without raising so existing _TaskBoundSession callers stay working.
         """
-        with patch(f"{_CAS_MODULE}.ClaudeSDKClient") as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.connect = AsyncMock()
-            mock_client_cls.return_value = mock_client
-
-            session = ClaudeSession(options=MagicMock())
-            await session.prepare()
-
-            mock_client.connect.assert_awaited_once()
-            assert session._client is mock_client
+        session = ClaudeSession(options=MagicMock())
+        await session.prepare()  # must not raise
+        # No client to assert against; just confirm field is gone.
+        assert not hasattr(session, "_client")
 
     @pytest.mark.asyncio
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_no_double_init(self, mock_query: MagicMock) -> None:
         """T015c: Explicit initialize() + invoke_once() → no second init."""
         mock_query.return_value = _async_iter(
@@ -1648,7 +1626,7 @@ class TestClaudeBackendTeardown:
         assert backend._options is None
 
     @pytest.mark.asyncio
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_invoke_after_teardown_reinitializes(
         self, mock_query: MagicMock
     ) -> None:
@@ -1883,104 +1861,6 @@ class TestClaudeBackendInstrumentation:
 
 
 # ---------------------------------------------------------------------------
-# T017 — _patch_hooks_for_context_propagation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestPatchHooksForContextPropagation:
-    """Tests for the ContextVar re-injection hook wrapper."""
-
-    @pytest.mark.asyncio
-    async def test_wrapper_sets_contextvar_from_instance(self) -> None:
-        """Hook wrapper re-injects ContextVar from client instance."""
-        from holodeck.lib.backends.claude_backend import (
-            _patch_hooks_for_context_propagation,
-        )
-
-        # Record what the original hook callback sees
-        seen_args: list[Any] = []
-
-        async def fake_hook(
-            input_data: Any,
-            tool_use_id: str | None = None,
-            context: Any = None,
-            **kwargs: Any,
-        ) -> dict[str, Any]:
-            seen_args.append(input_data)
-            return {}
-
-        # Build a mock client with HookMatcher-like objects
-        matcher = MagicMock()
-        matcher.hooks = [fake_hook]
-
-        mock_options = MagicMock()
-        mock_options.hooks = {"PreToolUse": [matcher]}
-
-        mock_client = MagicMock()
-        mock_client.options = mock_options
-
-        fake_invocation_ctx = MagicMock(name="InvocationContext")
-        mock_client._otel_invocation_ctx = fake_invocation_ctx
-
-        # Capture set_invocation_context calls
-        set_ctx_calls: list[Any] = []
-
-        with patch.dict(
-            sys.modules,
-            {
-                "opentelemetry.instrumentation.claude_agent_sdk._context": (
-                    MagicMock(
-                        set_invocation_context=lambda c: set_ctx_calls.append(c),
-                    )
-                ),
-            },
-        ):
-            _patch_hooks_for_context_propagation(mock_client)
-
-        # Hooks were replaced with wrappers
-        assert matcher.hooks != [fake_hook]
-        assert len(matcher.hooks) == 1
-
-        # Call the wrapped hook
-        await matcher.hooks[0]({"tool": "WebSearch"}, "toolu_01")
-
-        # Original hook was called with correct args
-        assert seen_args == [{"tool": "WebSearch"}]
-        # ContextVar was set from instance attribute
-        assert set_ctx_calls == [fake_invocation_ctx]
-
-    def test_noop_when_instrumentor_not_installed(self) -> None:
-        """No-op when otel-instrumentation-claude-agent-sdk is missing."""
-        from holodeck.lib.backends.claude_backend import (
-            _patch_hooks_for_context_propagation,
-        )
-
-        mock_client = MagicMock()
-        mock_client.options = MagicMock()
-        mock_client.options.hooks = {"PreToolUse": [MagicMock()]}
-
-        # Remove the module so ImportError fires
-        with patch.dict(
-            sys.modules,
-            {"opentelemetry.instrumentation.claude_agent_sdk._context": None},
-        ):
-            _patch_hooks_for_context_propagation(mock_client)
-
-    def test_noop_when_no_hooks(self) -> None:
-        """No-op when client has no hooks on options."""
-        from holodeck.lib.backends.claude_backend import (
-            _patch_hooks_for_context_propagation,
-        )
-
-        mock_client = MagicMock()
-        mock_client.options = MagicMock()
-        mock_client.options.hooks = None
-
-        _patch_hooks_for_context_propagation(mock_client)
-
-
-# ---------------------------------------------------------------------------
 # T018 — _wrap_prompt() async generator
 # ---------------------------------------------------------------------------
 
@@ -2173,154 +2053,6 @@ class TestBuildOptionsAllowedTools:
 
 
 # ---------------------------------------------------------------------------
-# T024 — _patch_hooks no-hooks early return (line 358)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestPatchHooksNoOptions:
-    """Test _patch_hooks_for_context_propagation early returns."""
-
-    def test_noop_when_options_is_none(self) -> None:
-        """No-op when client.options is None."""
-        from holodeck.lib.backends.claude_backend import (
-            _patch_hooks_for_context_propagation,
-        )
-
-        mock_client = MagicMock()
-        mock_client.options = None
-
-        with patch.dict(
-            sys.modules,
-            {
-                "opentelemetry.instrumentation.claude_agent_sdk._context": MagicMock(
-                    set_invocation_context=MagicMock(),
-                ),
-            },
-        ):
-            _patch_hooks_for_context_propagation(mock_client)
-
-    def test_noop_when_hooks_empty_dict(self) -> None:
-        """No-op when hooks is an empty dict."""
-        from holodeck.lib.backends.claude_backend import (
-            _patch_hooks_for_context_propagation,
-        )
-
-        mock_client = MagicMock()
-        mock_client.options.hooks = {}
-
-        with patch.dict(
-            sys.modules,
-            {
-                "opentelemetry.instrumentation.claude_agent_sdk._context": MagicMock(
-                    set_invocation_context=MagicMock(),
-                ),
-            },
-        ):
-            _patch_hooks_for_context_propagation(mock_client)
-
-    def test_noop_when_matchers_is_none(self) -> None:
-        """No-op when hooks value is None."""
-        from holodeck.lib.backends.claude_backend import (
-            _patch_hooks_for_context_propagation,
-        )
-
-        mock_client = MagicMock()
-        mock_client.options.hooks = {"PreToolUse": None}
-
-        with patch.dict(
-            sys.modules,
-            {
-                "opentelemetry.instrumentation.claude_agent_sdk._context": MagicMock(
-                    set_invocation_context=MagicMock(),
-                ),
-            },
-        ):
-            _patch_hooks_for_context_propagation(mock_client)
-
-
-# ---------------------------------------------------------------------------
-# T025 — ClaudeSession._ensure_client() lazy creation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestClaudeSessionEnsureClient:
-    """Tests for ClaudeSession._ensure_client() — lazy client creation."""
-
-    @pytest.mark.asyncio
-    async def test_ensure_client_creates_and_connects(self) -> None:
-        """First call creates client and connects."""
-        mock_client_instance = AsyncMock()
-        mock_sdk_module = MagicMock()
-        mock_sdk_module.ClaudeSDKClient.return_value = mock_client_instance
-
-        session = ClaudeSession(options=MagicMock())
-
-        with (
-            patch(f"{_SDK_MODULE}.claude_agent_sdk", mock_sdk_module),
-            patch(f"{_SDK_MODULE}._patch_hooks_for_context_propagation") as mock_patch,
-        ):
-            client = await session._ensure_client()
-
-        assert client is mock_client_instance
-        mock_client_instance.connect.assert_awaited_once()
-        mock_patch.assert_called_once_with(mock_client_instance)
-
-    @pytest.mark.asyncio
-    async def test_ensure_client_reuses_existing(self) -> None:
-        """Second call reuses existing client without reconnecting."""
-        existing_client = AsyncMock()
-        session = ClaudeSession(options=MagicMock())
-        session._client = existing_client
-
-        client = await session._ensure_client()
-
-        assert client is existing_client
-        existing_client.connect.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# T026 — Session send/send_streaming error handling
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestClaudeSessionErrorHandling:
-    """Tests for ClaudeSession error paths."""
-
-    @pytest.mark.asyncio
-    async def test_send_raises_on_process_error(self) -> None:
-        """send() wraps ProcessError in BackendSessionError."""
-        from claude_agent_sdk import ProcessError
-
-        mock_client = MagicMock()
-        mock_client.query = AsyncMock(side_effect=ProcessError("boom"))
-
-        session = ClaudeSession(options=MagicMock())
-        session._client = mock_client
-
-        with pytest.raises(BackendSessionError, match="subprocess terminated"):
-            await session.send("Hi")
-
-    @pytest.mark.asyncio
-    async def test_send_streaming_raises_on_cli_connection_error(self) -> None:
-        """send_streaming() wraps CLIConnectionError in BackendSessionError."""
-        from claude_agent_sdk._errors import CLIConnectionError
-
-        mock_client = MagicMock()
-        mock_client.query = AsyncMock(side_effect=CLIConnectionError("disconnected"))
-
-        session = ClaudeSession(options=MagicMock())
-        session._client = mock_client
-
-        with pytest.raises(BackendSessionError, match="subprocess terminated"):
-            chunks = []
-            async for chunk in session.send_streaming("Hi"):
-                chunks.append(chunk)
-
-
-# ---------------------------------------------------------------------------
 # T027 — initialize() wraps non-BackendInitError
 # ---------------------------------------------------------------------------
 
@@ -2369,7 +2101,7 @@ class TestClaudeBackendExceptionGroup:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.asyncio")
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_exception_group_triggers_retry(
         self, mock_query: MagicMock, mock_asyncio: MagicMock
     ) -> None:
@@ -2399,7 +2131,7 @@ class TestClaudeBackendExceptionGroup:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.asyncio")
-    @patch(f"{_CAS_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.query")
     async def test_exception_group_all_retries_raises(
         self, mock_query: MagicMock, mock_asyncio: MagicMock
     ) -> None:
@@ -2827,7 +2559,7 @@ class TestGracefulDegradation:
         result_msg = _make_result_message()
 
         with patch(
-            f"{_CAS_MODULE}.query",
+            f"{_SDK_MODULE}.query",
             return_value=_async_iter([assistant_msg, result_msg]),
         ):
             result = await backend.invoke_once("Hi")

@@ -1,8 +1,9 @@
 """Claude Agent SDK backend for HoloDeck.
 
 Implements ``ClaudeBackend`` (AgentBackend) and ``ClaudeSession`` (AgentSession)
-for the ``provider: anthropic`` execution path. Single-turn invocations use the
-top-level ``query()`` function; multi-turn chat sessions use ``ClaudeSDKClient``.
+for the ``provider: anthropic`` execution path. Every invocation — single-turn
+and multi-turn — uses the top-level ``query()`` function; multi-turn sessions
+thread state via ``resume=<sdk_session_id>`` (spec 034 P4).
 """
 
 from __future__ import annotations
@@ -15,11 +16,9 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any, cast
 
-import claude_agent_sdk
 import jsonschema
 from claude_agent_sdk import (
     ClaudeAgentOptions,
-    ClaudeSDKClient,
     HookMatcher,
     ProcessError,
     query,
@@ -67,13 +66,6 @@ logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 3
 _BACKOFF_BASE_SECONDS = 1
-
-# Session ID passed to every ``client.query()`` for the lifetime of a
-# connected ``ClaudeSDKClient``. The CLI subprocess tracks conversation
-# state internally in interactive streaming mode; rotating to the
-# CLI-assigned id surfaced on ``ResultMessage`` wedges the CLI on the
-# next turn (query write succeeds but no response messages arrive).
-_DEFAULT_SESSION_ID = "default"
 
 # ---------------------------------------------------------------------------
 # Private helpers
@@ -381,7 +373,7 @@ def build_options(
         mode: Execution mode (``"test"`` or ``"chat"``).
 
     Returns:
-        Configured ``ClaudeAgentOptions`` ready for ``query()`` or ``ClaudeSDKClient``.
+        Configured ``ClaudeAgentOptions`` ready for ``query()``.
     """
     claude = agent.claude
     system_prompt = resolve_instructions(agent.instructions)
@@ -504,64 +496,6 @@ def build_options(
 # ---------------------------------------------------------------------------
 # ClaudeSession
 # ---------------------------------------------------------------------------
-
-
-def _patch_hooks_for_context_propagation(client: ClaudeSDKClient) -> None:
-    """Wrap hook callbacks so they re-inject the ContextVar from the instance.
-
-    Works around a ContextVar timing mismatch in the OTel instrumentor:
-    ``connect()`` spawns a ``_read_messages`` background task *before*
-    ``_wrap_client_query`` sets the ``InvocationContext`` in the ContextVar.
-    asyncio copies ContextVars at task-creation time, so the background task
-    sees ``None`` forever.
-
-    The instrumentor's ``_wrap_client_query`` *does* store the context on the
-    instance as ``_otel_invocation_ctx``.  This function wraps each hook
-    callback so that, just before it runs, it reads from the instance attribute
-    and re-sets the ContextVar — bridging the gap.
-
-    No-op when the instrumentor package is not installed.
-    """
-    try:
-        from opentelemetry.instrumentation.claude_agent_sdk._context import (
-            set_invocation_context,
-        )
-    except ImportError:
-        return  # Instrumentor not installed — nothing to patch
-
-    options = getattr(client, "options", None)
-    hooks = getattr(options, "hooks", None) if options else None
-    if not hooks:
-        return
-
-    for matchers in hooks.values():
-        if not matchers:
-            continue
-        for matcher in matchers:
-            original_hooks = matcher.hooks if hasattr(matcher, "hooks") else []
-            wrapped: list[Any] = []
-            for hook_fn in original_hooks:
-
-                async def _ctx_wrapper(
-                    input_data: Any,
-                    tool_use_id: str | None = None,
-                    context: Any = None,
-                    *,
-                    _orig: Any = hook_fn,
-                    _cli: ClaudeSDKClient = client,
-                    **kwargs: Any,
-                ) -> dict[str, Any]:
-                    ctx = getattr(_cli, "_otel_invocation_ctx", None)
-                    if ctx is not None:
-                        set_invocation_context(ctx)
-                    result: dict[str, Any] = await _orig(
-                        input_data, tool_use_id, context, **kwargs
-                    )
-                    return result
-
-                wrapped.append(_ctx_wrapper)
-            if hasattr(matcher, "hooks"):
-                matcher.hooks = wrapped
 
 
 def _build_tool_hooks(
@@ -713,18 +647,14 @@ def _transcript_path(session_id: str, cwd: Path | str | None = None) -> Path:
 
 
 class ClaudeSession:
-    """Stateful multi-turn session backed by ``ClaudeSDKClient``.
+    """Stateful multi-turn session backed by ``query(resume=...)`` (spec 034 P4).
 
-    Multi-turn state lives **inside the connected CLI subprocess**, not on
-    this object. ``ClaudeSDKClient`` in interactive streaming mode keeps a
-    single subprocess open for the session's lifetime; each ``send()``
-    writes one user message on stdin and reads the response stream off
-    stdout. The CLI tracks conversation history internally, so every
-    ``client.query()`` for that connected lifetime uses
-    ``session_id=_DEFAULT_SESSION_ID`` (the module-level constant) —
-    rotating it to the CLI-assigned id surfaced on ``ResultMessage``
-    wedges the CLI on the next turn (the query write succeeds but no
-    response messages ever come back).
+    Each ``send()`` / ``send_streaming()`` opens a fresh CLI subprocess via
+    the top-level ``query()`` function. Turn 1 has no ``resume``; the CLI
+    assigns a session id which is captured from ``ResultMessage`` and
+    stored on ``_sdk_session_id``. Subsequent turns pass that id via
+    ``options.resume`` so the CLI rehydrates the JSONL transcript at
+    ``~/.claude/projects/<encoded-cwd>/<sdk_session_id>.jsonl``.
 
     The ``_base_options`` reference is **never mutated**. Turn-specific
     options are created as new ``ClaudeAgentOptions`` instances.
@@ -737,7 +667,6 @@ class ClaudeSession:
             options: Base options (immutable reference for the session lifetime).
         """
         self._base_options = options
-        self._client: ClaudeSDKClient | None = None
         self._turn_count: int = 0
         self._tool_event_queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
         # spec 034 P4 — hybrid-session state.
@@ -781,35 +710,14 @@ class ClaudeSession:
             return self._base_options
 
     async def prepare(self) -> None:
-        """Open the SDK transport in the calling task's context.
+        """No-op under spec 034 P4.
 
-        Connects the underlying ``ClaudeSDKClient`` if not already
-        connected. The SDK's anyio task group + ``_read_messages``
-        background reader bind to whichever task calls ``connect()``,
-        so callers needing a specific task to own that lifecycle should
-        call ``prepare()`` from that task before the first ``send``.
+        Retained for backwards compatibility with the chat executor's
+        ``_TaskBoundSession``. Under the hybrid-session model the SDK's
+        anyio task group is created inside each ``query()`` call frame,
+        so there is no task-binding to do up front.
         """
-        await self._ensure_client()
-
-    async def _ensure_client(self) -> ClaudeSDKClient:
-        """Lazily create, connect, and return the SDK client.
-
-        Uses ``claude_agent_sdk.ClaudeSDKClient`` (module-level attribute
-        access) instead of the locally-imported name so that wrapt
-        monkey-patches applied by the OTel instrumentor are resolved at
-        call time.
-
-        After ``__init__`` (which triggers the instrumentor's hook injection)
-        but before ``connect()`` (which spawns the ``_read_messages`` task),
-        we patch hook callbacks to re-inject the ContextVar from the instance.
-        See ``_patch_hooks_for_context_propagation`` for details.
-        """
-        if self._client is None:
-            options = self._options_with_hooks()
-            self._client = claude_agent_sdk.ClaudeSDKClient(options=options)
-            _patch_hooks_for_context_propagation(self._client)
-            await self._client.connect()
-        return self._client
+        return None
 
     async def send(self, message: str) -> ExecutionResult:
         """Send a message and collect the full response.
@@ -993,9 +901,10 @@ class ClaudeSession:
 class ClaudeBackend:
     """Backend implementation for the Claude Agent SDK.
 
-    Implements the ``AgentBackend`` protocol. Single-turn invocations use the
-    top-level ``query()`` function. Multi-turn sessions use ``ClaudeSession``
-    wrapping ``ClaudeSDKClient``.
+    Implements the ``AgentBackend`` protocol. Both single-turn invocations
+    and multi-turn sessions are built on the top-level ``query()`` function;
+    multi-turn state is threaded via ``resume=<sdk_session_id>`` inside
+    ``ClaudeSession``.
 
     The constructor stores config only — no I/O, no subprocess spawned.
     Initialization is deferred to ``initialize()`` (called lazily on first use).
@@ -1172,9 +1081,7 @@ class ClaudeBackend:
         structured_output: Any = None
 
         prompt_iter = _wrap_prompt(message)
-        async for msg in claude_agent_sdk.query(
-            prompt=prompt_iter, options=self._options
-        ):
+        async for msg in query(prompt=prompt_iter, options=self._options):
             text_parts, tool_calls, tool_results = _process_message(
                 msg, text_parts, tool_calls, tool_results
             )
@@ -1276,37 +1183,25 @@ class ClaudeBackend:
     async def create_session(self, *, eager_connect: bool = True) -> ClaudeSession:
         """Create a new multi-turn session.
 
-        Automatically initializes if not yet done. By default eagerly
-        connects the SDK client so the anyio cancel scope is entered on
-        the caller's task — required for non-actor callers because
-        deferring ``connect()`` to the first ``send()`` would bind the
-        scope to whatever task wraps ``send`` (e.g. an inner task spawned
-        by ``asyncio.wait_for`` on Python <3.11) and a later ``close()``
-        on the outer task would raise ``RuntimeError: Attempted to exit
-        cancel scope in a different task``.
-
-        Pass ``eager_connect=False`` when the caller will own the
-        connect/disconnect lifecycle in a different task (e.g. when
-        wrapping the session in ``_TaskBoundSession`` — that actor must
-        be the task that calls ``connect()`` so the SDK's anyio task
-        group + ``_read_messages`` background reader live as long as
-        the actor, not the HTTP request task that created the session).
+        Automatically initializes if not yet done. Under spec 034 P4 the
+        session no longer holds a persistent ``ClaudeSDKClient``; each
+        turn opens its own subprocess via ``query(resume=session_id)``.
+        ``eager_connect`` is retained as a no-op for API compatibility —
+        ``ClaudeSession.prepare()`` is itself a no-op under P4.
 
         Args:
-            eager_connect: When True (default), connect the SDK client
-                synchronously before returning. When False, return an
-                unconnected session; the first ``send()`` will connect.
+            eager_connect: Retained for backwards compatibility; has no
+                effect under spec 034 P4.
 
         Returns:
-            A new ``ClaudeSession`` instance, connected unless
-            ``eager_connect=False``.
+            A new ``ClaudeSession`` instance.
         """
         await self._ensure_initialized()
         if self._options is None:
             raise BackendInitError("Backend options not set after initialization")
         session = ClaudeSession(options=self._options)
         if eager_connect:
-            await session._ensure_client()
+            await session.prepare()
         return session
 
     async def _initialize_tools(self) -> None:
