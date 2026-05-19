@@ -330,6 +330,99 @@ tools:
     source: ./data/research/
 ```
 
+## Production considerations: memory and concurrency
+
+The Claude backend runs each turn through a fresh Claude CLI **Node.js subprocess** spawned by `claude-agent-sdk` (see [Anthropic's hosting guide](https://docs.anthropic.com/en/api/agent-sdk/hosting)). This is the dominant memory cost in production and the binding constraint on concurrency. If you're deploying with `holodeck serve` to a container with a fixed memory limit (Azure Container Apps, Cloud Run, ECS Fargate, Kubernetes), the defaults below have been calibrated against real OOM data — but the right number for *your* agent depends on the tools it carries.
+
+### The model in one diagram
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Parent Python process (HoloDeck serve)                         │
+│  ┌─────────────────────┐    in-process MCP server               │
+│  │  AG-UI / REST API   │◄──── tool calls (vectorstore,          │
+│  │  + session store    │      hierarchical_document, function)  │
+│  └─────────────────────┘                                         │
+│        │ spawn (per turn)                                        │
+│        ▼                                                          │
+│  ┌─────────────────────┐    ┌─────────────────────┐              │
+│  │ Node CLI subprocess │    │ Node CLI subprocess │  …N turns    │
+│  │   (~300 MiB)        │    │   (~300 MiB)        │              │
+│  └─────────────────────┘    └─────────────────────┘              │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Two things to notice:
+
+1. **Tools run in the parent.** `create_sdk_mcp_server` hosts HoloDeck tools in the Python process and routes calls back to the subprocess via IPC. A heavy `hierarchical_document` tool with a qdrant client and a chunked corpus inflates the *parent* baseline, not the subprocess.
+2. **Subprocesses are per-turn, not per-session.** Spec 034 P4 ("Hybrid Sessions") tears the subprocess down at turn end and persists transcripts as JSONL on disk. Idle sessions cost ~30 MiB each (Python object + JSONL handle); concurrent **active turns** cost the full subprocess.
+
+This is why the concurrency cap is keyed on active turns, not open sessions.
+
+### Memory budget defaults
+
+| Component                          | Default | Configurable via                                  |
+|-----------------------------------|---------|---------------------------------------------------|
+| Parent baseline (server + tools + OTEL) | 400 MiB | (library constant)                          |
+| Per concurrent active turn        | 500 MiB | `claude.session_memory_estimate_mib`             |
+| Open session ceiling (idle slots) | 1000    | (library constant)                                |
+
+The active-turn cap is derived from the replica's cgroup memory limit:
+
+```
+max_concurrent_turns = (memory_limit - baseline) / per_turn_estimate
+```
+
+The 500 MiB default covers the ~300 MiB Node CLI steady state plus the simultaneous-startup spike (when N turns hit `serve` at once, V8 initial heap allocation peaks together) plus parent-side transient work during the turn (hybrid search, rerank, context generation). It was calibrated against the spec 034 P4 cloud validation where a 2 GiB Azure Container Apps replica OOM-killed at 4 concurrent turns and ran cleanly at 3 — `(2048-400)/500 = 3` matches that.
+
+### Sizing your replica
+
+| Replica memory | Derived turn cap | Notes                                           |
+|---------------|------------------|--------------------------------------------------|
+| 1 GiB         | 1                | Bare minimum; one turn at a time                 |
+| 2 GiB         | 3                | Default sample (financial-assistant) target     |
+| 4 GiB         | 7                | Comfortable production tier                      |
+| 8 GiB         | 15               | High-concurrency tier                            |
+
+If you need higher concurrency, scale horizontally (more replicas) rather than vertically — the SDK subprocess model means each turn is independent, so adding replicas linearly increases capacity.
+
+### Tuning `session_memory_estimate_mib`
+
+The default targets the median tool-heavy agent. Adjust it when:
+
+| Situation                                                       | Direction | Suggested override |
+|----------------------------------------------------------------|-----------|--------------------|
+| Thin agent — no vectorstore, no hierarchical_document, no MCP  | Lower     | `300` (yields cap=5 on 2 GiB) |
+| Heavy retrieval — large hybrid index, in-process rerank        | Default   | `500`              |
+| Embedded models — local rerank model, ONNX, sentence-transformers | Higher | `700–900`         |
+| Multiple MCP servers with persistent state                     | Higher    | `600–700`          |
+
+```yaml
+claude:
+  session_memory_estimate_mib: 700   # tune for your agent's tool footprint
+```
+
+### Excess-capacity behaviour
+
+When concurrent active turns exceed the cap, the serve layer immediately returns HTTP 429 with a `Retry-After` body. It does **not** queue requests — Anthropic's hosting guidance recommends shedding load over buffering, because subprocess startup is expensive and a queued request that times out at the upstream is worse than a fast 429 that the client can retry with backoff.
+
+### Observability
+
+When OpenTelemetry is enabled (`observability.enabled: true`), the serve layer emits:
+
+- `holodeck.serve.active_turns` (gauge) — current in-flight count
+- `holodeck.serve.turn_rejections_total` (counter) — 429s due to the cap
+- `holodeck.serve.session_count` (gauge) — open sessions (idle + active)
+
+Alert on `turn_rejections_total` rate > 0 sustained for more than a minute — it indicates either undersized replicas or a need to scale horizontally.
+
+!!! warning "Azure WorkingSetBytes is 1-minute averaged"
+    Cloud-provider memory metrics typically report 1-minute averages, which mask the instantaneous peak during simultaneous turn startup. If you're sizing from Azure metrics, expect the real peak to be 1.5–2× the average. The 500 MiB default already accounts for this; if you're tuning from your own observed averages, multiply by ~1.7 before dividing into headroom.
+
+### Anthropic's own guidance
+
+Anthropic's [SDK hosting documentation](https://docs.anthropic.com/en/api/agent-sdk/hosting) recommends **1 GiB RAM per agent instance** as a conservative starting point — that includes the parent process. HoloDeck's 400 MiB parent baseline + 500 MiB per turn lands right on that number for cap=1 and scales linearly from there. There is no "shared subprocess pool" pattern documented in the SDK; each turn gets its own subprocess by design.
+
 ## Configuration reference
 
 ### `model.*` fields
@@ -357,6 +450,8 @@ tools:
 | `file_system`        | object         | -             | `{ read: bool, write: bool, edit: bool }`                                |
 | `agents`             | map<str, spec> | -             | Named subagents (see Subagents above)                                    |
 | `allowed_tools`      | list of strings | all tools    | Explicit tool allowlist                                                  |
+| `session_memory_estimate_mib` | int (50–2000) | `500`  | Per-active-turn memory budget; drives the concurrency cap (see [Production considerations](#production-considerations-memory-and-concurrency)) |
+| `max_concurrent_sessions` | int (1–500) | derived    | Hard cap on concurrent active turns; auto-derived from cgroup memory when omitted |
 
 ### Available models
 

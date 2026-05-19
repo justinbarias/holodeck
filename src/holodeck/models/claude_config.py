@@ -243,7 +243,7 @@ class ClaudeConfig(BaseModel):
         ),
     )
     session_memory_estimate_mib: int = Field(
-        default=200,
+        default=500,
         ge=50,
         le=2000,
         description=(
@@ -253,11 +253,13 @@ class ClaudeConfig(BaseModel):
             "sessions cost ~30 MiB each (Python object + JSONL handle) since "
             "the subprocess is spawned per turn and torn down at turn end. "
             "Used by the serve layer to derive `max_concurrent_sessions` from "
-            "the replica's cgroup memory limit. Tune up for tool-heavy agents "
-            "(qdrant connection pools, hierarchical-doc caches inflate "
-            "subprocess footprint), down for thin agents. Spec 034 P1a "
-            "measured ~200 MiB baseline; financial-assistant sample uses 400 "
-            "to account for hybrid retrieval state."
+            "the replica's cgroup memory limit. The 500 MiB default is "
+            "calibrated against the spec 034 P4 cloud validation: a 2 GiB ACA "
+            "replica OOMed at 4 concurrent turns, and 3 was the empirically "
+            "safe ceiling — `(2048-400)/500 = 3` matches that. The footprint "
+            "covers the ~300 MiB Node CLI steady state plus simultaneous "
+            "startup spikes and parent-side transient work (hybrid search, "
+            "rerank, context generation). Tune up for tool-heavy agents."
         ),
     )
     extended_thinking: ExtendedThinkingConfig | None = Field(

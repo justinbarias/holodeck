@@ -331,10 +331,10 @@ class TestClaudeConfig:
         assert config.max_concurrent_sessions is None
 
     @pytest.mark.unit
-    def test_session_memory_estimate_mib_defaults_to_200(self) -> None:
-        """spec 034 P1a: per-session memory estimate defaults to 200 MiB."""
+    def test_session_memory_estimate_mib_defaults_to_500(self) -> None:
+        """spec 034 P4: per-active-turn memory estimate defaults to 500 MiB."""
         config = ClaudeConfig()
-        assert config.session_memory_estimate_mib == 200
+        assert config.session_memory_estimate_mib == 500
 
     @pytest.mark.unit
     def test_session_memory_estimate_mib_accepts_valid_value(self) -> None:

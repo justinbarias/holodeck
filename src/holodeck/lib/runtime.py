@@ -31,10 +31,14 @@ _CGROUP_V1_PERIOD = Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
 _CGROUP_V2_MEMORY_MAX = Path("/sys/fs/cgroup/memory.max")
 _CGROUP_V1_MEMORY_LIMIT = Path("/sys/fs/cgroup/memory/memory.limit_in_bytes")
 
-# Per-SDK-subprocess and serve-baseline footprints observed in the spec 034
-# P1 investigation. Used to derive the default session cap from memory.
+# Per-active-turn and serve-baseline footprints calibrated against the spec
+# 034 P4 cloud validation (2 GiB ACA replica OOMed at 4 concurrent turns).
+# The active-turn estimate has to cover the SDK subprocess's steady-state
+# resident set (~300 MiB Node CLI) plus the simultaneous-startup spike and
+# parent-side transient work (hybrid search, rerank, context generation).
+# 500 MiB lands cap=3 on a 2 GiB replica — the empirically safe ceiling.
 DEFAULT_BASELINE_BYTES = 400 * 1024 * 1024  # 400 MiB: server + tools + OTEL
-DEFAULT_PER_SESSION_BYTES = 200 * 1024 * 1024  # 200 MiB: one SDK subprocess
+DEFAULT_PER_SESSION_BYTES = 500 * 1024 * 1024  # 500 MiB: one concurrent active turn
 
 
 def cpu_quota() -> float:
@@ -160,11 +164,12 @@ def derived_session_cap_from_memory(
 ) -> int:
     """Derive the per-replica Claude session cap from a memory budget.
 
-    The SDK subprocess footprint is the binding constraint for concurrent
-    sessions (~300 MiB resident each — observed in the spec 034 P1
-    investigation). After reserving a baseline for the serve process,
-    tools and OTEL exporter, the remaining headroom divided by the
-    per-session footprint gives the cap.
+    The active-turn footprint is the binding constraint for concurrency.
+    Each concurrent turn spawns a fresh Node CLI subprocess (~300 MiB
+    steady state) and incurs parent-side transient work (hybrid search,
+    rerank, context generation). After reserving a baseline for the
+    serve process, tools and OTEL exporter, the remaining headroom
+    divided by the per-turn footprint gives the cap.
 
     Args:
         memory_bytes: Total memory limit available to the replica.
