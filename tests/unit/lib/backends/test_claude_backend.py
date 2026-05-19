@@ -1360,6 +1360,65 @@ class TestClaudeSessionSend:
 
 
 # ---------------------------------------------------------------------------
+# _transcript_path() — direct encoding tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestTranscriptPath:
+    """Direct tests for _transcript_path's path-encoding logic.
+
+    These tests bypass the mock seen in TestClaudeSessionClose so the
+    real encoding (/-to-- replacement, ~/.claude/projects/ rooting,
+    cwd plumbing) is exercised end-to-end against the filesystem
+    contract the Claude CLI uses.
+    """
+
+    def test_encodes_absolute_cwd_with_dashes(self) -> None:
+        from holodeck.lib.backends.claude_backend import _transcript_path
+
+        path = _transcript_path("abc-123", cwd=Path("/Users/dev/proj"))
+
+        # ~/.claude/projects/-Users-dev-proj/abc-123.jsonl
+        assert path.name == "abc-123.jsonl"
+        assert path.parent.name == "-Users-dev-proj"
+        assert path.parent.parent.name == "projects"
+        assert path.parent.parent.parent.name == ".claude"
+
+    def test_does_not_resolve_symlinks(self, tmp_path) -> None:
+        """The CLI is passed the raw options.cwd; helper must not resolve."""
+        real = tmp_path / "real"
+        real.mkdir()
+        link = tmp_path / "link"
+        link.symlink_to(real)
+        from holodeck.lib.backends.claude_backend import _transcript_path
+
+        path = _transcript_path("sess", cwd=link)
+
+        # Should encode the symlink path, not the resolved real path.
+        assert str(link).replace("/", "-") in str(path)
+
+    def test_relative_cwd_anchored_to_process_cwd(self, tmp_path, monkeypatch) -> None:
+        """Relative cwds are joined to the process cwd before encoding."""
+        monkeypatch.chdir(tmp_path)
+        from holodeck.lib.backends.claude_backend import _transcript_path
+
+        path = _transcript_path("sess", cwd=Path("agent-dir"))
+
+        encoded_parent = str(tmp_path / "agent-dir").replace("/", "-")
+        assert path.parent.name == encoded_parent
+
+    def test_defaults_to_process_cwd_when_none(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        from holodeck.lib.backends.claude_backend import _transcript_path
+
+        path = _transcript_path("sess")
+
+        encoded_parent = str(tmp_path).replace("/", "-")
+        assert path.parent.name == encoded_parent
+
+
+# ---------------------------------------------------------------------------
 # T013 — ClaudeSession.close()
 # ---------------------------------------------------------------------------
 
@@ -1404,6 +1463,44 @@ class TestClaudeSessionClose:
         """Sessions that never sent a turn have no transcript to delete."""
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         await session.close()  # must not raise
+        assert session._sdk_session_id is None
+
+    @pytest.mark.asyncio
+    async def test_close_uses_options_cwd_not_process_cwd(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """close() must compute the transcript path from options.cwd, not
+        Path.cwd(). Regression for the bug where an agent with
+        claude.working_directory override would leak its transcript because
+        close() looked in the wrong projects/<encoded> directory.
+        """
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setenv("HOME", str(fake_home))
+
+        agent_cwd = tmp_path / "agent-workdir"
+        agent_cwd.mkdir()
+
+        # Create the transcript at the path close() will compute when it
+        # honours options.cwd.
+        encoded = str(agent_cwd).replace("/", "-")
+        transcript = fake_home / ".claude" / "projects" / encoded / "sess-cwd.jsonl"
+        transcript.parent.mkdir(parents=True)
+        transcript.write_text('{"type":"user"}\n')
+
+        # Build a real ClaudeAgentOptions with cwd set (the bug only
+        # manifests when options.cwd != Path.cwd()).
+        from claude_agent_sdk import ClaudeAgentOptions as RealOptions
+
+        session = ClaudeSession(options=RealOptions(cwd=str(agent_cwd)))
+        session._sdk_session_id = "sess-cwd"
+
+        await session.close()
+
+        assert not transcript.exists(), (
+            "close() failed to honour options.cwd; the transcript at "
+            f"{transcript} was not deleted."
+        )
         assert session._sdk_session_id is None
 
     def test_implements_agent_session_protocol(self) -> None:

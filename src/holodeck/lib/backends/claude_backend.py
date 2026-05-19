@@ -690,15 +690,25 @@ def _maybe_emit_subagent_message(
             )
 
 
-def _transcript_path(session_id: str, cwd: Path | None = None) -> Path:
+def _transcript_path(session_id: str, cwd: Path | str | None = None) -> Path:
     """Return the on-disk JSONL transcript path for a session_id.
 
     The Claude CLI writes per-session transcripts to
     ``~/.claude/projects/<encoded-cwd>/<session_id>.jsonl`` where
     ``encoded-cwd`` is the absolute cwd with ``/`` replaced by ``-``.
+
+    Args:
+        session_id: CLI-assigned conversation id (from ResultMessage).
+        cwd: The subprocess cwd the SDK passed to the CLI. Must match
+            exactly what was set on ``ClaudeAgentOptions.cwd``; do not
+            resolve symlinks here because the CLI's encoder uses the
+            raw string passed via stdin. Defaults to ``Path.cwd()``
+            for agents that don't override cwd.
     """
-    base = cwd if cwd is not None else Path.cwd()
-    encoded = str(base.resolve()).replace("/", "-")
+    base = Path(cwd) if cwd is not None else Path.cwd()
+    if not base.is_absolute():
+        base = Path.cwd() / base
+    encoded = str(base).replace("/", "-")
     return Path.home() / ".claude" / "projects" / encoded / f"{session_id}.jsonl"
 
 
@@ -964,7 +974,8 @@ class ClaudeSession:
         open of the same threadId starts fresh.
         """
         if self._sdk_session_id is not None:
-            path = _transcript_path(self._sdk_session_id)
+            cwd_value = getattr(self._base_options, "cwd", None)
+            path = _transcript_path(self._sdk_session_id, cwd=cwd_value)
             try:
                 path.unlink()
             except FileNotFoundError:
