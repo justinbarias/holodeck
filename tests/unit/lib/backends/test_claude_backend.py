@@ -1366,28 +1366,48 @@ class TestClaudeSessionSend:
 
 @pytest.mark.unit
 class TestClaudeSessionClose:
-    """Tests for ClaudeSession.close() — client disconnect."""
+    """ClaudeSession.close() under spec 034 P4 — transcript cleanup."""
 
     @pytest.mark.asyncio
-    async def test_close_calls_disconnect(self) -> None:
-        """T013: close() calls client.disconnect() exactly once."""
-        mock_client = AsyncMock()
-        session = ClaudeSession(options=MagicMock())
-        session._client = mock_client
+    async def test_close_deletes_transcript_file(self, tmp_path) -> None:
+        """close() deletes ``~/.claude/projects/<encoded-cwd>/<id>.jsonl``."""
+        cwd_encoded = str(tmp_path / "fake-cwd").replace("/", "-")
+        transcript = tmp_path / "projects" / cwd_encoded / "sess-001.jsonl"
+        transcript.parent.mkdir(parents=True)
+        transcript.write_text('{"type":"user"}\n')
 
-        await session.close()
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        session._sdk_session_id = "sess-001"
 
-        mock_client.disconnect.assert_awaited_once()
-        assert session._client is None
+        with patch(
+            "holodeck.lib.backends.claude_backend._transcript_path",
+            return_value=transcript,
+        ):
+            await session.close()
+
+        assert not transcript.exists()
+        assert session._sdk_session_id is None
 
     @pytest.mark.asyncio
-    async def test_close_no_client_is_noop(self) -> None:
-        """close() with no client is a no-op."""
-        session = ClaudeSession(options=MagicMock())
-        await session.close()  # Should not raise
+    async def test_close_is_safe_when_transcript_missing(self) -> None:
+        """No-op when the transcript file doesn't exist (race / never-spawned)."""
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        session._sdk_session_id = "never-spawned"
+        with patch(
+            "holodeck.lib.backends.claude_backend._transcript_path",
+            return_value=Path("/nonexistent/path.jsonl"),
+        ):
+            await session.close()  # must not raise
 
-    def test_implements_session_protocol(self) -> None:
-        """ClaudeSession satisfies the AgentSession protocol."""
+    @pytest.mark.asyncio
+    async def test_close_no_session_id_is_noop(self) -> None:
+        """Sessions that never sent a turn have no transcript to delete."""
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        await session.close()  # must not raise
+        assert session._sdk_session_id is None
+
+    def test_implements_agent_session_protocol(self) -> None:
+        """ClaudeSession still satisfies the AgentSession protocol."""
         assert isinstance(ClaudeSession(options=MagicMock()), AgentSession)
 
 

@@ -12,6 +12,7 @@ import contextlib
 import json
 import logging
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import Any, cast
 
 import claude_agent_sdk
@@ -689,6 +690,18 @@ def _maybe_emit_subagent_message(
             )
 
 
+def _transcript_path(session_id: str, cwd: Path | None = None) -> Path:
+    """Return the on-disk JSONL transcript path for a session_id.
+
+    The Claude CLI writes per-session transcripts to
+    ``~/.claude/projects/<encoded-cwd>/<session_id>.jsonl`` where
+    ``encoded-cwd`` is the absolute cwd with ``/`` replaced by ``-``.
+    """
+    base = cwd if cwd is not None else Path.cwd()
+    encoded = str(base.resolve()).replace("/", "-")
+    return Path.home() / ".claude" / "projects" / encoded / f"{session_id}.jsonl"
+
+
 class ClaudeSession:
     """Stateful multi-turn session backed by ``ClaudeSDKClient``.
 
@@ -932,28 +945,33 @@ class ClaudeSession:
                 ) from exc
 
     async def release_transport(self) -> None:
-        """Disconnect the underlying ``ClaudeSDKClient`` connection.
+        """No-op under spec 034 P4.
 
-        After calling this, the next ``send()`` / ``send_streaming()`` call
-        will create and connect a fresh ``ClaudeSDKClient``. Note that the
-        new client starts a new CLI subprocess with no awareness of the
-        prior conversation — any conversation continuity needs to be
-        rebuilt at the application layer (e.g., by replaying history).
-
-        Provided primarily for cross-task migration scenarios (the SDK's
-        anyio task group is bound to the task that called ``connect()``)
-        and for explicit resource release in tests; it is **not** part of
-        the normal per-turn flow in ``holodeck serve`` — that path keeps
-        one connected client for the session's lifetime via
-        ``_TaskBoundSession``.
+        Retained for backwards compatibility with the chat executor's
+        ``_TaskBoundSession``. Under the hybrid-session model each turn's
+        subprocess is created and torn down inside ``query()``; there is no
+        persistent transport to release between turns.
         """
-        if self._client is not None:
-            await self._client.disconnect()
-            self._client = None
+        return None
 
     async def close(self) -> None:
-        """Disconnect the SDK client and release resources."""
-        await self.release_transport()
+        """Delete the on-disk JSONL transcript and clear session state.
+
+        Under spec 034 P4 the session has no persistent subprocess to
+        disconnect. Conversation state lives on disk at
+        ``~/.claude/projects/<encoded-cwd>/<sdk_session_id>.jsonl``. Closing
+        the session permanently discards that transcript so the next
+        open of the same threadId starts fresh.
+        """
+        if self._sdk_session_id is not None:
+            path = _transcript_path(self._sdk_session_id)
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                logger.warning("Failed to delete transcript %s: %s", path, exc)
+            self._sdk_session_id = None
 
 
 # ---------------------------------------------------------------------------
