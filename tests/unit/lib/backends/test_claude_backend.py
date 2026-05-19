@@ -1206,13 +1206,6 @@ class TestClaudeSessionStreaming:
 
     @pytest.mark.asyncio
     async def test_send_streaming_propagates_session_id_on_turn_2(self) -> None:
-        captured_options: list[Any] = []
-
-        async def fake_query(prompt, options):
-            captured_options.append(options)
-            yield _make_assistant_message([_make_text_block("ok")])
-            yield _make_result_message(session_id="sdk-stream-XYZ")
-
         # Use a real ClaudeAgentOptions for the resume-propagation assertion
         # (MagicMock(spec=ClaudeAgentOptions) auto-creates the resume attribute,
         # masking the turn-1 ``is None`` check — same nuance as Task 3 test 3).
