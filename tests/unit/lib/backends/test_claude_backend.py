@@ -1181,30 +1181,65 @@ class TestClaudeBackendRetry:
 
 @pytest.mark.unit
 class TestClaudeSessionStreaming:
-    """Tests for ClaudeSession.send_streaming() — progressive text chunks."""
+    """ClaudeSession.send_streaming() under spec 034 P4."""
 
     @pytest.mark.asyncio
     async def test_send_streaming_yields_chunks(self) -> None:
-        """T011: Chunks arrive progressively, not all at once."""
-        mock_client = MagicMock()
-        mock_client.query = AsyncMock()
         chunk1 = _make_assistant_message([_make_text_block("Hello ")])
         chunk2 = _make_assistant_message([_make_text_block("world!")])
-        result_msg = _make_result_message()
+        result_msg = _make_result_message(session_id="sdk-stream-001")
 
-        def mock_receive():
-            return _async_iter([chunk1, chunk2, result_msg])
+        async def fake_query(prompt, options):
+            for m in (chunk1, chunk2, result_msg):
+                yield m
 
-        mock_client.receive_response = mock_receive
-
-        session = ClaudeSession(options=MagicMock())
-        session._client = mock_client
-
-        chunks: list[str] = []
-        async for chunk in session.send_streaming("Hi"):
-            chunks.append(chunk)
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        with patch(
+            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+        ):
+            chunks: list[str] = []
+            async for chunk in session.send_streaming("Hi"):
+                chunks.append(chunk)
 
         assert chunks == ["Hello ", "world!"]
+        assert session._sdk_session_id == "sdk-stream-001"
+
+    @pytest.mark.asyncio
+    async def test_send_streaming_propagates_session_id_on_turn_2(self) -> None:
+        captured_options: list[Any] = []
+
+        async def fake_query(prompt, options):
+            captured_options.append(options)
+            yield _make_assistant_message([_make_text_block("ok")])
+            yield _make_result_message(session_id="sdk-stream-XYZ")
+
+        # Use a real ClaudeAgentOptions for the resume-propagation assertion
+        # (MagicMock(spec=ClaudeAgentOptions) auto-creates the resume attribute,
+        # masking the turn-1 ``is None`` check — same nuance as Task 3 test 3).
+        from claude_agent_sdk import ClaudeAgentOptions as RealOptions
+
+        session = ClaudeSession(options=RealOptions())
+        captured_resume: list[Any] = []
+
+        async def fake_query_capture(prompt, options):
+            captured_resume.append(getattr(options, "resume", None))
+            async for _ in prompt:
+                pass
+            yield _make_assistant_message([_make_text_block("ok")])
+            yield _make_result_message(session_id="sdk-stream-XYZ")
+
+        with patch(
+            "holodeck.lib.backends.claude_backend.query",
+            side_effect=fake_query_capture,
+        ):
+            async for _ in session.send_streaming("Turn 1"):
+                pass
+            async for _ in session.send_streaming("Turn 2"):
+                pass
+
+        assert captured_resume[0] is None
+        assert captured_resume[1] == "sdk-stream-XYZ"
+        assert session._sdk_session_id == "sdk-stream-XYZ"
 
 
 # ---------------------------------------------------------------------------

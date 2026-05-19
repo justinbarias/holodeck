@@ -900,22 +900,36 @@ class ClaudeSession:
         Raises:
             BackendSessionError: On subprocess or SDK error.
         """
-        try:
-            client = await self._ensure_client()
-            await client.query(message, session_id=_DEFAULT_SESSION_ID)
+        async with self._send_lock:
+            options = self._options_with_hooks()
+            if self._sdk_session_id is not None:
+                import dataclasses
 
-            async for msg in client.receive_response():
-                _maybe_emit_subagent_message(msg, self._tool_event_queue)
-                if msg.__class__.__name__ == "AssistantMessage":
-                    for block in cast(Any, msg).content:
-                        if block.__class__.__name__ == "TextBlock" and block.text:
-                            yield block.text
-                elif msg.__class__.__name__ == "ResultMessage":
-                    self._turn_count += 1
-        except (ProcessError, CLIConnectionError) as exc:
-            raise BackendSessionError(
-                f"subprocess terminated unexpectedly: {exc}"
-            ) from exc
+                try:
+                    options = dataclasses.replace(options, resume=self._sdk_session_id)
+                except TypeError:
+                    # Fallback for non-dataclass options (test mocks).
+                    options.resume = self._sdk_session_id
+
+            try:
+                async for msg in query(
+                    prompt=_streaming_user_envelope(message), options=options
+                ):
+                    _maybe_emit_subagent_message(msg, self._tool_event_queue)
+                    if msg.__class__.__name__ == "AssistantMessage":
+                        for block in cast(Any, msg).content:
+                            if block.__class__.__name__ == "TextBlock" and block.text:
+                                yield block.text
+                    elif msg.__class__.__name__ == "ResultMessage":
+                        self._turn_count += 1
+                        if self._sdk_session_id is None:
+                            captured = getattr(msg, "session_id", None)
+                            if isinstance(captured, str) and captured:
+                                self._sdk_session_id = captured
+            except (ProcessError, CLIConnectionError) as exc:
+                raise BackendSessionError(
+                    f"subprocess terminated unexpectedly: {exc}"
+                ) from exc
 
     async def release_transport(self) -> None:
         """Disconnect the underlying ``ClaudeSDKClient`` connection.
