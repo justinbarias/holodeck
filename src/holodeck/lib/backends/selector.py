@@ -21,7 +21,6 @@ class BackendSelector:
         agent: Agent,
         tool_instances: dict[str, Any] | None = None,
         mode: str = "test",
-        allow_side_effects: bool = False,
     ) -> AgentBackend:
         """Select and initialize the appropriate backend for the given agent.
 
@@ -29,7 +28,6 @@ class BackendSelector:
             agent: Agent configuration with model provider information.
             tool_instances: Initialized tool instances for Claude backend.
             mode: Execution mode (``"test"`` or ``"chat"``).
-            allow_side_effects: Allow bash/file_system.write in test mode.
 
         Returns:
             An initialized AgentBackend instance ready for use.
@@ -53,7 +51,6 @@ class BackendSelector:
                 agent=agent,
                 tool_instances=tool_instances,
                 mode=mode,
-                allow_side_effects=allow_side_effects,
             )
             await claude_backend.initialize()
             return claude_backend

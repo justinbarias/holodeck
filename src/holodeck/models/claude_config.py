@@ -226,10 +226,41 @@ class ClaudeConfig(BaseModel):
         description="Maximum agent loop iterations. None = SDK default.",
     )
     max_concurrent_sessions: int | None = Field(
-        default=10,
+        default=None,
         ge=1,
-        le=100,
-        description="Maximum concurrent Claude SDK subprocesses per serve instance",
+        le=500,
+        description=(
+            "Maximum concurrent active turns per serve instance — under spec "
+            "034 P4 each in-flight turn spawns a fresh SDK subprocess, so this "
+            "gates memory exposure. When unset, the serve layer derives the "
+            "cap from the replica's cgroup memory limit divided by "
+            "`session_memory_estimate_mib`. Field name retained for backward "
+            "compatibility with existing agent.yaml files. Upper bound 500 "
+            "allows operators to admit many idle threads (open sessions are "
+            "now nearly free — JSONL transcripts on disk, no resident "
+            "subprocess) while the semaphore enforces the actual memory cap "
+            "on concurrent active turns. Spec 034 P1a + P4."
+        ),
+    )
+    session_memory_estimate_mib: int = Field(
+        default=500,
+        ge=50,
+        le=2000,
+        description=(
+            "Estimated peak resident memory (MiB) per *concurrent active turn* "
+            "(SDK subprocess + tool state during a single in-flight query). "
+            "Under spec 034 P4 this is no longer per-idle-session — idle "
+            "sessions cost ~30 MiB each (Python object + JSONL handle) since "
+            "the subprocess is spawned per turn and torn down at turn end. "
+            "Used by the serve layer to derive `max_concurrent_sessions` from "
+            "the replica's cgroup memory limit. The 500 MiB default is "
+            "calibrated against the spec 034 P4 cloud validation: a 2 GiB ACA "
+            "replica OOMed at 4 concurrent turns, and 3 was the empirically "
+            "safe ceiling — `(2048-400)/500 = 3` matches that. The footprint "
+            "covers the ~300 MiB Node CLI steady state plus simultaneous "
+            "startup spikes and parent-side transient work (hybrid search, "
+            "rerank, context generation). Tune up for tool-heavy agents."
+        ),
     )
     extended_thinking: ExtendedThinkingConfig | None = Field(
         default=None,
@@ -276,6 +307,18 @@ class ClaudeConfig(BaseModel):
         default=None,
         description=(
             "Tools that must never be used; takes precedence over allowed_tools."
+        ),
+    )
+    i_understand_this_is_unsafe: bool = Field(
+        default=False,
+        description=(
+            "Acknowledge that permission_mode=acceptAll disables the Claude SDK "
+            "permission system entirely, allowing any tool (including Bash, "
+            "Write, Edit, WebFetch) to execute without restriction. This is the "
+            "most direct path from prompt-injection to arbitrary tool execution. "
+            "Required to use permission_mode=acceptAll. Prefer declaring the "
+            "specific tools your agent needs via the schema fields (bash, "
+            "file_system, web_search) or claude.allowed_tools instead."
         ),
     )
 

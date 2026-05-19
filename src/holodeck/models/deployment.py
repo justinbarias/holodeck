@@ -236,12 +236,30 @@ class AzureContainerAppsConfig(BaseModel):
     )
     location: str = Field(default="eastus", description="Azure region for deployment")
     cpu: float = Field(
-        default=0.5,
-        description="vCPU allocation (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0)",
+        default=1.0,
+        description=(
+            "vCPU allocation (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0). "
+            "Default raised to 1.0 in spec 034 P1a — Anthropic's hosting "
+            "guide recommends 1 CPU per Claude SDK instance, and the "
+            "serve layer derives the default session cap from this value."
+        ),
     )
-    memory: str = Field(default="1Gi", description="Memory allocation (e.g., 2Gi)")
+    memory: str = Field(
+        default="2Gi",
+        description=(
+            "Memory allocation (e.g. 2Gi). Default raised to 2Gi in spec "
+            "034 P1a so concurrent SDK subprocesses fit in the cgroup "
+            "limit. ACA requires memory_Gi == 2 * cpu_cores."
+        ),
+    )
     ingress_external: bool = Field(
-        default=True, description="Whether ingress is external"
+        default=False,
+        description=(
+            "Whether ingress is reachable from the public internet. "
+            "Default flipped to False in spec 034 P1a — operators must "
+            "explicitly opt in to public ingress to avoid accidentally "
+            "exposing internal-only agents."
+        ),
     )
     min_replicas: int = Field(default=0, ge=0, description="Minimum replicas")
     max_replicas: int = Field(default=10, ge=1, description="Maximum replicas")

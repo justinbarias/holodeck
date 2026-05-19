@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
@@ -12,6 +13,8 @@ from holodeck.models.deployment import (
     DeployResult,
     StatusResult,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from azure.core.exceptions import (
@@ -121,15 +124,21 @@ class AzureContainerAppsDeployer(BaseDeployer):
         port: int,
         env_vars: dict[str, str],
         health_check_path: str = "/health",
+        readiness_path: str = "/ready",
         **kwargs: Any,
     ) -> DeployResult:
         """Deploy a container to Azure Container Apps."""
+        self._echo_resolved_config(
+            service_name=service_name, image_uri=image_uri, port=port
+        )
+
         env_list = [
             self._EnvironmentVar(name=key, value=value)
             for key, value in env_vars.items()
         ]
 
-        # Configure liveness probe for health monitoring
+        # Liveness probe — "is this process still alive". Failure → ACA
+        # restarts the replica.
         liveness_probe = self._ContainerAppProbe(
             type="Liveness",
             http_get=self._ContainerAppProbeHttpGet(
@@ -142,6 +151,22 @@ class AzureContainerAppsDeployer(BaseDeployer):
             timeout_seconds=5,
         )
 
+        # Readiness probe — "is this replica ready to receive traffic". The
+        # serve layer's /ready endpoint reflects server state; ACA holds
+        # traffic off until this returns 200 so cold replicas don't race
+        # their first request against init work (spec 034 P1a).
+        readiness_probe = self._ContainerAppProbe(
+            type="Readiness",
+            http_get=self._ContainerAppProbeHttpGet(
+                port=port,
+                path=readiness_path,
+            ),
+            initial_delay_seconds=5,
+            period_seconds=10,
+            failure_threshold=3,
+            timeout_seconds=5,
+        )
+
         container = self._Container(
             name=service_name,
             image=image_uri,
@@ -150,7 +175,7 @@ class AzureContainerAppsDeployer(BaseDeployer):
                 memory=self._config.memory,
             ),
             env=env_list if env_list else None,
-            probes=[liveness_probe],
+            probes=[liveness_probe, readiness_probe],
         )
 
         scale = self._Scale(
@@ -309,6 +334,61 @@ class AzureContainerAppsDeployer(BaseDeployer):
         raise NotImplementedError(
             "Log streaming is not implemented for Azure Container Apps."
         )
+
+    def _echo_resolved_config(
+        self, *, service_name: str, image_uri: str, port: int
+    ) -> None:
+        """Log the resolved deployment configuration before applying it.
+
+        Surfaces the values that will land on the Container App so an
+        operator running ``holodeck deploy run`` can see the new spec
+        034 defaults (1 CPU / 2 GiB, internal ingress) before the apply
+        completes. Cheap, visible, and the only output an operator sees
+        for the runtime sizing decisions.
+        """
+        import math
+
+        # Mirror the serve layer's derivation so the operator sees the
+        # cap they'll get for this replica.
+        derived_session_cap = max(1, math.floor(self._config.cpu * 2))
+        ingress_mode = (
+            "external (public)" if self._config.ingress_external else "internal"
+        )
+
+        logger.info("Deploying %s to Azure Container Apps", service_name)
+        logger.info("  Image: %s", image_uri)
+        logger.info("  Port: %d", port)
+        logger.info(
+            "  Replica: %.2f CPU / %s memory",
+            self._config.cpu,
+            self._config.memory,
+        )
+        logger.info(
+            "  Concurrent Claude sessions per replica (default): %d",
+            derived_session_cap,
+        )
+        logger.info(
+            "  Replicas: min=%d, max=%d",
+            self._config.min_replicas,
+            self._config.max_replicas,
+        )
+        logger.info("  Ingress: %s", ingress_mode)
+        logger.info("  Probes: /health (liveness), /ready (readiness)")
+
+        if self._config.cpu < 1.0:
+            logger.warning(
+                "Replica CPU %.2f is below Anthropic's recommended minimum "
+                "of 1.0 per Claude SDK instance. Concurrent sessions will "
+                "cap at %d. Consider raising `deployment.target.azure.cpu`.",
+                self._config.cpu,
+                derived_session_cap,
+            )
+        if self._config.ingress_external:
+            logger.warning(
+                "Container App will be reachable from the PUBLIC INTERNET "
+                "(ingress_external=true). Set `deployment.target.azure."
+                "ingress_external: false` if this is unintentional."
+            )
 
     @staticmethod
     def _resolve_container_app_name(service_id: str) -> str:

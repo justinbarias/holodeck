@@ -7,7 +7,7 @@ for exposing agents via HTTP.
 from __future__ import annotations
 
 import asyncio
-import json
+import contextlib
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -20,6 +20,10 @@ from holodeck.lib.backends import BackendInitError, BackendSessionError
 from holodeck.lib.backends.validators import validate_credentials, validate_nodejs
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.logging_config import get_logger
+from holodeck.lib.runtime import (
+    derived_session_cap_from_memory,
+    memory_limit_bytes,
+)
 from holodeck.models.llm import ProviderEnum
 from holodeck.serve.middleware import ErrorHandlingMiddleware, LoggingMiddleware
 from holodeck.serve.models import (
@@ -45,9 +49,23 @@ _BACKEND_ERROR_MSG = (
     "Start a new session to retry."
 )
 _CAPACITY_MSG_TEMPLATE = (
-    "Maximum concurrent Claude sessions ({max}) reached. "
-    "Retry after existing sessions complete."
+    "Maximum concurrent active turns ({max}) reached. "
+    "Retry after in-flight turns complete."
 )
+_CAPACITY_RETRY_AFTER_SECONDS = 5
+
+# Fallback active-turn cap when neither an explicit
+# claude.max_concurrent_sessions nor a cgroup memory limit is available
+# (local dev, unconstrained Linux). Keep this conservative: this number is
+# only reached when we can't introspect the runtime at all.
+_FALLBACK_ACTIVE_TURN_CAP = 50
+
+# Open-session ceiling. Under spec 034 P4, idle sessions cost ~30 MiB each
+# (a Python object + JSONL transcript reference, no persistent subprocess),
+# so the real binding constraint is concurrent active turns — not open
+# session count. This cap exists only to bound disk usage from JSONL
+# transcripts and to prevent unbounded dict growth.
+_OPEN_SESSION_CEILING = 1000
 
 
 class AgentServer:
@@ -114,14 +132,53 @@ class AgentServer:
             self.agent_config.model.provider == ProviderEnum.ANTHROPIC
         )
 
-        # Determine max sessions based on provider
-        max_sessions = 1000  # Default for non-Claude providers
+        # Spec 034 P4 changed the binding constraint: the SDK subprocess
+        # is now spawned per *turn* (not per session), so memory-bounded
+        # capacity must gate concurrent active turns rather than open
+        # session count. We derive the active-turn cap from the cgroup
+        # memory limit using the same formula previously used for the
+        # session cap — only the semantic shifted.
+        self._active_turn_cap: int | None = None
+        self._active_turn_semaphore: asyncio.BoundedSemaphore | None = None
         if self.agent_config.model.provider == ProviderEnum.ANTHROPIC:
-            if self.agent_config.claude is not None:
-                max_sessions = self.agent_config.claude.max_concurrent_sessions or 10
+            claude = self.agent_config.claude
+            explicit_cap = claude.max_concurrent_sessions if claude else None
+            per_turn_mib = claude.session_memory_estimate_mib if claude else 200
+            per_turn_bytes = per_turn_mib * 1024 * 1024
+            mem_bytes = memory_limit_bytes()
+            logger.info(
+                "Claude cgroup memory limit: %s",
+                f"{mem_bytes} bytes" if mem_bytes is not None else "unbounded",
+            )
+            if explicit_cap is not None:
+                self._active_turn_cap = explicit_cap
+                logger.info(
+                    "Claude active-turn cap: %d (explicit from "
+                    "claude.max_concurrent_sessions)",
+                    self._active_turn_cap,
+                )
+            elif mem_bytes is not None:
+                self._active_turn_cap = derived_session_cap_from_memory(
+                    mem_bytes, per_session_bytes=per_turn_bytes
+                )
+                logger.info(
+                    "Claude active-turn cap: %d (derived from %d MiB memory "
+                    "limit @ %d MiB/turn)",
+                    self._active_turn_cap,
+                    mem_bytes // (1024 * 1024),
+                    per_turn_mib,
+                )
             else:
-                max_sessions = 10  # Default when claude section absent
-        self.sessions = SessionStore(max_sessions=max_sessions)
+                self._active_turn_cap = _FALLBACK_ACTIVE_TURN_CAP
+                logger.info(
+                    "Claude active-turn cap: %d (fallback — no cgroup memory "
+                    "limit detected)",
+                    self._active_turn_cap,
+                )
+            self._active_turn_semaphore = asyncio.BoundedSemaphore(
+                self._active_turn_cap
+            )
+        self.sessions = SessionStore(max_sessions=_OPEN_SESSION_CEILING)
         self._tool_init_manager = ToolInitManager(
             agent=self.agent_config, max_concurrent=max_concurrent_init_jobs
         )
@@ -212,19 +269,106 @@ class AgentServer:
             return self._capacity_exceeded_response()
 
     def _capacity_exceeded_response(self) -> JSONResponse:
-        """Build a 503 JSON response for capacity-exceeded errors."""
+        """Build a 429 JSON response for active-turn capacity exhaustion.
+
+        Returns HTTP 429 with ``Retry-After`` so clients (and any fronting
+        load balancer) recognise the backpressure and retry against
+        another replica. Spec 034 P1a switched this from 503 because most
+        HTTP client libraries treat 429 as a transient retryable signal
+        out of the box, whereas 503 often surfaces as a hard error.
+
+        Spec 034 P4 repurposed the cap from "open sessions" to "concurrent
+        active turns" — the field stays ``max_sessions`` in the response
+        body for client/dashboard compatibility, but reflects the
+        active-turn cap.
+        """
+        cap = self._active_turn_cap or 0
+        in_flight = self._active_turn_in_flight()
         return JSONResponse(
-            status_code=503,
+            status_code=429,
             content={
                 "error": "capacity_exceeded",
-                "message": _CAPACITY_MSG_TEMPLATE.format(
-                    max=self.sessions.max_sessions,
-                ),
-                "active_sessions": self.sessions.active_count,
-                "max_sessions": self.sessions.max_sessions,
+                "message": _CAPACITY_MSG_TEMPLATE.format(max=cap),
+                "active_sessions": in_flight,
+                "max_sessions": cap,
             },
-            headers={"Retry-After": "5"},
+            headers={"Retry-After": str(_CAPACITY_RETRY_AFTER_SECONDS)},
         )
+
+    def _active_turn_in_flight(self) -> int:
+        """Return the count of currently-acquired turn slots.
+
+        Reads ``BoundedSemaphore`` internals (``_value``) since the public
+        API doesn't expose in-flight count. Safe because asyncio
+        primitives are single-threaded.
+        """
+        sem = self._active_turn_semaphore
+        if sem is None:
+            return 0
+        return self._active_turn_cap - sem._value  # type: ignore[operator]
+
+    def _turn_capacity_exceeded(self) -> bool:
+        """Return True iff acquiring a turn slot would block right now."""
+        sem = self._active_turn_semaphore
+        return sem is not None and sem.locked()
+
+    def _try_acquire_turn_slot(self) -> bool:
+        """Atomic non-blocking acquire.
+
+        Returns True if a slot was acquired (or no gate is configured),
+        False if at capacity. Atomic because asyncio is single-threaded
+        and this method contains no awaits — the check + decrement
+        happen in one tick.
+
+        Pairs with ``_release_turn_slot()``. Callers MUST release exactly
+        once for each successful acquire.
+        """
+        sem = self._active_turn_semaphore
+        if sem is None:
+            return True
+        if sem._value <= 0:  # type: ignore[operator]
+            return False
+        sem._value -= 1
+        return True
+
+    def _release_turn_slot(self) -> None:
+        """Release one acquired turn slot. No-op when no gate is configured."""
+        sem = self._active_turn_semaphore
+        if sem is not None:
+            sem.release()
+
+    @contextlib.asynccontextmanager
+    async def _acquire_turn_slot(self) -> AsyncGenerator[bool, None]:
+        """Try-acquire one active-turn slot as a context manager.
+
+        Yields True if the slot was acquired (or no gate is configured),
+        False if at capacity. Callers MUST inspect the yielded value and
+        short-circuit (e.g. return 429) when False.
+        """
+        acquired = self._try_acquire_turn_slot()
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                self._release_turn_slot()
+
+    async def _turn_gated_stream(
+        self,
+        gen: AsyncGenerator[bytes, None],
+    ) -> AsyncGenerator[bytes, None]:
+        """Wrap a streaming response generator so it releases a turn slot.
+
+        Assumes the caller has already acquired a slot via
+        ``_try_acquire_turn_slot()`` before constructing the response —
+        once HTTP headers have shipped, we can no longer return 429, so
+        the gate must run synchronously in the endpoint. This wrapper
+        owns the release.
+        """
+        try:
+            async for chunk in gen:
+                yield chunk
+        finally:
+            self._release_turn_slot()
 
     async def _handle_backend_session_error(
         self,
@@ -370,29 +514,21 @@ class AgentServer:
             except ValidationError as e:
                 raise HTTPException(status_code=422, detail=e.errors()) from e
 
-            # Get session by thread_id or create new one
+            # Capacity exceeded surfaces as a real HTTP 429 (not an SSE
+            # error frame inside a 200) so fronting load balancers and
+            # client retry logic see the backpressure (spec 034 P1a).
+            # Spec 034 P4: the cap is now concurrent active turns, not
+            # open sessions. Acquire synchronously before constructing
+            # the response — once headers ship, we can't switch to 429.
+            # _turn_gated_stream owns the matching release.
+            if not self._try_acquire_turn_slot():
+                return self._capacity_exceeded_response()  # type: ignore[return-value]
+
             session_id = input_data.thread_id
             result = self._get_or_create_session(session_id)
             if isinstance(result, JSONResponse):
-                # Convert capacity error to AG-UI SSE format
-                cap = self.sessions.max_sessions
-
-                async def capacity_error_stream() -> AsyncGenerator[bytes, None]:
-                    payload = json.dumps(
-                        {
-                            "type": "capacity_exceeded",
-                            "message": (
-                                f"Maximum concurrent Claude sessions "
-                                f"({cap}) reached."
-                            ),
-                        }
-                    )
-                    yield f"event: error\ndata: {payload}\n\n".encode()
-
-                return StreamingResponse(
-                    capacity_error_stream(),
-                    media_type="text/event-stream",
-                )
+                self._release_turn_slot()
+                return result  # type: ignore[return-value]
             session = result
 
             self.sessions.touch(session_id)
@@ -405,9 +541,8 @@ class AgentServer:
                 execution_config=self.execution_config,
             )
 
-            # Stream response
             return StreamingResponse(
-                protocol.handle_request(input_data, session),
+                self._turn_gated_stream(protocol.handle_request(input_data, session)),
                 media_type=protocol.content_type,
             )
 
@@ -437,21 +572,25 @@ class AgentServer:
             Accepts a message, processes it through the agent, and returns
             the complete response as JSON.
             """
-            result = self._get_or_create_session(request.session_id)
-            if isinstance(result, JSONResponse):
-                return result  # type: ignore[return-value,no-any-return]
-            session = result
+            async with self._acquire_turn_slot() as acquired:
+                if not acquired:
+                    return self._capacity_exceeded_response()  # type: ignore[return-value,no-any-return]
 
-            self.sessions.touch(session.session_id)
-            session.message_count += 1
+                result = self._get_or_create_session(request.session_id)
+                if isinstance(result, JSONResponse):
+                    return result  # type: ignore[return-value,no-any-return]
+                session = result
 
-            protocol = RESTProtocol()
-            try:
-                return await protocol.handle_sync_request(request, session)
-            except BackendSessionError:
-                return await self._handle_backend_session_error(  # type: ignore[return-value,no-any-return]
-                    session.session_id,
-                )
+                self.sessions.touch(session.session_id)
+                session.message_count += 1
+
+                protocol = RESTProtocol()
+                try:
+                    return await protocol.handle_sync_request(request, session)
+                except BackendSessionError:
+                    return await self._handle_backend_session_error(  # type: ignore[return-value,no-any-return]
+                        session.session_id,
+                    )
 
         @app.post(
             f"/agent/{agent_name}/chat/stream",
@@ -463,9 +602,13 @@ class AgentServer:
             Accepts a message, processes it through the agent, and streams
             SSE events back to the client.
             """
+            if not self._try_acquire_turn_slot():
+                return self._capacity_exceeded_response()  # type: ignore[return-value]
+
             result = self._get_or_create_session(request.session_id)
             if isinstance(result, JSONResponse):
-                return result  # type: ignore[return-value,no-any-return]
+                self._release_turn_slot()
+                return result  # type: ignore[return-value]
             session = result
 
             self.sessions.touch(session.session_id)
@@ -473,7 +616,7 @@ class AgentServer:
 
             protocol = RESTProtocol()
             return StreamingResponse(
-                protocol.handle_request(request, session),
+                self._turn_gated_stream(protocol.handle_request(request, session)),
                 media_type=protocol.content_type,
             )
 
@@ -516,21 +659,25 @@ class AgentServer:
                 files=file_contents if file_contents else None,
             )
 
-            result = self._get_or_create_session(session_id)
-            if isinstance(result, JSONResponse):
-                return result  # type: ignore[return-value,no-any-return]
-            session = result
+            async with self._acquire_turn_slot() as acquired:
+                if not acquired:
+                    return self._capacity_exceeded_response()  # type: ignore[return-value,no-any-return]
 
-            self.sessions.touch(session.session_id)
-            session.message_count += 1
+                result = self._get_or_create_session(session_id)
+                if isinstance(result, JSONResponse):
+                    return result  # type: ignore[return-value,no-any-return]
+                session = result
 
-            protocol = RESTProtocol()
-            try:
-                return await protocol.handle_sync_request(chat_request, session)
-            except BackendSessionError:
-                return await self._handle_backend_session_error(  # type: ignore[return-value,no-any-return]
-                    session.session_id,
-                )
+                self.sessions.touch(session.session_id)
+                session.message_count += 1
+
+                protocol = RESTProtocol()
+                try:
+                    return await protocol.handle_sync_request(chat_request, session)
+                except BackendSessionError:
+                    return await self._handle_backend_session_error(  # type: ignore[return-value,no-any-return]
+                        session.session_id,
+                    )
 
         @app.post(
             f"/agent/{agent_name}/chat/stream/multipart",
@@ -569,9 +716,13 @@ class AgentServer:
                 files=file_contents if file_contents else None,
             )
 
+            if not self._try_acquire_turn_slot():
+                return self._capacity_exceeded_response()  # type: ignore[return-value]
+
             result = self._get_or_create_session(session_id)
             if isinstance(result, JSONResponse):
-                return result  # type: ignore[return-value,no-any-return]
+                self._release_turn_slot()
+                return result  # type: ignore[return-value]
             session = result
 
             self.sessions.touch(session.session_id)
@@ -579,7 +730,7 @@ class AgentServer:
 
             protocol = RESTProtocol()
             return StreamingResponse(
-                protocol.handle_request(chat_request, session),
+                self._turn_gated_stream(protocol.handle_request(chat_request, session)),
                 media_type=protocol.content_type,
             )
 

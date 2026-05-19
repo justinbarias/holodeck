@@ -238,7 +238,7 @@ class ContainerBuilder:
                 labels=labels or {},
                 rm=True,  # Remove intermediate containers
                 platform=platform,
-                pull=True,  # Always pull base image to get correct platform
+                pull=True,  # Always pull base image
                 **build_kwargs,
             )
 

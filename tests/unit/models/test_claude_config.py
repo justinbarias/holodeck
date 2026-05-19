@@ -216,6 +216,15 @@ class TestClaudeConfig:
         assert config.max_budget_usd is None
         assert config.fallback_model is None
         assert config.disallowed_tools is None
+        assert config.i_understand_this_is_unsafe is False
+
+    def test_i_understand_this_is_unsafe_accepts_true(self) -> None:
+        """spec 034 P1b: opt-in flag for permission_mode=acceptAll."""
+        config = ClaudeConfig(
+            permission_mode=PermissionMode.acceptAll,
+            i_understand_this_is_unsafe=True,
+        )
+        assert config.i_understand_this_is_unsafe is True
 
     def test_with_extended_thinking(self) -> None:
         """Test ClaudeConfig with extended thinking configured."""
@@ -286,10 +295,12 @@ class TestClaudeConfig:
         assert config.permission_mode == PermissionMode.manual
 
     @pytest.mark.unit
-    def test_max_concurrent_sessions_default_is_10(self) -> None:
-        """T012: Test that max_concurrent_sessions defaults to 10."""
+    def test_max_concurrent_sessions_default_is_none_for_memory_derivation(
+        self,
+    ) -> None:
+        """spec 034 P1a: default is None so the serve layer derives from memory."""
         config = ClaudeConfig()
-        assert config.max_concurrent_sessions == 10
+        assert config.max_concurrent_sessions is None
 
     @pytest.mark.unit
     def test_max_concurrent_sessions_valid_value(self) -> None:
@@ -302,14 +313,14 @@ class TestClaudeConfig:
         ("value", "reason"),
         [
             (0, "below_min"),
-            (101, "above_max"),
+            (501, "above_max"),
         ],
-        ids=["below_min_ge1", "above_max_le100"],
+        ids=["below_min_ge1", "above_max_le500"],
     )
     def test_max_concurrent_sessions_out_of_range(
         self, value: int, reason: str
     ) -> None:
-        """T012: Test that max_concurrent_sessions outside 1-100 is rejected."""
+        """T012: Test that max_concurrent_sessions outside 1-500 is rejected."""
         with pytest.raises(ValidationError):
             ClaudeConfig(max_concurrent_sessions=value)
 
@@ -318,6 +329,23 @@ class TestClaudeConfig:
         """T012: Test that max_concurrent_sessions accepts None."""
         config = ClaudeConfig(max_concurrent_sessions=None)
         assert config.max_concurrent_sessions is None
+
+    @pytest.mark.unit
+    def test_session_memory_estimate_mib_defaults_to_500(self) -> None:
+        """spec 034 P4: per-active-turn memory estimate defaults to 500 MiB."""
+        config = ClaudeConfig()
+        assert config.session_memory_estimate_mib == 500
+
+    @pytest.mark.unit
+    def test_session_memory_estimate_mib_accepts_valid_value(self) -> None:
+        config = ClaudeConfig(session_memory_estimate_mib=400)
+        assert config.session_memory_estimate_mib == 400
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("value", [49, 2001])
+    def test_session_memory_estimate_mib_out_of_range(self, value: int) -> None:
+        with pytest.raises(ValidationError):
+            ClaudeConfig(session_memory_estimate_mib=value)
 
     def test_extra_fields_rejected(self) -> None:
         """Test that extra fields are rejected."""

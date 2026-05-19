@@ -705,17 +705,18 @@ class TestBackendSessionErrorStreaming:
         assert "detail" in data
 
 
-class TestCapacityExceeded503:
-    """T016: Capacity exceeded returns 503 with Retry-After header."""
+class TestCapacityExceeded429:
+    """spec 034 P1a: Capacity exceeded returns 429 with Retry-After header."""
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_capacity_exceeded_returns_503_with_retry_after(self) -> None:
-        """T016: When SessionStore.create raises RuntimeError, server returns 503.
+    async def test_capacity_exceeded_returns_429_with_retry_after(self) -> None:
+        """When SessionStore.create raises RuntimeError, server returns 429.
 
-        The REST chat endpoint should return a 503 response with a
-        Retry-After header and the capacity_exceeded error body when
-        the session store is at capacity.
+        spec 034 P1a switched this from 503 to 429 so fronting load
+        balancers and HTTP client retry logic recognise the backpressure
+        as a transient retryable signal (most clients treat 503 as a
+        hard error).
         """
         from unittest.mock import patch
 
@@ -753,7 +754,7 @@ class TestCapacityExceeded503:
                 )
 
         # Assert
-        assert response.status_code == 503
+        assert response.status_code == 429
         assert response.headers.get("retry-after") == "5"
 
         body = response.json()

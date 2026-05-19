@@ -184,16 +184,23 @@ class TestAzureContainerAppsDeployer:
         assert container.env[0].name == "OPENAI_API_KEY"
         assert container.env[0].value == "secret"
 
-        # Verify health probe configuration (uses default /health path)
-        assert len(container.probes) == 1
-        probe = container.probes[0]
-        assert probe.type == "Liveness"
-        assert probe.http_get.port == 8080
-        assert probe.http_get.path == "/health"
-        assert probe.initial_delay_seconds == 10
-        assert probe.period_seconds == 30
-        assert probe.failure_threshold == 3
-        assert probe.timeout_seconds == 5
+        # spec 034 P1a: container has both liveness + readiness probes
+        assert len(container.probes) == 2
+        liveness = next(p for p in container.probes if p.type == "Liveness")
+        assert liveness.http_get.port == 8080
+        assert liveness.http_get.path == "/health"
+        assert liveness.initial_delay_seconds == 10
+        assert liveness.period_seconds == 30
+        assert liveness.failure_threshold == 3
+        assert liveness.timeout_seconds == 5
+
+        readiness = next(p for p in container.probes if p.type == "Readiness")
+        assert readiness.http_get.port == 8080
+        assert readiness.http_get.path == "/ready"
+        assert readiness.initial_delay_seconds == 5
+        assert readiness.period_seconds == 10
+        assert readiness.failure_threshold == 3
+        assert readiness.timeout_seconds == 5
 
         scale = envelope.template.scale
         assert scale.min_replicas == 1
@@ -290,10 +297,73 @@ class TestAzureContainerAppsDeployer:
         envelope = call_kwargs["container_app_envelope"]
         container = envelope.template.containers[0]
 
-        # Verify custom health check path is used
-        probe = container.probes[0]
-        assert probe.http_get.path == "/api/healthz"
-        assert probe.http_get.port == 8080
+        # Verify custom health check path is used by the liveness probe
+        liveness = next(p for p in container.probes if p.type == "Liveness")
+        assert liveness.http_get.path == "/api/healthz"
+        assert liveness.http_get.port == 8080
+
+    def test_deploy_warns_when_cpu_below_one(
+        self, azure_sdk: type, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """spec 034 P1a: cpu<1.0 logs a warning naming the SDK guidance."""
+        config = AzureContainerAppsConfig(
+            subscription_id="00000000-0000-0000-0000-000000000000",
+            resource_group="test-rg",
+            environment_name="test-env",
+            cpu=0.5,
+        )
+        deployer = AzureContainerAppsDeployer(config)
+        client = deployer._client
+        container_apps = cast(MagicMock, client.container_apps)
+        poller = MagicMock()
+        fixture = _load_fixture()
+        poller.result.return_value = _build_result_from_fixture(fixture)
+        container_apps.begin_create_or_update.return_value = poller
+
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            deployer.deploy(
+                service_name="test-agent",
+                image_uri="ghcr.io/holodeck/test-agent:abc",
+                port=8080,
+                env_vars={},
+            )
+
+        assert any(
+            "below Anthropic's recommended minimum" in rec.message
+            for rec in caplog.records
+        )
+
+    def test_deploy_warns_when_ingress_external(
+        self, azure_sdk: type, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """spec 034 P1a: ingress_external=True logs a 'public internet' warning."""
+        config = AzureContainerAppsConfig(
+            subscription_id="00000000-0000-0000-0000-000000000000",
+            resource_group="test-rg",
+            environment_name="test-env",
+            ingress_external=True,
+        )
+        deployer = AzureContainerAppsDeployer(config)
+        client = deployer._client
+        container_apps = cast(MagicMock, client.container_apps)
+        poller = MagicMock()
+        fixture = _load_fixture()
+        poller.result.return_value = _build_result_from_fixture(fixture)
+        container_apps.begin_create_or_update.return_value = poller
+
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            deployer.deploy(
+                service_name="test-agent",
+                image_uri="ghcr.io/holodeck/test-agent:abc",
+                port=8080,
+                env_vars={},
+            )
+
+        assert any("PUBLIC INTERNET" in rec.message for rec in caplog.records)
 
     def test_resolve_container_app_name_valid_simple_name(
         self, azure_sdk: type

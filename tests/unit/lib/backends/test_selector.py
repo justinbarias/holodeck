@@ -110,14 +110,12 @@ class TestBackendSelector:
             agent,
             tool_instances={"kb": mock_tool},
             mode="chat",
-            allow_side_effects=True,
         )
 
         mock_claude_cls.assert_called_once_with(
             agent=agent,
             tool_instances={"kb": mock_tool},
             mode="chat",
-            allow_side_effects=True,
         )
 
     @pytest.mark.asyncio
