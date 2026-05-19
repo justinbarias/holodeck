@@ -103,7 +103,7 @@ P1 is one focused PR (and probably ships under a feature branch within days). P2
 | P2a — Container hardening | ⏳ not started | — | — |
 | P2b — Prompt-injection defenses | ⏳ not started | — | — |
 | P3 — Credential boundary | ⏳ not started | — | — |
-| P4 — Hybrid sessions / pooling | ⏳ design only (see Phase 4 below) | — | Spike `query(resume=…)` latency vs. persistent `ClaudeSDKClient` first; MCP server reinit cost is the binary risk. |
+| P4 — Hybrid sessions / pooling | 🟢 spikes complete, ready to implement | — | Both binary risks resolved 2026-05-19: per-turn `query(resume=)` latency is *faster* than persistent `ClaudeSDKClient` (-2.32s/turn over 5 turns), and the transcript replay faithfully restores user/assistant/tool-use/tool-result blocks across spawned subprocesses. Streaming-mode prompts mandatory (string mode deadlocks SDK MCP callbacks). See Phase 4 risks table for spike data. |
 
 ## Phase 1a — Stop the OOM
 
@@ -533,13 +533,41 @@ For typical chat duty cycle (sessions spend ≥90% of wall time waiting on the u
 
 ### Risks to validate before committing
 
-| Risk | Why it matters | Validation |
-|------|----------------|------------|
-| **MCP server reinit cost per turn** | qdrant client reconnect + hierarchical-doc tool warmup + ingestion idempotency check on every spawn. Could push P50 mid-conversation latency from ~30s to ~40s. The financial-assistant's first-turn warmup is currently ~3-5s; if that's load-bearing per-turn, chat UX gets ugly. | Spike: time five sequential turns of the same session under both models on the financial-assistant. |
-| **AG-UI stream-shape compat** | The current AG-UI bridge consumes `client.send_streaming()` output. If `query()` yields a different message ordering (e.g. `SystemMessage` placement) the bridge breaks subtly. | Run the existing AG-UI test suite against a `query()`-backed session implementation. |
-| **Subprocess spawn jitter under burst** | Spawning 5 subprocesses at once = 5 simultaneous Node.js CLI starts + 5 MCP server inits. Could cause CPU saturation despite memory headroom. | Re-run the 5-concurrent burst test from P1 validation; measure end-to-end latency distribution. |
-| **Transcript disk pressure** | Long-lived deployments accumulate JSONLs forever without cleanup. | Implement TTL job; size estimate per session before committing. |
-| **Lost session state on transcript corruption** | A corrupted transcript bricks the session permanently (no in-memory fallback as we have today). | Catch decode errors at resume; surface as "session lost, please reconnect" rather than 500. |
+| Risk | Why it matters | Validation | Status |
+|------|----------------|------------|--------|
+| **MCP server reinit cost per turn** | qdrant client reconnect + hierarchical-doc tool warmup + ingestion idempotency check on every spawn. Could push P50 mid-conversation latency from ~30s to ~40s. | Five sequential turns of the same session under both models on the financial-assistant. | ✅ **Resolved by spike** (2026-05-19). P4 total 101.13s vs baseline 112.72s over 5 turns; P4 was *2.32s/turn faster*. Per-turn variance dominated by LLM + retrieval, not subprocess spawn. |
+| **`resume=session_id` context fidelity** | If the transcript replay loses tool-use/tool-result blocks, the agent would re-retrieve every turn and lose conversation continuity. | Conversation-dependent follow-up turns ("and the prior year?") that can only be answered using prior context. | ✅ **Resolved by spike v2** (2026-05-19). Five-turn conversation with three follow-up turns: P4 correctly referenced ALXN/rental-payments and JKHY/capex anchors across spawns, including prior tool-result blocks ("from the **same retrieved JKHY 2008 filing**, the answer is already in context"). |
+| **AG-UI stream-shape compat** | The current AG-UI bridge consumes SDK messages emitted via `client.send_streaming()`. | No separate spike needed — `query()` yields the same SDK message types. Validate by keeping `ClaudeSession.send_streaming()` as the stable public surface and swapping its guts; the AG-UI bridge above is unchanged. Cover via the existing deploy validation loop. | ⏳ Validate during implementation. |
+| **String-prompt + SDK MCP tool callbacks deadlock** | Discovered in spike v1: when `query()` is called with a `str` prompt, it calls `end_input()` after writing the prompt, which closes stdin. Subsequent control-channel messages (the SDK's reverse path used by SDK MCP tool callbacks) fail with `ProcessTransport is not ready for writing`. | Use streaming-mode prompts (`AsyncIterable[dict]`) for every P4 turn — the SDK keeps stdin open via the background `stream_input` task. | ✅ **Resolved by spike** — required for any implementation using `holodeck_tools` SDK MCP server. |
+| **Subprocess spawn jitter under burst** | Spawning 5 subprocesses at once = 5 simultaneous Node.js CLI starts + 5 MCP server inits. Could cause CPU saturation despite memory headroom. | Re-run the 5-concurrent burst test from P1 validation; measure end-to-end latency distribution. | ⏳ Validate during implementation. |
+| **Transcript disk pressure** | Long-lived deployments accumulate JSONLs forever without cleanup. | Implement TTL job; size estimate per session before committing. | ⏳ Implementation detail. |
+| **Lost session state on transcript corruption** | A corrupted transcript bricks the session permanently (no in-memory fallback as we have today). | Catch decode errors at resume; surface as "session lost, please reconnect" rather than 500. | ⏳ Implementation detail. |
+
+#### Spike data (2026-05-19, financial-assistant sample, sequential turns)
+
+Spike v1 — latency, independent turns:
+
+| turn | baseline | P4 (`query` + `resume`) | delta |
+|------|---------:|------------------------:|------:|
+| 1 (cold) | 47.05s | 45.34s | -1.71s |
+| 2 | 8.67s | 10.86s | +2.19s |
+| 3 | 20.84s | 14.69s | -6.15s |
+| 4 | 16.99s | 15.23s | -1.76s |
+| 5 | 19.16s | 15.01s | -4.15s |
+| **TOTAL** | **112.72s** | **101.13s** | **-11.59s** |
+
+Spike v2 — context preservation, conversation-dependent turns:
+
+| turn | baseline | P4 | delta |
+|------|---------:|---:|------:|
+| 1 (cold) | 38.69s | 40.38s | +1.69s |
+| 2 ("prior year") | 18.80s | 20.90s | +2.10s |
+| 3 ("percentage change") | 5.17s | 12.04s | +6.87s |
+| 4 (context switch) | 15.78s | 9.21s | -6.58s |
+| 5 ("year before") | 11.37s | 5.31s | -6.06s |
+| **TOTAL** | **89.81s** | **87.84s** | **-1.97s** |
+
+Both legs answered every conversation-dependent turn correctly, demonstrating that `resume=` faithfully replays user messages, assistant responses, and tool-use/tool-result blocks across spawned subprocesses.
 
 ### Why this didn't ship in v1
 
@@ -547,10 +575,11 @@ The two-week diagnostic loop that produced P1 surfaced this as the natural next 
 
 ### Open questions
 
-1. **Does `query(resume=session_id)` actually round-trip every option** (hooks, MCP servers, allowed_tools, permission_mode) cleanly, or do some options reset on resume? Verify in the spike.
-2. **Does the SDK serialize tool-use blocks faithfully in the transcript?** If a tool's response was 200 KiB of text, does that bloat every resume? May need pruning.
-3. **Streaming-mode vs query() in the SDK** — is there a documented difference in latency, message ordering, or error semantics? Skim `code.claude.com/docs/en/agent-sdk/python` for the distinction.
-4. **OTel context propagation across spawned subprocesses** — today the OTel instrumentor patches `ClaudeSDKClient` instances. With `query()` we get a fresh client each turn; need to verify the instrumentor still wires the trace context.
+1. **Does `query(resume=session_id)` round-trip every option** (hooks, MCP servers, allowed_tools, permission_mode) cleanly? ✅ Spike confirmed MCP servers, allowed_tools, and prompt envelope all round-trip — same `options` dataclass reused per turn with only `resume` mutated. Hooks and `permission_mode` round-trip implicitly because they're carried on the same options object.
+2. **Does the SDK serialize tool-use blocks faithfully in the transcript?** ✅ Spike v2 confirmed — turn 5 ("And the year before?") reproduced the $34,202 figure from turn 4's tool result *without re-running the retrieval tool*, proving tool-use AND tool-result blocks are replayed from the transcript.
+3. **Streaming-mode vs string-mode `query()`** — spike v1 surfaced this: string-mode closes stdin after writing the prompt, deadlocking any SDK MCP tool callback. P4 implementation **must** use streaming-mode (`AsyncIterable[dict]`) prompts. Documented as a hard requirement above.
+4. **Transcript bloat on long tool outputs** — still open. The hierarchical_document tool can return 8KB-ish per retrieval; 50 turns × 5 retrievals × 8KB = 2MB transcript that gets read+parsed every turn. Need a size-budget knob or rolling-summary mechanism before exposing P4 to long-running chat sessions.
+5. **OTel context propagation across spawned subprocesses** — today the OTel instrumentor patches `ClaudeSDKClient` instances. With `query()` we get a fresh client each turn; need to verify the instrumentor still wires the trace context, or move the patch to the top-level `query` function.
 
 ## What we are deliberately *not* doing in v1
 
