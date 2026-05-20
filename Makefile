@@ -160,8 +160,35 @@ security: ## Run security checks
 	@echo "Checking for known vulnerabilities..."
 	# pygments 2.19.2 (latest) — no upstream fix available; low-risk for our usage
 	# (ReDoS in AdlLexer, local access only — we don't use ADL lexer)
+	#
+	# Disputed CVEs (upstream maintainers reject the report):
+	#   CVE-2024-34997 (joblib)  — NumpyArrayWrapper deserialization only used for trusted cache content
+	#   CVE-2025-45768 (pyjwt)   — "weak encryption"; key length is the caller's responsibility
+	#
+	# No-fix advisories where the vulnerable code path is unreachable for HoloDeck:
+	#   CVE-2026-0846  (nltk)    — nltk.util.filestring() path traversal; HoloDeck has no direct
+	#                              nltk usage (transitive via azure-ai-evaluation)
+	#
+	# Cross-ecosystem mis-attribution: the following advisories describe bugs in the Ollama
+	# *Go server* (/api/pull endpoint, GGUF parser). The PyPI `ollama` package is an HTTP
+	# client and is not affected. GHSA mapped the Go advisory to the PyPI ecosystem.
+	#   CVE-2025-44779 / CVE-2024-8063 / CVE-2025-51471 / CVE-2025-1975
+	#   CVE-2025-66960 / CVE-2025-66959
+	#
+	# Borked OSV range: PYSEC-2026-89 describes a bug in markdown 3.8 fixed in 3.8.1, but the
+	# OSV affected range is unbounded so the 3.10 line still flags. We're already on 3.10.2.
 	uv run pip-audit --progress-spinner=off \
-		--ignore-vuln CVE-2026-4539
+		--ignore-vuln CVE-2026-4539 \
+		--ignore-vuln CVE-2024-34997 \
+		--ignore-vuln CVE-2025-45768 \
+		--ignore-vuln CVE-2026-0846 \
+		--ignore-vuln CVE-2025-44779 \
+		--ignore-vuln CVE-2024-8063 \
+		--ignore-vuln CVE-2025-51471 \
+		--ignore-vuln CVE-2025-1975 \
+		--ignore-vuln CVE-2025-66960 \
+		--ignore-vuln CVE-2025-66959 \
+		--ignore-vuln PYSEC-2026-89
 	@echo "Scanning for security issues with Ruff..."
 	uv run ruff check $(SRC_DIR) --select S
 	@echo "Scanning for security issues with Bandit..."
