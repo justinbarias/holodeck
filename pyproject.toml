@@ -165,6 +165,8 @@ constraint-dependencies = [
     "pillow>=12.2.0",  # CVE-2026-25990 + CVE-2026-40192 fix
     "protobuf>=5.29.6",  # CVE-2026-0994 fix
     "python-multipart>=0.0.26",  # CVE-2026-24486 + CVE-2026-40347 fix
+    "pyarrow>=23.0.1",  # CVE-2026-25087 fix (use-after-free in IPC pre-buffering)
+    "markdown>=3.10.2",  # bump to latest patch on the 3.10 line
 ]
 
 [tool.black]

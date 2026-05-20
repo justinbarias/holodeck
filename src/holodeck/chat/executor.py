@@ -411,36 +411,39 @@ class AgentExecutor:
         try:
             await self._ensure_backend_and_session()
             collected: list[str] = []
-            stream = self._session.send_streaming(message)  # type: ignore[union-attr]
-            # Enforce llm_timeout as a deadline across the whole stream —
-            # each chunk must arrive within the remaining budget; otherwise
-            # the next __anext__ is cancelled and TimeoutError propagates.
-            deadline = (
-                time.monotonic() + self._llm_timeout
-                if self._llm_timeout is not None
-                else None
-            )
-            while True:
-                if deadline is not None:
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        raise asyncio.TimeoutError(
-                            f"streaming response exceeded llm_timeout="
-                            f"{self._llm_timeout}s"
-                        )
-                    try:
-                        chunk = await asyncio.wait_for(
-                            stream.__anext__(), timeout=remaining
-                        )
-                    except StopAsyncIteration:
-                        break
-                else:
-                    try:
-                        chunk = await stream.__anext__()
-                    except StopAsyncIteration:
-                        break
-                collected.append(chunk)
-                yield chunk
+            # Enforce llm_timeout via a single deadline timer that cancels the
+            # current task. Per-chunk ``asyncio.wait_for`` would wrap each
+            # ``__anext__`` in a fresh task and break the SDK's anyio cancel
+            # scope ownership ("Attempted to exit cancel scope in a different
+            # task than it was entered in"). call_later runs on the current
+            # task, so the SDK's scope stays bound to a single task.
+            timed_out = False
+            timer: asyncio.TimerHandle | None = None
+            if self._llm_timeout is not None:
+                loop = asyncio.get_running_loop()
+                current = asyncio.current_task()
+
+                def _on_deadline() -> None:
+                    nonlocal timed_out
+                    timed_out = True
+                    if current is not None:
+                        current.cancel()
+
+                timer = loop.call_later(self._llm_timeout, _on_deadline)
+            try:
+                async for chunk in self._session.send_streaming(message):  # type: ignore[union-attr]
+                    collected.append(chunk)
+                    yield chunk
+            except asyncio.CancelledError:
+                if timed_out:
+                    raise asyncio.TimeoutError(
+                        f"streaming response exceeded llm_timeout="
+                        f"{self._llm_timeout}s"
+                    ) from None
+                raise
+            finally:
+                if timer is not None:
+                    timer.cancel()
             # Update history after stream completes
             self._history.append({"role": "user", "content": message})
             self._history.append({"role": "assistant", "content": "".join(collected)})
