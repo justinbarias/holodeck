@@ -13,7 +13,7 @@ import json
 from ag_ui.core.events import EventType
 
 from holodeck.lib.backends.base import ToolEvent
-from holodeck.serve.protocols.agui import _tool_event_to_agui
+from holodeck.serve.protocols.agui import _reasoning_events, _tool_event_to_agui
 
 # ---------------------------------------------------------------------------
 # _tool_event_to_agui converter
@@ -167,6 +167,23 @@ class TestToolEventToAgui:
             text="",
         )
         assert _tool_event_to_agui(event, {}) == []
+
+    def test_reasoning_events_generates_id_when_none(self) -> None:
+        """Calling _reasoning_events without message_id auto-generates a ULID."""
+        events = _reasoning_events("solo block", message_id=None)
+        assert len(events) == 5
+        ids = {e.message_id for e in events}
+        assert len(ids) == 1
+        assigned = next(iter(ids))
+        # ULID-shaped Crockford string: 26 chars, no dashes.
+        assert isinstance(assigned, str)
+        assert len(assigned) == 26
+        assert "-" not in assigned
+
+    def test_reasoning_events_empty_text_returns_no_events(self) -> None:
+        """Empty reasoning text short-circuits to an empty list."""
+        assert _reasoning_events("") == []
+        assert _reasoning_events("", message_id="x") == []
 
     def test_uses_tool_use_id_as_tool_call_id(self) -> None:
         """tool_use_id from SDK is used as tool_call_id in AG-UI events."""

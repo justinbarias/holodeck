@@ -117,6 +117,14 @@ def _make_tool_result_block(
     return block
 
 
+def _make_thinking_block(text: str = "Let me think.") -> MagicMock:
+    """Create a mock ThinkingBlock."""
+    block = MagicMock()
+    block.thinking = text
+    block.__class__.__name__ = "ThinkingBlock"
+    return block
+
+
 def _make_assistant_message(content: list[Any] | None = None) -> MagicMock:
     """Create a mock AssistantMessage."""
     msg = MagicMock()
@@ -1015,6 +1023,29 @@ class TestClaudeBackendInvokeOnce:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.query")
+    async def test_invoke_once_surfaces_thinking_text(
+        self, mock_query: MagicMock
+    ) -> None:
+        """ThinkingBlocks in invoke_once() land on ExecutionResult.thinking."""
+        assistant = _make_assistant_message(
+            [
+                _make_thinking_block("internal deliberation"),
+                _make_text_block("final answer"),
+            ]
+        )
+        result_msg = _make_result_message()
+        mock_query.return_value = _async_iter([assistant, result_msg])
+
+        backend = ClaudeBackend(_make_agent())
+        backend._initialized = True
+        backend._options = MagicMock()
+
+        result = await backend.invoke_once("Hi")
+        assert result.response == "final answer"
+        assert result.thinking == "internal deliberation"
+
+    @pytest.mark.asyncio
+    @patch(f"{_SDK_MODULE}.query")
     async def test_invoke_once_tool_extraction(self, mock_query: MagicMock) -> None:
         """T006: Tool calls and results extracted from content blocks."""
         tool_use = _make_tool_use_block("toolu_01", "kb_search", {"query": "refund"})
@@ -1205,6 +1236,35 @@ class TestClaudeSessionStreaming:
 
         assert chunks == ["Hello ", "world!"]
         assert session._sdk_session_id == "sdk-stream-001"
+
+    @pytest.mark.asyncio
+    async def test_send_streams_thinking_blocks_to_tool_queue(self) -> None:
+        """ClaudeSession.send pushes ThinkingBlocks onto the tool-event queue."""
+        thinking = _make_thinking_block("reasoning step")
+        text = _make_text_block("reply")
+        assistant = _make_assistant_message([thinking, text])
+        result_msg = _make_result_message(session_id="sdk-think-001")
+
+        async def fake_query(prompt, options):
+            for m in (assistant, result_msg):
+                yield m
+
+        session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
+        with patch(
+            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+        ):
+            result = await session.send("Reason about this")
+
+        assert result.thinking == "reasoning step"
+        assert result.response == "reply"
+        # One thinking event was pushed onto the tool queue.
+        events: list[ToolEvent] = []
+        while not session.tool_events.empty():
+            events.append(session.tool_events.get_nowait())
+        thinking_events = [e for e in events if e.kind == "thinking"]
+        assert len(thinking_events) == 1
+        assert thinking_events[0].text == "reasoning step"
+        assert thinking_events[0].tool_use_id  # ULID assigned by backend
 
     @pytest.mark.asyncio
     async def test_send_streaming_propagates_session_id_on_turn_2(self) -> None:
@@ -2107,6 +2167,35 @@ class TestProcessMessage:
         queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
         _maybe_emit_thinking_blocks(msg, queue)
         assert queue.empty()
+
+    def test_maybe_emit_thinking_blocks_skips_empty_text(self) -> None:
+        """ThinkingBlock with empty or non-string text yields no event."""
+        empty_block = MagicMock()
+        empty_block.__class__.__name__ = "ThinkingBlock"
+        empty_block.thinking = ""
+        none_block = MagicMock()
+        none_block.__class__.__name__ = "ThinkingBlock"
+        none_block.thinking = None
+        msg = _make_assistant_message([empty_block, none_block])
+
+        queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        _maybe_emit_thinking_blocks(msg, queue)
+        assert queue.empty()
+
+    def test_process_message_accumulates_thinking_blocks(self) -> None:
+        """AssistantMessage ThinkingBlocks accumulate into thinking_parts."""
+        msg = _make_assistant_message(
+            [
+                _make_thinking_block("step one"),
+                _make_text_block("visible reply"),
+                _make_thinking_block("step two"),
+            ]
+        )
+        text, calls, results, thinking = _process_message(msg, [], [], [], [])
+        assert text == ["visible reply"]
+        assert thinking == ["step one", "step two"]
+        assert calls == []
+        assert results == []
 
     def test_user_message_with_tool_result(self) -> None:
         """UserMessage containing ToolResultBlock extracts results."""
