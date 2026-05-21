@@ -1128,19 +1128,21 @@ wheels = [
 
 [[package]]
 name = "claude-agent-sdk"
-version = "0.1.44"
+version = "0.2.82"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "mcp" },
+    { name = "sniffio" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/30/40/5661e10daf69ee5c864f82a1888cc33c9378b2d7f7d11db3c2360aef3a30/claude_agent_sdk-0.1.44.tar.gz", hash = "sha256:8629436e7af367a1cbc81aa2a58a93aa68b8b2e4e14b0c5be5ac3627bd462c1b", size = 62439, upload-time = "2026-02-26T01:17:28.118Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/3d/f75aaecf476c2b2a903dbba6042171b6683eb91c1f97f3ad894784cec270/claude_agent_sdk-0.2.82.tar.gz", hash = "sha256:3e907b7d2bf52a5917d96a3ce336b8aa5546ea31e29ce826a7f346622cf7f4bf", size = 252053, upload-time = "2026-05-15T03:45:34.251Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/1a/dcde83a6477bfdf8c5510fd84006cca763296e6bc5576e90cd89b97ec034/claude_agent_sdk-0.1.44-py3-none-macosx_11_0_arm64.whl", hash = "sha256:1dd976ad3efb673aefd5037dc75ee7926fb5033c4b9ab7382897ab647fed74e6", size = 55828889, upload-time = "2026-02-26T01:17:15.474Z" },
-    { url = "https://files.pythonhosted.org/packages/4b/33/3b161256956968e18c81e2b2650fed7d2a1144d51042ed6317848643e5d7/claude_agent_sdk-0.1.44-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:d35b38ca40fa28f50fa88705599a298ab30c121c56b53655025eeceb463ac399", size = 70795212, upload-time = "2026-02-26T01:17:18.873Z" },
-    { url = "https://files.pythonhosted.org/packages/17/cb/67af9796dad77a94dfe851138f5ffc9e2e0a14407ba55fea07462c1cc8e5/claude_agent_sdk-0.1.44-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:853c15501f71a913a6cc6b40dc0b24b9505166cad164206b8eab229889e670b8", size = 71424685, upload-time = "2026-02-26T01:17:22.345Z" },
-    { url = "https://files.pythonhosted.org/packages/46/cd/2d3806c791250a76de2c1be863fc01d420729ad61496253e3d3033464c72/claude_agent_sdk-0.1.44-py3-none-win_amd64.whl", hash = "sha256:597e2fcad372086f93e4f6a380d3088ec4dd9b9efce309c5281b52a256fd5d25", size = 73493771, upload-time = "2026-02-26T01:17:25.837Z" },
+    { url = "https://files.pythonhosted.org/packages/19/bc/27cf3aec2a24f2ed1f60277de795496b808a761d2a7a3fd34602a2fec37d/claude_agent_sdk-0.2.82-py3-none-macosx_11_0_arm64.whl", hash = "sha256:24ad8ccbcee9afe206ae5d621a9e40a5022ca3eb8c2c672b36916d3e70746e42", size = 61473506, upload-time = "2026-05-15T03:45:38.745Z" },
+    { url = "https://files.pythonhosted.org/packages/96/91/95a83f018dbc8c113233eb542bccf17c1a3f5f689448700daf950602bf5e/claude_agent_sdk-0.2.82-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:13e54d5163d9d4f899c4e2a3f14df597f4e050d5afa104618ccf7bb37b372ad1", size = 63541975, upload-time = "2026-05-15T03:45:46.005Z" },
+    { url = "https://files.pythonhosted.org/packages/be/07/9356fe0e30f988bade6b116ecc602b4a9ae4df34fa055305187a835e36e0/claude_agent_sdk-0.2.82-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:3b0a0e3f0927737f1fc91ee4549185172243a4e8f135d4c1e4f1f1eba91373e1", size = 71212904, upload-time = "2026-05-15T03:45:51.121Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/d9/e2920b4b6c75cf79ec87ebfb4cc4447c78a4f26317cb3fed77e79fcc804e/claude_agent_sdk-0.2.82-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:b05873f9df01c5894930b87f6ca9315f0d97f1563bc2e4dc0fafe0d4a1e31997", size = 71381948, upload-time = "2026-05-15T03:45:56.153Z" },
+    { url = "https://files.pythonhosted.org/packages/89/80/c3ec5a89c735a96d35fe12b6262517169b396ff366149a3b9f4387f797c1/claude_agent_sdk-0.2.82-py3-none-win_amd64.whl", hash = "sha256:71e85e4f50d04cd95e687898092f03648e74e1cd2537583de93370d2da1c0586", size = 71990462, upload-time = "2026-05-15T03:46:01.646Z" },
 ]
 
 [[package]]
@@ -2269,7 +2271,7 @@ requires-dist = [
     { name = "boto3", marker = "extra == 's3'", specifier = ">=1.42.0" },
     { name = "chromadb", marker = "extra == 'chromadb'", specifier = ">=0.5,<1.1" },
     { name = "chromadb", marker = "extra == 'vectorstores'", specifier = ">=0.5,<1.1" },
-    { name = "claude-agent-sdk", specifier = "==0.1.44" },
+    { name = "claude-agent-sdk", specifier = "==0.2.82" },
     { name = "click", specifier = ">=8.0.0,<9.0.0" },
     { name = "cryptography", specifier = ">=46.0.7,<47.0.0" },
     { name = "dash", marker = "extra == 'dashboard'", specifier = ">=3.0,<4.0" },
