@@ -28,6 +28,7 @@ from holodeck.lib.backends.base import (
     AgentSession,
     BackendSessionError,
     ExecutionResult,
+    ToolEvent,
 )
 from holodeck.lib.backends.claude_backend import (
     ClaudeBackend,
@@ -36,6 +37,7 @@ from holodeck.lib.backends.claude_backend import (
     _build_permission_mode,
     _enrich_tool_results,
     _extract_result_text,
+    _maybe_emit_thinking_blocks,
     _process_message,
     _wrap_prompt,
     build_options,
@@ -2070,6 +2072,41 @@ class TestProcessMessage:
         assert calls == []
         assert results == []
         assert thinking == []
+
+    def test_maybe_emit_thinking_blocks_pushes_one_event_per_block(self) -> None:
+        """Each ThinkingBlock on an AssistantMessage yields a queued event."""
+        block_a = MagicMock()
+        block_a.__class__.__name__ = "ThinkingBlock"
+        block_a.thinking = "step one"
+        block_b = MagicMock()
+        block_b.__class__.__name__ = "ThinkingBlock"
+        block_b.thinking = "step two"
+        text_block = MagicMock()
+        text_block.__class__.__name__ = "TextBlock"
+        text_block.text = "final reply"
+
+        msg = MagicMock()
+        msg.__class__.__name__ = "AssistantMessage"
+        msg.content = [block_a, text_block, block_b]
+
+        queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        _maybe_emit_thinking_blocks(msg, queue)
+
+        events = [queue.get_nowait() for _ in range(queue.qsize())]
+        assert [e.kind for e in events] == ["thinking", "thinking"]
+        assert [e.text for e in events] == ["step one", "step two"]
+        assert all(e.tool_name == "" for e in events)
+        # Each block gets its own id.
+        assert events[0].tool_use_id != events[1].tool_use_id
+        assert events[0].tool_use_id and events[1].tool_use_id
+
+    def test_maybe_emit_thinking_blocks_ignores_non_assistant(self) -> None:
+        """Only AssistantMessage produces thinking events."""
+        msg = MagicMock()
+        msg.__class__.__name__ = "UserMessage"
+        queue: asyncio.Queue[ToolEvent] = asyncio.Queue()
+        _maybe_emit_thinking_blocks(msg, queue)
+        assert queue.empty()
 
     def test_user_message_with_tool_result(self) -> None:
         """UserMessage containing ToolResultBlock extracts results."""

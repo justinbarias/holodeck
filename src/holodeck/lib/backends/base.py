@@ -61,13 +61,19 @@ class ToolEvent:
             success, ``"error"`` after failure, ``"subagent_message"`` for an
             assistant text snapshot streamed by an in-flight subagent (Task
             tool), ``"parent_link"`` to declare that a tool invocation was
-            spawned by a subagent (so the panel can annotate it).
-        tool_name: Name of the tool being invoked.
+            spawned by a subagent (so the panel can annotate it),
+            ``"thinking"`` for an extended-thinking block streamed mid-turn
+            (one event per ``ThinkingBlock``, ahead of any tool call the
+            block precedes).
+        tool_name: Name of the tool being invoked. Empty for
+            ``"thinking"`` (no tool involved).
         tool_use_id: Unique identifier correlating start/end/error for the
             same invocation. For ``"subagent_message"`` events this is the
             parent Task's ``tool_use_id`` so consumers can attach the
             snapshot to the corresponding active entry. For ``"parent_link"``
-            this is the *child* tool's id.
+            this is the *child* tool's id. For ``"thinking"`` this is a
+            per-block id callers can thread through any downstream protocol
+            (e.g. AG-UI ``REASONING_*`` ``message_id``).
         tool_input: Tool input parameters (present on ``"start"``).
         tool_response: Tool output (present on ``"end"``).
         error: Error description (present on ``"error"``).
@@ -75,10 +81,13 @@ class ToolEvent:
             ``tool_use_id``.  Present on ``"subagent_message"`` and
             ``"parent_link"``.
         text: Latest assistant text snapshot from a subagent (present on
-            ``"subagent_message"``).
+            ``"subagent_message"``), or the thinking-block text (present
+            on ``"thinking"``).
     """
 
-    kind: Literal["start", "end", "error", "subagent_message", "parent_link"]
+    kind: Literal[
+        "start", "end", "error", "subagent_message", "parent_link", "thinking"
+    ]
     tool_name: str
     tool_use_id: str
     tool_input: dict[str, Any] | None = None

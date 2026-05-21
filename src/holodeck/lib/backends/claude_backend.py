@@ -32,6 +32,7 @@ from claude_agent_sdk.types import (
     SyncHookJSONOutput,
 )
 from exceptiongroup import BaseExceptionGroup
+from ulid import ULID
 
 from holodeck.lib.backends.base import (
     BackendInitError,
@@ -583,6 +584,43 @@ def _build_tool_hooks(
     }
 
 
+def _maybe_emit_thinking_blocks(
+    msg: Any,
+    queue: asyncio.Queue[ToolEvent],
+) -> None:
+    """Push one ``ToolEvent(kind='thinking')`` per ``ThinkingBlock`` on *msg*.
+
+    Streams extended-thinking text as it arrives so consumers (e.g. the
+    AG-UI emitter) can interleave reasoning bubbles with tool-call cards
+    in the order the model produced them.  Each block gets its own ULID
+    so downstream protocols can correlate the start/content/end markers
+    of a single reasoning chunk.
+
+    Args:
+        msg: A message from the SDK response stream.
+        queue: Destination event queue.
+    """
+    if msg.__class__.__name__ != "AssistantMessage":
+        return
+    content = getattr(msg, "content", []) or []
+    for block in content:
+        if block.__class__.__name__ != "ThinkingBlock":
+            continue
+        thinking_text = getattr(block, "thinking", None)
+        if not isinstance(thinking_text, str) or not thinking_text:
+            continue
+        # Best-effort surface; never block message processing on a full queue.
+        with contextlib.suppress(asyncio.QueueFull):
+            queue.put_nowait(
+                ToolEvent(
+                    kind="thinking",
+                    tool_name="",
+                    tool_use_id=str(ULID()),
+                    text=thinking_text,
+                )
+            )
+
+
 def _maybe_emit_subagent_message(
     msg: Any,
     queue: asyncio.Queue[ToolEvent],
@@ -782,6 +820,7 @@ class ClaudeSession:
                         msg_count,
                         msg.__class__.__name__,
                     )
+                    _maybe_emit_thinking_blocks(msg, self._tool_event_queue)
                     _maybe_emit_subagent_message(msg, self._tool_event_queue)
                     text_parts, tool_calls, tool_results, thinking_parts = (
                         _process_message(
@@ -866,6 +905,7 @@ class ClaudeSession:
                 async for msg in query(
                     prompt=_streaming_user_envelope(message), options=options
                 ):
+                    _maybe_emit_thinking_blocks(msg, self._tool_event_queue)
                     _maybe_emit_subagent_message(msg, self._tool_event_queue)
                     if msg.__class__.__name__ == "AssistantMessage":
                         for block in cast(Any, msg).content:
