@@ -16,6 +16,11 @@ from typing import TYPE_CHECKING, Any
 from ag_ui.core.events import (
     BaseEvent,
     EventType,
+    ReasoningEndEvent,
+    ReasoningMessageContentEvent,
+    ReasoningMessageEndEvent,
+    ReasoningMessageStartEvent,
+    ReasoningStartEvent,
     RunAgentInput,
     RunErrorEvent,
     RunFinishedEvent,
@@ -515,6 +520,8 @@ def _tool_event_to_agui(
     Returns:
         List of AG-UI events to emit.
     """
+    if event.kind == "thinking":
+        return _reasoning_events(event.text or "", message_id=event.tool_use_id)
     if event.kind == "start":
         # Create a dedicated assistant message for this tool call
         parent_msg_id = str(ULID())
@@ -559,6 +566,64 @@ def _tool_event_to_agui(
         ]
 
     return []  # type: ignore[unreachable]
+
+
+def _reasoning_events(
+    reasoning_text: str,
+    message_id: str | None = None,
+) -> list[BaseEvent]:
+    """Build the AG-UI event sequence for a block of model reasoning.
+
+    Reasoning blocks are forwarded to the client whenever the model emits
+    them — there is no client-side opt-in. The model produces them either
+    because the agent config explicitly enables thinking (``extended_thinking``
+    / ``effort``) or because adaptive thinking is on by default for newer
+    Claude models. Either way, if the bytes came back, the client gets them.
+
+    A single ``message_id`` is threaded through all five events so consumers
+    can correlate them. When the backend already allocated an id (e.g. a
+    streamed ``ToolEvent(kind='thinking')`` carries one per block), pass it
+    in; otherwise a fresh ULID is generated here.
+
+    Args:
+        reasoning_text: Reasoning text for this block. Empty input returns
+            an empty list so callers can unconditionally extend without a
+            guard.
+        message_id: Optional pre-allocated id to use for all five events.
+
+    Returns:
+        Ordered list of AG-UI events:
+        ``ReasoningStart -> ReasoningMessageStart -> ReasoningMessageContent
+        -> ReasoningMessageEnd -> ReasoningEnd``, or ``[]`` when empty.
+    """
+    if not reasoning_text:
+        return []
+    if message_id is None:
+        message_id = str(ULID())
+    return [
+        ReasoningStartEvent(
+            type=EventType.REASONING_START,
+            message_id=message_id,
+        ),
+        ReasoningMessageStartEvent(
+            type=EventType.REASONING_MESSAGE_START,
+            message_id=message_id,
+            role="reasoning",
+        ),
+        ReasoningMessageContentEvent(
+            type=EventType.REASONING_MESSAGE_CONTENT,
+            message_id=message_id,
+            delta=reasoning_text,
+        ),
+        ReasoningMessageEndEvent(
+            type=EventType.REASONING_MESSAGE_END,
+            message_id=message_id,
+        ),
+        ReasoningEndEvent(
+            type=EventType.REASONING_END,
+            message_id=message_id,
+        ),
+    ]
 
 
 # =============================================================================
@@ -781,7 +846,10 @@ class AGUIProtocol(Protocol):
                     for evt in create_tool_call_events(tool_exec, message_id):
                         yield encoder.encode(evt)
 
-            # 4. Emit text response as its own assistant message
+            # 4a. Emit text response as its own assistant message.
+            #     (Reasoning was already streamed through the tool_queue as
+            #     ``ToolEvent(kind="thinking")`` events ahead of each tool
+            #     call — see _tool_event_to_agui.)
             yield encoder.encode(create_text_message_start(message_id))
             yield encoder.encode(
                 create_text_message_content(message_id, response.content)

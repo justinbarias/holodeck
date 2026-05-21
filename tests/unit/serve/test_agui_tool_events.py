@@ -13,7 +13,7 @@ import json
 from ag_ui.core.events import EventType
 
 from holodeck.lib.backends.base import ToolEvent
-from holodeck.serve.protocols.agui import _tool_event_to_agui
+from holodeck.serve.protocols.agui import _reasoning_events, _tool_event_to_agui
 
 # ---------------------------------------------------------------------------
 # _tool_event_to_agui converter
@@ -132,6 +132,58 @@ class TestToolEventToAgui:
 
         # tool_msg_ids should be consumed
         assert "tu_456" not in tool_msg_ids
+
+    def test_thinking_event_produces_five_reasoning_events(self) -> None:
+        """A ``thinking`` ToolEvent maps to the 5 REASONING_* event sequence."""
+        event = ToolEvent(
+            kind="thinking",
+            tool_name="",
+            tool_use_id="thinking_block_id_42",
+            text="Let me think about this.",
+        )
+        events = _tool_event_to_agui(event, {})
+
+        types = [e.type for e in events]
+        assert types == [
+            EventType.REASONING_START,
+            EventType.REASONING_MESSAGE_START,
+            EventType.REASONING_MESSAGE_CONTENT,
+            EventType.REASONING_MESSAGE_END,
+            EventType.REASONING_END,
+        ]
+        # All five events share the upstream id.
+        assert {e.message_id for e in events} == {"thinking_block_id_42"}
+        # Role is the literal "reasoning" required by the spec.
+        assert events[1].role == "reasoning"
+        # Delta carries the thinking text verbatim.
+        assert events[2].delta == "Let me think about this."
+
+    def test_thinking_event_with_empty_text_is_dropped(self) -> None:
+        """Empty thinking text produces no events."""
+        event = ToolEvent(
+            kind="thinking",
+            tool_name="",
+            tool_use_id="x",
+            text="",
+        )
+        assert _tool_event_to_agui(event, {}) == []
+
+    def test_reasoning_events_generates_id_when_none(self) -> None:
+        """Calling _reasoning_events without message_id auto-generates a ULID."""
+        events = _reasoning_events("solo block", message_id=None)
+        assert len(events) == 5
+        ids = {e.message_id for e in events}
+        assert len(ids) == 1
+        assigned = next(iter(ids))
+        # ULID-shaped Crockford string: 26 chars, no dashes.
+        assert isinstance(assigned, str)
+        assert len(assigned) == 26
+        assert "-" not in assigned
+
+    def test_reasoning_events_empty_text_returns_no_events(self) -> None:
+        """Empty reasoning text short-circuits to an empty list."""
+        assert _reasoning_events("") == []
+        assert _reasoning_events("", message_id="x") == []
 
     def test_uses_tool_use_id_as_tool_call_id(self) -> None:
         """tool_use_id from SDK is used as tool_call_id in AG-UI events."""
