@@ -160,10 +160,11 @@ def _process_message(
     text_parts: list[str],
     tool_calls: list[dict[str, Any]],
     tool_results: list[dict[str, Any]],
-) -> tuple[list[str], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Extract text, tool calls, and tool results from SDK messages.
+    thinking_parts: list[str] | None = None,
+) -> tuple[list[str], list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    """Extract text, thinking, tool calls, and tool results from SDK messages.
 
-    Handles both ``AssistantMessage`` (text + tool-use blocks) and
+    Handles both ``AssistantMessage`` (text + thinking + tool-use blocks) and
     ``UserMessage`` (tool-result blocks from MCP tool execution).
     Mutates the provided lists in-place and also returns them for convenience.
 
@@ -172,18 +173,29 @@ def _process_message(
         text_parts: Accumulator for text content.
         tool_calls: Accumulator for tool call dicts.
         tool_results: Accumulator for tool result dicts.
+        thinking_parts: Accumulator for extended-thinking text. Pass ``None``
+            (the default) when the caller does not surface thinking; a fresh
+            list is allocated and returned in that case.
 
     Returns:
-        The (text_parts, tool_calls, tool_results) tuple.
+        ``(text_parts, tool_calls, tool_results, thinking_parts)``.
     """
+    if thinking_parts is None:
+        thinking_parts = []
+
     msg_type = msg.__class__.__name__
     if msg_type not in ("AssistantMessage", "UserMessage"):
-        return text_parts, tool_calls, tool_results
+        return text_parts, tool_calls, tool_results, thinking_parts
 
     for block in msg.content:
         cls_name = block.__class__.__name__
         if cls_name == "TextBlock":
             text_parts.append(block.text)
+        elif cls_name == "ThinkingBlock":
+            # The SDK exposes thinking text on the ``thinking`` attribute.
+            thinking_text = getattr(block, "thinking", None)
+            if isinstance(thinking_text, str) and thinking_text:
+                thinking_parts.append(thinking_text)
         elif cls_name == "ToolUseBlock":
             tool_calls.append(
                 {
@@ -201,7 +213,7 @@ def _process_message(
                     "is_error": block.is_error,
                 }
             )
-    return text_parts, tool_calls, tool_results
+    return text_parts, tool_calls, tool_results, thinking_parts
 
 
 _RISKY_BUILTIN_TOOLS: frozenset[str] = frozenset({"Bash", "Write", "Edit", "WebFetch"})
@@ -754,6 +766,7 @@ class ClaudeSession:
                 text_parts: list[str] = []
                 tool_calls: list[dict[str, Any]] = []
                 tool_results: list[dict[str, Any]] = []
+                thinking_parts: list[str] = []
                 token_usage = TokenUsage.zero()
                 num_turns = 1
                 structured_output: Any = None
@@ -770,8 +783,14 @@ class ClaudeSession:
                         msg.__class__.__name__,
                     )
                     _maybe_emit_subagent_message(msg, self._tool_event_queue)
-                    text_parts, tool_calls, tool_results = _process_message(
-                        msg, text_parts, tool_calls, tool_results
+                    text_parts, tool_calls, tool_results, thinking_parts = (
+                        _process_message(
+                            msg,
+                            text_parts,
+                            tool_calls,
+                            tool_results,
+                            thinking_parts,
+                        )
                     )
                     if msg.__class__.__name__ == "ResultMessage":
                         rm = cast(Any, msg)
@@ -813,6 +832,7 @@ class ClaudeSession:
                     token_usage=token_usage,
                     structured_output=structured_output,
                     num_turns=num_turns,
+                    thinking="".join(thinking_parts),
                 )
             except (ProcessError, CLIConnectionError) as exc:
                 raise BackendSessionError(
@@ -1076,14 +1096,15 @@ class ClaudeBackend:
         text_parts: list[str] = []
         tool_calls: list[dict[str, Any]] = []
         tool_results: list[dict[str, Any]] = []
+        thinking_parts: list[str] = []
         token_usage = TokenUsage.zero()
         num_turns = 1
         structured_output: Any = None
 
         prompt_iter = _wrap_prompt(message)
         async for msg in query(prompt=prompt_iter, options=self._options):
-            text_parts, tool_calls, tool_results = _process_message(
-                msg, text_parts, tool_calls, tool_results
+            text_parts, tool_calls, tool_results, thinking_parts = _process_message(
+                msg, text_parts, tool_calls, tool_results, thinking_parts
             )
             if msg.__class__.__name__ == "ResultMessage":
                 rm = cast(Any, msg)
@@ -1103,6 +1124,8 @@ class ClaudeBackend:
 
         response_text = "".join(text_parts)
 
+        thinking_text = "".join(thinking_parts)
+
         # Structured output handling
         if structured_output is not None:
             result = self._validate_structured_output(structured_output, response_text)
@@ -1116,6 +1139,7 @@ class ClaudeBackend:
                     num_turns=num_turns,
                     is_error=result.get("is_error", False),
                     error_reason=result.get("error_reason"),
+                    thinking=thinking_text,
                 )
 
         # Max turns exceeded detection
@@ -1133,6 +1157,7 @@ class ClaudeBackend:
                 num_turns=num_turns,
                 is_error=True,
                 error_reason="max_turns limit reached",
+                thinking=thinking_text,
             )
 
         return ExecutionResult(
@@ -1142,6 +1167,7 @@ class ClaudeBackend:
             token_usage=token_usage,
             structured_output=structured_output,
             num_turns=num_turns,
+            thinking=thinking_text,
         )
 
     def _validate_structured_output(

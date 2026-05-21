@@ -39,6 +39,7 @@ class AgentResponse:
     tool_executions: list[ToolExecution]
     tokens_used: TokenUsage | None
     execution_time: float
+    thinking: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +370,7 @@ class AgentExecutor:
                 tool_executions=tool_executions,
                 tokens_used=tokens_used,
                 execution_time=elapsed,
+                thinking=result.thinking,
             )
 
             # Call post-execution callback

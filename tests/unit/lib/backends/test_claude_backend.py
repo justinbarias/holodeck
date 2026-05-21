@@ -2065,10 +2065,11 @@ class TestProcessMessage:
         """Non-AssistantMessage/UserMessage types are no-ops."""
         msg = MagicMock()
         msg.__class__.__name__ = "SystemMessage"
-        text, calls, results = _process_message(msg, [], [], [])
+        text, calls, results, thinking = _process_message(msg, [], [], [])
         assert text == []
         assert calls == []
         assert results == []
+        assert thinking == []
 
     def test_user_message_with_tool_result(self) -> None:
         """UserMessage containing ToolResultBlock extracts results."""

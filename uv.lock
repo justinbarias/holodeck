@@ -44,14 +44,14 @@ wheels = [
 
 [[package]]
 name = "ag-ui-protocol"
-version = "0.1.10"
+version = "0.1.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/67/bb/5a5ec893eea5805fb9a3db76a9888c3429710dfb6f24bbb37568f2cf7320/ag_ui_protocol-0.1.10.tar.gz", hash = "sha256:3213991c6b2eb24bb1a8c362ee270c16705a07a4c5962267a083d0959ed894f4", size = 6945, upload-time = "2025-11-06T15:17:17.068Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4c/d7/5711eada86da9bd7684e58645653a1693ef20b66cc3efbb1deeafef80f8d/ag_ui_protocol-0.1.18.tar.gz", hash = "sha256:b37c672c3fd6bac12b316c39f45ad9db9f137bbb885489c79f268507029a22ff", size = 9937, upload-time = "2026-04-21T20:44:59.151Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/78/eb55fabaab41abc53f52c0918a9a8c0f747807e5306273f51120fd695957/ag_ui_protocol-0.1.10-py3-none-any.whl", hash = "sha256:c81e6981f30aabdf97a7ee312bfd4df0cd38e718d9fc10019c7d438128b93ab5", size = 7889, upload-time = "2025-11-06T15:17:15.325Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/74/913c9b8fc566c6da650aecbddf25a5d8186b54138df265eb9eb546f56141/ag_ui_protocol-0.1.18-py3-none-any.whl", hash = "sha256:d151c0f0a34160647f1571163f7185746f4326b15a56d1560de5082a7a0e7a12", size = 12607, upload-time = "2026-04-21T20:45:00.097Z" },
 ]
 
 [[package]]
@@ -2248,7 +2248,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "absl-py", specifier = ">=2.3.1,<3.0.0" },
-    { name = "ag-ui-protocol", specifier = ">=0.1.10,<1.0.0" },
+    { name = "ag-ui-protocol", specifier = ">=0.1.18,<1.0.0" },
     { name = "aiofiles", specifier = ">=25.1.0,<26.0.0" },
     { name = "aiohttp", specifier = ">=3.13.4" },
     { name = "anthropic", specifier = ">=0.72.0,<0.73.0" },

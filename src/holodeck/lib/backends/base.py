@@ -32,6 +32,9 @@ class ExecutionResult:
         num_turns: Number of turns taken to produce this result.
         is_error: Whether the execution ended in an error state.
         error_reason: Human-readable reason for the error, if any.
+        thinking: Extended-thinking text emitted by the model, concatenated
+            in arrival order. Empty when extended thinking is disabled or
+            unsupported by the backend.
     """
 
     response: str
@@ -42,6 +45,7 @@ class ExecutionResult:
     num_turns: int = 1
     is_error: bool = False
     error_reason: str | None = None
+    thinking: str = ""
 
 
 @dataclass
