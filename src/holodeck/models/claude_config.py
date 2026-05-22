@@ -382,6 +382,11 @@ class ClaudeConfig(BaseModel):
                 )
             self.setting_sources = ["user", "project", "local"]
             return self
+        # NB: `deduped` keeps the wider Literal that includes "all" because
+        # Python lists are invariant under mypy — a narrower
+        # `list[Literal["user","project","local"]]` cannot be assigned to the
+        # field's `list[Literal[...,"all"]] | None`. The early-return above
+        # still guarantees "all" never reaches this loop at runtime.
         seen: set[str] = set()
         deduped: list[Literal["user", "project", "local", "all"]] = []
         for src in sources:

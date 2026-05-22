@@ -467,11 +467,7 @@ def build_options(
             ", ".join(auto_disallow),
         )
 
-    # Setting sources — HoloDeck defaults to SDK isolation mode so the spawned
-    # `claude` CLI subprocess does not silently inherit ~/.claude /
-    # .claude/ plugins, skills, hooks, etc. When unset, pass [] explicitly
-    # so the CLI receives `--setting-sources=` and skips its own load-everything
-    # default. Users opt back in via `claude.setting_sources`.
+    # Default [] → CLI subprocess never inherits ~/.claude plugins/skills/hooks.
     setting_sources: list[str] = (
         list(claude.setting_sources)
         if claude is not None and claude.setting_sources is not None

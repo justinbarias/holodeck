@@ -445,6 +445,31 @@ class TestBuildOptions:
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_setting_sources_explicit_empty_list(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Explicit ``setting_sources=[]`` reaches the SDK as ``[]`` (not None).
+
+        Same effective behavior as the default, but exercises the
+        ``claude.setting_sources is not None`` branch in ``_build_options``
+        so a future regression flipping the condition would be caught.
+        """
+        claude = ClaudeConfig(setting_sources=[])
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["setting_sources"] == []
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
     def test_build_options_setting_sources_all_expanded(
         self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
     ) -> None:
