@@ -2301,7 +2301,7 @@ requires-dist = [
     { name = "opentelemetry-exporter-prometheus", marker = "extra == 'otel-all'", specifier = ">=0.60b0,<1.0.0" },
     { name = "opentelemetry-exporter-prometheus", marker = "extra == 'otel-prometheus'", specifier = ">=0.60b0,<1.0.0" },
     { name = "opentelemetry-sdk", specifier = ">=1.20.0,<2.0.0" },
-    { name = "otel-instrumentation-claude-agent-sdk", marker = "extra == 'claude-otel'", specifier = ">=0.0.3,<0.1.0" },
+    { name = "otel-instrumentation-claude-agent-sdk", marker = "extra == 'claude-otel'", specifier = ">=0.0.5,<0.1.0" },
     { name = "pandas", marker = "extra == 'dashboard'", specifier = ">=2.0" },
     { name = "pinecone", extras = ["asyncio", "grpc"], marker = "extra == 'pinecone'", specifier = "~=7.0" },
     { name = "pinecone", extras = ["asyncio", "grpc"], marker = "extra == 'vectorstores'", specifier = "~=7.0" },
@@ -4631,7 +4631,7 @@ wheels = [
 
 [[package]]
 name = "otel-instrumentation-claude-agent-sdk"
-version = "0.0.3"
+version = "0.0.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
@@ -4639,9 +4639,9 @@ dependencies = [
     { name = "opentelemetry-semantic-conventions" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/10/2c/1e20d6d2db9fb37d85aa9abbe4200ecff4d6badfe374f5aac7a35f39d13a/otel_instrumentation_claude_agent_sdk-0.0.3.tar.gz", hash = "sha256:a3ca14b15eb4e22820579ba6f43b17a8bec6599943b9826af75845bf323a4e65", size = 222642, upload-time = "2026-03-01T01:56:13.13Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b8/9b/5d7c47a3c15c7dbbfe4c4055a5da3f715a6265f815a014b29b070a262252/otel_instrumentation_claude_agent_sdk-0.0.5.tar.gz", hash = "sha256:2364af1414468daace215bae1a0afb5c52378992c63839ae6c6c83383c4f8e46", size = 246937, upload-time = "2026-05-22T00:58:15.359Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/46/d4062451fb75ea3ffc59999037b3867a0d3dc8fe74e229c9f3326fb7bfeb/otel_instrumentation_claude_agent_sdk-0.0.3-py3-none-any.whl", hash = "sha256:3e5ee366b57c6392aed77f7bbac622951ae74183c235be78613ec1eff3f21f7c", size = 16877, upload-time = "2026-03-01T01:56:12.06Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/ba/f3f539a5ea6b27729b1668d7854d8fc3459a61c49ed8aed7a1ca19041a27/otel_instrumentation_claude_agent_sdk-0.0.5-py3-none-any.whl", hash = "sha256:71291ff01fb619b0cc345ce8ec1af3b50860be88ca8bb18b298436af59aa1346", size = 25177, upload-time = "2026-05-22T00:58:13.757Z" },
 ]
 
 [[package]]
