@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Claude backend now defaults to settings isolation.** The spawned `claude` CLI subprocess no longer inherits plugins, skills, or hooks from `~/.claude` or `.claude/`. HoloDeck passes `setting_sources=[]` to the SDK unless the agent's YAML opts in via the new `claude.setting_sources` field. Accepted values: `user`, `project`, `local`, or `all`. **Migration:** if your agents relied on host-machine Claude config (e.g. a project `CLAUDE.md` or a custom skill), add `setting_sources: [project]` (or the layers you need) to the `claude:` block. See [Claude Backend → Settings isolation](guides/claude-backend.md#settings-isolation-plugins-skills-hooks).
+- **OTel instrumentation bumped to `otel-instrumentation-claude-agent-sdk>=0.0.6`**, which structurally fixes the frozen `from claude_agent_sdk import query` import path so `invoke_agent` / `execute_tool` spans are emitted regardless of how callers reference the SDK's top-level `query()`.
+
 ### Planned Features
 
 - **Deployment Engine**: Registry push (`holodeck deploy push`) and cloud deployment (`holodeck deploy run`)

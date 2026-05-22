@@ -402,6 +402,94 @@ class TestBuildOptions:
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_setting_sources_default_isolation(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Default (no claude block) → setting_sources=[] (SDK isolation mode).
+
+        Guarantees the spawned CLI subprocess does not inherit ~/.claude
+        plugins, skills, or hooks from the host machine.
+        """
+        build_options(
+            agent=_make_agent(),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["setting_sources"] == []
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_setting_sources_explicit_subset(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Explicit ['user'] passes through to the SDK verbatim."""
+        claude = ClaudeConfig(setting_sources=["user"])
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["setting_sources"] == ["user"]
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_setting_sources_explicit_empty_list(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """Explicit ``setting_sources=[]`` reaches the SDK as ``[]`` (not None).
+
+        Same effective behavior as the default, but exercises the
+        ``claude.setting_sources is not None`` branch in ``_build_options``
+        so a future regression flipping the condition would be caught.
+        """
+        claude = ClaudeConfig(setting_sources=[])
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["setting_sources"] == []
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_build_options_setting_sources_all_expanded(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """['all'] is expanded by the model validator before reaching the SDK."""
+        claude = ClaudeConfig(setting_sources=["all"])
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+
+        kwargs = mock_opts_cls.call_args[1]
+        assert kwargs["setting_sources"] == ["user", "project", "local"]
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
     def test_build_options_env_merges_auth_and_otel(
         self,
         mock_resolve: MagicMock,
@@ -1001,7 +1089,7 @@ class TestClaudeBackendInvokeOnce:
     """Tests for ClaudeBackend.invoke_once() — execution and result mapping."""
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_invoke_once_happy_path(self, mock_query: MagicMock) -> None:
         """T005: Mocked query() → correct ExecutionResult fields."""
         assistant = _make_assistant_message([_make_text_block("Hello world")])
@@ -1022,7 +1110,7 @@ class TestClaudeBackendInvokeOnce:
         assert result.num_turns == 1
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_invoke_once_surfaces_thinking_text(
         self, mock_query: MagicMock
     ) -> None:
@@ -1045,7 +1133,7 @@ class TestClaudeBackendInvokeOnce:
         assert result.thinking == "internal deliberation"
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_invoke_once_tool_extraction(self, mock_query: MagicMock) -> None:
         """T006: Tool calls and results extracted from content blocks."""
         tool_use = _make_tool_use_block("toolu_01", "kb_search", {"query": "refund"})
@@ -1075,7 +1163,7 @@ class TestClaudeBackendInvokeOnce:
         }
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_invoke_once_structured_output(self, mock_query: MagicMock) -> None:
         """T007: Structured output returned and response set to JSON string."""
         structured = {"name": "Widget", "price": 9.99}
@@ -1100,7 +1188,7 @@ class TestClaudeBackendInvokeOnce:
         assert result.response == json.dumps(structured)
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_invoke_once_structured_output_schema_failure(
         self, mock_query: MagicMock
     ) -> None:
@@ -1125,7 +1213,7 @@ class TestClaudeBackendInvokeOnce:
         assert "schema validation" in result.error_reason.lower()
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_invoke_once_max_turns_exceeded(self, mock_query: MagicMock) -> None:
         """T008: max_turns exceeded → is_error=True with partial response."""
         assistant = _make_assistant_message([_make_text_block("Partial response")])
@@ -1155,7 +1243,7 @@ class TestClaudeBackendRetry:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.asyncio")
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_retry_on_process_error_then_success(
         self, mock_query: MagicMock, mock_asyncio: MagicMock
     ) -> None:
@@ -1184,7 +1272,7 @@ class TestClaudeBackendRetry:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.asyncio")
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_retry_all_failures_raises(
         self, mock_query: MagicMock, mock_asyncio: MagicMock
     ) -> None:
@@ -1228,7 +1316,8 @@ class TestClaudeSessionStreaming:
 
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         with patch(
-            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
         ):
             chunks: list[str] = []
             async for chunk in session.send_streaming("Hi"):
@@ -1251,7 +1340,8 @@ class TestClaudeSessionStreaming:
 
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         with patch(
-            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
         ):
             result = await session.send("Reason about this")
 
@@ -1284,7 +1374,7 @@ class TestClaudeSessionStreaming:
             yield _make_result_message(session_id="sdk-stream-XYZ")
 
         with patch(
-            "holodeck.lib.backends.claude_backend.query",
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
             side_effect=fake_query_capture,
         ):
             async for _ in session.send_streaming("Turn 1"):
@@ -1317,7 +1407,10 @@ class TestClaudeSessionErrorTranslation:
 
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         with (
-            patch("holodeck.lib.backends.claude_backend.query", side_effect=fake_query),
+            patch(
+                "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+                side_effect=fake_query,
+            ),
             pytest.raises(BackendSessionError, match="subprocess terminated"),
         ):
             await session.send("hi")
@@ -1330,7 +1423,10 @@ class TestClaudeSessionErrorTranslation:
 
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         with (
-            patch("holodeck.lib.backends.claude_backend.query", side_effect=fake_query),
+            patch(
+                "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+                side_effect=fake_query,
+            ),
             pytest.raises(BackendSessionError, match="subprocess terminated"),
         ):
             await session.send("hi")
@@ -1343,7 +1439,10 @@ class TestClaudeSessionErrorTranslation:
 
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         with (
-            patch("holodeck.lib.backends.claude_backend.query", side_effect=fake_query),
+            patch(
+                "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+                side_effect=fake_query,
+            ),
             pytest.raises(BackendSessionError, match="subprocess terminated"),
         ):
             async for _ in session.send_streaming("hi"):
@@ -1357,7 +1456,10 @@ class TestClaudeSessionErrorTranslation:
 
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         with (
-            patch("holodeck.lib.backends.claude_backend.query", side_effect=fake_query),
+            patch(
+                "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+                side_effect=fake_query,
+            ),
             pytest.raises(BackendSessionError, match="subprocess terminated"),
         ):
             async for _ in session.send_streaming("hi"):
@@ -1391,7 +1493,8 @@ class TestClaudeSessionSend:
 
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         with patch(
-            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
         ):
             result = await session.send("Hi")
 
@@ -1421,7 +1524,8 @@ class TestClaudeSessionSend:
 
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         with patch(
-            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
         ):
             result = await session.send("search")
 
@@ -1452,7 +1556,8 @@ class TestClaudeSessionSend:
         # and produces a fresh, non-aliased options per turn.
         session = ClaudeSession(options=ClaudeAgentOptions())
         with patch(
-            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
         ):
             await session.send("Turn 1")
             await session.send("Turn 2")
@@ -1479,7 +1584,8 @@ class TestClaudeSessionSend:
 
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         with patch(
-            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
         ):
             await session.send("Hi")
 
@@ -1647,7 +1753,7 @@ class TestClaudeBackendLazyInit:
     """Tests for lazy-init — auto-initialize on first use."""
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_invoke_once_auto_initializes(self, mock_query: MagicMock) -> None:
         """T015a: invoke_once() without explicit initialize() auto-inits."""
         mock_query.return_value = _async_iter(
@@ -1718,7 +1824,7 @@ class TestClaudeBackendLazyInit:
         assert not hasattr(session, "_client")
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_no_double_init(self, mock_query: MagicMock) -> None:
         """T015c: Explicit initialize() + invoke_once() → no second init."""
         mock_query.return_value = _async_iter(
@@ -1756,7 +1862,7 @@ class TestClaudeBackendTeardown:
         assert backend._options is None
 
     @pytest.mark.asyncio
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_invoke_after_teardown_reinitializes(
         self, mock_query: MagicMock
     ) -> None:
@@ -2296,7 +2402,7 @@ class TestClaudeBackendExceptionGroup:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.asyncio")
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_exception_group_triggers_retry(
         self, mock_query: MagicMock, mock_asyncio: MagicMock
     ) -> None:
@@ -2326,7 +2432,7 @@ class TestClaudeBackendExceptionGroup:
 
     @pytest.mark.asyncio
     @patch(f"{_SDK_MODULE}.asyncio")
-    @patch(f"{_SDK_MODULE}.query")
+    @patch(f"{_SDK_MODULE}.claude_agent_sdk.query")
     async def test_exception_group_all_retries_raises(
         self, mock_query: MagicMock, mock_asyncio: MagicMock
     ) -> None:
@@ -2754,7 +2860,7 @@ class TestGracefulDegradation:
         result_msg = _make_result_message()
 
         with patch(
-            f"{_SDK_MODULE}.query",
+            f"{_SDK_MODULE}.claude_agent_sdk.query",
             return_value=_async_iter([assistant_msg, result_msg]),
         ):
             result = await backend.invoke_once("Hi")
@@ -3185,7 +3291,8 @@ class TestClaudeSessionP4Fields:
 
         session = ClaudeSession(options=MagicMock(spec=ClaudeAgentOptions))
         with patch(
-            "holodeck.lib.backends.claude_backend.query", side_effect=fake_query
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
         ):
             await asyncio.gather(session.send("a"), session.send("b"))
 

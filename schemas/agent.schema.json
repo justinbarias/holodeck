@@ -277,6 +277,11 @@
           "items": { "type": "string" },
           "description": "Tools that must never be used; takes precedence over allowed_tools"
         },
+        "setting_sources": {
+          "type": ["array", "null"],
+          "items": { "enum": ["user", "project", "local", "all"] },
+          "description": "Which Claude Code settings layers the spawned SDK subprocess loads. null (default) → HoloDeck passes [] to the SDK (full isolation; no ~/.claude or .claude/ plugins, skills, hooks). Any subset of [\"user\", \"project\", \"local\"] opts back in. [\"all\"] is sugar for all three and cannot be combined with other values. Include \"project\" if your agents rely on CLAUDE.md files."
+        },
         "i_understand_this_is_unsafe": {
           "type": "boolean",
           "default": false,

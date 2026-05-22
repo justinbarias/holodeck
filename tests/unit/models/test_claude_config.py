@@ -216,7 +216,38 @@ class TestClaudeConfig:
         assert config.max_budget_usd is None
         assert config.fallback_model is None
         assert config.disallowed_tools is None
+        assert config.setting_sources is None
         assert config.i_understand_this_is_unsafe is False
+
+    def test_setting_sources_explicit_subset_preserved(self) -> None:
+        """Subset of valid sources passes through unchanged."""
+        config = ClaudeConfig(setting_sources=["user"])
+        assert config.setting_sources == ["user"]
+
+    def test_setting_sources_explicit_empty_list_preserved(self) -> None:
+        """Empty list is preserved (explicit isolation, same effect as None)."""
+        config = ClaudeConfig(setting_sources=[])
+        assert config.setting_sources == []
+
+    def test_setting_sources_all_expands_to_three(self) -> None:
+        """['all'] is sugar for the full triplet."""
+        config = ClaudeConfig(setting_sources=["all"])
+        assert config.setting_sources == ["user", "project", "local"]
+
+    def test_setting_sources_all_mixed_rejected(self) -> None:
+        """'all' cannot be combined with other values."""
+        with pytest.raises(ValidationError, match="'all' cannot be combined"):
+            ClaudeConfig(setting_sources=["all", "user"])
+
+    def test_setting_sources_invalid_value_rejected(self) -> None:
+        """Unknown layer names are rejected by the Literal."""
+        with pytest.raises(ValidationError):
+            ClaudeConfig(setting_sources=["enterprise"])  # type: ignore[list-item]
+
+    def test_setting_sources_deduplicates(self) -> None:
+        """Duplicates collapse, order is preserved."""
+        config = ClaudeConfig(setting_sources=["user", "project", "user"])
+        assert config.setting_sources == ["user", "project"]
 
     def test_i_understand_this_is_unsafe_accepts_true(self) -> None:
         """spec 034 P1b: opt-in flag for permission_mode=acceptAll."""
