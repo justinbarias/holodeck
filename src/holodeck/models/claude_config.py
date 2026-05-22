@@ -309,6 +309,21 @@ class ClaudeConfig(BaseModel):
             "Tools that must never be used; takes precedence over allowed_tools."
         ),
     )
+    setting_sources: list[Literal["user", "project", "local", "all"]] | None = Field(
+        default=None,
+        description=(
+            "Which Claude Code settings layers the spawned SDK subprocess "
+            "should load. HoloDeck defaults to full isolation: when this is "
+            "``None`` (default), the backend passes ``[]`` to the SDK so the "
+            "subprocess does not inherit plugins, skills, hooks, etc. from "
+            "the host's ``~/.claude`` or the project's ``.claude/`` "
+            "directories. Set to any subset of ``['user', 'project', "
+            "'local']`` to opt back in, or to ``['all']`` as sugar for all "
+            "three. ``'all'`` cannot be combined with other values. "
+            "``'project'`` must be included if your agents rely on "
+            "``CLAUDE.md`` files."
+        ),
+    )
     i_understand_this_is_unsafe: bool = Field(
         default=False,
         description=(
@@ -344,6 +359,36 @@ class ClaudeConfig(BaseModel):
         """Normalize agents={} to agents=None (data-model.md rule 1)."""
         if self.agents == {}:
             self.agents = None
+        return self
+
+    @model_validator(mode="after")
+    def _normalize_setting_sources(self) -> "ClaudeConfig":
+        """Expand ``['all']`` and dedupe ``setting_sources``.
+
+        ``'all'`` is YAML sugar for ``['user', 'project', 'local']`` and may
+        not be combined with other values. ``None`` is preserved so the
+        backend can distinguish "unset" (apply HoloDeck's isolation default)
+        from "explicitly empty" (``[]`` is the same effect but user-stated).
+        """
+        if self.setting_sources is None:
+            return self
+        sources = list(self.setting_sources)
+        if "all" in sources:
+            if len(sources) > 1:
+                raise ValueError(
+                    "claude.setting_sources: 'all' cannot be combined with "
+                    "other values; use either ['all'] or a subset of "
+                    "['user', 'project', 'local']."
+                )
+            self.setting_sources = ["user", "project", "local"]
+            return self
+        seen: set[str] = set()
+        deduped: list[Literal["user", "project", "local", "all"]] = []
+        for src in sources:
+            if src not in seen:
+                seen.add(src)
+                deduped.append(src)
+        self.setting_sources = deduped
         return self
 
     @model_validator(mode="after")

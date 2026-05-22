@@ -200,7 +200,9 @@ embedding_provider:
 
 ## Claude Agent SDK Settings
 
-When using `model.provider: anthropic`, the agent.yaml accepts a top-level `claude:` section for backend-specific capabilities (permission modes, extended thinking, web search, subagents, bash, file_system, working_directory, max_turns, allowed_tools).
+When using `model.provider: anthropic`, the agent.yaml accepts a top-level `claude:` section for backend-specific capabilities (permission modes, extended thinking, web search, subagents, bash, file_system, working_directory, max_turns, allowed_tools, setting_sources).
+
+HoloDeck **defaults to settings isolation**: the spawned SDK subprocess does not inherit plugins, skills, or hooks from `~/.claude` or `.claude/`. Opt in per-agent via `claude.setting_sources` — see [Claude Backend: Settings isolation](claude-backend.md#settings-isolation-plugins-skills-hooks).
 
 See [Claude Backend](claude-backend.md) for the full reference and examples. The `claude` block is ignored for non-Anthropic providers.
 

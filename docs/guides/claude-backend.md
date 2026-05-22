@@ -251,6 +251,35 @@ claude:
     - web-search
 ```
 
+### Settings isolation (plugins, skills, hooks)
+
+The Claude Agent SDK spawns the `claude` CLI as a subprocess. By default the CLI loads **everything** it finds under `~/.claude/`, `.claude/`, and `.claude/settings.local.json` — plugins, skills, hooks, MCP servers, etc. That means an agent deployed from your laptop can silently inherit your personal Claude Code config, and the same agent deployed in CI/cloud gets a different setup.
+
+HoloDeck **defaults to full isolation**: when `claude.setting_sources` is unset, the backend passes `setting_sources=[]` to the SDK so the subprocess loads no settings layers. Your agent's behavior is determined solely by its `agent.yaml`.
+
+Opt back in only when you need it:
+
+```yaml
+claude:
+  setting_sources:
+    - project        # loads .claude/settings.json (and CLAUDE.md)
+```
+
+Accepted values:
+
+| Value       | Loads                                        |
+|-------------|----------------------------------------------|
+| `user`      | `~/.claude/settings.json` (global)           |
+| `project`   | `.claude/settings.json` and `CLAUDE.md`      |
+| `local`     | `.claude/settings.local.json` (gitignored)   |
+| `all`       | sugar for `[user, project, local]` — cannot be combined with other entries |
+
+Notes:
+
+- Include `project` if your agent depends on `CLAUDE.md`.
+- The default is `null` → HoloDeck sends `[]`. Setting an empty list explicitly (`setting_sources: []`) has the same effect.
+- `all` is rejected if mixed with other values; use either `[all]` or any subset of the three concrete layers.
+
 ### Embedding provider requirement
 
 Anthropic does not provide embedding models. When you combine `model.provider: anthropic` with **vectorstore** or **hierarchical_document** tools, you **must** define an `embedding_provider` at the agent level:
@@ -450,6 +479,7 @@ Anthropic's [SDK hosting documentation](https://docs.anthropic.com/en/api/agent-
 | `file_system`        | object         | -             | `{ read: bool, write: bool, edit: bool }`                                |
 | `agents`             | map<str, spec> | -             | Named subagents (see Subagents above)                                    |
 | `allowed_tools`      | list of strings | all tools    | Explicit tool allowlist                                                  |
+| `setting_sources`    | list of `user`\|`project`\|`local`\|`all` | `null` → `[]` (isolation) | Which Claude Code settings layers the spawned SDK subprocess loads. See [Settings isolation](#settings-isolation-plugins-skills-hooks) below. |
 | `session_memory_estimate_mib` | int (50–2000) | `500`  | Per-active-turn memory budget; drives the concurrency cap (see [Production considerations](#production-considerations-memory-and-concurrency)) |
 | `max_concurrent_sessions` | int (1–500) | derived    | Hard cap on concurrent active turns; auto-derived from cgroup memory when omitted |
 

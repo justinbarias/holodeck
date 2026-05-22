@@ -16,12 +16,12 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any, cast
 
+import claude_agent_sdk
 import jsonschema
 from claude_agent_sdk import (
     ClaudeAgentOptions,
     HookMatcher,
     ProcessError,
-    query,
 )
 from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
 from claude_agent_sdk.types import (
@@ -467,6 +467,17 @@ def build_options(
             ", ".join(auto_disallow),
         )
 
+    # Setting sources — HoloDeck defaults to SDK isolation mode so the spawned
+    # `claude` CLI subprocess does not silently inherit ~/.claude /
+    # .claude/ plugins, skills, hooks, etc. When unset, pass [] explicitly
+    # so the CLI receives `--setting-sources=` and skips its own load-everything
+    # default. Users opt back in via `claude.setting_sources`.
+    setting_sources: list[str] = (
+        list(claude.setting_sources)
+        if claude is not None and claude.setting_sources is not None
+        else []
+    )
+
     # Build the options dict
     opts_kwargs: dict[str, Any] = {
         "model": agent.model.name,
@@ -478,6 +489,7 @@ def build_options(
         "env": env,
         "cwd": cwd,
         "output_format": output_format,
+        "setting_sources": setting_sources,
     }
     if disallowed_tools is not None:
         opts_kwargs["disallowed_tools"] = disallowed_tools
@@ -810,7 +822,7 @@ class ClaudeSession:
                 structured_output: Any = None
 
                 msg_count = 0
-                async for msg in query(
+                async for msg in claude_agent_sdk.query(
                     prompt=_streaming_user_envelope(message), options=options
                 ):
                     msg_count += 1
@@ -902,7 +914,7 @@ class ClaudeSession:
                     options.resume = self._sdk_session_id
 
             try:
-                async for msg in query(
+                async for msg in claude_agent_sdk.query(
                     prompt=_streaming_user_envelope(message), options=options
                 ):
                     _maybe_emit_thinking_blocks(msg, self._tool_event_queue)
@@ -1142,7 +1154,9 @@ class ClaudeBackend:
         structured_output: Any = None
 
         prompt_iter = _wrap_prompt(message)
-        async for msg in query(prompt=prompt_iter, options=self._options):
+        async for msg in claude_agent_sdk.query(
+            prompt=prompt_iter, options=self._options
+        ):
             text_parts, tool_calls, tool_results, thinking_parts = _process_message(
                 msg, text_parts, tool_calls, tool_results, thinking_parts
             )
