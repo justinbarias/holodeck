@@ -70,6 +70,9 @@ nav:
     - Contributing: contributing.md
     - Changelog: CHANGELOG.md
 
+hooks:
+  - scripts/mkdocs_hooks.py
+
 plugins:
   - search:
       lang: en

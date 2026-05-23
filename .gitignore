@@ -35,6 +35,10 @@ metrics/*
 
 # mkdocs site
 /site
+# Copies of schemas/agent.schema.json staged into the docs tree by
+# scripts/mkdocs_hooks.py at build time. The canonical source is
+# schemas/agent.schema.json at the repo root.
+/docs/schemas/
 .holodeck/cache
 
 # samples folder

@@ -34,6 +34,10 @@ dependencies = [
     "mcp>=1.23",
     "inquirerpy>=0.3.4,<0.4.0",
     "fastapi>=0.115.0,<1.0.0",
+    # PYSEC-2026-161: pin starlette transitive (via fastapi/mcp) to the patched
+    # release. fastapi 0.128 and mcp 1.26 leave starlette unconstrained, so a
+    # direct pin is the only way to keep the lockfile on a non-vulnerable build.
+    "starlette>=1.0.1",
     "uvicorn[standard]>=0.34.0,<1.0.0",
     "ag-ui-protocol>=0.1.18,<1.0.0",
     "werkzeug>=3.1.6",
