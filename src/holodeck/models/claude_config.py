@@ -10,7 +10,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from holodeck.config.context import agent_base_dir
 
@@ -334,6 +334,16 @@ class ClaudeConfig(BaseModel):
             "Required to use permission_mode=acceptAll. Prefer declaring the "
             "specific tools your agent needs via the schema fields (bash, "
             "file_system, web_search) or claude.allowed_tools instead."
+        ),
+    )
+    disable_default_hooks: StrictBool = Field(
+        default=False,
+        description=(
+            "Disable HoloDeck-provided default hooks (credential redaction "
+            "PostToolUse hook). When True, the agent runs with ONLY "
+            "user-defined hooks. Loud warning emitted at load time. Spec "
+            "034 P2b. Note: OTel attribute redaction runs independently and "
+            "is NOT disabled by this flag."
         ),
     )
 
