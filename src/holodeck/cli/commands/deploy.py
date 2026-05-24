@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Private alias kept for backward compatibility with internal callers.
+# Private alias used by tests in this package; public API lives in validators.py.
 _agent_needs_nodejs = agent_needs_nodejs
 
 
