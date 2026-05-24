@@ -140,3 +140,21 @@ def test_build_options_omits_subprocess_env_scrub_when_disabled(
     assert any(
         "disable_subprocess_env_scrub" in record.message for record in caplog.records
     )
+
+
+def test_claude_agent_options_env_propagates_to_subprocess() -> None:
+    """Verify the env vars on ClaudeAgentOptions land in the spawned subprocess env.
+
+    Locks the SDK contract that ClaudeAgentOptions.env is spread into the
+    subprocess process_env. If a future SDK refactor changes this, the
+    test fails loudly.
+    """
+    import inspect
+
+    import claude_agent_sdk._internal.transport.subprocess_cli as sc
+
+    src = inspect.getsource(sc)
+    assert "**self._options.env" in src or "**options.env" in src, (
+        "SDK no longer spreads options.env into subprocess env — "
+        "spec 034 P2b env scrubbing contract is broken. Audit the change."
+    )

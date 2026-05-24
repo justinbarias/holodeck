@@ -133,3 +133,26 @@ async def test_post_tool_credential_redaction_passthrough_on_clean_output() -> N
     assert (
         "hookSpecificOutput" not in output or output.get("hookSpecificOutput") is None
     )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_post_tool_credential_redaction_handles_mcp_list_shape() -> None:
+    """MCP tools return a list of content blocks; redaction must preserve shape."""
+    payload = {
+        "tool_name": "mcp__filesystem__read",
+        "tool_use_id": "t3",
+        "tool_response": [
+            {"type": "text", "text": "config token: ghp_" + "z" * 36},
+            {"type": "text", "text": "no creds here"},
+        ],
+    }
+    output = await _post_tool_credential_redaction(payload, "t3", None)  # type: ignore[arg-type]
+    hso = output.get("hookSpecificOutput")
+    assert hso is not None
+    updated = hso.get("updatedToolOutput")
+    assert isinstance(updated, list)
+    assert len(updated) == 2
+    assert updated[0]["type"] == "text"
+    assert "[REDACTED:github-token]" in updated[0]["text"]
+    assert updated[1]["text"] == "no creds here"
