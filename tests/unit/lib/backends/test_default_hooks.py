@@ -58,9 +58,17 @@ def test_redact_credentials_handles_nested_structures() -> None:
 
 
 @pytest.mark.unit
-def test_credential_patterns_documented_count() -> None:
-    """Five credential shapes per spec 034 §'Default hook 2'."""
-    assert len(CREDENTIAL_PATTERNS) == 5
+def test_credential_patterns_include_expected_kinds() -> None:
+    """All expected credential kinds are present; tolerates new patterns added later."""
+    markers = {marker for marker, _ in CREDENTIAL_PATTERNS}
+    expected = {
+        "[REDACTED:anthropic-key]",
+        "[REDACTED:aws-access-key]",
+        "[REDACTED:github-token]",
+        "[REDACTED:jwt]",
+        "Bearer [REDACTED]",
+    }
+    assert expected <= markers
 
 
 @pytest.mark.unit
@@ -91,7 +99,7 @@ def test_redact_credentials_bounded_by_depth_cap(
 
     # Doesn't crash; some subtree was returned as-is (the guard fired).
     assert out is not None
-    assert any("recursion depth cap" in r.message for r in caplog.records)
+    assert sum(1 for r in caplog.records if "recursion depth cap" in r.message) >= 1
 
 
 @pytest.mark.unit
