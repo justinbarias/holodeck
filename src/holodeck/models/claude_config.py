@@ -346,6 +346,16 @@ class ClaudeConfig(BaseModel):
             "is NOT disabled by this flag."
         ),
     )
+    disable_subprocess_env_scrub: StrictBool = Field(
+        default=False,
+        description=(
+            "Disable HoloDeck's default-on subprocess env scrubbing "
+            "(CLAUDE_CODE_SUBPROCESS_ENV_SCRUB + CLAUDE_CODE_MCP_ALLOWLIST_ENV). "
+            "When True, Bash tool subprocesses and stdio MCP servers inherit "
+            "the full agent container env including Anthropic and cloud "
+            "provider credentials. Spec 034 P2b."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod

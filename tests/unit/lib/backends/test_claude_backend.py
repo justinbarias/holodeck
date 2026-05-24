@@ -532,9 +532,15 @@ class TestBuildOptions:
         assert env["CLAUDE_CODE_ENABLE_TELEMETRY"] == "1"
         assert env["OTEL_EXPORTER"] == "otlp"
 
-        # env contains CLAUDECODE override + auth_env + otel_env
+        # env contains CLAUDECODE override + auth_env + otel_env + scrub flags
         # (process env vars like HTTP_PROXY are not leaked)
-        assert env == {"CLAUDECODE": "", **auth_env, **otel_env}
+        assert env == {
+            "CLAUDECODE": "",
+            **auth_env,
+            **otel_env,
+            "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
+            "CLAUDE_CODE_MCP_ALLOWLIST_ENV": "1",
+        }
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")

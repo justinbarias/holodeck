@@ -82,3 +82,61 @@ def test_build_options_omits_default_hooks_when_disabled(
     hooks = kwargs.get("hooks")
     assert hooks is None or "PostToolUse" not in (hooks or {})
     assert any("disable_default_hooks" in record.message for record in caplog.records)
+
+
+@pytest.mark.unit
+@patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+@patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+def test_build_options_sets_subprocess_env_scrub_by_default(
+    mock_resolve: object, mock_opts_cls: object
+) -> None:
+    """Subprocess env scrub flags are injected into env by default."""
+    agent = _minimal_agent()
+    build_options(
+        agent=agent,
+        tool_server=None,
+        tool_names=[],
+        mcp_configs={},
+        auth_env={},
+        otel_env={},
+        mode="test",
+    )
+
+    import unittest.mock as um
+
+    assert isinstance(mock_opts_cls, um.MagicMock)
+    kwargs = mock_opts_cls.call_args[1]
+    env = kwargs.get("env") or {}
+    assert env.get("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB") == "1"
+    assert env.get("CLAUDE_CODE_MCP_ALLOWLIST_ENV") == "1"
+
+
+@pytest.mark.unit
+@patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+@patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+def test_build_options_omits_subprocess_env_scrub_when_disabled(
+    mock_resolve: object, mock_opts_cls: object, caplog: pytest.LogCaptureFixture
+) -> None:
+    """disable_subprocess_env_scrub=True drops both flags and logs a warning."""
+    agent = _minimal_agent(ClaudeConfig(disable_subprocess_env_scrub=True))
+    with caplog.at_level(logging.WARNING):
+        build_options(
+            agent=agent,
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+
+    import unittest.mock as um
+
+    assert isinstance(mock_opts_cls, um.MagicMock)
+    kwargs = mock_opts_cls.call_args[1]
+    env = kwargs.get("env") or {}
+    assert "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB" not in env
+    assert "CLAUDE_CODE_MCP_ALLOWLIST_ENV" not in env
+    assert any(
+        "disable_subprocess_env_scrub" in record.message for record in caplog.records
+    )

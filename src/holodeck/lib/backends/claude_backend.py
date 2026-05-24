@@ -542,6 +542,29 @@ def build_options(
         if merged:
             opts_kwargs["hooks"] = merged
 
+    # Spec 034 P2b — default-on subprocess env scrubbing. These two flags
+    # tell the Claude CLI to strip Anthropic/cloud creds from tool
+    # subprocesses (Bash, etc.) and to spawn stdio MCP servers with only
+    # their declared env (not the full inherited shell env). They don't
+    # affect the SDK subprocess's own env (which inherits everything from
+    # this serve process — see P3 for the structural fix). Opt out via
+    # `claude.disable_subprocess_env_scrub: true` in agent.yaml.
+    env_overrides = dict(opts_kwargs.get("env") or {})
+    if claude is not None and claude.disable_subprocess_env_scrub:
+        logger.warning(
+            "Subprocess env scrubbing DISABLED for agent '%s' "
+            "(tool subprocesses and stdio MCP servers will inherit the "
+            "full agent container env including credentials). To re-enable, "
+            "remove `claude.disable_subprocess_env_scrub: true` from "
+            "agent.yaml.",
+            agent.name,
+        )
+    else:
+        env_overrides.setdefault("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1")
+        env_overrides.setdefault("CLAUDE_CODE_MCP_ALLOWLIST_ENV", "1")
+    if env_overrides:
+        opts_kwargs["env"] = env_overrides
+
     return ClaudeAgentOptions(**opts_kwargs)
 
 
