@@ -1050,7 +1050,7 @@ class HybridSearchExecutor:
             ]
             prefetch.append(
                 qm.Prefetch(
-                    filter=qm.Filter(should=text_clauses),
+                    filter=qm.Filter(should=text_clauses),  # type: ignore[arg-type]
                     limit=prefetch_limit,
                 )
             )

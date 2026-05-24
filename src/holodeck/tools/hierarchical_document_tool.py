@@ -960,7 +960,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 collection_name=coll_name,
                 field_name="searchable_text",
                 field_schema=models.TextIndexParams(
-                    type="text",
+                    type=models.TextIndexType.TEXT,
                     tokenizer=models.TokenizerType.WORD,
                     min_token_len=2,
                     max_token_len=20,

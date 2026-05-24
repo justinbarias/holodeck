@@ -47,12 +47,10 @@ class RedactingSpanProcessor(SpanProcessor):
     processor see the redacted payload.
     """
 
-    def on_start(  # type: ignore[override]
-        self, span: Span, parent_context: Context | None = None
-    ) -> None:
+    def on_start(self, span: Span, parent_context: Context | None = None) -> None:
         return None
 
-    def on_end(self, span: ReadableSpan) -> None:  # type: ignore[override]
+    def on_end(self, span: ReadableSpan) -> None:
         attributes = getattr(span, "_attributes", None)
         if not attributes:
             return
@@ -68,8 +66,8 @@ class RedactingSpanProcessor(SpanProcessor):
                     key,
                 )
 
-    def shutdown(self) -> None:  # type: ignore[override]
+    def shutdown(self) -> None:
         return None
 
-    def force_flush(self, timeout_millis: int = 30_000) -> bool:  # type: ignore[override]
+    def force_flush(self, timeout_millis: int = 30_000) -> bool:
         return True
