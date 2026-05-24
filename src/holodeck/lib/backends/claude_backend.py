@@ -561,6 +561,10 @@ def build_options(
         )
     else:
         env_overrides.setdefault("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1")
+        # Note: this scrubs the SDK-spawned subprocess env for stdio MCP servers.
+        # Operators must declare any inherited env vars (HOME, PATH, provider creds)
+        # on the MCP tool's `env` block — see docs/security/prompt-injection-defenses.md
+        # §"Operator footgun".
         env_overrides.setdefault("CLAUDE_CODE_MCP_ALLOWLIST_ENV", "1")
     if env_overrides:
         opts_kwargs["env"] = env_overrides

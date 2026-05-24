@@ -84,6 +84,39 @@ override in the agent config takes precedence.
 A `WARNING`-level log line is emitted at agent load time. Use this only when a
 tool explicitly needs access to env vars that would otherwise be scrubbed.
 
+### Operator footgun: stdio MCP servers and `CLAUDE_CODE_MCP_ALLOWLIST_ENV`
+
+When `CLAUDE_CODE_MCP_ALLOWLIST_ENV=1` is set (default-on), stdio MCP
+servers are spawned with **only the env vars explicitly declared on the
+MCP tool's `env` block** plus a minimal baseline. If your MCP server
+relies on inherited environment — common cases include:
+
+- `HOME` for user-specific config (`~/.config/...`)
+- `PATH` for resolving subprocess binaries
+- `TMPDIR` for scratch files
+- Provider-specific env vars (`AZURE_OPENAI_API_KEY`, `OPENAI_API_KEY`, ...)
+
+...the server will get an empty value and may crash or behave
+unexpectedly. The fix is to **declare every required env var explicitly**
+on the MCP tool's `env` block in your `agent.yaml`:
+
+```yaml
+tools:
+  - type: mcp
+    name: qdrant
+    command: ["python", "-m", "qdrant_mcp"]
+    env:
+      QDRANT_URL: "https://my-cluster.qdrant.io"
+      QDRANT_API_KEY: "${env:QDRANT_API_KEY}"
+      # If the server actually needs HOME or PATH, declare them too:
+      # HOME: "/var/holodeck/work"
+```
+
+If a stdio MCP server is failing with `command not found`, `permission
+denied`, or `cannot find module`, missing inherited env is the most likely
+cause. Set `claude.disable_subprocess_env_scrub: true` as a diagnostic
+escape hatch, then re-add the specific env vars the server needs.
+
 ### Runtime dependency: `bubblewrap`
 
 The Claude Agent SDK enforces `bubblewrap` (`bwrap`) for the subprocess
