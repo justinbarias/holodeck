@@ -24,6 +24,10 @@ from claude_agent_sdk.types import HookContext, HookEvent, SyncHookJSONOutput
 
 logger = logging.getLogger(__name__)
 
+# One-shot guard: emit the depth-cap warning at most once per process to
+# avoid flooding logs when a deeply-nested payload hits the recursion limit.
+_warned_depth_cap = False
+
 
 # ---------------------------------------------------------------------------
 # Credential redaction patterns. Order matters — earlier patterns win on
@@ -49,7 +53,7 @@ CREDENTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
     (
         "Bearer [REDACTED]",
-        re.compile(r"Bearer\s+[A-Za-z0-9_\-\.=]+"),
+        re.compile(r"Bearer\s+[A-Za-z0-9_.=\-]{20,}"),
     ),
 )
 
@@ -84,12 +88,15 @@ def redact_credentials(value: Any, _depth: int = 0) -> Any:
         The same structure with credential-shaped strings replaced by
         ``[REDACTED:<kind>]`` markers.
     """
+    global _warned_depth_cap
     if _depth >= _MAX_REDACTION_DEPTH:
-        logger.warning(
-            "redact_credentials: recursion depth cap (%d) reached; "
-            "returning subtree unredacted",
-            _MAX_REDACTION_DEPTH,
-        )
+        if not _warned_depth_cap:
+            logger.warning(
+                "redact_credentials: recursion depth cap (%d) reached "
+                "(further occurrences suppressed); returning subtree unredacted",
+                _MAX_REDACTION_DEPTH,
+            )
+            _warned_depth_cap = True
         return value
     if isinstance(value, str):
         return _redact_string(value)
