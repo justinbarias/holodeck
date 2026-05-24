@@ -212,7 +212,7 @@ class AgentServer:
             return
 
         try:
-            validate_nodejs()
+            validate_nodejs(self.agent_config)
             validate_credentials(self.agent_config.model)
         except ConfigError as e:
             raise BackendInitError(str(e)) from e

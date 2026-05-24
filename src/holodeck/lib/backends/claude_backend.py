@@ -1074,7 +1074,7 @@ class ClaudeBackend:
             claude = agent.claude
 
             # 1. Node.js prerequisite
-            validate_nodejs()
+            validate_nodejs(agent)
 
             # 2. Credentials
             auth_env = validate_credentials(agent.model)
