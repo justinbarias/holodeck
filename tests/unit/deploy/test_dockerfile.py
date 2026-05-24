@@ -70,9 +70,9 @@ class TestGenerateDockerfile:
             instruction_files=["instructions.md", "prompts/system.md"],
         )
 
-        # Should have COPY for each instruction file
-        assert "COPY instructions.md" in dockerfile
-        assert "COPY prompts/system.md" in dockerfile
+        # Should have COPY for each instruction file (root-owned, spec 034 P2a)
+        assert "COPY --chown=root:root instructions.md" in dockerfile
+        assert "COPY --chown=root:root prompts/system.md" in dockerfile
 
     def test_dockerfile_data_directories_copy(self) -> None:
         """Test COPY statements for data directories."""
@@ -85,9 +85,9 @@ class TestGenerateDockerfile:
             data_directories=["data/", "knowledge/"],
         )
 
-        # Should have COPY for each data directory
-        assert "COPY data/" in dockerfile
-        assert "COPY knowledge/" in dockerfile
+        # Should have COPY for each data directory (root-owned, spec 034 P2a)
+        assert "COPY --chown=root:root data/" in dockerfile
+        assert "COPY --chown=root:root knowledge/" in dockerfile
 
     def test_dockerfile_protocol_configuration_rest(self) -> None:
         """Test protocol configuration for REST."""
