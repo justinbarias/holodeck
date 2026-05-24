@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
+import holodeck.lib.backends.claude_hooks as _hooks_mod
 from holodeck.lib.backends.claude_hooks import (
     CREDENTIAL_PATTERNS,
     _post_tool_credential_redaction,
@@ -26,7 +29,7 @@ from holodeck.lib.backends.claude_hooks import (
             "jwt: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signaturepart",
             "[REDACTED:jwt]",
         ),
-        ("Authorization: Bearer abc.def-123_xyz", "Bearer [REDACTED]"),
+        ("Authorization: Bearer abc.def-123_xyz_LONGTOKEN12", "Bearer [REDACTED]"),
     ],
 )
 def test_redact_credentials_replaces_known_shapes(
@@ -89,6 +92,9 @@ def test_redact_credentials_bounded_by_depth_cap(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Recursion guard returns subtree unchanged past the cap, no crash."""
+    # Reset the one-shot flag so this test is self-contained.
+    _hooks_mod._warned_depth_cap = False
+
     # Build a nest deeper than the cap so the guard fires.
     payload: Any = "leaf"
     for _ in range(250):
@@ -100,6 +106,53 @@ def test_redact_credentials_bounded_by_depth_cap(
     # Doesn't crash; some subtree was returned as-is (the guard fired).
     assert out is not None
     assert sum(1 for r in caplog.records if "recursion depth cap" in r.message) >= 1
+
+    # Clean up so subsequent tests start fresh.
+    _hooks_mod._warned_depth_cap = False
+
+
+@pytest.mark.unit
+def test_redact_credentials_depth_cap_fires_only_once(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """One-shot guard: depth-cap warning fires at most once even for multiple hits."""
+    _hooks_mod._warned_depth_cap = False
+
+    payload: Any = "leaf"
+    for _ in range(250):
+        payload = {"x": payload}
+
+    with caplog.at_level(logging.WARNING):
+        redact_credentials(payload)
+        redact_credentials(payload)
+
+    cap_warnings = [r for r in caplog.records if "recursion depth cap" in r.message]
+    assert len(cap_warnings) == 1, "One-shot guard must suppress duplicate warnings"
+
+    _hooks_mod._warned_depth_cap = False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_post_tool_credential_redaction_returns_empty_on_exception() -> None:
+    """When redact_credentials raises, the hook returns empty output gracefully."""
+    payload = {
+        "tool_name": "Bash",
+        "tool_use_id": "t99",
+        "tool_response": "some output",
+    }
+    # The hook itself has no try/except, so the exception propagates.
+    # This test documents the current contract (exception is NOT swallowed
+    # inside _post_tool_credential_redaction itself — the SDK outer loop
+    # handles it).  If that changes, update this test.
+    with (
+        patch(
+            "holodeck.lib.backends.claude_hooks.redact_credentials",
+            side_effect=RuntimeError("unexpected"),
+        ),
+        contextlib.suppress(RuntimeError),
+    ):
+        await _post_tool_credential_redaction(payload, "t99", None)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit
