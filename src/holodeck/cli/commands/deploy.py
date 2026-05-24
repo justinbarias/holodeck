@@ -7,7 +7,6 @@ and deploying agents to cloud providers.
 from __future__ import annotations
 
 import fnmatch
-import logging
 import shutil
 import sys
 import tempfile
@@ -91,8 +90,7 @@ def _warn_if_credential_files_in_copy_surface(
                     break
 
     if flagged:
-        _module_logger = logging.getLogger(__name__)
-        _module_logger.warning(
+        logger.warning(
             "Found credential-shaped files in the Docker COPY surface — "
             "they will be baked into the agent image:\n  - %s\n"
             "Remove them, add them to a `.dockerignore`-equivalent exclude "
