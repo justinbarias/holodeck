@@ -511,6 +511,37 @@ def build_options(
                 for name, spec in claude.agents.items()
             }
 
+    # Spec 034 P2b — merge HoloDeck default hooks (credential-redaction
+    # PostToolUse) ahead of any user-supplied hooks. Opt-out by setting
+    # `claude.disable_default_hooks: true` in agent.yaml. Bash hardening
+    # is handled by SDK permission rules + P1b auto-disallow.
+    from holodeck.lib.backends.claude_hooks import build_default_hooks
+
+    user_hooks: dict[Any, list[Any]] = opts_kwargs.get("hooks") or {}
+    if claude is not None and claude.disable_default_hooks:
+        logger.warning(
+            "HoloDeck default hooks DISABLED for agent '%s' (credential "
+            "redaction PostToolUse hook will NOT run). OTel attribute "
+            "redaction is unaffected. To re-enable, remove "
+            "`claude.disable_default_hooks: true` from agent.yaml.",
+            agent.name,
+        )
+        if user_hooks:
+            opts_kwargs["hooks"] = user_hooks
+    else:
+        default_hooks = build_default_hooks()
+        merged: dict[Any, list[Any]] = {}
+        # Default hooks first so they short-circuit when they deny.
+        for event, matchers in default_hooks.items():
+            merged[event] = list(matchers)
+        for event, matchers in user_hooks.items():
+            if event in merged:
+                merged[event] = merged[event] + list(matchers)
+            else:
+                merged[event] = list(matchers)
+        if merged:
+            opts_kwargs["hooks"] = merged
+
     return ClaudeAgentOptions(**opts_kwargs)
 
 
