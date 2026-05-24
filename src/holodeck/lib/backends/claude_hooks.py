@@ -61,7 +61,10 @@ def _redact_string(text: str) -> str:
     return text
 
 
-def redact_credentials(value: Any) -> Any:
+_MAX_REDACTION_DEPTH = 200
+
+
+def redact_credentials(value: Any, _depth: int = 0) -> Any:
     """Recursively redact credential-shaped substrings inside *value*.
 
     Walks strings, dicts, lists, and tuples. Non-string scalars (int,
@@ -70,21 +73,32 @@ def redact_credentials(value: Any) -> Any:
     reuses this helper, so the behaviour must stay safe for arbitrary
     JSON-shaped input.
 
+    Recursion is bounded at ``_MAX_REDACTION_DEPTH`` levels. If the cap is
+    reached the subtree is returned unredacted and a warning is logged once.
+
     Args:
         value: Tool output, span attribute, or arbitrary JSON-shaped data.
+        _depth: Internal recursion counter; callers should not set this.
 
     Returns:
         The same structure with credential-shaped strings replaced by
         ``[REDACTED:<kind>]`` markers.
     """
+    if _depth >= _MAX_REDACTION_DEPTH:
+        logger.warning(
+            "redact_credentials: recursion depth cap (%d) reached; "
+            "returning subtree unredacted",
+            _MAX_REDACTION_DEPTH,
+        )
+        return value
     if isinstance(value, str):
         return _redact_string(value)
     if isinstance(value, dict):
-        return {k: redact_credentials(v) for k, v in value.items()}
+        return {k: redact_credentials(v, _depth + 1) for k, v in value.items()}
     if isinstance(value, list):
-        return [redact_credentials(v) for v in value]
+        return [redact_credentials(v, _depth + 1) for v in value]
     if isinstance(value, tuple):
-        return tuple(redact_credentials(v) for v in value)
+        return tuple(redact_credentials(v, _depth + 1) for v in value)
     return value
 
 

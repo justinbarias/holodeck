@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 import pytest
 
 from holodeck.lib.backends.claude_hooks import (
     CREDENTIAL_PATTERNS,
+    _post_tool_credential_redaction,
     build_default_hooks,
     redact_credentials,
 )
@@ -70,3 +74,62 @@ def test_build_default_hooks_returns_post_tool_use_only() -> None:
     assert "PreToolUse" not in hooks
     assert "PostToolUse" in hooks
     assert len(hooks["PostToolUse"]) == 1
+
+
+@pytest.mark.unit
+def test_redact_credentials_bounded_by_depth_cap(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Recursion guard returns subtree unchanged past the cap, no crash."""
+    # Build a nest deeper than the cap so the guard fires.
+    payload: Any = "leaf"
+    for _ in range(250):
+        payload = {"x": payload}
+
+    with caplog.at_level(logging.WARNING):
+        out = redact_credentials(payload)
+
+    # Doesn't crash; some subtree was returned as-is (the guard fired).
+    assert out is not None
+    assert any("recursion depth cap" in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_post_tool_credential_redaction_bash_dict_returns_updated_output() -> (
+    None
+):
+    """SDK contract: PostToolUseHookSpecificOutput.updatedToolOutput is populated."""
+    payload = {
+        "tool_name": "Bash",
+        "tool_use_id": "t1",
+        "tool_response": {
+            "stdout": "echoed GH_TOKEN=ghp_" + "a" * 36,
+            "stderr": "",
+            "interrupted": False,
+        },
+    }
+    output = await _post_tool_credential_redaction(payload, "t1", None)  # type: ignore[arg-type]
+    hso = output.get("hookSpecificOutput")
+    assert hso is not None
+    assert hso.get("hookEventName") == "PostToolUse"
+    updated = hso.get("updatedToolOutput")
+    assert updated is not None
+    assert "[REDACTED:github-token]" in updated["stdout"]
+    assert updated["stderr"] == ""
+    assert updated["interrupted"] is False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_post_tool_credential_redaction_passthrough_on_clean_output() -> None:
+    """No hookSpecificOutput when there is nothing to redact."""
+    payload = {
+        "tool_name": "Read",
+        "tool_use_id": "t2",
+        "tool_response": "Retrieved 42 rows",
+    }
+    output = await _post_tool_credential_redaction(payload, "t2", None)  # type: ignore[arg-type]
+    assert (
+        "hookSpecificOutput" not in output or output.get("hookSpecificOutput") is None
+    )
