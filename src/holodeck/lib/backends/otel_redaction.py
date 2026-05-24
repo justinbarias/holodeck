@@ -19,6 +19,9 @@ from holodeck.lib.backends.claude_hooks import redact_credentials
 
 logger = logging.getLogger(__name__)
 
+# One-shot guard: emit the SDK-shape-drift warning at most once per process.
+_warned_missing_attributes_attr = False
+
 # Span attribute name prefixes whose values are scrubbed. Anything with a
 # different prefix is left alone — these namespaces are the ones the GenAI
 # instrumentor (`otel-instrumentation-claude-agent-sdk`) populates with
@@ -51,7 +54,17 @@ class RedactingSpanProcessor(SpanProcessor):
         return None
 
     def on_end(self, span: ReadableSpan) -> None:
+        global _warned_missing_attributes_attr
         attributes = getattr(span, "_attributes", None)
+        if attributes is None:
+            if not _warned_missing_attributes_attr:
+                logger.error(
+                    "RedactingSpanProcessor: span has no `_attributes` attr "
+                    "— OTel SDK may have changed shape. Trace redaction is "
+                    "NOT running. Audit the OTel SDK version."
+                )
+                _warned_missing_attributes_attr = True
+            return
         if not attributes:
             return
         for key in list(attributes.keys()):
