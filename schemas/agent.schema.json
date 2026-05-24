@@ -1,389 +1,641 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://useholodeck.ai/schemas/agent.schema.json",
-  "title": "HoloDeck Agent Configuration",
-  "description": "Schema for HoloDeck AI agent YAML configuration files",
-  "type": "object",
-  "required": ["name", "model", "instructions"],
-  "additionalProperties": false,
-  "not": {
-    "required": ["test_cases", "test_cases_file"],
-    "description": "test_cases and test_cases_file are mutually exclusive"
-  },
-  "properties": {
-    "name": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Agent identifier"
-    },
-    "description": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Human-readable description"
-    },
-    "author": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Author of the agent"
-    },
-    "model": {
-      "$ref": "#/$defs/LLMProvider"
-    },
-    "embedding_provider": {
-      "oneOf": [
-        { "$ref": "#/$defs/LLMProvider" },
-        { "type": "null" }
-      ],
-      "description": "Provider for embedding generation. Required when provider: anthropic + vectorstore/hierarchical tools. Supports openai and azure_openai only."
-    },
-    "claude": {
-      "oneOf": [
-        { "$ref": "#/$defs/ClaudeConfig" },
-        { "type": "null" }
-      ],
-      "description": "Claude Agent SDK-specific settings. Applicable only when model.provider: anthropic."
-    },
-    "instructions": {
-      "$ref": "#/$defs/Instructions"
-    },
-    "response_format": {
-      "oneOf": [{ "type": "object" }, { "type": "string" }, { "type": "null" }],
-      "description": "Response format schema (inline dict, file path, or null)"
-    },
-    "tools": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/Tool" },
-      "maxItems": 50,
-      "description": "Agent tools (vectorstore, function, mcp, prompt)"
-    },
-    "tool_filtering": {
-      "$ref": "#/$defs/ToolFilterConfig",
-      "description": "Automatic tool filtering configuration. When enabled, dynamically filters tools per request based on semantic similarity to reduce token usage."
-    },
-    "evaluations": {
-      "$ref": "#/$defs/EvaluationConfig",
-      "description": "Evaluation configuration with 'model' (optional default LLM) and 'metrics' array"
-    },
-    "test_cases": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/TestCase" },
-      "maxItems": 100,
-      "description": "Test scenarios. Mutually exclusive with 'test_cases_file'."
-    },
-    "test_cases_file": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Path to an external YAML file containing test cases (resolved relative to the agent.yaml directory). The file may be a top-level list of test-case dicts or a dict with a 'test_cases:' key. Mutually exclusive with the inline 'test_cases' field."
-    },
-    "execution": {
-      "$ref": "#/$defs/ExecutionConfig"
-    },
-    "observability": {
-      "$ref": "#/$defs/ObservabilityConfig",
-      "description": "OpenTelemetry observability configuration"
-    },
-    "deployment": {
-      "$ref": "#/$defs/DeploymentConfig",
-      "description": "Cloud deployment configuration for containerizing and deploying the agent"
-    }
-  },
   "$defs": {
-    "ProviderEnum": {
-      "type": "string",
-      "enum": ["openai", "azure_openai", "anthropic", "ollama"],
-      "description": "LLM provider type"
+    "AWSAppRunnerConfig": {
+      "additionalProperties": false,
+      "description": "AWS App Runner deployment configuration.\n\nAttributes:\n    region: AWS region for deployment\n    cpu: vCPU allocation (1, 2, or 4)\n    memory: Memory allocation in MB (2048, 3072, 4096, 8192, or 12288)\n    ecr_role_arn: IAM role ARN for ECR access\n    health_check_path: Path for health checks\n    auto_scaling_min: Minimum instances\n    auto_scaling_max: Maximum instances",
+      "properties": {
+        "region": {
+          "description": "AWS region for deployment",
+          "title": "Region",
+          "type": "string"
+        },
+        "cpu": {
+          "default": 1,
+          "description": "vCPU allocation (1, 2, or 4)",
+          "title": "Cpu",
+          "type": "integer"
+        },
+        "memory": {
+          "default": 2048,
+          "description": "Memory allocation in MB",
+          "title": "Memory",
+          "type": "integer"
+        },
+        "ecr_role_arn": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IAM role ARN for ECR access",
+          "title": "Ecr Role Arn"
+        },
+        "health_check_path": {
+          "default": "/health",
+          "description": "Path for health checks",
+          "title": "Health Check Path",
+          "type": "string"
+        },
+        "auto_scaling_min": {
+          "default": 1,
+          "description": "Minimum instances",
+          "maximum": 25,
+          "minimum": 1,
+          "title": "Auto Scaling Min",
+          "type": "integer"
+        },
+        "auto_scaling_max": {
+          "default": 5,
+          "description": "Maximum instances",
+          "maximum": 25,
+          "minimum": 1,
+          "title": "Auto Scaling Max",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "region"
+      ],
+      "title": "AWSAppRunnerConfig",
+      "type": "object"
     },
     "AuthProvider": {
-      "type": "string",
-      "enum": ["api_key", "oauth_token", "bedrock", "vertex", "foundry", "custom"],
-      "description": "Authentication provider for Anthropic models"
+      "description": "Authentication method for Anthropic provider.",
+      "enum": [
+        "api_key",
+        "oauth_token",
+        "bedrock",
+        "vertex",
+        "foundry",
+        "custom"
+      ],
+      "title": "AuthProvider",
+      "type": "string"
     },
-    "PermissionMode": {
-      "type": "string",
-      "enum": ["manual", "acceptEdits", "acceptAll"],
-      "default": "manual",
-      "description": "Permission level for agent autonomy"
-    },
-    "ExtendedThinkingConfig": {
-      "type": "object",
+    "AzureContainerAppsConfig": {
       "additionalProperties": false,
+      "description": "Azure Container Apps deployment configuration.\n\nAttributes:\n    subscription_id: Azure subscription ID (UUID)\n    resource_group: Azure resource group name\n    environment_name: Container Apps environment name\n    location: Azure region for deployment\n    cpu: vCPU allocation\n    memory: Memory allocation (e.g., 2Gi)\n    ingress_external: Whether ingress is external\n    min_replicas: Minimum replicas\n    max_replicas: Maximum replicas",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable extended thinking (deep reasoning)"
+        "subscription_id": {
+          "description": "Azure subscription ID (UUID)",
+          "title": "Subscription Id",
+          "type": "string"
         },
-        "budget_tokens": {
-          "type": "integer",
-          "minimum": 1000,
-          "maximum": 100000,
-          "default": 10000,
-          "description": "Token budget for extended thinking"
+        "resource_group": {
+          "description": "Azure resource group name",
+          "title": "Resource Group",
+          "type": "string"
+        },
+        "environment_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Container Apps environment name",
+          "title": "Environment Name"
+        },
+        "location": {
+          "default": "eastus",
+          "description": "Azure region for deployment",
+          "title": "Location",
+          "type": "string"
+        },
+        "cpu": {
+          "default": 1.0,
+          "description": "vCPU allocation (0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0). Default raised to 1.0 in spec 034 P1a \u2014 Anthropic's hosting guide recommends 1 CPU per Claude SDK instance, and the serve layer derives the default session cap from this value.",
+          "title": "Cpu",
+          "type": "number"
+        },
+        "memory": {
+          "default": "2Gi",
+          "description": "Memory allocation (e.g. 2Gi). Default raised to 2Gi in spec 034 P1a so concurrent SDK subprocesses fit in the cgroup limit. ACA requires memory_Gi == 2 * cpu_cores.",
+          "title": "Memory",
+          "type": "string"
+        },
+        "ingress_external": {
+          "default": false,
+          "description": "Whether ingress is reachable from the public internet. Default flipped to False in spec 034 P1a \u2014 operators must explicitly opt in to public ingress to avoid accidentally exposing internal-only agents.",
+          "title": "Ingress External",
+          "type": "boolean"
+        },
+        "min_replicas": {
+          "default": 0,
+          "description": "Minimum replicas",
+          "minimum": 0,
+          "title": "Min Replicas",
+          "type": "integer"
+        },
+        "max_replicas": {
+          "default": 10,
+          "description": "Maximum replicas",
+          "minimum": 1,
+          "title": "Max Replicas",
+          "type": "integer"
         }
       },
-      "description": "Extended reasoning (deep thinking) configuration"
+      "required": [
+        "subscription_id",
+        "resource_group"
+      ],
+      "title": "AzureContainerAppsConfig",
+      "type": "object"
+    },
+    "AzureMonitorExporterConfig": {
+      "additionalProperties": false,
+      "description": "Azure Monitor exporter configuration.\n\nExports telemetry directly to Azure Monitor / Application Insights.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Enable Azure Monitor exporter",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "connection_string": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Application Insights connection string",
+          "title": "Connection String"
+        },
+        "disable_offline_storage": {
+          "default": false,
+          "description": "Disable offline storage for retry",
+          "title": "Disable Offline Storage",
+          "type": "boolean"
+        },
+        "storage_directory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Custom directory for offline storage",
+          "title": "Storage Directory"
+        }
+      },
+      "title": "AzureMonitorExporterConfig",
+      "type": "object"
     },
     "BashConfig": {
-      "type": "object",
       "additionalProperties": false,
+      "description": "Shell command execution settings.",
       "properties": {
         "enabled": {
-          "type": "boolean",
           "default": false,
-          "description": "Enable shell command execution"
+          "title": "Enabled",
+          "type": "boolean"
         },
         "excluded_commands": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": [],
-          "description": "List of disallowed commands"
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Commands",
+          "type": "array"
         },
         "allow_unsafe": {
-          "type": "boolean",
           "default": false,
-          "description": "Allow unsafe commands to execute"
+          "title": "Allow Unsafe",
+          "type": "boolean"
         }
       },
-      "description": "Shell command execution settings"
+      "title": "BashConfig",
+      "type": "object"
     },
-    "FileSystemConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "read": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable file read access"
-        },
-        "write": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable file write access"
-        },
-        "edit": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable file edit (find-and-replace) access"
-        }
-      },
-      "description": "File read/write/edit access settings"
-    },
-    "SubagentSpec": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["description"],
-      "properties": {
-        "description": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Human-readable description used by the parent agent for routing decisions. Required by the SDK."
-        },
-        "prompt": {
-          "type": ["string", "null"],
-          "minLength": 1,
-          "description": "Inline system prompt for the subagent. Mutually exclusive with prompt_file. Either prompt or prompt_file is required."
-        },
-        "prompt_file": {
-          "type": ["string", "null"],
-          "minLength": 1,
-          "description": "Path to a file containing the subagent's system prompt. Resolved relative to the agent.yaml directory. Mutually exclusive with prompt. File contents are inlined at config-load time."
-        },
-        "tools": {
-          "type": ["array", "null"],
-          "items": { "type": "string" },
-          "description": "Allowlist of tool names. When null/omitted, the subagent inherits all parent tools. Unknown entries produce a warning at load time, not an error."
-        },
-        "model": {
-          "type": ["string", "null"],
-          "enum": ["sonnet", "opus", "haiku", "inherit", null],
-          "description": "Model override for this subagent. Must be one of the SDK's literal aliases: 'sonnet', 'opus', 'haiku', 'inherit'. Full model IDs (e.g. 'claude-haiku-4-5') are rejected — the Claude CLI silently drops AgentDefinitions whose `model` is not in this set, so the validator catches it at config-load time."
-        }
-      },
-      "description": "A single subagent definition for multi-agent orchestration."
+    "ChunkingStrategy": {
+      "description": "Document chunking approach for HierarchicalDocumentTool.\n\nDefines how documents are split into chunks:\n- STRUCTURE: Parse markdown headings and split at structural boundaries\n- TOKEN: Fixed token-based splitting with overlap (fallback for flat text)",
+      "enum": [
+        "structure",
+        "token"
+      ],
+      "title": "ChunkingStrategy",
+      "type": "string"
     },
     "ClaudeConfig": {
-      "type": "object",
       "additionalProperties": false,
+      "description": "Claude Agent SDK-specific settings.\n\nAll fields optional. All capabilities default to disabled (least-privilege).",
       "properties": {
         "working_directory": {
-          "type": ["string", "null"],
-          "description": "Scope agent file access to this path. Becomes subprocess cwd."
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Scope agent file access to this path. Subprocess cwd.",
+          "title": "Working Directory"
         },
         "permission_mode": {
           "$ref": "#/$defs/PermissionMode",
           "default": "manual",
-          "description": "Level of autonomous action: manual (safest), acceptEdits, or acceptAll"
+          "description": "Level of autonomous action. Defaults to manual (safest)."
         },
         "max_turns": {
-          "type": ["integer", "null"],
-          "minimum": 1,
-          "description": "Maximum agent loop iterations (null = SDK default)"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum agent loop iterations. None = SDK default.",
+          "title": "Max Turns"
         },
         "max_concurrent_sessions": {
-          "type": ["integer", "null"],
-          "minimum": 1,
-          "maximum": 500,
-          "description": "Maximum concurrent active turns per serve instance. Under spec 034 P4 each in-flight turn spawns a fresh SDK subprocess, so this gates memory exposure. When unset, the serve layer derives the cap from the replica's cgroup memory limit divided by session_memory_estimate_mib. Field name retained for backward compatibility with existing agent.yaml files. Upper bound 500 allows operators to admit many idle threads (open sessions are now nearly free — JSONL transcripts on disk, no resident subprocess) while the semaphore enforces the actual memory cap on concurrent active turns."
+          "anyOf": [
+            {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum concurrent active turns per serve instance \u2014 under spec 034 P4 each in-flight turn spawns a fresh SDK subprocess, so this gates memory exposure. When unset, the serve layer derives the cap from the replica's cgroup memory limit divided by `session_memory_estimate_mib`. Field name retained for backward compatibility with existing agent.yaml files. Upper bound 500 allows operators to admit many idle threads (open sessions are now nearly free \u2014 JSONL transcripts on disk, no resident subprocess) while the semaphore enforces the actual memory cap on concurrent active turns. Spec 034 P1a + P4.",
+          "title": "Max Concurrent Sessions"
         },
         "session_memory_estimate_mib": {
-          "type": "integer",
-          "minimum": 50,
-          "maximum": 2000,
           "default": 500,
-          "description": "Estimated peak resident memory (MiB) per concurrent active turn (SDK subprocess + tool state during a single in-flight query). Under spec 034 P4 this is no longer per-idle-session — idle sessions cost ~30 MiB each (Python object + JSONL handle) since the subprocess is spawned per turn and torn down at turn end. Used by the serve layer to derive max_concurrent_sessions from the replica's cgroup memory limit. The 500 MiB default is calibrated against the spec 034 P4 cloud validation: a 2 GiB ACA replica OOMed at 4 concurrent turns, and 3 was the empirically safe ceiling — (2048-400)/500 = 3 matches that. Tune up for tool-heavy agents."
+          "description": "Estimated peak resident memory (MiB) per *concurrent active turn* (SDK subprocess + tool state during a single in-flight query). Under spec 034 P4 this is no longer per-idle-session \u2014 idle sessions cost ~30 MiB each (Python object + JSONL handle) since the subprocess is spawned per turn and torn down at turn end. Used by the serve layer to derive `max_concurrent_sessions` from the replica's cgroup memory limit. The 500 MiB default is calibrated against the spec 034 P4 cloud validation: a 2 GiB ACA replica OOMed at 4 concurrent turns, and 3 was the empirically safe ceiling \u2014 `(2048-400)/500 = 3` matches that. The footprint covers the ~300 MiB Node CLI steady state plus simultaneous startup spikes and parent-side transient work (hybrid search, rerank, context generation). Tune up for tool-heavy agents.",
+          "maximum": 2000,
+          "minimum": 50,
+          "title": "Session Memory Estimate Mib",
+          "type": "integer"
         },
         "extended_thinking": {
-          "$ref": "#/$defs/ExtendedThinkingConfig",
-          "description": "Extended reasoning (deep thinking) configuration"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExtendedThinkingConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Extended reasoning (deep thinking) configuration."
         },
         "web_search": {
-          "type": "boolean",
           "default": false,
-          "description": "Enable built-in web search capability"
+          "description": "Enable built-in web search capability.",
+          "title": "Web Search",
+          "type": "boolean"
         },
         "bash": {
-          "$ref": "#/$defs/BashConfig",
-          "description": "Shell command execution settings"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BashConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Shell command execution settings."
         },
         "file_system": {
-          "$ref": "#/$defs/FileSystemConfig",
-          "description": "File read/write/edit access settings"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileSystemConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "File read/write/edit access settings."
         },
         "agents": {
-          "type": ["object", "null"],
-          "additionalProperties": { "$ref": "#/$defs/SubagentSpec" },
-          "description": "Named subagent definitions. Each entry becomes an AgentDefinition on ClaudeAgentOptions.agents. Subagents share parent MCP server registrations and use their `tools` allowlist to scope MCP tool access (`mcp__<server>__<tool>`). Per-subagent MCP server registration is NOT supported by the SDK."
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/SubagentSpec"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Named subagent definitions. Each entry becomes an AgentDefinition on ClaudeAgentOptions.agents. Subagents share parent MCP servers and use their `tools` allowlist to scope MCP tool access.",
+          "title": "Agents"
         },
         "allowed_tools": {
-          "type": ["array", "null"],
-          "items": { "type": "string" },
-          "description": "Explicit tool allowlist (null = all configured tools)"
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Explicit tool allowlist. None = all configured tools.",
+          "title": "Allowed Tools"
         },
         "effort": {
-          "type": ["string", "null"],
-          "enum": ["low", "medium", "high", "max", null],
-          "description": "Thinking effort level (low | medium | high | max)"
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "max"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Thinking effort level. SDK accepts low|medium|high|max.",
+          "title": "Effort"
         },
         "max_budget_usd": {
-          "type": ["number", "null"],
-          "exclusiveMinimum": 0,
-          "description": "Hard cap on session spend in USD. Must be > 0."
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hard cap on session spend in USD. Must be > 0.",
+          "title": "Max Budget Usd"
         },
         "fallback_model": {
-          "type": ["string", "null"],
-          "description": "Model used when the primary model is unavailable"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model used when the primary model is unavailable.",
+          "title": "Fallback Model"
         },
         "disallowed_tools": {
-          "type": ["array", "null"],
-          "items": { "type": "string" },
-          "description": "Tools that must never be used; takes precedence over allowed_tools"
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tools that must never be used; takes precedence over allowed_tools.",
+          "title": "Disallowed Tools"
         },
         "setting_sources": {
-          "type": ["array", "null"],
-          "items": { "enum": ["user", "project", "local", "all"] },
-          "description": "Which Claude Code settings layers the spawned SDK subprocess loads. null (default) → HoloDeck passes [] to the SDK (full isolation; no ~/.claude or .claude/ plugins, skills, hooks). Any subset of [\"user\", \"project\", \"local\"] opts back in. [\"all\"] is sugar for all three and cannot be combined with other values. Include \"project\" if your agents rely on CLAUDE.md files."
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "user",
+                  "project",
+                  "local",
+                  "all"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Which Claude Code settings layers the spawned SDK subprocess should load. HoloDeck defaults to full isolation: when this is ``None`` (default), the backend passes ``[]`` to the SDK so the subprocess does not inherit plugins, skills, hooks, etc. from the host's ``~/.claude`` or the project's ``.claude/`` directories. Set to any subset of ``['user', 'project', 'local']`` to opt back in, or to ``['all']`` as sugar for all three. ``'all'`` cannot be combined with other values. ``'project'`` must be included if your agents rely on ``CLAUDE.md`` files.",
+          "title": "Setting Sources"
         },
         "i_understand_this_is_unsafe": {
-          "type": "boolean",
           "default": false,
-          "description": "Acknowledge that permission_mode=acceptAll disables the Claude SDK permission system entirely, allowing any tool (including Bash, Write, Edit, WebFetch) to execute without restriction. Required to use permission_mode=acceptAll. Prefer declaring specific tools via bash, file_system, web_search, or allowed_tools instead."
+          "description": "Acknowledge that permission_mode=acceptAll disables the Claude SDK permission system entirely, allowing any tool (including Bash, Write, Edit, WebFetch) to execute without restriction. This is the most direct path from prompt-injection to arbitrary tool execution. Required to use permission_mode=acceptAll. Prefer declaring the specific tools your agent needs via the schema fields (bash, file_system, web_search) or claude.allowed_tools instead.",
+          "title": "I Understand This Is Unsafe",
+          "type": "boolean"
+        },
+        "disable_default_hooks": {
+          "default": false,
+          "description": "Disable HoloDeck-provided default hooks (credential redaction PostToolUse hook). When True, the agent runs with ONLY user-defined hooks. Loud warning emitted at load time. Spec 034 P2b. Note: OTel attribute redaction runs independently and is NOT disabled by this flag.",
+          "title": "Disable Default Hooks",
+          "type": "boolean"
+        },
+        "disable_subprocess_env_scrub": {
+          "default": false,
+          "description": "Disable HoloDeck's default-on subprocess env scrubbing (CLAUDE_CODE_SUBPROCESS_ENV_SCRUB + CLAUDE_CODE_MCP_ALLOWLIST_ENV). When True, Bash tool subprocesses and stdio MCP servers inherit the full agent container env including Anthropic and cloud provider credentials. Spec 034 P2b.",
+          "title": "Disable Subprocess Env Scrub",
+          "type": "boolean"
         }
       },
-      "description": "Claude Agent SDK-specific settings. All capabilities default to disabled (least-privilege)."
+      "title": "ClaudeConfig",
+      "type": "object"
     },
-    "LLMProvider": {
-      "type": "object",
-      "required": ["provider", "name"],
-      "additionalProperties": false,
-      "properties": {
-        "provider": { "$ref": "#/$defs/ProviderEnum" },
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Model name or identifier"
-        },
-        "temperature": {
-          "type": "number",
-          "minimum": 0.0,
-          "maximum": 2.0,
-          "default": 0.3,
-          "description": "Sampling temperature"
-        },
-        "max_tokens": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 1000,
-          "description": "Maximum tokens in response"
-        },
-        "top_p": {
-          "type": "number",
-          "minimum": 0.0,
-          "maximum": 1.0,
-          "description": "Nucleus sampling parameter"
-        },
-        "endpoint": {
-          "type": "string",
-          "description": "API endpoint (required for azure_openai)"
-        },
-        "api_key": {
-          "type": "string",
-          "description": "API key for LLM provider"
-        },
-        "auth_provider": {
-          "$ref": "#/$defs/AuthProvider",
-          "description": "Authentication method for Anthropic provider. Defaults to api_key. Ignored for non-Anthropic providers."
-        }
-      },
-      "description": "LLM provider configuration"
-    },
-    "Instructions": {
-      "type": "object",
-      "additionalProperties": false,
-      "oneOf": [
-        {
-          "required": ["file"],
-          "properties": {
-            "file": { "type": "string", "minLength": 1 },
-            "inline": { "type": "null" }
-          }
-        },
-        {
-          "required": ["inline"],
-          "properties": {
-            "file": { "type": "null" },
-            "inline": { "type": "string", "minLength": 1 }
-          }
-        }
+    "CloudProvider": {
+      "description": "Supported cloud providers for deployment.",
+      "enum": [
+        "aws",
+        "gcp",
+        "azure"
       ],
-      "properties": {
-        "file": {
-          "type": ["string", "null"],
-          "minLength": 1,
-          "description": "Path to instruction file"
-        },
-        "inline": {
-          "type": ["string", "null"],
-          "minLength": 1,
-          "description": "Inline instruction text"
-        }
-      },
-      "description": "System instructions (file OR inline, mutually exclusive)"
+      "title": "CloudProvider",
+      "type": "string"
     },
-    "TransportType": {
-      "type": "string",
-      "enum": ["stdio", "sse", "websocket", "http"],
-      "default": "stdio"
-    },
-    "CommandType": {
-      "type": "string",
-      "enum": ["npx", "node", "uvx", "docker"]
-    },
-    "DatabaseConfig": {
-      "type": "object",
-      "required": ["provider"],
+    "CloudTargetConfig": {
+      "additionalProperties": false,
+      "description": "Cloud deployment target configuration.\n\nUses a discriminated union pattern to ensure provider-specific\nconfiguration matches the selected provider.\n\nAttributes:\n    provider: Cloud provider (aws, gcp, azure)\n    aws: AWS App Runner configuration\n    gcp: GCP Cloud Run configuration\n    azure: Azure Container Apps configuration",
       "properties": {
         "provider": {
-          "type": "string",
+          "$ref": "#/$defs/CloudProvider",
+          "description": "Cloud provider"
+        },
+        "aws": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AWSAppRunnerConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AWS App Runner configuration"
+        },
+        "gcp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GCPCloudRunConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GCP Cloud Run configuration"
+        },
+        "azure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AzureContainerAppsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Azure Container Apps configuration"
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "title": "CloudTargetConfig",
+      "type": "object"
+    },
+    "CodeMetric": {
+      "additionalProperties": false,
+      "description": "User-supplied Python grader metric (data-model.md \u00a76).\n\nDiscriminator: ``type: code``. The ``grader`` path is resolved at config\nload time \u2014 ``importlib.import_module`` + ``getattr`` \u2014 so bad references\nsurface as ``ConfigError`` *before* any agent call (FR-025).\n\nThe resolved callable is cached in a private attribute so each turn's\ngrader invocation doesn't re-import.",
+      "properties": {
+        "type": {
+          "const": "code",
+          "default": "code",
+          "description": "Discriminator field \u2014 always 'code' for user graders.",
+          "title": "Type",
+          "type": "string"
+        },
+        "grader": {
+          "description": "Import path 'module.path:callable_name'.",
+          "pattern": "^[\\w.]+:[\\w_]+$",
+          "title": "Grader",
+          "type": "string"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Applied if grader returns a float without explicit passed flag.",
+          "title": "Threshold"
+        },
+        "enabled": {
+          "default": true,
+          "description": "Whether metric is enabled",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "fail_on_error": {
+          "default": false,
+          "description": "If true, grader exceptions fail the whole test case.",
+          "title": "Fail On Error",
+          "type": "boolean"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional display name; defaults to the callable name.",
+          "title": "Name"
+        }
+      },
+      "required": [
+        "grader"
+      ],
+      "title": "CodeMetric",
+      "type": "object"
+    },
+    "CommandType": {
+      "description": "Allowed stdio commands for MCP servers (security constraint).\n\nOnly these commands are permitted for spawning MCP server processes\nto prevent command injection attacks:\n- NPX: Node.js/npm package runner\n- NODE: Direct Node.js script runner\n- UVX: Python/uv package runner\n- DOCKER: Docker container runner",
+      "enum": [
+        "npx",
+        "node",
+        "uvx",
+        "docker"
+      ],
+      "title": "CommandType",
+      "type": "string"
+    },
+    "ConsoleExporterConfig": {
+      "additionalProperties": false,
+      "description": "Console exporter configuration.\n\nUsed as the default exporter when no other exporters are explicitly enabled.\nOutputs telemetry to stdout for development/debugging purposes.",
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Enable console exporter",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "pretty_print": {
+          "default": true,
+          "description": "Format for readability",
+          "title": "Pretty Print",
+          "type": "boolean"
+        },
+        "include_timestamps": {
+          "default": true,
+          "description": "Include timestamps",
+          "title": "Include Timestamps",
+          "type": "boolean"
+        }
+      },
+      "title": "ConsoleExporterConfig",
+      "type": "object"
+    },
+    "DatabaseConfig": {
+      "additionalProperties": true,
+      "description": "Vector database connection configuration.\n\nSupports all Semantic Kernel vector store providers including PostgreSQL,\nAzure AI Search, Qdrant, Weaviate, ChromaDB, FAISS, Pinecone, and more.\n\nProvider-specific parameters are passed via the config dict:\n- postgres: connection_string\n- azure-ai-search: connection_string, api_key\n- qdrant: url, api_key (optional)\n- weaviate: url, api_key (optional)\n- chromadb: path or host\n- faiss: path\n- pinecone: api_key, index_name\n- And more...",
+      "properties": {
+        "provider": {
+          "description": "Vector database provider: postgres, azure-ai-search, qdrant, weaviate, chromadb, faiss, azure-cosmos-mongo, azure-cosmos-nosql, sql-server, pinecone, in-memory",
           "enum": [
             "postgres",
             "azure-ai-search",
@@ -396,1113 +648,1436 @@
             "sql-server",
             "pinecone",
             "in-memory"
-          ]
+          ],
+          "title": "Provider",
+          "type": "string"
         },
-        "connection_string": { "type": "string" }
-      },
-      "additionalProperties": true,
-      "description": "Vector database configuration"
-    },
-    "KeywordIndexConfig": {
-      "type": "object",
-      "additionalProperties": true,
-      "properties": {
-        "provider": {
-          "type": "string",
-          "enum": ["in-memory", "opensearch"],
-          "default": "in-memory",
-          "description": "Keyword index backend: 'in-memory' (rank_bm25) or 'opensearch'"
-        },
-        "endpoint": {
-          "type": "string",
-          "description": "OpenSearch endpoint URL (required when provider is 'opensearch')"
-        },
-        "index_name": {
-          "type": "string",
-          "description": "OpenSearch index name (required when provider is 'opensearch')"
-        },
-        "username": {
-          "type": "string",
-          "description": "Basic auth username"
-        },
-        "password": {
-          "type": "string",
-          "description": "Basic auth password"
-        },
-        "api_key": {
-          "type": "string",
-          "description": "API key auth (alternative to basic auth)"
-        },
-        "verify_certs": {
-          "type": "boolean",
-          "default": true,
-          "description": "Verify TLS certificates"
-        },
-        "timeout_seconds": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 120,
-          "default": 10,
-          "description": "Connection timeout in seconds (1-120)"
+        "connection_string": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Database connection string (format depends on provider). Examples: postgresql://user:pass@host/db, https://search-service.search.windows.net",
+          "title": "Connection String"
         }
       },
-      "description": "Keyword index configuration for sparse/BM25 search backend"
+      "required": [
+        "provider"
+      ],
+      "title": "DatabaseConfig",
+      "type": "object"
     },
-    "SearchMode": {
-      "type": "string",
-      "enum": ["semantic", "keyword", "hybrid"],
-      "default": "hybrid",
-      "description": "Search modality: semantic (embeddings), keyword (BM25), or hybrid (combined)"
-    },
-    "ChunkingStrategy": {
-      "type": "string",
-      "enum": ["structure", "token"],
-      "default": "structure",
-      "description": "Document chunking approach: structure (markdown headings) or token (fixed splitting)"
+    "DeploymentConfig": {
+      "additionalProperties": false,
+      "description": "Main deployment configuration model.\n\nAttributes:\n    runtime: Runtime type (currently only container)\n    registry: Container registry configuration\n    target: Cloud deployment target configuration\n    protocol: API protocol type\n    port: Container port to expose\n    health_check_path: HTTP path for health checks (e.g., /health, /healthz)\n    environment: Environment variables for the container\n    platform: Target platform for container image (e.g., linux/amd64, linux/arm64)",
+      "properties": {
+        "runtime": {
+          "$ref": "#/$defs/RuntimeType",
+          "default": "container",
+          "description": "Runtime type"
+        },
+        "registry": {
+          "$ref": "#/$defs/RegistryConfig",
+          "description": "Container registry configuration"
+        },
+        "target": {
+          "$ref": "#/$defs/CloudTargetConfig",
+          "description": "Cloud deployment target configuration"
+        },
+        "protocol": {
+          "$ref": "#/$defs/ProtocolType",
+          "default": "rest",
+          "description": "API protocol type"
+        },
+        "port": {
+          "default": 8080,
+          "description": "Container port to expose",
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "health_check_path": {
+          "default": "/health",
+          "description": "HTTP path for health checks (e.g., /health, /healthz)",
+          "title": "Health Check Path",
+          "type": "string"
+        },
+        "environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment variables for the container",
+          "title": "Environment",
+          "type": "object"
+        },
+        "platform": {
+          "default": "linux/amd64",
+          "description": "Target platform for container image (e.g., linux/amd64)",
+          "title": "Platform",
+          "type": "string"
+        }
+      },
+      "required": [
+        "registry",
+        "target"
+      ],
+      "title": "DeploymentConfig",
+      "type": "object"
     },
     "DocumentDomain": {
-      "type": "string",
-      "enum": ["none", "us_legislative", "au_legislative", "academic", "technical", "legal_contract"],
-      "default": "none",
-      "description": "Document structure domain for subsection detection"
-    },
-    "Tool": {
-      "type": "object",
-      "required": ["type", "name", "description"],
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "name", "description", "source"],
-          "properties": {
-            "type": {
-              "const": "vectorstore",
-              "description": "Vector search tool"
-            },
-            "name": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Tool identifier"
-            },
-            "description": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Tool description"
-            },
-            "source": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Path to data file/directory"
-            },
-            "vector_field": {
-              "oneOf": [
-                { "type": "string" },
-                { "type": "array", "items": { "type": "string" } }
-              ],
-              "description": "Field(s) to vectorize"
-            },
-            "meta_fields": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Metadata fields to include"
-            },
-            "chunk_size": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Text chunk size"
-            },
-            "chunk_overlap": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Chunk overlap size"
-            },
-            "embedding_model": {
-              "type": "string",
-              "description": "Custom embedding model"
-            },
-            "embedding_dimensions": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 10000,
-              "description": "Vector dimensions"
-            },
-            "database": {
-              "oneOf": [
-                { "$ref": "#/$defs/DatabaseConfig" },
-                { "type": "string" }
-              ],
-              "description": "Vector DB config or reference name"
-            },
-            "top_k": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 5,
-              "description": "Number of results to return"
-            },
-            "min_similarity_score": {
-              "type": "number",
-              "minimum": 0.0,
-              "maximum": 1.0,
-              "description": "Similarity threshold"
-            },
-            "record_path": {
-              "type": "string",
-              "description": "Path to array in JSON"
-            },
-            "record_prefix": {
-              "type": "string",
-              "description": "Record field prefix"
-            },
-            "meta_prefix": {
-              "type": "string",
-              "description": "Metadata field prefix"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "name", "description", "file", "function"],
-          "properties": {
-            "type": {
-              "const": "function",
-              "description": "Python function tool"
-            },
-            "name": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Tool identifier"
-            },
-            "description": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Tool description"
-            },
-            "file": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Python file path"
-            },
-            "function": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Function name"
-            },
-            "parameters": {
-              "type": "object",
-              "additionalProperties": { "type": "object" },
-              "description": "Parameter schema"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "name", "description"],
-          "properties": {
-            "type": {
-              "const": "mcp",
-              "description": "MCP (Model Context Protocol) tool"
-            },
-            "name": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Tool identifier"
-            },
-            "description": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Tool description"
-            },
-            "transport": { "$ref": "#/$defs/TransportType" },
-            "command": { "$ref": "#/$defs/CommandType" },
-            "args": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Command arguments"
-            },
-            "env": {
-              "type": "object",
-              "additionalProperties": { "type": "string" },
-              "description": "Environment variables"
-            },
-            "env_file": { "type": "string", "description": ".env file path" },
-            "encoding": {
-              "type": "string",
-              "default": "utf-8",
-              "description": "Stream encoding"
-            },
-            "url": {
-              "type": "string",
-              "format": "uri",
-              "description": "Server URL (for HTTP/SSE/WebSocket)"
-            },
-            "headers": {
-              "type": "object",
-              "additionalProperties": { "type": "string" },
-              "description": "HTTP headers"
-            },
-            "timeout": {
-              "type": "number",
-              "description": "Connection timeout (seconds)"
-            },
-            "sse_read_timeout": {
-              "type": "number",
-              "description": "SSE read timeout"
-            },
-            "terminate_on_close": {
-              "type": "boolean",
-              "description": "Terminate on close"
-            },
-            "config": {
-              "type": "object",
-              "description": "Server-specific configuration"
-            },
-            "load_tools": {
-              "type": "boolean",
-              "default": true,
-              "description": "Auto-discover tools"
-            },
-            "load_prompts": {
-              "type": "boolean",
-              "default": true,
-              "description": "Auto-discover prompts"
-            },
-            "request_timeout": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 60,
-              "description": "Operation timeout (seconds)"
-            },
-            "is_retrieval": {
-              "type": "boolean",
-              "default": false,
-              "description": "Mark as retrieval tool for RAG"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "name", "description", "parameters"],
-          "properties": {
-            "type": { "const": "prompt", "description": "Prompt-based tool" },
-            "name": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Tool identifier"
-            },
-            "description": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Tool description"
-            },
-            "template": {
-              "type": "string",
-              "description": "Inline prompt template"
-            },
-            "file": { "type": "string", "description": "Path to prompt file" },
-            "parameters": {
-              "type": "object",
-              "minProperties": 1,
-              "additionalProperties": { "type": "object" },
-              "description": "Parameter definitions"
-            },
-            "model": {
-              "type": "object",
-              "description": "Model config override"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "name", "description", "source"],
-          "properties": {
-            "type": {
-              "const": "hierarchical_document",
-              "description": "Hierarchical document search tool"
-            },
-            "name": {
-              "type": "string",
-              "pattern": "^[0-9A-Za-z_]+$",
-              "description": "Tool identifier"
-            },
-            "description": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Tool description"
-            },
-            "source": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Path to markdown document or directory"
-            },
-            "chunking_strategy": {
-              "$ref": "#/$defs/ChunkingStrategy",
-              "description": "Document chunking approach"
-            },
-            "max_chunk_tokens": {
-              "type": "integer",
-              "minimum": 100,
-              "maximum": 2000,
-              "default": 800,
-              "description": "Maximum tokens per chunk (100-2000)"
-            },
-            "chunk_overlap": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 200,
-              "default": 50,
-              "description": "Token overlap between chunks (0-200)"
-            },
-            "document_domain": {
-              "$ref": "#/$defs/DocumentDomain",
-              "description": "Document structure domain for subsection detection"
-            },
-            "max_subsection_depth": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Maximum subsection nesting depth"
-            },
-            "search_mode": {
-              "$ref": "#/$defs/SearchMode",
-              "description": "Search modality"
-            },
-            "top_k": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 10,
-              "description": "Number of results to return (1-100)"
-            },
-            "min_score": {
-              "type": "number",
-              "minimum": 0.0,
-              "maximum": 1.0,
-              "description": "Minimum similarity score threshold"
-            },
-            "semantic_weight": {
-              "type": "number",
-              "minimum": 0.0,
-              "maximum": 1.0,
-              "default": 0.5,
-              "description": "Weight for semantic search in hybrid mode"
-            },
-            "keyword_weight": {
-              "type": "number",
-              "minimum": 0.0,
-              "maximum": 1.0,
-              "default": 0.3,
-              "description": "Weight for keyword search in hybrid mode"
-            },
-            "exact_weight": {
-              "type": "number",
-              "minimum": 0.0,
-              "maximum": 1.0,
-              "default": 0.2,
-              "description": "Weight for exact search in hybrid mode"
-            },
-            "rrf_k": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 60,
-              "description": "Reciprocal Rank Fusion constant"
-            },
-            "contextual_embeddings": {
-              "type": "boolean",
-              "default": true,
-              "description": "Enable contextual embeddings with LLM context"
-            },
-            "context_max_tokens": {
-              "type": "integer",
-              "minimum": 50,
-              "maximum": 200,
-              "default": 100,
-              "description": "Maximum tokens for context summary"
-            },
-            "context_concurrency": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 50,
-              "default": 10,
-              "description": "Concurrent context generation requests"
-            },
-            "extract_definitions": {
-              "type": "boolean",
-              "default": true,
-              "description": "Extract and index term definitions"
-            },
-            "extract_cross_references": {
-              "type": "boolean",
-              "default": true,
-              "description": "Extract and resolve cross-references"
-            },
-            "enable_reranking": {
-              "type": "boolean",
-              "default": false,
-              "description": "Enable LLM-based reranking"
-            },
-            "reranker_model": {
-              "$ref": "#/$defs/LLMProvider",
-              "description": "LLM for reranking (required when enable_reranking=true)"
-            },
-            "context_model": {
-              "$ref": "#/$defs/LLMProvider",
-              "description": "LLM for contextual embedding generation. Overrides the default model used by LLMContextGenerator."
-            },
-            "database": {
-              "oneOf": [
-                { "$ref": "#/$defs/DatabaseConfig" },
-                { "type": "string" }
-              ],
-              "description": "Vector DB config or reference name"
-            },
-            "keyword_index": {
-              "$ref": "#/$defs/KeywordIndexConfig",
-              "description": "Keyword index configuration for sparse/BM25 search backend"
-            },
-            "defer_loading": {
-              "type": "boolean",
-              "default": true,
-              "description": "Defer tool loading until needed"
-            }
-          }
-        }
-      ],
-      "description": "Agent tool (discriminated by 'type' field: vectorstore, function, mcp, prompt, or hierarchical_document)"
-    },
-    "RAGMetricType": {
-      "type": "string",
+      "description": "Predefined document structure patterns for subsection detection.\n\nEnables YAML-based configuration of domain-specific parsing rules\nfor hierarchical document tools. Each domain defines subsection patterns\nthat recognize implicit headings in documents.\n\nAttributes:\n    NONE: No subsection patterns (default, backward compatible).\n    US_LEGISLATIVE: US Code style: (a), (1), (A), (i) hierarchy.\n    AU_LEGISLATIVE: Australian style: (1), (a), (i), (A) hierarchy.\n    ACADEMIC: Academic papers: 1., 1.1, 1.1.1 numbered sections.\n    TECHNICAL: Technical manuals: Step 1, 1.1, Note:, Warning:.\n    LEGAL_CONTRACT: Legal contracts: Article I, Section 1, (a) clauses.",
       "enum": [
-        "faithfulness",
-        "contextual_relevancy",
-        "contextual_precision",
-        "contextual_recall",
-        "answer_relevancy"
-      ]
-    },
-    "MetricType": {
-      "type": "object",
-      "required": ["type"],
-      "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "metric"],
-          "properties": {
-            "type": {
-              "const": "standard",
-              "description": "Standard built-in metric"
-            },
-            "metric": {
-              "type": "string",
-              "enum": [
-                "groundedness",
-                "relevance",
-                "coherence",
-                "fluency",
-                "bleu",
-                "rouge",
-                "meteor",
-                "equality",
-                "numeric"
-              ],
-              "description": "Built-in metric name. 'equality' and 'numeric' are deterministic in-process evaluators (US4); the rest are LLM-judged."
-            },
-            "threshold": {
-              "type": "number",
-              "description": "Minimum passing score"
-            },
-            "enabled": {
-              "type": "boolean",
-              "default": true,
-              "description": "Whether metric is enabled"
-            },
-            "scale": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Score scale (e.g., 5 for 1-5)"
-            },
-            "model": { "$ref": "#/$defs/LLMProvider" },
-            "fail_on_error": {
-              "type": "boolean",
-              "default": false,
-              "description": "Fail test if metric fails"
-            },
-            "retry_on_failure": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 3,
-              "description": "Number of retries"
-            },
-            "timeout_ms": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "Timeout in milliseconds"
-            },
-            "custom_prompt": {
-              "type": "string",
-              "description": "Custom evaluation prompt"
-            },
-            "case_insensitive": {
-              "type": "boolean",
-              "default": false,
-              "description": "[equality] Lowercase both sides before compare."
-            },
-            "strip_whitespace": {
-              "type": "boolean",
-              "default": false,
-              "description": "[equality] Collapse whitespace and trim before compare."
-            },
-            "strip_punctuation": {
-              "type": "boolean",
-              "default": false,
-              "description": "[equality] Remove string.punctuation before compare."
-            },
-            "absolute_tolerance": {
-              "type": "number",
-              "minimum": 0.0,
-              "default": 1e-6,
-              "description": "[numeric] Pass when abs(actual - expected) <= absolute_tolerance (FR-018)."
-            },
-            "relative_tolerance": {
-              "type": "number",
-              "minimum": 0.0,
-              "default": 0.0,
-              "description": "[numeric] Pass when abs(actual - expected) <= relative_tolerance * abs(expected)."
-            },
-            "accept_percent": {
-              "type": "boolean",
-              "default": false,
-              "description": "[numeric] Parse trailing '%' as /100."
-            },
-            "accept_thousands_separators": {
-              "type": "boolean",
-              "default": false,
-              "description": "[numeric] Strip ',' / '_' / NBSP before parse."
-            },
-            "response_path": {
-              "type": ["string", "null"],
-              "pattern": "^[A-Za-z_][A-Za-z0-9_-]*(\\[\\d+\\])*(\\.[A-Za-z_][A-Za-z0-9_-]*(\\[\\d+\\])*)*$",
-              "description": "Optional path into a JSON-encoded response (e.g. 'answer', 'items[0].score'). When set, the evaluator grades response[<path>] instead of the raw string."
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "name", "criteria"],
-          "properties": {
-            "type": {
-              "const": "geval",
-              "description": "G-Eval custom criteria metric"
-            },
-            "name": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Custom metric identifier"
-            },
-            "criteria": {
-              "type": "string",
-              "minLength": 1,
-              "description": "Natural language evaluation criteria"
-            },
-            "evaluation_steps": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Explicit evaluation steps"
-            },
-            "evaluation_params": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "enum": [
-                  "input",
-                  "actual_output",
-                  "expected_output",
-                  "context",
-                  "retrieval_context"
-                ]
-              },
-              "default": ["actual_output"],
-              "description": "Test case fields to include in evaluation"
-            },
-            "strict_mode": {
-              "type": "boolean",
-              "default": false,
-              "description": "Binary scoring mode (1.0 or 0.0)"
-            },
-            "threshold": {
-              "type": "number",
-              "minimum": 0.0,
-              "maximum": 1.0,
-              "description": "Minimum passing score (0.0-1.0)"
-            },
-            "model": { "$ref": "#/$defs/LLMProvider" },
-            "enabled": {
-              "type": "boolean",
-              "default": true,
-              "description": "Whether metric is enabled"
-            },
-            "fail_on_error": {
-              "type": "boolean",
-              "default": false,
-              "description": "Fail test if metric fails"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "metric_type"],
-          "properties": {
-            "type": {
-              "const": "rag",
-              "description": "RAG pipeline evaluation metric"
-            },
-            "metric_type": { "$ref": "#/$defs/RAGMetricType" },
-            "threshold": {
-              "type": "number",
-              "minimum": 0.0,
-              "maximum": 1.0,
-              "default": 0.5,
-              "description": "Minimum passing score (0.0-1.0)"
-            },
-            "include_reason": {
-              "type": "boolean",
-              "default": true,
-              "description": "Include reasoning in results"
-            },
-            "model": { "$ref": "#/$defs/LLMProvider" },
-            "enabled": {
-              "type": "boolean",
-              "default": true,
-              "description": "Whether metric is enabled"
-            },
-            "fail_on_error": {
-              "type": "boolean",
-              "default": false,
-              "description": "Fail test if metric fails"
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type", "grader"],
-          "properties": {
-            "type": {
-              "const": "code",
-              "description": "User-supplied Python grader metric"
-            },
-            "grader": {
-              "type": "string",
-              "pattern": "^[\\w.]+:[\\w_]+$",
-              "description": "Import path 'module.path:callable_name'. Resolved at config load time."
-            },
-            "threshold": {
-              "type": ["number", "null"],
-              "description": "Applied if grader returns a float without explicit passed flag."
-            },
-            "enabled": {
-              "type": "boolean",
-              "default": true,
-              "description": "Whether metric is enabled"
-            },
-            "fail_on_error": {
-              "type": "boolean",
-              "default": false,
-              "description": "If true, grader exceptions fail the whole test case."
-            },
-            "name": {
-              "type": ["string", "null"],
-              "description": "Optional display name; defaults to the callable name."
-            }
-          }
-        }
+        "none",
+        "us_legislative",
+        "au_legislative",
+        "academic",
+        "technical",
+        "legal_contract"
       ],
-      "description": "Evaluation metric (discriminated by 'type' field: standard, geval, rag, or code)"
+      "title": "DocumentDomain",
+      "type": "string"
     },
     "EvaluationConfig": {
-      "type": "object",
-      "required": ["metrics"],
       "additionalProperties": false,
+      "description": "Evaluation framework configuration.\n\nContainer for evaluation metrics with optional default model configuration.\nSupports standard EvaluationMetric, GEvalMetric (custom criteria), and\nRAGMetric (RAG pipeline evaluation).",
       "properties": {
         "model": {
-          "$ref": "#/$defs/LLMProvider",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LLMProvider"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
           "description": "Default LLM model for all metrics"
         },
         "metrics": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/MetricType" },
-          "minItems": 1,
-          "description": "List of evaluation metrics (standard, geval, or rag). Each metric must have a 'type' field."
+          "description": "List of metrics to evaluate (standard, GEval, or RAG)",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "code": "#/$defs/CodeMetric",
+                "geval": "#/$defs/GEvalMetric",
+                "rag": "#/$defs/RAGMetric",
+                "standard": "#/$defs/EvaluationMetric"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/EvaluationMetric"
+              },
+              {
+                "$ref": "#/$defs/GEvalMetric"
+              },
+              {
+                "$ref": "#/$defs/RAGMetric"
+              },
+              {
+                "$ref": "#/$defs/CodeMetric"
+              }
+            ]
+          },
+          "title": "Metrics",
+          "type": "array"
         }
       },
-      "description": "Evaluation framework configuration with model and metrics"
-    },
-    "FileInput": {
-      "type": "object",
-      "required": ["type"],
-      "additionalProperties": false,
-      "properties": {
-        "path": { "type": "string", "description": "Local file path" },
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "Remote URL"
-        },
-        "type": {
-          "type": "string",
-          "enum": ["image", "pdf", "text", "excel", "word", "powerpoint", "csv"]
-        },
-        "description": { "type": "string" },
-        "pages": {
-          "type": "array",
-          "items": { "type": "integer", "minimum": 1 }
-        },
-        "sheet": { "type": "string" },
-        "range": {
-          "type": "string",
-          "description": "Excel cell range (e.g., A1:E100)"
-        },
-        "cache": { "type": "boolean" }
-      },
-      "oneOf": [{ "required": ["path"] }, { "required": ["url"] }],
-      "description": "Multimodal file input (path OR url required)"
-    },
-    "ToolFilterConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable tool filtering globally."
-        },
-        "top_k": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 50,
-          "default": 5,
-          "description": "Maximum tools per request (1-50)."
-        },
-        "similarity_threshold": {
-          "type": "number",
-          "minimum": 0.0,
-          "maximum": 1.0,
-          "default": 0.3,
-          "description": "Minimum similarity score for inclusion (0.0-1.0)."
-        },
-        "always_include": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 },
-          "default": [],
-          "description": "Tool names always included in context regardless of score."
-        },
-        "always_include_top_n_used": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 20,
-          "default": 3,
-          "description": "Number of most-used tools to always include (0-20)."
-        },
-        "search_method": {
-          "type": "string",
-          "enum": ["semantic", "bm25", "hybrid"],
-          "default": "semantic",
-          "description": "Tool search method."
-        }
-      },
-      "description": "Configuration for automatic tool filtering. Reduces token usage by selecting only the most relevant tools per request."
-    },
-    "ArgMatcher": {
-      "description": "Per-argument matcher used inside ExpectedTool.args. A scalar/list/dict-without-matcher-keys is treated as a literal value (exact equality, with int/float numeric equivalence). A single-key object {fuzzy: <pattern>} or {regex: <pattern>} selects a tolerant or anchored-regex match. Discrimination is shape-based — `anyOf` is intentional.",
-      "anyOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["fuzzy"],
-          "properties": {
-            "fuzzy": {
-              "type": "string",
-              "description": "Case/whitespace/separator-tolerant numeric-aware match pattern."
-            }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["regex"],
-          "properties": {
-            "regex": {
-              "type": "string",
-              "format": "regex",
-              "description": "Anchored regex full-match over str(actual)."
-            }
-          }
-        },
-        { "type": ["string", "number", "boolean", "null", "array"] },
-        { "type": "object" }
-      ]
-    },
-    "ExpectedTool": {
-      "type": "object",
-      "required": ["name"],
-      "additionalProperties": false,
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Tool name — case-sensitive substring match (FR-003)."
-        },
-        "args": {
-          "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/ArgMatcher" },
-          "description": "Per-arg matcher map (FR-004). Each value is an ArgMatcher (literal, fuzzy, or regex)."
-        },
-        "count": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 1,
-          "description": "Minimum number of matching calls."
-        }
-      },
-      "description": "Object form of an expected tool assertion (FR-003)."
-    },
-    "ExpectedToolEntry": {
-      "description": "Either a bare tool name string (legacy) or an ExpectedTool object (US3).",
-      "oneOf": [
-        { "type": "string", "minLength": 1 },
-        { "$ref": "#/$defs/ExpectedTool" }
-      ]
-    },
-    "Turn": {
-      "type": "object",
-      "required": ["input"],
-      "additionalProperties": false,
-      "properties": {
-        "input": {
-          "type": "string",
-          "minLength": 1,
-          "description": "User query for this turn."
-        },
-        "ground_truth": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Expected output for this turn (non-empty if provided)."
-        },
-        "expected_tools": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/ExpectedToolEntry" },
-          "description": "Tools expected to be called during this turn. Mixed list of bare strings and ExpectedTool objects."
-        },
-        "files": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/FileInput" },
-          "maxItems": 10,
-          "description": "Multimodal file inputs for this turn."
-        },
-        "retrieval_context": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Retrieved text chunks for RAG evaluation on this turn."
-        },
-        "evaluations": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/MetricType" },
-          "description": "Per-turn metric overrides (FR-023)."
-        },
-        "turn_config": {
-          "type": "object",
-          "description": "Free-form per-turn config surfaced to code graders as `ctx.turn_config` (e.g. `turn_program`)."
-        }
-      },
-      "description": "Single exchange within a multi-turn test case (feature 032)."
-    },
-    "TestCase": {
-      "type": "object",
-      "additionalProperties": false,
-      "oneOf": [
-        {
-          "required": ["input"],
-          "not": { "required": ["turns"] }
-        },
-        {
-          "required": ["turns"],
-          "allOf": [
-            { "not": { "required": ["input"] } },
-            { "not": { "required": ["ground_truth"] } },
-            { "not": { "required": ["expected_tools"] } },
-            { "not": { "required": ["files"] } },
-            { "not": { "required": ["retrieval_context"] } }
-          ]
-        }
+      "required": [
+        "metrics"
       ],
+      "title": "EvaluationConfig",
+      "type": "object"
+    },
+    "EvaluationMetric": {
+      "additionalProperties": false,
+      "description": "Evaluation metric configuration.\n\nRepresents a single evaluation metric with flexible model configuration,\nincluding per-metric LLM model overrides.",
       "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Test case identifier"
+        "type": {
+          "const": "standard",
+          "default": "standard",
+          "description": "Discriminator field - 'standard' for built-in metrics",
+          "title": "Type",
+          "type": "string"
         },
-        "input": {
-          "type": "string",
-          "minLength": 1,
-          "description": "User query/prompt (single-turn). Mutually exclusive with `turns`."
+        "metric": {
+          "description": "Built-in metric name. One of: groundedness, relevance, coherence, fluency, bleu, rouge, meteor, equality, numeric.",
+          "enum": [
+            "groundedness",
+            "relevance",
+            "coherence",
+            "fluency",
+            "bleu",
+            "rouge",
+            "meteor",
+            "equality",
+            "numeric"
+          ],
+          "title": "Metric",
+          "type": "string"
         },
-        "expected_tools": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/ExpectedToolEntry" },
-          "description": "Tools expected to be called. Mixed list of bare strings (legacy) and ExpectedTool objects (US3). Single-turn only."
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum passing score",
+          "title": "Threshold"
         },
-        "ground_truth": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Expected output for comparison. Single-turn only."
+        "enabled": {
+          "default": true,
+          "description": "Whether metric is enabled",
+          "title": "Enabled",
+          "type": "boolean"
         },
-        "files": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/FileInput" },
-          "maxItems": 10,
-          "description": "Multimodal file inputs. Single-turn only."
+        "scale": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Score scale (e.g., 5 for 1-5 scale)",
+          "title": "Scale"
         },
-        "retrieval_context": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Retrieved text chunks for RAG evaluation. Single-turn only."
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LLMProvider"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM model override for this metric"
         },
-        "evaluations": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/MetricType" },
-          "description": "Per-test metric overrides (standard, geval, rag, or code)."
+        "fail_on_error": {
+          "default": false,
+          "description": "Fail test if metric evaluation fails",
+          "title": "Fail On Error",
+          "type": "boolean"
         },
-        "turns": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/Turn" },
-          "minItems": 1,
-          "description": "Ordered multi-turn conversation (feature 032). Mutually exclusive with single-turn fields (`input`, `ground_truth`, top-level `expected_tools`, `files`, `retrieval_context`)."
+        "retry_on_failure": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of retries on failure (1-3)",
+          "title": "Retry On Failure"
+        },
+        "timeout_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timeout in milliseconds for LLM calls",
+          "title": "Timeout Ms"
+        },
+        "custom_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Custom evaluation prompt",
+          "title": "Custom Prompt"
+        },
+        "case_insensitive": {
+          "default": false,
+          "description": "[equality] Lowercase both sides before compare.",
+          "title": "Case Insensitive",
+          "type": "boolean"
+        },
+        "strip_whitespace": {
+          "default": false,
+          "description": "[equality] Collapse whitespace + trim before compare.",
+          "title": "Strip Whitespace",
+          "type": "boolean"
+        },
+        "strip_punctuation": {
+          "default": false,
+          "description": "[equality] Remove string.punctuation before compare.",
+          "title": "Strip Punctuation",
+          "type": "boolean"
+        },
+        "absolute_tolerance": {
+          "default": 1e-06,
+          "description": "[numeric] Pass when abs(actual - expected) <= absolute_tolerance (inclusive; FR-018).",
+          "minimum": 0.0,
+          "title": "Absolute Tolerance",
+          "type": "number"
+        },
+        "relative_tolerance": {
+          "default": 0.0,
+          "description": "[numeric] Pass when abs(actual - expected) <= relative_tolerance * abs(expected).",
+          "minimum": 0.0,
+          "title": "Relative Tolerance",
+          "type": "number"
+        },
+        "accept_percent": {
+          "default": false,
+          "description": "[numeric] Parse trailing '%' as /100.",
+          "title": "Accept Percent",
+          "type": "boolean"
+        },
+        "accept_thousands_separators": {
+          "default": false,
+          "description": "[numeric] Strip ',' / '_' / NBSP before parse.",
+          "title": "Accept Thousands Separators",
+          "type": "boolean"
+        },
+        "response_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional path into a JSON-encoded response. When set, the evaluator grades the leaf value at this path (coerced to str) instead of the raw response. Grammar: dotted keys with optional bracketed indices \u2014 'answer', 'result.value', 'items[0].score'.",
+          "title": "Response Path"
         }
       },
-      "description": "Test case — either single-turn (with `input`) or multi-turn (with `turns`)."
+      "required": [
+        "metric"
+      ],
+      "title": "EvaluationMetric",
+      "type": "object"
     },
     "ExecutionConfig": {
-      "type": "object",
       "additionalProperties": false,
+      "description": "Test execution configuration.\n\nSpecifies execution parameters for agent test runs, including timeouts,\ncaching, and logging options.",
       "properties": {
         "file_timeout": {
-          "type": "integer",
-          "description": "File processing timeout (seconds)"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "File processing timeout in seconds",
+          "title": "File Timeout"
         },
         "llm_timeout": {
-          "type": "integer",
-          "description": "LLM API timeout (seconds)"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM API call timeout in seconds",
+          "title": "Llm Timeout"
         },
         "download_timeout": {
-          "type": "integer",
-          "description": "File download timeout (seconds)"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "File download timeout in seconds",
+          "title": "Download Timeout"
         },
         "cache_enabled": {
-          "type": "boolean",
-          "description": "Enable file caching"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Enable file caching",
+          "title": "Cache Enabled"
         },
         "cache_dir": {
-          "type": "string",
-          "description": "Cache directory path"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cache directory path",
+          "title": "Cache Dir"
         },
-        "verbose": { "type": "boolean", "description": "Verbose output mode" },
-        "quiet": { "type": "boolean", "description": "Quiet output mode" },
+        "verbose": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Verbose output mode",
+          "title": "Verbose"
+        },
+        "quiet": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Quiet output mode",
+          "title": "Quiet"
+        },
         "parallel_test_cases": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "Maximum concurrent multi-turn test cases (FR-009a). Resolved via CLI > YAML > env > defaults (default 1)."
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Max concurrent multi-turn test cases (FR-009a). Resolved via CLI > YAML > env > defaults (default 1).",
+          "title": "Parallel Test Cases"
         }
       },
-      "description": "Test execution configuration"
+      "title": "ExecutionConfig",
+      "type": "object"
+    },
+    "ExpectedTool": {
+      "additionalProperties": false,
+      "description": "Object form of an expected tool assertion (FR-003).\n\nA bare string like `\"subtract\"` is promoted to\n`ExpectedTool(name=\"subtract\", args=None, count=1)` by the list\npre-validator on the enclosing model, but this class itself only holds\nthe object shape.",
+      "properties": {
+        "name": {
+          "description": "Tool name \u2014 case-sensitive substring match",
+          "title": "Name",
+          "type": "string"
+        },
+        "args": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-arg matcher map (FR-004)",
+          "title": "Args"
+        },
+        "count": {
+          "default": 1,
+          "description": "Minimum number of matching calls",
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "ExpectedTool",
+      "type": "object"
+    },
+    "ExportersConfig": {
+      "additionalProperties": false,
+      "description": "Container for exporter configurations.\n\nNote: If no exporters are explicitly enabled, console exporter is used\nas the default for development/debugging purposes.",
+      "properties": {
+        "console": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConsoleExporterConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Console exporter (default if no other exporters)"
+        },
+        "otlp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OTLPExporterConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OTLP exporter configuration"
+        },
+        "prometheus": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PrometheusExporterConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prometheus exporter configuration"
+        },
+        "azure_monitor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AzureMonitorExporterConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Azure Monitor exporter configuration"
+        }
+      },
+      "title": "ExportersConfig",
+      "type": "object"
+    },
+    "ExtendedThinkingConfig": {
+      "additionalProperties": false,
+      "description": "Extended reasoning (deep thinking) configuration.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "budget_tokens": {
+          "default": 10000,
+          "maximum": 100000,
+          "minimum": 1000,
+          "title": "Budget Tokens",
+          "type": "integer"
+        }
+      },
+      "title": "ExtendedThinkingConfig",
+      "type": "object"
+    },
+    "FileInput": {
+      "additionalProperties": false,
+      "description": "File input for multimodal test cases.\n\nRepresents a single file reference for test case inputs, supporting\nboth local files and remote URLs with optional extraction parameters.",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Local file path",
+          "title": "Path"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Remote URL",
+          "title": "Url"
+        },
+        "type": {
+          "description": "File type: image, pdf, text, excel, word, powerpoint, csv",
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "File description",
+          "title": "Description"
+        },
+        "pages": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Specific pages/slides to extract",
+          "title": "Pages"
+        },
+        "sheet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Excel sheet name",
+          "title": "Sheet"
+        },
+        "range": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Excel cell range (e.g., A1:E100)",
+          "title": "Range"
+        },
+        "cache": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cache remote files (default true for URLs)",
+          "title": "Cache"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "FileInput",
+      "type": "object"
+    },
+    "FileSystemConfig": {
+      "additionalProperties": false,
+      "description": "File read/write/edit access settings.",
+      "properties": {
+        "read": {
+          "default": false,
+          "title": "Read",
+          "type": "boolean"
+        },
+        "write": {
+          "default": false,
+          "title": "Write",
+          "type": "boolean"
+        },
+        "edit": {
+          "default": false,
+          "title": "Edit",
+          "type": "boolean"
+        }
+      },
+      "title": "FileSystemConfig",
+      "type": "object"
+    },
+    "FunctionTool": {
+      "additionalProperties": false,
+      "description": "Function tool for calling Python functions.",
+      "properties": {
+        "name": {
+          "description": "Tool identifier",
+          "pattern": "^[0-9A-Za-z_]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "Tool description",
+          "title": "Description",
+          "type": "string"
+        },
+        "type": {
+          "const": "function",
+          "default": "function",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "defer_loading": {
+          "default": true,
+          "description": "If True, tool is excluded from initial context and loaded on-demand via semantic search. Set to False for critical tools.",
+          "title": "Defer Loading",
+          "type": "boolean"
+        },
+        "file": {
+          "description": "Path to Python file",
+          "title": "File",
+          "type": "string"
+        },
+        "function": {
+          "description": "Function name",
+          "title": "Function",
+          "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Parameter schema",
+          "title": "Parameters"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "file",
+        "function"
+      ],
+      "title": "FunctionTool",
+      "type": "object"
+    },
+    "GCPCloudRunConfig": {
+      "additionalProperties": false,
+      "description": "GCP Cloud Run deployment configuration.\n\nAttributes:\n    project_id: GCP project ID\n    region: GCP region for deployment\n    memory: Memory allocation (e.g., 512Mi, 1Gi)\n    cpu: vCPU allocation (1, 2, or 4)\n    concurrency: Maximum concurrent requests per instance\n    timeout: Request timeout in seconds\n    min_instances: Minimum instances\n    max_instances: Maximum instances",
+      "properties": {
+        "project_id": {
+          "description": "GCP project ID",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "region": {
+          "default": "us-central1",
+          "description": "GCP region for deployment",
+          "title": "Region",
+          "type": "string"
+        },
+        "memory": {
+          "default": "512Mi",
+          "description": "Memory allocation (e.g., 512Mi, 1Gi)",
+          "title": "Memory",
+          "type": "string"
+        },
+        "cpu": {
+          "default": 1,
+          "description": "vCPU allocation",
+          "title": "Cpu",
+          "type": "integer"
+        },
+        "concurrency": {
+          "default": 80,
+          "description": "Maximum concurrent requests per instance",
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Concurrency",
+          "type": "integer"
+        },
+        "timeout": {
+          "default": 300,
+          "description": "Request timeout in seconds",
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Timeout",
+          "type": "integer"
+        },
+        "min_instances": {
+          "default": 0,
+          "description": "Minimum instances",
+          "minimum": 0,
+          "title": "Min Instances",
+          "type": "integer"
+        },
+        "max_instances": {
+          "default": 100,
+          "description": "Maximum instances",
+          "minimum": 1,
+          "title": "Max Instances",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "title": "GCPCloudRunConfig",
+      "type": "object"
+    },
+    "GEvalMetric": {
+      "additionalProperties": false,
+      "description": "G-Eval custom criteria metric configuration.\n\nUses discriminator pattern with type=\"geval\" to distinguish from standard\nEvaluationMetric instances in a discriminated union.\n\nG-Eval enables custom evaluation criteria defined in natural language,\nusing chain-of-thought prompting with LLM-based scoring.\n\nExample:\n    >>> metric = GEvalMetric(\n    ...     name=\"Professionalism\",\n    ...     criteria=\"Evaluate if the response uses professional language\",\n    ...     threshold=0.7\n    ... )",
+      "properties": {
+        "type": {
+          "const": "geval",
+          "default": "geval",
+          "description": "Discriminator field - always 'geval' for GEval metrics",
+          "title": "Type",
+          "type": "string"
+        },
+        "name": {
+          "description": "Custom metric identifier (e.g., 'Professionalism', 'Helpfulness')",
+          "title": "Name",
+          "type": "string"
+        },
+        "criteria": {
+          "description": "Natural language evaluation criteria",
+          "title": "Criteria",
+          "type": "string"
+        },
+        "evaluation_steps": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Explicit evaluation steps (auto-generated from criteria if None)",
+          "title": "Evaluation Steps"
+        },
+        "evaluation_params": {
+          "default": [
+            "actual_output"
+          ],
+          "description": "Test case fields to include in evaluation",
+          "items": {
+            "type": "string"
+          },
+          "title": "Evaluation Params",
+          "type": "array"
+        },
+        "strict_mode": {
+          "default": false,
+          "description": "Binary scoring mode (1.0 or 0.0 only)",
+          "title": "Strict Mode",
+          "type": "boolean"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum passing score (0.0-1.0)",
+          "title": "Threshold"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LLMProvider"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM model override for this metric"
+        },
+        "enabled": {
+          "default": true,
+          "description": "Whether metric is enabled",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "fail_on_error": {
+          "default": false,
+          "description": "Fail test if metric evaluation fails",
+          "title": "Fail On Error",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "criteria"
+      ],
+      "title": "GEvalMetric",
+      "type": "object"
+    },
+    "HierarchicalDocumentToolConfig": {
+      "additionalProperties": false,
+      "description": "Configuration for the HierarchicalDocumentTool.\n\nA specialized document search tool that preserves document structure,\nsupports multiple search modalities (semantic, keyword, exact), and\nenables context-aware embeddings for improved retrieval quality.\n\nFeatures:\n- Structure-aware chunking that respects markdown headings\n- Hybrid search combining semantic, keyword, and exact matching\n- Contextual embeddings that include document/section context\n- Automatic definition and cross-reference extraction\n- Optional reranking for improved result quality",
+      "properties": {
+        "name": {
+          "description": "Tool identifier (alphanumeric and underscores only)",
+          "pattern": "^[0-9A-Za-z_]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "Human-readable tool description",
+          "title": "Description",
+          "type": "string"
+        },
+        "type": {
+          "const": "hierarchical_document",
+          "default": "hierarchical_document",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "source": {
+          "description": "Path to markdown document or directory containing markdown files. Supports glob patterns for multiple files.",
+          "title": "Source",
+          "type": "string"
+        },
+        "chunking_strategy": {
+          "$ref": "#/$defs/ChunkingStrategy",
+          "default": "structure",
+          "description": "Document chunking approach: 'structure' parses markdown headings, 'token' uses fixed token-based splitting"
+        },
+        "max_chunk_tokens": {
+          "default": 800,
+          "description": "Maximum tokens per chunk (100-2000, default 800)",
+          "maximum": 2000,
+          "minimum": 100,
+          "title": "Max Chunk Tokens",
+          "type": "integer"
+        },
+        "chunk_overlap": {
+          "default": 50,
+          "description": "Token overlap between chunks (0-200, default 50)",
+          "maximum": 200,
+          "minimum": 0,
+          "title": "Chunk Overlap",
+          "type": "integer"
+        },
+        "document_domain": {
+          "$ref": "#/$defs/DocumentDomain",
+          "default": "none",
+          "description": "Document structure domain for subsection detection. Options: 'none' (default), 'us_legislative', 'au_legislative', 'academic', 'technical', 'legal_contract'. When set to a domain, enables recognition of implicit headings like (a), (1), Step 1, etc."
+        },
+        "max_subsection_depth": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum subsection nesting depth. If None (default), uses all patterns defined for the document_domain. Set to limit depth, e.g., 2 to only recognize Title and Chapter but not Section and below.",
+          "title": "Max Subsection Depth"
+        },
+        "search_mode": {
+          "$ref": "#/$defs/SearchMode",
+          "default": "hybrid",
+          "description": "Search modality: 'semantic' (embeddings), 'keyword' (BM25), 'exact' (ID/phrase match), 'hybrid' (all combined)"
+        },
+        "top_k": {
+          "default": 10,
+          "description": "Number of results to return (1-100, default 10)",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Top K",
+          "type": "integer"
+        },
+        "min_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum similarity score threshold for results (0.0-1.0)",
+          "title": "Min Score"
+        },
+        "semantic_weight": {
+          "default": 0.5,
+          "description": "Weight for semantic search in hybrid mode (default 0.5)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Semantic Weight",
+          "type": "number"
+        },
+        "keyword_weight": {
+          "default": 0.3,
+          "description": "Weight for keyword search in hybrid mode (default 0.3)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Keyword Weight",
+          "type": "number"
+        },
+        "exact_weight": {
+          "default": 0.2,
+          "description": "Weight for exact search in hybrid mode (default 0.2)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Exact Weight",
+          "type": "number"
+        },
+        "rrf_k": {
+          "default": 60,
+          "description": "Reciprocal Rank Fusion constant for hybrid search (default 60). Higher values give more weight to lower-ranked results.",
+          "minimum": 1,
+          "title": "Rrf K",
+          "type": "integer"
+        },
+        "contextual_embeddings": {
+          "default": true,
+          "description": "Enable contextual embeddings that include document/section context for improved semantic understanding",
+          "title": "Contextual Embeddings",
+          "type": "boolean"
+        },
+        "context_max_tokens": {
+          "default": 100,
+          "description": "Maximum tokens for context summary (50-200, default 100)",
+          "maximum": 200,
+          "minimum": 50,
+          "title": "Context Max Tokens",
+          "type": "integer"
+        },
+        "context_concurrency": {
+          "default": 10,
+          "description": "Concurrent context generation requests (1-50, default 10)",
+          "maximum": 50,
+          "minimum": 1,
+          "title": "Context Concurrency",
+          "type": "integer"
+        },
+        "extract_definitions": {
+          "default": true,
+          "description": "Extract and index term definitions from documents",
+          "title": "Extract Definitions",
+          "type": "boolean"
+        },
+        "extract_cross_references": {
+          "default": true,
+          "description": "Extract and resolve cross-references between sections",
+          "title": "Extract Cross References",
+          "type": "boolean"
+        },
+        "enable_reranking": {
+          "default": false,
+          "description": "Enable LLM-based reranking of search results",
+          "title": "Enable Reranking",
+          "type": "boolean"
+        },
+        "reranker_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LLMProvider"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM for reranking results. Required when enable_reranking=True."
+        },
+        "context_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LLMProvider"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM for contextual embedding generation. Overrides the default model used by LLMContextGenerator."
+        },
+        "embedding_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Custom embedding model (defaults to provider default)",
+          "title": "Embedding Model"
+        },
+        "database": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DatabaseConfig"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Vector database configuration. Can be:\n- DatabaseConfig object with provider and connection details\n- String reference to a named vectorstore in global config\n- None for in-memory storage",
+          "title": "Database"
+        },
+        "keyword_index": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KeywordIndexConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Keyword index configuration for sparse/BM25 search. If None, defaults to in-memory BM25."
+        },
+        "defer_loading": {
+          "default": true,
+          "description": "If True, tool is excluded from initial context and loaded on-demand via semantic search. Set to False for critical tools.",
+          "title": "Defer Loading",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "source"
+      ],
+      "title": "HierarchicalDocumentToolConfig",
+      "type": "object"
+    },
+    "Instructions": {
+      "additionalProperties": false,
+      "description": "System instructions specification (file or inline).\n\nRepresents the system prompt for an agent, supporting both\nfile references and inline text.",
+      "properties": {
+        "file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to instruction file",
+          "title": "File"
+        },
+        "inline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Inline instruction text",
+          "title": "Inline"
+        }
+      },
+      "title": "Instructions",
+      "type": "object"
+    },
+    "KeywordIndexConfig": {
+      "additionalProperties": true,
+      "description": "Keyword index configuration for sparse/BM25 search backend.\n\nTwo providers:\n- in-memory: rank_bm25 in-process (default, dev/local)\n- opensearch: OpenSearch endpoint (production)\n\nWhen provider='opensearch', endpoint and index_name are required\n(validated at model construction time).",
+      "properties": {
+        "provider": {
+          "default": "in-memory",
+          "description": "Keyword index backend: 'in-memory' or 'opensearch'",
+          "enum": [
+            "in-memory",
+            "opensearch"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OpenSearch endpoint URL",
+          "title": "Endpoint"
+        },
+        "index_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OpenSearch index name",
+          "title": "Index Name"
+        },
+        "username": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Basic auth username",
+          "title": "Username"
+        },
+        "password": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Basic auth password",
+          "title": "Password"
+        },
+        "api_key": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "API key auth (alt to basic)",
+          "title": "Api Key"
+        },
+        "verify_certs": {
+          "default": true,
+          "description": "Verify TLS certificates",
+          "title": "Verify Certs",
+          "type": "boolean"
+        },
+        "timeout_seconds": {
+          "default": 10,
+          "description": "Connection timeout (1-120s)",
+          "maximum": 120,
+          "minimum": 1,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "KeywordIndexConfig",
+      "type": "object"
+    },
+    "LLMProvider": {
+      "additionalProperties": false,
+      "description": "LLM provider configuration.\n\nSpecifies which LLM provider and model to use, along with model parameters.",
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/ProviderEnum",
+          "description": "LLM provider"
+        },
+        "name": {
+          "description": "Model name or identifier",
+          "title": "Name",
+          "type": "string"
+        },
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.3,
+          "description": "Temperature (0.0-2.0)",
+          "title": "Temperature"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 1000,
+          "description": "Maximum tokens to generate",
+          "title": "Max Tokens"
+        },
+        "top_p": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Nucleus sampling parameter",
+          "title": "Top P"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "API endpoint (required for Azure OpenAI and Ollama)",
+          "title": "Endpoint"
+        },
+        "api_key": {
+          "anyOf": [
+            {
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "API Key for LLM Provider",
+          "title": "Api Key"
+        },
+        "api_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "API version for Azure OpenAI (e.g., '2024-10-21')",
+          "title": "Api Version"
+        },
+        "auth_provider": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthProvider"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Authentication method for Anthropic provider. Defaults to api_key. Ignored for non-Anthropic providers."
+        }
+      },
+      "required": [
+        "provider",
+        "name"
+      ],
+      "title": "LLMProvider",
+      "type": "object"
     },
     "LogLevel": {
-      "type": "string",
-      "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-      "description": "Supported log levels for observability"
-    },
-    "OTLPProtocol": {
-      "type": "string",
-      "enum": ["grpc", "http"],
-      "description": "OTLP transport protocol"
-    },
-    "TracingConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable trace collection"
-        },
-        "sample_rate": {
-          "type": "number",
-          "minimum": 0.0,
-          "maximum": 1.0,
-          "default": 1.0,
-          "description": "Trace sampling rate (0.0 to 1.0)"
-        },
-        "capture_content": {
-          "type": "boolean",
-          "default": false,
-          "description": "Capture prompts and completions in spans (sensitive data)"
-        },
-        "redaction_patterns": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Regex patterns for redacting sensitive data"
-        },
-        "max_queue_size": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 2048,
-          "description": "Maximum spans in export queue"
-        },
-        "max_export_batch_size": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 512,
-          "description": "Maximum spans per export batch"
-        }
-      },
-      "description": "Tracing-specific configuration"
-    },
-    "MetricsConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable metrics collection"
-        },
-        "export_interval_ms": {
-          "type": "integer",
-          "minimum": 1000,
-          "default": 5000,
-          "description": "Metrics export interval in milliseconds (minimum 1000ms)"
-        },
-        "include_semantic_kernel_metrics": {
-          "type": "boolean",
-          "default": true,
-          "description": "Include Semantic Kernel internal metrics"
-        }
-      },
-      "description": "Metrics-specific configuration"
+      "description": "Supported log levels for observability.",
+      "enum": [
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL"
+      ],
+      "title": "LogLevel",
+      "type": "string"
     },
     "LogsConfig": {
-      "type": "object",
       "additionalProperties": false,
+      "description": "Logging-specific configuration.\n\nControls structured logging settings including log level,\ntrace context inclusion, and namespace filtering.",
       "properties": {
         "enabled": {
-          "type": "boolean",
           "default": true,
-          "description": "Enable structured logging export"
+          "description": "Enable structured logging export",
+          "title": "Enabled",
+          "type": "boolean"
         },
         "level": {
           "$ref": "#/$defs/LogLevel",
@@ -1510,54 +2085,295 @@
           "description": "Minimum log level to export"
         },
         "include_trace_context": {
-          "type": "boolean",
           "default": true,
-          "description": "Include trace/span IDs in log records"
+          "description": "Include trace/span IDs in log records",
+          "title": "Include Trace Context",
+          "type": "boolean"
         },
         "filter_namespaces": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": ["semantic_kernel"],
-          "description": "Logger namespaces to include"
+          "description": "Logger namespaces to include",
+          "items": {
+            "type": "string"
+          },
+          "title": "Filter Namespaces",
+          "type": "array"
         }
       },
-      "description": "Logging-specific configuration"
+      "title": "LogsConfig",
+      "type": "object"
     },
-    "ConsoleExporterConfig": {
-      "type": "object",
+    "MCPTool": {
       "additionalProperties": false,
+      "description": "MCP (Model Context Protocol) tool for standardized integrations.\n\nSupports four transport types:\n- stdio (default): Local MCP servers via subprocess\n- sse: Remote servers via Server-Sent Events\n- websocket: Bidirectional WebSocket communication\n- http: Streamable HTTP transport\n\nFor stdio transport, only npx, uvx, or docker commands are allowed\nfor security reasons.",
+      "properties": {
+        "name": {
+          "description": "Tool identifier",
+          "pattern": "^[0-9A-Za-z_]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "Tool description",
+          "title": "Description",
+          "type": "string"
+        },
+        "type": {
+          "const": "mcp",
+          "default": "mcp",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "defer_loading": {
+          "default": true,
+          "description": "If True, tool is excluded from initial context and loaded on-demand via semantic search. Set to False for critical tools.",
+          "title": "Defer Loading",
+          "type": "boolean"
+        },
+        "transport": {
+          "$ref": "#/$defs/TransportType",
+          "default": "stdio",
+          "description": "Transport type"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CommandType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Command to run (required for stdio: npx, uvx, or docker)"
+        },
+        "args": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Command arguments",
+          "title": "Args"
+        },
+        "env": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Environment variables",
+          "title": "Env"
+        },
+        "env_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to .env file",
+          "title": "Env File"
+        },
+        "encoding": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Stream encoding (default: utf-8)",
+          "title": "Encoding"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Server URL for HTTP/SSE/WebSocket",
+          "title": "Url"
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "HTTP headers",
+          "title": "Headers"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Connection timeout (seconds)",
+          "title": "Timeout"
+        },
+        "sse_read_timeout": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SSE read timeout",
+          "title": "Sse Read Timeout"
+        },
+        "terminate_on_close": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Terminate HTTP connection on close",
+          "title": "Terminate On Close"
+        },
+        "config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Server-specific configuration",
+          "title": "Config"
+        },
+        "load_tools": {
+          "default": true,
+          "description": "Auto-discover tools from server",
+          "title": "Load Tools",
+          "type": "boolean"
+        },
+        "load_prompts": {
+          "default": true,
+          "description": "Auto-discover prompts from server",
+          "title": "Load Prompts",
+          "type": "boolean"
+        },
+        "request_timeout": {
+          "default": 60,
+          "description": "Operation timeout (seconds)",
+          "title": "Request Timeout",
+          "type": "integer"
+        },
+        "is_retrieval": {
+          "default": false,
+          "description": "Mark this MCP tool as a retrieval tool for RAG evaluation metrics. When True, tool results contribute to retrieval_context for metrics like Faithfulness, ContextualRelevancy, ContextualPrecision, and ContextualRecall.",
+          "title": "Is Retrieval",
+          "type": "boolean"
+        },
+        "registry_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Full reverse-DNS name from MCP registry (e.g., 'io.github.user/server'). Used for duplicate detection and origin tracking. None for manually configured MCP servers.",
+          "title": "Registry Name"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "title": "MCPTool",
+      "type": "object"
+    },
+    "MetricsConfig": {
+      "additionalProperties": false,
+      "description": "Metrics-specific configuration.\n\nControls metrics collection settings including export interval\nand Semantic Kernel metrics inclusion.",
       "properties": {
         "enabled": {
-          "type": "boolean",
           "default": true,
-          "description": "Enable console exporter"
+          "description": "Enable metrics collection",
+          "title": "Enabled",
+          "type": "boolean"
         },
-        "pretty_print": {
-          "type": "boolean",
-          "default": true,
-          "description": "Format for readability"
+        "export_interval_ms": {
+          "default": 5000,
+          "description": "Metrics export interval in milliseconds (minimum 1000ms)",
+          "minimum": 1000,
+          "title": "Export Interval Ms",
+          "type": "integer"
         },
-        "include_timestamps": {
-          "type": "boolean",
+        "include_semantic_kernel_metrics": {
           "default": true,
-          "description": "Include timestamps"
+          "description": "Include Semantic Kernel internal metrics",
+          "title": "Include Semantic Kernel Metrics",
+          "type": "boolean"
         }
       },
-      "description": "Console exporter configuration"
+      "title": "MetricsConfig",
+      "type": "object"
     },
     "OTLPExporterConfig": {
-      "type": "object",
       "additionalProperties": false,
+      "description": "OTLP exporter configuration.\n\nConfigures export to OTLP collectors (Jaeger, Honeycomb, Datadog, etc.)\nvia gRPC or HTTP protocol.",
       "properties": {
         "enabled": {
-          "type": "boolean",
           "default": true,
-          "description": "Enable OTLP exporter"
+          "description": "Enable OTLP exporter",
+          "title": "Enabled",
+          "type": "boolean"
         },
         "endpoint": {
-          "type": "string",
           "default": "http://localhost:4317",
-          "description": "OTLP collector endpoint"
+          "description": "OTLP collector endpoint",
+          "title": "Endpoint",
+          "type": "string"
         },
         "protocol": {
           "$ref": "#/$defs/OTLPProtocol",
@@ -1565,129 +2381,74 @@
           "description": "Transport protocol (grpc or http)"
         },
         "headers": {
-          "type": "object",
-          "additionalProperties": { "type": "string" },
-          "description": "Custom headers for authentication"
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Custom headers for authentication",
+          "title": "Headers",
+          "type": "object"
         },
         "timeout_ms": {
-          "type": "integer",
-          "minimum": 1000,
           "default": 30000,
-          "description": "Export timeout in milliseconds"
+          "description": "Export timeout in milliseconds",
+          "minimum": 1000,
+          "title": "Timeout Ms",
+          "type": "integer"
         },
         "compression": {
-          "type": ["string", "null"],
-          "description": "Compression algorithm (gzip, deflate, or null)"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Compression algorithm (gzip, deflate, or None)",
+          "title": "Compression"
         },
         "insecure": {
-          "type": "boolean",
           "default": true,
-          "description": "Use insecure connection (no TLS)"
+          "description": "Use insecure connection (no TLS)",
+          "title": "Insecure",
+          "type": "boolean"
         }
       },
-      "description": "OTLP exporter configuration"
+      "title": "OTLPExporterConfig",
+      "type": "object"
     },
-    "PrometheusExporterConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable Prometheus endpoint"
-        },
-        "port": {
-          "type": "integer",
-          "minimum": 1024,
-          "maximum": 65535,
-          "default": 8889,
-          "description": "Port for metrics endpoint (1024-65535)"
-        },
-        "host": {
-          "type": "string",
-          "default": "0.0.0.0",
-          "description": "Host to bind metrics endpoint"
-        },
-        "path": {
-          "type": "string",
-          "default": "/metrics",
-          "description": "Path for metrics endpoint"
-        }
-      },
-      "description": "Prometheus exporter configuration"
-    },
-    "AzureMonitorExporterConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable Azure Monitor exporter"
-        },
-        "connection_string": {
-          "type": ["string", "null"],
-          "description": "Application Insights connection string"
-        },
-        "disable_offline_storage": {
-          "type": "boolean",
-          "default": false,
-          "description": "Disable offline storage for retry"
-        },
-        "storage_directory": {
-          "type": ["string", "null"],
-          "description": "Custom directory for offline storage"
-        }
-      },
-      "description": "Azure Monitor exporter configuration"
-    },
-    "ExportersConfig": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "console": {
-          "oneOf": [
-            { "$ref": "#/$defs/ConsoleExporterConfig" },
-            { "type": "null" }
-          ],
-          "description": "Console exporter (default if no other exporters)"
-        },
-        "otlp": {
-          "oneOf": [
-            { "$ref": "#/$defs/OTLPExporterConfig" },
-            { "type": "null" }
-          ],
-          "description": "OTLP exporter configuration"
-        },
-        "prometheus": {
-          "oneOf": [
-            { "$ref": "#/$defs/PrometheusExporterConfig" },
-            { "type": "null" }
-          ],
-          "description": "Prometheus exporter configuration"
-        },
-        "azure_monitor": {
-          "oneOf": [
-            { "$ref": "#/$defs/AzureMonitorExporterConfig" },
-            { "type": "null" }
-          ],
-          "description": "Azure Monitor exporter configuration"
-        }
-      },
-      "description": "Container for exporter configurations"
+    "OTLPProtocol": {
+      "description": "OTLP transport protocol.",
+      "enum": [
+        "grpc",
+        "http"
+      ],
+      "title": "OTLPProtocol",
+      "type": "string"
     },
     "ObservabilityConfig": {
-      "type": "object",
       "additionalProperties": false,
+      "description": "Top-level observability configuration.\n\nRoot configuration for OpenTelemetry observability features.\nService name defaults to 'holodeck-{agent.name}' if not explicitly set.",
       "properties": {
         "enabled": {
-          "type": "boolean",
           "default": false,
-          "description": "Enable observability features"
+          "description": "Enable observability features",
+          "title": "Enabled",
+          "type": "boolean"
         },
         "service_name": {
-          "type": ["string", "null"],
-          "description": "Override service name (defaults to 'holodeck-{agent.name}')"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override service name (defaults to 'holodeck-{agent.name}')",
+          "title": "Service Name"
         },
         "traces": {
           "$ref": "#/$defs/TracingConfig",
@@ -1706,297 +2467,1237 @@
           "description": "Exporter configurations"
         },
         "resource_attributes": {
-          "type": "object",
-          "additionalProperties": { "type": "string" },
-          "description": "Additional OpenTelemetry resource attributes"
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Additional OpenTelemetry resource attributes",
+          "title": "Resource Attributes",
+          "type": "object"
         }
       },
-      "description": "Top-level observability configuration for OpenTelemetry"
+      "title": "ObservabilityConfig",
+      "type": "object"
     },
-    "TagStrategy": {
-      "type": "string",
-      "enum": ["git_sha", "git_tag", "latest", "custom"],
-      "default": "git_sha",
-      "description": "Strategy for generating container image tags"
+    "PermissionMode": {
+      "description": "Level of autonomous action for Claude Agent SDK.",
+      "enum": [
+        "manual",
+        "acceptEdits",
+        "acceptAll"
+      ],
+      "title": "PermissionMode",
+      "type": "string"
     },
-    "CloudProvider": {
-      "type": "string",
-      "enum": ["aws", "gcp", "azure"],
-      "description": "Supported cloud providers for deployment"
+    "PrometheusExporterConfig": {
+      "additionalProperties": false,
+      "description": "Prometheus exporter configuration.\n\nExposes metrics via HTTP endpoint for Prometheus scraping.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Enable Prometheus endpoint",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "port": {
+          "default": 8889,
+          "description": "Port for metrics endpoint (1024-65535)",
+          "maximum": 65535,
+          "minimum": 1024,
+          "title": "Port",
+          "type": "integer"
+        },
+        "host": {
+          "default": "0.0.0.0",
+          "description": "Host to bind metrics endpoint",
+          "title": "Host",
+          "type": "string"
+        },
+        "path": {
+          "default": "/metrics",
+          "description": "Path for metrics endpoint",
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "title": "PrometheusExporterConfig",
+      "type": "object"
     },
-    "RuntimeType": {
-      "type": "string",
-      "enum": ["container"],
-      "default": "container",
-      "description": "Container runtime type"
+    "PromptTool": {
+      "additionalProperties": false,
+      "description": "Prompt-based tool for AI-powered semantic functions.",
+      "properties": {
+        "name": {
+          "description": "Tool identifier",
+          "pattern": "^[0-9A-Za-z_]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "Tool description",
+          "title": "Description",
+          "type": "string"
+        },
+        "type": {
+          "const": "prompt",
+          "default": "prompt",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "defer_loading": {
+          "default": true,
+          "description": "If True, tool is excluded from initial context and loaded on-demand via semantic search. Set to False for critical tools.",
+          "title": "Defer Loading",
+          "type": "boolean"
+        },
+        "template": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Inline prompt template",
+          "title": "Template"
+        },
+        "file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to prompt file",
+          "title": "File"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "description": "Parameter definitions (required)",
+          "title": "Parameters",
+          "type": "object"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model config override",
+          "title": "Model"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "parameters"
+      ],
+      "title": "PromptTool",
+      "type": "object"
     },
     "ProtocolType": {
-      "type": "string",
-      "enum": ["rest", "ag-ui", "both"],
-      "default": "rest",
-      "description": "API protocol type for agent serving"
+      "description": "API protocol types for agent serving.",
+      "enum": [
+        "rest",
+        "ag-ui",
+        "both"
+      ],
+      "title": "ProtocolType",
+      "type": "string"
+    },
+    "ProviderEnum": {
+      "description": "Supported LLM providers.",
+      "enum": [
+        "openai",
+        "azure_openai",
+        "anthropic",
+        "ollama"
+      ],
+      "title": "ProviderEnum",
+      "type": "string"
+    },
+    "RAGMetric": {
+      "additionalProperties": false,
+      "description": "RAG pipeline evaluation metric configuration.\n\nUses discriminator pattern with type=\"rag\" to distinguish from standard\nEvaluationMetric and GEvalMetric instances in a discriminated union.\n\nRAG metrics evaluate the quality of retrieval-augmented generation pipelines:\n- Faithfulness: Detects hallucinations by comparing response to context\n- ContextualRelevancy: Measures relevance of retrieved chunks to query\n- ContextualPrecision: Evaluates ranking quality of retrieved chunks\n- ContextualRecall: Measures retrieval completeness against expected output\n\nExample:\n    >>> metric = RAGMetric(\n    ...     metric_type=RAGMetricType.FAITHFULNESS,\n    ...     threshold=0.8\n    ... )",
+      "properties": {
+        "type": {
+          "const": "rag",
+          "default": "rag",
+          "description": "Discriminator field - always 'rag' for RAG metrics",
+          "title": "Type",
+          "type": "string"
+        },
+        "metric_type": {
+          "$ref": "#/$defs/RAGMetricType",
+          "description": "RAG metric type (faithfulness, contextual_relevancy, etc.)"
+        },
+        "threshold": {
+          "default": 0.5,
+          "description": "Minimum passing score (0.0-1.0)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Threshold",
+          "type": "number"
+        },
+        "include_reason": {
+          "default": true,
+          "description": "Include reasoning in evaluation results",
+          "title": "Include Reason",
+          "type": "boolean"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LLMProvider"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM model override for this metric"
+        },
+        "enabled": {
+          "default": true,
+          "description": "Whether metric is enabled",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "fail_on_error": {
+          "default": false,
+          "description": "Fail test if metric evaluation fails",
+          "title": "Fail On Error",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "metric_type"
+      ],
+      "title": "RAGMetric",
+      "type": "object"
+    },
+    "RAGMetricType": {
+      "description": "RAG pipeline evaluation metric types.\n\nThese metrics evaluate the quality of Retrieval-Augmented Generation (RAG)\npipelines by assessing various aspects of retrieval and response generation.",
+      "enum": [
+        "faithfulness",
+        "contextual_relevancy",
+        "contextual_precision",
+        "contextual_recall",
+        "answer_relevancy"
+      ],
+      "title": "RAGMetricType",
+      "type": "string"
     },
     "RegistryConfig": {
-      "type": "object",
-      "required": ["url", "repository"],
       "additionalProperties": false,
+      "description": "Container registry configuration.\n\nAttributes:\n    url: Registry URL (e.g., ghcr.io, docker.io, ECR URL)\n    repository: Repository name (e.g., org/agent-name)\n    tag_strategy: Strategy for generating image tags\n    custom_tag: Custom tag when tag_strategy is CUSTOM\n    credentials_env_prefix: Prefix for credential environment variables",
       "properties": {
         "url": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Registry URL (e.g., ghcr.io, docker.io, ECR URL)"
+          "description": "Registry URL (e.g., ghcr.io)",
+          "title": "Url",
+          "type": "string"
         },
         "repository": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[a-z0-9][a-z0-9._/-]*[a-z0-9]$|^[a-z0-9]$",
-          "description": "Repository name (e.g., org/agent-name)"
+          "description": "Repository name (e.g., org/agent-name)",
+          "title": "Repository",
+          "type": "string"
         },
         "tag_strategy": {
           "$ref": "#/$defs/TagStrategy",
+          "default": "git_sha",
           "description": "Strategy for generating image tags"
         },
         "custom_tag": {
-          "type": "string",
-          "description": "Custom tag when tag_strategy is 'custom'"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Custom tag when tag_strategy is CUSTOM",
+          "title": "Custom Tag"
         },
         "credentials_env_prefix": {
-          "type": "string",
-          "description": "Prefix for credential environment variables"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prefix for credential environment variables",
+          "title": "Credentials Env Prefix"
         }
       },
-      "description": "Container registry configuration"
+      "required": [
+        "url",
+        "repository"
+      ],
+      "title": "RegistryConfig",
+      "type": "object"
     },
-    "AWSAppRunnerConfig": {
-      "type": "object",
-      "required": ["region"],
+    "RuntimeType": {
+      "description": "Container runtime types.",
+      "enum": [
+        "container"
+      ],
+      "title": "RuntimeType",
+      "type": "string"
+    },
+    "SearchMode": {
+      "description": "Search modality options for HierarchicalDocumentTool.\n\nDefines which search indices are used during query:\n- SEMANTIC: Dense embeddings only (conceptual similarity)\n- KEYWORD: BM25 sparse index only (term frequency)\n- HYBRID: Keyword + semantic combined with RRF fusion",
+      "enum": [
+        "semantic",
+        "keyword",
+        "hybrid"
+      ],
+      "title": "SearchMode",
+      "type": "string"
+    },
+    "SubagentSpec": {
       "additionalProperties": false,
+      "description": "A single subagent definition for multi-agent orchestration.\n\nEach entry under ``claude.agents`` becomes an\n``claude_agent_sdk.types.AgentDefinition`` on\n``ClaudeAgentOptions.agents``. The SDK uses ``description`` for routing.\n\nUS3 validators (prompt/prompt_file mutual exclusion and file resolution)\nare deliberately omitted here \u2014 they belong to the US3 task slice.",
       "properties": {
-        "region": {
-          "type": "string",
-          "minLength": 1,
-          "description": "AWS region for deployment"
+        "description": {
+          "description": "Human-readable description used by the parent agent for routing decisions. Required by the SDK.",
+          "title": "Description",
+          "type": "string"
         },
-        "cpu": {
-          "type": "integer",
-          "enum": [1, 2, 4],
-          "default": 1,
-          "description": "vCPU allocation"
+        "prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Inline system prompt for the subagent. Mutually exclusive with prompt_file.",
+          "title": "Prompt"
         },
-        "memory": {
-          "type": "integer",
-          "enum": [2048, 3072, 4096, 8192, 12288],
-          "default": 2048,
-          "description": "Memory allocation in MB"
+        "prompt_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to a file containing the subagent's system prompt. Resolved relative to the agent.yaml directory. Mutually exclusive with prompt. File contents are inlined at config-load time.",
+          "title": "Prompt File"
         },
-        "ecr_role_arn": {
-          "type": "string",
-          "pattern": "^arn:aws:iam::\\d{12}:role/[\\w+=,.@-]+$",
-          "description": "IAM role ARN for ECR access"
+        "tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Allowlist of tool names. When null/omitted, the subagent inherits all parent tools.",
+          "title": "Tools"
         },
-        "health_check_path": {
-          "type": "string",
-          "default": "/health",
-          "description": "Path for health checks"
+        "model": {
+          "anyOf": [
+            {
+              "enum": [
+                "sonnet",
+                "opus",
+                "haiku",
+                "inherit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model override for this subagent. Must be one of the SDK's literal aliases: 'sonnet', 'opus', 'haiku', 'inherit'. Full model IDs (e.g. 'claude-haiku-4-5') are rejected \u2014 the Claude CLI silently drops AgentDefinitions whose `model` is not in this set, so the validator catches it at config-load time.",
+          "title": "Model"
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "title": "SubagentSpec",
+      "type": "object"
+    },
+    "TagStrategy": {
+      "description": "Strategy for generating container image tags.",
+      "enum": [
+        "git_sha",
+        "git_tag",
+        "latest",
+        "custom"
+      ],
+      "title": "TagStrategy",
+      "type": "string"
+    },
+    "TestCaseModel": {
+      "additionalProperties": false,
+      "description": "Test case for agent evaluation.\n\nRepresents a single test scenario. Either legacy single-turn (with\n`input`) or multi-turn (with `turns`), but not both.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Test case identifier",
+          "title": "Name"
         },
-        "auto_scaling_min": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 25,
-          "default": 1,
-          "description": "Minimum instances"
+        "input": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "User query or prompt (required when `turns` is absent)",
+          "title": "Input"
         },
-        "auto_scaling_max": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 25,
+        "expected_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/ExpectedTool"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tools expected to be called",
+          "title": "Expected Tools"
+        },
+        "ground_truth": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Expected output for comparison",
+          "title": "Ground Truth"
+        },
+        "files": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/FileInput"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multimodal file inputs",
+          "title": "Files"
+        },
+        "retrieval_context": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Retrieved text chunks for RAG evaluation metrics",
+          "title": "Retrieval Context"
+        },
+        "evaluations": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/EvaluationMetric"
+                  },
+                  {
+                    "$ref": "#/$defs/GEvalMetric"
+                  },
+                  {
+                    "$ref": "#/$defs/RAGMetric"
+                  },
+                  {
+                    "$ref": "#/$defs/CodeMetric"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-test metric overrides (standard, GEval, RAG, or code)",
+          "title": "Evaluations"
+        },
+        "turns": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Turn"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ordered multi-turn conversation (feature 032). Mutually exclusive with `input` / `ground_truth` / top-level `expected_tools` / `files` / `retrieval_context`.",
+          "title": "Turns"
+        }
+      },
+      "title": "TestCaseModel",
+      "type": "object"
+    },
+    "ToolFilterConfig": {
+      "additionalProperties": false,
+      "description": "Configuration for automatic tool filtering.\n\nDefines how tools are filtered per request to reduce token usage.\nWhen enabled, only the most relevant tools (based on semantic similarity\nto the user query) are included in each LLM call.\n\nAttributes:\n    enabled: Enable or disable tool filtering globally.\n    top_k: Maximum number of tools to include per request.\n    similarity_threshold: Minimum similarity score for tool inclusion.\n    always_include: Tool names that are always included regardless of score.\n    always_include_top_n_used: Number of most-used tools to always include.\n    search_method: Method for tool search (semantic, bm25, or hybrid).",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Enable tool filtering",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "top_k": {
           "default": 5,
-          "description": "Maximum instances"
-        }
-      },
-      "description": "AWS App Runner deployment configuration"
-    },
-    "GCPCloudRunConfig": {
-      "type": "object",
-      "required": ["project_id"],
-      "additionalProperties": false,
-      "properties": {
-        "project_id": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9-]{4,28}[a-z0-9]$",
-          "description": "GCP project ID"
-        },
-        "region": {
-          "type": "string",
-          "default": "us-central1",
-          "description": "GCP region for deployment"
-        },
-        "memory": {
-          "type": "string",
-          "pattern": "^\\d+(Mi|Gi)$",
-          "default": "512Mi",
-          "description": "Memory allocation (e.g., 512Mi, 1Gi)"
-        },
-        "cpu": {
-          "type": "integer",
+          "description": "Maximum tools per request (1-50)",
+          "maximum": 50,
           "minimum": 1,
-          "maximum": 8,
-          "default": 1,
-          "description": "vCPU allocation"
+          "title": "Top K",
+          "type": "integer"
         },
-        "concurrency": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1000,
-          "default": 80,
-          "description": "Maximum concurrent requests per instance"
+        "similarity_threshold": {
+          "default": 0.3,
+          "description": "Minimum similarity score for inclusion (0.0-1.0)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Similarity Threshold",
+          "type": "number"
         },
-        "timeout": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 3600,
-          "default": 300,
-          "description": "Request timeout in seconds"
+        "always_include": {
+          "description": "Tool names always included in context",
+          "items": {
+            "type": "string"
+          },
+          "title": "Always Include",
+          "type": "array"
         },
-        "min_instances": {
-          "type": "integer",
+        "always_include_top_n_used": {
+          "default": 3,
+          "description": "Number of most-used tools to always include (0-20)",
+          "maximum": 20,
           "minimum": 0,
-          "default": 0,
-          "description": "Minimum instances"
+          "title": "Always Include Top N Used",
+          "type": "integer"
         },
-        "max_instances": {
-          "type": "integer",
-          "minimum": 1,
-          "default": 100,
-          "description": "Maximum instances"
+        "search_method": {
+          "default": "semantic",
+          "description": "Tool search method: semantic, bm25, or hybrid",
+          "enum": [
+            "semantic",
+            "bm25",
+            "hybrid"
+          ],
+          "title": "Search Method",
+          "type": "string"
         }
       },
-      "description": "GCP Cloud Run deployment configuration"
+      "title": "ToolFilterConfig",
+      "type": "object"
     },
-    "AzureContainerAppsConfig": {
-      "type": "object",
-      "required": ["subscription_id", "resource_group"],
+    "TracingConfig": {
       "additionalProperties": false,
+      "description": "Tracing-specific configuration.\n\nControls distributed tracing settings including sampling rate,\ncontent capture, and redaction patterns for sensitive data.",
       "properties": {
-        "subscription_id": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-          "description": "Azure subscription ID (UUID)"
-        },
-        "resource_group": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Azure resource group name"
-        },
-        "environment_name": {
-          "type": "string",
-          "description": "Container Apps environment name"
-        },
-        "location": {
-          "type": "string",
-          "default": "eastus",
-          "description": "Azure region for deployment"
-        },
-        "cpu": {
-          "type": "number",
-          "enum": [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0],
-          "default": 0.5,
-          "description": "vCPU allocation"
-        },
-        "memory": {
-          "type": "string",
-          "default": "1Gi",
-          "description": "Memory allocation (e.g., 2Gi)"
-        },
-        "ingress_external": {
-          "type": "boolean",
+        "enabled": {
           "default": true,
-          "description": "Whether ingress is external"
+          "description": "Enable trace collection",
+          "title": "Enabled",
+          "type": "boolean"
         },
-        "min_replicas": {
-          "type": "integer",
-          "minimum": 0,
-          "default": 0,
-          "description": "Minimum replicas"
+        "sample_rate": {
+          "default": 1.0,
+          "description": "Trace sampling rate (0.0 to 1.0)",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Sample Rate",
+          "type": "number"
         },
-        "max_replicas": {
-          "type": "integer",
+        "capture_content": {
+          "default": false,
+          "description": "Capture prompts and completions in spans (sensitive data)",
+          "title": "Capture Content",
+          "type": "boolean"
+        },
+        "capture_evaluation_content": {
+          "default": false,
+          "description": "Capture evaluation inputs (input, actual_output, expected_output) in spans (sensitive data)",
+          "title": "Capture Evaluation Content",
+          "type": "boolean"
+        },
+        "redaction_patterns": {
+          "description": "Regex patterns for redacting sensitive data",
+          "items": {
+            "type": "string"
+          },
+          "title": "Redaction Patterns",
+          "type": "array"
+        },
+        "max_queue_size": {
+          "default": 2048,
+          "description": "Maximum spans in export queue",
           "minimum": 1,
-          "default": 10,
-          "description": "Maximum replicas"
-        }
-      },
-      "description": "Azure Container Apps deployment configuration"
-    },
-    "CloudTargetConfig": {
-      "type": "object",
-      "required": ["provider"],
-      "additionalProperties": false,
-      "properties": {
-        "provider": {
-          "$ref": "#/$defs/CloudProvider",
-          "description": "Cloud provider"
+          "title": "Max Queue Size",
+          "type": "integer"
         },
-        "aws": {
-          "$ref": "#/$defs/AWSAppRunnerConfig",
-          "description": "AWS App Runner configuration (required when provider is 'aws')"
-        },
-        "gcp": {
-          "$ref": "#/$defs/GCPCloudRunConfig",
-          "description": "GCP Cloud Run configuration (required when provider is 'gcp')"
-        },
-        "azure": {
-          "$ref": "#/$defs/AzureContainerAppsConfig",
-          "description": "Azure Container Apps configuration (required when provider is 'azure')"
-        }
-      },
-      "description": "Cloud deployment target configuration"
-    },
-    "DeploymentConfig": {
-      "type": "object",
-      "required": ["registry", "target"],
-      "additionalProperties": false,
-      "properties": {
-        "runtime": {
-          "$ref": "#/$defs/RuntimeType",
-          "description": "Runtime type (currently only container)"
-        },
-        "registry": {
-          "$ref": "#/$defs/RegistryConfig",
-          "description": "Container registry configuration"
-        },
-        "target": {
-          "$ref": "#/$defs/CloudTargetConfig",
-          "description": "Cloud deployment target configuration"
-        },
-        "protocol": {
-          "$ref": "#/$defs/ProtocolType",
-          "description": "API protocol type"
-        },
-        "port": {
-          "type": "integer",
+        "max_export_batch_size": {
+          "default": 512,
+          "description": "Maximum spans per export batch",
           "minimum": 1,
-          "maximum": 65535,
-          "default": 8080,
-          "description": "Container port to expose"
+          "title": "Max Export Batch Size",
+          "type": "integer"
         },
-        "environment": {
-          "type": "object",
-          "additionalProperties": { "type": "string" },
-          "description": "Environment variables for the container"
-        },
-        "health_check_path": {
-          "type": "string",
-          "default": "/health",
-          "description": "HTTP path for health checks (e.g., /health, /healthz)"
-        },
-        "platform": {
-          "type": "string",
-          "default": "linux/amd64",
-          "description": "Target platform for container image (e.g., linux/amd64, linux/arm64)"
+        "schedule_delay_millis": {
+          "default": 2000,
+          "description": "BatchSpanProcessor flush interval in ms (default 2000)",
+          "minimum": 100,
+          "title": "Schedule Delay Millis",
+          "type": "integer"
         }
       },
-      "description": "Main deployment configuration for containerizing and deploying agents"
+      "title": "TracingConfig",
+      "type": "object"
+    },
+    "TransportType": {
+      "description": "Supported MCP transport types.\n\nDefines the communication protocol used to connect to MCP servers:\n- STDIO: Local process via stdin/stdout (default, most common)\n- SSE: Server-Sent Events over HTTP\n- WEBSOCKET: WebSocket for bidirectional communication\n- HTTP: Streamable HTTP transport",
+      "enum": [
+        "stdio",
+        "sse",
+        "websocket",
+        "http"
+      ],
+      "title": "TransportType",
+      "type": "string"
+    },
+    "Turn": {
+      "additionalProperties": false,
+      "description": "Single exchange within a multi-turn test case (data-model.md \u00a71).\n\nA multi-turn test case is an ordered list of turns driven through a\nsingle AgentSession. Each turn owns its own input, optional ground\ntruth, expected tools, files, retrieval context, and metric overrides.",
+      "properties": {
+        "input": {
+          "description": "User query for this turn",
+          "title": "Input",
+          "type": "string"
+        },
+        "ground_truth": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Expected output for this turn (non-empty if provided)",
+          "title": "Ground Truth"
+        },
+        "expected_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/ExpectedTool"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tools expected to be called during this turn. Mixed list of bare strings (legacy name-only) and ExpectedTool objects (US3).",
+          "title": "Expected Tools"
+        },
+        "files": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/FileInput"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Multimodal file inputs for this turn",
+          "title": "Files"
+        },
+        "retrieval_context": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Retrieved text chunks for RAG evaluation on this turn",
+          "title": "Retrieval Context"
+        },
+        "evaluations": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/EvaluationMetric"
+                  },
+                  {
+                    "$ref": "#/$defs/GEvalMetric"
+                  },
+                  {
+                    "$ref": "#/$defs/RAGMetric"
+                  },
+                  {
+                    "$ref": "#/$defs/CodeMetric"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-turn metric overrides (FR-023)",
+          "title": "Evaluations"
+        },
+        "turn_config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Free-form per-turn config surfaced to code graders as ``ctx.turn_config`` (contracts/code-grader-contract.md \u00a73.1). Used for grader-specific keys such as ``turn_program``.",
+          "title": "Turn Config"
+        }
+      },
+      "required": [
+        "input"
+      ],
+      "title": "Turn",
+      "type": "object"
+    },
+    "VectorstoreTool": {
+      "additionalProperties": false,
+      "description": "Vectorstore tool for semantic search over documents.",
+      "properties": {
+        "name": {
+          "description": "Tool identifier",
+          "pattern": "^[0-9A-Za-z_]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "Tool description",
+          "title": "Description",
+          "type": "string"
+        },
+        "type": {
+          "const": "vectorstore",
+          "default": "vectorstore",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "defer_loading": {
+          "default": true,
+          "description": "If True, tool is excluded from initial context and loaded on-demand via semantic search. Set to False for critical tools.",
+          "title": "Defer Loading",
+          "type": "boolean"
+        },
+        "source": {
+          "description": "Path to data file or directory",
+          "title": "Source",
+          "type": "string"
+        },
+        "vector_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Field(s) to vectorize",
+          "title": "Vector Field"
+        },
+        "meta_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Metadata fields",
+          "title": "Meta Fields"
+        },
+        "chunk_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Text chunk size for splitting",
+          "title": "Chunk Size"
+        },
+        "chunk_overlap": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Chunk overlap size",
+          "title": "Chunk Overlap"
+        },
+        "embedding_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Custom embedding model (defaults to provider default)",
+          "title": "Embedding Model"
+        },
+        "embedding_dimensions": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Embedding vector dimensions (auto-detected from model if not specified)",
+          "title": "Embedding Dimensions"
+        },
+        "database": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DatabaseConfig"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Vector database configuration. Can be:\n- DatabaseConfig object with provider and connection details\n- String reference to a named vectorstore in global config\n- None for in-memory storage",
+          "title": "Database"
+        },
+        "top_k": {
+          "default": 5,
+          "description": "Number of top results to return from search",
+          "title": "Top K",
+          "type": "integer"
+        },
+        "min_similarity_score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum similarity score threshold for results (0.0-1.0)",
+          "title": "Min Similarity Score"
+        },
+        "record_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path to array in JSON",
+          "title": "Record Path"
+        },
+        "record_prefix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Record field prefix",
+          "title": "Record Prefix"
+        },
+        "meta_prefix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Metadata field prefix",
+          "title": "Meta Prefix"
+        },
+        "id_field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Unique record identifier field (required for structured data mode). Must be set when vector_field is specified.",
+          "title": "Id Field"
+        },
+        "field_separator": {
+          "default": "\n",
+          "description": "Separator for concatenating multiple vector_fields (default: newline). Used when vector_field is a list.",
+          "title": "Field Separator",
+          "type": "string"
+        },
+        "delimiter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CSV delimiter character (auto-detect if None). Only applicable for CSV files.",
+          "title": "Delimiter"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "source"
+      ],
+      "title": "VectorstoreTool",
+      "type": "object"
     }
-  }
+  },
+  "additionalProperties": false,
+  "description": "Agent configuration entity.\n\nRoot configuration for a single AI agent instance, defining model,\ninstructions, tools, evaluations, and test cases.",
+  "properties": {
+    "name": {
+      "description": "Agent identifier",
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Human-readable description",
+      "title": "Description"
+    },
+    "author": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Author of the agent",
+      "title": "Author"
+    },
+    "model": {
+      "$ref": "#/$defs/LLMProvider",
+      "description": "LLM provider configuration"
+    },
+    "instructions": {
+      "$ref": "#/$defs/Instructions",
+      "description": "System instructions (file or inline)"
+    },
+    "response_format": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Response format schema (inline dict, file path, or null)",
+      "title": "Response Format"
+    },
+    "tools": {
+      "anyOf": [
+        {
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/VectorstoreTool"
+              },
+              {
+                "$ref": "#/$defs/FunctionTool"
+              },
+              {
+                "$ref": "#/$defs/MCPTool"
+              },
+              {
+                "$ref": "#/$defs/PromptTool"
+              },
+              {
+                "$ref": "#/$defs/HierarchicalDocumentToolConfig"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Agent tools (vectorstore, function, mcp, prompt)",
+      "title": "Tools"
+    },
+    "tool_filtering": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolFilterConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Automatic tool filtering configuration. When enabled, dynamically filters tools per request based on semantic similarity to reduce token usage."
+    },
+    "evaluations": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvaluationConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Evaluation configuration"
+    },
+    "test_cases": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/TestCaseModel"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Test scenarios",
+      "title": "Test Cases"
+    },
+    "execution": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExecutionConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Test execution configuration"
+    },
+    "observability": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ObservabilityConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Observability configuration for telemetry"
+    },
+    "deployment": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeploymentConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Deployment configuration for containerization"
+    },
+    "embedding_provider": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LLMProvider"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Provider for embedding generation. Required when provider: anthropic + vectorstore tools."
+    },
+    "claude": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ClaudeConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Claude Agent SDK-specific settings. Applicable only when model.provider: anthropic."
+    }
+  },
+  "required": [
+    "name",
+    "model",
+    "instructions"
+  ],
+  "title": "Agent",
+  "type": "object"
 }
