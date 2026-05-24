@@ -35,9 +35,12 @@ ENV PYTHONUNBUFFERED=1 \
     HOLODECK_AGENT_CONFIG=/app/agent.yaml
 
 # Install system dependencies
+# bubblewrap (bwrap) is required by the Claude Agent SDK when
+# CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (HoloDeck default).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 
 # Install UV for fast package management

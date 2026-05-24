@@ -84,6 +84,28 @@ override in the agent config takes precedence.
 A `WARNING`-level log line is emitted at agent load time. Use this only when a
 tool explicitly needs access to env vars that would otherwise be scrubbed.
 
+### Runtime dependency: `bubblewrap`
+
+The Claude Agent SDK enforces `bubblewrap` (`bwrap`) for the subprocess
+isolation backing `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`. HoloDeck's
+generated container images include it by default (installed in
+`docker/Dockerfile`).
+
+If you bake your own base image, ensure `bubblewrap` is on `PATH`. Without
+it, the SDK exits with `error: bubblewrap is required for subprocess env
+scrubbing and isolation` at the first tool turn. Set
+`claude.disable_subprocess_env_scrub: true` if you have a legitimate reason
+to run without bwrap (e.g. distroless base) — the agent will then inherit
+the parent env in tool subprocesses.
+
+### macOS local development
+
+`bubblewrap` is Linux-only. When running `holodeck serve` locally on
+macOS, the SDK may surface a similar error. If so, export
+`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=0` in your shell or set
+`claude.disable_subprocess_env_scrub: true` in the agent.yaml for local
+runs. Production container images include bwrap.
+
 ---
 
 ## What is NOT defended against

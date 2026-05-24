@@ -11,6 +11,7 @@ are required.
 | Ephemeral scratch (`/var/holodeck/work`, `/tmp`) | ACA EmptyDir volume per replica | ACA `Volume`/`VolumeMount` | Size scales with the replica's memory limit; cleared on replica restart. |
 | Container ingress | Internal (`ingress_external: false`) | ACA Ingress | Set `deployment.target.azure.ingress_external: true` (warning emitted). |
 | Node.js | Installed only when an MCP server's `command` starts with `node`/`npx`/`yarn`/`pnpm` | Generated Dockerfile | Add a stdio MCP server with one of those commands. |
+| `bubblewrap` (`bwrap`) | Always installed in base image | `docker/Dockerfile` | Required by the SDK for `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`. Set `claude.disable_subprocess_env_scrub: true` to skip (warning emitted). |
 | Credential-shaped files in COPY surface | Warned at `deploy build` (filenames only; no content scan) | CLI lint | Remove the file, or accept the warning if the file is legitimately public. |
 
 ### Posture ACA does NOT enforce (and we don't claim to)
