@@ -35,6 +35,40 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Node.js interpreter command names that require Node to be installed in the image.
+_NODE_BIN_NAMES: frozenset[str] = frozenset({"node", "npx", "yarn", "pnpm"})
+
+
+def _agent_needs_nodejs(agent: Agent) -> bool:
+    """Return True iff any MCP tool spawns Node via its stdio command.
+
+    The Claude Agent SDK bundles its own CLI binary, so Node is no longer
+    required just because the provider is Anthropic. Node is needed only
+    when an MCP server's stdio ``command`` is a Node interpreter
+    (``node``, ``npx``, ``yarn``, ``pnpm``).
+
+    ``MCPTool.command`` is a ``CommandType`` enum whose string value is the
+    binary name (e.g. ``CommandType.NPX`` → ``"npx"``).  Absolute-path
+    variants are handled by taking the final path component.
+
+    Spec 034 P2a §"Generated Dockerfile changes".
+
+    Args:
+        agent: Loaded Agent configuration model.
+
+    Returns:
+        True if at least one MCP tool requires Node.js; False otherwise.
+    """
+    for tool in agent.tools or []:
+        command = getattr(tool, "command", None)
+        if command is None:
+            continue
+        # CommandType is a str-enum; use .value to get the raw binary name.
+        bin_name = getattr(command, "value", str(command)).split("/")[-1]
+        if bin_name in _NODE_BIN_NAMES:
+            return True
+    return False
+
 
 @contextmanager
 def handle_deployment_errors() -> Generator[None, None, None]:
@@ -616,10 +650,8 @@ def _generate_dockerfile_content(
     # Remove duplicates
     data_directories = list(set(data_directories))
 
-    # Claude Agent SDK requires Node.js at runtime
-    from holodeck.models.llm import ProviderEnum
-
-    needs_nodejs = agent.model.provider == ProviderEnum.ANTHROPIC
+    # Node.js is only needed if an MCP tool spawns a Node interpreter.
+    needs_nodejs = _agent_needs_nodejs(agent)
 
     # Detect required extras from agent config. Vector-store provider names
     # match the optional-dependency group names in pyproject.toml 1:1.

@@ -525,10 +525,14 @@ class TestProviderDetection:
             / "agent.yaml"
         )
 
-    def test_generate_dockerfile_content_detects_anthropic_provider(
+    def test_generate_dockerfile_content_skips_nodejs_for_anthropic_no_mcp(
         self, claude_agent_path: Path
     ) -> None:
-        """Test that Anthropic provider triggers Node.js in Dockerfile."""
+        """Test that Anthropic provider without Node MCP tools skips Node.js.
+
+        Node.js is gated on stdio MCP commands (node/npx/yarn/pnpm), not on
+        the provider.  The fixture has no MCP tools, so Node must be absent.
+        """
         from holodeck.cli.commands.deploy import _generate_dockerfile_content
         from holodeck.config.loader import ConfigLoader
 
@@ -536,8 +540,8 @@ class TestProviderDetection:
         agent = loader.load_agent_yaml(str(claude_agent_path))
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
-        assert "nodesource" in content.lower()
-        assert "nodejs" in content.lower()
+        assert "nodesource" not in content.lower()
+        assert "nodejs" not in content.lower()
 
     def test_generate_dockerfile_content_skips_nodejs_for_openai(
         self, openai_agent_path: Path
@@ -588,10 +592,15 @@ class TestProviderDetection:
         assert "nodesource" not in content.lower()
         assert "nodejs" not in content.lower()
 
-    def test_dry_run_shows_nodejs_for_claude_agent(
+    def test_dry_run_skips_nodejs_for_claude_agent_without_node_mcp(
         self, claude_agent_path: Path
     ) -> None:
-        """Test dry-run output includes all Claude-specific Dockerfile additions."""
+        """Test dry-run output omits Node.js for a Claude agent with no Node MCP tools.
+
+        Node.js is gated on stdio MCP commands (node/npx/yarn/pnpm).  The
+        fixture has no MCP tools, so the nodesource block must be absent while
+        standard Dockerfile elements remain.
+        """
         from holodeck.cli.commands.deploy import _generate_dockerfile_content
         from holodeck.config.loader import ConfigLoader
 
@@ -599,10 +608,8 @@ class TestProviderDetection:
         agent = loader.load_agent_yaml(str(claude_agent_path))
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
-        # Node.js installation
-        assert "nodesource.com/setup_22.x" in content
-        assert "--no-install-recommends" in content
-        assert "rm -rf /var/lib/apt/lists/*" in content
+        # Node.js block must be absent
+        assert "nodesource.com/setup_22.x" not in content
         # Standard Dockerfile elements still present
         assert "USER holodeck" in content
         assert "HEALTHCHECK" in content
@@ -792,8 +799,12 @@ class TestExtrasDetection:
 
         assert "holodeck-ai[s3]" in content
 
-    def test_anthropic_provider_triggers_claude_otel(self) -> None:
-        """Test Anthropic provider triggers claude-otel extra."""
+    def test_anthropic_provider_no_node_mcp_skips_claude_otel(self) -> None:
+        """Test Anthropic agent without Node MCP tools omits claude-otel extra.
+
+        claude-otel is only added when needs_nodejs is True, which now requires
+        at least one MCP tool with a node/npx/yarn/pnpm stdio command.
+        """
         from holodeck.cli.commands.deploy import _generate_dockerfile_content
         from holodeck.config.loader import ConfigLoader
 
@@ -807,7 +818,7 @@ class TestExtrasDetection:
         agent = loader.load_agent_yaml(str(agent_path))
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
-        assert "claude-otel" in content
+        assert "claude-otel" not in content
 
     def test_duplicate_extras_deduplicated(self, tmp_path: Path) -> None:
         """Test two tools with same extra produce only one entry."""
