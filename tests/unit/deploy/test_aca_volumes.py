@@ -162,3 +162,45 @@ def test_deploy_does_not_attempt_to_set_security_context(
     assert (
         not hasattr(container, "security_context") or container.security_context is None
     )
+
+
+@pytest.mark.unit
+def test_echo_resolved_config_mentions_p2a_posture(
+    deployer: AzureContainerAppsDeployer, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Deploy-time echo names the ACA-enforced and image-enforced posture."""
+    import logging
+
+    with caplog.at_level(
+        logging.INFO, logger="holodeck.deploy.deployers.azure_containerapps"
+    ):
+        deployer._echo_resolved_config(
+            service_name="t", image_uri="ghcr.io/foo:bar", port=8080
+        )
+    msgs = " ".join(r.message for r in caplog.records).lower()
+    # ACA-enforced (EmptyDir volumes)
+    assert "emptydir" in msgs or "/var/holodeck/work" in msgs
+    assert "/tmp" in msgs  # noqa: S108
+    # Image-enforced (Dockerfile USER + chmod)
+    assert "non-root" in msgs
+    assert "read-only" in msgs
+
+
+@pytest.mark.unit
+def test_echo_resolved_config_does_not_falsely_claim_aca_securitycontext(
+    deployer: AzureContainerAppsDeployer, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Don't claim runAsNonRoot/capabilities.drop — ACA can't express them."""
+    import logging
+
+    with caplog.at_level(
+        logging.INFO, logger="holodeck.deploy.deployers.azure_containerapps"
+    ):
+        deployer._echo_resolved_config(
+            service_name="t", image_uri="ghcr.io/foo:bar", port=8080
+        )
+    msgs = " ".join(r.message for r in caplog.records).lower()
+    assert "runasnonroot" not in msgs
+    assert "allowprivilegeescalation" not in msgs
+    assert "capabilities.drop" not in msgs
+    assert "capabilities dropped" not in msgs

@@ -401,6 +401,16 @@ class AzureContainerAppsDeployer(BaseDeployer):
         )
         logger.info("  Ingress: %s", ingress_mode)
         logger.info("  Probes: /health (liveness), /ready (readiness)")
+        logger.info("  Ephemeral scratch (ACA EmptyDir): /tmp, /var/holodeck/work")
+        logger.info(
+            "  Image-layer hardening: non-root (UID 1000), "
+            "corpus read-only (/app/data, /app/instructions)"
+        )
+        logger.info(
+            "  Note: ACA security context primitives (privilege escalation, "
+            "Linux capabilities, read-only root FS, seccomp) are not "
+            "expressible via the ACA API — see docs/security/aca-limitations.md"
+        )
 
         if self._config.cpu < 1.0:
             logger.warning(
