@@ -98,8 +98,9 @@ class TestDeployBuildCommand:
         )
 
         assert result.exit_code == 0
-        # Should have COPY for instruction file
-        assert "COPY instructions.md" in result.output
+        # Should have COPY for instruction file.
+        # Task 10 added --chown=root:root so match on the filename alone.
+        assert "instructions.md" in result.output
 
     def test_build_missing_deployment_section(
         self, cli_runner: CliRunner, tmp_path: Path

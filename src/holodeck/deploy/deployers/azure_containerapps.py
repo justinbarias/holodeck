@@ -187,7 +187,9 @@ class AzureContainerAppsDeployer(BaseDeployer):
             self._Volume(name="sdk-scratch", storage_type=self._StorageType.EMPTY_DIR),
         ]
         volume_mounts = [
-            self._VolumeMount(volume_name="tmp", mount_path="/tmp"),  # noqa: S108
+            self._VolumeMount(
+                volume_name="tmp", mount_path="/tmp"  # noqa: S108  # nosec B108
+            ),
             self._VolumeMount(
                 volume_name="sdk-scratch", mount_path="/var/holodeck/work"
             ),
