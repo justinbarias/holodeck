@@ -35,6 +35,7 @@ def _unwrap_processors(provider: TracerProvider) -> list[object]:
 @pytest.mark.integration
 def test_tracer_provider_has_redaction_processor() -> None:
     """RedactingSpanProcessor is wired into the provider returned by set_up_tracing."""
+    from opentelemetry import trace
     from opentelemetry.sdk.resources import Resource
 
     from holodeck.lib.observability.providers import set_up_tracing
@@ -45,12 +46,16 @@ def test_tracer_provider_has_redaction_processor() -> None:
 
     # Call set_up_tracing with no exporters — the returned provider must still
     # carry a RedactingSpanProcessor regardless.
-    provider = set_up_tracing(config, resource, span_exporters=[])
+    original = trace._TRACER_PROVIDER
+    try:
+        provider = set_up_tracing(config, resource, span_exporters=[])
 
-    processors = _unwrap_processors(provider)
-    assert any(
-        isinstance(p, RedactingSpanProcessor) for p in processors
-    ), f"RedactingSpanProcessor not found in processor chain: {processors}"
+        processors = _unwrap_processors(provider)
+        assert any(
+            isinstance(p, RedactingSpanProcessor) for p in processors
+        ), f"RedactingSpanProcessor not found in processor chain: {processors}"
+    finally:
+        trace._TRACER_PROVIDER = original
 
 
 @pytest.mark.integration
