@@ -799,11 +799,11 @@ class TestExtrasDetection:
 
         assert "holodeck-ai[s3]" in content
 
-    def test_anthropic_provider_no_node_mcp_skips_claude_otel(self) -> None:
-        """Test Anthropic agent without Node MCP tools omits claude-otel extra.
+    def test_anthropic_provider_triggers_claude_otel_extra(self) -> None:
+        """Anthropic agent without Node MCP tools still gets the claude-otel extra.
 
-        claude-otel is only added when needs_nodejs is True, which now requires
-        at least one MCP tool with a node/npx/yarn/pnpm stdio command.
+        claude-otel must be present for all Anthropic agents regardless of whether
+        any MCP tool spawns a Node subprocess.
         """
         from holodeck.cli.commands.deploy import _generate_dockerfile_content
         from holodeck.config.loader import ConfigLoader
@@ -818,7 +818,7 @@ class TestExtrasDetection:
         agent = loader.load_agent_yaml(str(agent_path))
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
-        assert "claude-otel" not in content
+        assert "claude-otel" in content
 
     def test_duplicate_extras_deduplicated(self, tmp_path: Path) -> None:
         """Test two tools with same extra produce only one entry."""

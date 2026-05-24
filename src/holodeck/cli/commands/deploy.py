@@ -671,6 +671,7 @@ def _generate_dockerfile_content(
         Generated Dockerfile content
     """
     from holodeck.deploy.dockerfile import generate_dockerfile
+    from holodeck.models.llm import ProviderEnum
     from holodeck.models.tool import (
         FunctionTool,
         HierarchicalDocumentToolConfig,
@@ -743,7 +744,7 @@ def _generate_dockerfile_content(
                     extras.append("azure-blob")
                 elif tool.source.startswith("s3://"):
                     extras.append("s3")
-    if needs_nodejs:
+    if agent.model.provider == ProviderEnum.ANTHROPIC:
         extras.append("claude-otel")
     extras = sorted(set(extras))
 
