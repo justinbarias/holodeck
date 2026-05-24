@@ -1137,7 +1137,7 @@ def get_collection_factory(
         if provider == "qdrant":
             from qdrant_client import AsyncQdrantClient
 
-            qdrant_client = AsyncQdrantClient(**qdrant_params)
+            qdrant_client = AsyncQdrantClient(**qdrant_params)  # type: ignore[arg-type]
             return collection_class[str, record_class](
                 client=qdrant_client,
                 **base_kwargs,

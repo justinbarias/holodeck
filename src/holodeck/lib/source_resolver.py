@@ -61,7 +61,7 @@ def _import_boto3() -> ModuleType:
         SourceError: If boto3 is not installed.
     """
     try:
-        import boto3  # type: ignore[import-untyped]
+        import boto3
 
         return boto3  # type: ignore[no-any-return]
     except ImportError as exc:
@@ -80,9 +80,9 @@ def _import_azure_blob() -> ModuleType:
         SourceError: If azure-storage-blob is not installed.
     """
     try:
-        import azure.storage.blob  # type: ignore[import-untyped]
+        import azure.storage.blob
 
-        return azure.storage.blob  # type: ignore[no-any-return]
+        return azure.storage.blob
     except ImportError as exc:
         raise SourceError(
             "Azure source requires azure-storage-blob. "

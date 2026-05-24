@@ -93,8 +93,16 @@ def azure_sdk(monkeypatch: pytest.MonkeyPatch) -> type:
         "Scale",
         "Template",
         "TrafficWeight",
+        "Volume",
+        "VolumeMount",
     ):
         setattr(models_module, name, DummyModel)
+
+    # Minimal StorageType stub — only EMPTY_DIR is used by the deployer.
+    class _DummyStorageType:
+        EMPTY_DIR = "emptyDir"
+
+    models_module.StorageType = _DummyStorageType  # type: ignore[attr-defined]
 
     monkeypatch.setitem(sys.modules, "azure", types.ModuleType("azure"))
     monkeypatch.setitem(sys.modules, "azure.core", types.ModuleType("azure.core"))

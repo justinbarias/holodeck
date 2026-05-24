@@ -6,6 +6,7 @@ and deploying agents to cloud providers.
 
 from __future__ import annotations
 
+import fnmatch
 import shutil
 import sys
 import tempfile
@@ -23,6 +24,7 @@ from holodeck.deploy.state import (
     get_state_path,
     update_deployment_record,
 )
+from holodeck.lib.backends.validators import agent_needs_nodejs
 from holodeck.lib.errors import ConfigError, DeploymentError, DockerNotAvailableError
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.models.deployment import CloudProvider
@@ -34,6 +36,67 @@ if TYPE_CHECKING:
     from holodeck.models.deployment import DeploymentConfig
 
 logger = get_logger(__name__)
+
+# Private alias used by tests in this package; public API lives in validators.py.
+_agent_needs_nodejs = agent_needs_nodejs
+
+
+_CREDENTIAL_FILENAME_PATTERNS: tuple[str, ...] = (
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "id_rsa*",
+    "*credentials*.json",
+    "*service-account*.json",
+    ".npmrc",
+    ".pypirc",
+    ".git-credentials",
+)
+
+
+def _warn_if_credential_files_in_copy_surface(
+    *,
+    instruction_files: list[str],
+    data_directories: list[str],
+    base_dir: Path,
+) -> None:
+    """Emit a warning when the Docker COPY surface contains files shaped
+    like credentials. Filenames only — no content inspection.
+
+    Spec 034 P2a §"Read-only code mounting / sensitive files".
+
+    Args:
+        instruction_files: List of individual files being COPYed.
+        data_directories: List of directory paths being COPYed.
+        base_dir: Base directory for resolving relative paths.
+    """
+    flagged: list[str] = []
+    for f in instruction_files:
+        for pat in _CREDENTIAL_FILENAME_PATTERNS:
+            if fnmatch.fnmatch(Path(f).name, pat):
+                flagged.append(f)
+                break
+    for d in data_directories:
+        dpath = Path(d)
+        if not dpath.is_absolute():
+            dpath = (base_dir / d).resolve()
+        if not dpath.exists():
+            continue
+        for entry in dpath.rglob("*"):
+            for pat in _CREDENTIAL_FILENAME_PATTERNS:
+                if fnmatch.fnmatch(entry.name, pat):
+                    flagged.append(str(entry))
+                    break
+
+    if flagged:
+        logger.warning(
+            "Found credential-shaped files in the Docker COPY surface — "
+            "they will be baked into the agent image:\n  - %s\n"
+            "Remove them, add them to a `.dockerignore`-equivalent exclude "
+            "rule, or move them out of `data_directories`/`instruction_files`.",
+            "\n  - ".join(sorted(set(flagged))),
+        )
 
 
 @contextmanager
@@ -219,6 +282,7 @@ def build(
                 deployment_config,
                 image_tag,
                 test_cases_file=_read_raw_test_cases_file(agent_path),
+                base_dir=agent_dir,
             )
             click.echo()
             click.secho("Generated Dockerfile:", bold=True)
@@ -559,6 +623,7 @@ def _generate_dockerfile_content(
     deployment_config: DeploymentConfig,
     version: str,
     test_cases_file: str | None = None,
+    base_dir: Path | None = None,
 ) -> str:
     """Generate Dockerfile content for the agent.
 
@@ -566,11 +631,15 @@ def _generate_dockerfile_content(
         agent: Loaded Agent configuration model
         deployment_config: Deployment configuration
         version: Version/tag for OCI labels
+        test_cases_file: Optional raw test_cases_file path from agent YAML.
+        base_dir: Agent directory; when provided, credential-shaped files in
+            the COPY surface are flagged with a warning.
 
     Returns:
         Generated Dockerfile content
     """
     from holodeck.deploy.dockerfile import generate_dockerfile
+    from holodeck.models.llm import ProviderEnum
     from holodeck.models.tool import (
         FunctionTool,
         HierarchicalDocumentToolConfig,
@@ -616,10 +685,16 @@ def _generate_dockerfile_content(
     # Remove duplicates
     data_directories = list(set(data_directories))
 
-    # Claude Agent SDK requires Node.js at runtime
-    from holodeck.models.llm import ProviderEnum
+    # Warn if credential-shaped files will be baked into the image.
+    if base_dir is not None:
+        _warn_if_credential_files_in_copy_surface(
+            instruction_files=instruction_files,
+            data_directories=data_directories,
+            base_dir=base_dir,
+        )
 
-    needs_nodejs = agent.model.provider == ProviderEnum.ANTHROPIC
+    # Node.js is only needed if an MCP tool spawns a Node interpreter.
+    needs_nodejs = _agent_needs_nodejs(agent)
 
     # Detect required extras from agent config. Vector-store provider names
     # match the optional-dependency group names in pyproject.toml 1:1.
@@ -637,7 +712,7 @@ def _generate_dockerfile_content(
                     extras.append("azure-blob")
                 elif tool.source.startswith("s3://"):
                     extras.append("s3")
-    if needs_nodejs:
+    if agent.model.provider == ProviderEnum.ANTHROPIC:
         extras.append("claude-otel")
     extras = sorted(set(extras))
 
@@ -683,7 +758,11 @@ def _prepare_build_context(
     # Generate and write Dockerfile
     test_cases_file = _read_raw_test_cases_file(agent_dir / "agent.yaml")
     dockerfile_content = _generate_dockerfile_content(
-        agent, deployment_config, version, test_cases_file=test_cases_file
+        agent,
+        deployment_config,
+        version,
+        test_cases_file=test_cases_file,
+        base_dir=agent_dir,
     )
     (build_dir / "Dockerfile").write_text(dockerfile_content)
 

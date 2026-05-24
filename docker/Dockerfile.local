@@ -24,9 +24,12 @@ ENV PYTHONUNBUFFERED=1 \
     HOLODECK_PROTOCOL=rest \
     HOLODECK_AGENT_CONFIG=/app/agent.yaml
 
+# bubblewrap (bwrap) is required by the Claude Agent SDK when
+# CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 (HoloDeck default).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \

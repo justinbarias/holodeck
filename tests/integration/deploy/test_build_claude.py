@@ -22,8 +22,12 @@ def cli_runner() -> CliRunner:
 
 @pytest.fixture
 def claude_agent_dir() -> Path:
-    """Return path to Claude agent fixture."""
-    return Path(__file__).parent.parent.parent / "fixtures" / "claude_agent"
+    """Return path to Claude agent fixture with npx MCP tool.
+
+    This fixture has an npx-based MCP tool, which triggers Node.js installation
+    in the generated Dockerfile (Spec 034 P2a).
+    """
+    return Path(__file__).parent.parent.parent / "fixtures" / "claude_agent_with_mcp"
 
 
 @pytest.fixture

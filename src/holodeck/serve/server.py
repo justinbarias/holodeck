@@ -212,7 +212,7 @@ class AgentServer:
             return
 
         try:
-            validate_nodejs()
+            validate_nodejs(self.agent_config)
             validate_credentials(self.agent_config.model)
         except ConfigError as e:
             raise BackendInitError(str(e)) from e
@@ -326,7 +326,7 @@ class AgentServer:
         sem = self._active_turn_semaphore
         if sem is None:
             return True
-        if sem._value <= 0:  # type: ignore[operator]
+        if sem._value <= 0:
             return False
         sem._value -= 1
         return True
@@ -566,7 +566,7 @@ class AgentServer:
             response_model=ChatResponse,
             tags=["Chat"],
         )
-        async def chat_sync(request: ChatRequest) -> ChatResponse:
+        async def chat_sync(request: ChatRequest) -> ChatResponse | JSONResponse:
             """Synchronous chat endpoint.
 
             Accepts a message, processes it through the agent, and returns
@@ -574,11 +574,11 @@ class AgentServer:
             """
             async with self._acquire_turn_slot() as acquired:
                 if not acquired:
-                    return self._capacity_exceeded_response()  # type: ignore[return-value,no-any-return]
+                    return self._capacity_exceeded_response()
 
                 result = self._get_or_create_session(request.session_id)
                 if isinstance(result, JSONResponse):
-                    return result  # type: ignore[return-value,no-any-return]
+                    return result
                 session = result
 
                 self.sessions.touch(session.session_id)
@@ -588,7 +588,7 @@ class AgentServer:
                 try:
                     return await protocol.handle_sync_request(request, session)
                 except BackendSessionError:
-                    return await self._handle_backend_session_error(  # type: ignore[return-value,no-any-return]
+                    return await self._handle_backend_session_error(
                         session.session_id,
                     )
 
@@ -630,7 +630,7 @@ class AgentServer:
             message: str = Form(..., min_length=1, max_length=10000),
             session_id: str | None = Form(default=None),
             files: list[UploadFile] = File(default=[]),  # noqa: B008
-        ) -> ChatResponse:
+        ) -> ChatResponse | JSONResponse:
             """Synchronous chat endpoint with multipart file upload.
 
             Accepts a message and optional files via multipart form-data,
@@ -661,11 +661,11 @@ class AgentServer:
 
             async with self._acquire_turn_slot() as acquired:
                 if not acquired:
-                    return self._capacity_exceeded_response()  # type: ignore[return-value,no-any-return]
+                    return self._capacity_exceeded_response()
 
                 result = self._get_or_create_session(session_id)
                 if isinstance(result, JSONResponse):
-                    return result  # type: ignore[return-value,no-any-return]
+                    return result
                 session = result
 
                 self.sessions.touch(session.session_id)
@@ -675,7 +675,7 @@ class AgentServer:
                 try:
                     return await protocol.handle_sync_request(chat_request, session)
                 except BackendSessionError:
-                    return await self._handle_backend_session_error(  # type: ignore[return-value,no-any-return]
+                    return await self._handle_backend_session_error(
                         session.session_id,
                     )
 

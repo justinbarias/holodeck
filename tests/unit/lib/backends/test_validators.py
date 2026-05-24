@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from holodeck.lib.backends.validators import (
+    agent_needs_nodejs,
     validate_credentials,
     validate_embedding_provider,
     validate_nodejs,
@@ -20,7 +21,7 @@ from holodeck.lib.tool_filter.models import ToolFilterConfig
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.claude_config import AuthProvider
 from holodeck.models.llm import LLMProvider, ProviderEnum
-from holodeck.models.tool import VectorstoreTool
+from holodeck.models.tool import CommandType, MCPTool, VectorstoreTool
 
 
 def _make_agent(**kwargs: object) -> Agent:
@@ -32,6 +33,57 @@ def _make_agent(**kwargs: object) -> Agent:
     }
     defaults.update(kwargs)
     return Agent(**defaults)  # type: ignore[arg-type]
+
+
+def _make_npx_mcp_tool() -> MCPTool:
+    """Build a minimal MCPTool that spawns Node via npx."""
+    return MCPTool(
+        name="npxtool", description="npx-based MCP tool", command=CommandType.NPX
+    )
+
+
+def _make_node_mcp_tool() -> MCPTool:
+    """Build a minimal MCPTool that spawns Node directly."""
+    return MCPTool(
+        name="nodetool", description="node-based MCP tool", command=CommandType.NODE
+    )
+
+
+def _make_uvx_mcp_tool() -> MCPTool:
+    """Build a minimal MCPTool that spawns uvx (not Node)."""
+    return MCPTool(
+        name="uvxtool", description="uvx-based MCP tool", command=CommandType.UVX
+    )
+
+
+@pytest.mark.unit
+class TestAgentNeedsNodejs:
+    """Tests for agent_needs_nodejs helper."""
+
+    def test_false_when_no_tools(self) -> None:
+        """Returns False when agent has no tools."""
+        agent = _make_agent(tools=None)
+        assert agent_needs_nodejs(agent) is False
+
+    def test_false_when_uvx_tool_only(self) -> None:
+        """Returns False when only MCP tools use uvx (not Node)."""
+        agent = _make_agent(tools=[_make_uvx_mcp_tool()])
+        assert agent_needs_nodejs(agent) is False
+
+    def test_true_when_npx_tool_present(self) -> None:
+        """Returns True when an npx MCP tool is present."""
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
+        assert agent_needs_nodejs(agent) is True
+
+    def test_true_when_node_tool_present(self) -> None:
+        """Returns True when a node MCP tool is present."""
+        agent = _make_agent(tools=[_make_node_mcp_tool()])
+        assert agent_needs_nodejs(agent) is True
+
+    def test_true_when_mixed_tools_contain_npx(self) -> None:
+        """Returns True when at least one tool among many uses npx."""
+        agent = _make_agent(tools=[_make_uvx_mcp_tool(), _make_npx_mcp_tool()])
+        assert agent_needs_nodejs(agent) is True
 
 
 @pytest.mark.unit
@@ -46,15 +98,42 @@ class TestValidateNodejs:
         mock_run.return_value = subprocess.CompletedProcess(  # type: ignore[union-attr]
             args=["node", "--version"], returncode=0, stdout="v22.0.0\n", stderr=""
         )
-        validate_nodejs()  # Should not raise
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
+        validate_nodejs(agent)  # Should not raise
 
     @patch("holodeck.lib.backends.validators.shutil.which")
     def test_raises_config_error_when_node_missing(self, mock_which: object) -> None:
         """ConfigError raised with 'nodejs' field when Node.js is not found."""
         mock_which.return_value = None  # type: ignore[union-attr]
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
         with pytest.raises(ConfigError) as exc_info:
-            validate_nodejs()
+            validate_nodejs(agent)
         assert exc_info.value.field == "nodejs"
+
+    def test_skips_when_no_node_mcp_tools(self) -> None:
+        """No exception raised for agents without Node-spawning MCP tools.
+
+        This is the regression fix: a deployed agent without Node MCP tools
+        must not fail startup when Node is absent from PATH.
+        """
+        agent = _make_agent(tools=None)
+        with patch("holodeck.lib.backends.validators.shutil.which", return_value=None):
+            validate_nodejs(agent)  # Should not raise
+
+    def test_skips_when_uvx_mcp_tool_only(self) -> None:
+        """No Node check when the only MCP tool uses uvx."""
+        agent = _make_agent(tools=[_make_uvx_mcp_tool()])
+        with patch("holodeck.lib.backends.validators.shutil.which", return_value=None):
+            validate_nodejs(agent)  # Should not raise
+
+    def test_required_when_npx_tool_present(self) -> None:
+        """ConfigError raised when npx tool present and Node absent from PATH."""
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
+        with (
+            patch("holodeck.lib.backends.validators.shutil.which", return_value=None),
+            pytest.raises(ConfigError, match="Node.js is required"),
+        ):
+            validate_nodejs(agent)
 
     # -- Version check tests (T013) ------------------------------------------
 
@@ -66,7 +145,8 @@ class TestValidateNodejs:
         mock_run.return_value = subprocess.CompletedProcess(  # type: ignore[union-attr]
             args=["node", "--version"], returncode=0, stdout="v22.1.0\n", stderr=""
         )
-        validate_nodejs()  # Should not raise
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
+        validate_nodejs(agent)  # Should not raise
 
     @patch("holodeck.lib.backends.validators.subprocess.run")
     @patch("holodeck.lib.backends.validators.shutil.which")
@@ -76,7 +156,8 @@ class TestValidateNodejs:
         mock_run.return_value = subprocess.CompletedProcess(  # type: ignore[union-attr]
             args=["node", "--version"], returncode=0, stdout="v18.0.0\n", stderr=""
         )
-        validate_nodejs()  # Should not raise
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
+        validate_nodejs(agent)  # Should not raise
 
     @patch("holodeck.lib.backends.validators.subprocess.run")
     @patch("holodeck.lib.backends.validators.shutil.which")
@@ -86,8 +167,9 @@ class TestValidateNodejs:
         mock_run.return_value = subprocess.CompletedProcess(  # type: ignore[union-attr]
             args=["node", "--version"], returncode=0, stdout="v16.20.0\n", stderr=""
         )
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
         with pytest.raises(ConfigError) as exc_info:
-            validate_nodejs()
+            validate_nodejs(agent)
         assert exc_info.value.field == "nodejs"
         assert "16.20.0" in exc_info.value.message
         assert "18" in exc_info.value.message
@@ -100,8 +182,9 @@ class TestValidateNodejs:
         mock_run.side_effect = subprocess.TimeoutExpired(  # type: ignore[union-attr]
             cmd=["node", "--version"], timeout=5
         )
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
         with pytest.raises(ConfigError) as exc_info:
-            validate_nodejs()
+            validate_nodejs(agent)
         assert exc_info.value.field == "nodejs"
 
     @patch("holodeck.lib.backends.validators.subprocess.run")
@@ -112,16 +195,18 @@ class TestValidateNodejs:
         mock_run.side_effect = subprocess.CalledProcessError(  # type: ignore[union-attr]
             returncode=1, cmd=["node", "--version"]
         )
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
         with pytest.raises(ConfigError) as exc_info:
-            validate_nodejs()
+            validate_nodejs(agent)
         assert exc_info.value.field == "nodejs"
 
     @patch("holodeck.lib.backends.validators.shutil.which")
     def test_node_not_found_does_not_call_subprocess(self, mock_which: object) -> None:
         """T013: Node not found raises ConfigError without subprocess."""
         mock_which.return_value = None  # type: ignore[union-attr]
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
         with pytest.raises(ConfigError) as exc_info:
-            validate_nodejs()
+            validate_nodejs(agent)
         assert exc_info.value.field == "nodejs"
 
     @patch("holodeck.lib.backends.validators.subprocess.run")
@@ -134,8 +219,9 @@ class TestValidateNodejs:
         mock_run.return_value = subprocess.CompletedProcess(  # type: ignore[union-attr]
             args=["node", "--version"], returncode=0, stdout="garbage", stderr=""
         )
+        agent = _make_agent(tools=[_make_npx_mcp_tool()])
         with pytest.raises(ConfigError) as exc_info:
-            validate_nodejs()
+            validate_nodejs(agent)
         assert exc_info.value.field == "nodejs"
 
 
