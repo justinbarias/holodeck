@@ -66,7 +66,7 @@ def test_nested_tool_response_redacted():
             {"line": "auth: Bearer eyJfoo.eyJbar.signature"},
             {"line": "ok"},
         ],
-        "headers": {"Authorization": "Bearer abc.def-1"},
+        "headers": {"Authorization": "Bearer abcDEF.ghi-JKL_mno=pqr.stuVWX-yz0"},
     }
     redacted = redact_credentials(payload)
     assert (
