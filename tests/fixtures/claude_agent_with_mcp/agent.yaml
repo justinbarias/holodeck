@@ -1,0 +1,34 @@
+name: claude-deploy-mcp-test
+description: Claude agent with npx MCP tool for deploy integration tests (Node.js gating)
+
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+
+instructions:
+  inline: "You are a helpful test assistant."
+
+tools:
+  - name: filesystem
+    type: mcp
+    description: Filesystem access via MCP
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+
+claude:
+  permission_mode: acceptAll
+  max_concurrent_sessions: 5
+
+deployment:
+  port: 8080
+  protocol: rest
+  registry:
+    url: ghcr.io
+    repository: test-org/claude-agent-mcp
+    tag_strategy: latest
+  target:
+    provider: aws
+    aws:
+      region: us-east-1
+      cpu: 1
+      memory: 2048

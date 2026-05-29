@@ -50,16 +50,18 @@ RUN chmod +x /app/entrypoint.sh
 COPY agent.yaml /app/agent.yaml
 
 {% if instruction_files %}
-# Copy instruction files
+# Copy instruction files (read-only at runtime)
 {% for file in instruction_files %}
-COPY {{ file }} /app/{{ file }}
+COPY --chown=root:root {{ file }} /app/{{ file }}
+RUN chmod a-w /app/{{ file }}
 {% endfor %}
 {% endif %}
 
 {% if data_directories %}
-# Copy data directories
+# Copy data directories (read-only at runtime)
 {% for dir in data_directories %}
-COPY {{ dir }} /app/{{ dir }}
+COPY --chown=root:root {{ dir }} /app/{{ dir }}
+RUN chmod -R a-w /app/{{ dir }}
 {% endfor %}
 {% endif %}
 
@@ -80,8 +82,10 @@ EXPOSE {{ port }}
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\
     CMD curl -f http://localhost:{{ port }}/health || exit 1
 
-# Fix ownership and switch to non-root user
-RUN chown -R holodeck:holodeck /app
+# Spec 034 P2a — writable scratch dir for SDK + tool subprocesses.
+# Mounted as tmpfs by the ACA deployer.
+RUN mkdir -p /var/holodeck/work && chown holodeck:holodeck /var/holodeck/work
+
 USER holodeck
 
 # Entrypoint

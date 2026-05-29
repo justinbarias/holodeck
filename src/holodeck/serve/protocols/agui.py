@@ -565,7 +565,7 @@ def _tool_event_to_agui(
             create_text_message_end(parent_msg_id),
         ]
 
-    return []  # type: ignore[unreachable]
+    return []
 
 
 def _reasoning_events(

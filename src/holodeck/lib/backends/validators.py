@@ -35,6 +35,34 @@ _FOUNDRY_TARGET_ENV_CANDIDATES = (
 
 NODEJS_MIN_VERSION: int = 18
 
+# Node.js interpreter command names that require Node to be installed.
+_NODE_BIN_NAMES: frozenset[str] = frozenset({"node", "npx", "yarn", "pnpm"})
+
+
+def agent_needs_nodejs(agent: Agent) -> bool:
+    """Return True iff any MCP tool spawns Node via its stdio command.
+
+    The Claude Agent SDK bundles its own CLI binary, so Node is no longer
+    required just because the provider is Anthropic. Node is needed only
+    when an MCP server's stdio ``command`` is a Node interpreter
+    (``node``, ``npx``, ``yarn``, ``pnpm``).
+
+    Args:
+        agent: Loaded Agent configuration model.
+
+    Returns:
+        True if at least one MCP tool requires Node.js; False otherwise.
+    """
+    for tool in agent.tools or []:
+        command = getattr(tool, "command", None)
+        if command is None:
+            continue
+        # CommandType is a str-enum; use .value to get the raw binary name.
+        bin_name = getattr(command, "value", str(command)).split("/")[-1]
+        if bin_name in _NODE_BIN_NAMES:
+            return True
+    return False
+
 
 def _get_required_env_var(name: str, error_message: str) -> str:
     """Return a required env var value or raise ConfigError."""
@@ -53,14 +81,22 @@ def _get_first_present_env_var(candidates: tuple[str, ...]) -> tuple[str, str] |
     return None
 
 
-def validate_nodejs() -> None:
-    """Validate that Node.js is available on PATH.
+def validate_nodejs(agent: Agent) -> None:
+    """Validate that Node.js is available on PATH when the agent needs it.
 
-    Claude Agent SDK requires Node.js to spawn its subprocess.
+    Node.js is only required when at least one MCP tool spawns a Node
+    interpreter (node, npx, yarn, pnpm).  Agents without such tools skip
+    this check entirely.
+
+    Args:
+        agent: Agent configuration to inspect for Node-dependent tools.
 
     Raises:
-        ConfigError: If node is not found on PATH.
+        ConfigError: If node is not found on PATH and the agent needs it.
     """
+    if not agent_needs_nodejs(agent):
+        return  # No Node MCP tools — installation unnecessary.
+
     if shutil.which("node") is None:
         raise ConfigError(
             "nodejs",

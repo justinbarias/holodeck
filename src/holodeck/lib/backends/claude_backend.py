@@ -511,6 +511,64 @@ def build_options(
                 for name, spec in claude.agents.items()
             }
 
+    # Spec 034 P2b — merge HoloDeck default hooks (credential-redaction
+    # PostToolUse) ahead of any user-supplied hooks. Opt-out by setting
+    # `claude.disable_default_hooks: true` in agent.yaml. Bash hardening
+    # is handled by SDK permission rules + P1b auto-disallow.
+    from holodeck.lib.backends.claude_hooks import build_default_hooks
+
+    user_hooks: dict[Any, list[Any]] = opts_kwargs.get("hooks") or {}
+    if claude is not None and claude.disable_default_hooks:
+        logger.warning(
+            "HoloDeck default hooks DISABLED for agent '%s' (credential "
+            "redaction PostToolUse hook will NOT run). OTel attribute "
+            "redaction is unaffected. To re-enable, remove "
+            "`claude.disable_default_hooks: true` from agent.yaml.",
+            agent.name,
+        )
+        if user_hooks:
+            opts_kwargs["hooks"] = user_hooks
+    else:
+        default_hooks = build_default_hooks()
+        merged: dict[Any, list[Any]] = {}
+        # Default hooks first so they short-circuit when they deny.
+        for event, matchers in default_hooks.items():
+            merged[event] = list(matchers)
+        for event, matchers in user_hooks.items():
+            if event in merged:
+                merged[event] = merged[event] + list(matchers)
+            else:
+                merged[event] = list(matchers)
+        if merged:
+            opts_kwargs["hooks"] = merged
+
+    # Spec 034 P2b — default-on subprocess env scrubbing. These two flags
+    # tell the Claude CLI to strip Anthropic/cloud creds from tool
+    # subprocesses (Bash, etc.) and to spawn stdio MCP servers with only
+    # their declared env (not the full inherited shell env). They don't
+    # affect the SDK subprocess's own env (which inherits everything from
+    # this serve process — see P3 for the structural fix). Opt out via
+    # `claude.disable_subprocess_env_scrub: true` in agent.yaml.
+    env_overrides = dict(opts_kwargs.get("env") or {})
+    if claude is not None and claude.disable_subprocess_env_scrub:
+        logger.warning(
+            "Subprocess env scrubbing DISABLED for agent '%s' "
+            "(tool subprocesses and stdio MCP servers will inherit the "
+            "full agent container env including credentials). To re-enable, "
+            "remove `claude.disable_subprocess_env_scrub: true` from "
+            "agent.yaml.",
+            agent.name,
+        )
+    else:
+        env_overrides.setdefault("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1")
+        # Note: this scrubs the SDK-spawned subprocess env for stdio MCP servers.
+        # Operators must declare any inherited env vars (HOME, PATH, provider creds)
+        # on the MCP tool's `env` block — see docs/security/prompt-injection-defenses.md
+        # §"Operator footgun".
+        env_overrides.setdefault("CLAUDE_CODE_MCP_ALLOWLIST_ENV", "1")
+    if env_overrides:
+        opts_kwargs["env"] = env_overrides
+
     return ClaudeAgentOptions(**opts_kwargs)
 
 
@@ -1020,7 +1078,7 @@ class ClaudeBackend:
             claude = agent.claude
 
             # 1. Node.js prerequisite
-            validate_nodejs()
+            validate_nodejs(agent)
 
             # 2. Credentials
             auth_env = validate_credentials(agent.model)

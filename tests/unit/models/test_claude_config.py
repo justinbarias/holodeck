@@ -735,3 +735,29 @@ class TestSubagentPromptSourcing:
             match="subagent requires either prompt or prompt_file",
         ):
             SubagentSpec(description="x")
+
+
+# ---------------------------------------------------------------------------
+# disable_default_hooks field — spec 034 P2b
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_claude_config_disable_default_hooks_defaults_false() -> None:
+    """ClaudeConfig.disable_default_hooks defaults to False (defaults on)."""
+    config = ClaudeConfig()
+    assert config.disable_default_hooks is False
+
+
+@pytest.mark.unit
+def test_claude_config_disable_default_hooks_accepts_true() -> None:
+    """ClaudeConfig.disable_default_hooks accepts True."""
+    config = ClaudeConfig(disable_default_hooks=True)
+    assert config.disable_default_hooks is True
+
+
+@pytest.mark.unit
+def test_claude_config_disable_default_hooks_rejects_non_bool() -> None:
+    """ClaudeConfig.disable_default_hooks rejects non-bool input."""
+    with pytest.raises(ValidationError):
+        ClaudeConfig(disable_default_hooks="yes")  # type: ignore[arg-type]
