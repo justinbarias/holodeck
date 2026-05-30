@@ -177,7 +177,13 @@ security: ## Run security checks
 	#
 	# Borked OSV range: PYSEC-2026-89 describes a bug in markdown 3.8 fixed in 3.8.1, but the
 	# OSV affected range is unbounded so the 3.10 line still flags. We're already on 3.10.2.
+	#
+	# No upstream fix available yet:
+	#   CVE-2026-45829 (chromadb 1.0.21) — advisory lists no fixed release. chromadb is an
+	#                              optional vectorstore extra (pinned <1.1), loaded only when a
+	#                              chromadb vector store is configured. Tracking upstream for a fix.
 	uv run pip-audit --progress-spinner=off \
+		--ignore-vuln CVE-2026-45829 \
 		--ignore-vuln CVE-2026-4539 \
 		--ignore-vuln CVE-2024-34997 \
 		--ignore-vuln CVE-2025-45768 \
