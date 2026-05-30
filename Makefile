@@ -1,5 +1,5 @@
 # Project variables
-PYTHON := python
+PYTHON ?= $(shell command -v python3.10 2>/dev/null)
 PROJECT_NAME := your_package
 SRC_DIR := src
 TEST_DIR := tests
@@ -36,7 +36,8 @@ help: ## Show this help message
 	@echo '  $(YELLOW)ci-github$(NC)             Run CI checks formatted for Github'
 
 check-python: ## Verify Python installation
-	@which $(PYTHON) > /dev/null || (echo "$(RED)Python not found$(NC)" && exit 1)
+	@[ -n "$(PYTHON)" ] || (echo "$(RED)Python 3.10 not found$(NC)" && exit 1)
+	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 10) else 1)' || (echo "$(RED)Python 3.10 required$(NC)" && exit 1)
 	@echo "$(GREEN)✓ Python found: $$($(PYTHON) --version)$(NC)"
 
 check-uv: ## Verify uv is installed
@@ -45,7 +46,7 @@ check-uv: ## Verify uv is installed
 
 init: check-python check-uv ## Initialize project (create venv, install deps, setup pre-commit)
 	@echo "$(GREEN)Initializing project...$(NC)"
-	uv venv
+	uv venv --python $(PYTHON)
 	@echo "$(YELLOW)Virtual environment created. Activate with: source .venv/bin/activate$(NC)"
 	$(MAKE) install-dev
 	$(MAKE) install-hooks
@@ -68,8 +69,12 @@ install-prod: check-uv ## Install production dependencies only
 
 install-hooks: ## Install pre-commit hooks
 	@echo "$(GREEN)Installing pre-commit hooks...$(NC)"
-	uv run pre-commit install
-	@echo "$(GREEN)✓ Pre-commit hooks installed$(NC)"
+	@if [ -n "$$(git config --get core.hooksPath)" ]; then \
+		echo "$(YELLOW)Skipping pre-commit hook installation because core.hooksPath is already set$(NC)"; \
+	else \
+		uv run pre-commit install; \
+		echo "$(GREEN)✓ Pre-commit hooks installed$(NC)"; \
+	fi
 
 update-deps: ## Update all dependencies to latest versions
 	@echo "$(GREEN)Updating dependencies...$(NC)"
