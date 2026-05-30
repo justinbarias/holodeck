@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from ag_ui.core.events import (
     BaseEvent,
     EventType,
+    MessagesSnapshotEvent,
     ReasoningEndEvent,
     ReasoningMessageContentEvent,
     ReasoningMessageEndEvent,
@@ -32,6 +33,12 @@ from ag_ui.core.events import (
     ToolCallEndEvent,
     ToolCallResultEvent,
     ToolCallStartEvent,
+)
+from ag_ui.core.types import (
+    AssistantMessage,
+    FunctionCall,
+    ToolCall,
+    ToolMessage,
 )
 from ag_ui.encoder import EventEncoder
 from ulid import ULID
@@ -310,12 +317,18 @@ def create_run_started_event(thread_id: str, run_id: str) -> RunStartedEvent:
     )
 
 
-def create_run_finished_event(thread_id: str, run_id: str) -> RunFinishedEvent:
+def create_run_finished_event(
+    thread_id: str,
+    run_id: str,
+    result: dict[str, Any] | None = None,
+) -> RunFinishedEvent:
     """Create RunFinishedEvent for successful completion.
 
     Args:
         thread_id: Conversation thread identifier.
         run_id: Unique run identifier.
+        result: Optional run-result metadata (token usage, turn count,
+            error flag, timing) surfaced to the client on completion.
 
     Returns:
         RunFinishedEvent instance.
@@ -324,6 +337,7 @@ def create_run_finished_event(thread_id: str, run_id: str) -> RunFinishedEvent:
         type=EventType.RUN_FINISHED,
         thread_id=thread_id,
         run_id=run_id,
+        result=result,
     )
 
 
@@ -341,6 +355,110 @@ def create_run_error_event(message: str, code: str | None = None) -> RunErrorEve
         type=EventType.RUN_ERROR,
         message=message,
         code=code,
+    )
+
+
+def build_run_result(response: Any) -> dict[str, Any]:
+    """Build the ``RunFinished.result`` payload from an ``AgentResponse``.
+
+    Surfaces token usage, turn count, error state, and timing so clients can
+    render run-level metadata on completion (parity with the official Claude
+    AG-UI adapter's ``ResultMessage`` capture).
+
+    Args:
+        response: The ``AgentResponse`` returned by ``execute_turn``.
+
+    Returns:
+        JSON-serialisable dict of run metadata.
+    """
+    tokens = getattr(response, "tokens_used", None)
+    result: dict[str, Any] = {
+        "is_error": bool(getattr(response, "is_error", False)),
+        "num_turns": int(getattr(response, "num_turns", 1)),
+        "execution_time_ms": round(getattr(response, "execution_time", 0.0) * 1000),
+    }
+    if tokens is not None:
+        result["usage"] = {
+            "prompt_tokens": tokens.prompt_tokens,
+            "completion_tokens": tokens.completion_tokens,
+            "total_tokens": tokens.total_tokens,
+        }
+    structured = getattr(response, "structured_output", None)
+    if structured is not None:
+        result["structured_output"] = structured
+    return result
+
+
+def build_messages_snapshot(
+    input_messages: list[Any],
+    response: Any,
+    assistant_message_id: str,
+) -> list[Any]:
+    """Assemble the message list for a ``MESSAGES_SNAPSHOT`` event.
+
+    Combines the inbound conversation (passed through unchanged) with the
+    assistant message produced this run — its text plus one ``ToolCall`` per
+    tool execution — followed by a ``ToolMessage`` carrying each tool result.
+
+    Args:
+        input_messages: ``RunAgentInput.messages`` (already typed AG-UI
+            message objects).
+        response: The ``AgentResponse`` from ``execute_turn``.
+        assistant_message_id: Id used for the assistant's text message so the
+            snapshot correlates with the streamed ``TextMessage*`` events.
+
+    Returns:
+        Ordered list of AG-UI message objects.
+    """
+    messages: list[Any] = list(input_messages)
+
+    tool_executions = getattr(response, "tool_executions", []) or []
+    tool_calls: list[ToolCall] = []
+    tool_messages: list[ToolMessage] = []
+    for execution in tool_executions:
+        call_id = str(ULID())
+        tool_calls.append(
+            ToolCall(
+                id=call_id,
+                function=FunctionCall(
+                    name=execution.tool_name,
+                    arguments=json.dumps(execution.parameters or {}),
+                ),
+            )
+        )
+        tool_messages.append(
+            ToolMessage(
+                id=str(ULID()),
+                content=execution.result or "",
+                tool_call_id=call_id,
+                error=execution.error_message,
+            )
+        )
+
+    messages.append(
+        AssistantMessage(
+            id=assistant_message_id,
+            content=response.content,
+            tool_calls=tool_calls or None,
+        )
+    )
+    messages.extend(tool_messages)
+    return messages
+
+
+def create_messages_snapshot_event(messages: list[Any]) -> MessagesSnapshotEvent:
+    """Create a ``MessagesSnapshotEvent`` from a list of AG-UI messages.
+
+    Args:
+        messages: Ordered AG-UI message objects representing the full
+            conversation after the run completes.
+
+    Returns:
+        MessagesSnapshotEvent instance.
+    """
+    return MessagesSnapshotEvent(
+        type=EventType.MESSAGES_SNAPSHOT,
+        messages=messages,
     )
 
 
@@ -856,8 +974,24 @@ class AGUIProtocol(Protocol):
             )
             yield encoder.encode(create_text_message_end(message_id))
 
-            # 5. Emit RunFinishedEvent
-            yield encoder.encode(create_run_finished_event(thread_id, run_id))
+            # 4b. Emit MESSAGES_SNAPSHOT — the full conversation after this run
+            #     (inbound messages + the assistant message produced here).
+            yield encoder.encode(
+                create_messages_snapshot_event(
+                    build_messages_snapshot(
+                        list(input_data.messages or []),
+                        response,
+                        message_id,
+                    )
+                )
+            )
+
+            # 5. Emit RunFinishedEvent with run-result metadata.
+            yield encoder.encode(
+                create_run_finished_event(
+                    thread_id, run_id, result=build_run_result(response)
+                )
+            )
 
             logger.debug("Completed request for run %s", run_id)
 

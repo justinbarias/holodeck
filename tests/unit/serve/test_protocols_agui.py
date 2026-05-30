@@ -74,6 +74,21 @@ class TestAGUIEventMapping:
         assert event.type == EventType.RUN_FINISHED
         assert event.thread_id == "thread-123"
         assert event.run_id == "run-456"
+        assert event.result is None
+
+    def test_create_run_finished_event_with_result(self) -> None:
+        """RunFinishedEvent carries the run-result metadata when provided."""
+        from holodeck.serve.protocols.agui import create_run_finished_event
+
+        result = {"is_error": False, "num_turns": 2, "execution_time_ms": 1234}
+        event = create_run_finished_event(
+            thread_id="thread-123",
+            run_id="run-456",
+            result=result,
+        )
+
+        assert event.type == EventType.RUN_FINISHED
+        assert event.result == result
 
     def test_create_run_error_event_with_message(self) -> None:
         """Test RunErrorEvent creation with message only."""
@@ -668,6 +683,110 @@ class TestAGUIEventStreamBinaryFormat:
 # =============================================================================
 
 
+class TestRunResultAndMessagesSnapshot:
+    """Tests for build_run_result, build_messages_snapshot, and the snapshot event."""
+
+    def test_build_run_result_includes_usage_and_metadata(self) -> None:
+        """build_run_result surfaces token usage, turns, error flag, and timing."""
+        from types import SimpleNamespace
+
+        from holodeck.models.token_usage import TokenUsage
+        from holodeck.serve.protocols.agui import build_run_result
+
+        response = SimpleNamespace(
+            tokens_used=TokenUsage(
+                prompt_tokens=10, completion_tokens=5, total_tokens=15
+            ),
+            num_turns=3,
+            is_error=False,
+            execution_time=1.5,
+            structured_output=None,
+        )
+
+        result = build_run_result(response)
+
+        assert result["is_error"] is False
+        assert result["num_turns"] == 3
+        assert result["execution_time_ms"] == 1500
+        assert result["usage"] == {
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+        }
+        # structured_output omitted when None
+        assert "structured_output" not in result
+
+    def test_build_run_result_includes_structured_output_when_present(self) -> None:
+        """Structured output is included in the result payload when set."""
+        from types import SimpleNamespace
+
+        from holodeck.serve.protocols.agui import build_run_result
+
+        response = SimpleNamespace(
+            tokens_used=None,
+            num_turns=1,
+            is_error=True,
+            execution_time=0.0,
+            structured_output={"answer": 42},
+        )
+
+        result = build_run_result(response)
+
+        assert result["is_error"] is True
+        assert result["structured_output"] == {"answer": 42}
+        # usage omitted when tokens are unavailable
+        assert "usage" not in result
+
+    def test_build_messages_snapshot_appends_assistant_and_tool_messages(self) -> None:
+        """Snapshot = input messages + assistant message + one ToolMessage/result."""
+        from types import SimpleNamespace
+
+        from ag_ui.core.types import AssistantMessage, ToolMessage, UserMessage
+
+        from holodeck.serve.protocols.agui import build_messages_snapshot
+
+        input_messages = [UserMessage(id="u1", role="user", content="hi")]
+        response = SimpleNamespace(
+            content="done",
+            tool_executions=[
+                SimpleNamespace(
+                    tool_name="search",
+                    parameters={"q": "x"},
+                    result="found",
+                    error_message=None,
+                )
+            ],
+        )
+
+        messages = build_messages_snapshot(input_messages, response, "assistant-1")
+
+        # Original user message preserved as the first entry.
+        assert messages[0] is input_messages[0]
+        # Assistant message with content and one tool call.
+        assistant = next(m for m in messages if isinstance(m, AssistantMessage))
+        assert assistant.id == "assistant-1"
+        assert assistant.content == "done"
+        assert assistant.tool_calls is not None
+        assert assistant.tool_calls[0].function.name == "search"
+        # Tool result echoed, correlated to the tool call id.
+        tool_msg = next(m for m in messages if isinstance(m, ToolMessage))
+        assert tool_msg.content == "found"
+        assert tool_msg.tool_call_id == assistant.tool_calls[0].id
+
+    def test_create_messages_snapshot_event(self) -> None:
+        """create_messages_snapshot_event wraps messages in a MESSAGES_SNAPSHOT."""
+        from ag_ui.core.events import EventType
+        from ag_ui.core.types import UserMessage
+
+        from holodeck.serve.protocols.agui import create_messages_snapshot_event
+
+        msgs = [UserMessage(id="u1", role="user", content="hi")]
+        event = create_messages_snapshot_event(msgs)
+
+        assert event.type == EventType.MESSAGES_SNAPSHOT
+        assert event.messages == msgs
+
+
 class TestAGUIProtocolHandleRequest:
     """Tests for AGUIProtocol.handle_request method."""
 
@@ -720,6 +839,11 @@ class TestAGUIProtocolHandleRequest:
         all_content = b"".join(events).decode("utf-8")
         assert "RUN_STARTED" in all_content or "run_started" in all_content.lower()
         assert "RUN_FINISHED" in all_content or "run_finished" in all_content.lower()
+        # MESSAGES_SNAPSHOT is emitted just before RUN_FINISHED.
+        assert "MESSAGES_SNAPSHOT" in all_content
+        assert all_content.index("MESSAGES_SNAPSHOT") < all_content.index(
+            "RUN_FINISHED"
+        )
 
     @pytest.mark.asyncio
     async def test_handle_request_with_tool_executions(self) -> None:

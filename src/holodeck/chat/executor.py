@@ -40,6 +40,9 @@ class AgentResponse:
     tokens_used: TokenUsage | None
     execution_time: float
     thinking: str = ""
+    num_turns: int = 1
+    is_error: bool = False
+    structured_output: Any = None
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +374,9 @@ class AgentExecutor:
                 tokens_used=tokens_used,
                 execution_time=elapsed,
                 thinking=result.thinking,
+                num_turns=result.num_turns,
+                is_error=result.is_error,
+                structured_output=result.structured_output,
             )
 
             # Call post-execution callback
