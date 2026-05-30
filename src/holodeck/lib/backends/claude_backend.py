@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import sys
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any, cast
@@ -31,7 +32,9 @@ from claude_agent_sdk.types import (
     McpSdkServerConfig,
     SyncHookJSONOutput,
 )
-from exceptiongroup import BaseExceptionGroup
+
+if sys.version_info < (3, 11):  # ``BaseExceptionGroup`` is a builtin on 3.11+
+    from exceptiongroup import BaseExceptionGroup
 from ulid import ULID
 
 from holodeck.lib.backends.base import (
