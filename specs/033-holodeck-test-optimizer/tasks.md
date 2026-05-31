@@ -76,7 +76,7 @@ textual phase) until a full cycle yields 0 accepts or `max_cycles`. Accept iff
 
 ## Phase 3 — Numeric proposer
 
-### T5: `proposers/numeric.py` (Optuna TPE)
+### T5: `proposers/numeric.py` (Optuna TPE) ✅
 **Description:** `uv add optuna`. Wrapper creating a **fresh seeded study per numeric
 phase**; for each declared numeric axis call `suggest_float/int/categorical` within its
 range; return a params dict for `mutator.apply_axes`. Wire into the loop's numeric phase.
