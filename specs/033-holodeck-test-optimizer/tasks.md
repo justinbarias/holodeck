@@ -124,7 +124,7 @@ best, accepted edits, per-phase summary).
 **V:** `pytest tests/unit/optimizer/test_output.py -n auto`
 **Dependencies:** T4 · **Files:** `optimizer/output.py`, 1 test file · **Scope:** S
 
-### T8: `cli/commands/optimize.py` + register on `test` group
+### T8: `cli/commands/optimize.py` + register on `test` group ✅
 **Description:** `holodeck test optimize [AGENT_CONFIG]` with `--max-cycles`,
 `--numeric-max-trials`, `--numeric-patience`, `--textual-max-trials`, `--textual-patience`,
 `--seed`, `-o/--output-dir`, `-v/--verbose`, `-q/--quiet`. `asyncio.run(OptimizerLoop...)`.

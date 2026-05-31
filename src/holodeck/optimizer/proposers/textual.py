@@ -11,7 +11,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from holodeck.config.loader import ConfigLoader
 from holodeck.lib.backends.base import ExecutionResult
@@ -125,7 +125,7 @@ def build_failing_context(report: TestReport | None) -> str:
 class TextualProposer:
     """Proposes instruction rewrites via Critic → Applier subagents."""
 
-    phase = "textual"
+    phase: Literal["numeric", "textual"] = "textual"
 
     def __init__(
         self,

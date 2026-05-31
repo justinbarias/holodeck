@@ -264,6 +264,28 @@ class TestSkippedProposals:
         assert result.best_agent.instructions.inline == "You are helpful."
 
 
+class TestProgressCallback:
+    """The loop streams each trial to a progress callback."""
+
+    @pytest.mark.asyncio
+    async def test_callback_invoked_per_trial(self) -> None:
+        seen: list[int] = []
+        loop = OptimizerLoop(
+            original_agent=_agent(0.3),
+            scorer=_temp_scorer({0.3: 0.40, 0.5: 0.50, 0.7: 0.60}),
+            config=_config(),
+            numeric_proposer=StubNumericProposer(
+                [{"model.temperature": 0.5}, {"model.temperature": 0.7}]
+            ),
+            progress_callback=lambda t: seen.append(t.trial_id),
+        )
+
+        result = await loop.run()
+
+        assert seen == [t.trial_id for t in result.trials]
+        assert len(seen) == len(result.trials)
+
+
 class TestDeterminism:
     """Identical seed + stub produce identical trial sequences."""
 

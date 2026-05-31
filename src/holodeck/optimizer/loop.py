@@ -37,6 +37,7 @@ class OptimizerLoop:
         numeric_proposer: Proposer | None = None,
         textual_proposer: Proposer | None = None,
         run_id: str = "run",
+        progress_callback: Callable[[TrialRecord], None] | None = None,
     ) -> None:
         """Initialize the loop.
 
@@ -47,6 +48,8 @@ class OptimizerLoop:
             numeric_proposer: Proposer for the numeric phase (skipped if None).
             textual_proposer: Proposer for the textual phase (skipped if None).
             run_id: Identifier recorded on the result.
+            progress_callback: Optional callback invoked with each TrialRecord as
+                it is produced (used to stream per-trial scores).
         """
         self.original_agent = original_agent
         self.scorer = scorer
@@ -54,6 +57,7 @@ class OptimizerLoop:
         self.numeric_proposer = numeric_proposer
         self.textual_proposer = textual_proposer
         self.run_id = run_id
+        self.progress_callback = progress_callback
 
         self._trials: list[TrialRecord] = []
         self._trial_id = 0
@@ -116,7 +120,7 @@ class OptimizerLoop:
             # The proposer could not produce a usable change — record a skipped
             # trial that counts toward patience, and move on.
             if proposal.error is not None:
-                self._trials.append(
+                self._record(
                     TrialRecord(
                         trial_id=self._trial_id,
                         cycle=cycle,
@@ -137,7 +141,7 @@ class OptimizerLoop:
             score, report = await self.scorer(candidate)
             accepted = score - self.best_score > self.config.min_delta
 
-            self._trials.append(
+            self._record(
                 TrialRecord(
                     trial_id=self._trial_id,
                     cycle=cycle,
@@ -169,6 +173,12 @@ class OptimizerLoop:
                 no_improve += 1
 
         return accepts
+
+    def _record(self, record: TrialRecord) -> None:
+        """Append a trial record and notify the progress callback."""
+        self._trials.append(record)
+        if self.progress_callback is not None:
+            self.progress_callback(record)
 
     def _apply(self, proposal: Proposal) -> Agent:
         """Apply a proposal to the current best agent, returning a new candidate."""

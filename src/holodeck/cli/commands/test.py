@@ -486,3 +486,8 @@ def _save_report(report: TestReport, output: str, format: str | None) -> None:
 from holodeck.cli.commands.test_view import view  # noqa: E402
 
 test.add_command(view)
+
+# Register the `optimize` subcommand for the compounding optimizer.
+from holodeck.cli.commands.optimize import optimize  # noqa: E402
+
+test.add_command(optimize)

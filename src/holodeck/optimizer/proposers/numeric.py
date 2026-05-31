@@ -6,6 +6,8 @@ suggests a value per declared axis within its range, and ``tell`` feeds the
 scored outcome back to the study so TPE can steer subsequent suggestions.
 """
 
+from typing import Literal
+
 import optuna
 
 from holodeck.models.agent import Agent
@@ -20,7 +22,7 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 class NumericProposer:
     """Proposes numeric-axis values via a fresh-per-phase Optuna TPE study."""
 
-    phase = "numeric"
+    phase: Literal["numeric", "textual"] = "numeric"
 
     def __init__(self, axes: list[NumericAxis], seed: int) -> None:
         """Initialize the proposer.
