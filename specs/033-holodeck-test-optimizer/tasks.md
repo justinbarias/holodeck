@@ -56,7 +56,7 @@ and calling `execute_tests()`, then `scalarize`.
 
 ## Phase 2 — Loop (prove compounding)
 
-### T4: `OptimizerLoop.run()` + stub proposer
+### T4: `OptimizerLoop.run()` + stub proposer ✅
 **Description:** Coordinate-descent driver: baseline score → repeat (numeric phase →
 textual phase) until a full cycle yields 0 accepts or `max_cycles`. Accept iff
 `score - best_score > min_delta`; on accept `baseline ← candidate`. Per-phase `patience`
