@@ -6,6 +6,67 @@ This file provides detailed guidance for AI agents working with the HoloDeck cod
 
 ---
 
+## Project Pointers
+
+- **Constitution (authoritative principles):** `.specify/memory/constitution.md`
+- **Product & user documentation:** `docs/`
+- **Feature specs, plans, tasks, status:** `specs/`
+- **Agent YAML schema:** `schemas/agent.schema.json`
+- **Vision & roadmap:** `VISION.md`
+- **Claude Code instructions:** `CLAUDE.md`
+- **Comprehensive agent docs:** `AGENTS.md`
+
+---
+
+## Behavioral Guidelines
+
+Bias toward caution over speed. For trivial tasks, use judgment.
+
+### 1. Think Before Coding
+
+Do not assume or hide confusion.
+
+- State assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them instead of picking silently.
+- If a simpler approach exists, say so.
+- Push back when warranted.
+- If something is unclear, stop, name what is confusing, and ask.
+
+### 2. Simplicity First
+
+Write the minimum code that solves the problem.
+
+- Do not add features beyond what was asked.
+- Do not introduce abstractions for single-use code.
+- Do not add flexibility or configurability that was not requested.
+- Do not add error handling for impossible scenarios.
+- If a change grows large, reread it and simplify before moving on.
+
+Ask: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+### 3. Surgical Changes
+
+Touch only what is necessary. Clean up only your own mess.
+
+- Do not improve adjacent code, comments, or formatting unless needed.
+- Do not refactor unrelated code.
+- Match existing style, even if you would choose a different style.
+- If you notice unrelated dead code, mention it instead of deleting it.
+- Remove imports, variables, functions, and tests that your own changes made unused.
+
+Every changed line should trace directly to the user's request.
+
+### 4. Goal-Driven Execution
+
+Define success criteria and verify them.
+
+- "Add validation" means write tests for invalid inputs, then make them pass.
+- "Fix the bug" means write or identify a test that reproduces it, then make it pass.
+- "Refactor X" means preserve behavior and run the relevant tests before reporting done.
+- For multi-step tasks, state a brief plan with per-step verification.
+
+---
+
 ## Project Overview
 
 **HoloDeck** is an open-source experimentation platform for building, testing, and deploying AI agents through pure YAML configuration. The project enables teams to go from hypothesis to production API in minutes without writing code.
@@ -565,6 +626,20 @@ MyPy settings (from pyproject.toml):
 - `warn_return_any = true`: Warn when returning Any
 - `warn_unreachable = true`: Warn about unreachable code
 
+### Type Discipline
+
+Treat type annotations as part of the design, not as cleanup after the fact.
+
+- Do not use `Any` for known domain objects, AG-UI requests/events, HoloDeck models, backend sessions, or streaming surfaces. Use the concrete Pydantic model, protocol, union, `TypedDict`, or type alias that describes the value.
+- Do not write signatures such as `input_data: Any`, `request: Any`, or `AsyncGenerator[Any, None]` when the protocol is known. Examples: AG-UI handlers should use `RunAgentInput` and `BaseEvent`; backend execution should use `ExecutionResult`; tool event streams should use `ToolEvent`.
+- Keep untyped third-party SDK data at the boundary. Convert it immediately into HoloDeck-owned typed models or use a narrow `cast(...)` with the smallest possible scope.
+- Prefer `Protocol` or `TypedDict` over `getattr(...)` when code needs a capability or structured payload. For example, define a small capability protocol for `send_agui(...)` instead of probing `getattr(session, "send_agui", None)`.
+- Do not use `getattr(...)` to access fields on known Pydantic models, dataclasses, or discriminated unions. Access fields directly (`message.role`, `tool.name`) so MyPy can catch schema drift.
+- If compatibility with dynamic test doubles or SDK objects truly requires `getattr(...)`, isolate it in one helper, type the helper's return value, and explain the boundary in a short comment.
+- Avoid broad `dict[str, Any]` plumbing. If the shape is known, define a `TypedDict` or Pydantic model. If the shape is arbitrary JSON, use a JSON type alias rather than bare `Any`.
+- Do not silence typing with `# type: ignore` unless there is no practical alternative. Include the specific error code and a short reason.
+- Before committing, run MyPy against the touched files at minimum. If full `uv run mypy src/` fails because of unrelated missing third-party stubs, report that explicitly and include the focused MyPy command that passed.
+
 ### Docstring Standards (PEP 257)
 
 ```python
@@ -700,6 +775,17 @@ def test_uppercase_conversion(input_text, expected):
 1. **Arrange:** Set up test data and preconditions
 2. **Act:** Execute the code under test
 3. **Assert:** Verify the expected outcome
+
+---
+
+## Code Navigation: LSP vs Grep
+
+Use the right tool for the question.
+
+- **LSP / semantic tools:** references, definitions, type hierarchy, protocol implementations, call graphs, and symbol-aware refactors.
+- **Grep / ripgrep:** YAML, Markdown, `.env`, config keys, strings, TODOs, regex/partial patterns, and files that are not parseable Python.
+
+For repository-wide text search, prefer `rg` and `rg --files`.
 
 ---
 
@@ -1951,6 +2037,50 @@ make test               # Run all tests
 ```bash
 git add .
 git commit -m "feat: <description>"
+```
+
+---
+
+## End-to-End Deploy Validation Loop
+
+Run this loop only when the user explicitly asks for deploy validation. Do not run it automatically after every change. It builds a Docker image, pushes to GHCR, and rolls a live Azure Container Apps revision. Unit and integration tests are the default contract.
+
+The default sample is `sample/financial-assistant/claude` unless the user names a different agent.
+
+### Sequence
+
+```bash
+# 1. Build local wheel from the working tree
+rm -rf dist && uv build --wheel
+
+# 2. Build the local base image with the wheel baked in
+docker buildx build --platform linux/amd64 --no-cache \
+    -f docker/Dockerfile.local \
+    -t ghcr.io/justinbarias/holodeck-base:latest --load .
+
+# Verify the base carries the local wheel, not the published release
+docker run --rm --entrypoint python ghcr.io/justinbarias/holodeck-base:latest \
+    -c "import holodeck; print(holodeck.__version__)"
+
+# 3. Temporarily disable pull=True in src/holodeck/deploy/builder.py
+#    Revert this edit before committing.
+
+# 4. Build and push the agent image
+cd sample/financial-assistant/claude
+holodeck deploy build
+docker push ghcr.io/justinbarias/holodeck-financial-assistant:<tag>
+
+# 5. Deploy to Azure Container Apps
+holodeck deploy run
+
+# 6. Wait until /health is up, then exercise /awp
+URL=https://financial-assistant.nicemoss-50caf9f5.eastus.azurecontainerapps.io
+until curl -sf -o /dev/null --max-time 5 "$URL/health"; do sleep 3; done
+curl -sS -X POST "$URL/awp" -H 'content-type: application/json' \
+    -d '{"threadId":"v","runId":"r","state":{},"messages":[{"id":"m1","role":"user","content":"<your query>"}],"tools":[],"context":[],"forwardedProps":{}}' \
+    --max-time 180
+
+# 7. Revert the builder.py edit before committing
 ```
 
 ---

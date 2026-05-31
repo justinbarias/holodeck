@@ -173,6 +173,10 @@ security: ## Run security checks
 	# No-fix advisories where the vulnerable code path is unreachable for HoloDeck:
 	#   CVE-2026-0846  (nltk)    — nltk.util.filestring() path traversal; HoloDeck has no direct
 	#                              nltk usage (transitive via azure-ai-evaluation)
+	#   CVE-2026-45829 (chromadb) — pre-auth code injection in ChromaDB server API when a
+	#                              malicious model repo is accepted with trust_remote_code=true.
+	#                              No fixed chromadb release exists yet; documented in
+	#                              docs/guides/vector-stores.md.
 	#
 	# Cross-ecosystem mis-attribution: the following advisories describe bugs in the Ollama
 	# *Go server* (/api/pull endpoint, GGUF parser). The PyPI `ollama` package is an HTTP
@@ -187,6 +191,7 @@ security: ## Run security checks
 		--ignore-vuln CVE-2024-34997 \
 		--ignore-vuln CVE-2025-45768 \
 		--ignore-vuln CVE-2026-0846 \
+		--ignore-vuln CVE-2026-45829 \
 		--ignore-vuln CVE-2025-44779 \
 		--ignore-vuln CVE-2024-8063 \
 		--ignore-vuln CVE-2025-51471 \

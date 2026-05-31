@@ -10,25 +10,77 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
+import dataclasses
+import inspect
 import json
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterable
 from pathlib import Path
 from typing import Any, cast
 
 import claude_agent_sdk
-import jsonschema
+import jsonschema  # type: ignore[import-untyped]
+from ag_ui.core import (
+    AssistantMessage as AguiAssistantMessage,
+)
+from ag_ui.core import (
+    BaseEvent,
+    CustomEvent,
+    EventType,
+    MessagesSnapshotEvent,
+    ReasoningEncryptedValueEvent,
+    ReasoningEndEvent,
+    ReasoningMessageContentEvent,
+    ReasoningMessageEndEvent,
+    ReasoningMessageStartEvent,
+    ReasoningStartEvent,
+    RunAgentInput,
+    RunFinishedEvent,
+    RunStartedEvent,
+    StateSnapshotEvent,
+    TextMessageContentEvent,
+    TextMessageEndEvent,
+    TextMessageStartEvent,
+    ToolCallArgsEvent,
+    ToolCallEndEvent,
+    ToolCallResultEvent,
+    ToolCallStartEvent,
+)
+from ag_ui.core import (
+    FunctionCall as AguiFunctionCall,
+)
+from ag_ui.core import (
+    Message as AguiMessage,
+)
+from ag_ui.core import (
+    Tool as AguiTool,
+)
+from ag_ui.core import (
+    ToolCall as AguiToolCall,
+)
+from ag_ui.core import (
+    ToolMessage as AguiToolMessage,
+)
+from ag_ui.core import (
+    UserMessage as AguiUserMessage,
+)
 from claude_agent_sdk import (
     ClaudeAgentOptions,
     HookMatcher,
     ProcessError,
+    tool,
 )
 from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
 from claude_agent_sdk.types import (
     AgentDefinition,
     HookContext,
     HookEvent,
+    HookInput,
     McpSdkServerConfig,
+    PostToolUseFailureHookInput,
+    PostToolUseHookInput,
+    PreToolUseHookInput,
     SyncHookJSONOutput,
 )
 from exceptiongroup import BaseExceptionGroup
@@ -67,6 +119,70 @@ logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 3
 _BACKOFF_BASE_SECONDS = 1
+_AGUI_MCP_SERVER_NAME = "ag_ui"
+_AGUI_STATE_TOOL_NAME = "ag_ui_update_state"
+_AGUI_STATE_TOOL_FULL_NAME = "mcp__ag_ui__ag_ui_update_state"
+_AGUI_FORWARDED_PROPS: frozenset[str] = frozenset(
+    {
+        "resume",
+        "fork_session",
+        "model",
+        "fallback_model",
+        "max_turns",
+        "max_budget_usd",
+        "max_thinking_tokens",
+        "include_partial_messages",
+        "strict_mcp_config",
+        "betas",
+        "enable_file_checkpointing",
+        "effort",
+        "thinking",
+        "output_format",
+    }
+)
+_AGUI_STATE_TOOL_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "state_updates": {
+            "type": "object",
+            "additionalProperties": True,
+        }
+    },
+    "required": ["state_updates"],
+}
+
+
+@dataclasses.dataclass(frozen=True)
+class _AguiStreamStateUpdate:
+    """Internal stream item carrying updated AG-UI state to the caller."""
+
+    state: Any
+
+
+@dataclasses.dataclass(frozen=True)
+class _AguiStreamResult:
+    """Internal stream item carrying Claude result metadata to the caller."""
+
+    result: dict[str, Any]
+
+
+@dataclasses.dataclass(frozen=True)
+class _AguiSdkToolUseBlock:
+    """Normalized SDK tool-use block for AG-UI conversion."""
+
+    tool_id: str
+    raw_name: str
+    display_name: str
+    tool_input: dict[str, Any]
+
+
+@dataclasses.dataclass(frozen=True)
+class _AguiSdkToolResultBlock:
+    """Normalized SDK tool-result block for AG-UI conversion."""
+
+    tool_use_id: str
+    content: Any
+
 
 # ---------------------------------------------------------------------------
 # Private helpers
@@ -132,6 +248,329 @@ def _enrich_tool_results(
         if "name" not in tr and tr.get("call_id") in id_to_name:
             tr["name"] = id_to_name[tr["call_id"]]
     return tool_results
+
+
+def _fix_surrogates(value: str) -> str:
+    """Reassemble UTF-16 surrogate pairs before Pydantic serialization."""
+    try:
+        return value.encode("utf-16", "surrogatepass").decode("utf-16")
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return value.encode("utf-8", "replace").decode("utf-8")
+
+
+def _fix_surrogates_deep(value: Any) -> Any:
+    """Recursively fix surrogate pairs in nested structures."""
+    if isinstance(value, str):
+        return _fix_surrogates(value)
+    if isinstance(value, dict):
+        return {
+            _fix_surrogates(k) if isinstance(k, str) else k: _fix_surrogates_deep(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_fix_surrogates_deep(v) for v in value]
+    return value
+
+
+def _strip_mcp_prefix(tool_name: str) -> str:
+    """Return frontend-facing tool name for SDK MCP tool identifiers."""
+    if tool_name.startswith("mcp__"):
+        parts = tool_name.split("__")
+        if len(parts) >= 3:
+            return "__".join(parts[2:])
+    return tool_name
+
+
+def _is_agui_state_tool(tool_name: str | None) -> bool:
+    """Return True when *tool_name* is the internal AG-UI state tool."""
+    return tool_name in {_AGUI_STATE_TOOL_NAME, _AGUI_STATE_TOOL_FULL_NAME}
+
+
+def _agui_tool_names(tools: list[AguiTool] | None) -> list[str]:
+    """Extract frontend tool names from AG-UI tool definitions."""
+    return [tool_def.name for tool_def in tools or [] if tool_def.name]
+
+
+def _agui_message_content(message: AguiMessage) -> str:
+    """Extract plain text content from an AG-UI message object."""
+    if isinstance(message, AguiAssistantMessage):
+        return str(message.content or "")
+    if isinstance(message, AguiToolMessage):
+        return str(message.content)
+    if isinstance(message, AguiUserMessage):
+        user_content = message.content
+        if isinstance(user_content, str):
+            return user_content
+        return " ".join(block.text for block in user_content if block.type == "text")
+    other_content = message.content
+    if isinstance(other_content, str):
+        return other_content
+    return ""
+
+
+def _agui_message_role(message: AguiMessage) -> str:
+    """Extract the AG-UI role from a message object."""
+    return str(message.role)
+
+
+def _agui_tool_call_id(message: AguiMessage) -> str:
+    """Extract the AG-UI tool call id from a tool message."""
+    if isinstance(message, AguiToolMessage):
+        return str(message.tool_call_id)
+    return ""
+
+
+def _agui_message_transcript_line(message: AguiMessage) -> str:
+    """Render one AG-UI message into a compact prompt transcript line."""
+    role = _agui_message_role(message)
+    content = _agui_message_content(message)
+    if isinstance(message, AguiAssistantMessage):
+        rendered_calls: list[str] = []
+        for call in message.tool_calls or []:
+            rendered_calls.append(
+                "tool_call "
+                f"id={call.id} "
+                f"name={call.function.name} "
+                f"arguments={call.function.arguments}"
+            )
+        if rendered_calls:
+            call_text = "; ".join(rendered_calls)
+            return f"assistant: {content}\nassistant_tool_calls: {call_text}"
+    if isinstance(message, AguiToolMessage):
+        return f"tool_result id={_agui_tool_call_id(message)}: {content}"
+    return f"{role}: {content}"
+
+
+def _agui_frontend_tool_resume_prompt(input_data: RunAgentInput) -> str:
+    """Build a continuation prompt when AG-UI resumes after a frontend tool."""
+    messages = input_data.messages or []
+    transcript = "\n".join(
+        _agui_message_transcript_line(message) for message in messages[-20:]
+    )
+    return (
+        "Continue the AG-UI conversation from this transcript.\n\n"
+        "The latest frontend tool result has already been executed by the UI. "
+        "Use that result to continue the conversation. Do not call the same "
+        "frontend tool again unless the result is missing, invalid, or the user "
+        "explicitly asks to run it again.\n\n"
+        f"{transcript}"
+    )
+
+
+def _agui_prompt_from_input(
+    input_data: RunAgentInput,
+    message_override: str | None = None,
+) -> str:
+    """Return the latest AG-UI message payload to send to Claude."""
+    if message_override is not None:
+        return message_override
+    messages = input_data.messages or []
+    if not messages:
+        return ""
+    if _agui_message_role(messages[-1]) == "tool":
+        return _agui_frontend_tool_resume_prompt(input_data)
+    return _agui_message_content(messages[-1])
+
+
+def _agui_state_context_addendum(input_data: RunAgentInput) -> str:
+    """Build a system-prompt addendum for AG-UI context and shared state."""
+    parts: list[str] = []
+    if input_data.context:
+        parts.append("## Context from the application")
+        for context in input_data.context:
+            parts.append(f"- {context.description}: {context.value}")
+        parts.append("")
+    if input_data.state is not None:
+        parts.append("## Current Shared State")
+        parts.append("This state is shared with the frontend UI and can be updated.")
+        try:
+            state_json = json.dumps(input_data.state, indent=2)
+        except (TypeError, ValueError):
+            state_json = str(input_data.state)
+        parts.append(f"```json\n{state_json}\n```")
+        parts.append("")
+        parts.append(
+            "To update this state, use the `ag_ui_update_state` tool with your "
+            "changes."
+        )
+        parts.append("")
+    return "\n".join(parts)
+
+
+def _make_agui_frontend_tool(tool_def: AguiTool) -> Any:
+    """Convert an AG-UI Tool definition to a Claude SDK MCP proxy tool."""
+
+    @tool(tool_def.name, tool_def.description, tool_def.parameters or {})
+    async def frontend_tool_stub(args: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "content": [{"type": "text", "text": "Tool call forwarded to AG-UI client"}]
+        }
+
+    return frontend_tool_stub
+
+
+def _make_agui_state_tool() -> Any:
+    """Create the internal AG-UI state update tool."""
+
+    @tool(
+        _AGUI_STATE_TOOL_NAME,
+        "Update the shared application state visible to the AG-UI frontend.",
+        _AGUI_STATE_TOOL_SCHEMA,
+    )
+    async def update_state_tool(args: dict[str, Any]) -> dict[str, Any]:
+        return {"content": [{"type": "text", "text": "State updated"}]}
+
+    return update_state_tool
+
+
+def _clone_options(options: ClaudeAgentOptions, **updates: Any) -> ClaudeAgentOptions:
+    """Clone ``ClaudeAgentOptions`` without mutating the session base options."""
+    try:
+        dataclasses.fields(options)
+    except TypeError:
+        cloned = copy.copy(options)
+        for key, value in updates.items():
+            setattr(cloned, key, value)
+        return cloned
+    else:
+        return dataclasses.replace(options, **updates)
+
+
+def _agui_tool_result_content(content: Any) -> str:
+    """Normalize Claude SDK tool-result content for AG-UI."""
+    if content is None:
+        return ""
+    try:
+        if isinstance(content, list) and content:
+            first = content[0]
+            if isinstance(first, dict) and first.get("type") == "text":
+                text = str(first.get("text", ""))
+                try:
+                    return json.dumps(json.loads(text))
+                except (json.JSONDecodeError, ValueError):
+                    return _fix_surrogates(text)
+            return _fix_surrogates(json.dumps(content))
+        return _fix_surrogates(json.dumps(content))
+    except (TypeError, ValueError):
+        return _fix_surrogates(str(content))
+
+
+def _sdk_content_blocks(sdk_message: object) -> list[Any]:
+    """Return Claude SDK content blocks while containing dynamic SDK access.
+
+    The Claude SDK content block classes are not stable public typing surfaces,
+    and unit tests use lightweight SDK-shaped doubles. Keep the ``getattr``
+    boundary here so stream translation stays typed after normalization.
+    """
+    content = getattr(sdk_message, "content", None)
+    if content is None:
+        return []
+    if isinstance(content, list):
+        return content
+    try:
+        return list(cast(Any, content))
+    except TypeError:
+        return []
+
+
+def _agui_sdk_tool_use_blocks(sdk_message: object) -> list[_AguiSdkToolUseBlock]:
+    """Normalize Claude SDK tool-use blocks for AG-UI stream handling."""
+    tool_blocks: list[_AguiSdkToolUseBlock] = []
+    for block in _sdk_content_blocks(sdk_message):
+        if block.__class__.__name__ != "ToolUseBlock":
+            continue
+        tool_id = getattr(block, "id", None)
+        if not tool_id:
+            continue
+        raw_name = str(getattr(block, "name", "unknown") or "unknown")
+        tool_input = getattr(block, "input", {}) or {}
+        if not isinstance(tool_input, dict):
+            tool_input = {"value": tool_input}
+        tool_blocks.append(
+            _AguiSdkToolUseBlock(
+                tool_id=str(tool_id),
+                raw_name=raw_name,
+                display_name=_strip_mcp_prefix(raw_name),
+                tool_input=tool_input,
+            )
+        )
+    return tool_blocks
+
+
+def _agui_sdk_tool_result_blocks(sdk_message: object) -> list[_AguiSdkToolResultBlock]:
+    """Normalize Claude SDK tool-result blocks for AG-UI stream handling."""
+    result_blocks: list[_AguiSdkToolResultBlock] = []
+    for block in _sdk_content_blocks(sdk_message):
+        if block.__class__.__name__ != "ToolResultBlock":
+            continue
+        tool_use_id = getattr(block, "tool_use_id", None)
+        if not tool_use_id:
+            continue
+        result_blocks.append(
+            _AguiSdkToolResultBlock(
+                tool_use_id=str(tool_use_id),
+                content=getattr(block, "content", None),
+            )
+        )
+    return result_blocks
+
+
+async def _close_message_stream(message_stream: object) -> None:
+    """Close an SDK async stream immediately when AG-UI must halt."""
+    aclose = getattr(message_stream, "aclose", None)
+    if aclose is None:
+        return
+    close_result = aclose()
+    if inspect.isawaitable(close_result):
+        await close_result
+
+
+def _agui_assistant_message_from_sdk(
+    sdk_message: Any,
+    message_id: str,
+) -> AguiAssistantMessage | None:
+    """Convert a complete Claude SDK AssistantMessage to AG-UI history."""
+    text = ""
+    tool_calls: list[AguiToolCall] = []
+    for block in getattr(sdk_message, "content", []) or []:
+        block_type = getattr(block, "type", None)
+        block_cls = block.__class__.__name__
+        if block_type == "text" or block_cls == "TextBlock":
+            text += getattr(block, "text", "")
+        elif block_type == "tool_use" or block_cls == "ToolUseBlock":
+            raw_name = getattr(block, "name", "")
+            if _is_agui_state_tool(raw_name):
+                continue
+            tool_id = getattr(block, "id", "")
+            tool_input = getattr(block, "input", {}) or {}
+            tool_calls.append(
+                AguiToolCall(
+                    id=tool_id,
+                    type="function",
+                    function=AguiFunctionCall(
+                        name=_strip_mcp_prefix(raw_name),
+                        arguments=json.dumps(tool_input),
+                    ),
+                )
+            )
+    if not text and not tool_calls:
+        return None
+    return AguiAssistantMessage(
+        id=message_id,
+        role="assistant",
+        content=text or None,
+        tool_calls=tool_calls or None,
+    )
+
+
+def _agui_tool_message(tool_use_id: str, content: Any) -> AguiToolMessage:
+    """Convert a Claude SDK ToolResultBlock to AG-UI tool history."""
+    return AguiToolMessage(
+        id=f"{tool_use_id}-result",
+        role="tool",
+        content=_agui_tool_result_content(content),
+        tool_call_id=tool_use_id,
+    )
 
 
 def _extract_result_text(content: list[Any]) -> str:
@@ -599,46 +1038,49 @@ def _build_tool_hooks(
     """
 
     async def _on_pre_tool(
-        input_data: Any,
+        input_data: HookInput,
         tool_use_id: str | None,
         context: HookContext,
     ) -> SyncHookJSONOutput:
+        tool_input = cast(PreToolUseHookInput, input_data)
         await queue.put(
             ToolEvent(
                 kind="start",
-                tool_name=input_data["tool_name"],
-                tool_use_id=input_data["tool_use_id"],
-                tool_input=input_data.get("tool_input"),
+                tool_name=tool_input["tool_name"],
+                tool_use_id=tool_input["tool_use_id"],
+                tool_input=tool_input.get("tool_input"),
             )
         )
         return SyncHookJSONOutput()
 
     async def _on_post_tool(
-        input_data: Any,
+        input_data: HookInput,
         tool_use_id: str | None,
         context: HookContext,
     ) -> SyncHookJSONOutput:
+        tool_input = cast(PostToolUseHookInput, input_data)
         await queue.put(
             ToolEvent(
                 kind="end",
-                tool_name=input_data["tool_name"],
-                tool_use_id=input_data["tool_use_id"],
-                tool_response=str(input_data.get("tool_response", "")),
+                tool_name=tool_input["tool_name"],
+                tool_use_id=tool_input["tool_use_id"],
+                tool_response=str(tool_input.get("tool_response", "")),
             )
         )
         return SyncHookJSONOutput()
 
     async def _on_post_tool_failure(
-        input_data: Any,
+        input_data: HookInput,
         tool_use_id: str | None,
         context: HookContext,
     ) -> SyncHookJSONOutput:
+        tool_input = cast(PostToolUseFailureHookInput, input_data)
         await queue.put(
             ToolEvent(
                 kind="error",
-                tool_name=input_data["tool_name"],
-                tool_use_id=input_data["tool_use_id"],
-                error=str(input_data.get("error", "")),
+                tool_name=tool_input["tool_name"],
+                tool_use_id=tool_input["tool_use_id"],
+                error=str(tool_input.get("error", "")),
             )
         )
         return SyncHookJSONOutput()
@@ -825,6 +1267,64 @@ class ClaudeSession:
             self._base_options.hooks = merged
             return self._base_options
 
+    def _options_for_agui(self, input_data: RunAgentInput) -> ClaudeAgentOptions:
+        """Return per-run Claude options for an AG-UI request.
+
+        This keeps HoloDeck's base options authoritative while adding only the
+        AG-UI-specific runtime surface: partial streaming, state/context prompt
+        addendum, dynamic frontend tools, and the internal state update tool.
+        """
+        options = self._base_options
+        fields = {field.name for field in dataclasses.fields(ClaudeAgentOptions)}
+
+        updates: dict[str, Any] = {"include_partial_messages": True}
+
+        if self._sdk_session_id is not None:
+            updates["resume"] = self._sdk_session_id
+
+        if isinstance(input_data.forwarded_props, dict):
+            for key, value in input_data.forwarded_props.items():
+                if key in _AGUI_FORWARDED_PROPS and key in fields and value is not None:
+                    updates[key] = value
+                elif key not in _AGUI_FORWARDED_PROPS:
+                    logger.warning("Ignoring unsupported AG-UI forwardedProp: %s", key)
+
+        addendum = _agui_state_context_addendum(input_data)
+        if addendum:
+            base_prompt = updates.get("system_prompt", options.system_prompt) or ""
+            updates["system_prompt"] = (
+                f"{base_prompt}\n\n{addendum}" if base_prompt else addendum
+            )
+
+        frontend_tools = [_make_agui_frontend_tool(t) for t in input_data.tools or []]
+        agui_tools = [*frontend_tools, _make_agui_state_tool()]
+
+        allowed_tools = list(options.allowed_tools or [])
+        for name in _agui_tool_names(input_data.tools):
+            full_name = f"mcp__{_AGUI_MCP_SERVER_NAME}__{name}"
+            if full_name not in allowed_tools:
+                allowed_tools.append(full_name)
+        if _AGUI_STATE_TOOL_FULL_NAME not in allowed_tools:
+            allowed_tools.append(_AGUI_STATE_TOOL_FULL_NAME)
+        updates["allowed_tools"] = allowed_tools
+
+        if agui_tools:
+            from claude_agent_sdk import create_sdk_mcp_server
+
+            existing_servers = (
+                dict(options.mcp_servers)
+                if isinstance(options.mcp_servers, dict)
+                else {}
+            )
+            existing_servers[_AGUI_MCP_SERVER_NAME] = create_sdk_mcp_server(
+                _AGUI_MCP_SERVER_NAME,
+                "1.0.0",
+                tools=agui_tools,
+            )
+            updates["mcp_servers"] = existing_servers
+
+        return _clone_options(options, **updates)
+
     async def prepare(self) -> None:
         """No-op under spec 034 P4.
 
@@ -987,6 +1487,450 @@ class ClaudeSession:
                 raise BackendSessionError(
                     f"subprocess terminated unexpectedly: {exc}"
                 ) from exc
+
+    async def send_agui(
+        self,
+        input_data: RunAgentInput,
+        message_override: str | None = None,
+    ) -> AsyncGenerator[BaseEvent, None]:
+        """Send an AG-UI request through this Claude session.
+
+        Yields AG-UI events translated directly from Claude SDK stream messages.
+        """
+        async with self._send_lock:
+            thread_id = input_data.thread_id
+            run_id = input_data.run_id
+            options = self._options_for_agui(input_data)
+            prompt = _agui_prompt_from_input(input_data, message_override)
+            frontend_tool_names = set(_agui_tool_names(input_data.tools))
+            current_state = input_data.state
+            result_data: dict[str, Any] | None = None
+
+            yield RunStartedEvent(
+                type=EventType.RUN_STARTED,
+                thread_id=thread_id,
+                run_id=run_id,
+                parent_run_id=input_data.parent_run_id,
+                input=input_data,
+            )
+            if input_data.state is not None:
+                yield StateSnapshotEvent(
+                    type=EventType.STATE_SNAPSHOT,
+                    snapshot=input_data.state,
+                )
+
+            try:
+                message_stream = claude_agent_sdk.query(
+                    prompt=_streaming_user_envelope(prompt),
+                    options=options,
+                )
+                async for event in self._stream_agui_messages(
+                    message_stream=message_stream,
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    input_data=input_data,
+                    frontend_tool_names=frontend_tool_names,
+                    current_state=current_state,
+                ):
+                    if isinstance(event, _AguiStreamStateUpdate):
+                        current_state = event.state
+                        continue
+                    if isinstance(event, _AguiStreamResult):
+                        result_data = event.result
+                        continue
+                    yield event
+
+                self._turn_count += 1
+                yield RunFinishedEvent(
+                    type=EventType.RUN_FINISHED,
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    result=result_data,
+                )
+            except (ProcessError, CLIConnectionError) as exc:
+                raise BackendSessionError(
+                    f"subprocess terminated unexpectedly: {exc}"
+                ) from exc
+
+    async def _stream_agui_messages(
+        self,
+        *,
+        message_stream: AsyncIterable[object],
+        thread_id: str,
+        run_id: str,
+        input_data: RunAgentInput,
+        frontend_tool_names: set[str],
+        current_state: Any,
+    ) -> AsyncGenerator[BaseEvent | _AguiStreamStateUpdate | _AguiStreamResult, None]:
+        """Translate Claude SDK message stream to AG-UI events."""
+        current_message_id: str | None = None
+        has_streamed_text = False
+        in_reasoning = False
+        reasoning_message_id: str | None = None
+        accumulated_signature = ""
+        current_tool_call_id: str | None = None
+        current_tool_call_name: str | None = None
+        current_tool_display_name: str | None = None
+        accumulated_tool_json = ""
+        processed_tool_ids: set[str] = set()
+        halt_stream = False
+        run_messages: list[AguiAssistantMessage | AguiToolMessage] = []
+        pending_msg: dict[str, Any] | None = None
+
+        def upsert_message(message: AguiAssistantMessage | AguiToolMessage) -> None:
+            msg_id = message.id
+            for idx, existing in enumerate(run_messages):
+                if existing.id == msg_id:
+                    run_messages[idx] = message
+                    return
+            run_messages.append(message)
+
+        def flush_pending_msg() -> None:
+            nonlocal pending_msg
+            if pending_msg is None:
+                return
+            has_content = bool(pending_msg.get("content"))
+            has_tools = bool(pending_msg.get("tool_calls"))
+            if has_content or has_tools:
+                upsert_message(
+                    AguiAssistantMessage(
+                        id=pending_msg["id"],
+                        role="assistant",
+                        content=pending_msg["content"] if has_content else None,
+                        tool_calls=pending_msg["tool_calls"] if has_tools else None,
+                    )
+                )
+            pending_msg = None
+
+        async for message in message_stream:
+            if halt_stream:
+                await _close_message_stream(message_stream)
+                break
+
+            cls_name = message.__class__.__name__
+
+            if cls_name == "StreamEvent":
+                event_data = getattr(message, "event", {}) or {}
+                event_type = event_data.get("type")
+
+                if event_type == "message_start":
+                    current_message_id = str(ULID())
+                    has_streamed_text = False
+                    pending_msg = {
+                        "id": current_message_id,
+                        "content": "",
+                        "tool_calls": [],
+                    }
+
+                elif event_type == "content_block_start":
+                    block_data = event_data.get("content_block", {}) or {}
+                    block_type = block_data.get("type")
+                    if block_type == "thinking":
+                        in_reasoning = True
+                        reasoning_message_id = str(ULID())
+                        yield ReasoningStartEvent(
+                            type=EventType.REASONING_START,
+                            message_id=reasoning_message_id,
+                        )
+                        yield ReasoningMessageStartEvent(
+                            type=EventType.REASONING_MESSAGE_START,
+                            message_id=reasoning_message_id,
+                            role="reasoning",
+                        )
+                    elif block_type == "tool_use":
+                        current_tool_call_id = block_data.get("id")
+                        current_tool_call_name = block_data.get("name", "unknown")
+                        current_tool_display_name = _strip_mcp_prefix(
+                            current_tool_call_name
+                        )
+                        accumulated_tool_json = ""
+                        if current_tool_call_id:
+                            processed_tool_ids.add(current_tool_call_id)
+                            yield ToolCallStartEvent(
+                                type=EventType.TOOL_CALL_START,
+                                tool_call_id=current_tool_call_id,
+                                tool_call_name=current_tool_display_name,
+                                parent_message_id=current_message_id,
+                            )
+
+                elif event_type == "content_block_delta":
+                    delta_data = event_data.get("delta", {}) or {}
+                    delta_type = delta_data.get("type")
+                    if delta_type == "text_delta":
+                        text = _fix_surrogates(delta_data.get("text", ""))
+                        if text and current_message_id:
+                            if not has_streamed_text:
+                                yield TextMessageStartEvent(
+                                    type=EventType.TEXT_MESSAGE_START,
+                                    message_id=current_message_id,
+                                    role="assistant",
+                                )
+                            has_streamed_text = True
+                            if pending_msg is not None:
+                                pending_msg["content"] += text
+                            yield TextMessageContentEvent(
+                                type=EventType.TEXT_MESSAGE_CONTENT,
+                                message_id=current_message_id,
+                                delta=text,
+                            )
+                    elif delta_type == "thinking_delta":
+                        text = _fix_surrogates(delta_data.get("thinking", ""))
+                        if text and reasoning_message_id:
+                            yield ReasoningMessageContentEvent(
+                                type=EventType.REASONING_MESSAGE_CONTENT,
+                                message_id=reasoning_message_id,
+                                delta=text,
+                            )
+                    elif delta_type == "signature_delta":
+                        accumulated_signature += delta_data.get("signature", "")
+                    elif delta_type == "input_json_delta":
+                        partial_json = delta_data.get("partial_json", "")
+                        if partial_json and current_tool_call_id:
+                            accumulated_tool_json += partial_json
+                            yield ToolCallArgsEvent(
+                                type=EventType.TOOL_CALL_ARGS,
+                                tool_call_id=current_tool_call_id,
+                                delta=_fix_surrogates(partial_json),
+                            )
+
+                elif event_type == "content_block_stop":
+                    if in_reasoning and reasoning_message_id:
+                        yield ReasoningMessageEndEvent(
+                            type=EventType.REASONING_MESSAGE_END,
+                            message_id=reasoning_message_id,
+                        )
+                        yield ReasoningEndEvent(
+                            type=EventType.REASONING_END,
+                            message_id=reasoning_message_id,
+                        )
+                        if accumulated_signature and current_message_id:
+                            yield ReasoningEncryptedValueEvent(
+                                type=EventType.REASONING_ENCRYPTED_VALUE,
+                                subtype="message",
+                                entity_id=current_message_id,
+                                encrypted_value=accumulated_signature,
+                            )
+                        in_reasoning = False
+                        reasoning_message_id = None
+                        accumulated_signature = ""
+
+                    if current_tool_call_id:
+                        if _is_agui_state_tool(current_tool_call_name):
+                            try:
+                                parsed = json.loads(
+                                    _fix_surrogates(accumulated_tool_json)
+                                )
+                                updates = parsed.get("state_updates", parsed)
+                                if isinstance(updates, str):
+                                    updates = json.loads(updates)
+                                if isinstance(current_state, dict) and isinstance(
+                                    updates, dict
+                                ):
+                                    current_state = {**current_state, **updates}
+                                else:
+                                    current_state = updates
+                                current_state = _fix_surrogates_deep(current_state)
+                                yield StateSnapshotEvent(
+                                    type=EventType.STATE_SNAPSHOT,
+                                    snapshot=current_state,
+                                )
+                                yield _AguiStreamStateUpdate(state=current_state)
+                            except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                                yield CustomEvent(
+                                    type=EventType.CUSTOM,
+                                    name="state_update_error",
+                                    value={"error": str(exc)},
+                                )
+                        elif pending_msg is not None and current_tool_display_name:
+                            pending_msg["tool_calls"].append(
+                                AguiToolCall(
+                                    id=current_tool_call_id,
+                                    type="function",
+                                    function=AguiFunctionCall(
+                                        name=current_tool_display_name,
+                                        arguments=_fix_surrogates(
+                                            accumulated_tool_json
+                                        ),
+                                    ),
+                                )
+                            )
+
+                        yield ToolCallEndEvent(
+                            type=EventType.TOOL_CALL_END,
+                            tool_call_id=current_tool_call_id,
+                        )
+                        if current_tool_display_name in frontend_tool_names:
+                            flush_pending_msg()
+                            if current_message_id and has_streamed_text:
+                                yield TextMessageEndEvent(
+                                    type=EventType.TEXT_MESSAGE_END,
+                                    message_id=current_message_id,
+                                )
+                                current_message_id = None
+                                has_streamed_text = False
+                            halt_stream = True
+                        current_tool_call_id = None
+                        current_tool_call_name = None
+                        current_tool_display_name = None
+                        accumulated_tool_json = ""
+
+                elif event_type == "message_stop":
+                    flush_pending_msg()
+                    if current_message_id and has_streamed_text:
+                        yield TextMessageEndEvent(
+                            type=EventType.TEXT_MESSAGE_END,
+                            message_id=current_message_id,
+                        )
+                    current_message_id = None
+                if halt_stream:
+                    await _close_message_stream(message_stream)
+                    break
+                continue
+
+            if cls_name == "AssistantMessage":
+                msg_id = current_message_id or str(ULID())
+                agui_message = _agui_assistant_message_from_sdk(message, msg_id)
+                if agui_message is not None:
+                    upsert_message(agui_message)
+
+                for tool_block in _agui_sdk_tool_use_blocks(message):
+                    if tool_block.tool_id in processed_tool_ids:
+                        continue
+                    if _is_agui_state_tool(tool_block.raw_name):
+                        updates = tool_block.tool_input.get(
+                            "state_updates", tool_block.tool_input
+                        )
+                        if isinstance(updates, str):
+                            updates = json.loads(updates)
+                        if isinstance(current_state, dict) and isinstance(
+                            updates, dict
+                        ):
+                            current_state = {**current_state, **updates}
+                        else:
+                            current_state = updates
+                        current_state = _fix_surrogates_deep(current_state)
+                        yield StateSnapshotEvent(
+                            type=EventType.STATE_SNAPSHOT,
+                            snapshot=current_state,
+                        )
+                        yield _AguiStreamStateUpdate(state=current_state)
+                        continue
+                    processed_tool_ids.add(tool_block.tool_id)
+                    yield ToolCallStartEvent(
+                        type=EventType.TOOL_CALL_START,
+                        tool_call_id=tool_block.tool_id,
+                        tool_call_name=tool_block.display_name,
+                        parent_message_id=msg_id,
+                    )
+                    yield ToolCallArgsEvent(
+                        type=EventType.TOOL_CALL_ARGS,
+                        tool_call_id=tool_block.tool_id,
+                        delta=json.dumps(tool_block.tool_input),
+                    )
+                    yield ToolCallEndEvent(
+                        type=EventType.TOOL_CALL_END,
+                        tool_call_id=tool_block.tool_id,
+                    )
+                    if tool_block.display_name in frontend_tool_names:
+                        halt_stream = True
+                        break
+
+            elif cls_name == "UserMessage":
+                for tool_result in _agui_sdk_tool_result_blocks(message):
+                    upsert_message(
+                        _agui_tool_message(
+                            tool_result.tool_use_id,
+                            tool_result.content,
+                        )
+                    )
+                    yield ToolCallResultEvent(
+                        type=EventType.TOOL_CALL_RESULT,
+                        message_id=f"{tool_result.tool_use_id}-result",
+                        tool_call_id=tool_result.tool_use_id,
+                        content=_agui_tool_result_content(tool_result.content),
+                        role="tool",
+                    )
+
+            elif cls_name == "SystemMessage":
+                subtype = getattr(message, "subtype", "") or "unknown"
+                yield CustomEvent(
+                    type=EventType.CUSTOM,
+                    name=f"system:{subtype}",
+                    value=getattr(message, "data", {}) or {},
+                )
+
+            elif cls_name == "ResultMessage":
+                result_data = {
+                    "is_error": getattr(message, "is_error", None),
+                    "duration_ms": getattr(message, "duration_ms", None),
+                    "duration_api_ms": getattr(message, "duration_api_ms", None),
+                    "num_turns": getattr(message, "num_turns", None),
+                    "total_cost_usd": getattr(message, "total_cost_usd", None),
+                    "usage": getattr(message, "usage", None),
+                    "structured_output": getattr(message, "structured_output", None),
+                }
+                captured = getattr(message, "session_id", None)
+                if (
+                    self._sdk_session_id is None
+                    and isinstance(captured, str)
+                    and captured
+                ):
+                    self._sdk_session_id = captured
+                result_text = getattr(message, "result", None)
+                if result_text and not has_streamed_text:
+                    result_msg_id = str(ULID())
+                    yield TextMessageStartEvent(
+                        type=EventType.TEXT_MESSAGE_START,
+                        message_id=result_msg_id,
+                        role="assistant",
+                    )
+                    yield TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=result_msg_id,
+                        delta=result_text,
+                    )
+                    yield TextMessageEndEvent(
+                        type=EventType.TEXT_MESSAGE_END,
+                        message_id=result_msg_id,
+                    )
+                    upsert_message(
+                        AguiAssistantMessage(
+                            id=result_msg_id,
+                            role="assistant",
+                            content=result_text,
+                        )
+                    )
+                yield _AguiStreamResult(result=result_data)
+
+            if halt_stream:
+                await _close_message_stream(message_stream)
+                break
+
+        if current_tool_call_id:
+            yield ToolCallEndEvent(
+                type=EventType.TOOL_CALL_END,
+                tool_call_id=current_tool_call_id,
+            )
+        if in_reasoning and reasoning_message_id:
+            yield ReasoningMessageEndEvent(
+                type=EventType.REASONING_MESSAGE_END,
+                message_id=reasoning_message_id,
+            )
+            yield ReasoningEndEvent(
+                type=EventType.REASONING_END,
+                message_id=reasoning_message_id,
+            )
+        if has_streamed_text and current_message_id:
+            yield TextMessageEndEvent(
+                type=EventType.TEXT_MESSAGE_END,
+                message_id=current_message_id,
+            )
+        flush_pending_msg()
+        if run_messages:
+            yield MessagesSnapshotEvent(
+                type=EventType.MESSAGES_SNAPSHOT,
+                messages=[*(input_data.messages or []), *run_messages],
+            )
 
     async def release_transport(self) -> None:
         """No-op under spec 034 P4.

@@ -12,7 +12,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from holodeck.chat.executor import AgentExecutor, AgentResponse, _TaskBoundSession
+from holodeck.chat.executor import (
+    AgentExecutor,
+    AgentResponse,
+    _require_agui_session,
+    _TaskBoundSession,
+)
 from holodeck.lib.backends.base import (
     AgentSession,
     BackendInitError,
@@ -128,6 +133,82 @@ class TestExecuteTurnErrors:
 
         with pytest.raises(RuntimeError, match="Direct runtime error"):
             await executor.execute_turn("Hello")
+
+
+class TestExecuteTurnAgui:
+    """Test AgentExecutor.execute_turn_agui()."""
+
+    @pytest.mark.asyncio
+    async def test_execute_turn_agui_streams_backend_events(self, make_agent) -> None:
+        """execute_turn_agui() delegates to an AG-UI-capable session."""
+        from ag_ui.core import EventType, RunAgentInput, RunStartedEvent, UserMessage
+
+        class AguiSession:
+            async def prepare(self) -> None:
+                return None
+
+            async def send(self, message: str) -> ExecutionResult:
+                return ExecutionResult(response="unused")
+
+            async def send_streaming(self, message: str):
+                yield "unused"
+
+            async def send_agui(
+                self,
+                input_data: RunAgentInput,
+                message_override: str | None = None,
+            ):
+                assert message_override == "override"
+                yield RunStartedEvent(
+                    type=EventType.RUN_STARTED,
+                    thread_id=input_data.thread_id,
+                    run_id=input_data.run_id,
+                    input=input_data,
+                )
+
+            async def close(self) -> None:
+                return None
+
+        mock_backend = AsyncMock()
+        mock_backend.create_session = AsyncMock(return_value=AguiSession())
+        input_data = RunAgentInput(
+            thread_id="thread-1",
+            run_id="run-1",
+            messages=[UserMessage(id="msg-1", role="user", content="hi")],
+            tools=[],
+            context=[],
+            state=None,
+            forwarded_props=None,
+        )
+
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
+        events = [
+            event async for event in executor.execute_turn_agui(input_data, "override")
+        ]
+
+        assert [event.type for event in events] == [EventType.RUN_STARTED]
+
+    @pytest.mark.asyncio
+    async def test_execute_turn_agui_wraps_backend_init_error(self, make_agent) -> None:
+        """BackendInitError is wrapped with AG-UI-specific context."""
+        from ag_ui.core import RunAgentInput, UserMessage
+
+        mock_backend = AsyncMock()
+        mock_backend.create_session.side_effect = BackendInitError("init failed")
+        input_data = RunAgentInput(
+            thread_id="thread-1",
+            run_id="run-1",
+            messages=[UserMessage(id="msg-1", role="user", content="hi")],
+            tools=[],
+            context=[],
+            state=None,
+            forwarded_props=None,
+        )
+
+        executor = AgentExecutor(make_agent(), backend=mock_backend)
+        with pytest.raises(RuntimeError, match="Agent AG-UI execution failed"):
+            async for _ in executor.execute_turn_agui(input_data):
+                pass
 
     @pytest.mark.asyncio
     async def test_backend_session_error_propagates(
@@ -318,6 +399,56 @@ class TestGetHistoryCopy:
 
 class TestTaskBoundSession:
     """Test the _TaskBoundSession actor wrapper."""
+
+    @pytest.mark.asyncio
+    async def test_send_agui_delegates_to_inner_session(self) -> None:
+        """send_agui() yields events from an AG-UI-capable inner session."""
+        from ag_ui.core import EventType, RunAgentInput, RunStartedEvent, UserMessage
+
+        class AguiCapableSession:
+            async def prepare(self) -> None:
+                return None
+
+            async def send(self, message: str) -> ExecutionResult:
+                return ExecutionResult(response="unused")
+
+            async def send_streaming(self, message: str):
+                yield "unused"
+
+            async def send_agui(
+                self,
+                input_data: RunAgentInput,
+                message_override: str | None = None,
+            ):
+                yield RunStartedEvent(
+                    type=EventType.RUN_STARTED,
+                    thread_id=input_data.thread_id,
+                    run_id=input_data.run_id,
+                    input=input_data,
+                )
+
+            async def close(self) -> None:
+                return None
+
+        input_data = RunAgentInput(
+            thread_id="thread-1",
+            run_id="run-1",
+            messages=[UserMessage(id="msg-1", role="user", content="hi")],
+            tools=[],
+            context=[],
+            state=None,
+            forwarded_props=None,
+        )
+
+        actor = _TaskBoundSession(AguiCapableSession())
+        events = [event async for event in actor.send_agui(input_data)]
+
+        assert [event.type for event in events] == [EventType.RUN_STARTED]
+
+    def test_require_agui_session_rejects_missing_capability(self) -> None:
+        """A non-AG-UI session fails with a clear AttributeError."""
+        with pytest.raises(AttributeError, match="does not support AG-UI"):
+            _require_agui_session(None)
 
     @pytest.mark.asyncio
     async def test_send_delegates_to_inner_session(self) -> None:

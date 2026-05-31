@@ -15,7 +15,7 @@ import json
 import logging
 import sys
 from pathlib import Path  # noqa: F401  (used by P4 task 5)
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -33,12 +33,25 @@ from holodeck.lib.backends.base import (
 from holodeck.lib.backends.claude_backend import (
     ClaudeBackend,
     ClaudeSession,
+    _agui_assistant_message_from_sdk,
+    _agui_message_content,
+    _agui_prompt_from_input,
+    _agui_state_context_addendum,
+    _agui_tool_message,
+    _agui_tool_names,
+    _agui_tool_result_content,
     _build_output_format,
     _build_permission_mode,
+    _clone_options,
     _enrich_tool_results,
     _extract_result_text,
+    _fix_surrogates,
+    _fix_surrogates_deep,
+    _make_agui_frontend_tool,
+    _make_agui_state_tool,
     _maybe_emit_thinking_blocks,
     _process_message,
+    _strip_mcp_prefix,
     _wrap_prompt,
     build_options,
 )
@@ -148,6 +161,7 @@ def _make_result_message(
     msg.session_id = session_id
     msg.usage = usage or {"input_tokens": 10, "output_tokens": 5}
     msg.structured_output = structured_output
+    msg.result = None
     msg.__class__.__name__ = "ResultMessage"
     return msg
 
@@ -156,6 +170,33 @@ async def _async_iter(items: list[Any]):
     """Create an async iterator from a list."""
     for item in items:
         yield item
+
+
+class StreamEvent:
+    """Small stand-in for claude_agent_sdk.types.StreamEvent."""
+
+    def __init__(self, event: dict[str, Any]) -> None:
+        self.event = event
+
+
+class ClosableAsyncStream:
+    """Async iterator that records explicit AG-UI stream closure."""
+
+    def __init__(self, items: list[Any]) -> None:
+        self._items = iter(items)
+        self.closed = False
+
+    def __aiter__(self) -> ClosableAsyncStream:
+        return self
+
+    async def __anext__(self) -> Any:
+        try:
+            return next(self._items)
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 # ---------------------------------------------------------------------------
@@ -1391,6 +1432,633 @@ class TestClaudeSessionStreaming:
         assert captured_resume[0] is None
         assert captured_resume[1] == "sdk-stream-XYZ"
         assert session._sdk_session_id == "sdk-stream-XYZ"
+
+
+@pytest.mark.unit
+class TestClaudeSessionAGUI:
+    """ClaudeSession.send_agui() translates Claude SDK streams to AG-UI."""
+
+    def _run_input(self, **overrides: Any) -> Any:
+        from ag_ui.core import RunAgentInput, UserMessage
+
+        data = {
+            "thread_id": "thread-1",
+            "run_id": "run-1",
+            "messages": [UserMessage(id="user-1", role="user", content="Hello")],
+            "state": None,
+            "tools": [],
+            "context": [],
+            "forwarded_props": None,
+        }
+        data.update(overrides)
+        return RunAgentInput(**data)
+
+    def test_agui_helper_normalization_paths(self) -> None:
+        """AG-UI helper functions handle typed messages and JSON-ish content."""
+        from ag_ui.core import (
+            AssistantMessage,
+            Context,
+            EventType,
+            SystemMessage,
+            TextInputContent,
+            Tool,
+            ToolMessage,
+            UserMessage,
+        )
+
+        assert _fix_surrogates("\ud83d") == "?"
+        assert _fix_surrogates_deep({"bad\ud83d": ["ok", "\ud83d"]}) == {
+            "bad?": ["ok", "?"]
+        }
+        assert _strip_mcp_prefix("mcp__ag_ui__show_panel") == "show_panel"
+        assert _strip_mcp_prefix("plain") == "plain"
+        assert _agui_tool_names(
+            [Tool(name="show_panel", description="Show", parameters=None)]
+        ) == ["show_panel"]
+        assert (
+            _agui_message_content(
+                AssistantMessage(id="a", role="assistant", content=None)
+            )
+            == ""
+        )
+        assert (
+            _agui_message_content(
+                ToolMessage(id="t", role="tool", content="done", tool_call_id="toolu")
+            )
+            == "done"
+        )
+        assert (
+            _agui_message_content(
+                UserMessage(
+                    id="u",
+                    role="user",
+                    content=[
+                        TextInputContent(type="text", text="hello"),
+                    ],
+                )
+            )
+            == "hello"
+        )
+        assert (
+            _agui_message_content(
+                SystemMessage(id="s", role="system", content="system note")
+            )
+            == "system note"
+        )
+        assert _agui_prompt_from_input(self._run_input(), "override") == "override"
+        assert _agui_prompt_from_input(self._run_input(messages=[])) == ""
+
+        addendum = _agui_state_context_addendum(
+            self._run_input(
+                state={"bad": object()},
+                context=[Context(description="Ticker", value="MSFT")],
+            )
+        )
+        assert "Context from the application" in addendum
+        assert "Ticker: MSFT" in addendum
+        assert "Current Shared State" in addendum
+
+        frontend_tool = _make_agui_frontend_tool(
+            Tool(
+                name="show_panel",
+                description="Show panel",
+                parameters={"type": "object"},
+            )
+        )
+        assert frontend_tool.name == "show_panel"
+        assert frontend_tool.input_schema == {"type": "object"}
+        state_tool = _make_agui_state_tool()
+        assert state_tool.name == "ag_ui_update_state"
+        assert state_tool.input_schema == {
+            "type": "object",
+            "properties": {
+                "state_updates": {
+                    "type": "object",
+                    "additionalProperties": True,
+                }
+            },
+            "required": ["state_updates"],
+        }
+
+        assert _agui_tool_result_content(None) == ""
+        assert _agui_tool_result_content([{"type": "text", "text": '{"a": 1}'}]) == (
+            '{"a": 1}'
+        )
+        assert _agui_tool_result_content([{"type": "text", "text": "plain"}]) == (
+            "plain"
+        )
+        assert _agui_tool_result_content([{"type": "image", "url": "x"}]) == (
+            '[{"type": "image", "url": "x"}]'
+        )
+        assert "object" in _agui_tool_result_content(object())
+
+        msg = _agui_tool_message("toolu", [{"type": "text", "text": "ok"}])
+        assert msg.tool_call_id == "toolu"
+        assert msg.content == "ok"
+
+        empty_sdk_message = MagicMock()
+        empty_sdk_message.__class__.__name__ = "AssistantMessage"
+        empty_sdk_message.content = []
+        empty = _agui_assistant_message_from_sdk(empty_sdk_message, "m")
+        assert empty is None
+        converted = _agui_assistant_message_from_sdk(
+            _make_assistant_message(
+                [
+                    _make_text_block("hi"),
+                    _make_tool_use_block(
+                        tool_id="toolu_state",
+                        name="mcp__ag_ui__ag_ui_update_state",
+                    ),
+                    _make_tool_use_block(
+                        tool_id="toolu_backend",
+                        name="mcp__backend__lookup",
+                        inp={"q": "msft"},
+                    ),
+                ]
+            ),
+            "assistant-1",
+        )
+        assert converted is not None
+        assert converted.content == "hi"
+        assert converted.tool_calls is not None
+        assert converted.tool_calls[0].function.name == "lookup"
+        assert converted.tool_calls[0].function.arguments == '{"q": "msft"}'
+
+        cloned = _clone_options(ClaudeAgentOptions(), max_turns=2)
+        assert cloned.max_turns == 2
+
+        class FallbackOptions:
+            pass
+
+        fallback_options = FallbackOptions()
+        cloned_fallback = _clone_options(
+            cast(ClaudeAgentOptions, fallback_options),
+            custom_value=3,
+        )
+        assert cloned_fallback is not fallback_options
+        assert cast(Any, cloned_fallback).custom_value == 3
+        assert not hasattr(fallback_options, "custom_value")
+
+        # Keep EventType imported in this test so coverage includes the public
+        # event enum path used by the helpers above.
+        assert EventType.RUN_STARTED.value == "RUN_STARTED"
+
+    @pytest.mark.asyncio
+    async def test_send_agui_streams_text_chunks(self) -> None:
+        from ag_ui.core import EventType
+
+        captured_options: list[ClaudeAgentOptions] = []
+
+        async def fake_query(prompt, options):
+            captured_options.append(options)
+            yield StreamEvent({"type": "message_start"})
+            yield StreamEvent(
+                {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": "Hel"},
+                }
+            )
+            yield StreamEvent(
+                {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": "lo"},
+                }
+            )
+            yield StreamEvent({"type": "message_stop"})
+            yield _make_result_message(session_id="sdk-agui-1")
+
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with patch(
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
+        ):
+            events = [event async for event in session.send_agui(self._run_input())]
+
+        assert captured_options[0].include_partial_messages is True
+        assert "mcp__ag_ui__ag_ui_update_state" in captured_options[0].allowed_tools
+        assert "ag_ui" in captured_options[0].mcp_servers
+        assert [
+            e.delta for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT
+        ] == [
+            "Hel",
+            "lo",
+        ]
+        assert any(e.type == EventType.MESSAGES_SNAPSHOT for e in events)
+        assert events[-1].type == EventType.RUN_FINISHED
+        assert session._sdk_session_id == "sdk-agui-1"
+
+    @pytest.mark.asyncio
+    async def test_send_agui_frontend_tool_halts_before_later_text(self) -> None:
+        from ag_ui.core import EventType, Tool
+
+        stream = ClosableAsyncStream(
+            [
+                StreamEvent({"type": "message_start"}),
+                StreamEvent(
+                    {
+                        "type": "content_block_start",
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": "toolu_front",
+                            "name": "mcp__ag_ui__ask_user",
+                        },
+                    }
+                ),
+                StreamEvent(
+                    {
+                        "type": "content_block_delta",
+                        "delta": {
+                            "type": "input_json_delta",
+                            "partial_json": '{"question":"ok?"}',
+                        },
+                    }
+                ),
+                StreamEvent({"type": "content_block_stop"}),
+                StreamEvent(
+                    {
+                        "type": "content_block_delta",
+                        "delta": {"type": "text_delta", "text": "late"},
+                    }
+                ),
+            ]
+        )
+
+        input_data = self._run_input(
+            tools=[
+                Tool(
+                    name="ask_user",
+                    description="Ask user",
+                    parameters={
+                        "type": "object",
+                        "properties": {"question": {"type": "string"}},
+                    },
+                )
+            ]
+        )
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with patch(
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            return_value=stream,
+        ):
+            events = [event async for event in session.send_agui(input_data)]
+
+        assert stream.closed is True
+        assert [e.type for e in events if hasattr(e, "tool_call_id")] == [
+            EventType.TOOL_CALL_START,
+            EventType.TOOL_CALL_ARGS,
+            EventType.TOOL_CALL_END,
+        ]
+        start = next(e for e in events if e.type == EventType.TOOL_CALL_START)
+        assert start.tool_call_name == "ask_user"
+        assert not any(
+            e.type == EventType.TEXT_MESSAGE_CONTENT and e.delta == "late"
+            for e in events
+        )
+        assert events[-1].type == EventType.RUN_FINISHED
+
+    @pytest.mark.asyncio
+    async def test_send_agui_complete_frontend_tool_closes_stream(self) -> None:
+        from ag_ui.core import EventType, Tool
+
+        stream = ClosableAsyncStream(
+            [
+                _make_assistant_message(
+                    [
+                        _make_tool_use_block(
+                            tool_id="toolu_front",
+                            name="mcp__ag_ui__ask_user",
+                            inp={"question": "ok?"},
+                        )
+                    ]
+                ),
+                _make_assistant_message([_make_text_block("late")]),
+            ]
+        )
+
+        input_data = self._run_input(
+            tools=[
+                Tool(
+                    name="ask_user",
+                    description="Ask user",
+                    parameters={
+                        "type": "object",
+                        "properties": {"question": {"type": "string"}},
+                    },
+                )
+            ]
+        )
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with patch(
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            return_value=stream,
+        ):
+            events = [event async for event in session.send_agui(input_data)]
+
+        assert stream.closed is True
+        assert any(e.type == EventType.TOOL_CALL_START for e in events)
+        assert not any(
+            e.type == EventType.TEXT_MESSAGE_CONTENT and e.delta == "late"
+            for e in events
+        )
+        assert events[-1].type == EventType.RUN_FINISHED
+
+    @pytest.mark.asyncio
+    async def test_send_agui_backend_tool_keeps_stream_open(self) -> None:
+        from ag_ui.core import EventType
+
+        stream = ClosableAsyncStream(
+            [
+                _make_assistant_message(
+                    [
+                        _make_tool_use_block(
+                            tool_id="toolu_backend",
+                            name="mcp__backend__lookup",
+                            inp={"q": "msft"},
+                        )
+                    ]
+                ),
+                _make_result_message(session_id="sdk-backend"),
+            ]
+        )
+
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with patch(
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            return_value=stream,
+        ):
+            events = [event async for event in session.send_agui(self._run_input())]
+
+        assert stream.closed is False
+        assert any(e.type == EventType.TOOL_CALL_START for e in events)
+        assert events[-1].type == EventType.RUN_FINISHED
+
+    @pytest.mark.asyncio
+    async def test_send_agui_state_update_emits_snapshot(self) -> None:
+        from ag_ui.core import EventType
+
+        async def fake_query(prompt, options):
+            yield StreamEvent({"type": "message_start"})
+            yield StreamEvent(
+                {
+                    "type": "content_block_start",
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": "toolu_state",
+                        "name": "mcp__ag_ui__ag_ui_update_state",
+                    },
+                }
+            )
+            yield StreamEvent(
+                {
+                    "type": "content_block_delta",
+                    "delta": {
+                        "type": "input_json_delta",
+                        "partial_json": '{"state_updates":{"status":"done"}}',
+                    },
+                }
+            )
+            yield StreamEvent({"type": "content_block_stop"})
+            yield _make_result_message(session_id="sdk-state")
+
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with patch(
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
+        ):
+            events = [
+                event
+                async for event in session.send_agui(
+                    self._run_input(state={"status": "new"})
+                )
+            ]
+
+        snapshots = [e.snapshot for e in events if e.type == EventType.STATE_SNAPSHOT]
+        assert snapshots[0] == {"status": "new"}
+        assert snapshots[-1] == {"status": "done"}
+
+    @pytest.mark.asyncio
+    async def test_send_agui_streams_reasoning_and_signature(self) -> None:
+        """Thinking deltas map to AG-UI reasoning events."""
+        from ag_ui.core import EventType
+
+        async def fake_query(prompt, options):
+            yield StreamEvent({"type": "message_start"})
+            yield StreamEvent(
+                {
+                    "type": "content_block_start",
+                    "content_block": {"type": "thinking"},
+                }
+            )
+            yield StreamEvent(
+                {
+                    "type": "content_block_delta",
+                    "delta": {"type": "thinking_delta", "thinking": "plan"},
+                }
+            )
+            yield StreamEvent(
+                {
+                    "type": "content_block_delta",
+                    "delta": {"type": "signature_delta", "signature": "sig"},
+                }
+            )
+            yield StreamEvent({"type": "content_block_stop"})
+            yield _make_result_message(session_id="sdk-reasoning")
+
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with patch(
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
+        ):
+            events = [event async for event in session.send_agui(self._run_input())]
+
+        event_types = [event.type for event in events]
+        assert EventType.REASONING_START in event_types
+        assert EventType.REASONING_MESSAGE_START in event_types
+        assert EventType.REASONING_MESSAGE_CONTENT in event_types
+        assert EventType.REASONING_MESSAGE_END in event_types
+        assert EventType.REASONING_END in event_types
+        assert EventType.REASONING_ENCRYPTED_VALUE in event_types
+
+    @pytest.mark.asyncio
+    async def test_send_agui_invalid_state_update_emits_custom_error(self) -> None:
+        """Malformed state update JSON becomes a custom error event."""
+        from ag_ui.core import EventType
+
+        async def fake_query(prompt, options):
+            yield StreamEvent({"type": "message_start"})
+            yield StreamEvent(
+                {
+                    "type": "content_block_start",
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": "toolu_state",
+                        "name": "mcp__ag_ui__ag_ui_update_state",
+                    },
+                }
+            )
+            yield StreamEvent(
+                {
+                    "type": "content_block_delta",
+                    "delta": {"type": "input_json_delta", "partial_json": "{"},
+                }
+            )
+            yield StreamEvent({"type": "content_block_stop"})
+            yield _make_result_message(session_id="sdk-state-error")
+
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with patch(
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
+        ):
+            events = [event async for event in session.send_agui(self._run_input())]
+
+        errors = [
+            event
+            for event in events
+            if event.type == EventType.CUSTOM and event.name == "state_update_error"
+        ]
+        assert errors
+
+    @pytest.mark.asyncio
+    async def test_send_agui_complete_sdk_messages_emit_tool_events(self) -> None:
+        """Complete Assistant/User/Result messages cover non-StreamEvent paths."""
+        from ag_ui.core import EventType
+
+        tool_result = MagicMock()
+        tool_result.__class__.__name__ = "ToolResultBlock"
+        tool_result.tool_use_id = "toolu_backend"
+        tool_result.content = [{"type": "text", "text": "result text"}]
+        user_msg = MagicMock()
+        user_msg.__class__.__name__ = "UserMessage"
+        user_msg.content = [tool_result]
+
+        result_msg = _make_result_message(session_id="sdk-complete")
+        result_msg.result = "final text"
+
+        async def fake_query(prompt, options):
+            yield _make_assistant_message(
+                [
+                    _make_tool_use_block(
+                        tool_id="toolu_backend",
+                        name="mcp__backend__lookup",
+                        inp={"q": "msft"},
+                    )
+                ]
+            )
+            yield user_msg
+            yield result_msg
+
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with patch(
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
+        ):
+            events = [event async for event in session.send_agui(self._run_input())]
+
+        event_types = [event.type for event in events]
+        assert EventType.TOOL_CALL_START in event_types
+        assert EventType.TOOL_CALL_ARGS in event_types
+        assert EventType.TOOL_CALL_END in event_types
+        assert EventType.TOOL_CALL_RESULT in event_types
+        assert EventType.TEXT_MESSAGE_CONTENT in event_types
+        start = next(
+            event for event in events if event.type == EventType.TOOL_CALL_START
+        )
+        assert start.tool_call_name == "lookup"
+        result = next(
+            event for event in events if event.type == EventType.TOOL_CALL_RESULT
+        )
+        assert result.content == "result text"
+
+    @pytest.mark.asyncio
+    async def test_send_agui_translates_process_error(self) -> None:
+        """SDK process errors are translated for AG-UI execution too."""
+
+        async def fake_query(prompt, options):
+            raise ProcessError("boom")
+            yield  # pragma: no cover
+
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with (
+            patch(
+                "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+                side_effect=fake_query,
+            ),
+            pytest.raises(BackendSessionError, match="subprocess terminated"),
+        ):
+            async for _ in session.send_agui(self._run_input()):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_send_agui_tool_result_resume_uses_transcript_prompt(self) -> None:
+        from ag_ui.core import (
+            AssistantMessage,
+            EventType,
+            FunctionCall,
+            ToolCall,
+            ToolMessage,
+            UserMessage,
+        )
+
+        captured_prompts: list[str] = []
+
+        async def fake_query(prompt, options):
+            chunks: list[str] = []
+            async for item in prompt:
+                chunks.append(item["message"]["content"])
+            captured_prompts.extend(chunks)
+            yield StreamEvent({"type": "message_start"})
+            yield StreamEvent(
+                {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": "Done."},
+                }
+            )
+            yield StreamEvent({"type": "message_stop"})
+            yield _make_result_message(session_id="sdk-resume")
+
+        input_data = self._run_input(
+            messages=[
+                UserMessage(id="user-1", role="user", content="Show MSFT."),
+                AssistantMessage(
+                    id="assistant-1",
+                    role="assistant",
+                    tool_calls=[
+                        ToolCall(
+                            id="toolu_front",
+                            type="function",
+                            function=FunctionCall(
+                                name="showPortfolioPanel",
+                                arguments='{"ticker":"MSFT"}',
+                            ),
+                        )
+                    ],
+                ),
+                ToolMessage(
+                    id="tool-result-1",
+                    role="tool",
+                    tool_call_id="toolu_front",
+                    content='{"ok":true}',
+                ),
+            ]
+        )
+        session = ClaudeSession(options=ClaudeAgentOptions())
+        with patch(
+            "holodeck.lib.backends.claude_backend.claude_agent_sdk.query",
+            side_effect=fake_query,
+        ):
+            events = [event async for event in session.send_agui(input_data)]
+
+        assert (
+            "latest frontend tool result has already been executed"
+            in captured_prompts[0]
+        )
+        assert "user: Show MSFT." in captured_prompts[0]
+        assert "name=showPortfolioPanel" in captured_prompts[0]
+        assert 'tool_result id=toolu_front: {"ok":true}' in captured_prompts[0]
+        assert [
+            e.delta for e in events if e.type == EventType.TEXT_MESSAGE_CONTENT
+        ] == ["Done."]
 
 
 @pytest.mark.unit
