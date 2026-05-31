@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import dataclasses
+import inspect
 import json
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterable
 from pathlib import Path
 from typing import Any, cast
 
@@ -67,6 +69,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     HookMatcher,
     ProcessError,
+    tool,
 )
 from claude_agent_sdk._errors import CLIConnectionError, MessageParseError
 from claude_agent_sdk.types import (
@@ -137,6 +140,49 @@ _AGUI_FORWARDED_PROPS: frozenset[str] = frozenset(
         "output_format",
     }
 )
+_AGUI_STATE_TOOL_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "state_updates": {
+            "type": "object",
+            "additionalProperties": True,
+        }
+    },
+    "required": ["state_updates"],
+}
+
+
+@dataclasses.dataclass(frozen=True)
+class _AguiStreamStateUpdate:
+    """Internal stream item carrying updated AG-UI state to the caller."""
+
+    state: Any
+
+
+@dataclasses.dataclass(frozen=True)
+class _AguiStreamResult:
+    """Internal stream item carrying Claude result metadata to the caller."""
+
+    result: dict[str, Any]
+
+
+@dataclasses.dataclass(frozen=True)
+class _AguiSdkToolUseBlock:
+    """Normalized SDK tool-use block for AG-UI conversion."""
+
+    tool_id: str
+    raw_name: str
+    display_name: str
+    tool_input: dict[str, Any]
+
+
+@dataclasses.dataclass(frozen=True)
+class _AguiSdkToolResultBlock:
+    """Normalized SDK tool-result block for AG-UI conversion."""
+
+    tool_use_id: str
+    content: Any
+
 
 # ---------------------------------------------------------------------------
 # Private helpers
@@ -353,7 +399,6 @@ def _agui_state_context_addendum(input_data: RunAgentInput) -> str:
 
 def _make_agui_frontend_tool(tool_def: AguiTool) -> Any:
     """Convert an AG-UI Tool definition to a Claude SDK MCP proxy tool."""
-    from claude_agent_sdk import tool
 
     @tool(tool_def.name, tool_def.description, tool_def.parameters or {})
     async def frontend_tool_stub(args: dict[str, Any]) -> dict[str, Any]:
@@ -366,12 +411,11 @@ def _make_agui_frontend_tool(tool_def: AguiTool) -> Any:
 
 def _make_agui_state_tool() -> Any:
     """Create the internal AG-UI state update tool."""
-    from claude_agent_sdk import tool
 
     @tool(
         _AGUI_STATE_TOOL_NAME,
         "Update the shared application state visible to the AG-UI frontend.",
-        {"state_updates": dict},
+        _AGUI_STATE_TOOL_SCHEMA,
     )
     async def update_state_tool(args: dict[str, Any]) -> dict[str, Any]:
         return {"content": [{"type": "text", "text": "State updated"}]}
@@ -382,11 +426,14 @@ def _make_agui_state_tool() -> Any:
 def _clone_options(options: ClaudeAgentOptions, **updates: Any) -> ClaudeAgentOptions:
     """Clone ``ClaudeAgentOptions`` without mutating the session base options."""
     try:
-        return dataclasses.replace(options, **updates)
+        dataclasses.fields(options)
     except TypeError:
+        cloned = copy.copy(options)
         for key, value in updates.items():
-            setattr(options, key, value)
-        return options
+            setattr(cloned, key, value)
+        return cloned
+    else:
+        return dataclasses.replace(options, **updates)
 
 
 def _agui_tool_result_content(content: Any) -> str:
@@ -406,6 +453,76 @@ def _agui_tool_result_content(content: Any) -> str:
         return _fix_surrogates(json.dumps(content))
     except (TypeError, ValueError):
         return _fix_surrogates(str(content))
+
+
+def _sdk_content_blocks(sdk_message: object) -> list[Any]:
+    """Return Claude SDK content blocks while containing dynamic SDK access.
+
+    The Claude SDK content block classes are not stable public typing surfaces,
+    and unit tests use lightweight SDK-shaped doubles. Keep the ``getattr``
+    boundary here so stream translation stays typed after normalization.
+    """
+    content = getattr(sdk_message, "content", None)
+    if content is None:
+        return []
+    if isinstance(content, list):
+        return content
+    try:
+        return list(cast(Any, content))
+    except TypeError:
+        return []
+
+
+def _agui_sdk_tool_use_blocks(sdk_message: object) -> list[_AguiSdkToolUseBlock]:
+    """Normalize Claude SDK tool-use blocks for AG-UI stream handling."""
+    tool_blocks: list[_AguiSdkToolUseBlock] = []
+    for block in _sdk_content_blocks(sdk_message):
+        if block.__class__.__name__ != "ToolUseBlock":
+            continue
+        tool_id = getattr(block, "id", None)
+        if not tool_id:
+            continue
+        raw_name = str(getattr(block, "name", "unknown") or "unknown")
+        tool_input = getattr(block, "input", {}) or {}
+        if not isinstance(tool_input, dict):
+            tool_input = {"value": tool_input}
+        tool_blocks.append(
+            _AguiSdkToolUseBlock(
+                tool_id=str(tool_id),
+                raw_name=raw_name,
+                display_name=_strip_mcp_prefix(raw_name),
+                tool_input=tool_input,
+            )
+        )
+    return tool_blocks
+
+
+def _agui_sdk_tool_result_blocks(sdk_message: object) -> list[_AguiSdkToolResultBlock]:
+    """Normalize Claude SDK tool-result blocks for AG-UI stream handling."""
+    result_blocks: list[_AguiSdkToolResultBlock] = []
+    for block in _sdk_content_blocks(sdk_message):
+        if block.__class__.__name__ != "ToolResultBlock":
+            continue
+        tool_use_id = getattr(block, "tool_use_id", None)
+        if not tool_use_id:
+            continue
+        result_blocks.append(
+            _AguiSdkToolResultBlock(
+                tool_use_id=str(tool_use_id),
+                content=getattr(block, "content", None),
+            )
+        )
+    return result_blocks
+
+
+async def _close_message_stream(message_stream: object) -> None:
+    """Close an SDK async stream immediately when AG-UI must halt."""
+    aclose = getattr(message_stream, "aclose", None)
+    if aclose is None:
+        return
+    close_result = aclose()
+    if inspect.isawaitable(close_result):
+        await close_result
 
 
 def _agui_assistant_message_from_sdk(
@@ -1415,10 +1532,11 @@ class ClaudeSession:
                     frontend_tool_names=frontend_tool_names,
                     current_state=current_state,
                 ):
-                    if isinstance(event, dict):
-                        current_state = event.get("state", current_state)
-                        if "result" in event:
-                            result_data = event["result"]
+                    if isinstance(event, _AguiStreamStateUpdate):
+                        current_state = event.state
+                        continue
+                    if isinstance(event, _AguiStreamResult):
+                        result_data = event.result
                         continue
                     yield event
 
@@ -1437,13 +1555,13 @@ class ClaudeSession:
     async def _stream_agui_messages(
         self,
         *,
-        message_stream: Any,
+        message_stream: AsyncIterable[object],
         thread_id: str,
         run_id: str,
         input_data: RunAgentInput,
         frontend_tool_names: set[str],
         current_state: Any,
-    ) -> AsyncGenerator[BaseEvent | dict[str, Any], None]:
+    ) -> AsyncGenerator[BaseEvent | _AguiStreamStateUpdate | _AguiStreamResult, None]:
         """Translate Claude SDK message stream to AG-UI events."""
         current_message_id: str | None = None
         has_streamed_text = False
@@ -1456,16 +1574,13 @@ class ClaudeSession:
         accumulated_tool_json = ""
         processed_tool_ids: set[str] = set()
         halt_stream = False
-        run_messages: list[Any] = []
+        run_messages: list[AguiAssistantMessage | AguiToolMessage] = []
         pending_msg: dict[str, Any] | None = None
 
-        def upsert_message(message: Any) -> None:
-            msg_id = message.get("id") if isinstance(message, dict) else message.id
+        def upsert_message(message: AguiAssistantMessage | AguiToolMessage) -> None:
+            msg_id = message.id
             for idx, existing in enumerate(run_messages):
-                existing_id = (
-                    existing.get("id") if isinstance(existing, dict) else existing.id
-                )
-                if existing_id == msg_id:
+                if existing.id == msg_id:
                     run_messages[idx] = message
                     return
             run_messages.append(message)
@@ -1489,6 +1604,7 @@ class ClaudeSession:
 
         async for message in message_stream:
             if halt_stream:
+                await _close_message_stream(message_stream)
                 break
 
             cls_name = message.__class__.__name__
@@ -1618,7 +1734,7 @@ class ClaudeSession:
                                     type=EventType.STATE_SNAPSHOT,
                                     snapshot=current_state,
                                 )
-                                yield {"state": current_state}
+                                yield _AguiStreamStateUpdate(state=current_state)
                             except (json.JSONDecodeError, ValueError, TypeError) as exc:
                                 yield CustomEvent(
                                     type=EventType.CUSTOM,
@@ -1666,6 +1782,9 @@ class ClaudeSession:
                             message_id=current_message_id,
                         )
                     current_message_id = None
+                if halt_stream:
+                    await _close_message_stream(message_stream)
+                    break
                 continue
 
             if cls_name == "AssistantMessage":
@@ -1674,17 +1793,13 @@ class ClaudeSession:
                 if agui_message is not None:
                     upsert_message(agui_message)
 
-                for block in getattr(message, "content", []) or []:
-                    if block.__class__.__name__ != "ToolUseBlock":
+                for tool_block in _agui_sdk_tool_use_blocks(message):
+                    if tool_block.tool_id in processed_tool_ids:
                         continue
-                    tool_id = getattr(block, "id", None)
-                    if not tool_id or tool_id in processed_tool_ids:
-                        continue
-                    raw_name = getattr(block, "name", "unknown")
-                    display_name = _strip_mcp_prefix(raw_name)
-                    tool_input = getattr(block, "input", {}) or {}
-                    if _is_agui_state_tool(raw_name):
-                        updates = tool_input.get("state_updates", tool_input)
+                    if _is_agui_state_tool(tool_block.raw_name):
+                        updates = tool_block.tool_input.get(
+                            "state_updates", tool_block.tool_input
+                        )
                         if isinstance(updates, str):
                             updates = json.loads(updates)
                         if isinstance(current_state, dict) and isinstance(
@@ -1698,42 +1813,41 @@ class ClaudeSession:
                             type=EventType.STATE_SNAPSHOT,
                             snapshot=current_state,
                         )
-                        yield {"state": current_state}
+                        yield _AguiStreamStateUpdate(state=current_state)
                         continue
-                    processed_tool_ids.add(tool_id)
+                    processed_tool_ids.add(tool_block.tool_id)
                     yield ToolCallStartEvent(
                         type=EventType.TOOL_CALL_START,
-                        tool_call_id=tool_id,
-                        tool_call_name=display_name,
+                        tool_call_id=tool_block.tool_id,
+                        tool_call_name=tool_block.display_name,
                         parent_message_id=msg_id,
                     )
                     yield ToolCallArgsEvent(
                         type=EventType.TOOL_CALL_ARGS,
-                        tool_call_id=tool_id,
-                        delta=json.dumps(tool_input),
+                        tool_call_id=tool_block.tool_id,
+                        delta=json.dumps(tool_block.tool_input),
                     )
                     yield ToolCallEndEvent(
                         type=EventType.TOOL_CALL_END,
-                        tool_call_id=tool_id,
+                        tool_call_id=tool_block.tool_id,
                     )
-                    if display_name in frontend_tool_names:
+                    if tool_block.display_name in frontend_tool_names:
                         halt_stream = True
                         break
 
             elif cls_name == "UserMessage":
-                for block in getattr(message, "content", []) or []:
-                    if block.__class__.__name__ != "ToolResultBlock":
-                        continue
-                    tool_use_id = getattr(block, "tool_use_id", None)
-                    if not tool_use_id:
-                        continue
-                    content = getattr(block, "content", None)
-                    upsert_message(_agui_tool_message(tool_use_id, content))
+                for tool_result in _agui_sdk_tool_result_blocks(message):
+                    upsert_message(
+                        _agui_tool_message(
+                            tool_result.tool_use_id,
+                            tool_result.content,
+                        )
+                    )
                     yield ToolCallResultEvent(
                         type=EventType.TOOL_CALL_RESULT,
-                        message_id=f"{tool_use_id}-result",
-                        tool_call_id=tool_use_id,
-                        content=_agui_tool_result_content(content),
+                        message_id=f"{tool_result.tool_use_id}-result",
+                        tool_call_id=tool_result.tool_use_id,
+                        content=_agui_tool_result_content(tool_result.content),
                         role="tool",
                     )
 
@@ -1786,7 +1900,11 @@ class ClaudeSession:
                             content=result_text,
                         )
                     )
-                yield {"result": result_data}
+                yield _AguiStreamResult(result=result_data)
+
+            if halt_stream:
+                await _close_message_stream(message_stream)
+                break
 
         if current_tool_call_id:
             yield ToolCallEndEvent(
