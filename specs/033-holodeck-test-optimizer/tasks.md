@@ -163,10 +163,13 @@ in `docs/` + `AGENTS.md`.
 ---
 
 ## Checkpoint: Complete
-- [ ] All unit + integration tests pass under `-n auto`.
-- [ ] Smoke run writes `best.yaml`, `trials.jsonl`, `report.md`; source `agent.yaml`
-      byte-identical.
-- [ ] `make format lint type-check security` clean.
+- [x] All unit + integration tests pass under `-n auto` (4954 unit + optimizer + e2e).
+- [x] Smoke run writes `best.yaml`, `trials.jsonl`, `report.md`; source `agent.yaml`
+      byte-identical (asserted by `tests/integration/test_optimize_e2e.py`).
+- [x] `make format` / `lint` / `security` clean; all optimizer code mypy-clean.
+      NOTE: `make type-check` (whole-`src`) reports one **pre-existing**, unrelated
+      error — `claude_backend.py:23` unused `# type: ignore` (present on the branch
+      before this feature). Not fixed here per surgical-change discipline.
 
 ## Out of scope (spec v1 follow-up)
 Train/holdout, `repeats`, variance-aware acceptance, USD/minute budgets, `--resume`,
