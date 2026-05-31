@@ -78,6 +78,25 @@ def _set_path(root: Any, path: str, value: Any) -> None:
     setattr(obj, leaf, value)
 
 
+def get_path(root: Any, path: str) -> Any:
+    """Read the value at a dotted/selector ``path`` on ``root``.
+
+    Args:
+        root: The object to read from (e.g. an Agent).
+        path: Dotted/selector path (e.g. ``instructions.inline``).
+
+    Returns:
+        The resolved value.
+
+    Raises:
+        OptimizerError: If any segment of the path is invalid.
+    """
+    obj = root
+    for segment in path.split("."):
+        obj = _navigate(obj, segment, path)
+    return obj
+
+
 def apply_axes(agent: Agent, params: dict[str, Any]) -> Agent:
     """Return a new Agent with the given numeric-axis values applied.
 

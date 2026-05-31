@@ -22,12 +22,17 @@ class Proposal:
     - Numeric: ``params`` maps axis path → value (applied via ``apply_axes``).
     - Textual: ``textual_axis`` + ``new_text`` (applied via
       ``apply_textual_edit``); ``edit_summary`` is a human-readable note.
+
+    When ``error`` is set the proposer could not produce a usable change (e.g.
+    the subagent returned unparseable JSON). The loop records a skipped trial
+    that counts toward the phase's patience rather than crashing or applying it.
     """
 
     params: dict[str, Any] | None = None
     textual_axis: str | None = None
     new_text: str | None = None
     edit_summary: str | None = None
+    error: str | None = None
 
 
 @runtime_checkable

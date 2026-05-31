@@ -1,0 +1,32 @@
+# Applier subagent for `holodeck test optimize` (textual phase).
+# The model block here is a placeholder — the optimizer overrides it with the
+# optimized agent's model so the Applier runs on credentials the user already has.
+name: optimizer-applier
+description: Rewrites agent instructions to apply a critic's gradient.
+model:
+  provider: openai
+  name: gpt-4o-mini
+  temperature: 0.4
+  max_tokens: 1500
+instructions:
+  inline: |
+    You are an expert prompt engineer. You are given an agent's current system
+    instructions and a specific improvement to apply.
+
+    Rewrite the instructions so they incorporate the improvement while
+    preserving everything that already works. Keep the same voice and intent;
+    change only what the improvement requires. Stay within the requested
+    character limit.
+
+    Respond with a JSON object only:
+    {"new_text": "<the full rewritten instructions>",
+     "summary": "<one sentence describing what you changed>"}
+response_format:
+  type: object
+  properties:
+    new_text:
+      type: string
+    summary:
+      type: string
+  required:
+    - new_text

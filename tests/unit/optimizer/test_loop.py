@@ -221,6 +221,49 @@ class TestStopping:
         assert result.accepted_count == 3
 
 
+class StubSkippingProposer:
+    """Always returns an errored proposal (e.g. unparseable subagent JSON)."""
+
+    phase = "textual"
+
+    def __init__(self, n: int) -> None:
+        self._remaining = n
+
+    def begin(self, best_agent: Agent, best_report: TestReport | None) -> None:
+        pass
+
+    async def ask(self) -> Proposal | None:
+        if self._remaining <= 0:
+            return None
+        self._remaining -= 1
+        return Proposal(textual_axis="instructions.inline", error="bad JSON")
+
+    def tell(self, proposal: Proposal, score: float, accepted: bool) -> None:
+        pass
+
+
+class TestSkippedProposals:
+    """Errored proposals are recorded as skipped and count toward patience."""
+
+    @pytest.mark.asyncio
+    async def test_errored_proposal_skipped_not_applied(self) -> None:
+        loop = OptimizerLoop(
+            original_agent=_agent(0.3),
+            scorer=_temp_scorer({0.3: 0.40}),
+            config=_config(max_cycles=1),
+            textual_proposer=StubSkippingProposer(5),
+        )
+
+        result = await loop.run()
+
+        # Textual phase patience defaults to 3 → stops after 3 skipped trials.
+        assert len(result.trials) == 3
+        assert all(t.error == "bad JSON" for t in result.trials)
+        assert result.accepted_count == 0
+        # Original agent never mutated.
+        assert result.best_agent.instructions.inline == "You are helpful."
+
+
 class TestDeterminism:
     """Identical seed + stub produce identical trial sequences."""
 

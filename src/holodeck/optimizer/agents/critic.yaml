@@ -1,0 +1,34 @@
+# Critic subagent for `holodeck test optimize` (textual phase).
+# The model block here is a placeholder — the optimizer overrides it with the
+# optimized agent's model so the Critic runs on credentials the user already has.
+name: optimizer-critic
+description: Emits a natural-language gradient for improving agent instructions.
+model:
+  provider: openai
+  name: gpt-4o-mini
+  temperature: 0.4
+  max_tokens: 800
+instructions:
+  inline: |
+    You are an expert prompt engineer acting as a critic. You are given an
+    agent's current system instructions and a sample of failing test cases
+    (inputs, the agent's responses, and per-metric scores).
+
+    Diagnose the single most impactful weakness in the instructions that, if
+    fixed, would most improve the failing cases. Be specific and actionable;
+    do not rewrite the instructions yourself.
+
+    Respond with a JSON object only:
+    {"gradient": "<the most impactful improvement to make>",
+     "issues": ["<supporting observation>", "..."]}
+response_format:
+  type: object
+  properties:
+    gradient:
+      type: string
+    issues:
+      type: array
+      items:
+        type: string
+  required:
+    - gradient

@@ -6,7 +6,7 @@ from holodeck.lib.errors import OptimizerError
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.tool import VectorstoreTool
-from holodeck.optimizer.mutator import apply_axes, apply_textual_edit
+from holodeck.optimizer.mutator import apply_axes, apply_textual_edit, get_path
 
 
 def _agent() -> Agent:
@@ -81,3 +81,17 @@ class TestApplyTextualEdit:
     def test_unknown_textual_path_raises(self) -> None:
         with pytest.raises(OptimizerError):
             apply_textual_edit(_agent(), "instructions.bogus", "x")
+
+
+class TestGetPath:
+    """get_path reads values at dotted/selector paths."""
+
+    def test_reads_instruction_text(self) -> None:
+        assert get_path(_agent(), "instructions.inline") == "You are helpful."
+
+    def test_reads_tool_field_by_selector(self) -> None:
+        assert get_path(_agent(), "tools[name=kb].top_k") == 5
+
+    def test_unknown_path_raises(self) -> None:
+        with pytest.raises(OptimizerError):
+            get_path(_agent(), "instructions.bogus")

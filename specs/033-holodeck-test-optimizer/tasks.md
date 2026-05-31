@@ -92,7 +92,7 @@ range; return a params dict for `mutator.apply_axes`. Wire into the loop's numer
 
 ## Phase 4 — Textual proposer
 
-### T6: `proposers/textual.py` + Critic/Applier subagents
+### T6: `proposers/textual.py` + Critic/Applier subagents ✅
 **Description:** Build failing-case context from the latest baseline `TestReport`; call
 Critic (`agents/critic.yaml`) → structured gradient JSON; call Applier
 (`agents/applier.yaml`) → structured edit JSON with `new_text`; one textual axis per

@@ -111,8 +111,29 @@ class OptimizerLoop:
             if proposal is None:
                 break
 
-            candidate = self._apply(proposal)
             self._trial_id += 1
+
+            # The proposer could not produce a usable change — record a skipped
+            # trial that counts toward patience, and move on.
+            if proposal.error is not None:
+                self._trials.append(
+                    TrialRecord(
+                        trial_id=self._trial_id,
+                        cycle=cycle,
+                        phase=proposer.phase,
+                        score=self.best_score,
+                        baseline_score=self.best_score,
+                        accepted=False,
+                        textual_axis=proposal.textual_axis,
+                        error=proposal.error,
+                    )
+                )
+                proposer.tell(proposal, self.best_score, False)
+                no_improve += 1
+                logger.info("Trial %d skipped: %s", self._trial_id, proposal.error)
+                continue
+
+            candidate = self._apply(proposal)
             score, report = await self.scorer(candidate)
             accepted = score - self.best_score > self.config.min_delta
 
