@@ -150,6 +150,19 @@ class EvaluationError(HoloDeckError):
     pass
 
 
+class OptimizerError(HoloDeckError):
+    """Exception raised during ``holodeck test optimize`` runs.
+
+    Covers optimizer-specific failures: unknown axis paths, missing test cases,
+    and proposer wiring errors.
+
+    Attributes:
+        message: Human-readable error message.
+    """
+
+    pass
+
+
 class AgentFactoryError(HoloDeckError):
     """Exception raised during agent factory operations.
 
