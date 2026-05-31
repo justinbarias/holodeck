@@ -24,7 +24,7 @@ Run pytest with `-n auto`. After each task: `make format lint type-check`.
 **Dependencies:** None · **Files:** `optimizer/{__init__,config,models}.py`, `lib/errors.py`,
 2 test files · **Scope:** M
 
-### T2: `loss.scalarize` + `mutator` (axis application)
+### T2: `loss.scalarize` + `mutator` (axis application) ✅
 **Description:** `loss.scalarize(report, loss_weights) -> float` (weighted mean of
 `summary.average_scores`, errored metrics excluded + flagged). `mutator.apply_axes(agent,
 params)` and `mutator.apply_textual_edit(agent, axis, new_text)` via nested `model_copy`,
