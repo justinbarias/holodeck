@@ -113,7 +113,7 @@ failure (counts toward patience).
 
 ## Phase 5 — Outputs + CLI
 
-### T7: `output.py` artifacts
+### T7: `output.py` artifacts ✅
 **Description:** Write `results/optimizer/<run-id>/`: `best.yaml` (serialized best
 candidate Agent), `trials.jsonl` (one `TrialRecord` per line), `report.md` (baseline vs
 best, accepted edits, per-phase summary).
