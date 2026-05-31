@@ -189,6 +189,15 @@ podman run -d \
 
 > **Version Pinning**: For stability, pin to a specific version (e.g., `chromadb/chroma:0.6.3`) instead of `latest` to avoid unexpected changes during upgrades.
 
+> **Security Advisory**: `chromadb` is currently affected by
+> [CVE-2026-45829 / GHSA-f4j7-r4q5-qw2c](https://github.com/advisories/GHSA-f4j7-r4q5-qw2c),
+> a pre-authentication code injection issue in ChromaDB server versions 1.0.0
+> and later when the server accepts a malicious model repository with
+> `trust_remote_code=true`. As of this documentation update, upstream has not
+> published a fixed `chromadb` release. Until a fix is available, run ChromaDB
+> only on trusted networks, do not expose it directly to the public internet,
+> and treat model repository inputs as trusted administrative data.
+
 ---
 
 ## Setting Up PostgreSQL with pgvector

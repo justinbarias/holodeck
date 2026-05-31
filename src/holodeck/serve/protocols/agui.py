@@ -39,6 +39,7 @@ from ulid import ULID
 from holodeck.lib.backends import BackendSessionError
 from holodeck.lib.backends.base import ToolEvent
 from holodeck.lib.logging_config import get_logger
+from holodeck.models.llm import ProviderEnum
 from holodeck.models.test_case import FileInput
 from holodeck.serve.file_utils import (
     cleanup_temp_files,
@@ -212,6 +213,15 @@ def extract_message_from_input(input_data: RunAgentInput) -> str:
                 return " ".join(text_parts)
 
     raise ValueError("No user messages found in input")
+
+
+def latest_message_role(input_data: RunAgentInput) -> str:
+    """Return the role for the latest AG-UI message, if present."""
+    messages = input_data.messages or []
+    if not messages:
+        return ""
+    message = messages[-1]
+    return str(message.role)
 
 
 def map_session_id(thread_id: str) -> str:
@@ -679,11 +689,11 @@ class AGUIProtocol(Protocol):
         Returns:
             MIME type string for response Content-Type header.
         """
-        return "text/event-stream"
+        return AGUIEventStream(accept_header=self._accept_header).content_type
 
     async def handle_request(
         self,
-        request: Any,
+        request: RunAgentInput,
         session: ServerSession,
     ) -> AsyncGenerator[bytes, None]:
         """Handle AG-UI request and generate event stream.
@@ -699,7 +709,7 @@ class AGUIProtocol(Protocol):
             Encoded AG-UI events as bytes.
         """
         # Extract components from RunAgentInput
-        input_data: RunAgentInput = request
+        input_data = request
         thread_id = input_data.thread_id
         run_id = input_data.run_id
 
@@ -766,13 +776,30 @@ class AGUIProtocol(Protocol):
             else:
                 full_message = text_message
 
+            executor = session.agent_executor
+            provider = executor.agent_config.model.provider
+            if provider in (ProviderEnum.ANTHROPIC, ProviderEnum.ANTHROPIC.value):
+                # Claude AG-UI resumes after frontend tool execution with a
+                # latest ``tool`` message. Do not override that with the prior
+                # user message, or the model can repeatedly call the same
+                # frontend tool.
+                claude_message_override = (
+                    full_message if latest_message_role(input_data) == "user" else None
+                )
+                async for agui_evt in executor.execute_turn_agui(
+                    input_data,
+                    claude_message_override,
+                ):
+                    yield encoder.encode(agui_evt)
+                logger.debug("Completed Claude AG-UI request for run %s", run_id)
+                return
+
             # 1. Emit RunStartedEvent
             yield encoder.encode(create_run_started_event(thread_id, run_id))
 
             # 2. Eagerly initialize backend so tool_event_queue is available
             #    before execution starts. Gracefully degrade if the executor
             #    does not expose this method (e.g. in tests with mocks).
-            executor = session.agent_executor
             logger.debug(
                 "[trace] agui.handle_request: session=%s, executor_id=%s, "
                 "session_attached=%s",

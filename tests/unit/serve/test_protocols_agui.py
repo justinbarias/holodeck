@@ -671,6 +671,24 @@ class TestAGUIEventStreamBinaryFormat:
 class TestAGUIProtocolHandleRequest:
     """Tests for AGUIProtocol.handle_request method."""
 
+    def test_latest_message_role_empty_messages(self) -> None:
+        """latest_message_role returns empty string when no messages exist."""
+        from ag_ui.core.events import RunAgentInput
+
+        from holodeck.serve.protocols.agui import latest_message_role
+
+        input_data = RunAgentInput(
+            thread_id="thread-123",
+            run_id="run-456",
+            messages=[],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        assert latest_message_role(input_data) == ""
+
     @pytest.mark.asyncio
     async def test_handle_request_success(self) -> None:
         """Test handle_request returns proper event sequence on success."""
@@ -859,6 +877,177 @@ class TestAGUIProtocolHandleRequest:
             events.append(event_bytes)
 
         assert len(events) > 0
+
+    @pytest.mark.asyncio
+    async def test_handle_request_uses_claude_agui_path(self) -> None:
+        """Anthropic executors delegate to the backend-owned AG-UI stream."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ag_ui.core.events import RunAgentInput
+        from ag_ui.core.types import UserMessage
+
+        from holodeck.serve.protocols.agui import (
+            AGUIProtocol,
+            create_run_finished_event,
+            create_run_started_event,
+        )
+
+        input_data = RunAgentInput(
+            thread_id="thread-123",
+            run_id="run-456",
+            messages=[UserMessage(id="msg-1", role="user", content="Hello")],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        calls: list[tuple[RunAgentInput, str | None]] = []
+
+        async def execute_turn_agui(
+            input_arg: RunAgentInput,
+            message_override: str | None = None,
+        ):
+            calls.append((input_arg, message_override))
+            yield create_run_started_event("thread-123", "run-456")
+            yield create_run_finished_event("thread-123", "run-456")
+
+        mock_executor = MagicMock()
+        mock_executor.agent_config.model.provider = "anthropic"
+        mock_executor.execute_turn_agui = execute_turn_agui
+        mock_executor.execute_turn = AsyncMock()
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.agent_executor = mock_executor
+
+        protocol = AGUIProtocol()
+        events = [
+            event_bytes
+            async for event_bytes in protocol.handle_request(input_data, mock_session)
+        ]
+
+        assert calls == [(input_data, "Hello")]
+        mock_executor.execute_turn.assert_not_called()
+        all_content = b"".join(events).decode("utf-8")
+        assert "RUN_STARTED" in all_content
+        assert "RUN_FINISHED" in all_content
+
+    @pytest.mark.asyncio
+    async def test_handle_request_claude_tool_resume_does_not_reuse_user_prompt(
+        self,
+    ) -> None:
+        """Claude frontend-tool resumes preserve the latest tool message."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ag_ui.core.events import RunAgentInput
+        from ag_ui.core.types import ToolMessage, UserMessage
+
+        from holodeck.serve.protocols.agui import (
+            AGUIProtocol,
+            create_run_finished_event,
+            create_run_started_event,
+        )
+
+        input_data = RunAgentInput(
+            thread_id="thread-123",
+            run_id="run-456",
+            messages=[
+                UserMessage(id="msg-1", role="user", content="Show MSFT"),
+                ToolMessage(
+                    id="tool-result-1",
+                    role="tool",
+                    tool_call_id="toolu_front",
+                    content='{"ok":true}',
+                ),
+            ],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        calls: list[tuple[RunAgentInput, str | None]] = []
+
+        async def execute_turn_agui(
+            input_arg: RunAgentInput,
+            message_override: str | None = None,
+        ):
+            calls.append((input_arg, message_override))
+            yield create_run_started_event("thread-123", "run-456")
+            yield create_run_finished_event("thread-123", "run-456")
+
+        mock_executor = MagicMock()
+        mock_executor.agent_config.model.provider = "anthropic"
+        mock_executor.execute_turn_agui = execute_turn_agui
+        mock_executor.execute_turn = AsyncMock()
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.agent_executor = mock_executor
+
+        protocol = AGUIProtocol()
+        events = [
+            event_bytes
+            async for event_bytes in protocol.handle_request(input_data, mock_session)
+        ]
+
+        assert calls == [(input_data, None)]
+        mock_executor.execute_turn.assert_not_called()
+        all_content = b"".join(events).decode("utf-8")
+        assert "RUN_STARTED" in all_content
+        assert "RUN_FINISHED" in all_content
+
+    @pytest.mark.asyncio
+    async def test_handle_request_non_claude_keeps_generic_path(self) -> None:
+        """Non-Claude executors keep the existing generic AG-UI fallback."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ag_ui.core.events import RunAgentInput
+        from ag_ui.core.types import UserMessage
+
+        from holodeck.serve.protocols.agui import AGUIProtocol
+
+        input_data = RunAgentInput(
+            thread_id="thread-123",
+            run_id="run-456",
+            messages=[UserMessage(id="msg-1", role="user", content="Hello")],
+            state=None,
+            tools=[],
+            context=[],
+            forwarded_props=None,
+        )
+
+        async def execute_turn_agui(
+            input_arg: RunAgentInput,
+            message_override: str | None = None,
+        ):
+            msg = "non-Claude path should not call execute_turn_agui"
+            raise AssertionError(msg)
+            yield  # pragma: no cover
+
+        mock_response = MagicMock()
+        mock_response.content = "Hello from SK"
+        mock_response.tool_executions = []
+
+        mock_executor = MagicMock()
+        mock_executor.agent_config.model.provider = "openai"
+        mock_executor.execute_turn_agui = execute_turn_agui
+        mock_executor.execute_turn = AsyncMock(return_value=mock_response)
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.agent_executor = mock_executor
+
+        protocol = AGUIProtocol()
+        events = [
+            event_bytes
+            async for event_bytes in protocol.handle_request(input_data, mock_session)
+        ]
+
+        mock_executor.execute_turn.assert_awaited_once_with("Hello")
+        all_content = b"".join(events).decode("utf-8")
+        assert "Hello from SK" in all_content
 
 
 # =============================================================================

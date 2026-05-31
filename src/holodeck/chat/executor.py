@@ -6,7 +6,7 @@ import asyncio
 import time
 from collections.abc import AsyncGenerator, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 from holodeck.lib.backends.base import (
     AgentBackend,
@@ -22,9 +22,32 @@ from holodeck.models.agent import Agent
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool_execution import ToolExecution, ToolStatus
 
+if TYPE_CHECKING:
+    from ag_ui.core import BaseEvent, RunAgentInput
+
 logger = get_logger(__name__)
 
 _SENTINEL = object()
+
+
+@runtime_checkable
+class _AGUISession(Protocol):
+    """Session capability for Claude-native AG-UI event streaming."""
+
+    def send_agui(
+        self,
+        input_data: RunAgentInput,
+        message_override: str | None = None,
+    ) -> AsyncGenerator[BaseEvent, None]:
+        """Stream AG-UI events for one run."""
+        ...
+
+
+def _require_agui_session(session: AgentSession | None) -> _AGUISession:
+    """Return *session* as AG-UI-capable or raise a clear runtime error."""
+    if session is None or not isinstance(session, _AGUISession):
+        raise AttributeError("Backend session does not support AG-UI streaming")
+    return cast(_AGUISession, session)
 
 
 @dataclass
@@ -209,6 +232,16 @@ class _TaskBoundSession:
             if isinstance(item, Exception):
                 raise item
             yield item
+
+    async def send_agui(
+        self,
+        input_data: RunAgentInput,
+        message_override: str | None = None,
+    ) -> AsyncGenerator[BaseEvent, None]:
+        """Stream AG-UI events from the wrapped session when supported."""
+        session = _require_agui_session(self._session)
+        async for event in session.send_agui(input_data, message_override):
+            yield event
 
     @property
     def tool_events(self) -> asyncio.Queue[ToolEvent] | None:
@@ -453,6 +486,22 @@ class AgentExecutor:
             raise
         except BackendInitError as e:
             raise RuntimeError(f"Agent streaming failed: {e}") from e
+
+    async def execute_turn_agui(
+        self,
+        input_data: RunAgentInput,
+        message_override: str | None = None,
+    ) -> AsyncGenerator[BaseEvent, None]:
+        """Execute an AG-UI turn through a backend session that supports it."""
+        try:
+            await self._ensure_backend_and_session()
+            session = _require_agui_session(self._session)
+            async for event in session.send_agui(input_data, message_override):
+                yield event
+        except BackendSessionError:
+            raise
+        except BackendInitError as e:
+            raise RuntimeError(f"Agent AG-UI execution failed: {e}") from e
 
     def get_history(self) -> list[dict[str, Any]]:
         """Get current conversation history.
