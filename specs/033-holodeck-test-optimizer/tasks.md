@@ -38,7 +38,7 @@ with an axis-path parser for `model.temperature` and `tools[name=X].<field>`.
 **V:** `pytest tests/unit/optimizer/test_loss.py tests/unit/optimizer/test_mutator.py -n auto`
 **Dependencies:** T1 · **Files:** `optimizer/{loss,mutator}.py`, 2 test files · **Scope:** M
 
-### T3: `scorer.score` wrapping `TestExecutor`
+### T3: `scorer.score` wrapping `TestExecutor` ✅
 **Description:** `async scorer.score(agent, agent_config_path) -> tuple[float, TestReport]`
 building `TestExecutor(agent_config=agent, agent_config_path=path, force_ingest=False)`
 and calling `execute_tests()`, then `scalarize`.
