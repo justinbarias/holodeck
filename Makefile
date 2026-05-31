@@ -448,6 +448,12 @@ profile: ## Profile the application
 requirements: ## Generate requirements.txt from uv.lock
 	uv export --format requirements-txt > requirements.txt
 
+schema: ## Regenerate schemas/agent.schema.json from the Agent model
+	uv run python scripts/generate_agent_schema.py
+
+schema-check: ## Verify the committed agent.schema.json matches the model
+	uv run python scripts/generate_agent_schema.py --check
+
 #############################
 # Git Helpers               #
 #############################

@@ -1,0 +1,45 @@
+# Minimal fixture agent for `holodeck test optimize` smoke runs.
+# Uses a deterministic equality metric so the only LLM cost is the agent's own
+# responses. Declares one numeric axis (temperature) and one textual axis
+# (instructions) so both optimizer phases exercise.
+name: optimizer-fixture-agent
+description: Tiny agent used to smoke-test the optimizer end to end.
+model:
+  provider: openai
+  name: gpt-4o-mini
+  temperature: 0.7
+instructions:
+  inline: |
+    You are a precise assistant. Answer with only the final value, no prose.
+evaluations:
+  metrics:
+    - type: standard
+      metric: equality
+      strip_whitespace: true
+  optimizer:
+    loss:
+      equality: 1.0
+    axes:
+      numeric:
+        - path: model.temperature
+          type: float
+          range: [0.0, 1.0]
+      textual:
+        - path: instructions.inline
+          max_chars: 2000
+    max_cycles: 2
+    numeric_phase:
+      max_trials: 6
+      patience: 3
+    textual_phase:
+      max_trials: 3
+      patience: 2
+    min_delta: 0.01
+    seed: 42
+test_cases:
+  - name: addition
+    input: What is 2 + 2? Reply with only the number.
+    ground_truth: "4"
+  - name: capital
+    input: What is the capital of France? Reply with only the city name.
+    ground_truth: "Paris"

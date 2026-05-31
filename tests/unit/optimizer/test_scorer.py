@@ -6,7 +6,12 @@ import pytest
 
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.llm import LLMProvider, ProviderEnum
-from holodeck.models.test_result import ReportSummary, TestReport, TestResult
+from holodeck.models.test_result import (
+    MetricResult,
+    ReportSummary,
+    TestReport,
+    TestResult,
+)
 from holodeck.optimizer.loss import scalarize
 from holodeck.optimizer.scorer import score
 
@@ -28,6 +33,10 @@ def _report(average_scores: dict[str, float]) -> TestReport:
             passed=True,
             execution_time_ms=1,
             timestamp="2026-05-31T00:00:00Z",
+            metric_results=[
+                MetricResult(metric_name=name, kind="standard", score=score)
+                for name, score in average_scores.items()
+            ],
         )
     ]
     summary = ReportSummary(

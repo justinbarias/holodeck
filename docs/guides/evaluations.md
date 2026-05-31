@@ -1103,6 +1103,91 @@ model:
 
 ---
 
+## Optimizing Agents (`holodeck test optimize`)
+
+Once you have an evaluation suite, `holodeck test optimize` automates the
+hand-tuning loop — change a knob or instruction, re-run `holodeck test`, eyeball
+the score, repeat — as a **compounding coordinate-descent optimizer**. It
+alternates a *numeric* phase (Optuna TPE over declared query-time axes) and a
+*textual* phase (a Critic produces a natural-language "gradient", an Applier
+rewrites the instructions), advancing a best-candidate baseline on every
+accepted improvement so wins compound into one improved `agent.yaml`.
+
+The original `agent.yaml` is **never modified**. Every trial is logged, and the
+best candidate is written to `results/optimizer/<run-id>/best.yaml`.
+
+### Configuration
+
+Add an `evaluations.optimizer` block declaring the scalarized loss (per-metric
+weights) and the axes to tune:
+
+```yaml
+evaluations:
+  metrics:
+    - type: standard
+      metric: groundedness
+    - type: geval
+      name: Conciseness
+      criteria: "The response is concise and avoids redundancy."
+  optimizer:
+    loss:                       # weighted objective over metric averages
+      groundedness: 2.0
+      Conciseness: 1.0
+    axes:
+      numeric:                  # query-time hyperparameters (Optuna TPE)
+        - path: model.temperature
+          type: float
+          range: [0.0, 1.0]
+        - path: tools[name=knowledge_base].top_k
+          type: int
+          range: [3, 12]
+      textual:                  # instruction text rewritten by Critic/Applier
+        - path: instructions.inline
+          max_chars: 6000
+    max_cycles: 3               # numeric→textual cycles before stopping
+    numeric_phase: { max_trials: 12, patience: 5 }
+    textual_phase: { max_trials: 5, patience: 3 }
+    min_delta: 0.01             # minimum score gain required to accept
+    seed: 42
+```
+
+**Axis paths** support dotted attributes (`model.temperature`,
+`instructions.inline`) and a `tools[name=X].<field>` selector for per-tool
+fields. Numeric axes accept `float`/`int` (a `[low, high]` range) or
+`categorical` (a list of choices).
+
+### Running
+
+```bash
+holodeck test optimize agent.yaml
+holodeck test optimize agent.yaml --max-cycles 2 --numeric-max-trials 20 --seed 7
+```
+
+CLI flags (`--max-cycles`, `--numeric-max-trials`, `--numeric-patience`,
+`--textual-max-trials`, `--textual-patience`, `--seed`, `-o/--output-dir`)
+override the YAML config for a single run. The command streams per-trial scores
+and prints the baseline → best summary on completion.
+
+### Outputs
+
+`results/optimizer/<run-id>/` contains:
+
+- `best.yaml` — the best candidate agent, ready to copy over your original.
+- `trials.jsonl` — one record per trial (the full audit trail).
+- `report.md` — baseline vs best, the accepted edits, and a per-phase summary.
+
+### Acceptance and scoring
+
+The objective is a renormalized weighted mean of the per-metric averages using
+your `loss` weights. Metric runs that **error** are excluded from the mean (not
+scored as zero); legitimate `0.0` scores are kept. A candidate is accepted only
+when it beats the current best by more than `min_delta`.
+
+> **Note (MVP):** acceptance uses the raw score delta — there is no
+> train/holdout split, repeated trials, or variance-aware bar yet, so a small
+> `min_delta` can chase evaluation noise. Keep `min_delta` above your suite's
+> single-case-flip granularity. Statistical rigor is the planned v1 follow-up.
+
 ## Best Practices
 
 1. **Start with DeepEval**: Use GEval and RAG metrics as primary evaluation

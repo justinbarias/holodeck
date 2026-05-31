@@ -145,7 +145,7 @@ non-zero exit). Register on the `test` group.
 
 ## Phase 6 — Integration, schema, docs, CI
 
-### T9: E2E test + schema + docs + tasks
+### T9: E2E test + schema + docs + tasks ✅
 **Description:** Integration test on a tiny fixture agent (NLP grader, stub/cheap backend):
 baseline → optimize → outputs, assert `best_score ≥ baseline_score`. Add
 `evaluations.optimizer` to `schemas/agent.schema.json`. Document `holodeck test optimize`

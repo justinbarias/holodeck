@@ -70,6 +70,18 @@ Run tests for a HoloDeck agent with evaluation metrics and report generation.
       docstring_style: google
       show_source: true
 
+#### `holodeck test optimize`
+
+Compounding coordinate-descent optimizer that tunes an agent's declared
+numeric/textual axes against its own test suite. See the
+[Optimizing Agents](../guides/evaluations.md#optimizing-agents-holodeck-test-optimize)
+guide for configuration.
+
+::: holodeck.cli.commands.optimize.optimize
+    options:
+      docstring_style: google
+      show_source: true
+
 ---
 
 ### Chat Command

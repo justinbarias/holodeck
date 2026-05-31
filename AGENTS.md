@@ -463,6 +463,24 @@ pytest tests/unit/test_config.py::test_load_yaml -v
 pytest -k "test_agent" -n auto -v
 ```
 
+### Optimizing Agents
+
+`holodeck test optimize` automates the tune→test→eyeball loop as a compounding
+coordinate-descent optimizer (Optuna TPE over numeric axes + a Critic/Applier
+instruction-rewrite phase). It reads an `evaluations.optimizer` block, never
+mutates the original `agent.yaml`, and writes the best candidate plus a full
+audit trail to `results/optimizer/<run-id>/`.
+
+```bash
+holodeck test optimize agent.yaml                 # run with YAML config
+holodeck test optimize agent.yaml --max-cycles 2 --seed 7
+```
+
+See the [Optimizing Agents](docs/guides/evaluations.md#optimizing-agents-holodeck-test-optimize)
+guide for the config schema and flags. `agent.schema.json` is generated from the
+Pydantic `Agent` model — run `make schema` after model changes (CI guards it via
+`make schema-check` / `tests/unit/test_agent_schema_sync.py`).
+
 ### Code Quality
 
 ```bash
