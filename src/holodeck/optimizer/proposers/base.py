@@ -49,6 +49,6 @@ class Proposer(Protocol):
         """Return the next proposal, or ``None`` when the phase is exhausted."""
         ...
 
-    def tell(self, proposal: Proposal, score: float, accepted: bool) -> None:
-        """Report the scored outcome of a proposal back to the proposer."""
+    def tell(self, proposal: Proposal, loss: float, accepted: bool) -> None:
+        """Report the scored loss of a proposal back to the proposer."""
         ...

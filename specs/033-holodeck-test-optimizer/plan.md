@@ -4,7 +4,8 @@
 > spec's coordinate-descent optimizer (numeric Optuna + textual Critic/Applier) with
 > **compounding**, but **defers statistical rigor**: no train/holdout split, no repeats
 > (`k=1`), no variance-aware acceptance bar (accept on raw aggregate-score delta with a
-> fixed `min_delta` epsilon), no USD/minute budgets, no resume. Those deferred pieces are
+> fixed `min_delta` epsilon), no USD/minute budgets, no resume (resume/checkpointing is
+> now planned as **Phase 7**, below). Those deferred pieces are
 > what turn this MVP into the full spec v1. Authoritative design remains
 > `optimizer.md` + `2026-05-16-optimizer-for-holodeck-test-design.md`.
 
@@ -25,14 +26,16 @@ every accepted improvement so wins compound into one candidate `agent.yaml`. The
    `max_cycles` is hit. (Spec decision 1.)
 2. **Fresh Optuna TPE study per numeric phase** — a textual edit changes the objective, so
    prior numeric observations are stale. (Spec decision 2.)
-3. **MVP acceptance = raw delta.** Accept iff `score(candidate) - best_score > min_delta`.
-   No repeats/holdout/variance bar in the MVP. (Deferred: spec decisions 4 & 5.)
+3. **MVP acceptance = raw delta.** Accept iff `best_loss - loss(candidate) > min_delta`
+   (loss is minimized). No repeats/holdout/variance bar in the MVP. (Deferred: spec
+   decisions 4 & 5.)
 4. **Reuse `TestExecutor` unchanged**, injecting a mutated `Agent` via `agent_config=`;
    ingest once (`force_ingest=False`).
 5. **Errored metric runs excluded** from the scalarized loss, not scored as 0. (Spec
    smaller-correction.)
-6. **Objective** = weighted mean of `TestReport.summary.average_scores` using
-   `evaluations.optimizer.loss` weights.
+6. **Objective** = a minimized loss `1 − weighted_mean` of `TestReport`'s per-metric
+   averages using `evaluations.optimizer.loss` weights (metric scores must be in
+   `[0, 1]`).
 
 ## Verified integration points
 
@@ -83,10 +86,39 @@ every accepted improvement so wins compound into one candidate `agent.yaml`. The
 - [ ] Manual smoke run on fixture agent
 
 ### Phase 6: Integration, schema, docs, CI
-- [ ] T9 E2E test (`best_score ≥ baseline_score`) + `agent.schema.json` `evaluations.optimizer` + docs + tasks.md
+- [ ] T9 E2E test (`best_loss ≤ baseline_loss`) + `agent.schema.json` `evaluations.optimizer` + docs + tasks.md
 
 ### Checkpoint: Complete
 - [ ] `make ci` clean; smoke run writes 3 artifacts; source `agent.yaml` byte-identical
+
+### Phase 7: Checkpointing & resume (post-MVP) — interruption resilience
+> **Why this matters:** every trial is one full eval (live, billable, minutes long).
+> A 10–20+ trial run killed by a crash, Ctrl-C, OOM, or dropped session currently
+> loses all of it — `T7` only persists artifacts at the *end*. The design's
+> `--resume` contract is already written (design.md:350-355, 427, 491, 776-790,
+> 936-994); the MVP just never built it. This phase realizes it: **the audit log
+> *is* the checkpoint** — no separate pickle. Resume replays `trials.jsonl`,
+> advances the baseline through accepted rows, and rebuilds each numeric phase's
+> Optuna study via `study.add_trial(params, value)`.
+- [ ] T10 Per-trial atomic persistence: append a row to `trials.jsonl` (atomic
+  write + fsync) after **each** completed trial *and* the baseline; write
+  `run.json` once on trial 0 (baseline, resolved-config fingerprint, seed).
+  Switch the run-id to deterministic `sha256(agent_yaml + optimizer_config +
+  seed)[:8]` (design.md:804) so `--resume` is unambiguous. Partial/in-flight
+  trials write nothing → resume picks up from the last *complete* row.
+- [ ] T11 `--resume` replay in `OptimizerLoop`: load `trials.jsonl` + `run.json`,
+  re-derive `best` by replaying accepted rows in order, rebuild each numeric
+  phase's study from its own rows (`study.add_trial`), carry bests forward, and
+  continue the in-flight phase from `len(trials)+1`. (Numeric rows already carry
+  `params`; that is what the study rebuild needs — design.md:427.)
+- [ ] T12 CLI `--resume RUN_ID` (auto-detect latest incomplete run when omitted)
+  + config-drift guard (refuse on fingerprint mismatch unless `--force`) +
+  Ctrl-C → exit code 2 with intact state (design.md:994) + docs/tests.
+
+### Checkpoint E
+- [ ] Kill a run mid-trial (SIGINT); `--resume` continues from the last completed
+  trial with bests + each phase's TPE study intact; resumed run reaches the same
+  accept/reject decisions as an uninterrupted one (decision-level, not bit-exact).
 
 ## Acceptance criteria & verification
 
@@ -113,6 +145,7 @@ make format && make lint && make type-check && make security
 ## Out of scope (becomes spec v1)
 
 Train/holdout + `min_holdout_cases`; `repeats` (k>1); variance-aware acceptance
-(`accept_sigma`, pooled-std bar); USD/minute budgets; `--resume`; `trajectory.csv` /
-`run.json` / instruction-iteration files / `best.yaml` symlink atomics; few-shot
+(`accept_sigma`, pooled-std bar); USD/minute budgets; `trajectory.csv` /
+instruction-iteration files / `best.yaml` symlink atomics; few-shot
 demonstration optimization; ingestion-time axes; parallel trials.
+(`--resume` + `run.json` per-trial persistence: now **Phase 7** above.)

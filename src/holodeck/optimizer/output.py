@@ -31,13 +31,13 @@ def _trials_to_jsonl(trials: list[TrialRecord]) -> str:
 
 def _build_report(result: OptimizationResult) -> str:
     """Build the Markdown summary report."""
-    delta = result.best_score - result.baseline_score
+    delta = result.best_loss - result.baseline_loss
     lines = [
         f"# Optimization Report: {result.agent_name}",
         "",
         f"- **Run ID:** `{result.run_id}`",
-        f"- **Baseline score:** {result.baseline_score:.2f}",
-        f"- **Best score:** {result.best_score:.2f} (Δ {delta:+.2f})",
+        f"- **Baseline loss:** {result.baseline_loss:.2f}",
+        f"- **Best loss:** {result.best_loss:.2f} (Δ {delta:+.2f})",
         f"- **Cycles run:** {result.cycles_run}",
         f"- **Accepted improvements:** {result.accepted_count}",
         "",
@@ -54,7 +54,7 @@ def _build_report(result: OptimizationResult) -> str:
             )
             lines.append(
                 f"- Trial {trial.trial_id} ({trial.phase}): {detail} "
-                f"→ score {trial.score:.3f}"
+                f"→ loss {trial.loss:.3f}"
             )
     else:
         lines.append("_No improvements were accepted._")
@@ -72,7 +72,7 @@ def _build_report(result: OptimizationResult) -> str:
             status = f"skipped ({trial.error})"
         lines.append(
             f"- Trial {trial.trial_id} [{trial.phase}, cycle {trial.cycle}]: "
-            f"score {trial.score:.3f} vs {trial.baseline_score:.3f} — {status}"
+            f"loss {trial.loss:.3f} vs {trial.baseline_loss:.3f} — {status}"
         )
 
     return "\n".join(lines) + "\n"

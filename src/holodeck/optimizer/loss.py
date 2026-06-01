@@ -1,7 +1,10 @@
 """Scalarized objective for the optimizer.
 
-Collapses a ``TestReport`` into a single number the optimizer maximizes: a
-weighted mean of per-metric averages using the configured ``loss`` weights.
+Collapses a ``TestReport`` into a single *loss* the optimizer minimizes:
+``1 − weighted_mean`` of per-metric averages using the configured ``loss``
+weights. Metric averages are required to lie in ``[0, 1]`` so the inverted
+value is a well-defined loss; a metric that reports outside that range (e.g. a
+raw token count) raises rather than silently producing a negative or >1 loss.
 
 Per-metric averages are computed directly from the granular
 ``TestResult.metric_results`` rather than ``summary.average_scores``: the
@@ -46,21 +49,25 @@ def excluded_metrics(report: TestReport, loss_weights: dict[str, float]) -> list
 
 
 def scalarize(report: TestReport, loss_weights: dict[str, float]) -> float:
-    """Compute the weighted-mean objective for a test report.
+    """Compute the scalarized loss (lower is better) for a test report.
 
-    Only metrics with at least one non-errored run contribute; the weights of
-    contributing metrics are renormalized so excluding an errored metric does
-    not deflate the score toward zero.
+    Computes the renormalized weighted mean of the contributing metric averages
+    and returns ``1 − mean`` so the optimizer can *minimize* it. Only metrics
+    with at least one non-errored run contribute; the weights of contributing
+    metrics are renormalized so excluding an errored metric does not bias the
+    loss.
 
     Args:
         report: Completed test report.
         loss_weights: Per-metric weights (strictly positive).
 
     Returns:
-        The renormalized weighted mean of the contributing metric averages.
+        ``1 − weighted_mean`` of the contributing metric averages, in ``[0, 1]``.
 
     Raises:
-        OptimizerError: If none of the weighted metrics produced a usable score.
+        OptimizerError: If none of the weighted metrics produced a usable score,
+            or a contributing metric average falls outside ``[0, 1]`` (so the
+            inverted value would not be a valid loss).
     """
     averages = _metric_averages(report)
     missing = [metric for metric in loss_weights if metric not in averages]
@@ -74,7 +81,14 @@ def scalarize(report: TestReport, loss_weights: dict[str, float]) -> float:
     total_weight = 0.0
     for metric, weight in loss_weights.items():
         if metric in averages:
-            weighted_sum += weight * averages[metric]
+            average = averages[metric]
+            if not 0.0 <= average <= 1.0:
+                raise OptimizerError(
+                    f"Metric '{metric}' average {average} is outside [0, 1]; "
+                    "the optimizer's loss (1 − weighted_mean) is only defined "
+                    "for metrics normalized to [0, 1]."
+                )
+            weighted_sum += weight * average
             total_weight += weight
 
     if total_weight == 0.0:
@@ -85,4 +99,4 @@ def scalarize(report: TestReport, loss_weights: dict[str, float]) -> float:
             f"scored metrics: {sorted(averages)}."
         )
 
-    return weighted_sum / total_weight
+    return 1.0 - weighted_sum / total_weight

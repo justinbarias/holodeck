@@ -14,8 +14,8 @@ class TrialRecord(BaseModel):
         trial_id: Monotonic trial index across the whole run.
         cycle: 0-based coordinate-descent cycle the trial belongs to.
         phase: Which proposer produced the candidate.
-        score: Scalarized objective for the candidate.
-        baseline_score: Best score the candidate had to beat.
+        loss: Scalarized loss for the candidate (lower is better).
+        baseline_loss: Best loss the candidate had to beat.
         accepted: Whether the candidate advanced the baseline.
         params: Numeric params applied (numeric phase only).
         textual_axis: Instruction axis rewritten (textual phase only).
@@ -31,8 +31,8 @@ class TrialRecord(BaseModel):
     phase: Literal["numeric", "textual"] = Field(
         ..., description="Proposer that produced the candidate."
     )
-    score: float = Field(..., description="Scalarized objective for the candidate.")
-    baseline_score: float = Field(..., description="Score the candidate had to beat.")
+    loss: float = Field(..., description="Scalarized loss for the candidate.")
+    baseline_loss: float = Field(..., description="Loss the candidate had to beat.")
     accepted: bool = Field(..., description="Whether the candidate advanced baseline.")
     params: dict[str, Any] | None = Field(
         default=None, description="Numeric params applied (numeric phase only)."
@@ -58,8 +58,8 @@ class OptimizationResult(BaseModel):
     Attributes:
         run_id: Identifier for the run's output directory.
         agent_name: Name of the optimized agent.
-        baseline_score: Scalarized objective of the original agent.
-        best_score: Scalarized objective of the best accepted candidate.
+        baseline_loss: Scalarized loss of the original agent.
+        best_loss: Scalarized loss of the best accepted candidate (lower is better).
         cycles_run: Number of coordinate-descent cycles executed.
         accepted_count: Number of accepted improvements.
         best_agent: The best candidate agent (never the mutated original).
@@ -70,8 +70,8 @@ class OptimizationResult(BaseModel):
 
     run_id: str = Field(..., description="Identifier for the run's output dir.")
     agent_name: str = Field(..., description="Name of the optimized agent.")
-    baseline_score: float = Field(..., description="Objective of the original agent.")
-    best_score: float = Field(..., description="Objective of the best candidate.")
+    baseline_loss: float = Field(..., description="Loss of the original agent.")
+    best_loss: float = Field(..., description="Loss of the best candidate.")
     cycles_run: int = Field(..., ge=0, description="Cycles executed.")
     accepted_count: int = Field(
         ..., ge=0, description="Number of accepted improvements."

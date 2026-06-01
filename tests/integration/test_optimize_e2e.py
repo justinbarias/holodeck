@@ -97,9 +97,10 @@ async def test_optimize_improves_and_writes_artifacts(tmp_path: Path) -> None:
 
     result = await loop.run()
 
-    assert result.baseline_score == pytest.approx(0.0)
-    assert result.best_score >= result.baseline_score
-    assert result.best_score == pytest.approx(1.0)
+    # Baseline (temp 0.1) answers wrong → loss 1.0; optimum answers right → loss 0.0.
+    assert result.baseline_loss == pytest.approx(1.0)
+    assert result.best_loss <= result.baseline_loss
+    assert result.best_loss == pytest.approx(0.0)
     assert result.accepted_count >= 1
 
     run_dir = write_outputs(result, tmp_path / "results")

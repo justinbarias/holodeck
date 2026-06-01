@@ -1119,7 +1119,7 @@ best candidate is written to `results/optimizer/<run-id>/best.yaml`.
 ### Configuration
 
 Add an `evaluations.optimizer` block declaring the scalarized loss (per-metric
-weights) and the axes to tune:
+weights; loss = `1 − weighted_mean`) and the axes to tune:
 
 ```yaml
 evaluations:
@@ -1130,7 +1130,7 @@ evaluations:
       name: Conciseness
       criteria: "The response is concise and avoids redundancy."
   optimizer:
-    loss:                       # weighted objective over metric averages
+    loss:                       # metric weights; loss = 1 - weighted_mean
       groundedness: 2.0
       Conciseness: 1.0
     axes:
@@ -1147,7 +1147,7 @@ evaluations:
     max_cycles: 3               # numeric→textual cycles before stopping
     numeric_phase: { max_trials: 12, patience: 5 }
     textual_phase: { max_trials: 5, patience: 3 }
-    min_delta: 0.01             # minimum score gain required to accept
+    min_delta: 0.01             # minimum loss reduction required to accept
     seed: 42
 ```
 
@@ -1165,7 +1165,7 @@ holodeck test optimize agent.yaml --max-cycles 2 --numeric-max-trials 20 --seed 
 
 CLI flags (`--max-cycles`, `--numeric-max-trials`, `--numeric-patience`,
 `--textual-max-trials`, `--textual-patience`, `--seed`, `-o/--output-dir`)
-override the YAML config for a single run. The command streams per-trial scores
+override the YAML config for a single run. The command streams per-trial losses
 and prints the baseline → best summary on completion.
 
 ### Outputs
@@ -1178,12 +1178,15 @@ and prints the baseline → best summary on completion.
 
 ### Acceptance and scoring
 
-The objective is a renormalized weighted mean of the per-metric averages using
-your `loss` weights. Metric runs that **error** are excluded from the mean (not
-scored as zero); legitimate `0.0` scores are kept. A candidate is accepted only
-when it beats the current best by more than `min_delta`.
+The optimizer **minimizes a loss** of `1 − weighted_mean`, where the weighted
+mean is a renormalized weighted average of the per-metric averages using your
+`loss` weights (so a perfect agent has loss `0.0`). Metric scores must be
+normalized to `[0, 1]`; an average outside that range aborts the run. Metric runs
+that **error** are excluded from the mean (not scored as zero); legitimate `0.0`
+scores are kept. A candidate is accepted only when its loss undercuts the current
+best by more than `min_delta`.
 
-> **Note (MVP):** acceptance uses the raw score delta — there is no
+> **Note (MVP):** acceptance uses the raw loss delta — there is no
 > train/holdout split, repeated trials, or variance-aware bar yet, so a small
 > `min_delta` can chase evaluation noise. Keep `min_delta` above your suite's
 > single-case-flip granularity. Statistical rigor is the planned v1 follow-up.

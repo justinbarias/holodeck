@@ -57,9 +57,9 @@ and calling `execute_tests()`, then `scalarize`.
 ## Phase 2 — Loop (prove compounding)
 
 ### T4: `OptimizerLoop.run()` + stub proposer ✅
-**Description:** Coordinate-descent driver: baseline score → repeat (numeric phase →
+**Description:** Coordinate-descent driver: baseline loss → repeat (numeric phase →
 textual phase) until a full cycle yields 0 accepts or `max_cycles`. Accept iff
-`score - best_score > min_delta`; on accept `baseline ← candidate`. Per-phase `patience`
+`best_loss - loss > min_delta` (loss is minimized); on accept `baseline ← candidate`. Per-phase `patience`
 + `max_trials`. Proposers injected (use a stub here).
 **AC:**
 - [ ] Baseline advances on each accepted improvement (compounding verified).
@@ -147,11 +147,11 @@ non-zero exit). Register on the `test` group.
 
 ### T9: E2E test + schema + docs + tasks ✅
 **Description:** Integration test on a tiny fixture agent (NLP grader, stub/cheap backend):
-baseline → optimize → outputs, assert `best_score ≥ baseline_score`. Add
+baseline → optimize → outputs, assert `best_loss ≤ baseline_loss`. Add
 `evaluations.optimizer` to `schemas/agent.schema.json`. Document `holodeck test optimize`
 in `docs/` + `AGENTS.md`.
 **AC:**
-- [ ] E2E test green; `best_score ≥ baseline_score`.
+- [ ] E2E test green; `best_loss ≤ baseline_loss`.
 - [ ] Schema validates a sample `evaluations.optimizer` block.
 - [ ] Docs + AGENTS.md updated.
 - [ ] `make ci` clean.
@@ -171,7 +171,72 @@ in `docs/` + `AGENTS.md`.
       error — `claude_backend.py:23` unused `# type: ignore` (present on the branch
       before this feature). Not fixed here per surgical-change discipline.
 
+---
+
+## Phase 7 — Checkpointing & resume (post-MVP)
+
+Interruption resilience. Each trial is one full eval (live, billable, minutes long); a
+multi-trial run killed mid-flight currently loses everything because `T7` only persists at
+the end. The design's `--resume` contract is already written
+(`2026-05-16-...-design.md:350-355, 427, 491, 776-790, 936-994`) — **the audit log *is* the
+checkpoint** (no separate pickle). This phase builds it.
+
+### T10: Per-trial atomic persistence + deterministic run-id ⬜
+**Description:** Persist incrementally instead of only at the end. After **each** completed
+trial *and* the baseline, append one `TrialRecord` row to `<run-id>/trials.jsonl` via
+atomic write (`tmp` + `os.replace`) + `fsync`. Write `<run-id>/run.json` once on trial 0:
+baseline score, seed, and a **fingerprint** = `sha256(agent_yaml + resolved optimizer_config
++ seed)`. Switch `run_id` from the timestamp+uuid to deterministic
+`<fingerprint>[:8]` (design.md:804) so resume is unambiguous. In-flight/partial trials
+write nothing — resume starts from the last *complete* row.
+**AC:**
+- [ ] After N trials, `trials.jsonl` has exactly N (+1 baseline) valid rows, each parseable.
+- [ ] A `SIGKILL` mid-trial leaves `trials.jsonl` uncorrupted, ending on a complete row.
+- [ ] Same `(agent_yaml, config, seed)` → identical `run_id`; any change → different `run_id`.
+- [ ] `run.json` round-trips and carries the config fingerprint.
+**V:** `pytest tests/unit/optimizer/test_persistence.py -n auto`
+**Dependencies:** T7 · **Files:** `optimizer/output.py` (or new `persistence.py`),
+`optimizer/loop.py` (per-trial hook), `optimizer/models.py` (`RunMetadata`), 1 test file ·
+**Scope:** M
+
+### T11: `--resume` replay in `OptimizerLoop` ⬜
+**Description:** Reconstruct loop state from the audit log. Load `trials.jsonl` + `run.json`;
+re-derive `best` by replaying accepted rows in order; rebuild each numeric phase's Optuna
+study from *its own* rows via `study.add_trial(params, value)` (numeric rows already carry
+`params` — design.md:427); carry bests forward; continue the in-flight phase from
+`len(trials)+1`. Studies are rebuilt per phase, never merged.
+**AC:**
+- [ ] Replaying a captured `trials.jsonl` reproduces the same `best`/`best_loss` the
+      uninterrupted loop held at that point.
+- [ ] A resumed numeric phase's study contains all prior in-phase trials (TPE not reset).
+- [ ] Resume continues numbering/cycles from where it stopped (no duplicate trial ids).
+**V:** `pytest tests/unit/optimizer/test_resume.py -n auto`
+**Dependencies:** T10, T5 · **Files:** `optimizer/loop.py`, `optimizer/proposers/numeric.py`
+(study rehydrate), 1 test file · **Scope:** L
+
+### T12: CLI `--resume` + drift guard + signal handling ⬜
+**Description:** Add `--resume RUN_ID` (auto-detect the latest incomplete run under
+`--output-dir` when the id is omitted). Before resuming, compare the current config
+fingerprint to `run.json`; refuse with a clear `OptimizerError` unless `--force`. Handle
+`SIGINT` so Ctrl-C exits with code **2** leaving state intact (design.md:994). Document the
+crash-recovery workflow.
+**AC:**
+- [ ] `holodeck test optimize --resume <id>` continues a stopped run to completion.
+- [ ] Mismatched config → non-zero exit with a clear message; `--force` overrides.
+- [ ] Ctrl-C during a run → exit code 2; a subsequent `--resume` succeeds.
+- [ ] Docs (`docs/guides/evaluations.md`, `AGENTS.md`) cover resume + recovery.
+**V:** `pytest tests/unit/cli/test_optimize_resume_cli.py -n auto && make ci`
+**Dependencies:** T11 · **Files:** `cli/commands/optimize.py`, `docs/`, `AGENTS.md`,
+1 test file · **Scope:** M
+
+### 🛑 Checkpoint E
+- [ ] Kill a real run mid-trial (SIGINT); `--resume` continues from the last completed
+      trial with bests + each phase's TPE study intact, reaching the same accept/reject
+      decisions as an uninterrupted run (decision-level, not bit-exact).
+
+---
+
 ## Out of scope (spec v1 follow-up)
-Train/holdout, `repeats`, variance-aware acceptance, USD/minute budgets, `--resume`,
-`trajectory.csv`/`run.json`/iteration files/symlinks, few-shot demos, ingestion-time
-axes, parallel trials.
+Train/holdout, `repeats`, variance-aware acceptance, USD/minute budgets,
+`trajectory.csv`/iteration files/symlinks, few-shot demos, ingestion-time
+axes, parallel trials. (`--resume` + `run.json`: now **Phase 7** above.)

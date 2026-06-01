@@ -130,7 +130,7 @@ class OptimizerConfig(BaseModel):
         max_cycles: Maximum numeric→textual cycles before stopping.
         numeric_phase: Numeric-phase budget.
         textual_phase: Textual-phase budget.
-        min_delta: Minimum raw score improvement required to accept a candidate.
+        min_delta: Minimum raw loss reduction required to accept a candidate.
         seed: Seed for the numeric proposer's study (config-reproducibility).
     """
 
@@ -150,7 +150,7 @@ class OptimizerConfig(BaseModel):
     min_delta: float = Field(
         default=0.01,
         ge=0.0,
-        description="Minimum raw score improvement required to accept.",
+        description="Minimum raw loss reduction required to accept.",
     )
     seed: int = Field(default=42, description="Seed for the numeric study.")
 

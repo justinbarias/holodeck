@@ -200,7 +200,7 @@ def optimize(
                 status = "rejected"
             click.echo(
                 f"  trial {trial.trial_id} [{trial.phase}] "
-                f"score={trial.score:.4f} (best {trial.baseline_score:.4f}) "
+                f"loss={trial.loss:.4f} (best {trial.baseline_loss:.4f}) "
                 f"— {status}"
             )
 
@@ -225,8 +225,8 @@ def optimize(
         run_dir = write_outputs(result, Path(output_dir))
 
         click.echo(
-            f"\nBaseline {result.baseline_score:.4f} → best "
-            f"{result.best_score:.4f} "
+            f"\nBaseline loss {result.baseline_loss:.4f} → best "
+            f"{result.best_loss:.4f} "
             f"({result.accepted_count} accepted over {result.cycles_run} cycles)."
         )
         click.echo(f"Artifacts written to {run_dir}")

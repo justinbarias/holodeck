@@ -136,10 +136,10 @@ class TestConvergence:
 
     @pytest.mark.asyncio
     async def test_improves_toward_optimum(self) -> None:
-        # Objective peaks at temperature == 0.7.
+        # Loss is minimized (== 0) at temperature == 0.7.
         async def scorer(agent: Agent) -> tuple[float, TestReport]:
             temp = agent.model.temperature
-            return 1.0 - (temp - 0.7) ** 2, _dummy_report()
+            return (temp - 0.7) ** 2, _dummy_report()
 
         config = OptimizerConfig(
             loss={"groundedness": 1.0},
@@ -166,6 +166,6 @@ class TestConvergence:
 
         result = await loop.run()
 
-        # Baseline at temp=0.0 scores 1 - 0.49 = 0.51; optimum scores 1.0.
-        assert result.best_score > result.baseline_score
+        # Baseline at temp=0.0 has loss 0.49; optimum has loss 0.0.
+        assert result.best_loss < result.baseline_loss
         assert abs(result.best_agent.model.temperature - 0.7) < 0.1

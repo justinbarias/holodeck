@@ -1,11 +1,11 @@
 """Compounding coordinate-descent driver for the optimizer.
 
-Scores the original agent for a baseline, then sweeps numeric → textual phases
-in cycles. A candidate is accepted iff its score beats the current best by more
-than ``min_delta``; on accept the best agent advances so subsequent proposals
-compound onto it. A phase stops on its ``patience``/``max_trials`` budget; the
-whole run stops when a full cycle yields zero accepts or ``max_cycles`` is hit.
-The original agent is never mutated.
+Scores the original agent for a baseline loss, then sweeps numeric → textual
+phases in cycles. A candidate is accepted iff its loss undercuts the current
+best by more than ``min_delta``; on accept the best agent advances so subsequent
+proposals compound onto it. A phase stops on its ``patience``/``max_trials``
+budget; the whole run stops when a full cycle yields zero accepts or
+``max_cycles`` is hit. The original agent is never mutated.
 """
 
 import logging
@@ -21,7 +21,7 @@ from holodeck.optimizer.proposers.base import Proposal, Proposer
 
 logger = logging.getLogger(__name__)
 
-# A scorer maps a candidate agent to (scalarized_score, report).
+# A scorer maps a candidate agent to (scalarized_loss, report); lower is better.
 ScorerFn = Callable[[Agent], Awaitable[tuple[float, TestReport]]]
 
 
@@ -43,13 +43,13 @@ class OptimizerLoop:
 
         Args:
             original_agent: The agent to optimize (never mutated).
-            scorer: Async callable returning ``(score, report)`` for a candidate.
+            scorer: Async callable returning ``(loss, report)`` for a candidate.
             config: Optimizer configuration (budgets, min_delta, axes).
             numeric_proposer: Proposer for the numeric phase (skipped if None).
             textual_proposer: Proposer for the textual phase (skipped if None).
             run_id: Identifier recorded on the result.
             progress_callback: Optional callback invoked with each TrialRecord as
-                it is produced (used to stream per-trial scores).
+                it is produced (used to stream per-trial losses).
         """
         self.original_agent = original_agent
         self.scorer = scorer
@@ -63,15 +63,15 @@ class OptimizerLoop:
         self._trial_id = 0
         self._accepted_count = 0
         self.best_agent = original_agent
-        self.best_score = 0.0
+        self.best_loss = float("inf")
         self.best_report: TestReport | None = None
-        self.baseline_score = 0.0
+        self.baseline_loss = float("inf")
 
     async def run(self) -> OptimizationResult:
         """Execute the optimization and return the result."""
-        self.best_score, self.best_report = await self.scorer(self.original_agent)
-        self.baseline_score = self.best_score
-        logger.info("Baseline score: %.4f", self.baseline_score)
+        self.best_loss, self.best_report = await self.scorer(self.original_agent)
+        self.baseline_loss = self.best_loss
+        logger.info("Baseline loss: %.4f", self.baseline_loss)
 
         cycles_run = 0
         for cycle in range(self.config.max_cycles):
@@ -92,8 +92,8 @@ class OptimizerLoop:
         return OptimizationResult(
             run_id=self.run_id,
             agent_name=self.original_agent.name,
-            baseline_score=self.baseline_score,
-            best_score=self.best_score,
+            baseline_loss=self.baseline_loss,
+            best_loss=self.best_loss,
             cycles_run=cycles_run,
             accepted_count=self._accepted_count,
             best_agent=self.best_agent,
@@ -125,49 +125,49 @@ class OptimizerLoop:
                         trial_id=self._trial_id,
                         cycle=cycle,
                         phase=proposer.phase,
-                        score=self.best_score,
-                        baseline_score=self.best_score,
+                        loss=self.best_loss,
+                        baseline_loss=self.best_loss,
                         accepted=False,
                         textual_axis=proposal.textual_axis,
                         error=proposal.error,
                     )
                 )
-                proposer.tell(proposal, self.best_score, False)
+                proposer.tell(proposal, self.best_loss, False)
                 no_improve += 1
                 logger.info("Trial %d skipped: %s", self._trial_id, proposal.error)
                 continue
 
             candidate = self._apply(proposal)
-            score, report = await self.scorer(candidate)
-            accepted = score - self.best_score > self.config.min_delta
+            loss, report = await self.scorer(candidate)
+            accepted = self.best_loss - loss > self.config.min_delta
 
             self._record(
                 TrialRecord(
                     trial_id=self._trial_id,
                     cycle=cycle,
                     phase=proposer.phase,
-                    score=score,
-                    baseline_score=self.best_score,
+                    loss=loss,
+                    baseline_loss=self.best_loss,
                     accepted=accepted,
                     params=proposal.params,
                     textual_axis=proposal.textual_axis,
                     edit_summary=proposal.edit_summary,
                 )
             )
-            proposer.tell(proposal, score, accepted)
+            proposer.tell(proposal, loss, accepted)
 
             if accepted:
                 self.best_agent = candidate
-                self.best_score = score
+                self.best_loss = loss
                 self.best_report = report
                 self._accepted_count += 1
                 accepts += 1
                 no_improve = 0
                 logger.info(
-                    "Trial %d accepted (%s): score %.4f",
+                    "Trial %d accepted (%s): loss %.4f",
                     self._trial_id,
                     proposer.phase,
-                    score,
+                    loss,
                 )
             else:
                 no_improve += 1

@@ -99,11 +99,11 @@ def _config(
     )
 
 
-def _temp_scorer(score_map: dict[float, float]):
-    """Score an agent by its model.temperature via a lookup table."""
+def _temp_scorer(loss_map: dict[float, float]):
+    """Map an agent's model.temperature to a loss via a lookup table."""
 
     async def scorer(agent: Agent) -> tuple[float, TestReport]:
-        return score_map[agent.model.temperature], _dummy_report()
+        return loss_map[agent.model.temperature], _dummy_report()
 
     return scorer
 
@@ -113,7 +113,8 @@ class TestCompounding:
 
     @pytest.mark.asyncio
     async def test_baseline_advances_on_each_accept(self) -> None:
-        scorer = _temp_scorer({0.3: 0.40, 0.5: 0.50, 0.7: 0.60})
+        # Lower loss is better: each accepted candidate undercuts the baseline.
+        scorer = _temp_scorer({0.3: 0.60, 0.5: 0.50, 0.7: 0.40})
         proposer = StubNumericProposer(
             [{"model.temperature": 0.5}, {"model.temperature": 0.7}]
         )
@@ -126,8 +127,8 @@ class TestCompounding:
 
         result = await loop.run()
 
-        assert result.baseline_score == pytest.approx(0.40)
-        assert result.best_score == pytest.approx(0.60)
+        assert result.baseline_loss == pytest.approx(0.60)
+        assert result.best_loss == pytest.approx(0.40)
         assert result.best_agent.model.temperature == 0.7
         assert result.accepted_count == 2
         # Cycle 2 is a dry cycle (no further improvement) → stops.
@@ -135,7 +136,8 @@ class TestCompounding:
 
     @pytest.mark.asyncio
     async def test_sub_min_delta_rejected(self) -> None:
-        scorer = _temp_scorer({0.3: 0.50, 0.5: 0.505})
+        # Loss improves by only 0.04 (< min_delta 0.05) → rejected.
+        scorer = _temp_scorer({0.3: 0.50, 0.5: 0.46})
         proposer = StubNumericProposer([{"model.temperature": 0.5}])
         loop = OptimizerLoop(
             original_agent=_agent(0.3),
@@ -147,7 +149,7 @@ class TestCompounding:
         result = await loop.run()
 
         assert result.accepted_count == 0
-        assert result.best_score == pytest.approx(0.50)
+        assert result.best_loss == pytest.approx(0.50)
         assert result.best_agent.model.temperature == 0.3
         assert result.trials[0].accepted is False
 
@@ -157,8 +159,8 @@ class TestStopping:
 
     @pytest.mark.asyncio
     async def test_phase_patience_stops_phase(self) -> None:
-        # Every proposal scores below baseline → consecutive non-accepts.
-        scorer = _temp_scorer({0.3: 0.40, 0.5: 0.10, 0.6: 0.10, 0.7: 0.10, 0.8: 0.10})
+        # Every proposal has a worse (higher) loss → consecutive non-accepts.
+        scorer = _temp_scorer({0.3: 0.40, 0.5: 0.90, 0.6: 0.90, 0.7: 0.90, 0.8: 0.90})
         proposer = StubNumericProposer(
             [
                 {"model.temperature": 0.5},
@@ -184,7 +186,8 @@ class TestStopping:
 
     @pytest.mark.asyncio
     async def test_dry_cycle_stops_before_max_cycles(self) -> None:
-        scorer = _temp_scorer({0.3: 0.40, 0.5: 0.30})
+        # Candidate loss is worse than baseline → rejected → dry cycle.
+        scorer = _temp_scorer({0.3: 0.40, 0.5: 0.50})
         proposer = StubNumericProposer([{"model.temperature": 0.5}])
         loop = OptimizerLoop(
             original_agent=_agent(0.3),
@@ -199,11 +202,11 @@ class TestStopping:
 
     @pytest.mark.asyncio
     async def test_max_cycles_caps_run(self) -> None:
-        # Monotonically increasing scorer → every trial accepts forever.
+        # Monotonically decreasing loss → every trial accepts forever.
         calls = {"n": 0}
 
         async def scorer(agent: Agent) -> tuple[float, TestReport]:
-            value = 0.40 + 0.10 * calls["n"]
+            value = 0.40 - 0.10 * calls["n"]
             calls["n"] += 1
             return value, _dummy_report()
 
@@ -272,7 +275,7 @@ class TestProgressCallback:
         seen: list[int] = []
         loop = OptimizerLoop(
             original_agent=_agent(0.3),
-            scorer=_temp_scorer({0.3: 0.40, 0.5: 0.50, 0.7: 0.60}),
+            scorer=_temp_scorer({0.3: 0.60, 0.5: 0.50, 0.7: 0.40}),
             config=_config(),
             numeric_proposer=StubNumericProposer(
                 [{"model.temperature": 0.5}, {"model.temperature": 0.7}]
@@ -294,7 +297,7 @@ class TestDeterminism:
         def build() -> OptimizerLoop:
             return OptimizerLoop(
                 original_agent=_agent(0.3),
-                scorer=_temp_scorer({0.3: 0.40, 0.5: 0.50, 0.7: 0.60}),
+                scorer=_temp_scorer({0.3: 0.60, 0.5: 0.50, 0.7: 0.40}),
                 config=_config(),
                 numeric_proposer=StubNumericProposer(
                     [{"model.temperature": 0.5}, {"model.temperature": 0.7}]
@@ -304,6 +307,6 @@ class TestDeterminism:
         first = await build().run()
         second = await build().run()
 
-        trace_first = [(t.score, t.accepted, t.params) for t in first.trials]
-        trace_second = [(t.score, t.accepted, t.params) for t in second.trials]
+        trace_first = [(t.loss, t.accepted, t.params) for t in first.trials]
+        trace_second = [(t.loss, t.accepted, t.params) for t in second.trials]
         assert trace_first == trace_second

@@ -39,7 +39,7 @@ class NumericProposer:
     def begin(self, best_agent: Agent, best_report: TestReport | None) -> None:
         """Start a fresh seeded study for a new numeric phase."""
         sampler = optuna.samplers.TPESampler(seed=self._seed)
-        self._study = optuna.create_study(direction="maximize", sampler=sampler)
+        self._study = optuna.create_study(direction="minimize", sampler=sampler)
         self._pending = None
 
     async def ask(self) -> Proposal | None:
@@ -64,8 +64,8 @@ class NumericProposer:
         self._pending = trial
         return Proposal(params=params)
 
-    def tell(self, proposal: Proposal, score: float, accepted: bool) -> None:
-        """Report the candidate's score back to the study (maximization)."""
+    def tell(self, proposal: Proposal, loss: float, accepted: bool) -> None:
+        """Report the candidate's loss back to the study (minimization)."""
         if self._study is not None and self._pending is not None:
-            self._study.tell(self._pending, score)
+            self._study.tell(self._pending, loss)
             self._pending = None

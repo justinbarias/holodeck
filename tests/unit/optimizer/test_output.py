@@ -24,8 +24,8 @@ def _result() -> OptimizationResult:
             trial_id=1,
             cycle=0,
             phase="numeric",
-            score=0.62,
-            baseline_score=0.50,
+            loss=0.50,
+            baseline_loss=0.62,
             accepted=True,
             params={"model.temperature": 0.7},
         ),
@@ -33,8 +33,8 @@ def _result() -> OptimizationResult:
             trial_id=2,
             cycle=0,
             phase="textual",
-            score=0.55,
-            baseline_score=0.62,
+            loss=0.55,
+            baseline_loss=0.50,
             accepted=False,
             textual_axis="instructions.inline",
             edit_summary="Tightened the format.",
@@ -43,8 +43,8 @@ def _result() -> OptimizationResult:
     return OptimizationResult(
         run_id="run-xyz",
         agent_name="opt-agent",
-        baseline_score=0.50,
-        best_score=0.62,
+        baseline_loss=0.62,
+        best_loss=0.50,
         cycles_run=1,
         accepted_count=1,
         best_agent=best_agent,
@@ -82,13 +82,13 @@ class TestWriteOutputs:
         assert rows[0]["accepted"] is True
         assert rows[1]["phase"] == "textual"
 
-    def test_report_mentions_scores(self, tmp_path: Path) -> None:
+    def test_report_mentions_losses(self, tmp_path: Path) -> None:
         run_dir = write_outputs(_result(), tmp_path)
 
         report = (run_dir / "report.md").read_text()
         assert "opt-agent" in report
-        assert "0.50" in report  # baseline
-        assert "0.62" in report  # best
+        assert "0.62" in report  # baseline loss
+        assert "0.50" in report  # best loss
 
     def test_does_not_touch_source_agent(self, tmp_path: Path) -> None:
         source = tmp_path / "agent.yaml"

@@ -117,18 +117,18 @@ class TestValidation:
 
 
 class TestRun:
-    """A fixture run streams per-trial scores and writes outputs."""
+    """A fixture run streams per-trial losses and writes outputs."""
 
-    def test_streams_scores_and_writes_outputs(self, tmp_path: Path) -> None:
+    def test_streams_losses_and_writes_outputs(self, tmp_path: Path) -> None:
         agent_path = tmp_path / "agent.yaml"
         agent_path.write_text(_agent_yaml(with_test_cases=True))
         out_dir = tmp_path / "results"
 
-        # Increasing scores so the numeric phase accepts and streams.
+        # Decreasing losses so the numeric phase accepts and streams.
         calls = {"n": 0}
 
         async def fake_score(agent, path, weights, backend=None):
-            value = 0.40 + 0.05 * calls["n"]
+            value = 0.40 - 0.05 * calls["n"]
             calls["n"] += 1
             return value, _report()
 
@@ -151,8 +151,8 @@ class TestRun:
             )
 
         assert result.exit_code == 0, result.output
-        # Per-trial score lines were streamed.
-        assert "score" in result.output.lower()
+        # Per-trial loss lines were streamed.
+        assert "loss" in result.output.lower()
         # Outputs were written under a run-id dir.
         run_dirs = list(out_dir.iterdir())
         assert len(run_dirs) == 1
