@@ -20,6 +20,7 @@ from holodeck.models.agent import Agent
 from holodeck.optimizer.config import OptimizerConfig
 from holodeck.optimizer.loop import OptimizerLoop
 from holodeck.optimizer.models import OptimizationResult, TrialRecord
+from holodeck.optimizer.mutator import overlay_axes
 from holodeck.optimizer.output import write_outputs
 from holodeck.optimizer.proposers.numeric import NumericProposer
 from holodeck.optimizer.proposers.textual import TextualProposer, load_critic_applier
@@ -154,7 +155,7 @@ def optimize(
     try:
         from holodeck.config.loader import load_agent_with_config
 
-        agent, _resolved, _loader = load_agent_with_config(agent_config)
+        agent, _resolved, loader = load_agent_with_config(agent_config)
 
         if agent.evaluations is None or agent.evaluations.optimizer is None:
             raise OptimizerError(
@@ -221,6 +222,22 @@ def optimize(
             progress_callback=on_trial,
         )
         result: OptimizationResult = asyncio.run(loop.run())
+
+        # Rebuild best.yaml on the unsubstituted source so ${VAR} secret
+        # placeholders survive instead of leaking env-resolved credentials.
+        # Only the tuned axes are carried over from the resolved best agent.
+        try:
+            template = loader.load_agent_yaml(agent_config, substitute_env=False)
+            axis_paths = [a.path for a in config.axes.numeric] + [
+                a.path for a in config.axes.textual
+            ]
+            result.best_agent = overlay_axes(template, result.best_agent, axis_paths)
+        except Exception:  # noqa: BLE001 — never regress; fall back with a warning.
+            logger.warning(
+                "Could not rebuild best.yaml from the unsubstituted config; it may "
+                "contain resolved secrets — review before sharing.",
+                exc_info=True,
+            )
 
         run_dir = write_outputs(result, Path(output_dir))
 

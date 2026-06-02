@@ -6,7 +6,12 @@ from holodeck.lib.errors import OptimizerError
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.tool import VectorstoreTool
-from holodeck.optimizer.mutator import apply_axes, apply_textual_edit, get_path
+from holodeck.optimizer.mutator import (
+    apply_axes,
+    apply_textual_edit,
+    get_path,
+    overlay_axes,
+)
 
 
 def _agent() -> Agent:
@@ -95,3 +100,37 @@ class TestGetPath:
     def test_unknown_path_raises(self) -> None:
         with pytest.raises(OptimizerError):
             get_path(_agent(), "instructions.bogus")
+
+
+class TestOverlayAxes:
+    """overlay_axes copies only axis values, preserving other (templated) fields."""
+
+    def test_overlays_axes_and_preserves_other_fields(self) -> None:
+        # `template` mimics the unsubstituted source: a ${VAR} placeholder survives.
+        template = Agent(
+            name="opt-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI, name="${MODEL_NAME}", temperature=0.1
+            ),
+            instructions=Instructions(inline="original prompt"),
+        )
+        # `source` mimics the env-resolved, optimized agent.
+        source = Agent(
+            name="opt-agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI, name="gpt-4o-mini", temperature=0.9
+            ),
+            instructions=Instructions(inline="TUNED PROMPT"),
+        )
+
+        result = overlay_axes(
+            template, source, ["instructions.inline", "model.temperature"]
+        )
+
+        # Axis values come from the optimized source...
+        assert result.instructions.inline == "TUNED PROMPT"
+        assert result.model.temperature == 0.9
+        # ...but the non-axis templated field is preserved (no secret leak).
+        assert result.model.name == "${MODEL_NAME}"
+        # The template itself is never mutated.
+        assert template.instructions.inline == "original prompt"

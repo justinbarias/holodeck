@@ -116,6 +116,29 @@ def apply_axes(agent: Agent, params: dict[str, Any]) -> Agent:
     return candidate
 
 
+def overlay_axes(template: Agent, source: Agent, axis_paths: list[str]) -> Agent:
+    """Return ``template`` with each axis path's value copied from ``source``.
+
+    Used to rebuild the optimized agent on top of the original *unsubstituted*
+    config so ``${VAR}`` secret placeholders survive into ``best.yaml``: only the
+    optimizer's tuned axes are taken from the env-resolved ``source``; every other
+    field — including templated credentials — stays as it is in ``template``.
+
+    Args:
+        template: The unsubstituted source agent (``${VAR}`` intact); not modified.
+        source: The env-resolved, optimized agent to read axis values from.
+        axis_paths: Axis paths to copy from ``source`` onto ``template``.
+
+    Returns:
+        A deep copy of ``template`` with the axis values overlaid.
+
+    Raises:
+        OptimizerError: If any axis path cannot be resolved on either agent.
+    """
+    values = {path: get_path(source, path) for path in axis_paths}
+    return apply_axes(template, values)
+
+
 def apply_textual_edit(agent: Agent, axis: str, new_text: str) -> Agent:
     """Return a new Agent with a single instruction axis rewritten.
 

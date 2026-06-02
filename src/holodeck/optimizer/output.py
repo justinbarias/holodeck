@@ -18,10 +18,27 @@ import yaml
 from holodeck.optimizer.models import OptimizationResult, TrialRecord
 
 
+class _BlockDumper(yaml.SafeDumper):
+    """SafeDumper that renders multi-line strings as literal block scalars."""
+
+
+def _represent_str(dumper: yaml.SafeDumper, data: str) -> yaml.ScalarNode:
+    """Emit multi-line strings as ``|`` blocks instead of escaped scalars.
+
+    Keeps a rewritten instruction prompt readable (and diffable) in
+    ``best.yaml`` rather than collapsing it into a ``\\n``-laden one-liner.
+    """
+    style = "|" if "\n" in data else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=style)
+
+
+_BlockDumper.add_representer(str, _represent_str)
+
+
 def _agent_to_yaml(result: OptimizationResult) -> str:
     """Serialize the best candidate agent to YAML, dropping unset fields."""
     data = result.best_agent.model_dump(mode="json", exclude_none=True)
-    return yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+    return yaml.dump(data, Dumper=_BlockDumper, sort_keys=False, allow_unicode=True)
 
 
 def _trials_to_jsonl(trials: list[TrialRecord]) -> str:

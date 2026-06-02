@@ -3,6 +3,7 @@
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 from holodeck.models.test_result import ReportSummary, TestReport, TestResult
@@ -159,3 +160,45 @@ class TestRun:
         assert (run_dirs[0] / "best.yaml").exists()
         assert (run_dirs[0] / "trials.jsonl").exists()
         assert (run_dirs[0] / "report.md").exists()
+
+    def test_best_yaml_keeps_secrets_templated(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A ${VAR} secret in deployment.environment must NOT be resolved into
+        # best.yaml — the source placeholder has to survive serialization.
+        monkeypatch.setenv("MY_SECRET", "super-secret-token-value")
+        agent_yaml = _agent_yaml(with_test_cases=True) + """
+deployment:
+  runtime: container
+  registry:
+    url: ghcr.io
+    repository: org/opt-agent
+  target:
+    provider: azure
+    azure:
+      subscription_id: 00000000-0000-0000-0000-000000000000
+      resource_group: rg-test
+  environment:
+    MY_SECRET: ${MY_SECRET}
+"""
+        agent_path = tmp_path / "agent.yaml"
+        agent_path.write_text(agent_yaml)
+        out_dir = tmp_path / "results"
+
+        async def fake_score(agent, path, weights, backend=None):
+            return 0.3, _report()
+
+        runner = CliRunner()
+        with patch(
+            "holodeck.cli.commands.optimize.score",
+            new=AsyncMock(side_effect=fake_score),
+        ):
+            result = runner.invoke(
+                _import_cli(),
+                ["test", "optimize", str(agent_path), "--output-dir", str(out_dir)],
+            )
+
+        assert result.exit_code == 0, result.output
+        best_yaml = (list(out_dir.iterdir())[0] / "best.yaml").read_text()
+        assert "super-secret-token-value" not in best_yaml
+        assert "${MY_SECRET}" in best_yaml

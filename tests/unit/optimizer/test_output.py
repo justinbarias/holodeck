@@ -82,6 +82,21 @@ class TestWriteOutputs:
         assert rows[0]["accepted"] is True
         assert rows[1]["phase"] == "textual"
 
+    def test_multiline_instructions_use_block_scalar(self, tmp_path: Path) -> None:
+        prompt = "# Role\n\nYou are helpful.\n\n- Be concise.\n- Do not invent.\n"
+        result = _result()
+        result.best_agent.instructions.inline = prompt
+
+        run_dir = write_outputs(result, tmp_path)
+        text = (run_dir / "best.yaml").read_text()
+
+        # Rendered as a literal block scalar, not an escaped double-quoted blob.
+        assert "inline: |" in text
+        assert "\\n" not in text
+        # And it still round-trips to the exact same text.
+        reloaded = Agent.model_validate(yaml.safe_load(text))
+        assert reloaded.instructions.inline == prompt
+
     def test_report_mentions_losses(self, tmp_path: Path) -> None:
         run_dir = write_outputs(_result(), tmp_path)
 
