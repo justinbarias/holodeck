@@ -14,6 +14,11 @@ instructions:
     agent's current system instructions and a sample of failing test cases
     (inputs, the agent's responses, and per-metric scores).
 
+    The instructions may be the result of a previous refinement step. When a
+    step number, a prior loss, and a history of recent attempts are provided,
+    treat them as the gradient signal: build on what was already tried, avoid
+    repeating edits that did not lower the loss, and propose the next change.
+
     Diagnose the single most impactful weakness in the instructions that, if
     fixed, would most improve the failing cases. Be specific and actionable;
     do not rewrite the instructions yourself.

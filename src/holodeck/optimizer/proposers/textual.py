@@ -35,6 +35,9 @@ InvokerFn = Callable[[Agent, str], Awaitable[ExecutionResult]]
 _MAX_FAILING_CASES = 5
 _MAX_RESPONSE_CHARS = 600
 
+# Cap how many prior attempts are shown to the Critic as gradient history.
+_MAX_HISTORY = 3
+
 
 def load_critic_applier(model: LLMProvider) -> tuple[Agent, Agent]:
     """Load the Critic/Applier subagent templates with ``model`` injected.
@@ -150,26 +153,82 @@ class TextualProposer:
         self._index = 0
         self._best_agent: Agent | None = None
         self._best_report: TestReport | None = None
+        # Momentum state for single-axis iterative refinement: the chain follows
+        # the *last attempt* (TextGrad's in-place step), not a frozen best.
+        self._last_text: str | None = None
+        self._last_loss: float | None = None
+        self._last_report: TestReport | None = None
+        self._history: list[tuple[str | None, float, bool]] = []
 
     def begin(self, best_agent: Agent, best_report: TestReport | None) -> None:
         """Re-initialize for a new textual phase against the current best."""
         self._best_agent = best_agent
         self._best_report = best_report
         self._index = 0
+        self._last_text = None
+        self._last_loss = None
+        self._last_report = None
+        self._history = []
+        if len(self._axes) > 1:
+            logger.info(
+                "Textual phase declares %d axes; iterative refinement supports a "
+                "single axis. Falling back to one rewrite per axis.",
+                len(self._axes),
+            )
 
     async def ask(self) -> Proposal | None:
-        """Propose the next instruction rewrite, or None when axes are consumed."""
-        if self._index >= len(self._axes) or self._best_agent is None:
+        """Propose the next instruction rewrite.
+
+        Single axis: refine iteratively, chaining from the last attempt; the
+        loop's ``max_trials``/``patience`` budget (not the proposer) bounds the
+        phase. Multiple axes: fall back to one rewrite per axis, then exhausted.
+        """
+        if self._best_agent is None or not self._axes:
+            return None
+        if len(self._axes) > 1:
+            return await self._ask_single_pass()
+        return await self._ask_iterative(self._axes[0])
+
+    async def _ask_single_pass(self) -> Proposal | None:
+        """Multi-axis fallback: rewrite each axis once from the current best."""
+        if self._index >= len(self._axes):
             return None
         axis = self._axes[self._index]
         self._index += 1
+        return await self._propose(
+            axis, source_text=None, context_report=self._best_report
+        )
 
+    async def _ask_iterative(self, axis: TextualAxis) -> Proposal | None:
+        """Single-axis refinement: chain from the last attempt (momentum)."""
+        if self._last_text is not None:
+            return await self._propose(
+                axis, source_text=self._last_text, context_report=self._last_report
+            )
+        return await self._propose(
+            axis, source_text=None, context_report=self._best_report
+        )
+
+    async def _propose(
+        self,
+        axis: TextualAxis,
+        source_text: str | None,
+        context_report: TestReport | None,
+    ) -> Proposal:
+        """Run one Critic→Applier step against ``source_text``.
+
+        ``source_text`` is the momentum source (the last attempt's text); when
+        ``None`` it is resolved from the current best agent. Unparseable subagent
+        output yields an errored proposal (a skipped trial), never a crash.
+        ``ask`` guarantees ``self._best_agent`` is set before this is reached.
+        """
         try:
-            current_text = str(get_path(self._best_agent, axis.path))
-            context = build_failing_context(self._best_report)
-            gradient = await self._critique(current_text, context)
+            if source_text is None:
+                source_text = str(get_path(self._best_agent, axis.path))
+            context = build_failing_context(context_report)
+            gradient = await self._critique(source_text, context)
             new_text, summary = await self._apply_edit(
-                current_text, gradient, axis.max_chars
+                source_text, gradient, axis.max_chars
             )
         except (ValueError, KeyError, json.JSONDecodeError) as exc:
             logger.warning("Textual proposal for '%s' failed: %s", axis.path, exc)
@@ -180,16 +239,41 @@ class TextualProposer:
         return Proposal(textual_axis=axis.path, new_text=new_text, edit_summary=summary)
 
     async def _critique(self, current_text: str, context: str) -> str:
-        """Ask the Critic for a natural-language gradient."""
-        prompt = (
-            "Current agent instructions:\n"
-            f"{current_text}\n\n"
-            "Failing test cases:\n"
-            f"{context or '(none provided)'}\n\n"
+        """Ask the Critic for a natural-language gradient.
+
+        On a refinement step the prompt also carries the prior attempt's loss and
+        a bounded history of recent edits — the natural-language gradient — so the
+        Critic can build on what was already tried. Only instruction text,
+        failing-case context, losses, and edit summaries are included; never
+        credentials.
+        """
+        step = len(self._history) + 1
+        parts = [
+            f"Current agent instructions (refinement step {step}):",
+            current_text,
+            "",
+            "Failing test cases:",
+            context or "(none provided)",
+            "",
+        ]
+        if self._last_loss is not None:
+            parts.append(
+                f"Your previous rewrite scored a loss of {self._last_loss:.3f} "
+                "(lower is better)."
+            )
+        if self._history:
+            parts.append("Recent attempts (most recent last):")
+            for summary, loss, accepted in self._history:
+                status = "accepted" if accepted else "rejected"
+                parts.append(
+                    f"- {summary or '(no summary)'} → loss {loss:.3f} ({status})"
+                )
+            parts.append("")
+        parts.append(
             "Return JSON with a 'gradient' field describing the single most "
-            "impactful improvement to the instructions."
+            "impactful next improvement to the instructions."
         )
-        result = await self._invoke(self._critic, prompt)
+        result = await self._invoke(self._critic, "\n".join(parts))
         data = _parse_json_result(result)
         gradient = data.get("gradient")
         if not isinstance(gradient, str) or not gradient.strip():
@@ -224,4 +308,18 @@ class TextualProposer:
         accepted: bool,
         report: TestReport | None = None,
     ) -> None:
-        """No-op: the Critic/Applier are stateless across trials."""
+        """Advance the momentum chain with the scored attempt.
+
+        The next refinement chains from this attempt's text (whether or not it
+        was accepted — in-place TextGrad step); the loop's accept gate, not the
+        proposer, decides what becomes ``best_agent``. An errored proposal was
+        never scored, so it does not advance the chain.
+        """
+        if proposal.new_text is None:
+            return
+        self._last_text = proposal.new_text
+        self._last_loss = loss
+        self._last_report = report
+        self._history.append((proposal.edit_summary, loss, accepted))
+        if len(self._history) > _MAX_HISTORY:
+            self._history = self._history[-_MAX_HISTORY:]
