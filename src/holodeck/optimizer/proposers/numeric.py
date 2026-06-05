@@ -64,8 +64,18 @@ class NumericProposer:
         self._pending = trial
         return Proposal(params=params)
 
-    def tell(self, proposal: Proposal, loss: float, accepted: bool) -> None:
-        """Report the candidate's loss back to the study (minimization)."""
+    def tell(
+        self,
+        proposal: Proposal,
+        loss: float,
+        accepted: bool,
+        report: TestReport | None = None,
+    ) -> None:
+        """Report the candidate's loss back to the study (minimization).
+
+        ``report`` is part of the shared proposer contract but unused here — a
+        textual edit, not a per-case report, drives the next numeric suggestion.
+        """
         if self._study is not None and self._pending is not None:
             self._study.tell(self._pending, loss)
             self._pending = None

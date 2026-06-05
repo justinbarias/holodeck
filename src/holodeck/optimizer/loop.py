@@ -154,7 +154,7 @@ class OptimizerLoop:
                     edit_summary=proposal.edit_summary,
                 )
             )
-            proposer.tell(proposal, loss, accepted)
+            proposer.tell(proposal, loss, accepted, report)
 
             if accepted:
                 self.best_agent = candidate

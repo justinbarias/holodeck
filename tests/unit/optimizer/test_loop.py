@@ -72,7 +72,13 @@ class StubNumericProposer:
         self._index += 1
         return Proposal(params=params)
 
-    def tell(self, proposal: Proposal, score: float, accepted: bool) -> None:
+    def tell(
+        self,
+        proposal: Proposal,
+        score: float,
+        accepted: bool,
+        report: TestReport | None = None,
+    ) -> None:
         pass
 
 
@@ -241,7 +247,13 @@ class StubSkippingProposer:
         self._remaining -= 1
         return Proposal(textual_axis="instructions.inline", error="bad JSON")
 
-    def tell(self, proposal: Proposal, score: float, accepted: bool) -> None:
+    def tell(
+        self,
+        proposal: Proposal,
+        score: float,
+        accepted: bool,
+        report: TestReport | None = None,
+    ) -> None:
         pass
 
 
@@ -265,6 +277,86 @@ class TestSkippedProposals:
         assert result.accepted_count == 0
         # Original agent never mutated.
         assert result.best_agent.instructions.inline == "You are helpful."
+
+
+class RecordingNumericProposer(StubNumericProposer):
+    """Captures every ``tell`` call, including the scored report."""
+
+    def __init__(self, param_dicts: list[dict]) -> None:
+        super().__init__(param_dicts)
+        self.told: list[tuple[float, bool, TestReport | None]] = []
+
+    def tell(
+        self,
+        proposal: Proposal,
+        score: float,
+        accepted: bool,
+        report: TestReport | None = None,
+    ) -> None:
+        self.told.append((score, accepted, report))
+
+
+class RecordingSkippingProposer(StubSkippingProposer):
+    """Captures every ``tell`` call for errored (skipped) proposals."""
+
+    def __init__(self, n: int) -> None:
+        super().__init__(n)
+        self.told: list[tuple[float, bool, TestReport | None]] = []
+
+    def tell(
+        self,
+        proposal: Proposal,
+        score: float,
+        accepted: bool,
+        report: TestReport | None = None,
+    ) -> None:
+        self.told.append((score, accepted, report))
+
+
+class TestTellReceivesReport:
+    """The loop threads the candidate's scored report into ``tell``."""
+
+    @pytest.mark.asyncio
+    async def test_scored_trial_passes_candidate_report(self) -> None:
+        # Distinct report objects per scorer call: [0]=baseline, [1]=candidate.
+        reports = [_dummy_report(), _dummy_report()]
+        calls = {"n": 0}
+
+        async def scorer(agent: Agent) -> tuple[float, TestReport]:
+            report = reports[calls["n"]]
+            calls["n"] += 1
+            return 0.40, report
+
+        proposer = RecordingNumericProposer([{"model.temperature": 0.5}])
+        loop = OptimizerLoop(
+            original_agent=_agent(0.3),
+            scorer=scorer,
+            config=_config(max_cycles=1),
+            numeric_proposer=proposer,
+        )
+
+        await loop.run()
+
+        assert proposer.told, "tell was never called"
+        # The candidate's own report (2nd scorer call) is threaded in — not the
+        # baseline report, and not None.
+        assert proposer.told[-1][2] is reports[1]
+
+    @pytest.mark.asyncio
+    async def test_skipped_trial_passes_none_report(self) -> None:
+        proposer = RecordingSkippingProposer(1)
+        loop = OptimizerLoop(
+            original_agent=_agent(0.3),
+            scorer=_temp_scorer({0.3: 0.40}),
+            config=_config(max_cycles=1),
+            textual_proposer=proposer,
+        )
+
+        await loop.run()
+
+        assert proposer.told, "tell was never called"
+        # An errored proposal is never scored, so there is no report to pass.
+        assert proposer.told[-1][2] is None
 
 
 class TestProgressCallback:

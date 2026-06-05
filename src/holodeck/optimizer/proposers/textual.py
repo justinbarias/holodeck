@@ -217,5 +217,11 @@ class TextualProposer:
         summary = data.get("summary")
         return new_text[:max_chars], summary if isinstance(summary, str) else None
 
-    def tell(self, proposal: Proposal, loss: float, accepted: bool) -> None:
+    def tell(
+        self,
+        proposal: Proposal,
+        loss: float,
+        accepted: bool,
+        report: TestReport | None = None,
+    ) -> None:
         """No-op: the Critic/Applier are stateless across trials."""

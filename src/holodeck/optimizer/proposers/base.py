@@ -49,6 +49,22 @@ class Proposer(Protocol):
         """Return the next proposal, or ``None`` when the phase is exhausted."""
         ...
 
-    def tell(self, proposal: Proposal, loss: float, accepted: bool) -> None:
-        """Report the scored loss of a proposal back to the proposer."""
+    def tell(
+        self,
+        proposal: Proposal,
+        loss: float,
+        accepted: bool,
+        report: TestReport | None = None,
+    ) -> None:
+        """Report the scored outcome of a proposal back to the proposer.
+
+        Args:
+            proposal: The proposal that was just scored.
+            loss: Its scalarized loss (lower is better).
+            accepted: Whether the loop accepted it as the new best.
+            report: The candidate's own ``TestReport`` from the scorer, or
+                ``None`` for a skipped (errored, never-scored) trial. Proposers
+                that iterate on feedback use it to build the next gradient;
+                proposers that don't (e.g. numeric) ignore it.
+        """
         ...
