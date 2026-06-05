@@ -1156,6 +1156,17 @@ evaluations:
 fields. Numeric axes accept `float`/`int` (a `[low, high]` range) or
 `categorical` (a list of choices).
 
+**Phase budgets.** `numeric_phase.{max_trials,patience}` cap the Optuna trials
+in a numeric phase. For the textual phase the budget drives *iterative
+refinement*: with a **single** textual axis, `textual_phase.max_trials` is the
+number of successive Critic→Applier refinement steps taken on that axis (each
+step builds on the previous attempt and the failing cases it produced), and
+`patience` stops the phase after that many consecutive non-improving steps. A
+drifting chain never regresses the result — only an accepted, loss-improving
+step advances the best agent. With **more than one** textual axis the proposer
+falls back to a single rewrite per axis (iterative multi-axis ordering is not
+yet supported).
+
 ### Running
 
 ```bash

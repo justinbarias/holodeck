@@ -1,7 +1,10 @@
 """Unit tests for OptimizerLoop coordinate-descent semantics (T4)."""
 
+import json
+
 import pytest
 
+from holodeck.lib.backends.base import ExecutionResult
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.test_result import ReportSummary, TestReport, TestResult
@@ -10,9 +13,11 @@ from holodeck.optimizer.config import (
     NumericAxis,
     OptimizerConfig,
     PhaseConfig,
+    TextualAxis,
 )
 from holodeck.optimizer.loop import OptimizerLoop
 from holodeck.optimizer.proposers.base import Proposal
+from holodeck.optimizer.proposers.textual import TextualProposer
 
 
 def _agent(temperature: float = 0.3) -> Agent:
@@ -357,6 +362,136 @@ class TestTellReceivesReport:
         assert proposer.told, "tell was never called"
         # An errored proposal is never scored, so there is no report to pass.
         assert proposer.told[-1][2] is None
+
+
+def _subagent(name: str) -> Agent:
+    return Agent(
+        name=name,
+        model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o-mini"),
+        instructions=Instructions(inline="subagent prompt"),
+    )
+
+
+def _textual_config(
+    *, max_trials: int = 5, patience: int = 3, min_delta: float = 0.01
+) -> OptimizerConfig:
+    """A textual-only optimizer config (single instruction axis)."""
+    return OptimizerConfig(
+        loss={"groundedness": 1.0},
+        axes=AxesConfig(textual=[TextualAxis(path="instructions.inline")]),
+        min_delta=min_delta,
+        max_cycles=1,
+        numeric_phase=PhaseConfig(max_trials=1, patience=1),
+        textual_phase=PhaseConfig(max_trials=max_trials, patience=patience),
+    )
+
+
+class _CountingInvoker:
+    """Applier emits a fresh ``rewrite-N`` each call; Critic is constant."""
+
+    def __init__(self) -> None:
+        self.n = 0
+
+    async def __call__(self, agent: Agent, prompt: str) -> ExecutionResult:
+        if "critic" in agent.name:
+            return ExecutionResult(response='{"gradient": "improve"}')
+        self.n += 1
+        return ExecutionResult(
+            response=json.dumps(
+                {"new_text": f"rewrite-{self.n}", "summary": f"s{self.n}"}
+            )
+        )
+
+
+class _FlatInvoker:
+    """Applier always emits the same text — every attempt scores identically."""
+
+    async def __call__(self, agent: Agent, prompt: str) -> ExecutionResult:
+        if "critic" in agent.name:
+            return ExecutionResult(response='{"gradient": "x"}')
+        return ExecutionResult(response='{"new_text": "flat-rewrite", "summary": "s"}')
+
+
+def _instruction_scorer():
+    """Map ``rewrite-N`` instruction text to a monotonically lower loss."""
+
+    async def scorer(agent: Agent) -> tuple[float, TestReport]:
+        text = agent.instructions.inline or ""
+        if text.startswith("rewrite-"):
+            n = int(text.split("-")[1])
+            loss = max(0.0, 0.65 - 0.10 * n)
+        elif text == "flat-rewrite":
+            loss = 0.70  # always worse than the 0.65 baseline → never accepted
+        else:
+            loss = 0.65  # baseline ("You are helpful.")
+        return loss, _dummy_report()
+
+    return scorer
+
+
+class TestIterativeTextualPhase:
+    """The real TextualProposer iterates a single axis through the loop."""
+
+    def _proposer(self, invoker) -> TextualProposer:
+        return TextualProposer(
+            axes=[TextualAxis(path="instructions.inline")],
+            critic_agent=_subagent("optimizer-critic"),
+            applier_agent=_subagent("optimizer-applier"),
+            invoker=invoker,
+        )
+
+    @pytest.mark.asyncio
+    async def test_phase_runs_multiple_refinement_steps(self) -> None:
+        # A monotonic gradient: each rewrite undercuts the last → all accepted,
+        # the phase runs the full max_trials, and best_agent compounds.
+        loop = OptimizerLoop(
+            original_agent=_agent(),
+            scorer=_instruction_scorer(),
+            config=_textual_config(max_trials=5, patience=5),
+            textual_proposer=self._proposer(_CountingInvoker()),
+        )
+
+        result = await loop.run()
+
+        textual_trials = [t for t in result.trials if t.phase == "textual"]
+        assert len(textual_trials) == 5  # max_trials bound the phase, not ask()
+        assert all(t.accepted for t in textual_trials)
+        assert result.best_agent.instructions.inline == "rewrite-5"
+        assert result.best_loss == pytest.approx(0.15)
+
+    @pytest.mark.asyncio
+    async def test_patience_halts_a_flat_chain(self) -> None:
+        loop = OptimizerLoop(
+            original_agent=_agent(),
+            scorer=_instruction_scorer(),
+            config=_textual_config(max_trials=10, patience=3),
+            textual_proposer=self._proposer(_FlatInvoker()),
+        )
+
+        result = await loop.run()
+
+        textual_trials = [t for t in result.trials if t.phase == "textual"]
+        # Three consecutive non-accepts trip patience well before max_trials.
+        assert len(textual_trials) == 3
+        assert result.accepted_count == 0
+        # best_agent never regressed — the original instruction is retained.
+        assert result.best_agent.instructions.inline == "You are helpful."
+        assert result.best_loss == pytest.approx(0.65)
+
+    @pytest.mark.asyncio
+    async def test_best_never_regresses_below_single_step(self) -> None:
+        # The iterative result must be no worse than the first (single) step.
+        loop = OptimizerLoop(
+            original_agent=_agent(),
+            scorer=_instruction_scorer(),
+            config=_textual_config(max_trials=5, patience=5),
+            textual_proposer=self._proposer(_CountingInvoker()),
+        )
+
+        result = await loop.run()
+
+        first_textual = next(t for t in result.trials if t.phase == "textual")
+        assert result.best_loss <= first_textual.loss
 
 
 class TestProgressCallback:

@@ -2550,7 +2550,7 @@
     },
     "OptimizerConfig": {
       "additionalProperties": false,
-      "description": "Typed view of the ``evaluations.optimizer`` block.\n\nAttributes:\n    loss: Per-metric weights for the scalarized objective (non-empty,\n        strictly positive).\n    axes: Declared numeric and textual axes.\n    max_cycles: Maximum numeric\u2192textual cycles before stopping.\n    numeric_phase: Numeric-phase budget.\n    textual_phase: Textual-phase budget.\n    min_delta: Minimum raw score improvement required to accept a candidate.\n    seed: Seed for the numeric proposer's study (config-reproducibility).",
+      "description": "Typed view of the ``evaluations.optimizer`` block.\n\nAttributes:\n    loss: Per-metric weights for the scalarized objective (non-empty,\n        strictly positive).\n    axes: Declared numeric and textual axes.\n    max_cycles: Maximum numeric\u2192textual cycles before stopping.\n    numeric_phase: Numeric-phase budget (Optuna trials per phase).\n    textual_phase: Textual-phase budget. With a single textual axis these\n        bound *iterative refinement* \u2014 ``max_trials`` caps the number of\n        refinement steps on that axis and ``patience`` stops after that many\n        consecutive non-improving steps. With multiple axes the proposer\n        falls back to one rewrite per axis.\n    min_delta: Minimum raw loss reduction required to accept a candidate.\n    seed: Seed for the numeric proposer's study (config-reproducibility).",
       "properties": {
         "loss": {
           "additionalProperties": {
@@ -2572,14 +2572,16 @@
           "type": "integer"
         },
         "numeric_phase": {
-          "$ref": "#/$defs/PhaseConfig"
+          "$ref": "#/$defs/PhaseConfig",
+          "description": "Numeric-phase budget: caps Optuna trials per phase."
         },
         "textual_phase": {
-          "$ref": "#/$defs/PhaseConfig"
+          "$ref": "#/$defs/PhaseConfig",
+          "description": "Textual-phase budget. With a single textual axis, max_trials caps iterative refinement steps on that axis and patience stops it after that many consecutive non-improving steps; with multiple axes the proposer falls back to one rewrite per axis."
         },
         "min_delta": {
           "default": 0.01,
-          "description": "Minimum raw score improvement required to accept.",
+          "description": "Minimum raw loss reduction required to accept.",
           "minimum": 0.0,
           "title": "Min Delta",
           "type": "number"

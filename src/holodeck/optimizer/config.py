@@ -128,8 +128,12 @@ class OptimizerConfig(BaseModel):
             strictly positive).
         axes: Declared numeric and textual axes.
         max_cycles: Maximum numeric→textual cycles before stopping.
-        numeric_phase: Numeric-phase budget.
-        textual_phase: Textual-phase budget.
+        numeric_phase: Numeric-phase budget (Optuna trials per phase).
+        textual_phase: Textual-phase budget. With a single textual axis these
+            bound *iterative refinement* — ``max_trials`` caps the number of
+            refinement steps on that axis and ``patience`` stops after that many
+            consecutive non-improving steps. With multiple axes the proposer
+            falls back to one rewrite per axis.
         min_delta: Minimum raw loss reduction required to accept a candidate.
         seed: Seed for the numeric proposer's study (config-reproducibility).
     """
@@ -145,8 +149,19 @@ class OptimizerConfig(BaseModel):
     max_cycles: int = Field(
         default=3, gt=0, description="Maximum numeric→textual cycles."
     )
-    numeric_phase: PhaseConfig = Field(default_factory=_default_numeric_phase)
-    textual_phase: PhaseConfig = Field(default_factory=_default_textual_phase)
+    numeric_phase: PhaseConfig = Field(
+        default_factory=_default_numeric_phase,
+        description="Numeric-phase budget: caps Optuna trials per phase.",
+    )
+    textual_phase: PhaseConfig = Field(
+        default_factory=_default_textual_phase,
+        description=(
+            "Textual-phase budget. With a single textual axis, max_trials caps "
+            "iterative refinement steps on that axis and patience stops it after "
+            "that many consecutive non-improving steps; with multiple axes the "
+            "proposer falls back to one rewrite per axis."
+        ),
+    )
     min_delta: float = Field(
         default=0.01,
         ge=0.0,
