@@ -76,6 +76,30 @@
       "title": "AuthProvider",
       "type": "string"
     },
+    "AxesConfig": {
+      "additionalProperties": false,
+      "description": "Declared numeric and textual axes for the optimizer.",
+      "properties": {
+        "numeric": {
+          "description": "Numeric axes tuned by the numeric phase.",
+          "items": {
+            "$ref": "#/$defs/NumericAxis"
+          },
+          "title": "Numeric",
+          "type": "array"
+        },
+        "textual": {
+          "description": "Textual axes rewritten by the textual phase.",
+          "items": {
+            "$ref": "#/$defs/TextualAxis"
+          },
+          "title": "Textual",
+          "type": "array"
+        }
+      },
+      "title": "AxesConfig",
+      "type": "object"
+    },
     "AzureContainerAppsConfig": {
       "additionalProperties": false,
       "description": "Azure Container Apps deployment configuration.\n\nAttributes:\n    subscription_id: Azure subscription ID (UUID)\n    resource_group: Azure resource group name\n    environment_name: Container Apps environment name\n    location: Azure region for deployment\n    cpu: vCPU allocation\n    memory: Memory allocation (e.g., 2Gi)\n    ingress_external: Whether ingress is external\n    min_replicas: Minimum replicas\n    max_replicas: Maximum replicas",
@@ -790,6 +814,18 @@
           },
           "title": "Metrics",
           "type": "array"
+        },
+        "optimizer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OptimizerConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional `holodeck test optimize` configuration declaring the scalarized loss weights and the numeric/textual axes to tune."
         }
       },
       "required": [
@@ -2359,6 +2395,40 @@
       "title": "MetricsConfig",
       "type": "object"
     },
+    "NumericAxis": {
+      "additionalProperties": false,
+      "description": "A query-time numeric axis the optimizer may tune.\n\nAttributes:\n    path: Axis path (e.g. ``model.temperature`` or ``tools[name=kb].top_k``).\n    type: ``float``/``int`` (bounded range) or ``categorical`` (choices).\n    range: ``[low, high]`` for float/int; the choices list for categorical.",
+      "properties": {
+        "path": {
+          "description": "Axis path into the agent config.",
+          "title": "Path",
+          "type": "string"
+        },
+        "type": {
+          "description": "Suggestion strategy for this axis.",
+          "enum": [
+            "float",
+            "int",
+            "categorical"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "range": {
+          "description": "[low, high] for float/int; the choices list for categorical.",
+          "items": {},
+          "title": "Range",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "type",
+        "range"
+      ],
+      "title": "NumericAxis",
+      "type": "object"
+    },
     "OTLPExporterConfig": {
       "additionalProperties": false,
       "description": "OTLP exporter configuration.\n\nConfigures export to OTLP collectors (Jaeger, Honeycomb, Datadog, etc.)\nvia gRPC or HTTP protocol.",
@@ -2478,6 +2548,57 @@
       "title": "ObservabilityConfig",
       "type": "object"
     },
+    "OptimizerConfig": {
+      "additionalProperties": false,
+      "description": "Typed view of the ``evaluations.optimizer`` block.\n\nAttributes:\n    loss: Per-metric weights for the scalarized objective (non-empty,\n        strictly positive).\n    axes: Declared numeric and textual axes.\n    max_cycles: Maximum numeric\u2192textual cycles before stopping.\n    numeric_phase: Numeric-phase budget (Optuna trials per phase).\n    textual_phase: Textual-phase budget. With a single textual axis these\n        bound *iterative refinement* \u2014 ``max_trials`` caps the number of\n        refinement steps on that axis and ``patience`` stops after that many\n        consecutive non-improving steps. With multiple axes the proposer\n        falls back to one rewrite per axis.\n    min_delta: Minimum raw loss reduction required to accept a candidate.\n    seed: Seed for the numeric proposer's study (config-reproducibility).",
+      "properties": {
+        "loss": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "Per-metric weights for the scalarized objective.",
+          "title": "Loss",
+          "type": "object"
+        },
+        "axes": {
+          "$ref": "#/$defs/AxesConfig",
+          "description": "Declared optimizer axes."
+        },
+        "max_cycles": {
+          "default": 3,
+          "description": "Maximum numeric\u2192textual cycles.",
+          "exclusiveMinimum": 0,
+          "title": "Max Cycles",
+          "type": "integer"
+        },
+        "numeric_phase": {
+          "$ref": "#/$defs/PhaseConfig",
+          "description": "Numeric-phase budget: caps Optuna trials per phase."
+        },
+        "textual_phase": {
+          "$ref": "#/$defs/PhaseConfig",
+          "description": "Textual-phase budget. With a single textual axis, max_trials caps iterative refinement steps on that axis and patience stops it after that many consecutive non-improving steps; with multiple axes the proposer falls back to one rewrite per axis."
+        },
+        "min_delta": {
+          "default": 0.01,
+          "description": "Minimum raw loss reduction required to accept.",
+          "minimum": 0.0,
+          "title": "Min Delta",
+          "type": "number"
+        },
+        "seed": {
+          "default": 42,
+          "description": "Seed for the numeric study.",
+          "title": "Seed",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "loss"
+      ],
+      "title": "OptimizerConfig",
+      "type": "object"
+    },
     "PermissionMode": {
       "description": "Level of autonomous action for Claude Agent SDK.",
       "enum": [
@@ -2487,6 +2608,30 @@
       ],
       "title": "PermissionMode",
       "type": "string"
+    },
+    "PhaseConfig": {
+      "additionalProperties": false,
+      "description": "Per-phase budget controls.\n\nAttributes:\n    max_trials: Hard cap on trials within a single phase.\n    patience: Stop the phase after this many consecutive non-accepts.",
+      "properties": {
+        "max_trials": {
+          "description": "Hard cap on trials per phase.",
+          "exclusiveMinimum": 0,
+          "title": "Max Trials",
+          "type": "integer"
+        },
+        "patience": {
+          "description": "Consecutive non-accepts before the phase stops.",
+          "exclusiveMinimum": 0,
+          "title": "Patience",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_trials",
+        "patience"
+      ],
+      "title": "PhaseConfig",
+      "type": "object"
     },
     "PrometheusExporterConfig": {
       "additionalProperties": false,
@@ -3005,6 +3150,29 @@
         }
       },
       "title": "TestCaseModel",
+      "type": "object"
+    },
+    "TextualAxis": {
+      "additionalProperties": false,
+      "description": "A textual axis (an instruction field) the optimizer may rewrite.\n\nAttributes:\n    path: Path to the instruction text (e.g. ``instructions.inline``).\n    max_chars: Upper bound on the rewritten text length.",
+      "properties": {
+        "path": {
+          "description": "Path to the instruction text to rewrite.",
+          "title": "Path",
+          "type": "string"
+        },
+        "max_chars": {
+          "default": 8000,
+          "description": "Maximum length of the rewritten text.",
+          "exclusiveMinimum": 0,
+          "title": "Max Chars",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "TextualAxis",
       "type": "object"
     },
     "ToolFilterConfig": {
@@ -3691,6 +3859,19 @@
       ],
       "default": null,
       "description": "Claude Agent SDK-specific settings. Applicable only when model.provider: anthropic."
+    },
+    "test_cases_file": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Test Cases File",
+      "description": "Path to an external YAML file holding the test-case list, relative to the agent.yaml directory. Resolved into `test_cases` by the config loader at load time (see holodeck.config.loader._resolve_test_cases_file); mutually exclusive with an inline `test_cases`."
     }
   },
   "required": [

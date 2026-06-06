@@ -42,6 +42,7 @@ nav:
     - MCP CLI: guides/mcp-cli.md
     - Vector Stores: guides/vector-stores.md
     - Evaluations: guides/evaluations.md
+    - Optimizer: guides/optimizer.md
     - Dashboard: guides/dashboard.md
     - Global Configuration: guides/global-config.md
     - File References: guides/file-references.md
@@ -110,6 +111,7 @@ plugins:
           - guides/mcp-cli.md
           - guides/vector-stores.md
           - guides/evaluations.md
+          - guides/optimizer.md
           - guides/dashboard.md
           - guides/global-config.md
           - guides/file-references.md

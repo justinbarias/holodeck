@@ -1103,6 +1103,17 @@ model:
 
 ---
 
+## Optimizing Agents (`holodeck test optimize`)
+
+Once you have an evaluation suite, `holodeck test optimize` automates the
+hand-tuning loop — change a knob or instruction, re-run `holodeck test`, eyeball
+the score, repeat — as a **compounding coordinate-descent optimizer** that
+advances a best-candidate `agent.yaml` on every accepted improvement.
+
+See the dedicated **[Optimizer guide](optimizer.md)** for the full reference:
+the cycle/phase/trial model, axis configuration, CLI flags, outputs, acceptance
+scoring, and observability.
+
 ## Best Practices
 
 1. **Start with DeepEval**: Use GEval and RAG metrics as primary evaluation

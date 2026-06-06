@@ -20,6 +20,7 @@ from pydantic import (
 
 from holodeck.lib.errors import ConfigError
 from holodeck.models.llm import LLMProvider
+from holodeck.optimizer.config import OptimizerConfig
 
 _logger = logging.getLogger(__name__)
 
@@ -513,6 +514,13 @@ class EvaluationConfig(BaseModel):
     )
     metrics: list[MetricType] = Field(
         ..., description="List of metrics to evaluate (standard, GEval, or RAG)"
+    )
+    optimizer: OptimizerConfig | None = Field(
+        default=None,
+        description=(
+            "Optional `holodeck test optimize` configuration declaring the "
+            "scalarized loss weights and the numeric/textual axes to tune."
+        ),
     )
 
     @field_validator("metrics")

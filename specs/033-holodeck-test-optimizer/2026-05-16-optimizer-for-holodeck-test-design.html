@@ -1,331 +1,356 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>holodeck test optimize — Design</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+<title>holodeck test optimize — Instruction &amp;amp; Hyperparameter Optimizer — Design — HoloDeck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/base16/material-darker.min.css">
 <style>
-  :root {
-    --bg: #0f1115;
-    --bg-elev: #161a22;
-    --bg-code: #0c0e13;
-    --text: #d8dee9;
-    --muted: #8b95a7;
-    --accent: #7aa2f7;
-    --accent-2: #bb9af7;
-    --green: #9ece6a;
-    --orange: #ff9e64;
-    --red: #f7768e;
-    --border: #232a36;
-    --rule: #2a3140;
-    --serif: ui-serif, Georgia, "Iowan Old Style", Cambria, "Times New Roman", Times, serif;
-    --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-  }
-  * { box-sizing: border-box; }
-  html { background: var(--bg); }
-  body {
-    margin: 0; padding: 0;
-    font-family: var(--sans);
-    color: var(--text);
-    line-height: 1.65;
-    font-size: 15.5px;
-    -webkit-font-smoothing: antialiased;
-  }
-  .layout { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
-  @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } nav.toc { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); } }
+:root{
+  --primary:#7bff5a; --primary-bright:#9bff5f; --primary-mint:#53ff9c; --primary-soft:#5ae0a6;
+  --on-primary:#041208;
+  --surface:#050b09; --surface-deep:#030807; --surface-container:#0a110f; --surface-high:#0c1412;
+  --outline:#1c2b25; --on-surface:#e8f5ec; --on-variant:#9bb3a5; --code-on:#e5e7eb;
+  --glow:rgba(123,255,90,.35); --green-fade:rgba(123,255,90,.18);
+  --maxw:1120px;
+  --radius-sm:6px; --radius-md:10px; --radius-lg:16px; --radius-full:999px;
+  --bg-spotlights:radial-gradient(900px 600px at 22% 18%, rgba(123,255,90,.09), transparent 60%),
+                  radial-gradient(700px 500px at 78% 12%, rgba(83,255,156,.06), transparent 55%);
+}
+html[data-theme="light"]{
+  --primary:#16a34a; --primary-bright:#22c55e; --primary-mint:#2ea043; --primary-soft:#15803d;
+  --on-primary:#ffffff;
+  --surface:#f3f6f4; --surface-deep:#eef2ee; --surface-container:#ffffff; --surface-high:#f8faf8;
+  --outline:#e1e7e3; --on-surface:#0c1412; --on-variant:#54645a;
+  --glow:rgba(0,0,0,.10); --green-fade:rgba(22,163,74,.22);
+  --bg-spotlights:radial-gradient(900px 600px at 22% 18%, rgba(22,163,74,.05), transparent 60%),
+                  radial-gradient(700px 500px at 78% 12%, rgba(22,163,74,.035), transparent 55%);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg-spotlights), var(--surface); background-attachment:fixed;
+  color:var(--on-surface); font-family:Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+a{color:var(--primary); text-decoration:none}
+a:hover{text-decoration:underline; text-underline-offset:3px}
 
-  nav.toc {
-    position: sticky; top: 0; height: 100vh; overflow-y: auto;
-    background: var(--bg-elev);
-    border-right: 1px solid var(--border);
-    padding: 28px 22px 40px;
-    font-size: 13px;
-  }
-  nav.toc h2 {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
-    text-transform: uppercase; color: var(--muted); margin: 0 0 14px;
-    font-weight: 600;
-  }
-  nav.toc ol { list-style: none; padding: 0; margin: 0; counter-reset: toc; }
-  nav.toc li { margin: 4px 0; counter-increment: toc; }
-  nav.toc li.h2::before {
-    content: counter(toc, decimal) ".";
-    color: var(--muted); margin-right: 8px; font-family: var(--mono); font-size: 11px;
-  }
-  nav.toc li.h3 { margin-left: 18px; font-size: 12.5px; color: var(--muted); }
-  nav.toc a { color: inherit; text-decoration: none; transition: color .12s; }
-  nav.toc a:hover { color: var(--accent); }
-  nav.toc a.active { color: var(--accent); }
+/* ---------- Top bar ---------- */
+.topbar{
+  position:sticky; top:0; z-index:50; backdrop-filter:saturate(140%) blur(8px);
+  background:color-mix(in srgb, var(--surface) 82%, transparent);
+  border-bottom:1px solid var(--outline);
+}
+.topbar-inner{max-width:var(--maxw); margin:0 auto; padding:12px 24px; display:flex; align-items:center; gap:14px}
+.brand{display:flex; align-items:center; gap:9px; font-weight:600; letter-spacing:-.01em}
+.brand .dot{width:11px; height:11px; border-radius:var(--radius-full);
+  background:linear-gradient(135deg, var(--primary-mint), var(--primary-bright));
+  box-shadow:0 0 16px var(--glow)}
+.brand small{color:var(--on-variant); font-weight:400; font-size:13px}
+.topbar .spacer{flex:1}
+.toggle{
+  font:500 12px/1 Inter, sans-serif; letter-spacing:.04em; cursor:pointer;
+  color:var(--on-surface); background:var(--surface-high); border:1px solid var(--outline);
+  border-radius:var(--radius-full); padding:8px 14px;
+}
+.toggle:hover{border-color:var(--green-fade)}
 
-  main {
-    max-width: 880px;
-    padding: 56px 64px 120px;
-    margin: 0 auto;
-  }
-  @media (max-width: 720px) { main { padding: 32px 22px 80px; } }
+/* ---------- Layout ---------- */
+.shell{max-width:var(--maxw); margin:0 auto; padding:0 24px; display:grid;
+  grid-template-columns:248px minmax(0,1fr); gap:48px; align-items:start}
+.toc{position:sticky; top:74px; max-height:calc(100vh - 96px); overflow:auto; padding:28px 0 40px}
+.toc .eyebrow{margin:0 0 12px}
+.toc-list, .toc-sub{list-style:none; margin:0; padding:0}
+.toc-list>li{margin:0 0 2px}
+.toc-list a{display:block; color:var(--on-variant); font-size:13.5px; line-height:1.35;
+  padding:5px 12px; border-left:2px solid transparent; border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+.toc-list a:hover{color:var(--on-surface); text-decoration:none; background:var(--surface-container)}
+.toc-list a.active{color:var(--primary); border-left-color:var(--primary); background:var(--surface-container)}
+.toc-sub{margin:2px 0 8px 0}
+.toc-sub a{font-size:12.5px; padding-left:24px; color:var(--on-variant)}
 
-  .meta {
-    border-left: 3px solid var(--accent);
-    padding: 14px 18px;
-    background: var(--bg-elev);
-    border-radius: 0 6px 6px 0;
-    margin: 24px 0 40px;
-    font-size: 13.5px;
-    color: var(--muted);
-  }
-  .meta strong { color: var(--text); font-weight: 600; }
+.content{padding:36px 0 120px; min-width:0}
 
-  h1, h2, h3, h4 { font-family: var(--sans); color: #e7ecf5; font-weight: 700; line-height: 1.25; }
-  h1 { font-size: 34px; margin: 0 0 8px; letter-spacing: -0.01em; }
-  h2 {
-    font-size: 24px; margin: 56px 0 18px;
-    padding-bottom: 10px; border-bottom: 1px solid var(--rule);
-    letter-spacing: -0.005em;
-  }
-  h3 { font-size: 18px; margin: 36px 0 12px; color: #cfd6e4; }
-  h4 { font-size: 15px; margin: 24px 0 8px; color: var(--accent-2); }
+/* ---------- Hero ---------- */
+.eyebrow{font:500 11px/1 Inter, sans-serif; letter-spacing:.15em; text-transform:uppercase;
+  color:var(--on-variant); display:inline-flex; align-items:center; gap:7px}
+.eyebrow::before{content:"\25C6"; color:var(--primary); font-size:9px}
+.hero{padding:8px 0 8px}
+.hero h1{font-size:46px; font-weight:600; line-height:1.05; letter-spacing:-.04em; margin:14px 0 0;
+  background:linear-gradient(92deg, var(--on-surface) 12%, var(--primary-soft) 70%, var(--primary) 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent}
+.hero h1 code{-webkit-text-fill-color:initial; color:var(--primary); background:none; font-size:.86em;
+  font-family:"JetBrains Mono", monospace; letter-spacing:-.01em}
+.meta{display:flex; flex-wrap:wrap; gap:10px 26px; margin:26px 0 0; padding:18px 20px;
+  background:var(--surface-container); border:1px solid var(--outline); border-radius:var(--radius-md)}
+.meta-item{display:flex; flex-direction:column; gap:3px; min-width:120px}
+.meta-key{font:500 10.5px/1 Inter; letter-spacing:.13em; text-transform:uppercase; color:var(--on-variant)}
+.meta-val{font-size:13.5px; color:var(--on-surface)}
+.meta-val code{font-size:12.5px}
 
-  p { margin: 0 0 14px; }
-  a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed transparent; transition: border-color .12s; }
-  a:hover { border-bottom-color: var(--accent); }
+/* ---------- Callouts (blockquotes) ---------- */
+.callout, .content blockquote{
+  background:var(--surface-container); border:1px solid var(--outline);
+  border-left:3px solid var(--primary); border-radius:var(--radius-md);
+  padding:14px 18px; margin:24px 0; color:var(--on-surface)}
+.callout-hero{margin:24px 0 0; background:var(--surface-high)}
+.callout p, .content blockquote p{margin:0}
+.callout strong:first-child, .content blockquote strong:first-child{color:var(--primary)}
 
-  ul, ol { padding-left: 24px; margin: 0 0 16px; }
-  li { margin: 4px 0; }
-  li > p { margin: 4px 0; }
+/* ---------- Typography ---------- */
+.content h2{font-size:32px; font-weight:600; line-height:1.25; letter-spacing:-.02em;
+  margin:64px 0 6px; padding-top:24px; border-top:1px solid var(--outline)}
+.content h2:first-of-type{border-top:none; padding-top:0; margin-top:40px}
+.content h3{font-size:22px; font-weight:600; line-height:1.3; letter-spacing:-.01em; margin:38px 0 4px}
+.content h4{font-size:16px; font-weight:600; margin:26px 0 2px; color:var(--on-surface)}
+.content p{margin:14px 0; color:var(--on-surface)}
+.content ul, .content ol{margin:14px 0; padding-left:22px}
+.content li{margin:6px 0}
+.content li::marker{color:var(--primary)}
+.content strong{color:var(--on-surface); font-weight:600}
+.content hr{border:none; border-top:1px solid var(--outline); margin:40px 0}
+.headerlink{opacity:0; margin-left:10px; color:var(--on-variant); font-weight:400; text-decoration:none}
+.content h2:hover .headerlink, .content h3:hover .headerlink{opacity:1}
 
-  blockquote {
-    border-left: 3px solid var(--accent-2);
-    margin: 16px 0; padding: 4px 16px;
-    background: rgba(187, 154, 247, 0.06);
-    color: var(--muted);
-  }
+/* inline code */
+.content :not(pre)>code{font-family:"JetBrains Mono", monospace; font-size:.86em;
+  background:var(--surface-high); border:1px solid var(--outline); border-radius:var(--radius-sm);
+  padding:1px 6px; color:var(--primary-soft)}
+html[data-theme="light"] .content :not(pre)>code{color:var(--primary-soft)}
 
-  code {
-    font-family: var(--mono); font-size: 13px;
-    background: rgba(122, 162, 247, 0.10);
-    color: #c0d2f0;
-    padding: 1px 6px; border-radius: 4px;
-    border: 1px solid rgba(122, 162, 247, 0.18);
-  }
-  pre {
-    background: var(--bg-code);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px 18px;
-    overflow-x: auto;
-    margin: 16px 0;
-    font-size: 12.8px;
-    line-height: 1.55;
-  }
-  pre code {
-    background: transparent; border: none; padding: 0; color: inherit;
-    font-size: inherit;
-  }
+/* ---------- Tables ---------- */
+.table-wrap{overflow-x:auto; margin:22px 0; border:1px solid var(--outline); border-radius:var(--radius-md)}
+.content table{border-collapse:collapse; width:100%; font-size:14px}
+.content thead th{background:var(--surface-high); text-align:left; font-weight:600; color:var(--on-surface);
+  font-size:11px; letter-spacing:.08em; text-transform:uppercase; padding:11px 14px; border-bottom:1px solid var(--outline)}
+.content tbody td{padding:11px 14px; border-bottom:1px solid var(--outline); color:var(--on-variant); vertical-align:top}
+.content tbody tr:last-child td{border-bottom:none}
+.content tbody tr:nth-child(even){background:color-mix(in srgb, var(--surface-container) 55%, transparent)}
+.content td code{color:var(--primary-soft)}
+.content td strong{color:var(--on-surface)}
 
-  table {
-    border-collapse: collapse; width: 100%;
-    margin: 18px 0; font-size: 14px;
-    background: var(--bg-elev);
-    border-radius: 8px; overflow: hidden;
-    border: 1px solid var(--border);
-  }
-  th, td { padding: 10px 14px; text-align: left; vertical-align: top; }
-  th {
-    background: rgba(122, 162, 247, 0.08);
-    color: #d6e0f5;
-    font-weight: 600;
-    font-size: 13px;
-    border-bottom: 1px solid var(--border);
-  }
-  td { border-top: 1px solid var(--rule); }
-  tr:first-child td { border-top: none; }
-  td code, th code { font-size: 12.5px; }
+/* ---------- Code cards (always dark — brand signature) ---------- */
+.code-card{margin:22px 0; border-radius:var(--radius-lg); overflow:hidden;
+  background:#030807; border:1px solid #14201b; box-shadow:0 8px 24px rgba(0,0,0,.30)}
+.code-bar{display:flex; align-items:center; gap:8px; padding:9px 14px; background:#0a110f; border-bottom:1px solid #14201b}
+.code-bar .lights{display:flex; gap:6px}
+.code-bar .lights i{width:11px; height:11px; border-radius:50%; display:block}
+.code-bar .lights i:nth-child(1){background:#ff5f56}
+.code-bar .lights i:nth-child(2){background:#ffbd2e}
+.code-bar .lights i:nth-child(3){background:#2ecc71}
+.code-bar .lang{margin-left:auto; font:500 10px/1 "JetBrains Mono", monospace; letter-spacing:.16em;
+  text-transform:uppercase; color:#6c8579}
+.code-card pre{margin:0; padding:16px 18px; overflow-x:auto; background:transparent}
+.code-card code{font-family:"JetBrains Mono", monospace; font-size:13px; line-height:1.55; color:#e5e7eb;
+  background:none; border:none; padding:0; white-space:pre}
+/* ASCII diagrams: keep raw, no highlight tint */
+.code-card.is-diagram code{color:#9bb3a5}
+.code-card.is-diagram .lang{color:#3f5249}
+/* $ prompts in plasma green for terminal-ish blocks */
+.code-card .prompt{color:#7bff5a}
 
-  hr { border: none; border-top: 1px solid var(--rule); margin: 40px 0; }
+/* hljs palette tuned to brand */
+.hljs{background:transparent!important; color:#e5e7eb}
+.hljs-keyword,.hljs-selector-tag,.hljs-literal,.hljs-section{color:#9bff5f}
+.hljs-string,.hljs-attr,.hljs-name,.hljs-meta-string{color:#53ff9c}
+.hljs-number,.hljs-symbol,.hljs-bullet{color:#bfe6c9}
+.hljs-comment,.hljs-quote{color:#5e7268; font-style:italic}
+.hljs-attribute,.hljs-built_in,.hljs-title{color:#5ae0a6}
+.hljs-meta{color:#7bff5a}
 
-  .anchor {
-    color: var(--muted);
-    opacity: 0;
-    margin-left: 8px;
-    font-weight: 400;
-    transition: opacity .12s;
-    text-decoration: none;
-  }
-  h1:hover .anchor, h2:hover .anchor, h3:hover .anchor, h4:hover .anchor { opacity: 1; }
+/* ---------- Footer ---------- */
+.foot{max-width:var(--maxw); margin:0 auto; padding:28px 24px 56px; border-top:1px solid var(--outline);
+  color:var(--on-variant); font-size:13px; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+.tag{display:inline-flex; align-items:center; gap:6px; background:var(--surface-high); color:var(--on-variant);
+  border:1px solid var(--outline); border-radius:var(--radius-full); padding:4px 12px;
+  font:500 11px/1 Inter; letter-spacing:.06em}
 
-  .badge {
-    display: inline-block;
-    font-family: var(--mono); font-size: 10.5px;
-    letter-spacing: 0.08em; text-transform: uppercase;
-    padding: 2px 8px; border-radius: 999px;
-    background: rgba(255, 158, 100, 0.14);
-    color: var(--orange);
-    border: 1px solid rgba(255, 158, 100, 0.3);
-    vertical-align: middle;
-    margin-left: 10px;
-  }
-
-  /* ascii art / preformatted diagrams keep their alignment */
-  pre.diagram { font-size: 11.5px; line-height: 1.4; }
-
-  ::selection { background: rgba(122, 162, 247, 0.35); color: #fff; }
-
-  /* scroll margin so anchors don't hide under sticky header (none here, but for in-page nav) */
-  h1, h2, h3, h4 { scroll-margin-top: 24px; }
-
-  footer {
-    margin-top: 80px; padding-top: 24px;
-    border-top: 1px solid var(--rule);
-    color: var(--muted); font-size: 12.5px;
-    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;
-  }
-  footer code { font-size: 11.5px; }
+@media(max-width:900px){
+  .shell{grid-template-columns:1fr; gap:0}
+  .toc{position:static; max-height:none; border-bottom:1px solid var(--outline); padding-bottom:16px}
+  .hero h1{font-size:34px}
+  .content h2{font-size:26px}
+}
+::selection{background:var(--green-fade); color:var(--on-surface)}
+.toc::-webkit-scrollbar, .code-card pre::-webkit-scrollbar, .table-wrap::-webkit-scrollbar{height:9px; width:9px}
+.toc::-webkit-scrollbar-thumb, .code-card pre::-webkit-scrollbar-thumb, .table-wrap::-webkit-scrollbar-thumb{
+  background:var(--outline); border-radius:var(--radius-full)}
 </style>
 </head>
 <body>
-<div class="layout">
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand"><span class="dot"></span>HoloDeck <small>· design spec</small></div>
+    <div class="spacer"></div>
+    <button class="toggle" id="themeToggle" type="button">Clean Room ☼</button>
+  </div>
+</header>
+
+<div class="shell">
   <nav class="toc" aria-label="Table of contents">
-    <h2>Contents</h2>
-    <ol id="toc"></ol>
+    <p class="eyebrow">Contents</p>
+    <ul class="toc-list"><li><a href="#motivation">Motivation</a></li><li><a href="#architecture-overview">Architecture overview</a></li><li><a href="#how-it-plugs-into-the-existing-test-flow">How it plugs into the existing test flow</a><ul class="toc-sub"><li><a href="#today-holodeck-test-run-agentyaml">Today: holodeck test run agent.yaml</a></li><li><a href="#with-optimizer-holodeck-test-optimize-agentyaml">With optimizer: holodeck test optimize agent.yaml</a></li><li><a href="#_run_trial-and-mean_loss-the-only-adapters-needed">_run_trial and mean_loss — the only adapters needed</a></li><li><a href="#whats-new-vs-reused">What&#x27;s new vs reused</a></li><li><a href="#one-ingest-many-trials-the-key-efficiency-lever">One ingest, many trials — the key efficiency lever</a></li></ul></li><li><a href="#loss-function-and-trial-history">Loss function and trial history</a><ul class="toc-sub"><li><a href="#per-trial-loss-formula">Per-trial loss formula</a></li><li><a href="#optional-regularizers">Optional regularizers</a></li><li><a href="#trial-history-the-audit-log">Trial history (the audit log)</a></li><li><a href="#what-history-buys-the-loop">What history buys the loop</a></li><li><a href="#what-we-are-deliberately-not-doing">What we are deliberately not doing</a></li></ul></li><li><a href="#numeric-proposer-optuna-tpe">Numeric proposer (Optuna TPE)</a><ul class="toc-sub"><li><a href="#setup">Setup</a></li><li><a href="#why-tpe-over-grid-random">Why TPE over grid / random</a></li><li><a href="#what-tpe-actually-does">What TPE actually does</a></li><li><a href="#explainability-for-numeric-trials">Explainability for numeric trials</a></li><li><a href="#plug-in">Plug-in</a></li><li><a href="#choices-made-explicitly">Choices made explicitly</a></li><li><a href="#references">References</a></li></ul></li><li><a href="#textual-proposer-textgrad-style-critic-applier">Textual proposer (TextGrad-style critic + applier)</a><ul class="toc-sub"><li><a href="#intuition-natural-language-gradients">Intuition: natural-language gradients</a></li><li><a href="#the-two-subagents">The two subagents</a></li><li><a href="#persisting-the-textual-edit">Persisting the textual edit</a></li><li><a href="#why-two-stages-not-one">Why two stages, not one</a></li><li><a href="#what-we-are-deliberately-not-doing_1">What we are deliberately not doing</a></li><li><a href="#cost-reality">Cost reality</a></li><li><a href="#references_1">References</a></li></ul></li><li><a href="#trainholdout-split-acceptance-rule">Train/holdout split + acceptance rule</a><ul class="toc-sub"><li><a href="#the-split">The split</a></li><li><a href="#the-acceptance-rule-variance-aware">The acceptance rule (variance-aware)</a></li><li><a href="#decision-rationale-audit-row">Decision rationale (audit row)</a></li><li><a href="#what-resume-does-to-the-bests">What --resume does to the bests</a></li><li><a href="#what-this-rule-does-not-do">What this rule does not do</a></li><li><a href="#honest-failure-mode-this-design-accepts">Honest failure mode this design accepts</a></li><li><a href="#summary-in-one-sentence">Summary in one sentence</a></li></ul></li><li><a href="#state-outputs-and-the-report">State, outputs, and the report</a><ul class="toc-sub"><li><a href="#on-disk-layout">On-disk layout</a></li><li><a href="#runjson-immutable-header">run.json — immutable header</a></li><li><a href="#trajectorycsv-for-plotting">trajectory.csv — for plotting</a></li><li><a href="#reportmd-the-artifact-a-user-reads">report.md — the artifact a user reads</a></li><li><a href="#streaming-output-during-the-run">Streaming output during the run</a></li><li><a href="#what-holodeck-test-view-learns-to-do-v2-follow-up-not-v1">What holodeck test view learns to do (v2 follow-up, not v1)</a></li><li><a href="#what-we-are-deliberately-not-writing-to-disk">What we are deliberately not writing to disk</a></li><li><a href="#cleanup-retention-gitignore">Cleanup, retention, .gitignore</a></li><li><a href="#recovery-from-mid-run-crash">Recovery from mid-run crash</a></li></ul></li><li><a href="#cli-surface">CLI surface</a><ul class="toc-sub"><li><a href="#precedence">Precedence</a></li></ul></li><li><a href="#budget-and-termination">Budget and termination</a></li><li><a href="#validation-at-startup">Validation at startup</a></li><li><a href="#out-of-scope-for-v1">Out of scope for v1</a></li><li><a href="#v1-contract">v1 contract</a></li><li><a href="#full-agentyaml-optimizer-block-reference">Full agent.yaml optimizer: block (reference)</a></li><li><a href="#open-questions-resolved-during-design">Open questions resolved during design</a></li><li><a href="#open-questions-resolved-in-the-2026-05-29-rewrite">Open questions resolved in the 2026-05-29 rewrite</a></li><li><a href="#risks-and-mitigations">Risks and mitigations</a></li><li><a href="#implementation-surface-modules-to-create">Implementation surface — modules to create</a></li><li><a href="#dependencies-to-add">Dependencies to add</a></li></ul>
   </nav>
-  <main>
-    <article id="content"><p style="color: var(--muted)">Rendering…</p></article>
-    <footer>
-      <span>holodeck test optimize — design draft</span>
-      <span><code>docs/superpowers/specs/2026-05-16-optimizer-for-holodeck-test-design.md</code></span>
-    </footer>
-  </main>
-</div>
-
-<script id="md-source" type="text/markdown"># `holodeck test optimize` — Design
-
-**Status:** Draft for review
-**Date:** 2026-05-16
-**Author:** justinbarias (with Claude)
-**Related:** `specs/032-multi-turn-test-cases`, `specs/031-eval-runs-dashboard`
-
-## Motivation
-
-HoloDeck users iterate on agents the same way ML researchers tuned models in 2010: change a knob, run the eval, eyeball the score, change another knob. The test runner already produces rich, normalized signal (`metric_results[].score`, `pass_rate`, `average_scores` per metric, multi-turn evaluations). What's missing is an outer loop that reads that signal and proposes the next configuration.
-
-This spec adds `holodeck test optimize` — an SGD/AdamW-inspired optimizer that treats the agent's tunable parameters (system prompt, tool descriptions, sampling/retrieval hyperparameters) as "weights" and the per-trial weighted-metric loss as the supervision signal. Two pluggable proposers handle the two natures of the parameter space: Bayesian search (Optuna TPE) for numeric axes, and a TextGrad-style critic + applier subagent pair for textual axes.
-
-The key constraints driving the design:
-
-1. **Reuse the existing test runner unchanged.** The optimizer is a wrapper around `TestExecutor`, not a rewrite of it.
-2. **Every change is auditable.** No silent edits; every trial writes a structured rationale to disk.
-3. **Honest methodology.** Explicit train/holdout split is required; the optimizer cannot accidentally optimize against the same cases it scores.
-4. **YAML-first, like the rest of HoloDeck.** Optimizer config lives under `evaluations.optimizer:` in `agent.yaml`; CLI flags are short-lived overrides.
-5. **Bound blast radius.** Original `agent.yaml` is never touched; candidates are written under `results/optimizer/<run-id>/`.
-
-## Architecture overview
-
-The optimizer is a single loop wrapped around the existing test runner. Nothing inside `TestExecutor` changes; the optimizer treats it as a black box `(agent_config, test_cases) → TestReport`.
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
+  <main class="content">
+    <section class="hero">
+      <p class="eyebrow">Spec 033 · Optimizer</p>
+      <h1><code>holodeck test optimize</code> — Instruction &amp; Hyperparameter Optimizer — Design</h1>
+      <div class="meta"><div class="meta-item"><span class="meta-key">Status</span><span class="meta-val">Draft for review (rev. 2026-05-29 — coordinate-descent rewrite)</span></div><div class="meta-item"><span class="meta-key">Date</span><span class="meta-val">2026-05-16</span></div><div class="meta-item"><span class="meta-key">Author</span><span class="meta-val">justinbarias (with Claude)</span></div><div class="meta-item"><span class="meta-key">Related</span><span class="meta-val"><code>specs/032-multi-turn-test-cases</code>, <code>specs/031-eval-runs-dashboard</code>, <code>docs/intent/optimizer.md</code></span></div></div>
+      <aside class="callout callout-hero"><strong>Naming note.</strong> This is an <em>instruction &amp; hyperparameter</em> optimizer, not a "prompt optimizer" in the DSPy/MIPRO sense. It tunes instruction text, tool descriptions, and query-time numeric knobs. It does <strong>not</strong> select or bootstrap few-shot demonstrations — the highest-leverage lever in current prompt-optimization practice — which is the named #1 v2 item (see Out of Scope). The original 2026-05-16 draft called this a "prompt optimizer" and framed it as SGD/AdamW; both were corrected in the 2026-05-29 rewrite.</aside>
+    </section>
+    <h2 id="motivation">Motivation<a class="headerlink" href="#motivation" title="Permanent link">#</a></h2>
+<p>HoloDeck users iterate on agents the same way ML researchers tuned models in 2010: change a knob, run the eval, eyeball the score, change another knob. The test runner already produces rich, normalized signal (<code>metric_results[].score</code>, <code>pass_rate</code>, <code>average_scores</code> per metric, multi-turn evaluations). What's missing is an outer loop that reads that signal and proposes the next configuration.</p>
+<p>This spec adds <code>holodeck test optimize</code> — a <strong>compounding coordinate-descent</strong> optimizer that tunes the agent's parameters (instruction text, tool descriptions, query-time numeric hyperparameters) against a per-trial weighted-metric loss. It alternates <em>phases</em>: a numeric phase sweeps the hyperparameters with Bayesian search (Optuna TPE), then a textual phase improves the prompt with a TextGrad-style critic + applier subagent pair. Each accepted win is <strong>folded back into the baseline</strong> before the next phase, so improvements compound into a single better <code>agent.yaml</code>.</p>
+<blockquote>
+<p><strong>Why coordinate descent, not "SGD on weights".</strong> There is no real gradient and no
+learning rate here. The earlier "treat parameters as weights, run SGD" framing was a
+metaphor that broke down in two ways: (a) the loop perturbed a <em>fixed</em> baseline every
+trial, so wins never compounded — it was single-step variant search, not optimization;
+and (b) interleaving textual edits under one long-lived TPE study makes the study fit a
+<em>moving</em> objective (a prompt edit changes what the numeric loss even means). Coordinate
+descent fixes both: compounding happens <em>between</em> phases (the baseline advances); valid
+joint Bayesian search happens <em>within</em> a numeric phase against a <em>frozen</em> prompt.</p>
+</blockquote>
+<p>The key constraints driving the design:</p>
+<ol>
+<li><strong>Reuse the existing test runner unchanged.</strong> The optimizer is a wrapper around <code>TestExecutor</code>, not a rewrite of it.</li>
+<li><strong>Every change is auditable.</strong> No silent edits; every trial writes a structured rationale to disk.</li>
+<li><strong>Honest methodology.</strong> Explicit train/holdout split is required; the optimizer cannot accidentally optimize against the same cases it scores. Accept decisions clear <em>measured</em> noise (repeated trials), not a magic threshold.</li>
+<li><strong>Compounding.</strong> Accepted wins advance the baseline; the final candidate stacks the best prompt edits <em>and</em> the best hyperparameters, not whichever single perturbation scored best.</li>
+<li><strong>YAML-first, like the rest of HoloDeck.</strong> Optimizer config lives under <code>evaluations.optimizer:</code> in <code>agent.yaml</code>; CLI flags are short-lived overrides.</li>
+<li><strong>Bound blast radius.</strong> Original <code>agent.yaml</code> is never touched; candidates are written under <code>results/optimizer/&lt;run-id&gt;/</code>.</li>
+</ol>
+<h2 id="architecture-overview">Architecture overview<a class="headerlink" href="#architecture-overview" title="Permanent link">#</a></h2>
+<p>The optimizer is a phased loop wrapped around the existing test runner. Nothing inside <code>TestExecutor</code> changes; the optimizer treats it as a black box <code>(agent_config, test_cases) → TestReport</code>.</p>
+<pre><code>┌──────────────────────────────────────────────────────────────────────┐
 │  holodeck test optimize  (new subcommand of `test`)                  │
 │                                                                      │
 │   Trial controller                                                   │
 │     ├── reads optimizer config from agent.yaml                       │
-│     ├── owns the trial history (Optuna study + edit log)             │
-│     ├── enforces budget (iterations / wall-clock / $ / convergence)  │
-│     └── on each iteration:                                           │
-│          1. ask Strategy Router which axis to perturb this step      │
-│          2. dispatch to a Proposer to get a candidate config         │
-│          3. run candidate against TRAIN set (existing TestExecutor)  │
-│          4. compute scalar loss from metric_results                  │
-│          5. if train-loss improves: re-run on HOLDOUT set            │
-│          6. accept/reject per acceptance rule                        │
-│          7. persist trial + candidate config + decision rationale    │
+│     ├── owns the running baseline (advances on every accept)         │
+│     ├── owns the trial history (edit log + per-phase Optuna studies) │
+│     ├── enforces budgets (per-phase + global; wall-clock / $)        │
+│     └── runs PHASES via the Phase Scheduler                          │
 │                                                                      │
-│   Strategy Router                                                    │
-│     decides each step: numeric trial vs textual trial                │
-│     v1: round-robin biased toward whichever axis showed              │
-│         largest historical Δloss/trial                               │
+│   Phase Scheduler  (replaces the old per-trial Strategy Router)      │
+│     repeat until a full numeric→textual cycle yields zero accepts:   │
+│       NUMERIC phase:                                                 │
+│         • spin up a FRESH Optuna TPE study (prompt is frozen)        │
+│         • ask/tell until per-phase stop (converged / no-improve-in-K)│
+│         • fold best numeric point into the baseline                  │
+│       TEXTUAL phase:                                                 │
+│         • critic+applier passes against the (new) baseline           │
+│         • each accepted edit compounds onto the prompt               │
+│         • stop on no-accept-in-N                                     │
+│                                                                      │
+│   Per trial (either phase):                                          │
+│     1. build candidate = apply proposal to CURRENT baseline          │
+│     2. run candidate ×`repeats` against TRAIN (existing TestExecutor)│
+│     3. loss = mean over repeats; also keep the spread (std)          │
+│     4. if train-loss improves: run HOLDOUT (×`repeats`)              │
+│     5. accept iff improvement clears measured noise (variance-aware) │
+│     6. on accept: advance baseline + persist candidate               │
+│     7. persist trial row + decision rationale (accept OR reject)     │
 │                                                                      │
 │   Proposers (pluggable)                                              │
-│     ├── NumericProposer  → Optuna TPE study                          │
+│     ├── NumericProposer  → Optuna TPE study (one per numeric phase)  │
 │     └── TextualProposer  → Critic subagent + Applier subagent        │
 │                                                                      │
 │   Loss function                                                      │
-│     scalar = 1 − Σ wᵢ · scoreᵢ      (weights from agent.yaml)        │
+│     scalar = 1 − Σ wᵢ · scoreᵢ   (mean over `repeats`; errored       │
+│                                    metric runs excluded + flagged)   │
 │                                                                      │
 │   Output writer                                                      │
-│     results/optimizer/<run-id>/                                      │
+│     results/optimizer/&lt;run-id&gt;/                                      │
 │       trials.jsonl   (one row per trial, full audit)                 │
 │       candidates/iter-NN.yaml                                        │
-│       best.yaml -> candidates/iter-NN.yaml                           │
+│       best.yaml -&gt; candidates/iter-NN.yaml                           │
 │       trajectory.csv                                                 │
 │       report.md                                                      │
 └──────────────────────────────────────────────────────────────────────┘
-```
-
-Two design points to call out:
-
-- **The runner is reused as-is.** `TestExecutor.__init__` already accepts `agent_config: Agent` and `resolved_execution_config: ExecutionConfig` as injected parameters. The optimizer mutates the `Agent` model in memory per trial and reuses everything else.
-- **The Strategy Router is the only novel coordinator.** Everything else is either standard HPO machinery (Optuna), existing HoloDeck (`TestExecutor`, evaluations, backend selector), or two new Claude subagents (Critic, Applier).
-
-## How it plugs into the existing test flow
-
-### Today: `holodeck test run agent.yaml`
-
-```
-CLI: holodeck test run
+</code></pre>
+<p>Two design points to call out:</p>
+<ul>
+<li><strong>The runner is reused as-is.</strong> <code>TestExecutor.__init__</code> already accepts <code>agent_config: Agent</code> and <code>resolved_execution_config: ExecutionConfig</code> as injected parameters. The optimizer mutates the <code>Agent</code> model in memory per trial and reuses everything else.</li>
+<li><strong>The Phase Scheduler is the novel coordinator</strong> (it replaces the per-trial Strategy Router from the original draft). Everything else is either standard HPO machinery (Optuna), existing HoloDeck (<code>TestExecutor</code>, evaluations, backend selector), or two new Claude subagents (Critic, Applier).</li>
+</ul>
+<p><strong>Why phases instead of a per-trial router.</strong> The original draft picked numeric-vs-textual <em>each step</em> and kept one long-lived Optuna study. That study's sample-efficiency claim depends on a <em>stationary</em> objective — but a textual edit changes the prompt, which changes the loss surface the numeric axes are scored against, so prior numeric observations become stale. Phasing makes each TPE study's lifetime exactly equal to a window where the prompt is frozen (stationary, valid), and lets compounding live in the hand-off <em>between</em> phases. A re-opened numeric phase against an improved prompt routinely finds <em>more</em> numeric headroom than the first one did, because the optimal hyperparameters move with the prompt.</p>
+<h2 id="how-it-plugs-into-the-existing-test-flow">How it plugs into the existing test flow<a class="headerlink" href="#how-it-plugs-into-the-existing-test-flow" title="Permanent link">#</a></h2>
+<h3 id="today-holodeck-test-run-agentyaml">Today: <code>holodeck test run agent.yaml</code><a class="headerlink" href="#today-holodeck-test-run-agentyaml" title="Permanent link">#</a></h3>
+<pre><code>CLI: holodeck test run
   → ConfigLoader.load_agent_yaml(path) → Agent
   → _resolve_execution_config()        → ExecutionConfig
   → TestExecutor(
       agent_config_path=path,
-      agent_config=<Agent>,                    ← injected
-      resolved_execution_config=<ExecCfg>,
+      agent_config=&lt;Agent&gt;,                    ← injected
+      resolved_execution_config=&lt;ExecCfg&gt;,
     ).execute_tests() → TestReport
   → _save_report() / _persist_eval_run()
   → sys.exit(0/1)
-```
-
-### With optimizer: `holodeck test optimize agent.yaml`
-
-The new subcommand wraps the same flow inside a trial loop. **Nothing inside `TestExecutor` changes.**
-
-```
-CLI: holodeck test optimize
+</code></pre>
+<h3 id="with-optimizer-holodeck-test-optimize-agentyaml">With optimizer: <code>holodeck test optimize agent.yaml</code><a class="headerlink" href="#with-optimizer-holodeck-test-optimize-agentyaml" title="Permanent link">#</a></h3>
+<p>The new subcommand wraps the same flow inside a phased loop. <strong>Nothing inside <code>TestExecutor</code> changes.</strong></p>
+<pre><code>CLI: holodeck test optimize
   → ConfigLoader.load_agent_yaml(path) → baseline Agent
   → _resolve_execution_config()        → ExecutionConfig
   → OptimizerConfig.from_agent(baseline)
-       (loss weights, train/holdout files, budget,
+       (loss weights, train/holdout files, budgets, repeats,
         numeric_axes, textual_axes, acceptance rule)
   → OptimizerLoop:
-       trial 0: cand = baseline; train_loss + holdout_loss; study.tell
-       trial N (until budget exhausted):
-         axis = StrategyRouter.next(history)
-         if numeric:
-           params = NumericProposer.propose(study)        # Optuna TPE.ask
-           cand   = apply_axes(baseline, params)
-         else:  # textual
+       baseline ← initial Agent
+       trial 0: cand = baseline; measure train + holdout loss (×repeats)
+                best_train, best_holdout ← trial 0 losses
+
+       repeat (full cycle) until a numeric+textual cycle yields zero accepts
+                                 OR a global budget trips:
+
+         ── NUMERIC PHASE ───────────────────────────────────────────
+         study = fresh TPESampler study        # prompt frozen → stationary
+         while not per-phase stop (converged / no-accept-in-K / phase budget):
+           optuna_trial, params = study.ask()
+           cand   = apply_axes(baseline, params)           # from CURRENT baseline
+           train  = mean_loss(cand, TRAIN, repeats)        # + std
+           if improves(train.mean, best_train):
+             hold = mean_loss(cand, HOLDOUT, repeats)
+             accept = variance_aware_accept(train, hold, best_train, best_holdout)
+           else:
+             accept = False
+           study.tell(optuna_trial, train.mean)
+           TrialLogger.write(...)
+           if accept:                                       # COMPOUND
+             baseline ← cand
+             best_train, best_holdout ← train.mean, hold.mean
+             save_candidate(cand); update best.yaml
+
+         ── TEXTUAL PHASE ───────────────────────────────────────────
+         while not per-phase stop (no-accept-in-N / phase budget):
+           failures = failing traces from the LATEST baseline train report
            gradient = await CriticSubagent.run(failures, current_text, history)
+           if gradient.confidence &lt; min_confidence: continue   # short-circuit
            edit     = await ApplierSubagent.run(gradient, current_text)
-           cand     = apply_textual_edit(baseline, axis, edit)
-         train_report = await _run_trial(cand, TRAIN)
-         train_loss   = scalarize(train_report)
-         if train_loss < best_train_loss − ε:
-           holdout_report = await _run_trial(cand, HOLDOUT)
-           holdout_loss   = scalarize(holdout_report)
-           accept = (holdout_loss ≤ best_holdout_loss + holdout_tolerance)
-         else:
-           accept = False
-         study.tell(trial, train_loss)
-         TrialLogger.write(trial_id, axis, proposal_audit, decision, …)
-         if accept: save_candidate(cand, iter=N); update best.yaml symlink
+           cand     = apply_textual_edit(baseline, axis, edit)  # from CURRENT baseline
+           train    = mean_loss(cand, TRAIN, repeats)
+           if improves(train.mean, best_train):
+             hold = mean_loss(cand, HOLDOUT, repeats)
+             accept = variance_aware_accept(train, hold, best_train, best_holdout)
+           else:
+             accept = False
+           TrialLogger.write(...)
+           if accept:                                       # COMPOUND
+             baseline ← cand
+             best_train, best_holdout ← train.mean, hold.mean
+             save_candidate(cand); update best.yaml
   → write report.md
-```
-
-### `_run_trial` — the only adapter needed
-
-```python
-async def _run_trial(cand: Agent, cases: list[TestCaseModel]) -> TestReport:
-    cand_with_subset = cand.model_copy(update={"test_cases": cases})
+</code></pre>
+<p>The single most important change from the original draft: <strong><code>baseline ← cand</code> on every accept.</strong> Both proposers build candidates from the <em>current</em> baseline, not a fixed origin, so a prompt edit accepted in a textual phase is present when the next numeric phase sweeps, and vice-versa. Wins stack.</p>
+<h3 id="_run_trial-and-mean_loss-the-only-adapters-needed"><code>_run_trial</code> and <code>mean_loss</code> — the only adapters needed<a class="headerlink" href="#_run_trial-and-mean_loss-the-only-adapters-needed" title="Permanent link">#</a></h3>
+<p><code>_run_trial</code> runs the candidate against a case subset <em>once</em>; <code>mean_loss</code> repeats it <code>repeats</code> times and aggregates. The single-run adapter is unchanged from the original design:</p>
+<pre><code class="language-python">async def _run_trial(cand: Agent, cases: list[TestCaseModel]) -&gt; TestReport:
+    cand_with_subset = cand.model_copy(update={&quot;test_cases&quot;: cases})
     executor = TestExecutor(
         agent_config_path=path,
         agent_config=cand_with_subset,
@@ -337,290 +362,358 @@ async def _run_trial(cand: Agent, cases: list[TestCaseModel]) -> TestReport:
         return await executor.execute_tests()
     finally:
         await executor.shutdown()
-```
 
-### What's new vs reused
 
-| Concern | Today | With optimizer |
-|---|---|---|
-| Agent config load | `ConfigLoader.load_agent_yaml` | **Reused** (loaded once as baseline) |
-| Execution config resolution | `_resolve_execution_config` | **Reused** (resolved once, passed to every trial) |
-| Test execution | `TestExecutor.execute_tests` | **Reused per trial, unchanged** |
-| Backend init / tool ingest | `BackendSelector` + `_initialize_tools` | **Reused; ingest happens once on trial 0** (`force_ingest=False` thereafter) |
-| Evaluations | `evaluators` dict | **Reused** — same `metric_results` feed the loss |
-| Result persistence | `_save_report` + `_persist_eval_run` | **Skipped per trial; replaced** by `TrialLogger.write` |
-| Train/holdout split | n/a | New: `agent.model_copy(update={"test_cases": subset})` per call |
-| Loss + acceptance | n/a | New: `OptimizerLoop` |
-| Proposers | n/a | New: `NumericProposer` (Optuna), `CriticSubagent` + `ApplierSubagent` |
-| Trial output | n/a | New: `results/optimizer/<run-id>/` |
+async def mean_loss(cand: Agent, cases, repeats: int) -&gt; TrialLoss:
+    &quot;&quot;&quot;Run `repeats` independent sweeps; return mean loss + spread.
 
-### One ingest, many trials — the key efficiency lever
-
-The largest cost in financial-assistant is the convfinqa ingest (qdrant + contextual embeddings + 3,300-page PDF). The optimizer must not re-ingest per trial.
-
-1. **Trial 0** runs with `force_ingest=False`; ingests only if the vector store is empty.
-2. **Trials 1…N** also pass `force_ingest=False`. Same `agent_config_path` → same collection name → all trials hit the same already-populated qdrant collection.
-3. **Numeric axes that affect retrieval** (`top_k`, `semantic_weight`, `keyword_weight`, `min_score`, `rrf_k`) are *query-time* — safe to vary across trials.
-4. **Numeric axes that would require re-ingestion** (`chunking_strategy`, `max_chunk_tokens`, `contextual_embeddings`, `embedding_model`) are explicitly **excluded from v1** (see Out of Scope).
-
-## Loss function and trial history
-
-### Per-trial loss formula
-
-Given a `TestReport` from `_run_trial(cand, cases)`:
-
-```
-L(report) = 1 − ( Σᵢ wᵢ · scorēᵢ(report) ) / Σᵢ wᵢ
-```
-
-- **`wᵢ`** — weight for metric `i`, from `evaluations.optimizer.loss` in `agent.yaml`. Metrics configured in `evaluations.metrics` but absent from `loss` get weight 0 (informational only).
-- **`scorēᵢ`** — aggregate score for metric `i` across all test cases in this trial:
-  - Numeric scores (already 0–1): **mean**.
-  - Pass/fail metrics: **pass-rate** (mean of 0/1).
-  - Errored metric runs (score=null): treated as `0.0`. Logged separately.
-- **Per-turn metrics** (multi-turn cases): first averaged within the case, then averaged across cases. Avoids long conversations dominating short ones.
-
-Loss range: `[0, 1]`. **0 = perfect on every weighted metric.** Optuna minimizes.
-
-### Optional regularizers
-
-Off by default. When set, added on top of the weighted-score loss:
-
-```yaml
-optimizer:
+    repeats &gt; 1 is what makes acceptance honest when the agent samples
+    stochastically (temperature/top_p &gt; 0): a single run's loss is a random
+    variable, so we average it and keep the std to set the accept bar.
+    &quot;&quot;&quot;
+    losses = []
+    for _ in range(repeats):
+        report = await _run_trial(cand, cases)
+        losses.append(scalarize(report))
+    return TrialLoss(mean=mean(losses), std=pstdev(losses), n=repeats, runs=losses)
+</code></pre>
+<p><code>repeats</code> is a single global knob (<code>optimizer.repeats</code>, default <code>3</code>). It is <em>not</em> per-axis: the stochasticity comes from the agent's own sampling, not from which axis is being perturbed, so it is a property of the run. The total test-sweep cost of the whole optimization multiplies by <code>repeats</code> — budgets account for this (see Budget and termination).</p>
+<h3 id="whats-new-vs-reused">What's new vs reused<a class="headerlink" href="#whats-new-vs-reused" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Concern</th>
+<th>Today</th>
+<th>With optimizer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent config load</td>
+<td><code>ConfigLoader.load_agent_yaml</code></td>
+<td><strong>Reused</strong> (loaded once as baseline)</td>
+</tr>
+<tr>
+<td>Execution config resolution</td>
+<td><code>_resolve_execution_config</code></td>
+<td><strong>Reused</strong> (resolved once, passed to every trial)</td>
+</tr>
+<tr>
+<td>Test execution</td>
+<td><code>TestExecutor.execute_tests</code></td>
+<td><strong>Reused per trial, unchanged</strong></td>
+</tr>
+<tr>
+<td>Backend init / tool ingest</td>
+<td><code>BackendSelector</code> + <code>_initialize_tools</code></td>
+<td><strong>Reused; ingest happens once on trial 0</strong> (<code>force_ingest=False</code> thereafter)</td>
+</tr>
+<tr>
+<td>Evaluations</td>
+<td><code>evaluators</code> dict</td>
+<td><strong>Reused</strong> — same <code>metric_results</code> feed the loss</td>
+</tr>
+<tr>
+<td>Result persistence</td>
+<td><code>_save_report</code> + <code>_persist_eval_run</code></td>
+<td><strong>Skipped per trial; replaced</strong> by <code>TrialLogger.write</code></td>
+</tr>
+<tr>
+<td>Train/holdout split</td>
+<td>n/a</td>
+<td>New: <code>agent.model_copy(update={"test_cases": subset})</code> per call</td>
+</tr>
+<tr>
+<td>Loss + acceptance</td>
+<td>n/a</td>
+<td>New: <code>OptimizerLoop</code></td>
+</tr>
+<tr>
+<td>Proposers</td>
+<td>n/a</td>
+<td>New: <code>NumericProposer</code> (Optuna), <code>CriticSubagent</code> + <code>ApplierSubagent</code></td>
+</tr>
+<tr>
+<td>Trial output</td>
+<td>n/a</td>
+<td>New: <code>results/optimizer/&lt;run-id&gt;/</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="one-ingest-many-trials-the-key-efficiency-lever">One ingest, many trials — the key efficiency lever<a class="headerlink" href="#one-ingest-many-trials-the-key-efficiency-lever" title="Permanent link">#</a></h3>
+<p>The largest cost in financial-assistant is the convfinqa ingest (qdrant + contextual embeddings + 3,300-page PDF). The optimizer must not re-ingest per trial.</p>
+<ol>
+<li><strong>Trial 0</strong> runs with <code>force_ingest=False</code>; ingests only if the vector store is empty.</li>
+<li><strong>Trials 1…N</strong> also pass <code>force_ingest=False</code>. Same <code>agent_config_path</code> → same collection name → all trials hit the same already-populated qdrant collection.</li>
+<li><strong>Numeric axes that affect retrieval</strong> (<code>top_k</code>, <code>semantic_weight</code>, <code>keyword_weight</code>, <code>min_score</code>, <code>rrf_k</code>) are <em>query-time</em> — safe to vary across trials.</li>
+<li><strong>Numeric axes that would require re-ingestion</strong> (<code>chunking_strategy</code>, <code>max_chunk_tokens</code>, <code>contextual_embeddings</code>, <code>embedding_model</code>) are explicitly <strong>excluded from v1</strong> (see Out of Scope).</li>
+</ol>
+<h2 id="loss-function-and-trial-history">Loss function and trial history<a class="headerlink" href="#loss-function-and-trial-history" title="Permanent link">#</a></h2>
+<h3 id="per-trial-loss-formula">Per-trial loss formula<a class="headerlink" href="#per-trial-loss-formula" title="Permanent link">#</a></h3>
+<p>Given a <code>TestReport</code> from <code>_run_trial(cand, cases)</code>:</p>
+<pre><code>L(report) = 1 − ( Σᵢ wᵢ · scorēᵢ(report) ) / Σᵢ wᵢ
+</code></pre>
+<ul>
+<li><strong><code>wᵢ</code></strong> — weight for metric <code>i</code>, from <code>evaluations.optimizer.loss</code> in <code>agent.yaml</code>. Metrics configured in <code>evaluations.metrics</code> but absent from <code>loss</code> get weight 0 (informational only).</li>
+<li><strong><code>scorēᵢ</code></strong> — aggregate score for metric <code>i</code> across all test cases in this trial:</li>
+<li>Numeric scores (already 0–1): <strong>mean</strong>.</li>
+<li>Pass/fail metrics: <strong>pass-rate</strong> (mean of 0/1). ⚠️ The codebase's <code>ReportSummary.pass_rate</code> is a <strong>percentage (0–100)</strong>, so the scalarizer must divide it (and any pass-rate-derived score) by 100 before it enters the <code>[0,1]</code> loss. Failing to normalize makes the loss go negative and silently corrupts every accept decision — call this out in the loss unit tests.</li>
+<li>Errored metric runs (score=null): <strong>excluded from the aggregate and flagged</strong>, not scored as <code>0.0</code>. A transient API/backend error is not evidence the candidate is bad; scoring it as a total failure would inject noise into the loss and could reject a good candidate. The excluded count is recorded per trial; if more than a configurable fraction (<code>max_errored_fraction</code>, default <code>0.25</code>) of a metric's runs errored, that trial's loss for that metric is marked <strong>unreliable</strong> and the trial cannot be accepted on that basis (logged with reason).</li>
+<li><strong>Per-turn metrics</strong> (multi-turn cases): first averaged within the case, then averaged across cases. Avoids long conversations dominating short ones.</li>
+<li><strong>Across repeats:</strong> each of the <code>repeats</code> sweeps produces one trial loss; the reported trial loss is their <strong>mean</strong>, and the <strong>std</strong> is carried into the acceptance rule (see below).</li>
+</ul>
+<p>Loss range: <code>[0, 1]</code>. <strong>0 = perfect on every weighted metric.</strong> Optuna minimizes.</p>
+<h3 id="optional-regularizers">Optional regularizers<a class="headerlink" href="#optional-regularizers" title="Permanent link">#</a></h3>
+<p>Off by default. When set, added on top of the weighted-score loss:</p>
+<pre><code class="language-yaml">optimizer:
   penalties:
     cost_per_usd: 0.05      # add 0.05 per $1 of LLM spend per trial
     latency_per_sec: 0.001  # add 0.001 per second of mean test wall-time
-```
-
-```
-L_total = L(report) + cost_per_usd · trial_usd + latency_per_sec · mean_latency_sec
-```
-
-`trial_usd` derived from `report.summary.token_usage` × published per-token rates. Mean latency from `result.execution_time_ms` per case.
-
-### Trial history (the audit log)
-
-Every trial — accepted *or rejected* — appends one row to `results/optimizer/<run-id>/trials.jsonl`:
-
-```json
-{
-  "trial_id": 7,
-  "timestamp": "2026-05-16T13:42:17Z",
-  "axis": "textual",
-  "axis_target": "instructions.inline",
-  "proposal_source": {
-    "kind": "textual",
-    "critic": {
-      "model": "claude-sonnet-4-6",
-      "failing_pattern": "Agent answers single-fact lookups from the table but skips intermediate-step calculations on multi-row questions.",
-      "root_cause_hypothesis": "Prompt does not instruct the agent to verbalize the arithmetic before calling subtract/divide.",
-      "suggested_change_direction": "Add a 'plan-then-call' instruction before tool invocation steps.",
-      "confidence": 0.78,
-      "citations": ["Single_MRO/2007/page_134.pdf-1", "Single_AAPL/2019/page_88.pdf-3"]
+</code></pre>
+<pre><code>L_total = L(report) + cost_per_usd · trial_usd + latency_per_sec · mean_latency_sec
+</code></pre>
+<p><code>trial_usd</code> derived by <strong>summing <code>token_usage</code> across <code>report.results[]</code></strong> (the per-case <code>TestResult.token_usage</code>) × published per-token rates, then × <code>repeats</code>. Note: <code>ReportSummary</code> does <strong>not</strong> carry a <code>token_usage</code> field — costs must be aggregated from the per-result tokens, not read off the summary. Mean latency from <code>result.execution_time_ms</code> per case.</p>
+<h3 id="trial-history-the-audit-log">Trial history (the audit log)<a class="headerlink" href="#trial-history-the-audit-log" title="Permanent link">#</a></h3>
+<p>Every trial — accepted <em>or rejected</em> — appends one row to <code>results/optimizer/&lt;run-id&gt;/trials.jsonl</code>:</p>
+<pre><code class="language-json">{
+  &quot;trial_id&quot;: 7,
+  &quot;timestamp&quot;: &quot;2026-05-16T13:42:17Z&quot;,
+  &quot;cycle&quot;: 1,
+  &quot;phase&quot;: &quot;textual&quot;,
+  &quot;axis_target&quot;: &quot;instructions.inline&quot;,
+  &quot;baseline_before_path&quot;: &quot;candidates/iter-05.yaml&quot;,
+  &quot;proposal_source&quot;: {
+    &quot;kind&quot;: &quot;textual&quot;,
+    &quot;critic&quot;: {
+      &quot;model&quot;: &quot;claude-sonnet-4-6&quot;,
+      &quot;failing_pattern&quot;: &quot;Agent answers single-fact lookups from the table but skips intermediate-step calculations on multi-row questions.&quot;,
+      &quot;root_cause_hypothesis&quot;: &quot;Prompt does not instruct the agent to verbalize the arithmetic before calling subtract/divide.&quot;,
+      &quot;suggested_change_direction&quot;: &quot;Add a 'plan-then-call' instruction before tool invocation steps.&quot;,
+      &quot;confidence&quot;: 0.78,
+      &quot;citations&quot;: [&quot;Single_MRO/2007/page_134.pdf-1&quot;, &quot;Single_AAPL/2019/page_88.pdf-3&quot;]
     },
-    "applier": {
-      "model": "claude-sonnet-4-6",
-      "rationale": "Inserted a sentence after the tool list…",
-      "edit_type": "insert",
-      "diff_lines_added": 3,
-      "diff_lines_removed": 0
+    &quot;applier&quot;: {
+      &quot;model&quot;: &quot;claude-sonnet-4-6&quot;,
+      &quot;rationale&quot;: &quot;Inserted a sentence after the tool list…&quot;,
+      &quot;edit_type&quot;: &quot;insert&quot;,
+      &quot;diff_lines_added&quot;: 3,
+      &quot;diff_lines_removed&quot;: 0
     }
   },
-  "candidate_path": "candidates/iter-07.yaml",
-  "train": {
-    "report_summary": { "pass_rate": 0.82, "average_scores": {} },
-    "loss_components": { "numeric": 0.78, "turn_program_equivalence": 0.91 },
-    "penalty_components": { "cost_per_usd": 0.011, "latency_per_sec": 0.004 },
-    "loss": 0.184,
-    "duration_sec": 47.2,
-    "trial_usd": 0.22
+  &quot;candidate_path&quot;: &quot;candidates/iter-07.yaml&quot;,
+  &quot;repeats&quot;: 3,
+  &quot;train&quot;: {
+    &quot;report_summary&quot;: { &quot;pass_rate&quot;: 82.0, &quot;average_scores&quot;: {} },
+    &quot;loss_components&quot;: { &quot;numeric&quot;: 0.78, &quot;turn_program_equivalence&quot;: 0.91 },
+    &quot;penalty_components&quot;: { &quot;cost_per_usd&quot;: 0.011, &quot;latency_per_sec&quot;: 0.004 },
+    &quot;loss&quot;: 0.184,
+    &quot;loss_std&quot;: 0.011,
+    &quot;loss_runs&quot;: [0.179, 0.184, 0.189],
+    &quot;errored_runs_excluded&quot;: 0,
+    &quot;duration_sec&quot;: 141.6,
+    &quot;trial_usd&quot;: 0.66
   },
-  "holdout": {
-    "loss": 0.196,
-    "report_summary": { "pass_rate": 0.80, "average_scores": {} }
+  &quot;holdout&quot;: {
+    &quot;loss&quot;: 0.196,
+    &quot;loss_std&quot;: 0.014,
+    &quot;loss_runs&quot;: [0.182, 0.196, 0.210],
+    &quot;report_summary&quot;: { &quot;pass_rate&quot;: 80.0, &quot;average_scores&quot;: {} }
   },
-  "decision": {
-    "best_train_loss_before": 0.221,
-    "improvement": 0.037,
-    "holdout_within_tolerance": true,
-    "accepted": true,
-    "reason": "train improved by 0.037; holdout regression 0.012 ≤ tolerance 0.02"
+  &quot;decision&quot;: {
+    &quot;best_train_mean_before&quot;: 0.221,
+    &quot;train_improvement&quot;: 0.037,
+    &quot;noise_bar&quot;: 0.013,
+    &quot;improvement_clears_noise&quot;: true,
+    &quot;holdout_regression&quot;: 0.012,
+    &quot;holdout_within_noise&quot;: true,
+    &quot;accepted&quot;: true,
+    &quot;reason&quot;: &quot;train improved 0.037 ≥ noise bar 0.013 (1×pooled std); holdout regressed 0.012, within its 0.014 spread — accept + advance baseline&quot;
   },
-  "study_state": {
-    "tpe_n_observations": 7,
-    "best_trial_id": 7
+  &quot;study_state&quot;: {
+    &quot;cycle&quot;: 1,
+    &quot;phase&quot;: &quot;textual&quot;,
+    &quot;numeric_study_id&quot;: null,
+    &quot;tpe_n_observations_this_study&quot;: null,
+    &quot;best_trial_id&quot;: 7
   }
 }
-```
-
-The row is the audit trail. Anyone reading `trials.jsonl` can answer: *what changed, why it was tried, what it scored on train and holdout, why it was accepted or rejected.* No state lives outside this log.
-
-### What history buys the loop
-
-| Use | Mechanism |
-|---|---|
-| TPE sample-efficiency | Optuna study replays observations from `trials.jsonl` on resume |
-| Strategy router bias | `mean(Δloss \| axis=numeric)` vs `mean(Δloss \| axis=textual)` over last K trials |
-| Critic context | Critic subagent is given the last 3 *rejected* textual trials so it doesn't re-propose ideas that already failed |
-| Early stop (`patience`) | Stop if no `accepted=true` in last `patience` trials |
-| `report.md` synthesis | Loss trajectory, per-axis attribution |
-| `--resume` | Replay rows into a new study; carry forward bests |
-
-### What we are deliberately *not* doing
-
-- No surrogate LLM judge of "trial quality" beyond configured metrics. The loss function is exactly what the YAML says.
-- No per-test gradient. The loss is a scalar over the trial; the critic gets *raw failures*, not per-axis gradients.
-- No reward shaping. A score of 0.7 from a numeric metric is just 0.7. No squaring the gap to penalize harder.
-- No Bayesian model over textual proposals. The TPE study only sees numeric trials.
-
-## Numeric proposer (Optuna TPE)
-
-### Setup
-
-Each numeric axis from `agent.yaml` becomes a dimension in the search space:
-
-```yaml
-axes:
+</code></pre>
+<p>The row is the audit trail. Anyone reading <code>trials.jsonl</code> can answer: <em>what changed, why it was tried, what it scored on train and holdout, why it was accepted or rejected.</em> No state lives outside this log.</p>
+<p><strong>Cost/duration field semantics.</strong> <code>train.trial_usd</code> and <code>train.duration_sec</code> cover the <strong>train sweeps only, already ×<code>repeats</code></strong> (so <code>0.66 = 3 × 0.22</code>, <code>141.6s ≈ 3 × 47s</code>). Holdout sweeps, when run, add their own cost on top; the <em>whole-trial</em> total (train + holdout, ×repeats) is what <code>trajectory.csv</code>'s <code>trial_usd</code>/<code>duration_sec</code> columns report and what the <code>max_usd</code> global budget accumulates. The two views differ on purpose: the JSONL separates train from holdout so per-axis cost attribution is exact; the CSV is the flat total for plotting.</p>
+<h3 id="what-history-buys-the-loop">What history buys the loop<a class="headerlink" href="#what-history-buys-the-loop" title="Permanent link">#</a></h3>
+<table>
+<thead>
+<tr>
+<th>Use</th>
+<th>Mechanism</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TPE sample-efficiency (within a phase)</td>
+<td>Each numeric phase's Optuna study replays <em>its own phase's</em> observations on resume; studies are never shared across phases</td>
+</tr>
+<tr>
+<td>Per-phase stop</td>
+<td><code>mean(Δloss)</code> over the phase's trials; stop when the axis stops paying out</td>
+</tr>
+<tr>
+<td>Critic context</td>
+<td>Critic subagent is given the last 3 <em>rejected</em> textual trials so it doesn't re-propose ideas that already failed</td>
+</tr>
+<tr>
+<td>Global early stop</td>
+<td>Stop when a full numeric→textual cycle yields zero accepts (plus per-phase patience)</td>
+</tr>
+<tr>
+<td><code>report.md</code> synthesis</td>
+<td>Loss trajectory, per-phase + per-axis attribution</td>
+</tr>
+<tr>
+<td><code>--resume</code></td>
+<td>Replay rows: advance baseline through accepted trials, rebuild each numeric phase's study from <em>that phase's</em> rows, carry forward bests</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-we-are-deliberately-not-doing">What we are deliberately <em>not</em> doing<a class="headerlink" href="#what-we-are-deliberately-not-doing" title="Permanent link">#</a></h3>
+<ul>
+<li>No surrogate LLM judge of "trial quality" beyond configured metrics. The loss function is exactly what the YAML says.</li>
+<li>No per-test gradient. The loss is a scalar over the trial; the critic gets <em>raw failures</em>, not per-axis gradients.</li>
+<li>No reward shaping. A score of 0.7 from a numeric metric is just 0.7. No squaring the gap to penalize harder.</li>
+<li>No Bayesian model over textual proposals. TPE only models numeric axes — and only within a single phase against a frozen prompt.</li>
+<li>No single long-lived study across the whole run. A study's observations are only valid while the prompt is frozen; each numeric phase gets a fresh study.</li>
+</ul>
+<h2 id="numeric-proposer-optuna-tpe">Numeric proposer (Optuna TPE)<a class="headerlink" href="#numeric-proposer-optuna-tpe" title="Permanent link">#</a></h2>
+<h3 id="setup">Setup<a class="headerlink" href="#setup" title="Permanent link">#</a></h3>
+<p>Each numeric axis from <code>agent.yaml</code> becomes a dimension in the search space:</p>
+<pre><code class="language-yaml">axes:
   numeric:
     - path: model.temperature                              ; range: [0.0, 1.0]
     - path: model.top_p                                    ; range: [0.5, 1.0]
     - path: tools[name=convfinqa_archive].top_k            ; range: [3, 20]; type: int
     - path: tools[name=convfinqa_archive].semantic_weight  ; range: [0.2, 0.8]
-```
-
-Optuna calls each axis a *parameter*. A *trial* is one point in joint space plus its observed loss. The *study* is the running collection of `(point, loss)` pairs.
-
-### Why TPE over grid / random
-
-- **Grid.** 4 axes × 5 levels = 625 trials. Each trial = one full test sweep against a real LLM. Non-starter past 2–3 axes.
-- **Random.** Surprisingly competitive vs grid (Bergstra & Bengio 2012) but ignores everything you've already learned.
-- **Bayesian (TPE).** Uses every observation. Within ~15–25 trials it concentrates on promising regions. Right point on the cost/value curve when each trial is expensive.
-
-### What TPE actually does
-
-TPE = Tree-structured Parzen Estimator. Sequential model-based optimization. The "model" is two density estimates over parameter space:
-
-1. **`l(x)`** — density of points where loss was *good* (below quantile γ of observed losses).
-2. **`g(x)`** — density of points where loss was *bad* (above γ).
-
-Each iteration, TPE samples many candidate points from `l(x)` and picks the one maximizing `l(x)/g(x)` — "looks like the good points and unlike the bad ones."
-
-```
-trial 1–10: warmup, mostly random samples (study can't model anything yet)
-trial 11+:  TPE.ask uses l/g to bias sampling toward the good region
-            — but never collapses entirely (always mixes in exploration)
-```
-
-Mental shorthand: **TPE is "I've seen N attempts; here's where the next attempt is most likely to be better than the median."** Not exact gradient descent — there is no derivative — but converges to good regions much faster than random.
-
-### Explainability for numeric trials
-
-TPE doesn't produce a per-axis derivative, but it *does* expose, for any candidate, the per-axis density values. We log them:
-
-```json
-"proposal_source": {
-  "kind": "numeric",
-  "tpe_quantile": 0.25,
-  "candidates_evaluated": 24,
-  "selected_candidate_score": 1.83,
-  "axis_marginals": {
-    "model.temperature":  { "value": 0.30, "good_density": 2.1, "bad_density": 0.4 },
-    "top_k":              { "value": 8,    "good_density": 2.4, "bad_density": 0.3 },
-    "semantic_weight":    { "value": 0.55, "good_density": 1.6, "bad_density": 0.7 }
+</code></pre>
+<p>Optuna calls each axis a <em>parameter</em>. A <em>trial</em> is one point in joint space plus its observed loss. The <em>study</em> is the running collection of <code>(point, loss)</code> pairs.</p>
+<h3 id="why-tpe-over-grid-random">Why TPE over grid / random<a class="headerlink" href="#why-tpe-over-grid-random" title="Permanent link">#</a></h3>
+<ul>
+<li><strong>Grid.</strong> 4 axes × 5 levels = 625 trials. Each trial = one full test sweep against a real LLM. Non-starter past 2–3 axes.</li>
+<li><strong>Random.</strong> Surprisingly competitive vs grid (Bergstra &amp; Bengio 2012) but ignores everything you've already learned.</li>
+<li><strong>Bayesian (TPE).</strong> Uses every observation. Within ~15–25 trials it concentrates on promising regions. Right point on the cost/value curve when each trial is expensive.</li>
+</ul>
+<h3 id="what-tpe-actually-does">What TPE actually does<a class="headerlink" href="#what-tpe-actually-does" title="Permanent link">#</a></h3>
+<p>TPE = Tree-structured Parzen Estimator. Sequential model-based optimization. The "model" is two density estimates over parameter space:</p>
+<ol>
+<li><strong><code>l(x)</code></strong> — density of points where loss was <em>good</em> (below quantile γ of observed losses).</li>
+<li><strong><code>g(x)</code></strong> — density of points where loss was <em>bad</em> (above γ).</li>
+</ol>
+<p>Each iteration, TPE samples many candidate points from <code>l(x)</code> and picks the one maximizing <code>l(x)/g(x)</code> — "looks like the good points and unlike the bad ones."</p>
+<pre><code>phase trial 1–10: warmup, mostly random samples (study can't model anything yet)
+phase trial 11+:  TPE.ask uses l/g to bias sampling toward the good region
+                  — but never collapses entirely (always mixes in exploration)
+</code></pre>
+<p>Mental shorthand: <strong>TPE is "I've seen N attempts <em>against this prompt</em>; here's where the next attempt is most likely to be better than the median."</strong> Not exact gradient descent — there is no derivative — but converges to good regions much faster than random.</p>
+<p><strong>Warmup cost is per phase, by design.</strong> Because each numeric phase starts a fresh study (the prompt underneath changed), it re-pays the ~10-trial warmup each cycle. This is the price of correctness: a study carried over from a previous prompt would be modelling a loss surface that no longer exists. The per-phase numeric budget must be set with this warmup in mind (a phase budget below ~<code>n_startup_trials</code> does no Bayesian work at all — it's pure random search). The phase scheduler logs a warning if a numeric phase budget is smaller than the warmup.</p>
+<h3 id="explainability-for-numeric-trials">Explainability for numeric trials<a class="headerlink" href="#explainability-for-numeric-trials" title="Permanent link">#</a></h3>
+<p>TPE doesn't produce a per-axis derivative, but it <em>does</em> expose, for any candidate, the per-axis density values. We log them:</p>
+<pre><code class="language-json">&quot;proposal_source&quot;: {
+  &quot;kind&quot;: &quot;numeric&quot;,
+  &quot;numeric_study_id&quot;: &quot;numeric-phase-2&quot;,
+  &quot;params&quot;: { &quot;model.temperature&quot;: 0.30, &quot;model.top_p&quot;: 0.80, &quot;top_k&quot;: 8, &quot;semantic_weight&quot;: 0.55 },
+  &quot;tpe_quantile&quot;: 0.25,
+  &quot;candidates_evaluated&quot;: 24,
+  &quot;selected_candidate_score&quot;: 1.83,
+  &quot;axis_marginals&quot;: {
+    &quot;model.temperature&quot;:  { &quot;value&quot;: 0.30, &quot;good_density&quot;: 2.1, &quot;bad_density&quot;: 0.4 },
+    &quot;top_k&quot;:              { &quot;value&quot;: 8,    &quot;good_density&quot;: 2.4, &quot;bad_density&quot;: 0.3 },
+    &quot;semantic_weight&quot;:    { &quot;value&quot;: 0.55, &quot;good_density&quot;: 1.6, &quot;bad_density&quot;: 0.7 }
   }
 }
-```
-
-The trial row answers "why this point?" — *"TPE identified `top_k=8` and `semantic_weight=0.55` as concentrated in the good region; ratio of good-density to bad-density was 1.83× the median."*
-
-### Plug-in
-
-```python
-# src/holodeck/optimizer/proposers/numeric.py
+</code></pre>
+<p>The raw <strong><code>params</code></strong> dict (exact suggested value per axis) and <strong><code>numeric_study_id</code></strong> are mandatory on every numeric row — they are what <code>--resume</code> needs to reconstruct the phase's study via <code>study.add_trial(params, value=train_loss)</code>. The <code>axis_marginals</code> are explainability only; Optuna cannot rebuild a study from densities. The trial row also answers "why this point?" — <em>"TPE identified <code>top_k=8</code> and <code>semantic_weight=0.55</code> as concentrated in the good region; ratio of good-density to bad-density was 1.83× the median."</em></p>
+<h3 id="plug-in">Plug-in<a class="headerlink" href="#plug-in" title="Permanent link">#</a></h3>
+<p>A <code>NumericProposer</code> instance wraps <strong>one</strong> study and is created fresh at the start of each numeric phase (<code>NumericProposer(axes, seed, phase_index)</code>). It never outlives the phase.</p>
+<pre><code class="language-python"># src/holodeck/optimizer/proposers/numeric.py
 import optuna
 
 class NumericProposer:
-    def __init__(self, axes: list[NumericAxis], seed: int):
+    def __init__(self, axes: list[NumericAxis], seed: int, phase_index: int):
         self.axes = axes
+        self.phase_index = phase_index
+        # Fresh study per numeric phase. Seed is offset by phase so repeated
+        # phases don't draw the identical warmup sequence while staying
+        # deterministic for --resume.
         self.study = optuna.create_study(
-            direction="minimize",
+            direction=&quot;minimize&quot;,
+            study_name=f&quot;numeric-phase-{phase_index}&quot;,
             sampler=optuna.samplers.TPESampler(
-                seed=seed,
+                seed=seed + phase_index,
                 n_startup_trials=10,
                 n_ei_candidates=24,
                 multivariate=True,
             ),
         )
 
-    def propose(self) -> tuple[optuna.Trial, dict[str, Any]]:
+    def propose(self) -&gt; tuple[optuna.Trial, dict[str, Any]]:
         trial = self.study.ask()
         params: dict[str, Any] = {}
         for axis in self.axes:
-            if axis.type == "float":
+            if axis.type == &quot;float&quot;:
                 params[axis.path] = trial.suggest_float(axis.path, axis.lo, axis.hi)
-            elif axis.type == "int":
+            elif axis.type == &quot;int&quot;:
                 params[axis.path] = trial.suggest_int(axis.path, axis.lo, axis.hi)
-            elif axis.type == "categorical":
+            elif axis.type == &quot;categorical&quot;:
                 params[axis.path] = trial.suggest_categorical(axis.path, axis.choices)
         return trial, params
 
-    def tell(self, trial: optuna.Trial, loss: float) -> None:
+    def tell(self, trial: optuna.Trial, loss: float) -&gt; None:
         self.study.tell(trial, loss)
 
-    def explain(self, trial: optuna.Trial) -> dict:
-        """Return marginals + ratios for the audit log."""
+    def explain(self, trial: optuna.Trial) -&gt; dict:
+        &quot;&quot;&quot;Return marginals + ratios for the audit log.&quot;&quot;&quot;
         ...
-```
-
-`OptimizerLoop` is then a tiny adapter:
-
-```python
-optuna_trial, params = self.numeric_proposer.propose()
-cand = apply_axes(self.baseline, params)
-report = await _run_trial(cand, train_cases)
-loss = self.scalarize(report)
-self.numeric_proposer.tell(optuna_trial, loss)
-```
-
-`--resume`: read `trials.jsonl`, filter `axis == "numeric"`, call `study.add_trial(...)` for each before resuming.
-
-### Choices made explicitly
-
-- **TPESampler over GPSampler.** TPE handles mixed continuous/integer/categorical natively; GP is for purely continuous low-dimensional setups.
-- **`multivariate=True`** — correlations between axes are real (e.g. `temperature` and `top_p`).
-- **Sequential, not parallel.** Optuna supports parallel `ask`/`tell` but our trials hit shared resources. v2.
-- **Seed defaults to 42, surfaced in the run-id.**
-
-### References
-
-- Bergstra et al., 2011. [Algorithms for Hyper-Parameter Optimization](https://proceedings.neurips.cc/paper/2011/file/86e8f7ab32cfd12577bc2619bc635690-Paper.pdf).
-- Bergstra & Bengio, 2012. [Random Search for Hyper-Parameter Optimization](https://www.jmlr.org/papers/v13/bergstra12a.html).
-- Optuna docs. [TPESampler](https://optuna.readthedocs.io/en/stable/reference/samplers/generated/optuna.samplers.TPESampler.html), [Efficient Optimization Algorithms](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/003_efficient_optimization_algorithms.html).
-- Akiba et al., 2019. [Optuna: A Next-generation Hyperparameter Optimization Framework](https://arxiv.org/abs/1907.10902).
-
-## Textual proposer (TextGrad-style critic + applier)
-
-### Intuition: natural-language gradients
-
-In NN backprop, the gradient at a parameter answers: *"if you nudge me in this direction, the loss will go down."* For text, the equivalent is a sentence: *"the prompt is failing on multi-step arithmetic because it doesn't tell the agent to plan the calculation before invoking tools — add a planning instruction."*
-
-That sentence is the gradient. It shares three properties with a real gradient:
-
-1. **Local.** About *this* prompt's *current* failures, not abstract advice.
-2. **Directional.** Not "make the prompt better" but specifically "add planning."
-3. **An input to a step function.** Something else takes (current_text, gradient) → new_text — the analog of `θ ← θ − η·∇L`.
-
-This is the TextGrad framing (Yuksekgonul et al., 2024). The split into two LLM calls — one that *describes* the gradient, one that *applies* it — makes the system explainable and ablatable.
-
-### The two subagents
-
-Both are Claude subagents (`AgentDefinition`), called via the Claude Agent SDK with structured output. Auto-installed on first run at `.holodeck/optimizer/agents/{critic,applier}.yaml`; user-editable.
-
-**Critic subagent** — produces the gradient.
-
-```yaml
-name: optimizer-critic
+</code></pre>
+<p>The numeric-phase driver is then a tiny adapter over the <em>current</em> baseline:</p>
+<pre><code class="language-python">proposer = NumericProposer(self.numeric_axes, seed, phase_index)
+while not phase_stop:
+    optuna_trial, params = proposer.propose()
+    cand = apply_axes(self.baseline, params)     # CURRENT baseline (compounded)
+    train = await mean_loss(cand, train_cases, repeats)
+    proposer.tell(optuna_trial, train.mean)
+    ... accept/reject ...
+    if accept:
+        self.baseline = cand                     # COMPOUND before next ask
+</code></pre>
+<p>Note <code>self.baseline = cand</code> inside the phase: because TPE proposes <em>deltas to the axes</em> and <code>apply_axes</code> always starts from the current baseline, an accept mid-phase compounds within the phase too. The study's observations remain valid because the <em>prompt</em> (the thing TPE doesn't model) is frozen for the whole phase.</p>
+<p><code>--resume</code>: read <code>trials.jsonl</code>; for each numeric phase, filter that phase's rows (<code>phase=="numeric" &amp;&amp; cycle==c</code>) and <code>study.add_trial(...)</code> them into a fresh study for that phase before resuming the phase that was in flight. Studies are reconstructed per phase, never merged.</p>
+<h3 id="choices-made-explicitly">Choices made explicitly<a class="headerlink" href="#choices-made-explicitly" title="Permanent link">#</a></h3>
+<ul>
+<li><strong>TPESampler over GPSampler.</strong> TPE handles mixed continuous/integer/categorical natively; GP is for purely continuous low-dimensional setups.</li>
+<li><strong><code>multivariate=True</code></strong> — correlations between axes are real (e.g. <code>temperature</code> and <code>top_p</code>).</li>
+<li><strong>Fresh study per numeric phase.</strong> A study is valid only while the prompt is frozen; re-opening numeric after a textual phase starts a new study. This is the core correctness decision of the rewrite.</li>
+<li><strong>Sequential, not parallel.</strong> Optuna supports parallel <code>ask</code>/<code>tell</code> but our trials hit shared resources. v2.</li>
+<li><strong>Seed defaults to 42, surfaced in the run-id; offset per phase (<code>seed + phase_index</code>)</strong> so repeated numeric phases explore differently yet reproducibly.</li>
+</ul>
+<h3 id="references">References<a class="headerlink" href="#references" title="Permanent link">#</a></h3>
+<ul>
+<li>Bergstra et al., 2011. <a href="https://proceedings.neurips.cc/paper/2011/file/86e8f7ab32cfd12577bc2619bc635690-Paper.pdf">Algorithms for Hyper-Parameter Optimization</a>.</li>
+<li>Bergstra &amp; Bengio, 2012. <a href="https://www.jmlr.org/papers/v13/bergstra12a.html">Random Search for Hyper-Parameter Optimization</a>.</li>
+<li>Optuna docs. <a href="https://optuna.readthedocs.io/en/stable/reference/samplers/generated/optuna.samplers.TPESampler.html">TPESampler</a>, <a href="https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/003_efficient_optimization_algorithms.html">Efficient Optimization Algorithms</a>.</li>
+<li>Akiba et al., 2019. <a href="https://arxiv.org/abs/1907.10902">Optuna: A Next-generation Hyperparameter Optimization Framework</a>.</li>
+</ul>
+<h2 id="textual-proposer-textgrad-style-critic-applier">Textual proposer (TextGrad-style critic + applier)<a class="headerlink" href="#textual-proposer-textgrad-style-critic-applier" title="Permanent link">#</a></h2>
+<h3 id="intuition-natural-language-gradients">Intuition: natural-language gradients<a class="headerlink" href="#intuition-natural-language-gradients" title="Permanent link">#</a></h3>
+<p>In NN backprop, the gradient at a parameter answers: <em>"if you nudge me in this direction, the loss will go down."</em> For text, the equivalent is a sentence: <em>"the prompt is failing on multi-step arithmetic because it doesn't tell the agent to plan the calculation before invoking tools — add a planning instruction."</em></p>
+<p>That sentence is the gradient. It shares three properties with a real gradient:</p>
+<ol>
+<li><strong>Local.</strong> About <em>this</em> prompt's <em>current</em> failures, not abstract advice.</li>
+<li><strong>Directional.</strong> Not "make the prompt better" but specifically "add planning."</li>
+<li><strong>An input to a step function.</strong> Something else takes (current_text, gradient) → new_text — the analog of <code>θ ← θ − η·∇L</code>.</li>
+</ol>
+<p>This is the TextGrad framing (Yuksekgonul et al., 2024). The split into two LLM calls — one that <em>describes</em> the gradient, one that <em>applies</em> it — makes the system explainable and ablatable.</p>
+<h3 id="the-two-subagents">The two subagents<a class="headerlink" href="#the-two-subagents" title="Permanent link">#</a></h3>
+<p>Both are Claude subagents (<code>AgentDefinition</code>), called via the Claude Agent SDK with structured output. Auto-installed on first run at <code>.holodeck/optimizer/agents/{critic,applier}.yaml</code>; user-editable.</p>
+<p><strong>Critic subagent</strong> — produces the gradient.</p>
+<pre><code class="language-yaml">name: optimizer-critic
 description: Reads failing test traces and produces a structured natural-language gradient.
 model:
   provider: anthropic
@@ -650,12 +743,9 @@ response_format:
       confidence:             { type: number, minimum: 0, maximum: 1 }
       citations:              { type: array, items: { type: string } }
       avoid:                  { type: array, items: { type: string } }
-```
-
-**Applier subagent** — performs the step.
-
-```yaml
-name: optimizer-applier
+</code></pre>
+<p><strong>Applier subagent</strong> — performs the step.</p>
+<pre><code class="language-yaml">name: optimizer-applier
 description: Takes a current text and a critic's gradient, produces the new text.
 model:
   provider: anthropic
@@ -680,206 +770,210 @@ response_format:
       rationale:    { type: string }
       new_text:     { type: string }
       diff_summary: { type: string }
-```
+</code></pre>
+<p>A textual phase runs this proposal repeatedly against the <strong>current</strong> (compounding) baseline until it stops accepting. <code>current_text</code> and <code>latest_train_report</code> are always read from the baseline <em>as it stands now</em> — so after one edit is accepted and folded in, the next critic call diagnoses the <em>already-improved</em> prompt's remaining failures, not the phase-entry prompt's. This is how textual edits compound within a phase.</p>
+<pre><code>TextualProposer.propose(current_text, latest_train_report, history):
 
-### The textual trial loop
-
-```
-TextualProposer.propose(baseline_text, last_train_report, history):
-
-  1. failures = [r for r in last_train_report.results if not r.passed][:10]
+  1. failures = [r for r in latest_train_report.results if not r.passed][:10]
      if not failures:
-        return None  # nothing to learn from; loop falls back to numeric
+        return None  # nothing left to fix on this axis → end the textual phase
 
   2. gradient = await critic_subagent.run(
-        current_text=baseline_text,
+        current_text=current_text,                 # CURRENT baseline's text
         failing_traces=[_compact(r) for r in failures],
         previous_gradients=[h.critic for h in history[-3:]
                             if not h.decision.accepted])
 
-  3. if gradient.confidence < 0.4:
-        log "low-confidence gradient, skipping textual trial"
-        return None
+  3. if gradient.confidence &lt; min_confidence:       # default 0.4
+        log &quot;low-confidence gradient, skipping textual trial (cheap short-circuit)&quot;
+        return None                                  # ends phase if it recurs (no-accept-in-N)
 
   4. edit = await applier_subagent.run(
-        current_text=baseline_text,
+        current_text=current_text,
         gradient=gradient,
         max_chars=axis.max_chars)
 
   5. return TextualProposal(
         new_text=edit.new_text,
-        audit={ "critic": gradient, "applier": edit })
-```
-
-### Persisting the textual edit
-
-When a textual trial is accepted:
-
-- **`instructions.file` path:** Applier writes the new prompt to `results/optimizer/<run-id>/instructions/system-prompt.iter-NN.md`. The candidate `agent.yaml` (at `results/optimizer/<run-id>/candidates/iter-NN.yaml`) gets `instructions.file: ../instructions/system-prompt.iter-NN.md`. The relative path resolves correctly when the candidate is loaded directly via `holodeck test run candidates/iter-NN.yaml` (HoloDeck resolves `instructions.file` relative to the agent.yaml's directory). On adoption, the user copies the prompt file back into their project layout and updates `instructions.file` accordingly — the "How to adopt" section in `report.md` provides the exact `cp` and `sed` commands.
-- **`tools[X].description` (inline):** updated inline in the candidate `agent.yaml`. No separate file.
-- **`instructions.inline` (rare; user explicitly chose inline):** updated inline in the candidate `agent.yaml`.
-
-### Why two stages, not one
-
-A single "rewrite this prompt to fix these failures" call collapses diagnosis and remedy. You lose:
-
-- Ability to reject low-confidence diagnoses without spending a full trial. Step 3 above short-circuits before the Applier even runs, before tests are run, saving real money.
-- Ability to feed back rejected diagnoses. "Here are 3 things you've already proposed that didn't work" is the closest thing to learning the textual proposer has.
-- Ablation. Is the optimizer failing because the critic is wrong, or because the applier rewrites poorly? Two stages let you swap one and hold the other constant.
-
-### What we are deliberately *not* doing
-
-- No retrieval over a "good prompt corpus." (DSPy MIPRO, OPRO style.) v2 if ever.
-- No co-optimization across multiple textual axes per trial. One trial perturbs one textual target.
-- No evolutionary / population methods.
-- No self-judging. Critic gets failure traces; never grades the new prompt.
-
-### Cost reality
-
-```
-Critic call:   ~2k input + ~400 output tokens
-Applier call:  ~2k input + (axis.max_chars / 4) output tokens
-Test sweep on TRAIN cases (the expensive part)
-```
-
-For financial-assistant: test sweep is ~$0.20–$0.40 per trial. The two LLM calls add ~$0.02. Optimizer overhead is ~5–10% of trial cost; dominant lever is `max_iterations` and `patience`.
-
-### References
-
-- Yuksekgonul et al., 2024. [TextGrad: Automatic "Differentiation" via Text](https://arxiv.org/abs/2406.07496).
-- Khattab et al., 2024. [DSPy](https://arxiv.org/abs/2310.03714) and [MIPRO](https://arxiv.org/abs/2406.11695).
-- Pryzant et al., 2023. [Automatic Prompt Optimization with "Gradient Descent" and Beam Search (ProTeGi)](https://arxiv.org/abs/2305.03495).
-- Yang et al., 2023. [Large Language Models as Optimizers (OPRO)](https://arxiv.org/abs/2309.03409).
-- Anthropic. [Claude Agent SDK — AgentDefinition](https://docs.anthropic.com/en/docs/claude-code/sdk).
-
-## Train/holdout split + acceptance rule
-
-### The split
-
-```yaml
-optimizer:
+        audit={ &quot;critic&quot;: gradient, &quot;applier&quot;: edit })
+</code></pre>
+<p>A textual phase iterates over the configured textual axes (e.g. <code>instructions.inline</code>, then each <code>tools[X].description</code>), one target per trial. The phase ends when a full pass over the axes produces no accept (<code>no-accept-in-N</code>) or the phase budget trips. There is no "fall back to numeric" — phase hand-off is owned by the scheduler, not the proposer.</p>
+<h3 id="persisting-the-textual-edit">Persisting the textual edit<a class="headerlink" href="#persisting-the-textual-edit" title="Permanent link">#</a></h3>
+<p>When a textual trial is accepted:</p>
+<ul>
+<li><strong><code>instructions.file</code> path:</strong> Applier writes the new prompt to <code>results/optimizer/&lt;run-id&gt;/instructions/system-prompt.iter-NN.md</code>. The candidate <code>agent.yaml</code> (at <code>results/optimizer/&lt;run-id&gt;/candidates/iter-NN.yaml</code>) gets <code>instructions.file: ../instructions/system-prompt.iter-NN.md</code>. The relative path resolves correctly when the candidate is loaded directly via <code>holodeck test run candidates/iter-NN.yaml</code> (HoloDeck resolves <code>instructions.file</code> relative to the agent.yaml's directory). On adoption, the user copies the prompt file back into their project layout and updates <code>instructions.file</code> accordingly — the "How to adopt" section in <code>report.md</code> provides the exact <code>cp</code> and <code>sed</code> commands.</li>
+<li><strong><code>tools[X].description</code> (inline):</strong> updated inline in the candidate <code>agent.yaml</code>. No separate file.</li>
+<li><strong><code>instructions.inline</code> (rare; user explicitly chose inline):</strong> updated inline in the candidate <code>agent.yaml</code>.</li>
+</ul>
+<h3 id="why-two-stages-not-one">Why two stages, not one<a class="headerlink" href="#why-two-stages-not-one" title="Permanent link">#</a></h3>
+<p>A single "rewrite this prompt to fix these failures" call collapses diagnosis and remedy. You lose:</p>
+<ul>
+<li>Ability to reject low-confidence diagnoses without spending a full trial. Step 3 above short-circuits before the Applier even runs, before tests are run, saving real money.</li>
+<li>Ability to feed back rejected diagnoses. "Here are 3 things you've already proposed that didn't work" is the closest thing to learning the textual proposer has.</li>
+<li>Ablation. Is the optimizer failing because the critic is wrong, or because the applier rewrites poorly? Two stages let you swap one and hold the other constant.</li>
+</ul>
+<h3 id="what-we-are-deliberately-not-doing_1">What we are deliberately <em>not</em> doing<a class="headerlink" href="#what-we-are-deliberately-not-doing_1" title="Permanent link">#</a></h3>
+<ul>
+<li><strong>No few-shot demonstration optimization.</strong> This is the single highest-leverage lever in DSPy/MIPRO-style prompt optimization — automatically selecting and <em>bootstrapping</em> <code>input→tool-calls→output</code> demonstrations from training examples that pass the grader, then choosing which subset/order goes in the prompt. The MVP does not do it, which is precisely why this feature is named an <em>instruction &amp; hyperparameter</em> optimizer rather than a "prompt optimizer." It is the <strong>#1 v2 item</strong> (see Out of Scope), not "v2 if ever" — HoloDeck's <code>train_cases_file</code> + graders already supply the example pool and pass/fail oracle that bootstrapping needs; what's missing is a first-class <code>demonstrations</code> slot on the agent schema, backend injection, and a selector proposer.</li>
+<li>No co-optimization across multiple textual axes per trial. One trial perturbs one textual target.</li>
+<li>No evolutionary / population methods.</li>
+<li>No self-judging. Critic gets failure traces; never grades the new prompt.</li>
+</ul>
+<h3 id="cost-reality">Cost reality<a class="headerlink" href="#cost-reality" title="Permanent link">#</a></h3>
+<pre><code>Critic call:   ~2k input + ~400 output tokens          (once per textual trial)
+Applier call:  ~2k input + (axis.max_chars / 4) output  (once per textual trial)
+Test sweep on TRAIN cases × repeats  (the expensive part)
+</code></pre>
+<p>For financial-assistant: a single test sweep is ~$0.20–$0.40. <strong>With <code>repeats: 3</code> (default), a TRAIN-only trial costs ~$0.60–$1.20</strong>, and a trial that also runs HOLDOUT roughly doubles again. The two critic/applier calls add ~$0.02 — negligible against the repeated sweeps. So the cost model changed shape from the original draft: the dominant lever is now <code>repeats × (trials per phase) × cycles</code>, not <code>max_iterations</code> alone. Budget guidance:</p>
+<ul>
+<li><code>repeats</code> multiplies <em>everything</em>. Lowering it from 3→1 cuts cost ~3× but removes the noise averaging that makes acceptance honest on stochastic agents — only do it if the agent is effectively deterministic (temperature 0 and no sampled tools).</li>
+<li>A numeric phase pays its ~10-trial warmup every cycle; keep numeric phase budgets ≥ warmup or the phase is just random search.</li>
+<li>Textual trials are cheap to <em>reject</em> (the confidence short-circuit skips the sweep entirely), so a textual phase's cost is dominated by its <em>accepts</em>.</li>
+</ul>
+<h3 id="references_1">References<a class="headerlink" href="#references_1" title="Permanent link">#</a></h3>
+<ul>
+<li>Yuksekgonul et al., 2024. <a href="https://arxiv.org/abs/2406.07496">TextGrad: Automatic "Differentiation" via Text</a>.</li>
+<li>Khattab et al., 2024. <a href="https://arxiv.org/abs/2310.03714">DSPy</a> and <a href="https://arxiv.org/abs/2406.11695">MIPRO</a>.</li>
+<li>Pryzant et al., 2023. <a href="https://arxiv.org/abs/2305.03495">Automatic Prompt Optimization with "Gradient Descent" and Beam Search (ProTeGi)</a>.</li>
+<li>Yang et al., 2023. <a href="https://arxiv.org/abs/2309.03409">Large Language Models as Optimizers (OPRO)</a>.</li>
+<li>Anthropic. <a href="https://docs.anthropic.com/en/docs/claude-code/sdk">Claude Agent SDK — AgentDefinition</a>.</li>
+</ul>
+<h2 id="trainholdout-split-acceptance-rule">Train/holdout split + acceptance rule<a class="headerlink" href="#trainholdout-split-acceptance-rule" title="Permanent link">#</a></h2>
+<h3 id="the-split">The split<a class="headerlink" href="#the-split" title="Permanent link">#</a></h3>
+<pre><code class="language-yaml">optimizer:
   train_cases_file: data/convfinqa_train.yaml
   holdout_cases_file: data/convfinqa_holdout.yaml
-  holdout_tolerance: 0.02
+  repeats: 3                  # runs per trial; loss = mean, spread = accept bar
+  accept_sigma: 1.0           # improvement must exceed accept_sigma × pooled std
+  min_holdout_cases: 5        # hard floor (was a soft warning); below → error
   holdout_eval_policy: on_train_improve
-```
-
-Constraints enforced at load time:
-
-- Both files exist and parse as `list[TestCaseModel]` (same schema as `test_cases_file`).
-- Disjoint by `test_name`. Any overlap → error with the offending names.
-- Both non-empty. Holdout < 5 cases → warning (statistical signal too weak).
-- Both reference the same metric set (or holdout is a subset). Missing metrics → error at startup.
-
-If only one file is provided → error: *"Optimizer requires both `train_cases_file` and `holdout_cases_file`. To run without a holdout, set `holdout_eval_policy: skip` and acknowledge the overfit risk."*
-
-### The acceptance rule
-
-Each trial:
-
-1. **Always run TRAIN.** Compute `train_loss`.
-2. **Decide whether to run HOLDOUT** based on `holdout_eval_policy`:
-
-   | Policy | When holdout runs | Cost | Use case |
-   |---|---|---|---|
-   | `on_train_improve` (default) | Only when `train_loss < best_train_loss − ε` | Cheapest | Production default |
-   | `every_trial` | Every trial | 2× test sweep | Diagnostic / small test sets |
-   | `skip` | Never | 1× cost | Acknowledged-overfit mode; flagged loudly in `report.md` |
-
-   `ε = 1e-4` — guards against numeric-noise flips when scores are essentially tied.
-
-3. **Accept iff:**
-
-   ```
-   train_loss < best_train_loss − ε
+</code></pre>
+<p>Constraints enforced at load time:</p>
+<ul>
+<li>Both files exist and parse as <code>list[TestCaseModel]</code> (same schema as <code>test_cases_file</code>).</li>
+<li>Disjoint by <code>test_name</code>. Any overlap → error with the offending names.</li>
+<li>Both non-empty. <strong>Holdout <code>&lt; min_holdout_cases</code> (default 5) → error</strong>, not a warning. Below the floor the variance estimate is too weak for the acceptance rule to mean anything; the original draft let this through as a warning, which let users make sub-noise accept decisions unknowingly.</li>
+<li>Both reference the same metric set (or holdout is a subset). Missing metrics → error at startup.</li>
+</ul>
+<p>If only one file is provided → error: <em>"Optimizer requires both <code>train_cases_file</code> and <code>holdout_cases_file</code>. To run without a holdout, set <code>holdout_eval_policy: skip</code> and acknowledge the overfit risk."</em></p>
+<h3 id="the-acceptance-rule-variance-aware">The acceptance rule (variance-aware)<a class="headerlink" href="#the-acceptance-rule-variance-aware" title="Permanent link">#</a></h3>
+<p>The original draft accepted on <code>train_loss &lt; best_train_loss − ε</code> (<code>ε = 1e-4</code>) and a flat <code>holdout_tolerance = 0.02</code>. Both numbers sit <em>below the noise floor</em> of a real eval set: on a 15-case holdout, one case flipping pass→fail moves loss by <code>1/15 ≈ 0.067</code>, so a 0.02 gate and a 0.0001 ε are finer than the smallest change the data can express. We were making accept/reject decisions at a precision the measurement can't support. <strong>Repeated trials fix this by measuring the noise directly and setting the bar from it.</strong></p>
+<p>Each trial:</p>
+<ol>
+<li><strong>Always run TRAIN ×<code>repeats</code>.</strong> Compute <code>train.mean</code>, <code>train.std</code>.</li>
+<li><strong>Decide whether to run HOLDOUT</strong> based on <code>holdout_eval_policy</code>:</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Policy</th>
+<th>When holdout runs</th>
+<th>Cost</th>
+<th>Use case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>on_train_improve</code> (default)</td>
+<td>Only when <code>train.mean</code> beats the noise bar vs <code>best_train</code></td>
+<td>Cheapest</td>
+<td>Production default</td>
+</tr>
+<tr>
+<td><code>every_trial</code></td>
+<td>Every trial</td>
+<td>2× the repeated sweep</td>
+<td>Diagnostic / small test sets</td>
+</tr>
+<tr>
+<td><code>skip</code></td>
+<td>Never</td>
+<td>1×</td>
+<td>Acknowledged-overfit mode; flagged loudly in <code>report.md</code></td>
+</tr>
+</tbody>
+</table>
+<ol start="3">
+<li><strong>Compute the noise bar</strong> from the spread actually measured this trial:</li>
+</ol>
+<p><code>pooled_std = sqrt(train.std² + best_train.std²)      # incumbent std is stored on the best
+   noise_bar  = accept_sigma · pooled_std                # accept_sigma default 1.0</code></p>
+<ol start="4">
+<li><strong>Accept iff the improvement clears the noise on train AND holdout did not significantly regress:</strong></li>
+</ol>
+<p><code>(best_train.mean − train.mean) ≥ noise_bar
    AND
-   holdout_loss ≤ best_holdout_loss + holdout_tolerance
-   ```
-
-   `holdout_tolerance` defaults to `0.02`. Asymmetry is intentional — small holdout regressions are tolerated in service of train improvements; holdout is a sanity check, not the optimization target.
-
-4. **Update bests on accept:**
-
-   ```
-   best_train_loss   = min(best_train_loss, train_loss)
-   best_holdout_loss = min(best_holdout_loss, holdout_loss)
-   best_candidate    = candidate
-   ```
-
-   `best_holdout_loss` only updates on accept — not every time holdout is evaluated. Otherwise a high-train, low-holdout fluke would tighten the future tolerance without becoming the best.
-
-### Decision rationale (audit row)
-
-Every trial — accepted or rejected — writes the reasoning explicitly:
-
-```json
-"decision": {
-  "best_train_loss_before": 0.221,
-  "train_loss": 0.184,
-  "train_improvement": 0.037,
-  "train_improved": true,
-  "holdout_loss": 0.196,
-  "best_holdout_loss_before": 0.184,
-  "holdout_regression": 0.012,
-  "holdout_within_tolerance": true,
-  "holdout_tolerance": 0.02,
-  "accepted": true,
-  "reason": "train improved by 0.037; holdout regressed by 0.012, within tolerance 0.02"
+   (holdout.mean − best_holdout.mean) ≤ accept_sigma · sqrt(holdout.std² + best_holdout.std²)</code></p>
+<p>In words: the train gain must be at least one measured standard deviation (lenient by default), and the holdout must not have regressed by more than its <em>own</em> measured noise. There is no magic <code>0.02</code> — the bar is recomputed every trial from that trial's spread, so it is automatically correct at any eval-set size. <strong>Why lenient (<code>accept_sigma = 1.0</code>, not 2.0):</strong> at <code>repeats = 3</code> the std estimate is itself noisy, so a strict gate would have low power and reject real improvements. <code>1σ</code> is the honest-but-forgiving setting; raise <code>accept_sigma</code> for stricter, more expensive runs.</p>
+<ol start="5">
+<li><strong>Update bests on accept</strong> — store the <em>distribution</em>, not just the mean, because the next trial's noise bar needs the incumbent's std:</li>
+</ol>
+<p><code>best_train   = train      # {mean, std, runs}
+   best_holdout = holdout     # {mean, std, runs}
+   best_candidate = candidate
+   baseline       = candidate # COMPOUND: advance the baseline</code></p>
+<p>Bests (and their stds) only update on accept — not every time holdout is evaluated — so a high-train/low-holdout fluke can't tighten or loosen a future bar without first becoming the best.</p>
+<h3 id="decision-rationale-audit-row">Decision rationale (audit row)<a class="headerlink" href="#decision-rationale-audit-row" title="Permanent link">#</a></h3>
+<p>Every trial — accepted or rejected — writes the reasoning explicitly:</p>
+<pre><code class="language-json">&quot;decision&quot;: {
+  &quot;best_train_mean_before&quot;: 0.221,
+  &quot;train_mean&quot;: 0.184,
+  &quot;train_std&quot;: 0.011,
+  &quot;train_improvement&quot;: 0.037,
+  &quot;pooled_train_std&quot;: 0.013,
+  &quot;accept_sigma&quot;: 1.0,
+  &quot;noise_bar&quot;: 0.013,
+  &quot;improvement_clears_noise&quot;: true,
+  &quot;holdout_mean&quot;: 0.196,
+  &quot;best_holdout_mean_before&quot;: 0.184,
+  &quot;holdout_regression&quot;: 0.012,
+  &quot;holdout_noise_bar&quot;: 0.014,
+  &quot;holdout_within_noise&quot;: true,
+  &quot;accepted&quot;: true,
+  &quot;reason&quot;: &quot;train improved 0.037 ≥ noise bar 0.013 (1σ); holdout regressed 0.012 ≤ its 0.014 noise — accept + advance baseline&quot;
 }
-```
-
-Rejection example:
-
-```json
-"decision": {
-  "best_train_loss_before": 0.184,
-  "train_loss": 0.171,
-  "train_improvement": 0.013,
-  "train_improved": true,
-  "holdout_loss": 0.215,
-  "best_holdout_loss_before": 0.196,
-  "holdout_regression": 0.019,
-  "holdout_within_tolerance": false,
-  "holdout_tolerance": 0.02,
-  "accepted": false,
-  "reason": "train improved 0.013 but holdout regressed 0.019 > tolerance 0.02 — likely overfit"
+</code></pre>
+<p>Rejection example (improvement does not clear the noise it was measured against):</p>
+<pre><code class="language-json">&quot;decision&quot;: {
+  &quot;best_train_mean_before&quot;: 0.184,
+  &quot;train_mean&quot;: 0.171,
+  &quot;train_std&quot;: 0.018,
+  &quot;train_improvement&quot;: 0.013,
+  &quot;pooled_train_std&quot;: 0.021,
+  &quot;accept_sigma&quot;: 1.0,
+  &quot;noise_bar&quot;: 0.021,
+  &quot;improvement_clears_noise&quot;: false,
+  &quot;accepted&quot;: false,
+  &quot;reason&quot;: &quot;train 'improved' 0.013 but that is below the 0.021 noise bar (1σ) — indistinguishable from sampling noise, reject&quot;
 }
-```
-
-These rationales feed into the Critic for future textual trials, so the optimizer learns which kinds of edits overfit.
-
-### What `--resume` does to the bests
-
-1. Replay every accepted trial in order, updating `best_train_loss`, `best_holdout_loss`, `best_candidate_path`.
-2. Replay every numeric trial (accepted or not) into the Optuna study via `study.add_trial`.
-3. Replay the last 3 *rejected* textual trials per axis into the Critic's `previous_gradients` memory.
-4. Continue from `len(trials) + 1`.
-
-No special "resume bookkeeping" file. The audit log *is* the state.
-
-### What this rule does *not* do
-
-- No statistical significance test (paired bootstrap on per-case scores). Tolerance is a blunt-but-honest stand-in. Revisit if users start gaming it.
-- No K-fold rotation. Single train/holdout split is enough variance for v1.
-- No automatic split if user only provides `test_cases_file`. Auto-split hides a methodological choice; explicit configuration is right for HoloDeck.
-- No early-stop on holdout regression alone. Patience is purely on accepted trials.
-
-### Honest failure mode this design accepts
-
-If `train_cases` and `holdout_cases` come from the same distribution (e.g. random split of convfinqa), holdout catches single-case overfitting but not *distributional* overfitting. The optimizer can produce a prompt that's great at "convfinqa-style table arithmetic questions" and terrible at production traffic. Mitigation is documentation: README and `report.md` both call out that holdout cases should resemble production traffic.
-
-### Summary in one sentence
-
-Train drives the proposer; holdout gates acceptance; both losses live in every audit row; bests only update on accept; resume replays the audit log.
-
-## State, outputs, and the report
-
-### On-disk layout
-
-Everything for one optimization run lives under `results/optimizer/<run-id>/`. The `<run-id>` is `YYYY-MM-DDTHH-MM-SS_<short-hash>`, where the hash is the first 8 chars of `sha256(baseline_agent_yaml + optimizer_config + seed)`. Same baseline + config + seed → same run-id, so `--resume` is unambiguous.
-
-```
-results/optimizer/2026-05-16T14-22-08_a3f2c891/
+</code></pre>
+<p>These rationales feed into the Critic for future textual trials, so the optimizer learns which kinds of edits overfit or fail to clear noise.</p>
+<h3 id="what-resume-does-to-the-bests">What <code>--resume</code> does to the bests<a class="headerlink" href="#what-resume-does-to-the-bests" title="Permanent link">#</a></h3>
+<ol>
+<li>Replay every accepted trial in order, advancing <code>baseline</code>, <code>best_train</code> (mean+std), <code>best_holdout</code> (mean+std), <code>best_candidate_path</code>.</li>
+<li>For each numeric phase, replay <em>that phase's</em> numeric trials into a fresh Optuna study via <code>study.add_trial</code>. Studies are reconstructed per phase; never merged across phases.</li>
+<li>Replay the last 3 <em>rejected</em> textual trials per axis into the Critic's <code>previous_gradients</code> memory.</li>
+<li>Resume the in-flight phase, continuing from <code>len(trials) + 1</code>.</li>
+</ol>
+<p>No special "resume bookkeeping" file. The audit log <em>is</em> the state.</p>
+<h3 id="what-this-rule-does-not-do">What this rule does <em>not</em> do<a class="headerlink" href="#what-this-rule-does-not-do" title="Permanent link">#</a></h3>
+<ul>
+<li>No full statistical significance test (paired bootstrap on per-case scores). The variance-aware bar (improvement ≥ <code>accept_sigma</code>×pooled-std from <code>repeats</code>) is the cheap, honest version — it uses measured spread instead of a magic constant, but with small <code>repeats</code> it is not a publishable p-value. A proper paired bootstrap is a v2 upgrade.</li>
+<li>No K-fold rotation. Single train/holdout split is enough variance for v1.</li>
+<li>No automatic split if user only provides <code>test_cases_file</code>. Auto-split hides a methodological choice; explicit configuration is right for HoloDeck.</li>
+<li>No early-stop on holdout regression alone. Per-phase patience and the global dry-cycle stop are on accepted trials.</li>
+</ul>
+<h3 id="honest-failure-mode-this-design-accepts">Honest failure mode this design accepts<a class="headerlink" href="#honest-failure-mode-this-design-accepts" title="Permanent link">#</a></h3>
+<p>If <code>train_cases</code> and <code>holdout_cases</code> come from the same distribution (e.g. random split of convfinqa), holdout catches single-case overfitting but not <em>distributional</em> overfitting. The optimizer can produce a prompt that's great at "convfinqa-style table arithmetic questions" and terrible at production traffic. Mitigation is documentation: README and <code>report.md</code> both call out that holdout cases should resemble production traffic.</p>
+<h3 id="summary-in-one-sentence">Summary in one sentence<a class="headerlink" href="#summary-in-one-sentence" title="Permanent link">#</a></h3>
+<p>Train drives the proposer; holdout gates acceptance; acceptance requires the gain to clear the noise measured across <code>repeats</code>; every accept advances the baseline so wins compound; bests (mean+std) only update on accept; resume replays the audit log.</p>
+<h2 id="state-outputs-and-the-report">State, outputs, and the report<a class="headerlink" href="#state-outputs-and-the-report" title="Permanent link">#</a></h2>
+<h3 id="on-disk-layout">On-disk layout<a class="headerlink" href="#on-disk-layout" title="Permanent link">#</a></h3>
+<p>Everything for one optimization run lives under <code>results/optimizer/&lt;run-id&gt;/</code>. The <code>&lt;run-id&gt;</code> is <code>YYYY-MM-DDTHH-MM-SS_&lt;short-hash&gt;</code>, where the hash is the first 8 chars of <code>sha256(baseline_agent_yaml + optimizer_config + seed)</code>. Same baseline + config + seed → same run-id, so <code>--resume</code> is unambiguous.</p>
+<blockquote>
+<p><strong>Reproducibility is config-level, not bit-for-bit.</strong> The run-id identifies <em>the run's inputs</em> (baseline, config, seed) — it does <strong>not</strong> promise that two runs with the same id produce identical trajectories. With <code>repeats</code> averaging stochastic sampling and LLM backends that are non-deterministic even at temperature 0, trial losses vary run-to-run; the Optuna seed makes the <em>proposal sequence</em> reproducible, but not the <em>measured losses</em>. So "same inputs → same run-id" supports unambiguous resume and provenance, not exact replay. The original draft over-claimed this as reproducibility; it is reproducible <em>configuration</em>, replayable <em>decisions</em> (via the audit log), but not a deterministic objective.</p>
+</blockquote>
+<pre><code>results/optimizer/2026-05-16T14-22-08_a3f2c891/
 ├── run.json              ← run metadata (immutable after trial 0)
 ├── trials.jsonl          ← append-only audit log
 ├── trajectory.csv        ← flat per-trial metrics for plotting
@@ -892,140 +986,135 @@ results/optimizer/2026-05-16T14-22-08_a3f2c891/
 │   ├── system-prompt.iter-03.md   ← only accepted textual trials
 │   ├── system-prompt.iter-07.md     that touched the prompt file
 │   └── system-prompt.iter-12.md
-├── best.yaml -> candidates/iter-12.yaml         (symlink)
-├── best-instructions.md -> instructions/system-prompt.iter-12.md
+├── best.yaml -&gt; candidates/iter-12.yaml         (symlink)
+├── best-instructions.md -&gt; instructions/system-prompt.iter-12.md
 └── report.md             ← human-readable summary, written at exit
-```
-
-**Why three artifact dirs:**
-
-- `candidates/` — the runnable agent.yaml. User adopts via `cp candidates/iter-12.yaml ../../../agent.yaml`. Each is self-contained and points at its corresponding `instructions/` file via relative path.
-- `instructions/` — versioned prompt files. Applier writes a new file per accepted textual trial; candidate's `instructions.file` points at it.
-- `best.yaml` + `best-instructions.md` — symlinks to current leader. Updated atomically (write-and-rename) on every accepted trial that improves `best_train_loss`.
-
-**Numbering:** `iter-NN` matches `trial_id` in `trials.jsonl`. Skipped numbers tell the reader at a glance which trials weren't accepted.
-
-### `run.json` — immutable header
-
-Written once on trial 0; never modified. Lets `--resume` and post-hoc tools reconstruct context without parsing every JSONL row.
-
-```json
-{
-  "run_id": "2026-05-16T14-22-08_a3f2c891",
-  "started_at": "2026-05-16T14:22:08Z",
-  "holodeck_version": "0.18.3",
-  "baseline_agent_path": "../../../agent.yaml",
-  "baseline_sha256": "a3f2c891b4...",
-  "seed": 42,
-  "optimizer_config": {
-    "loss_weights": { "numeric": 0.7, "turn_program_equivalence": 0.3 },
-    "penalties": { "cost_per_usd": 0.0, "latency_per_sec": 0.0 },
-    "axes": { "numeric": [], "textual": [] },
-    "budget": { "max_iterations": 30, "max_minutes": 60, "max_usd": 5.0, "patience": 8 },
-    "holdout_eval_policy": "on_train_improve",
-    "holdout_tolerance": 0.02
+</code></pre>
+<p><strong>Why three artifact dirs:</strong></p>
+<ul>
+<li><code>candidates/</code> — the runnable agent.yaml. User adopts via <code>cp candidates/iter-12.yaml ../../../agent.yaml</code>. Each is self-contained and points at its corresponding <code>instructions/</code> file via relative path.</li>
+<li><code>instructions/</code> — versioned prompt files. Applier writes a new file per accepted textual trial; candidate's <code>instructions.file</code> points at it.</li>
+<li><code>best.yaml</code> + <code>best-instructions.md</code> — symlinks to current leader. Updated atomically (write-and-rename) on every accepted trial (every accept advances the baseline, so every accept is the new leader).</li>
+</ul>
+<p><strong>Numbering:</strong> <code>iter-NN</code> matches <code>trial_id</code> in <code>trials.jsonl</code>. Skipped numbers tell the reader at a glance which trials weren't accepted. Because the baseline compounds, <code>iter-12.yaml</code> already contains every prior accepted edit (it <em>is</em> the running baseline at trial 12), so the latest accepted candidate is always the full stacked result — not a single perturbation.</p>
+<h3 id="runjson-immutable-header"><code>run.json</code> — immutable header<a class="headerlink" href="#runjson-immutable-header" title="Permanent link">#</a></h3>
+<p>Written once on trial 0; never modified. Lets <code>--resume</code> and post-hoc tools reconstruct context without parsing every JSONL row.</p>
+<pre><code class="language-json">{
+  &quot;run_id&quot;: &quot;2026-05-16T14-22-08_a3f2c891&quot;,
+  &quot;started_at&quot;: &quot;2026-05-16T14:22:08Z&quot;,
+  &quot;holodeck_version&quot;: &quot;0.18.3&quot;,
+  &quot;baseline_agent_path&quot;: &quot;../../../agent.yaml&quot;,
+  &quot;baseline_sha256&quot;: &quot;a3f2c891b4...&quot;,
+  &quot;seed&quot;: 42,
+  &quot;optimizer_config&quot;: {
+    &quot;loss_weights&quot;: { &quot;numeric&quot;: 0.7, &quot;turn_program_equivalence&quot;: 0.3 },
+    &quot;penalties&quot;: { &quot;cost_per_usd&quot;: 0.0, &quot;latency_per_sec&quot;: 0.0 },
+    &quot;axes&quot;: { &quot;numeric&quot;: [], &quot;textual&quot;: [] },
+    &quot;repeats&quot;: 3,
+    &quot;accept_sigma&quot;: 1.0,
+    &quot;budget&quot;: {
+      &quot;global&quot;: { &quot;max_cycles&quot;: 4, &quot;max_minutes&quot;: 60, &quot;max_usd&quot;: 15.0 },
+      &quot;numeric_phase&quot;: { &quot;max_trials&quot;: 15, &quot;patience&quot;: 5 },
+      &quot;textual_phase&quot;: { &quot;max_trials&quot;: 10, &quot;patience&quot;: 4 }
+    },
+    &quot;holdout_eval_policy&quot;: &quot;on_train_improve&quot;,
+    &quot;min_holdout_cases&quot;: 5
   },
-  "train_cases_count": 35,
-  "holdout_cases_count": 15,
-  "subagents": {
-    "critic":  { "model": "claude-sonnet-4-6", "agent_path": ".holodeck/optimizer/agents/critic.yaml" },
-    "applier": { "model": "claude-sonnet-4-6", "agent_path": ".holodeck/optimizer/agents/applier.yaml" }
+  &quot;train_cases_count&quot;: 35,
+  &quot;holdout_cases_count&quot;: 15,
+  &quot;subagents&quot;: {
+    &quot;critic&quot;:  { &quot;model&quot;: &quot;claude-sonnet-4-6&quot;, &quot;agent_path&quot;: &quot;.holodeck/optimizer/agents/critic.yaml&quot; },
+    &quot;applier&quot;: { &quot;model&quot;: &quot;claude-sonnet-4-6&quot;, &quot;agent_path&quot;: &quot;.holodeck/optimizer/agents/applier.yaml&quot; }
   }
 }
-```
-
-### `trajectory.csv` — for plotting
-
-Flat table. The existing dashboard and any external tool can consume it without parsing JSON. One row per trial.
-
-```csv
-trial_id,timestamp,axis,axis_target,train_loss,holdout_loss,best_train_loss,best_holdout_loss,accepted,trial_usd,duration_sec
-0,2026-05-16T14:22:08Z,baseline,—,0.234,0.241,0.234,0.241,true,0.218,42.1
-1,2026-05-16T14:22:51Z,numeric,model.temperature,0.221,,0.234,0.241,false,0.198,38.7
-2,2026-05-16T14:23:30Z,numeric,top_k,0.215,0.243,0.215,0.241,true,0.205,41.2
-3,2026-05-16T14:24:12Z,textual,instructions.inline,0.184,0.196,0.184,0.196,true,0.226,46.8
-```
-
-Empty `holdout_loss` means holdout wasn't run.
-
-### `report.md` — the artifact a user reads
-
-Written on exit (success, budget exhaustion, Ctrl-C, or fatal error — `try/finally` guarantees it). The single thing you need to skim to decide *should I adopt this?*
-
-Contains:
-
-- Result summary: baseline → best loss, % improvement, exit reason, duration, total cost.
-- Trajectory: ASCII sparkline of `train_loss` and `holdout_loss` vs `trial_id`.
-- Per-axis attribution table: trials, accepted count, Δloss contributed.
-- Per-metric impact: baseline → best, per metric.
-- Diff: baseline → best, both `agent.yaml` and `instructions/system-prompt.*.md`.
-- Key proposer rationales for accepted textual trials.
-- "How to adopt" section with copy-paste commands.
-- Methodological notes: train/holdout sizes, holdout policy, distributional-overfit warning.
-
-### Streaming output during the run
-
-One line per trial — same visual idiom as `holodeck test run`:
-
-```
-[ 3/30] textual  instructions.inline    train 0.184 (▼0.037)  hold 0.196 (△0.012)  accept ✓  $0.226  47s
-[ 4/30] numeric  top_k                  train 0.190 (△0.006)  ——                    skip  ✗  $0.198  39s
-[ 5/30] textual  tools[subtract].descr  train 0.184 (—)       ——                    crit  ✗  $0.014  3s   (low confidence)
-[ 6/30] numeric  semantic_weight        train 0.181 (▼0.003)  hold 0.198 (△0.002)  accept ✓  $0.211  42s
-```
-
-Columns: trial_id/total, axis, axis_target (truncated), train_loss + delta vs best, holdout_loss + delta, accept/skip/critic-skipped, trial cost, duration. `▼` = improvement, `△` = regression. `-q` suppresses these but still writes JSONL.
-
-### What `holodeck test view` learns to do (v2 follow-up, not v1)
-
-Existing dashboard renders eval-run JSON. Extending for optimizer runs is a small addition: detect optimizer run by presence of `run.json`, render `trajectory.csv` as a real chart, show per-axis attribution interactively, render diffs side-by-side, side panel with rationales. **Not in v1.** v1 ships file-based outputs only; dashboard support is a clean v2 follow-up because the file layout is stable.
-
-### What we are deliberately *not* writing to disk
-
-- No per-trial `TestReport` files. Each trial's full report could be tens of MB. We extract summary + loss components into JSONL and discard the rest. To get the full report for a specific trial, re-run via `holodeck test run candidates/iter-NN.yaml`.
-- No raw Critic/Applier SDK responses. Their structured outputs are in `trials.jsonl`. Aggregate `trial_usd` is enough for budget tracking.
-- No vector store snapshots. Qdrant collection is referenced by name; trials share it.
-
-### Cleanup, retention, .gitignore
-
-- **Default retention:** never auto-delete. User owns disk.
-- **Suggested `.gitignore`:** `results/optimizer/` should be gitignored. Sample agent's existing `.gitignore` already covers `results/`.
-- **`--keep-best-only`:** at exit, prunes `candidates/iter-*.yaml` and `instructions/system-prompt.iter-*.md` for non-best trials. Audit log and `best.yaml` preserved. Useful for CI.
-
-### Recovery from mid-run crash
-
-`trials.jsonl` and `candidates/` are append-only and atomic-write. If process crashes mid-trial:
-
-- Partial trial: nothing written for it (the trial row is built up in memory and written only after holdout decision). Resume picks up from the last *complete* row.
-- Symlink update: written atomically (`os.symlink` to a tempname, then `os.replace`). No torn state.
-- `report.md`: only written on exit. After a crash, `--report-only` regenerates it from JSONL without doing more trials.
-
-## CLI surface
-
-`optimize` is a sibling subcommand of the existing `holodeck test` group:
-
-```
-holodeck test
+</code></pre>
+<h3 id="trajectorycsv-for-plotting"><code>trajectory.csv</code> — for plotting<a class="headerlink" href="#trajectorycsv-for-plotting" title="Permanent link">#</a></h3>
+<p>Flat table. The existing dashboard and any external tool can consume it without parsing JSON. One row per trial.</p>
+<pre><code class="language-csv">trial_id,timestamp,cycle,phase,axis_target,train_mean,train_std,holdout_mean,best_train,best_holdout,noise_bar,accepted,trial_usd,duration_sec
+0,2026-05-16T14:22:08Z,0,baseline,—,0.234,0.010,0.241,0.234,0.241,—,true,1.08,171.0
+1,2026-05-16T14:22:51Z,1,numeric,model.temperature,0.221,0.014,,0.234,0.241,0.017,false,0.59,118.0
+2,2026-05-16T14:23:30Z,1,numeric,top_k,0.215,0.009,0.243,0.215,0.241,0.013,true,1.05,168.0
+3,2026-05-16T14:24:12Z,1,textual,instructions.inline,0.184,0.011,0.196,0.184,0.196,0.014,true,1.10,172.0
+</code></pre>
+<p>Notes on the columns:
+- Empty <code>holdout_mean</code> means holdout wasn't run (so the row's <code>trial_usd</code>/<code>duration_sec</code> cover train ×<code>repeats</code> only — that's why row 1, a no-holdout reject, costs ~half of the holdout-bearing rows).
+- <code>best_train</code>/<code>best_holdout</code> are the incumbent values <strong>after</strong> this trial's accept/reject decision (on a reject they equal the prior incumbent; on an accept they equal this trial's means). The JSONL <code>decision.best_train_mean_before</code> is the <em>pre</em>-decision counterpart.
+- <code>noise_bar</code> is the per-trial accept threshold (<code>accept_sigma × pooled std</code>); a trial is accepted only when <code>best_train_before − train_mean ≥ noise_bar</code> (and holdout stays within its own noise).
+- <code>train_std</code> and the <code>trial_usd</code>/<code>duration_sec</code> totals all reflect the <code>repeats</code> runs aggregated into each row; <code>trial_usd</code> here is the <strong>whole-trial</strong> total (train + holdout, ×repeats), unlike the JSONL which splits them.</p>
+<h3 id="reportmd-the-artifact-a-user-reads"><code>report.md</code> — the artifact a user reads<a class="headerlink" href="#reportmd-the-artifact-a-user-reads" title="Permanent link">#</a></h3>
+<p>Written on exit (success, budget exhaustion, Ctrl-C, or fatal error — <code>try/finally</code> guarantees it). The single thing you need to skim to decide <em>should I adopt this?</em></p>
+<p>Contains:</p>
+<ul>
+<li>Result summary: baseline → best loss, % improvement, exit reason, duration, total cost, <code>repeats</code> used.</li>
+<li>Trajectory: ASCII sparkline of <code>train_mean</code> and <code>holdout_mean</code> vs <code>trial_id</code>, with phase boundaries marked.</li>
+<li>Per-phase + per-axis attribution table: cycle, phase, trials, accepted count, Δloss contributed. Shows the coordinate-descent story (e.g. "numeric cycle 2 found more headroom after the prompt improved in textual cycle 1").</li>
+<li>Per-metric impact: baseline → best, per metric.</li>
+<li>Diff: baseline → best, both <code>agent.yaml</code> and <code>instructions/system-prompt.*.md</code> (the diff is the <em>full stack</em> of accepted edits, since the baseline compounded).</li>
+<li>Key proposer rationales for accepted textual trials.</li>
+<li>"How to adopt" section with copy-paste commands.</li>
+<li>Methodological notes: train/holdout sizes, <code>repeats</code>/<code>accept_sigma</code>, holdout policy, distributional-overfit warning, and the explicit note that reproducibility is config-level, not bit-for-bit.</li>
+</ul>
+<h3 id="streaming-output-during-the-run">Streaming output during the run<a class="headerlink" href="#streaming-output-during-the-run" title="Permanent link">#</a></h3>
+<p>One line per trial, grouped by phase — same visual idiom as <code>holodeck test run</code>. A phase header announces each numeric/textual block (and, for numeric, that a fresh study started):</p>
+<pre><code>── cycle 1 · numeric phase (fresh TPE study #1) ──────────────────────
+[c1/n 2] top_k                 train 0.215 ±0.009 (▼0.019 &gt; bar 0.013)  hold 0.243  accept ✓  $1.05  168s
+[c1/n 3] semantic_weight       train 0.213 ±0.012 (▼0.002 &lt; bar 0.017)  ——          noise ✗  $0.59  118s
+── cycle 1 · textual phase ───────────────────────────────────────────
+[c1/t 1] instructions.inline   train 0.184 ±0.011 (▼0.031 &gt; bar 0.014)  hold 0.196  accept ✓  $1.10  172s
+[c1/t 2] tools[subtract].descr train 0.184 (—)                          ——          crit  ✗  $0.014  3s  (low confidence)
+── cycle 2 · numeric phase (fresh TPE study #2, vs improved prompt) ───
+[c2/n 1] top_k                 train 0.171 ±0.010 (▼0.013 ≥ bar 0.013)  hold 0.190  accept ✓  $1.05  168s
+</code></pre>
+<p>Columns: cycle/phase + trial index, axis_target (truncated), <code>train_mean ± std</code> with delta-vs-best and the noise bar it was compared against, holdout_mean, outcome (<code>accept</code>/<code>noise</code>/<code>crit</code>-skipped), cost (×<code>repeats</code>), duration. <code>▼</code> = improvement. The explicit <code>&gt; bar</code> / <code>&lt; bar</code> makes the variance-aware decision legible at a glance — a reject labelled <code>noise</code> means the gain was real-looking but below the measured noise floor. <code>-q</code> suppresses these but still writes JSONL.</p>
+<h3 id="what-holodeck-test-view-learns-to-do-v2-follow-up-not-v1">What <code>holodeck test view</code> learns to do (v2 follow-up, not v1)<a class="headerlink" href="#what-holodeck-test-view-learns-to-do-v2-follow-up-not-v1" title="Permanent link">#</a></h3>
+<p>Existing dashboard renders eval-run JSON. Extending for optimizer runs is a small addition: detect optimizer run by presence of <code>run.json</code>, render <code>trajectory.csv</code> as a real chart, show per-axis attribution interactively, render diffs side-by-side, side panel with rationales. <strong>Not in v1.</strong> v1 ships file-based outputs only; dashboard support is a clean v2 follow-up because the file layout is stable.</p>
+<h3 id="what-we-are-deliberately-not-writing-to-disk">What we are deliberately <em>not</em> writing to disk<a class="headerlink" href="#what-we-are-deliberately-not-writing-to-disk" title="Permanent link">#</a></h3>
+<ul>
+<li>No per-trial <code>TestReport</code> files. Each trial's full report could be tens of MB. We extract summary + loss components into JSONL and discard the rest. To get the full report for a specific trial, re-run via <code>holodeck test run candidates/iter-NN.yaml</code>.</li>
+<li>No raw Critic/Applier SDK responses. Their structured outputs are in <code>trials.jsonl</code>. Aggregate <code>trial_usd</code> is enough for budget tracking.</li>
+<li>No vector store snapshots. Qdrant collection is referenced by name; trials share it.</li>
+</ul>
+<h3 id="cleanup-retention-gitignore">Cleanup, retention, .gitignore<a class="headerlink" href="#cleanup-retention-gitignore" title="Permanent link">#</a></h3>
+<ul>
+<li><strong>Default retention:</strong> never auto-delete. User owns disk.</li>
+<li><strong>Suggested <code>.gitignore</code>:</strong> <code>results/optimizer/</code> should be gitignored. Sample agent's existing <code>.gitignore</code> already covers <code>results/</code>.</li>
+<li><strong><code>--keep-best-only</code>:</strong> at exit, prunes <code>candidates/iter-*.yaml</code> and <code>instructions/system-prompt.iter-*.md</code> for non-best trials. Audit log and <code>best.yaml</code> preserved. Useful for CI.</li>
+</ul>
+<h3 id="recovery-from-mid-run-crash">Recovery from mid-run crash<a class="headerlink" href="#recovery-from-mid-run-crash" title="Permanent link">#</a></h3>
+<p><code>trials.jsonl</code> and <code>candidates/</code> are append-only and atomic-write. If process crashes mid-trial:</p>
+<ul>
+<li>Partial trial: nothing written for it (the trial row is built up in memory and written only after holdout decision). Resume picks up from the last <em>complete</em> row.</li>
+<li>Symlink update: written atomically (<code>os.symlink</code> to a tempname, then <code>os.replace</code>). No torn state.</li>
+<li><code>report.md</code>: only written on exit. After a crash, <code>--report-only</code> regenerates it from JSONL without doing more trials.</li>
+</ul>
+<h2 id="cli-surface">CLI surface<a class="headerlink" href="#cli-surface" title="Permanent link">#</a></h2>
+<p><code>optimize</code> is a sibling subcommand of the existing <code>holodeck test</code> group:</p>
+<pre><code>holodeck test
   ├── run         (existing)
   ├── view        (existing)
   └── optimize    (NEW)
-```
-
-```
-holodeck test optimize [AGENT_CONFIG] [OPTIONS]
+</code></pre>
+<pre><code>holodeck test optimize [AGENT_CONFIG] [OPTIONS]
 
 Arguments:
   AGENT_CONFIG                  Path to agent.yaml. Defaults to ./agent.yaml.
 
-Budget overrides (override agent.yaml; CLI wins):
-  --max-iterations INT          Hard cap on trials.
-  --max-minutes FLOAT           Wall-clock budget.
-  --max-usd FLOAT               LLM-spend budget.
-  --patience INT                Early-stop after N consecutive non-accepts.
+Global budget overrides (override agent.yaml; CLI wins):
+  --max-cycles INT              Hard cap on numeric→textual cycles.
+  --max-minutes FLOAT           Wall-clock budget (whole run).
+  --max-usd FLOAT               LLM-spend budget (whole run).
+
+Per-phase budget overrides:
+  --numeric-max-trials INT      Cap trials within each numeric phase.
+  --numeric-patience INT        Early-stop a numeric phase after N non-accepts.
+  --textual-max-trials INT      Cap trials within each textual phase.
+  --textual-patience INT        Early-stop a textual phase after N non-accepts.
 
 Run control:
+  --repeats INT                 Runs per trial for noise averaging (default: 3).
+  --accept-sigma FLOAT          Accept bar in pooled-std units (default: 1.0).
   --resume RUN_ID               Continue an existing run; replays trials.jsonl.
-  --seed INT                    Override Optuna seed (default: 42).
+  --seed INT                    Override Optuna seed (default: 42; offset per phase).
   --report-only                 Skip trials; regenerate report.md from existing JSONL.
   --keep-best-only              Prune non-best candidates/instructions at exit.
 
@@ -1034,89 +1123,207 @@ Diagnostics:
   --print-baseline              Run trial 0 only, print loss + per-metric breakdown, exit 0.
 
 Output:
-  -o, --output-dir PATH         Override results/optimizer/<run-id>/ location.
+  -o, --output-dir PATH         Override results/optimizer/&lt;run-id&gt;/ location.
   -q, --quiet                   Suppress per-trial progress lines (still writes JSONL).
   -v, --verbose                 Show Critic/Applier rationales inline as produced.
-```
-
-Exit codes:
-
-- `0` — completed (budget exhausted, patience triggered, or `--dry-run`/`--report-only` succeeded).
-- `1` — fatal error (config invalid, backend init failed, etc.).
-- `2` — interrupted (Ctrl-C). Partial state intact; `--resume` works.
-
-The command does **not** exit non-zero on "no improvement found." That's a legitimate outcome.
-
-### Precedence
-
-CLI flag → `agent.yaml` `optimizer:` block → built-in default. Standard precedence. CLI is for short-lived overrides during exploration; YAML is canonical for reproducible runs.
-
-## Budget and termination
-
-Multiple termination conditions, **stop on first hit**. Every trial, the loop checks each in order:
-
-| Condition | Default | Trigger |
-|---|---|---|
-| `max_iterations` | 30 | `len(trials) ≥ max_iterations` |
-| `max_minutes` | unset | `elapsed_wall_time ≥ max_minutes` |
-| `max_usd` | unset | `cumulative_usd ≥ max_usd` |
-| `patience` | 8 | `accepted_trials_in_last_patience_trials == 0` |
-| convergence | — | TPE study reports no candidate with predicted improvement > 1e-3 (numeric only) |
-| Ctrl-C / SIGTERM | — | Trap, let in-flight trial finish, write report, exit 2 |
-
-Trigger is recorded in `report.md` and `run.json` as `exit_reason`.
-
-**On budget exhaustion mid-trial:** the in-flight trial completes (its loss, holdout, and decision are honored). We don't kill a $0.20 trial to save 30 seconds.
-
-**`max_usd` accounting** uses existing `report.summary.token_usage` per trial converted via the model's published per-token rates. Critic + Applier costs added on top. If a model lacks pricing data (custom Ollama endpoint, e.g.), `max_usd` is silently skipped with a warning at startup.
-
-## Validation at startup
-
-Before any trial runs, in this order:
-
-1. Load + validate `agent.yaml` (existing path).
-2. `evaluations.optimizer` block exists. If absent: error with starter-config snippet for copy-paste.
-3. Train and holdout case files load, parse, are disjoint, are non-empty, share metric set.
-4. Loss weights reference metrics actually configured in `evaluations.metrics`. Unknown metric names → error.
-5. Numeric axes parse: paths resolve against the Agent model, ranges non-empty, types valid. Each axis is *applied* to the baseline as a sanity check.
-6. Textual axes parse: paths resolve, current text loads, `max_chars` ≥ current length.
-7. Critic + Applier subagents load and validate. Auto-installed at `.holodeck/optimizer/agents/{critic,applier}.yaml` if missing — copied from package data dir. User can edit; we don't overwrite.
-8. Backend credentials validated (existing `validate_credentials()` call).
-9. Resume target (if `--resume`) exists, has matching `baseline_sha256`. If baseline drifted: error *"baseline changed since run X. Start a new run instead."*
-
-All validation errors surfaced together when possible (single pass, collect, report).
-
-## Out of scope for v1
-
-| Out-of-scope | Why deferred | Path forward |
-|---|---|---|
-| Ingestion-time axes (`chunking_strategy`, `max_chunk_tokens`, `contextual_embeddings`, `embedding_model`) | Re-ingest per trial = ~10min × $X. Would dominate cost. | Separate `holodeck test ingest-sweep` subcommand. |
-| Parallel trials | Optuna supports it but trials hit shared resources (qdrant, OTEL, rate limits, file numbering). Multiplies failure modes. | v2: per-trial backend instance, `--concurrency N`, locking on writes. |
-| K-fold cross-validation | K× the cost. Single split is sufficient signal for v1. | v2: `holdout_eval_policy: k_fold; k: 5`. |
-| Population-based search (DSPy MIPRO, evolutionary) | Multiplies cost by population size. | v2 or external: DSPy integration as a separate proposer plugin. |
-| Statistical significance testing (paired bootstrap) | `holdout_tolerance` is honest-but-blunt. | v2: replace tolerance check with paired test, configurable α. |
-| Co-optimization of multiple textual axes per trial | Conflates blame; harder to explain. | v2: `co_optimize: [...]` opt-in. |
-| Auto-discovery of axes | Most numeric leaves aren't safely tunable (e.g. `model.name`). Explicit declaration is right for v1. | v2: `--suggest-axes` reads agent.yaml and prints starter axis block. |
-| Cross-run learning (TPE warm-start from a different agent's run) | Distribution mismatch. | Probably never. |
-| Live dashboard rendering of optimizer runs | `holodeck test view` doesn't know optimizer file shape. | v2: detect `run.json`, render trajectory as chart, side panel with rationales. |
-| Meta-optimization of the optimizer | Yak-shaving. Defaults are reasonable. | Never as a feature. |
-
-## v1 contract
-
-- One subcommand: `holodeck test optimize`.
-- Two proposers: `NumericProposer` (Optuna TPE) and `TextualProposer` (Critic + Applier subagents).
-- Sequential trials only. Patience-based and budget-based termination.
-- One train/holdout split, user-declared in YAML, gates acceptance.
-- Six output artifacts per run: `run.json`, `trials.jsonl`, `trajectory.csv`, `candidates/`, `instructions/`, `report.md` + symlinks.
-- One CLI shape with three diagnostic modes: `--dry-run`, `--print-baseline`, `--report-only`.
-- Numeric axes only at query time (excludes ingestion-time params).
-- One textual axis perturbed per textual trial.
-- Auto-installed Critic/Applier subagents at `.holodeck/optimizer/agents/`, user-editable.
-
-## Full agent.yaml `optimizer:` block (reference)
-
-```yaml
-evaluations:
+</code></pre>
+<p>Exit codes:</p>
+<ul>
+<li><code>0</code> — completed (budget exhausted, patience triggered, or <code>--dry-run</code>/<code>--report-only</code> succeeded).</li>
+<li><code>1</code> — fatal error (config invalid, backend init failed, etc.).</li>
+<li><code>2</code> — interrupted (Ctrl-C). Partial state intact; <code>--resume</code> works.</li>
+</ul>
+<p>The command does <strong>not</strong> exit non-zero on "no improvement found." That's a legitimate outcome.</p>
+<h3 id="precedence">Precedence<a class="headerlink" href="#precedence" title="Permanent link">#</a></h3>
+<p>CLI flag → <code>agent.yaml</code> <code>optimizer:</code> block → built-in default. Standard precedence. CLI is for short-lived overrides during exploration; YAML is canonical for reproducible runs.</p>
+<h2 id="budget-and-termination">Budget and termination<a class="headerlink" href="#budget-and-termination" title="Permanent link">#</a></h2>
+<p>Budgets are <strong>two-level</strong>: per-phase stops decide when to <em>leave a phase</em>, global stops decide when to <em>end the run</em>. <strong>Stop on first hit</strong> at each level.</p>
+<p><strong>Per-phase termination</strong> (checked each trial; ends the current phase, hands back to the scheduler):</p>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Default</th>
+<th>Trigger</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>numeric_phase.max_trials</code></td>
+<td>15</td>
+<td>trials in this numeric phase ≥ cap</td>
+</tr>
+<tr>
+<td><code>numeric_phase.patience</code></td>
+<td>5</td>
+<td>no accept in last N trials of this phase</td>
+</tr>
+<tr>
+<td>numeric convergence</td>
+<td>—</td>
+<td>TPE's best predicted expected-improvement (in loss units, same <code>[0,1]</code> scale as the loss) falls below <code>numeric_convergence_eps</code> (default <code>1e-3</code>). This is a <em>proposer</em>-side "nothing promising left to try" signal, distinct from acceptance — it is not the removed acceptance ε; it's a named, configurable knob.</td>
+</tr>
+<tr>
+<td><code>textual_phase.max_trials</code></td>
+<td>10</td>
+<td>trials in this textual phase ≥ cap</td>
+</tr>
+<tr>
+<td><code>textual_phase.patience</code></td>
+<td>4</td>
+<td>no accept in last N trials of this phase (incl. low-confidence skips)</td>
+</tr>
+<tr>
+<td>textual exhaustion</td>
+<td>—</td>
+<td>no failing traces left to diagnose, or critic returns low confidence repeatedly</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Global termination</strong> (checked between phases / trials; ends the whole run):</p>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>Default</th>
+<th>Trigger</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>dry cycle</td>
+<td>—</td>
+<td>a full numeric→textual cycle produced <strong>zero accepts</strong> (the natural convergence of coordinate descent)</td>
+</tr>
+<tr>
+<td><code>max_cycles</code></td>
+<td>4</td>
+<td>completed cycles ≥ cap</td>
+</tr>
+<tr>
+<td><code>max_minutes</code></td>
+<td>unset</td>
+<td><code>elapsed_wall_time ≥ max_minutes</code></td>
+</tr>
+<tr>
+<td><code>max_usd</code></td>
+<td>unset</td>
+<td><code>cumulative_usd ≥ max_usd</code></td>
+</tr>
+<tr>
+<td>Ctrl-C / SIGTERM</td>
+<td>—</td>
+<td>Trap, let in-flight trial finish, write report, exit 2</td>
+</tr>
+</tbody>
+</table>
+<p>Trigger is recorded in <code>report.md</code> and <code>run.json</code> as <code>exit_reason</code> (and, for a phase end, <code>phase_exit_reasons</code>).</p>
+<p><strong>Why two levels.</strong> A flat trial cap interacts badly with re-sweeping: each numeric phase re-pays its ~10-trial TPE warmup, so a single global <code>max_iterations: 30</code> would be eaten by warmups and never reach the textual passes that carry the largest single wins. Per-phase caps guarantee each axis gets a fair, bounded shot every cycle; the global dry-cycle stop is what actually ends a converged run.</p>
+<p><strong>On budget exhaustion mid-trial:</strong> the in-flight trial completes (its repeated runs, holdout, and decision are honored). We don't kill a multi-dollar repeated trial to save seconds.</p>
+<p><strong><code>max_usd</code> accounting</strong> sums per-case <code>TestResult.token_usage</code> across <code>report.results[]</code> (× <code>repeats</code>) converted via the model's published per-token rates — <em>not</em> <code>report.summary.token_usage</code>, which does not exist. Critic + Applier costs added on top. If a model lacks pricing data (custom Ollama endpoint, e.g.), <code>max_usd</code> is silently skipped with a warning at startup.</p>
+<h2 id="validation-at-startup">Validation at startup<a class="headerlink" href="#validation-at-startup" title="Permanent link">#</a></h2>
+<p>Before any trial runs, in this order:</p>
+<ol>
+<li>Load + validate <code>agent.yaml</code> (existing path).</li>
+<li><code>evaluations.optimizer</code> block exists. If absent: error with starter-config snippet for copy-paste.</li>
+<li>Train and holdout case files load, parse, are disjoint, share metric set. Holdout <code>≥ min_holdout_cases</code> (default 5) → <strong>error</strong> below the floor (variance estimate too weak for the acceptance rule).</li>
+<li>Loss weights reference metrics actually configured in <code>evaluations.metrics</code>. Unknown metric names → error.</li>
+<li><code>repeats ≥ 1</code> and <code>accept_sigma ≥ 0</code>. If <code>repeats == 1</code>, warn that the candidate contributes no measured spread (its <code>std = 0</code>), so the noise bar reduces to <code>accept_sigma × incumbent_std</code> — the bar still exists (the incumbent's stored std carries it), but it stops adapting to the candidate's own variance. Recommend <code>repeats ≥ 2</code> unless the agent is deterministic (temperature 0, no sampled tools).</li>
+<li>Budgets parse: every per-phase <code>max_trials ≥ 1</code>; warn if a <code>numeric_phase.max_trials</code> is below the TPE warmup (<code>n_startup_trials</code>, default 10) — that phase will be pure random search.</li>
+<li>Numeric axes parse: paths resolve against the Agent model, ranges non-empty, types valid. Each axis is <em>applied</em> to the baseline as a sanity check.</li>
+<li>Textual axes parse: paths resolve, current text loads, <code>max_chars</code> ≥ current length.</li>
+<li>Critic + Applier subagents load and validate. Auto-installed at <code>.holodeck/optimizer/agents/{critic,applier}.yaml</code> if missing — copied from package data dir. User can edit; we don't overwrite.</li>
+<li>Backend credentials validated (existing <code>validate_credentials()</code> call).</li>
+<li>Resume target (if <code>--resume</code>) exists, has matching <code>baseline_sha256</code>. If baseline drifted: error <em>"baseline changed since run X. Start a new run instead."</em></li>
+</ol>
+<p>All validation errors surfaced together when possible (single pass, collect, report).</p>
+<h2 id="out-of-scope-for-v1">Out of scope for v1<a class="headerlink" href="#out-of-scope-for-v1" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Out-of-scope</th>
+<th>Why deferred</th>
+<th>Path forward</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Few-shot demonstration optimization (#1 v2 item)</strong></td>
+<td>The highest-leverage lever in DSPy/MIPRO-style prompt optimization, but it needs a first-class <code>demonstrations</code> slot on the agent schema, backend prompt injection, and a new <em>selector</em> proposer — its own design pass. The MVP's instruction-text tuning is the lower-leverage half of "prompt optimization"; this is why the feature is named <em>instruction &amp; hyperparameter</em> optimizer.</td>
+<td><strong>v2, headlined.</strong> Bootstrap demos from <code>train_cases_file</code> (run agent on train inputs, keep traces that pass the grader), then select subset/order as a third proposer. The example pool + pass/fail oracle already exist in the test harness.</td>
+</tr>
+<tr>
+<td>Ingestion-time axes (<code>chunking_strategy</code>, <code>max_chunk_tokens</code>, <code>contextual_embeddings</code>, <code>embedding_model</code>)</td>
+<td>Re-ingest per trial = ~10min × $X. Would dominate cost.</td>
+<td>Separate <code>holodeck test ingest-sweep</code> subcommand.</td>
+</tr>
+<tr>
+<td>Parallel trials</td>
+<td>Optuna supports it but trials hit shared resources (qdrant, OTEL, rate limits, file numbering). Multiplies failure modes. Compounding makes this harder still (a phase's baseline advances mid-flight).</td>
+<td>v2: per-trial backend instance, <code>--concurrency N</code>, locking on writes.</td>
+</tr>
+<tr>
+<td>K-fold cross-validation</td>
+<td>K× the cost. Single split is sufficient signal for v1.</td>
+<td>v2: <code>holdout_eval_policy: k_fold; k: 5</code>.</td>
+</tr>
+<tr>
+<td>Population-based search (evolutionary, beam over candidates)</td>
+<td>Multiplies cost by population size; coordinate descent is the single-track v1.</td>
+<td>v2 or external: as a separate proposer plugin.</td>
+</tr>
+<tr>
+<td>Full statistical significance testing (paired bootstrap)</td>
+<td>The variance-aware bar (<code>accept_sigma</code>×pooled-std from <code>repeats</code>) is the cheap honest version; a paired bootstrap is more rigorous but costlier.</td>
+<td>v2: replace the σ-bar with a paired test, configurable α.</td>
+</tr>
+<tr>
+<td>Co-optimization of multiple textual axes per trial</td>
+<td>Conflates blame; harder to explain.</td>
+<td>v2: <code>co_optimize: [...]</code> opt-in.</td>
+</tr>
+<tr>
+<td>Auto-discovery of axes</td>
+<td>Most numeric leaves aren't safely tunable (e.g. <code>model.name</code>). Explicit declaration is right for v1.</td>
+<td>v2: <code>--suggest-axes</code> reads agent.yaml and prints starter axis block.</td>
+</tr>
+<tr>
+<td>Cross-run learning (TPE warm-start from a different agent's run)</td>
+<td>Distribution mismatch.</td>
+<td>Probably never.</td>
+</tr>
+<tr>
+<td>Live dashboard rendering of optimizer runs</td>
+<td><code>holodeck test view</code> doesn't know optimizer file shape.</td>
+<td>v2: detect <code>run.json</code>, render trajectory as chart, side panel with rationales.</td>
+</tr>
+<tr>
+<td>Meta-optimization of the optimizer</td>
+<td>Yak-shaving. Defaults are reasonable.</td>
+<td>Never as a feature.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="v1-contract">v1 contract<a class="headerlink" href="#v1-contract" title="Permanent link">#</a></h2>
+<ul>
+<li>One subcommand: <code>holodeck test optimize</code> — an <strong>instruction &amp; hyperparameter</strong> optimizer (not few-shot demos; those are v2).</li>
+<li><strong>Compounding coordinate descent:</strong> every accept advances the baseline; the final candidate stacks all accepted edits + hyperparameters.</li>
+<li><strong>Phase scheduler</strong> (not a per-trial router): alternate numeric ↔ textual phases until a full cycle is dry.</li>
+<li>Two proposers: <code>NumericProposer</code> (Optuna TPE, <strong>a fresh study per numeric phase</strong>) and <code>TextualProposer</code> (Critic + Applier subagents).</li>
+<li>Sequential trials only. <strong>Repeated trials</strong> (<code>repeats</code>, default 3) average sampling noise.</li>
+<li><strong>Variance-aware acceptance:</strong> improvement must clear <code>accept_sigma</code>×pooled-std measured from the repeats; no magic threshold.</li>
+<li><strong>Two-level budgets:</strong> per-phase (<code>max_trials</code>, <code>patience</code>) + global (<code>max_cycles</code>, <code>max_minutes</code>, <code>max_usd</code>, dry-cycle stop).</li>
+<li>One train/holdout split, user-declared in YAML; holdout <code>≥ min_holdout_cases</code> enforced.</li>
+<li>Six output artifacts per run: <code>run.json</code>, <code>trials.jsonl</code>, <code>trajectory.csv</code>, <code>candidates/</code>, <code>instructions/</code>, <code>report.md</code> + symlinks.</li>
+<li>One CLI shape with three diagnostic modes: <code>--dry-run</code>, <code>--print-baseline</code>, <code>--report-only</code>.</li>
+<li>Numeric axes only at query time (excludes ingestion-time params).</li>
+<li>One textual axis perturbed per textual trial.</li>
+<li>Errored metric runs excluded + flagged, never scored as 0.0.</li>
+<li>Reproducibility is config-level (resume + provenance), not bit-for-bit.</li>
+<li>Auto-installed Critic/Applier subagents at <code>.holodeck/optimizer/agents/</code>, user-editable.</li>
+</ul>
+<h2 id="full-agentyaml-optimizer-block-reference">Full agent.yaml <code>optimizer:</code> block (reference)<a class="headerlink" href="#full-agentyaml-optimizer-block-reference" title="Permanent link">#</a></h2>
+<pre><code class="language-yaml">evaluations:
   metrics:
     - type: standard
       metric: numeric
@@ -1134,12 +1341,16 @@ evaluations:
 
     train_cases_file: data/convfinqa_train.yaml
     holdout_cases_file: data/convfinqa_holdout.yaml
-    holdout_tolerance: 0.02
     holdout_eval_policy: on_train_improve
+    min_holdout_cases: 5
+
+    repeats: 3                          # runs per trial; loss = mean, std = accept bar
+    accept_sigma: 1.0                   # improvement must exceed accept_sigma × pooled std
+    max_errored_fraction: 0.25          # above this, a metric's trial loss is &quot;unreliable&quot;
 
     axes:
       numeric:
-        - path: model.temperature
+        - path: model.temperature       # defensible to tune because repeats average its noise
           range: [0.0, 1.0]
         - path: model.top_p
           range: [0.5, 1.0]
@@ -1155,151 +1366,196 @@ evaluations:
           max_chars: 200
 
     budget:
-      max_iterations: 30
-      max_minutes: 60
-      max_usd: 5.0
-      patience: 8
-```
+      global:
+        max_cycles: 4                   # numeric→textual cycles before stop
+        max_minutes: 60
+        max_usd: 15.0                   # note: ~3× the old number — repeats=3
+      numeric_phase:
+        max_trials: 15                  # keep ≥ TPE warmup (10) or it's random search
+        patience: 5
+      textual_phase:
+        max_trials: 10
+        patience: 4
+</code></pre>
+<h2 id="open-questions-resolved-during-design">Open questions resolved during design<a class="headerlink" href="#open-questions-resolved-during-design" title="Permanent link">#</a></h2>
+<ol>
+<li><strong>Path syntax for axes</strong> — <code>tools[name=…].top_k</code>. Bracket-equals form preferred over JSONPath for readability.</li>
+<li><strong>Async concurrency</strong> — sequential v1; parallel deferred to v2.</li>
+<li><strong>Resume semantics</strong> — <code>--resume RUN_ID</code> reads <code>trials.jsonl</code>, advances the baseline through accepted trials, rebuilds each numeric phase's study from that phase's rows, continues from <code>len(trials)</code>.</li>
+<li><strong>Where Applier writes textual edits</strong> — <code>results/optimizer/&lt;run-id&gt;/instructions/system-prompt.iter-NN.md</code>. Candidate's <code>instructions.file: ../instructions/system-prompt.iter-NN.md</code> (relative to the candidate yaml's directory). Tool descriptions (which live inline) updated inline in the candidate <code>agent.yaml</code>.</li>
+</ol>
+<h2 id="open-questions-resolved-in-the-2026-05-29-rewrite">Open questions resolved in the 2026-05-29 rewrite<a class="headerlink" href="#open-questions-resolved-in-the-2026-05-29-rewrite" title="Permanent link">#</a></h2>
+<ol start="5">
+<li><strong>Do improvements compound?</strong> Yes — every accept advances the baseline (the original single-step-from-fixed-baseline behaviour was a bug). This is the core of the rewrite.</li>
+<li><strong>How do compounding and TPE coexist?</strong> Coordinate descent: a fresh TPE study per numeric phase, scoped to a window where the prompt is frozen. The original single immortal study would have fit a moving objective.</li>
+<li><strong>Per-trial router vs phases?</strong> Phases. The Strategy Router is removed; a phase scheduler alternates numeric/textual blocks and stops on a dry cycle.</li>
+<li><strong>How is acceptance made honest at small eval sizes?</strong> Repeated trials (<code>repeats</code>, default 3) + a variance-aware bar (<code>accept_sigma</code>×pooled-std), replacing the sub-noise-floor <code>0.02</code> / <code>1e-4</code> thresholds.</li>
+<li><strong>Is this a "prompt optimizer"?</strong> No — it's an <em>instruction &amp; hyperparameter</em> optimizer. "Prompt optimization" in current usage implies few-shot demonstration selection, which is the #1 v2 item, not v1.</li>
+</ol>
+<h2 id="risks-and-mitigations">Risks and mitigations<a class="headerlink" href="#risks-and-mitigations" title="Permanent link">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Risk</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Optimizer overfits to training cases</td>
+<td>Required holdout split + variance-aware acceptance (holdout must stay within its own noise).</td>
+</tr>
+<tr>
+<td>Optimizer overfits to a non-representative holdout</td>
+<td>README + <code>report.md</code> call out the distributional-overfit limitation.</td>
+</tr>
+<tr>
+<td>Accepting changes that are just sampling noise</td>
+<td><code>repeats</code> measures the noise; accept bar = <code>accept_sigma</code>×pooled-std, recomputed per trial — no sub-noise-floor threshold.</td>
+</tr>
+<tr>
+<td>TPE fits a moving objective after a prompt edit</td>
+<td>Fresh TPE study per numeric phase; studies never span a prompt change.</td>
+</tr>
+<tr>
+<td>Repeats triple the cost vs the original estimate</td>
+<td><code>max_usd</code>/per-phase trial caps account for <code>repeats</code>; cost-per-trial shown ×repeats in the progress line; <code>repeats</code> lowerable for deterministic agents.</td>
+</tr>
+<tr>
+<td>Numeric phase wasted on pure warmup</td>
+<td>Validation warns if <code>numeric_phase.max_trials</code> &lt; TPE warmup.</td>
+</tr>
+<tr>
+<td>User burns budget on a misconfigured run</td>
+<td><code>--dry-run</code> and <code>--print-baseline</code> validate before spending. Validation pass collects all errors.</td>
+</tr>
+<tr>
+<td>Ingest re-runs per trial</td>
+<td><code>force_ingest=False</code> always; ingestion-time axes excluded from v1.</td>
+</tr>
+<tr>
+<td>Mid-run crash loses state</td>
+<td>Append-only JSONL + atomic candidate writes + <code>--report-only</code> regen. Baseline reconstructed from accepted rows on resume.</td>
+</tr>
+<tr>
+<td>Critic/Applier proposes the same bad edit repeatedly</td>
+<td>History of last 3 rejected gradients fed back as <code>previous_gradients</code>.</td>
+</tr>
+<tr>
+<td>User expects bit-for-bit reproduction</td>
+<td><code>run-id</code> identifies inputs (baseline + config + seed) and makes the <em>proposal sequence</em> reproducible; losses vary (stochastic). Stated explicitly in <code>report.md</code>.</td>
+</tr>
+<tr>
+<td><code>agent.yaml</code> accidentally mutated</td>
+<td>Original never touched; candidates under <code>results/optimizer/&lt;run-id&gt;/</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="implementation-surface-modules-to-create">Implementation surface — modules to create<a class="headerlink" href="#implementation-surface-modules-to-create" title="Permanent link">#</a></h2>
+<ul>
+<li><code>src/holodeck/optimizer/__init__.py</code></li>
+<li><code>src/holodeck/optimizer/loop.py</code> — <code>OptimizerLoop</code>, <code>_run_trial</code>, <code>mean_loss</code> (repeats aggregation), variance-aware accept/reject, baseline-advance (compounding).</li>
+<li><code>src/holodeck/optimizer/config.py</code> — Pydantic models for <code>evaluations.optimizer.*</code> (incl. <code>repeats</code>, <code>accept_sigma</code>, two-level <code>budget</code>, <code>min_holdout_cases</code>).</li>
+<li><code>src/holodeck/optimizer/loss.py</code> — scalarizer (errored runs excluded+flagged), pooled-std / noise-bar computation, penalty calculation, per-trial USD accounting.</li>
+<li><code>src/holodeck/optimizer/scheduler.py</code> — phase scheduler (replaces the per-trial Strategy Router): alternates numeric/textual phases, owns per-phase + global stop conditions, dry-cycle detection.</li>
+<li><code>src/holodeck/optimizer/proposers/numeric.py</code> — Optuna TPE wrapper; <strong>one study per numeric phase</strong>, seed offset per phase.</li>
+<li><code>src/holodeck/optimizer/proposers/textual.py</code> — Critic + Applier orchestration.</li>
+<li><code>src/holodeck/optimizer/agent_mutator.py</code> — applies axis paths to a baseline <code>Agent</code> (Pydantic <code>model_copy(update=...)</code> plumbing for <code>tools[name=X].field</code> paths).</li>
+<li><code>src/holodeck/optimizer/output.py</code> — <code>TrialLogger</code>, <code>run.json</code> writer, <code>trajectory.csv</code>, symlink atomicity.</li>
+<li><code>src/holodeck/optimizer/report.py</code> — <code>report.md</code> synthesis, ASCII sparklines, diffs, attribution.</li>
+<li><code>src/holodeck/optimizer/agents/critic.yaml</code> — packaged Critic subagent.</li>
+<li><code>src/holodeck/optimizer/agents/applier.yaml</code> — packaged Applier subagent.</li>
+<li><code>src/holodeck/cli/commands/test.py</code> — register <code>optimize</code> subcommand on existing group.</li>
+</ul>
+<p>Tests:</p>
+<ul>
+<li><code>tests/unit/optimizer/test_loop.py</code> — variance-aware accept/reject (improvement above/below noise bar; holdout within/over its noise); <strong>baseline advances on accept (compounding)</strong>; resume rebuilds baseline.</li>
+<li><code>tests/unit/optimizer/test_loss.py</code> — scalarizer with weights, missing metrics; <strong>errored runs excluded+flagged, not 0.0</strong>; <code>max_errored_fraction</code> marks unreliable; pooled-std / noise-bar math; penalties.</li>
+<li><code>tests/unit/optimizer/test_scheduler.py</code> — phase alternation; per-phase patience/max_trials stops; <strong>dry-cycle global stop</strong>; numeric-phase-below-warmup warning.</li>
+<li><code>tests/unit/optimizer/test_proposers_numeric.py</code> — <strong>fresh study per phase</strong> (seed offset); deterministic proposal sequence with seed; per-phase resume replays only that phase's rows.</li>
+<li><code>tests/unit/optimizer/test_proposers_textual.py</code> — Critic/Applier mocked; low-confidence short-circuits; previous_gradients fed back; edits compound against the current baseline.</li>
+<li><code>tests/unit/optimizer/test_agent_mutator.py</code> — axis paths apply correctly; bracket-name resolution.</li>
+<li><code>tests/unit/optimizer/test_output.py</code> — JSONL append safety; symlink atomicity; trajectory.csv columns (mean/std/noise_bar); <code>--report-only</code>.</li>
+<li><code>tests/unit/optimizer/test_report.py</code> — report markdown shape, per-phase attribution, ASCII sparkline with phase boundaries, diff rendering.</li>
+<li><code>tests/unit/cli/commands/test_optimize.py</code> — CLI parsing (two-level budget flags, <code>--repeats</code>, <code>--accept-sigma</code>), exit codes, validation pass (min_holdout_cases error).</li>
+<li><code>tests/integration/optimizer/test_end_to_end.py</code> — full coordinate-descent loop against a tiny in-process agent + small train/holdout split, <code>repeats=2</code>. Mocked Optuna sampler and Critic/Applier; asserts a numeric+textual win compound into one candidate.</li>
+</ul>
+<h2 id="dependencies-to-add">Dependencies to add<a class="headerlink" href="#dependencies-to-add" title="Permanent link">#</a></h2>
+<ul>
+<li><code>optuna</code> (~3.x) — TPE sampler. Add to <code>pyproject.toml</code> extras <code>[optimizer]</code>. Not pulled into base install.</li>
+</ul>
+<p>The Critic + Applier subagents reuse the existing Claude Agent SDK; no new SDK dependency.</p>
+  </main>
+</div>
 
-## Open questions resolved during design
+<footer class="foot">
+  <span class="tag">◆ HoloDeck</span>
+  <span>Rendered from <code>2026-05-16-optimizer-for-holodeck-test-design.md</code> · dark-first identity per <code>DESIGN.md</code></span>
+</footer>
 
-1. **Path syntax for axes** — `tools[name=…].top_k`. Bracket-equals form preferred over JSONPath for readability.
-2. **Async concurrency** — sequential v1; parallel deferred to v2.
-3. **Resume semantics** — `--resume RUN_ID` reads `trials.jsonl`, replays into a fresh study (TPE is reproducible), continues from `len(trials)`.
-4. **Where Applier writes textual edits** — `results/optimizer/<run-id>/instructions/system-prompt.iter-NN.md`. Candidate's `instructions.file: ../instructions/system-prompt.iter-NN.md` (relative to the candidate yaml's directory). Tool descriptions (which live inline) updated inline in the candidate `agent.yaml`.
-
-## Risks and mitigations
-
-| Risk | Mitigation |
-|---|---|
-| Optimizer overfits to training cases | Required holdout split + acceptance rule. |
-| Optimizer overfits to a non-representative holdout | README + `report.md` call out the distributional-overfit limitation. |
-| User burns budget on a misconfigured run | `--dry-run` and `--print-baseline` validate before spending. Validation pass collects all errors. |
-| Cost surprises | `max_usd` budget; per-trial cost in progress line; total cost in report. |
-| Ingest re-runs per trial | `force_ingest=False` always; ingestion-time axes excluded from v1. |
-| Mid-run crash loses state | Append-only JSONL + atomic candidate writes + `--report-only` regen. |
-| Critic/Applier proposes the same bad edit repeatedly | History of last 3 rejected gradients fed back as `previous_gradients`. |
-| User can't reproduce a run | `run-id = sha256(baseline + config + seed)`. Same inputs → same id. Seed in `run.json`. |
-| `agent.yaml` accidentally mutated | Original never touched; candidates under `results/optimizer/<run-id>/`. |
-
-## Implementation surface — modules to create
-
-- `src/holodeck/optimizer/__init__.py`
-- `src/holodeck/optimizer/loop.py` — `OptimizerLoop`, `_run_trial`, accept/reject logic.
-- `src/holodeck/optimizer/config.py` — Pydantic models for `evaluations.optimizer.*`.
-- `src/holodeck/optimizer/loss.py` — scalarizer, penalty calculation, per-trial USD accounting.
-- `src/holodeck/optimizer/strategy_router.py` — picks numeric vs textual per trial.
-- `src/holodeck/optimizer/proposers/numeric.py` — Optuna TPE wrapper.
-- `src/holodeck/optimizer/proposers/textual.py` — Critic + Applier orchestration.
-- `src/holodeck/optimizer/agent_mutator.py` — applies axis paths to a baseline `Agent` (Pydantic `model_copy(update=...)` plumbing for `tools[name=X].field` paths).
-- `src/holodeck/optimizer/output.py` — `TrialLogger`, `run.json` writer, `trajectory.csv`, symlink atomicity.
-- `src/holodeck/optimizer/report.py` — `report.md` synthesis, ASCII sparklines, diffs, attribution.
-- `src/holodeck/optimizer/agents/critic.yaml` — packaged Critic subagent.
-- `src/holodeck/optimizer/agents/applier.yaml` — packaged Applier subagent.
-- `src/holodeck/cli/commands/test.py` — register `optimize` subcommand on existing group.
-
-Tests:
-
-- `tests/unit/optimizer/test_loop.py` — accept/reject under various train/holdout combinations; resume.
-- `tests/unit/optimizer/test_loss.py` — scalarizer with weights, missing metrics, errored metrics, penalties.
-- `tests/unit/optimizer/test_proposers_numeric.py` — TPE study deterministic with seed; resume replays correctly.
-- `tests/unit/optimizer/test_proposers_textual.py` — Critic/Applier mocked; low-confidence short-circuits; previous_gradients fed back.
-- `tests/unit/optimizer/test_agent_mutator.py` — axis paths apply correctly; bracket-name resolution.
-- `tests/unit/optimizer/test_output.py` — JSONL append safety; symlink atomicity; `--report-only`.
-- `tests/unit/optimizer/test_report.py` — report markdown shape, ASCII sparkline, diff rendering.
-- `tests/unit/cli/commands/test_optimize.py` — CLI parsing, exit codes, validation pass.
-- `tests/integration/optimizer/test_end_to_end.py` — full loop against a tiny in-process agent + 3-test suite + 1-test holdout. Uses mocked Optuna sampler and mocked Critic/Applier.
-
-## Dependencies to add
-
-- `optuna` (~3.x) — TPE sampler. Add to `pyproject.toml` extras `[optimizer]`. Not pulled into base install.
-
-The Critic + Applier subagents reuse the existing Claude Agent SDK; no new SDK dependency.
-</script>
-<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>
-(function () {
-  const src = document.getElementById("md-source").textContent;
+(function(){
+  // Wrap tables for horizontal scroll.
+  document.querySelectorAll(".content table").forEach(function(t){
+    if(t.parentElement.classList.contains("table-wrap")) return;
+    var w=document.createElement("div"); w.className="table-wrap";
+    t.parentNode.insertBefore(w,t); w.appendChild(t);
+  });
 
-  marked.use({
-    gfm: true,
-    breaks: false,
-    renderer: {
-      heading(text, level, raw) {
-        const slug = raw.toLowerCase()
-          .replace(/[^\w\s-]/g, "")
-          .trim()
-          .replace(/\s+/g, "-")
-          .replace(/-+/g, "-");
-        return `<h${level} id="${slug}">${text}<a class="anchor" href="#${slug}" aria-hidden="true">#</a></h${level}>`;
-      },
-      code(code, lang) {
-        let highlighted = code;
-        try {
-          if (lang && hljs.getLanguage(lang)) {
-            highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
-          } else {
-            highlighted = hljs.highlightAuto(code).value;
-          }
-        } catch (e) { /* fall back to plain */ }
-        const looksLikeDiagram = code.includes("│") || code.includes("─") || code.includes("└") || code.includes("┌");
-        const cls = looksLikeDiagram ? "diagram" : "";
-        return `<pre class="${cls}"><code class="hljs ${lang ? "language-" + lang : ""}">${highlighted}</code></pre>`;
-      }
+  var LANGS={json:"json",yaml:"yaml",yml:"yaml",python:"python",py:"python",
+             bash:"bash",sh:"bash",shell:"bash",csv:"csv",text:"text"};
+
+  // Turn each <pre> into a terminal-style code card.
+  document.querySelectorAll(".content pre").forEach(function(pre){
+    var code=pre.querySelector("code");
+    var cls=(code && code.className)||"";
+    var m=cls.match(/language-([\w-]+)/);
+    var lang=m?m[1]:"";
+    var card=document.createElement("div"); card.className="code-card";
+    var bar=document.createElement("div"); bar.className="code-bar";
+    var label=(lang||"text").toUpperCase();
+    var isDiagram=false;
+    var txt=(code?code.textContent:"");
+    // Unlabeled fences that contain box-drawing or the CLI streaming idiom = diagram/terminal.
+    if(!lang){
+      if(/[│┌└├─▼△✓✗]/.test(txt)){ isDiagram=true; label="DIAGRAM"; }
+      else { label="TEXT"; }
+    }
+    if(isDiagram) card.classList.add("is-diagram");
+    bar.innerHTML='<span class="lights"><i></i><i></i><i></i></span><span class="lang">'+label+'</span>';
+    pre.parentNode.insertBefore(card,pre);
+    card.appendChild(bar); card.appendChild(pre);
+    // Highlight only real languages (skip diagrams/text/csv to avoid mis-coloring).
+    if(window.hljs && lang && LANGS[lang] && lang!=="csv" && lang!=="text"){
+      try{ hljs.highlightElement(code); }catch(e){}
     }
   });
 
-  // Wrap meta lines (Status / Date / Author / Related) into a styled meta block.
-  const metaPattern = /^(\*\*Status:\*\*[\s\S]+?)(?=\n\n)/m;
-  const cleaned = src.replace(metaPattern, (m) => `\n\n<div class="meta">\n\n${m}\n\n</div>`);
-
-  const html = marked.parse(cleaned);
-  const article = document.getElementById("content");
-  article.innerHTML = html;
-
-  // Build TOC from h2/h3
-  const toc = document.getElementById("toc");
-  const headings = article.querySelectorAll("h2, h3");
-  let lastH2Item = null;
-  headings.forEach(h => {
-    const li = document.createElement("li");
-    li.className = h.tagName.toLowerCase();
-    const a = document.createElement("a");
-    a.href = "#" + h.id;
-    a.textContent = h.textContent.replace(/#$/, "").trim();
-    li.appendChild(a);
-    if (h.tagName === "H2") {
-      toc.appendChild(li);
-      lastH2Item = li;
-    } else if (h.tagName === "H3") {
-      // Nest under last H2 visually via flat list with indent class (already styled)
-      toc.appendChild(li);
-    }
-  });
-
-  // Scroll-spy: highlight current section
-  const tocLinks = new Map();
-  toc.querySelectorAll("a").forEach(a => tocLinks.set(a.getAttribute("href").slice(1), a));
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        tocLinks.forEach(a => a.classList.remove("active"));
-        const link = tocLinks.get(entry.target.id);
-        if (link) link.classList.add("active");
+  // Scrollspy for the TOC.
+  var links=[].slice.call(document.querySelectorAll(".toc-list a"));
+  var map={}; links.forEach(function(a){ var id=a.getAttribute("href").slice(1); if(id) map[id]=a; });
+  var heads=[].slice.call(document.querySelectorAll(".content h2[id], .content h3[id]"));
+  var obs=new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(e.isIntersecting){
+        links.forEach(function(a){a.classList.remove("active");});
+        var a=map[e.target.id]; if(a) a.classList.add("active");
       }
     });
-  }, { rootMargin: "0px 0px -75% 0px", threshold: 0 });
-  headings.forEach(h => observer.observe(h));
+  },{rootMargin:"-72px 0px -70% 0px",threshold:0});
+  heads.forEach(function(h){obs.observe(h);});
 
-  // Add a draft badge next to the H1 if first heading is the title
-  const h1 = article.querySelector("h1");
-  if (h1) {
-    const badge = document.createElement("span");
-    badge.className = "badge";
-    badge.textContent = "Draft";
-    h1.appendChild(badge);
-  }
+  // Theme toggle (Clean Room light <-> dark); code stays dark either way.
+  var root=document.documentElement, btn=document.getElementById("themeToggle");
+  var saved=localStorage.getItem("holodeck-spec-theme");
+  if(saved) root.setAttribute("data-theme",saved);
+  function sync(){ btn.textContent = root.getAttribute("data-theme")==="dark" ? "Clean Room ☼" : "Dark ☾"; }
+  sync();
+  btn.addEventListener("click",function(){
+    var next=root.getAttribute("data-theme")==="dark"?"light":"dark";
+    root.setAttribute("data-theme",next); localStorage.setItem("holodeck-spec-theme",next); sync();
+  });
 })();
 </script>
 </body>

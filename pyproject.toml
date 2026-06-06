@@ -54,6 +54,7 @@ dependencies = [
     "azure-core>=1.38.0",
     "claude-agent-sdk==0.2.82",
     "python-frontmatter>=1.1,<2.0",
+    "optuna>=4.8.0",
 ]
 
 [project.scripts]
