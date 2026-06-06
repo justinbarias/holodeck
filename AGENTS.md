@@ -469,7 +469,10 @@ pytest -k "test_agent" -n auto -v
 coordinate-descent optimizer (Optuna TPE over numeric axes + a Critic/Applier
 instruction-rewrite phase). It reads an `evaluations.optimizer` block, never
 mutates the original `agent.yaml`, and writes the best candidate plus a full
-audit trail to `results/optimizer/<run-id>/`.
+audit trail to `results/optimizer/<run-id>/`. With the agent's `observability`
+block enabled it emits an OpenTelemetry `holodeck.optimize` span tree (each
+trial's eval GenAI spans nest under it) and `holodeck.optimize.*` metrics, just
+like `holodeck test`.
 
 ```bash
 holodeck test optimize agent.yaml                 # run with YAML config

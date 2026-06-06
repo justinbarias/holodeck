@@ -157,7 +157,7 @@ from the loop with attributes `{phase, accepted}` where meaningful.
 - [ ] Warning gone; one root span per run with GenAI children; disabled path untouched; `make lint type-check` clean.
 
 ### Phase 2: Optimizer span tree
-- [ ] **T2 — Guarded span helper + root/baseline/cycle spans in `OptimizerLoop`.**
+- [x] **T2 — Guarded span helper + root/baseline/cycle spans in `OptimizerLoop`.**
   Add a tiny internal helper `self._span(name, **attrs)` returning
   `tracer.start_as_current_span(name, attributes=...)` or `nullcontext()` based on
   `get_observability_context()`. Open `holodeck.optimize.baseline` around the baseline scorer call
@@ -168,7 +168,7 @@ from the loop with attributes `{phase, accepted}` where meaningful.
   **Dependencies:** T1.
   **Files:** `src/holodeck/optimizer/loop.py`, `tests/unit/optimizer/test_loop_observability.py`.
   **Scope:** Small–Medium.
-- [ ] **T3 — Phase, trial, and propose spans in `_run_phase`.**
+- [x] **T3 — Phase, trial, and propose spans in `_run_phase`.**
   Open `holodeck.optimize.phase` around the phase loop (attrs `phase`, `cycle`; set `accepts` at
   end). For textual proposers, open `holodeck.optimize.propose` around `proposer.ask()`. Open
   `holodeck.optimize.trial` around `self.scorer(candidate)` so the eval's GenAI spans nest;
@@ -186,10 +186,10 @@ from the loop with attributes `{phase, accepted}` where meaningful.
   **Scope:** Medium.
 
 ### Checkpoint B — span tree
-- [ ] Full `baseline/cycle/phase/trial/propose` tree verified in-memory; GenAI nesting proven; disabled = zero optimizer spans.
+- [x] Full `baseline/cycle/phase/trial/propose` tree verified in-memory; GenAI nesting proven; disabled = zero optimizer spans.
 
 ### Phase 3: Optimizer metrics
-- [ ] **T4 — Instrument set + per-trial timing.**
+- [x] **T4 — Instrument set + per-trial timing.**
   Create the 7 instruments once per run (guarded). Wrap the scorer call with
   `time.perf_counter()` to feed `trial.duration`. Record `trials`(+`accepted` attr),
   `trials.skipped`, `trial.loss`, `trial.duration` per trial; `best_loss` on each accept;
@@ -204,10 +204,10 @@ from the loop with attributes `{phase, accepted}` where meaningful.
   **Scope:** Medium.
 
 ### Checkpoint C — metrics
-- [ ] 7 instruments verified; identical optimization decisions with metrics on/off.
+- [x] 7 instruments verified; identical optimization decisions with metrics on/off.
 
 ### Phase 4: Docs, schema check, CI
-- [ ] **T5 — Docs + CI sweep.**
+- [x] **T5 — Docs + CI sweep.**
   Document the optimize span tree + metric table (where the optimizer is documented — `AGENTS.md`
   / `docs/` / this spec folder's `optimizer.md`); note that an agent must set
   `observability.enabled: true` (+ an OTLP exporter) for optimize traces to flow, identical to

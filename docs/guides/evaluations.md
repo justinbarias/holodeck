@@ -1202,6 +1202,44 @@ best by more than `min_delta`.
 > `min_delta` can chase evaluation noise. Keep `min_delta` above your suite's
 > single-case-flip granularity. Statistical rigor is the planned v1 follow-up.
 
+### Observability
+
+`holodeck test optimize` emits OpenTelemetry traces and metrics on the same
+terms as `holodeck test`: set an `observability` block on the agent with
+`enabled: true` and an OTLP exporter, and the optimize run exports to your
+collector (e.g. Aspire, Grafana). No extra configuration — it reuses the agent's
+existing `observability` block. When observability is disabled the optimizer
+behaves exactly as before (no spans, no metrics).
+
+**Span tree.** One root span per run, with each trial's evaluation GenAI spans
+nesting under its trial span:
+
+```
+holodeck.optimize                 run_id, agent_name, max_cycles, seed, axes counts, loss
+├── holodeck.optimize.baseline    baseline scoring of the original agent
+└── holodeck.optimize.cycle       one coordinate-descent cycle
+    └── holodeck.optimize.phase   numeric | textual (records accepts)
+        ├── holodeck.optimize.propose   textual Critic/Applier calls (GenAI spans nest)
+        └── holodeck.optimize.trial     trial_id, phase, baseline_loss, loss, accepted,
+            └── <eval GenAI spans>        edit_summary, axis, params (JSON), error
+```
+
+Trial spans carry only primitives — numeric params as a single JSON string,
+the textual axis *name* and a human-readable `edit_summary` — never instruction
+text or resolved secrets.
+
+**Metrics** (all `holodeck.optimize.*`, attributed by `phase` where meaningful):
+
+| Metric | Type | Meaning |
+| --- | --- | --- |
+| `trials` | counter | completed trials (`phase`, `accepted`) |
+| `trials.skipped` | counter | trials skipped because a proposer errored (`phase`) |
+| `trial.loss` | histogram | candidate loss per trial (`phase`) |
+| `trial.duration` | histogram (s) | scorer wall-time per trial (`phase`) |
+| `best_loss` | histogram | best loss after each accepted improvement (`phase`) |
+| `improvement` | histogram | `baseline_loss − best_loss` at run end |
+| `cycles` | counter | completed coordinate-descent cycles |
+
 ## Best Practices
 
 1. **Start with DeepEval**: Use GEval and RAG metrics as primary evaluation
