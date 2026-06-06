@@ -18,6 +18,7 @@ from holodeck.optimizer.config import OptimizerConfig, PhaseConfig
 from holodeck.optimizer.models import OptimizationResult, TrialRecord
 from holodeck.optimizer.mutator import apply_axes, apply_textual_edit
 from holodeck.optimizer.proposers.base import Proposal, Proposer
+from holodeck.optimizer.telemetry import OptimizerTelemetry
 
 logger = logging.getLogger(__name__)
 
@@ -66,25 +67,29 @@ class OptimizerLoop:
         self.best_loss = float("inf")
         self.best_report: TestReport | None = None
         self.baseline_loss = float("inf")
+        # Guarded OTel instrumentation; a strict no-op when observability is off.
+        self._telemetry = OptimizerTelemetry()
 
     async def run(self) -> OptimizationResult:
         """Execute the optimization and return the result."""
-        self.best_loss, self.best_report = await self.scorer(self.original_agent)
+        with self._telemetry.baseline_span():
+            self.best_loss, self.best_report = await self.scorer(self.original_agent)
         self.baseline_loss = self.best_loss
         logger.info("Baseline loss: %.4f", self.baseline_loss)
 
         cycles_run = 0
         for cycle in range(self.config.max_cycles):
-            accepts = 0
-            if self.numeric_proposer is not None:
-                accepts += await self._run_phase(
-                    cycle, self.numeric_proposer, self.config.numeric_phase
-                )
-            if self.textual_proposer is not None:
-                accepts += await self._run_phase(
-                    cycle, self.textual_proposer, self.config.textual_phase
-                )
-            cycles_run += 1
+            with self._telemetry.cycle_span(cycle):
+                accepts = 0
+                if self.numeric_proposer is not None:
+                    accepts += await self._run_phase(
+                        cycle, self.numeric_proposer, self.config.numeric_phase
+                    )
+                if self.textual_proposer is not None:
+                    accepts += await self._run_phase(
+                        cycle, self.textual_proposer, self.config.textual_phase
+                    )
+                cycles_run += 1
             if accepts == 0:
                 logger.info("Cycle %d produced no accepts — stopping.", cycle)
                 break
