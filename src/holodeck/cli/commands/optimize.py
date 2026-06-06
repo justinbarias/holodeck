@@ -7,15 +7,24 @@ never mutated.
 """
 
 import asyncio
+import json
 import sys
 import uuid
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import click
 
 from holodeck.lib.errors import OptimizerError
 from holodeck.lib.logging_config import get_logger, setup_logging
+from holodeck.lib.observability import (
+    ObservabilityContext,
+    get_tracer,
+    initialize_observability,
+    shutdown_observability,
+)
 from holodeck.models.agent import Agent
 from holodeck.optimizer.config import OptimizerConfig
 from holodeck.optimizer.loop import OptimizerLoop
@@ -89,6 +98,28 @@ def _build_proposers(
     return numeric, textual
 
 
+def _root_span_attributes(
+    agent: Agent, config: OptimizerConfig, run_id: str
+) -> dict[str, Any]:
+    """Build OTel attributes for the ``holodeck.optimize`` root span.
+
+    Only primitive values (OTel attributes cannot be ``None`` or nested), and
+    no prompt text or resolved secrets — the loss weights are emitted as a
+    compact JSON string, axes as counts.
+    """
+    attributes: dict[str, Any] = {
+        "holodeck.optimize.run_id": run_id,
+        "holodeck.optimize.agent_name": agent.name,
+        "holodeck.optimize.max_cycles": config.max_cycles,
+        "holodeck.optimize.axes.numeric": len(config.axes.numeric),
+        "holodeck.optimize.axes.textual": len(config.axes.textual),
+        "holodeck.optimize.loss": json.dumps(config.loss, sort_keys=True),
+    }
+    if config.seed is not None:
+        attributes["holodeck.optimize.seed"] = config.seed
+    return attributes
+
+
 @click.command("optimize")
 @click.argument("agent_config", type=click.Path(exists=True), default="agent.yaml")
 @click.option(
@@ -149,13 +180,25 @@ def optimize(
     file is never modified; the best candidate is written to
     ``<output-dir>/<run-id>/best.yaml``.
     """
+    # Set when observability is enabled; gates the root span + shutdown.
+    obs_context: ObservabilityContext | None = None
     effective_quiet = quiet and not verbose
-    setup_logging(verbose=verbose, quiet=effective_quiet)
 
     try:
         from holodeck.config.loader import load_agent_with_config
 
         agent, _resolved, loader = load_agent_with_config(agent_config)
+
+        # Observability parity with `holodeck test`: when the agent enables
+        # observability, OTel owns logging and each trial's eval emits GenAI
+        # spans/metrics; otherwise fall back to traditional logging. Done after
+        # the load so the branch can read agent.observability.
+        if agent.observability and agent.observability.enabled:
+            obs_context = initialize_observability(
+                agent.observability, agent.name, verbose=verbose, quiet=effective_quiet
+            )
+        else:
+            setup_logging(verbose=verbose, quiet=effective_quiet)
 
         if agent.evaluations is None or agent.evaluations.optimizer is None:
             raise OptimizerError(
@@ -221,7 +264,21 @@ def optimize(
             run_id=run_id,
             progress_callback=on_trial,
         )
-        result: OptimizationResult = asyncio.run(loop.run())
+
+        async def _run() -> OptimizationResult:
+            # Root span for the whole run; per-trial GenAI spans from each
+            # candidate's eval nest underneath it. No-op when disabled.
+            if obs_context is not None:
+                span_ctx: Any = get_tracer(__name__).start_as_current_span(
+                    "holodeck.optimize",
+                    attributes=_root_span_attributes(agent, config, run_id),
+                )
+            else:
+                span_ctx = nullcontext()
+            with span_ctx:
+                return await loop.run()
+
+        result: OptimizationResult = asyncio.run(_run())
 
         # Rebuild best.yaml on the unsubstituted source so ${VAR} secret
         # placeholders survive instead of leaking env-resolved credentials.
@@ -255,3 +312,6 @@ def optimize(
         logger.exception("Optimization failed")
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)
+    finally:
+        if obs_context is not None:
+            shutdown_observability(obs_context)
