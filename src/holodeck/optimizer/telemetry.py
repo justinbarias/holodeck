@@ -17,10 +17,14 @@ Span tree (the ``holodeck.optimize`` root is opened by the CLI; see
 
 from __future__ import annotations
 
+import json
 from contextlib import AbstractContextManager, nullcontext
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from holodeck.lib.observability import get_observability_context, get_tracer
+
+if TYPE_CHECKING:
+    from opentelemetry.trace import Span
 
 
 class OptimizerTelemetry:
@@ -47,6 +51,69 @@ class OptimizerTelemetry:
     def cycle_span(self, cycle: int) -> AbstractContextManager[Any]:
         """Span around one coordinate-descent cycle."""
         return self._span("holodeck.optimize.cycle", {"holodeck.optimize.cycle": cycle})
+
+    def phase_span(self, phase: str, cycle: int) -> AbstractContextManager[Any]:
+        """Span around one numeric/textual phase within a cycle."""
+        return self._span(
+            "holodeck.optimize.phase",
+            {"holodeck.optimize.phase": phase, "holodeck.optimize.cycle": cycle},
+        )
+
+    def propose_span(self, phase: str, cycle: int) -> AbstractContextManager[Any]:
+        """Span around a proposer's ``ask`` (textual Critic/Applier calls)."""
+        return self._span(
+            "holodeck.optimize.propose",
+            {"holodeck.optimize.phase": phase, "holodeck.optimize.cycle": cycle},
+        )
+
+    def trial_span(
+        self,
+        *,
+        trial_id: int,
+        cycle: int,
+        phase: str,
+        baseline_loss: float,
+        params: dict[str, Any] | None = None,
+        textual_axis: str | None = None,
+        edit_summary: str | None = None,
+        error: str | None = None,
+    ) -> AbstractContextManager[Any]:
+        """Span around one trial's scoring; nests the eval's GenAI spans.
+
+        ``loss`` and ``accepted`` are not known until scoring completes — set
+        them afterward via :meth:`record_trial_outcome`.
+        """
+        attributes: dict[str, Any] = {
+            "holodeck.optimize.trial_id": trial_id,
+            "holodeck.optimize.phase": phase,
+            "holodeck.optimize.cycle": cycle,
+            "holodeck.optimize.baseline_loss": baseline_loss,
+        }
+        if params is not None:
+            # Single JSON string (build decision): numeric axes only, no secrets.
+            attributes["holodeck.optimize.params"] = json.dumps(params, sort_keys=True)
+        if textual_axis is not None:
+            attributes["holodeck.optimize.axis"] = textual_axis
+        if edit_summary is not None:
+            attributes["holodeck.optimize.edit_summary"] = edit_summary
+        if error is not None:
+            attributes["holodeck.optimize.error"] = error
+        return self._span("holodeck.optimize.trial", attributes)
+
+    @staticmethod
+    def record_trial_outcome(span: Span | None, *, loss: float, accepted: bool) -> None:
+        """Record the scored loss and accept decision on an open trial span."""
+        if span is None:
+            return
+        span.set_attribute("holodeck.optimize.loss", loss)
+        span.set_attribute("holodeck.optimize.accepted", accepted)
+
+    @staticmethod
+    def record_phase_accepts(span: Span | None, accepts: int) -> None:
+        """Record the number of accepted trials on an open phase span."""
+        if span is None:
+            return
+        span.set_attribute("holodeck.optimize.accepts", accepts)
 
     def _span(
         self, name: str, attributes: dict[str, Any] | None = None

@@ -95,6 +95,29 @@ class _StubNumericProposer:
         pass
 
 
+class _StubTextualProposer:
+    """Yields preset textual proposals (or an error proposal)."""
+
+    phase = "textual"
+
+    def __init__(self, proposals: list[Proposal]) -> None:
+        self._proposals = proposals
+        self._index = 0
+
+    def begin(self, best_agent: Agent, best_report: TestReport | None) -> None:
+        self._index = 0
+
+    async def ask(self) -> Proposal | None:
+        if self._index >= len(self._proposals):
+            return None
+        proposal = self._proposals[self._index]
+        self._index += 1
+        return proposal
+
+    def tell(self, proposal, score, accepted, report=None) -> None:  # type: ignore[no-untyped-def]
+        pass
+
+
 def _config() -> OptimizerConfig:
     return OptimizerConfig(
         loss={"groundedness": 1.0},
@@ -178,3 +201,115 @@ async def test_no_spans_when_disabled(monkeypatch) -> None:  # type: ignore[no-u
     assert loop._telemetry.enabled is False
     # Behavior is unchanged: a single dry cycle still runs to completion.
     assert result.cycles_run == 1
+
+
+# --- T3: phase / trial / propose spans ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_phase_and_trial_spans_emitted(otel: SimpleNamespace) -> None:
+    await _loop().run()
+
+    by_name = {s.name: s for s in otel.exporter.get_finished_spans()}
+    assert "holodeck.optimize.phase" in by_name
+    assert "holodeck.optimize.trial" in by_name
+
+    phase = by_name["holodeck.optimize.phase"]
+    assert phase.attributes["holodeck.optimize.phase"] == "numeric"
+
+    trial = by_name["holodeck.optimize.trial"]
+    assert trial.attributes["holodeck.optimize.trial_id"] == 1
+    assert trial.attributes["holodeck.optimize.loss"] == pytest.approx(0.50)
+    assert trial.attributes["holodeck.optimize.accepted"] is False
+    # Numeric params are recorded as a single JSON string (build decision).
+    assert trial.attributes["holodeck.optimize.params"] == '{"model.temperature": 0.5}'
+
+
+@pytest.mark.asyncio
+async def test_trial_nests_under_phase_nests_under_cycle(otel: SimpleNamespace) -> None:
+    await _loop().run()
+
+    by_name = {s.name: s for s in otel.exporter.get_finished_spans()}
+    cycle = by_name["holodeck.optimize.cycle"]
+    phase = by_name["holodeck.optimize.phase"]
+    trial = by_name["holodeck.optimize.trial"]
+    assert phase.parent.span_id == cycle.context.span_id
+    assert trial.parent.span_id == phase.context.span_id
+
+
+@pytest.mark.asyncio
+async def test_genai_child_nests_under_trial(otel: SimpleNamespace) -> None:
+    # A stub eval that emits its own "genai" span while the trial span is active.
+    genai_tracer = otel.provider.get_tracer("genai.test")
+
+    async def scorer(agent: Agent) -> tuple[float, TestReport]:
+        with genai_tracer.start_as_current_span("gen_ai.chat"):
+            pass
+        return 0.50, _dummy_report()
+
+    loop = OptimizerLoop(
+        original_agent=_agent(0.3),
+        scorer=scorer,
+        config=_config(),
+        numeric_proposer=_StubNumericProposer([{"model.temperature": 0.5}]),
+    )
+    await loop.run()
+
+    by_name = {s.name: s for s in otel.exporter.get_finished_spans()}
+    trial = by_name["holodeck.optimize.trial"]
+    genai = by_name["gen_ai.chat"]
+    assert genai.parent.span_id == trial.context.span_id
+
+
+@pytest.mark.asyncio
+async def test_no_instruction_text_in_attributes(otel: SimpleNamespace) -> None:
+    await _loop().run()
+
+    for span in otel.exporter.get_finished_spans():
+        for value in span.attributes.values():
+            if isinstance(value, str):
+                assert "You are helpful." not in value
+
+
+@pytest.mark.asyncio
+async def test_skipped_trial_span_carries_error(otel: SimpleNamespace) -> None:
+    loop = OptimizerLoop(
+        original_agent=_agent(0.3),
+        scorer=_flat_scorer(),
+        config=_config(),
+        textual_proposer=_StubTextualProposer(
+            [Proposal(textual_axis="instructions.inline", error="critic failed")]
+        ),
+    )
+    await loop.run()
+
+    trials = [
+        s
+        for s in otel.exporter.get_finished_spans()
+        if s.name == "holodeck.optimize.trial"
+    ]
+    assert any(
+        t.attributes.get("holodeck.optimize.error") == "critic failed" for t in trials
+    )
+
+
+@pytest.mark.asyncio
+async def test_propose_span_for_textual_only(otel: SimpleNamespace) -> None:
+    loop = OptimizerLoop(
+        original_agent=_agent(0.3),
+        scorer=_flat_scorer(),
+        config=_config(),
+        textual_proposer=_StubTextualProposer(
+            [
+                Proposal(
+                    textual_axis="instructions.inline",
+                    new_text="Be concise.",
+                    edit_summary="tightened wording",
+                )
+            ]
+        ),
+    )
+    await loop.run()
+
+    names = [s.name for s in otel.exporter.get_finished_spans()]
+    assert "holodeck.optimize.propose" in names

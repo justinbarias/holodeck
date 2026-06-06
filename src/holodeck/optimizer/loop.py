@@ -113,69 +113,99 @@ class OptimizerLoop:
         accepts = 0
         no_improve = 0
 
-        for _ in range(phase_cfg.max_trials):
-            if no_improve >= phase_cfg.patience:
-                break
-            proposal = await proposer.ask()
-            if proposal is None:
-                break
+        with self._telemetry.phase_span(proposer.phase, cycle) as phase_span:
+            for _ in range(phase_cfg.max_trials):
+                if no_improve >= phase_cfg.patience:
+                    break
+                # Textual proposers run Critic/Applier LLM calls in ask(); wrap
+                # those so their GenAI spans nest. Numeric ask() is cheap.
+                if proposer.phase == "textual":
+                    with self._telemetry.propose_span(proposer.phase, cycle):
+                        proposal = await proposer.ask()
+                else:
+                    proposal = await proposer.ask()
+                if proposal is None:
+                    break
 
-            self._trial_id += 1
+                self._trial_id += 1
 
-            # The proposer could not produce a usable change — record a skipped
-            # trial that counts toward patience, and move on.
-            if proposal.error is not None:
+                # The proposer could not produce a usable change — record a
+                # skipped trial that counts toward patience, and move on.
+                if proposal.error is not None:
+                    with self._telemetry.trial_span(
+                        trial_id=self._trial_id,
+                        cycle=cycle,
+                        phase=proposer.phase,
+                        baseline_loss=self.best_loss,
+                        textual_axis=proposal.textual_axis,
+                        error=proposal.error,
+                    ):
+                        pass
+                    self._record(
+                        TrialRecord(
+                            trial_id=self._trial_id,
+                            cycle=cycle,
+                            phase=proposer.phase,
+                            loss=self.best_loss,
+                            baseline_loss=self.best_loss,
+                            accepted=False,
+                            textual_axis=proposal.textual_axis,
+                            error=proposal.error,
+                        )
+                    )
+                    proposer.tell(proposal, self.best_loss, False)
+                    no_improve += 1
+                    logger.info("Trial %d skipped: %s", self._trial_id, proposal.error)
+                    continue
+
+                candidate = self._apply(proposal)
+                with self._telemetry.trial_span(
+                    trial_id=self._trial_id,
+                    cycle=cycle,
+                    phase=proposer.phase,
+                    baseline_loss=self.best_loss,
+                    params=proposal.params,
+                    textual_axis=proposal.textual_axis,
+                    edit_summary=proposal.edit_summary,
+                ) as trial_span:
+                    loss, report = await self.scorer(candidate)
+                    accepted = self.best_loss - loss > self.config.min_delta
+                    self._telemetry.record_trial_outcome(
+                        trial_span, loss=loss, accepted=accepted
+                    )
+
                 self._record(
                     TrialRecord(
                         trial_id=self._trial_id,
                         cycle=cycle,
                         phase=proposer.phase,
-                        loss=self.best_loss,
+                        loss=loss,
                         baseline_loss=self.best_loss,
-                        accepted=False,
+                        accepted=accepted,
+                        params=proposal.params,
                         textual_axis=proposal.textual_axis,
-                        error=proposal.error,
+                        edit_summary=proposal.edit_summary,
                     )
                 )
-                proposer.tell(proposal, self.best_loss, False)
-                no_improve += 1
-                logger.info("Trial %d skipped: %s", self._trial_id, proposal.error)
-                continue
+                proposer.tell(proposal, loss, accepted, report)
 
-            candidate = self._apply(proposal)
-            loss, report = await self.scorer(candidate)
-            accepted = self.best_loss - loss > self.config.min_delta
+                if accepted:
+                    self.best_agent = candidate
+                    self.best_loss = loss
+                    self.best_report = report
+                    self._accepted_count += 1
+                    accepts += 1
+                    no_improve = 0
+                    logger.info(
+                        "Trial %d accepted (%s): loss %.4f",
+                        self._trial_id,
+                        proposer.phase,
+                        loss,
+                    )
+                else:
+                    no_improve += 1
 
-            self._record(
-                TrialRecord(
-                    trial_id=self._trial_id,
-                    cycle=cycle,
-                    phase=proposer.phase,
-                    loss=loss,
-                    baseline_loss=self.best_loss,
-                    accepted=accepted,
-                    params=proposal.params,
-                    textual_axis=proposal.textual_axis,
-                    edit_summary=proposal.edit_summary,
-                )
-            )
-            proposer.tell(proposal, loss, accepted, report)
-
-            if accepted:
-                self.best_agent = candidate
-                self.best_loss = loss
-                self.best_report = report
-                self._accepted_count += 1
-                accepts += 1
-                no_improve = 0
-                logger.info(
-                    "Trial %d accepted (%s): loss %.4f",
-                    self._trial_id,
-                    proposer.phase,
-                    loss,
-                )
-            else:
-                no_improve += 1
+            self._telemetry.record_phase_accepts(phase_span, accepts)
 
         return accepts
 
