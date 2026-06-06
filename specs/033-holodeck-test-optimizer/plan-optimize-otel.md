@@ -130,7 +130,8 @@ from the loop with attributes `{phase, accepted}` where meaningful.
 ## Task list
 
 ### Phase 1: Context parity (the slice that kills the warning)
-- [ ] **T1 — Wire observability lifecycle into `optimize.py`.**
+- [x] **T1 — Wire observability lifecycle into `optimize.py`.** _(done — commit `9cb04fe`;
+  helper extraction deferred to Phase 2, params-on-span = single JSON string per build decisions.)_
   Import the trio; add `obs_context: ObservabilityContext | None = None`; reorder so
   `load_agent_with_config` runs first, then branch: `initialize_observability(agent.observability,
   agent.name, verbose=verbose, quiet=effective_quiet)` when enabled, else the existing
