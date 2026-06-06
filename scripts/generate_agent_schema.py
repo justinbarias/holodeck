@@ -17,15 +17,44 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from holodeck.models.agent import Agent
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schemas" / "agent.schema.json"
 
+# Authoring keys the config loader resolves *before* the Agent model validates,
+# so they never appear on the model (and thus not in ``model_json_schema()``)
+# yet are valid to write in an agent.yaml. They must be injected here or the
+# closed (``additionalProperties: false``) schema would reject them in editors.
+# Keep in sync with ``holodeck.config.loader`` resolution helpers.
+_LOADER_RESOLVED_PROPERTIES: dict[str, dict[str, Any]] = {
+    "test_cases_file": {
+        "anyOf": [{"type": "string"}, {"type": "null"}],
+        "default": None,
+        "title": "Test Cases File",
+        "description": (
+            "Path to an external YAML file holding the test-case list, "
+            "relative to the agent.yaml directory. Resolved into `test_cases` "
+            "by the config loader at load time (see "
+            "holodeck.config.loader._resolve_test_cases_file); mutually "
+            "exclusive with an inline `test_cases`."
+        ),
+    },
+}
+
 
 def render_schema() -> str:
-    """Return the canonical JSON-Schema text for the Agent model."""
-    return json.dumps(Agent.model_json_schema(), indent=2) + "\n"
+    """Return the canonical JSON-Schema text for the Agent model.
+
+    Augments the model-derived schema with loader-resolved authoring keys
+    (e.g. ``test_cases_file``) that are valid in an agent.yaml but stripped
+    before model validation, so editors backed by the closed schema accept
+    them.
+    """
+    schema = Agent.model_json_schema()
+    schema.setdefault("properties", {}).update(_LOADER_RESOLVED_PROPERTIES)
+    return json.dumps(schema, indent=2) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
