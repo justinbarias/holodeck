@@ -9,6 +9,7 @@ budget; the whole run stops when a full cycle yields zero accepts or
 """
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
 
 from holodeck.lib.errors import OptimizerError
@@ -90,10 +91,12 @@ class OptimizerLoop:
                         cycle, self.textual_proposer, self.config.textual_phase
                     )
                 cycles_run += 1
+            self._telemetry.record_cycle()
             if accepts == 0:
                 logger.info("Cycle %d produced no accepts — stopping.", cycle)
                 break
 
+        self._telemetry.record_improvement(self.baseline_loss - self.best_loss)
         return OptimizationResult(
             run_id=self.run_id,
             agent_name=self.original_agent.name,
@@ -154,6 +157,7 @@ class OptimizerLoop:
                         )
                     )
                     proposer.tell(proposal, self.best_loss, False)
+                    self._telemetry.record_skipped_trial(proposer.phase)
                     no_improve += 1
                     logger.info("Trial %d skipped: %s", self._trial_id, proposal.error)
                     continue
@@ -168,11 +172,19 @@ class OptimizerLoop:
                     textual_axis=proposal.textual_axis,
                     edit_summary=proposal.edit_summary,
                 ) as trial_span:
+                    start = time.perf_counter()
                     loss, report = await self.scorer(candidate)
+                    duration = time.perf_counter() - start
                     accepted = self.best_loss - loss > self.config.min_delta
                     self._telemetry.record_trial_outcome(
                         trial_span, loss=loss, accepted=accepted
                     )
+                self._telemetry.record_trial(
+                    phase=proposer.phase,
+                    loss=loss,
+                    duration=duration,
+                    accepted=accepted,
+                )
 
                 self._record(
                     TrialRecord(
@@ -196,6 +208,7 @@ class OptimizerLoop:
                     self._accepted_count += 1
                     accepts += 1
                     no_improve = 0
+                    self._telemetry.record_best_loss(proposer.phase, self.best_loss)
                     logger.info(
                         "Trial %d accepted (%s): loss %.4f",
                         self._trial_id,

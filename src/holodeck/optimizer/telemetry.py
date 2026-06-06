@@ -21,7 +21,11 @@ import json
 from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING, Any
 
-from holodeck.lib.observability import get_observability_context, get_tracer
+from holodeck.lib.observability import (
+    get_meter,
+    get_observability_context,
+    get_tracer,
+)
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Span
@@ -38,6 +42,19 @@ class OptimizerTelemetry:
     def __init__(self) -> None:
         self._enabled = get_observability_context() is not None
         self._tracer = get_tracer(__name__) if self._enabled else None
+        if self._enabled:
+            meter = get_meter(__name__)
+            self._trials = meter.create_counter("holodeck.optimize.trials")
+            self._trials_skipped = meter.create_counter(
+                "holodeck.optimize.trials.skipped"
+            )
+            self._trial_loss = meter.create_histogram("holodeck.optimize.trial.loss")
+            self._trial_duration = meter.create_histogram(
+                "holodeck.optimize.trial.duration", unit="s"
+            )
+            self._best_loss = meter.create_histogram("holodeck.optimize.best_loss")
+            self._improvement = meter.create_histogram("holodeck.optimize.improvement")
+            self._cycles = meter.create_counter("holodeck.optimize.cycles")
 
     @property
     def enabled(self) -> bool:
@@ -114,6 +131,46 @@ class OptimizerTelemetry:
         if span is None:
             return
         span.set_attribute("holodeck.optimize.accepts", accepts)
+
+    def record_trial(
+        self, *, phase: str, loss: float, duration: float, accepted: bool
+    ) -> None:
+        """Record metrics for one completed (scored) trial."""
+        if not self._enabled:
+            return
+        self._trials.add(
+            1,
+            {
+                "holodeck.optimize.phase": phase,
+                "holodeck.optimize.accepted": accepted,
+            },
+        )
+        self._trial_loss.record(loss, {"holodeck.optimize.phase": phase})
+        self._trial_duration.record(duration, {"holodeck.optimize.phase": phase})
+
+    def record_skipped_trial(self, phase: str) -> None:
+        """Record a trial skipped because the proposer errored."""
+        if not self._enabled:
+            return
+        self._trials_skipped.add(1, {"holodeck.optimize.phase": phase})
+
+    def record_best_loss(self, phase: str, best_loss: float) -> None:
+        """Record the new best loss after an accepted improvement."""
+        if not self._enabled:
+            return
+        self._best_loss.record(best_loss, {"holodeck.optimize.phase": phase})
+
+    def record_cycle(self) -> None:
+        """Record one completed coordinate-descent cycle."""
+        if not self._enabled:
+            return
+        self._cycles.add(1)
+
+    def record_improvement(self, improvement: float) -> None:
+        """Record the run's total loss improvement (baseline − best)."""
+        if not self._enabled:
+            return
+        self._improvement.record(improvement)
 
     def _span(
         self, name: str, attributes: dict[str, Any] | None = None

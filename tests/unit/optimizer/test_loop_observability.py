@@ -13,6 +13,8 @@ extend this module.
 from types import SimpleNamespace
 
 import pytest
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
@@ -313,3 +315,110 @@ async def test_propose_span_for_textual_only(otel: SimpleNamespace) -> None:
 
     names = [s.name for s in otel.exporter.get_finished_spans()]
     assert "holodeck.optimize.propose" in names
+
+
+# --- T4: metrics --------------------------------------------------------------
+
+
+@pytest.fixture
+def meter(monkeypatch) -> SimpleNamespace:  # type: ignore[no-untyped-def]
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
+    monkeypatch.setattr(
+        "holodeck.optimizer.telemetry.get_meter",
+        lambda name: provider.get_meter(name),
+    )
+    monkeypatch.setattr(
+        "holodeck.optimizer.telemetry.get_observability_context",
+        lambda: object(),
+    )
+    return SimpleNamespace(reader=reader, provider=provider)
+
+
+def _points(reader: InMemoryMetricReader) -> dict:
+    """Collect ``{metric_name: [data_points]}`` from the in-memory reader."""
+    out: dict = {}
+    data = reader.get_metrics_data()
+    if data is None:  # No instrument ever recorded (e.g. observability disabled).
+        return out
+    for rm in data.resource_metrics:
+        for sm in rm.scope_metrics:
+            for metric in sm.metrics:
+                out[metric.name] = list(metric.data.data_points)
+    return out
+
+
+def _improving_loop() -> OptimizerLoop:
+    # 0.3 (baseline) -> 0.60, 0.5 -> 0.40: one accepted improvement.
+    table = {0.3: 0.60, 0.5: 0.40}
+
+    async def scorer(agent: Agent) -> tuple[float, TestReport]:
+        return table[agent.model.temperature], _dummy_report()
+
+    return OptimizerLoop(
+        original_agent=_agent(0.3),
+        scorer=scorer,
+        config=_config(),
+        numeric_proposer=_StubNumericProposer([{"model.temperature": 0.5}]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_trial_and_cycle_metrics_emitted(meter: SimpleNamespace) -> None:
+    await _loop().run()  # flat loss → one rejected trial, one cycle
+
+    points = _points(meter.reader)
+    assert "holodeck.optimize.trials" in points
+    assert "holodeck.optimize.trial.loss" in points
+    assert "holodeck.optimize.trial.duration" in points
+    assert "holodeck.optimize.cycles" in points
+    assert "holodeck.optimize.improvement" in points
+
+    trial = points["holodeck.optimize.trials"][0]
+    assert trial.value == 1
+    assert trial.attributes["holodeck.optimize.phase"] == "numeric"
+    assert trial.attributes["holodeck.optimize.accepted"] is False
+    assert points["holodeck.optimize.cycles"][0].value == 1
+
+
+@pytest.mark.asyncio
+async def test_best_loss_metric_on_accept(meter: SimpleNamespace) -> None:
+    await _improving_loop().run()
+
+    points = _points(meter.reader)
+    assert "holodeck.optimize.best_loss" in points
+    best = points["holodeck.optimize.best_loss"][0]
+    assert best.attributes["holodeck.optimize.phase"] == "numeric"
+    # Improvement histogram captured baseline(0.60) - best(0.40) = 0.20.
+    improvement = points["holodeck.optimize.improvement"][0]
+    assert improvement.sum == pytest.approx(0.20)
+
+
+@pytest.mark.asyncio
+async def test_skipped_trial_metric(meter: SimpleNamespace) -> None:
+    loop = OptimizerLoop(
+        original_agent=_agent(0.3),
+        scorer=_flat_scorer(),
+        config=_config(),
+        textual_proposer=_StubTextualProposer(
+            [Proposal(textual_axis="instructions.inline", error="critic failed")]
+        ),
+    )
+    await loop.run()
+
+    points = _points(meter.reader)
+    assert "holodeck.optimize.trials.skipped" in points
+    skipped = points["holodeck.optimize.trials.skipped"][0]
+    assert skipped.attributes["holodeck.optimize.phase"] == "textual"
+
+
+@pytest.mark.asyncio
+async def test_no_metrics_when_disabled(meter: SimpleNamespace, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        "holodeck.optimizer.telemetry.get_observability_context",
+        lambda: None,
+    )
+    await _loop().run()
+
+    points = _points(meter.reader)
+    assert not any(name.startswith("holodeck.optimize") for name in points)
