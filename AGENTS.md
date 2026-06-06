@@ -479,8 +479,7 @@ holodeck test optimize agent.yaml                 # run with YAML config
 holodeck test optimize agent.yaml --max-cycles 2 --seed 7
 ```
 
-See the [Optimizing Agents](docs/guides/evaluations.md#optimizing-agents-holodeck-test-optimize)
-guide for the config schema and flags. `agent.schema.json` is generated from the
+See the [Optimizer](docs/guides/optimizer.md) guide for the config schema and flags. `agent.schema.json` is generated from the
 Pydantic `Agent` model — run `make schema` after model changes (CI guards it via
 `make schema-check` / `tests/unit/test_agent_schema_sync.py`).
 
