@@ -16,6 +16,7 @@ semantic_kernel library is not available in the test environment.
 """
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -112,6 +113,46 @@ from holodeck.models.tool import HierarchicalDocumentToolConfig  # noqa: E402
 from holodeck.tools.hierarchical_document_tool import (  # noqa: E402
     HierarchicalDocumentTool,
 )
+
+# Capture the configured mock modules so the autouse fixture below can
+# re-establish them for each test, then restore sys.modules to its pre-import
+# state. This is critical for parallel execution (pytest-xdist): leaving the
+# injected MagicMocks in sys.modules makes later modules' patch() targets (e.g.
+# ``semantic_kernel.connectors.ai.open_ai.*`` in test_tool_initializer) resolve
+# against a cached mock whose parent package never got the attribute set,
+# raising ``AttributeError: module ... has no attribute 'open_ai'``.
+_sk_mock_modules: dict[str, object] = {
+    name: sys.modules[name] for name in _mocked_modules
+}
+for module_name in _all_sk_modules:
+    if module_name in _saved_modules:
+        sys.modules[module_name] = _saved_modules[module_name]
+    else:
+        sys.modules.pop(module_name, None)
+
+
+@pytest.fixture(autouse=True)
+def _sk_module_mocks() -> Iterator[None]:
+    """Re-establish the semantic_kernel sys.modules mocks for the test's duration.
+
+    ``hierarchical_document_tool`` imports semantic_kernel lazily at runtime, so
+    the import-time mocks must be present while a test runs. They are removed
+    again afterwards so they never pollute other test modules during parallel
+    (pytest-xdist) execution.
+    """
+    previous: dict[str, object] = {}
+    for name, mock in _sk_mock_modules.items():
+        if name in sys.modules:
+            previous[name] = sys.modules[name]
+        sys.modules[name] = mock
+    try:
+        yield
+    finally:
+        for name in _sk_mock_modules:
+            if name in previous:
+                sys.modules[name] = previous[name]
+            else:
+                sys.modules.pop(name, None)
 
 
 def create_config(
