@@ -65,7 +65,6 @@ nav:
     - Evaluators: api/evaluators.md
     - Observability: api/observability.md
     - PDF Processor: api/pdf-processor.md
-    - Tool Filter: api/tool-filter.md
     - Utilities: api/utilities.md
   - Developer:
     - Contributing: contributing.md

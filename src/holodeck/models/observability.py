@@ -118,10 +118,6 @@ class MetricsConfig(BaseModel):
         ge=1000,
         description="Metrics export interval in milliseconds (minimum 1000ms)",
     )
-    include_semantic_kernel_metrics: bool = Field(
-        default=True,
-        description="Include Semantic Kernel internal metrics",
-    )
 
 
 class LogsConfig(BaseModel):

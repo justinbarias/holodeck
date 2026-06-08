@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Claude backend now defaults to settings isolation.** The spawned `claude` CLI subprocess no longer inherits plugins, skills, or hooks from `~/.claude` or `.claude/`. HoloDeck passes `setting_sources=[]` to the SDK unless the agent's YAML opts in via the new `claude.setting_sources` field. Accepted values: `user`, `project`, `local`, or `all`. **Migration:** if your agents relied on host-machine Claude config (e.g. a project `CLAUDE.md` or a custom skill), add `setting_sources: [project]` (or the layers you need) to the `claude:` block. See [Claude Backend → Settings isolation](guides/claude-backend.md#settings-isolation-plugins-skills-hooks).
 - **OTel instrumentation bumped to `otel-instrumentation-claude-agent-sdk>=0.0.6`**, which structurally fixes the frozen `from claude_agent_sdk import query` import path so `invoke_agent` / `execute_tool` spans are emitted regardless of how callers reference the SDK's top-level `query()`.
 
+### Removed
+
+- **Dead Semantic Kernel harness leftovers.** Removed SK-coupled surfaces orphaned when the SK agent backend was deleted: the unused `holodeck.tools.mcp` SK plugin factory (live MCP runs through the Claude SDK bridge), the never-wired `holodeck.lib.tool_filter` module, the dead `to_semantic_kernel_function` stub, and the unused `metrics.include_semantic_kernel_metrics` config field. SK remains the backbone of the vectorstore / embedding / context-generation layer; the `semantic-kernel` dependency is unchanged.
+- **BREAKING: removed the `tool_filtering` agent-config field.** It was parsed but ignored (Claude manages tool selection natively). Because agent configs forbid extra fields, any `agent.yaml` still setting `tool_filtering:` will now fail validation — delete the block. No behavior change.
+
 ### Planned Features
 
 - **Deployment Engine**: Registry push (`holodeck deploy push`) and cloud deployment (`holodeck deploy run`)

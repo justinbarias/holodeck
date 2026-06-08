@@ -76,7 +76,6 @@ observability:
   metrics:
     enabled: true                  # Metrics collection
     export_interval_ms: 5000       # Export every 5 seconds
-    include_semantic_kernel_metrics: true
 
   logs:
     enabled: true                  # Structured logging

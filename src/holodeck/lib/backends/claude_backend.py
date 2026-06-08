@@ -103,7 +103,6 @@ from holodeck.lib.backends.validators import (
     validate_embedding_provider,
     validate_nodejs,
     validate_response_format,
-    validate_tool_filtering,
     validate_working_directory,
 )
 from holodeck.lib.errors import ConfigError
@@ -2030,10 +2029,7 @@ class ClaudeBackend:
             # 3. Embedding provider (vectorstore tools)
             validate_embedding_provider(agent)
 
-            # 4. Tool filtering (warning only)
-            validate_tool_filtering(agent)
-
-            # 4b. Auto-initialize vectorstore/hierarchical-doc tools if needed
+            # 4. Auto-initialize vectorstore/hierarchical-doc tools if needed
             await self._initialize_tools()
 
             # 5. Tool adapters

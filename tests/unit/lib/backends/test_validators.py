@@ -13,11 +13,9 @@ from holodeck.lib.backends.validators import (
     validate_embedding_provider,
     validate_nodejs,
     validate_response_format,
-    validate_tool_filtering,
     validate_working_directory,
 )
 from holodeck.lib.errors import ConfigError
-from holodeck.lib.tool_filter.models import ToolFilterConfig
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.claude_config import AuthProvider
 from holodeck.models.llm import LLMProvider, ProviderEnum
@@ -545,37 +543,6 @@ class TestValidateEmbeddingProvider:
             validate_embedding_provider(agent)
         assert exc_info.value.field == "embedding_provider"
         assert "cannot generate embeddings" in exc_info.value.message
-
-
-@pytest.mark.unit
-class TestValidateToolFiltering:
-    """Tests for validate_tool_filtering (T020)."""
-
-    def test_no_warning_when_none(self, caplog: pytest.LogCaptureFixture) -> None:
-        """No warning logged when tool_filtering is None."""
-        agent = _make_agent(tool_filtering=None)
-        with caplog.at_level(logging.WARNING):
-            validate_tool_filtering(agent)
-        assert not caplog.records
-
-    def test_warning_when_anthropic_with_filtering(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Warning logged when Anthropic provider with tool_filtering configured."""
-        agent = _make_agent(tool_filtering=ToolFilterConfig())
-        with caplog.at_level(logging.WARNING):
-            validate_tool_filtering(agent)
-        assert caplog.records
-
-    def test_does_not_mutate_tool_filtering(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """tool_filtering field is not cleared after validation."""
-        tf = ToolFilterConfig()
-        agent = _make_agent(tool_filtering=tf)
-        with caplog.at_level(logging.WARNING):
-            validate_tool_filtering(agent)
-        assert agent.tool_filtering is not None
 
 
 @pytest.mark.unit

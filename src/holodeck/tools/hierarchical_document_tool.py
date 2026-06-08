@@ -1398,20 +1398,3 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         if entry:
             return {"term": entry.term, "definition": entry.definition_text}
         return None
-
-    def to_semantic_kernel_function(self) -> Any:
-        """Convert this tool to a Semantic Kernel function.
-
-        Returns:
-            Semantic Kernel function wrapper.
-        """
-
-        # This would require Semantic Kernel decorators
-        # For now, return a simple wrapper
-        async def sk_search_function(query: str) -> str:
-            results = await self.search(query)
-            if not results:
-                return "No results found."
-            return "\n\n".join(r.format() for r in results)
-
-        return sk_search_function

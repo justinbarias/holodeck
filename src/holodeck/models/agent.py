@@ -15,7 +15,6 @@ else:
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from holodeck.lib.tool_filter.models import ToolFilterConfig
 from holodeck.models.claude_config import ClaudeConfig
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.deployment import DeploymentConfig
@@ -86,14 +85,6 @@ class Agent(BaseModel):
     )
     tools: list[ToolUnion] | None = Field(
         default=None, description="Agent tools (vectorstore, function, mcp, prompt)"
-    )
-    tool_filtering: ToolFilterConfig | None = Field(
-        default=None,
-        description=(
-            "Automatic tool filtering configuration. When enabled, dynamically "
-            "filters tools per request based on semantic similarity to reduce "
-            "token usage."
-        ),
     )
     evaluations: EvaluationConfig | None = Field(
         default=None, description="Evaluation configuration"

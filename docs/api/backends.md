@@ -238,13 +238,6 @@ runtime.
       docstring_style: google
       show_source: true
 
-### validate_tool_filtering
-
-::: holodeck.lib.backends.validators.validate_tool_filtering
-    options:
-      docstring_style: google
-      show_source: true
-
 ### validate_working_directory
 
 ::: holodeck.lib.backends.validators.validate_working_directory

@@ -1036,10 +1036,9 @@ await backend.teardown()
 1. **Node.js validation** — `validate_nodejs()` checks `node` is on PATH
 2. **Credentials validation** — `validate_credentials()` checks API key / OAuth / Bedrock / Vertex / Foundry
 3. **Embedding provider validation** — `validate_embedding_provider()` ensures external embedding config when using vectorstore tools
-4. **Tool filtering warning** — `validate_tool_filtering()` warns if tool_filtering set (Claude SDK manages selection natively)
-5. **Tool initialization** — `tool_initializer.initialize_tools()` creates vectorstore/hierarchical-doc tool instances
-6. **Tool adapters** — `create_tool_adapters()` wraps HoloDeck tools as SDK-compatible MCP tools
-7. **SDK server** — `build_holodeck_sdk_server()` bundles adapters into in-process MCP server
+4. **Tool initialization** — `tool_initializer.initialize_tools()` creates vectorstore/hierarchical-doc tool instances
+5. **Tool adapters** — `create_tool_adapters()` wraps HoloDeck tools as SDK-compatible MCP tools
+6. **SDK server** — `build_holodeck_sdk_server()` bundles adapters into in-process MCP server
 8. **External MCP** — `build_claude_mcp_configs()` translates MCP tool configs to SDK format
 9. **OTel env vars** — `translate_observability()` configures OpenTelemetry for subprocess
 10. **Build options** — `build_options()` assembles `ClaudeAgentOptions` from all above

@@ -278,29 +278,6 @@ def validate_embedding_provider(agent: Agent) -> None:
         )
 
 
-def validate_tool_filtering(agent: Agent) -> None:
-    """Warn if tool_filtering is configured for Anthropic provider.
-
-    Claude Agent SDK manages tool selection natively; tool_filtering is a
-    Semantic Kernel feature that is not supported by the Claude backend.
-
-    This validator never raises — it only emits a warning. The
-    tool_filtering field is not mutated.
-
-    Args:
-        agent: Agent configuration to validate.
-    """
-    if agent.tool_filtering is None:
-        return
-
-    if agent.model.provider == ProviderEnum.ANTHROPIC:
-        logger.warning(
-            "tool_filtering is configured but will be ignored when using "
-            "provider: anthropic with the Claude Agent SDK backend. "
-            "Claude manages tool selection natively.",
-        )
-
-
 def validate_working_directory(path: str | None) -> None:
     """Warn if CLAUDE.md in working directory may conflict with agent instructions.
 

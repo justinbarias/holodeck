@@ -1056,7 +1056,6 @@ class TestClaudeBackendInitialize:
     @patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={})
     @patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, []))
     @patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[])
-    @patch(f"{_SDK_MODULE}.validate_tool_filtering")
     @patch(f"{_SDK_MODULE}.validate_embedding_provider")
     @patch(f"{_SDK_MODULE}.validate_credentials", return_value={})
     @patch(f"{_SDK_MODULE}.validate_nodejs")
@@ -1065,7 +1064,6 @@ class TestClaudeBackendInitialize:
         mock_nodejs: MagicMock,
         mock_creds: MagicMock,
         mock_embed: MagicMock,
-        mock_tool_filter: MagicMock,
         mock_create_adapters: MagicMock,
         mock_build_server: MagicMock,
         mock_mcp_configs: MagicMock,
@@ -1084,7 +1082,6 @@ class TestClaudeBackendInitialize:
         mock_nodejs.assert_called_once()
         mock_creds.assert_called_once_with(agent.model)
         mock_embed.assert_called_once_with(agent)
-        mock_tool_filter.assert_called_once_with(agent)
         mock_build_opts.assert_called_once()
 
         assert backend._initialized is True
@@ -1098,7 +1095,6 @@ class TestClaudeBackendInitialize:
     @patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={})
     @patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, []))
     @patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[])
-    @patch(f"{_SDK_MODULE}.validate_tool_filtering")
     @patch(f"{_SDK_MODULE}.validate_embedding_provider")
     @patch(f"{_SDK_MODULE}.validate_credentials", return_value={})
     @patch(f"{_SDK_MODULE}.validate_nodejs")
@@ -1107,7 +1103,6 @@ class TestClaudeBackendInitialize:
         mock_nodejs: MagicMock,
         mock_creds: MagicMock,
         mock_embed: MagicMock,
-        mock_tool_filter: MagicMock,
         mock_create_adapters: MagicMock,
         mock_build_server: MagicMock,
         mock_mcp_configs: MagicMock,
@@ -2592,7 +2587,6 @@ class TestClaudeBackendInstrumentation:
     @patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={})
     @patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, []))
     @patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[])
-    @patch(f"{_SDK_MODULE}.validate_tool_filtering")
     @patch(f"{_SDK_MODULE}.validate_embedding_provider")
     @patch(f"{_SDK_MODULE}.validate_credentials", return_value={})
     @patch(f"{_SDK_MODULE}.validate_nodejs")
@@ -2643,7 +2637,6 @@ class TestClaudeBackendInstrumentation:
     @patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={})
     @patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, []))
     @patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[])
-    @patch(f"{_SDK_MODULE}.validate_tool_filtering")
     @patch(f"{_SDK_MODULE}.validate_embedding_provider")
     @patch(f"{_SDK_MODULE}.validate_credentials", return_value={})
     @patch(f"{_SDK_MODULE}.validate_nodejs")
@@ -2700,7 +2693,6 @@ class TestClaudeBackendInstrumentation:
     @patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={})
     @patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, []))
     @patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[])
-    @patch(f"{_SDK_MODULE}.validate_tool_filtering")
     @patch(f"{_SDK_MODULE}.validate_embedding_provider")
     @patch(f"{_SDK_MODULE}.validate_credentials", return_value={})
     @patch(f"{_SDK_MODULE}.validate_nodejs")
@@ -2709,7 +2701,6 @@ class TestClaudeBackendInstrumentation:
         _m_nodejs: MagicMock,
         _m_creds: MagicMock,
         _m_embed: MagicMock,
-        _m_tool_filter: MagicMock,
         _m_adapters: MagicMock,
         _m_server: MagicMock,
         _m_mcp: MagicMock,
@@ -2742,7 +2733,6 @@ class TestClaudeBackendInstrumentation:
     @patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={})
     @patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, []))
     @patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[])
-    @patch(f"{_SDK_MODULE}.validate_tool_filtering")
     @patch(f"{_SDK_MODULE}.validate_embedding_provider")
     @patch(f"{_SDK_MODULE}.validate_credentials", return_value={})
     @patch(f"{_SDK_MODULE}.validate_nodejs")
@@ -3432,7 +3422,6 @@ class TestGracefulDegradation:
             patch(f"{_SDK_MODULE}.validate_nodejs"),
             patch(f"{_SDK_MODULE}.validate_credentials", return_value={}),
             patch(f"{_SDK_MODULE}.validate_embedding_provider"),
-            patch(f"{_SDK_MODULE}.validate_tool_filtering"),
             patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[]),
             patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, [])),
             patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={}),
@@ -3475,7 +3464,6 @@ class TestGracefulDegradation:
             patch(f"{_SDK_MODULE}.validate_nodejs"),
             patch(f"{_SDK_MODULE}.validate_credentials", return_value={}),
             patch(f"{_SDK_MODULE}.validate_embedding_provider"),
-            patch(f"{_SDK_MODULE}.validate_tool_filtering"),
             patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[]),
             patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, [])),
             patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={}),
@@ -3512,7 +3500,6 @@ class TestGracefulDegradation:
             patch(f"{_SDK_MODULE}.validate_nodejs"),
             patch(f"{_SDK_MODULE}.validate_credentials", return_value={}),
             patch(f"{_SDK_MODULE}.validate_embedding_provider"),
-            patch(f"{_SDK_MODULE}.validate_tool_filtering"),
             patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[]),
             patch(f"{_SDK_MODULE}.build_holodeck_sdk_server", return_value=(None, [])),
             patch(f"{_SDK_MODULE}.build_claude_mcp_configs", return_value={}),
@@ -3601,7 +3588,6 @@ class TestTeardownUninstrumentation:
             patch(f"{_SDK_MODULE}.validate_nodejs"),
             patch(f"{_SDK_MODULE}.validate_credentials", return_value={}),
             patch(f"{_SDK_MODULE}.validate_embedding_provider"),
-            patch(f"{_SDK_MODULE}.validate_tool_filtering"),
             patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[]),
             patch(
                 f"{_SDK_MODULE}.build_holodeck_sdk_server",
@@ -3636,7 +3622,6 @@ class TestTeardownUninstrumentation:
             validator_stack[9],
             validator_stack[10],
             validator_stack[11],
-            validator_stack[12],
         ):
             await backend.initialize()
 
@@ -3650,7 +3635,6 @@ class TestTeardownUninstrumentation:
             patch(f"{_SDK_MODULE}.validate_nodejs"),
             patch(f"{_SDK_MODULE}.validate_credentials", return_value={}),
             patch(f"{_SDK_MODULE}.validate_embedding_provider"),
-            patch(f"{_SDK_MODULE}.validate_tool_filtering"),
             patch(f"{_SDK_MODULE}.create_tool_adapters", return_value=[]),
             patch(
                 f"{_SDK_MODULE}.build_holodeck_sdk_server",
