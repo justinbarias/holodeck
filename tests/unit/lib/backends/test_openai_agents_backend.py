@@ -5,6 +5,7 @@ required. The `openai-agents` package is installed (dev extra) so the lazy
 imports resolve, but each SDK symbol is patched per-test to observe behaviour.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +20,7 @@ from holodeck.lib.backends.openai_agents_backend import (
     OpenAIAgentsBackend,
     OpenAIAgentsSession,
     _build_model,
+    _parse_tool_arguments,
     _to_execution_result,
 )
 from holodeck.models.agent import Agent, Instructions
@@ -272,6 +274,38 @@ class TestToExecutionResult:
         result = _to_execution_result(_fake_run_result(raw_response_count=3))
         assert result.num_turns == 3
 
+    def test_no_usage_yields_zero_tokens(self) -> None:
+        result = MagicMock()
+        result.final_output = "no usage here"
+        result.new_items = []
+        result.raw_responses = [MagicMock()]
+        result.context_wrapper = MagicMock(usage=None)
+        mapped = _to_execution_result(result)
+        assert mapped.token_usage.prompt_tokens == 0
+        assert mapped.token_usage.completion_tokens == 0
+        assert mapped.token_usage.total_tokens == 0
+
+
+@pytest.mark.unit
+class TestParseToolArguments:
+    """Coercion of the SDK's raw tool-call ``arguments`` into a dict."""
+
+    def test_dict_passthrough(self) -> None:
+        assert _parse_tool_arguments({"a": 1}) == {"a": 1}
+
+    def test_valid_json_string(self) -> None:
+        assert _parse_tool_arguments('{"a": 1, "b": 2}') == {"a": 1, "b": 2}
+
+    def test_malformed_json_wrapped_as_raw(self) -> None:
+        assert _parse_tool_arguments("not json") == {"raw": "not json"}
+
+    def test_non_dict_json_wrapped_as_raw(self) -> None:
+        assert _parse_tool_arguments("[1, 2, 3]") == {"raw": "[1, 2, 3]"}
+
+    def test_other_type_yields_empty_dict(self) -> None:
+        assert _parse_tool_arguments(None) == {}
+        assert _parse_tool_arguments(42) == {}
+
 
 # ---------------------------------------------------------------------------
 # Task 3 — OpenAIAgentsBackend + OpenAIAgentsSession
@@ -335,6 +369,36 @@ class TestBackendInitialize:
         _, settings_kwargs = settings_ctor.call_args
         assert settings_kwargs["temperature"] == 0.3
         assert settings_kwargs["max_tokens"] == 1000
+
+    @pytest.mark.asyncio
+    async def test_initialize_builds_azure_agent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("AZURE_OPENAI_API_KEY", "az-key")
+        agent = _make_agent(
+            ProviderEnum.AZURE_OPENAI,
+            "my-deployment",
+            endpoint="https://x.openai.azure.com",
+        )
+        backend = OpenAIAgentsBackend(agent)
+        sdk_agent = MagicMock(name="sdk_agent")
+        sentinel_model = MagicMock(name="chat_completions_model")
+        with (
+            patch("agents.Agent", return_value=sdk_agent) as agent_ctor,
+            patch("agents.ModelSettings"),
+            patch("openai.AsyncAzureOpenAI"),
+            patch("agents.OpenAIChatCompletionsModel", return_value=sentinel_model),
+            patch("agents.set_tracing_disabled"),
+            patch(
+                "holodeck.lib.backends.openai_agents_tool_adapters.build_sdk_tools",
+                return_value=[],
+            ),
+        ):
+            await backend.initialize()
+        assert backend._sdk_agent is sdk_agent
+        # The Azure client is wrapped as the SDK model argument.
+        _, agent_kwargs = agent_ctor.call_args
+        assert agent_kwargs["model"] is sentinel_model
 
 
 @pytest.mark.unit
@@ -438,3 +502,25 @@ class TestSession:
         # session= is threaded so the SDK persists streamed-turn history
         _, kwargs = runner.run_streamed.call_args
         assert "session" in kwargs
+
+    @pytest.mark.asyncio
+    async def test_close_calls_sync_close(self) -> None:
+        sqlite_session = MagicMock()
+        sqlite_session.close = MagicMock()
+        session = OpenAIAgentsSession(MagicMock(), sqlite_session)
+        await session.close()
+        sqlite_session.close.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_close_awaits_async_close(self) -> None:
+        sqlite_session = MagicMock()
+        sqlite_session.close = AsyncMock()
+        session = OpenAIAgentsSession(MagicMock(), sqlite_session)
+        await session.close()
+        sqlite_session.close.assert_awaited_once_with()
+
+    @pytest.mark.asyncio
+    async def test_close_noop_when_no_close_method(self) -> None:
+        sqlite_session = SimpleNamespace()  # no .close attribute
+        session = OpenAIAgentsSession(MagicMock(), sqlite_session)
+        await session.close()  # must not raise

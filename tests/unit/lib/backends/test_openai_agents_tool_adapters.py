@@ -108,6 +108,37 @@ class TestBuildFunctionTools:
         assert build_sdk_tools(None, base_dir=None) == []
         assert build_sdk_tools([], base_dir=None) == []
 
+    def test_malformed_json_arguments_raise_config_error(self, tool_dir: Path) -> None:
+        import asyncio
+
+        tools = build_sdk_tools([_fn_tool("add", "add")], base_dir=tool_dir)
+        with pytest.raises(ConfigError, match="malformed JSON"):
+            asyncio.run(tools[0].on_invoke_tool(None, "{not json"))
+
+    def test_non_dict_arguments_call_with_no_kwargs(self, tool_dir: Path) -> None:
+        import asyncio
+
+        # ``greet`` takes no required-without-default kwargs beyond name; use a
+        # zero-arg callable to confirm a JSON non-object degrades to no kwargs.
+        (tool_dir / "noargs.py").write_text('def ping() -> str:\n    return "pong"\n')
+        cfg = FunctionTool(
+            name="ping", description="ping tool", file="noargs.py", function="ping"
+        )
+        tools = build_sdk_tools([cfg], base_dir=tool_dir)
+        out = asyncio.run(tools[0].on_invoke_tool(None, "[1, 2, 3]"))
+        assert out == "pong"
+
+    def test_empty_input_calls_with_no_kwargs(self, tool_dir: Path) -> None:
+        import asyncio
+
+        (tool_dir / "noargs2.py").write_text('def ping() -> str:\n    return "pong"\n')
+        cfg = FunctionTool(
+            name="ping", description="ping tool", file="noargs2.py", function="ping"
+        )
+        tools = build_sdk_tools([cfg], base_dir=tool_dir)
+        out = asyncio.run(tools[0].on_invoke_tool(None, ""))
+        assert out == "pong"
+
 
 # ---------------------------------------------------------------------------
 # build_sdk_tools — unsupported types fail fast
