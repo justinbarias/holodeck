@@ -3,14 +3,14 @@
 This module orchestrates test execution by coordinating:
 - Configuration resolution (CLI > YAML > env > defaults)
 - File processing via FileProcessor
-- Agent invocation via AgentFactory
+- Agent invocation via the provider-agnostic AgentBackend
 - Metric evaluation via evaluators
 - Report generation via TestReport models
 
 Test execution follows a sequential flow:
 1. Load agent configuration from YAML file
 2. Resolve execution configuration (CLI > YAML > env > defaults)
-3. Initialize components (FileProcessor, AgentFactory, Evaluators)
+3. Initialize components (FileProcessor, AgentBackend, Evaluators)
 4. Execute each test case:
    a. Process files (if any)
    b. Invoke agent with test input + file context
@@ -66,7 +66,6 @@ from holodeck.lib.evaluators.response_path import extract as _extract_response_p
 from holodeck.lib.file_processor import FileProcessor
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.logging_utils import log_exception
-from holodeck.lib.test_runner.agent_factory import AgentFactory
 from holodeck.lib.test_runner.code_grader import (
     build_grader_context,
     invoke_grader,
@@ -250,9 +249,10 @@ def _detect_backend_kind(backend: AgentBackend) -> Literal["sk", "claude"]:
     """Return the pairing strategy key for the given backend instance.
 
     Claude's tool-call records carry `call_id` (from `ToolUseBlock.id`) and
-    must be paired by id. Everything else (SK over OpenAI / Azure / Ollama)
-    uses positional pairing on parallel lists. Detection is by class name so
-    the import can stay lazy and avoid a cycle via `BackendSelector`.
+    must be paired by id. Everything else (the OpenAI Agents backend, which
+    emits parallel tool_calls/tool_results lists) uses positional pairing.
+    Detection is by class name so the import can stay lazy and avoid a cycle
+    via `BackendSelector`.
     """
     return "claude" if type(backend).__name__ == "ClaudeBackend" else "sk"
 
@@ -412,7 +412,7 @@ class TestExecutor:
     Orchestrates the complete test execution flow:
     1. Loads agent configuration from YAML file
     2. Resolves execution configuration (CLI > YAML > env > defaults)
-    3. Initializes components (FileProcessor, AgentFactory, Evaluators)
+    3. Initializes components (FileProcessor, AgentBackend, Evaluators)
     4. Executes test cases sequentially
     5. Generates test report with results and summary
 
@@ -422,7 +422,6 @@ class TestExecutor:
         agent_config: Loaded agent configuration
         config: Resolved execution configuration
         file_processor: FileProcessor instance
-        agent_factory: AgentFactory instance
         evaluators: Dictionary of evaluator instances by metric name
         config_loader: ConfigLoader instance
         progress_callback: Optional callback function for progress reporting
@@ -433,7 +432,6 @@ class TestExecutor:
         agent_config_path: str,
         execution_config: ExecutionConfig | None = None,
         file_processor: FileProcessor | None = None,
-        agent_factory: AgentFactory | None = None,
         evaluators: dict[str, BaseEvaluator] | None = None,
         config_loader: ConfigLoader | None = None,
         progress_callback: Callable[[TestResult], None] | None = None,
@@ -449,16 +447,15 @@ class TestExecutor:
         - Injected explicitly (for testing with mocks)
         - Created automatically using factory methods (for normal usage)
 
-        When ``backend`` is provided, the executor uses the provider-agnostic
-        ``AgentBackend.invoke_once()`` path and skips ``AgentFactory`` creation.
-        When neither ``backend`` nor ``agent_factory`` is provided, the executor
-        can auto-select a backend via ``BackendSelector`` at execution time.
+        When ``backend`` is provided, the executor uses that
+        ``AgentBackend.invoke_once()`` path directly. When it is omitted, the
+        executor auto-selects a backend via ``BackendSelector`` at execution
+        time (normal CLI usage).
 
         Args:
             agent_config_path: Path to agent configuration file
             execution_config: Optional execution config from CLI flags
             file_processor: Optional FileProcessor instance (auto-created if None)
-            agent_factory: Optional AgentFactory instance (auto-created if None)
             evaluators: Optional dict of evaluator instances (auto-created if None)
             config_loader: Optional ConfigLoader instance (auto-created if None)
             progress_callback: Optional callback function called after each test.
@@ -468,7 +465,7 @@ class TestExecutor:
             resolved_execution_config: Optional pre-resolved execution config
                                        (auto-resolved if None)
             backend: Optional AgentBackend instance. When provided, the executor
-                     uses invoke_once() instead of AgentFactory.
+                     uses it directly instead of auto-selecting one.
         """
         self.agent_config_path = agent_config_path
         self.cli_config = execution_config
@@ -490,22 +487,16 @@ class TestExecutor:
         logger.debug("Initializing FileProcessor component")
         self.file_processor = file_processor or self._create_file_processor()
 
-        # Resolve agent invocation path:
-        # 1. Injected backend  → use it, skip AgentFactory
-        # 2. Injected factory  → use it (legacy / tests)
-        # 3. Neither injected  → defer to _ensure_backend_initialized()
+        # The agent invocation path is the provider-agnostic AgentBackend. When
+        # no backend is injected it is auto-selected lazily via BackendSelector
+        # in _ensure_backend_initialized() at execution time.
         if self._backend is not None:
-            logger.debug("Using injected AgentBackend — skipping AgentFactory creation")
-            self.agent_factory: AgentFactory | None = agent_factory
-        elif agent_factory is not None:
-            logger.debug("Using injected AgentFactory")
-            self.agent_factory = agent_factory
+            logger.debug("Using injected AgentBackend")
         else:
             logger.debug(
-                "No backend or agent_factory injected "
-                "— will auto-select via BackendSelector at execution time"
+                "No backend injected — will auto-select via BackendSelector "
+                "at execution time"
             )
-            self.agent_factory = None
 
         logger.debug("Initializing Evaluators component")
         self.evaluators = evaluators or self._create_evaluators()
@@ -557,18 +548,6 @@ class TestExecutor:
             Initialized FileProcessor instance
         """
         return FileProcessor.from_execution_config(self.config)
-
-    def _create_agent_factory(self) -> AgentFactory:
-        """Create agent factory with resolved config.
-
-        Returns:
-            Initialized AgentFactory instance
-        """
-        return AgentFactory(
-            agent_config=self.agent_config,
-            force_ingest=self._force_ingest,
-            execution_config=self.config,
-        )
 
     def _build_deepeval_config(
         self, llm_provider: LLMProvider | None
@@ -786,15 +765,13 @@ class TestExecutor:
     async def _ensure_backend_initialized(self) -> None:
         """Auto-select a backend via BackendSelector if none was injected.
 
-        Only triggers when both ``_backend`` and ``agent_factory`` are None,
-        i.e. normal CLI usage where neither dependency was explicitly injected.
+        Only triggers when ``_backend`` is None, i.e. normal CLI usage where no
+        backend was explicitly injected.
         """
-        if self._backend is not None or self.agent_factory is not None:
+        if self._backend is not None:
             return
 
-        logger.debug(
-            "No backend or agent_factory injected — auto-selecting via BackendSelector"
-        )
+        logger.debug("No backend injected — auto-selecting via BackendSelector")
         self._backend = await BackendSelector.select(
             self.agent_config,
             tool_instances=None,
@@ -912,7 +889,6 @@ class TestExecutor:
             invoke_start = time.time()
 
             if self._backend is not None:
-                # New path: provider-agnostic AgentBackend
                 exec_result = await self._backend.invoke_once(agent_input)
                 if exec_result.is_error:
                     errors.append(f"Agent error: {exec_result.error_reason}")
@@ -925,23 +901,8 @@ class TestExecutor:
                     raw_usage_new if isinstance(raw_usage_new, TokenUsage) else None
                 )
                 backend_kind = _detect_backend_kind(self._backend)
-            elif self.agent_factory is not None:
-                # Legacy path: AgentFactory / AgentThreadRun
-                thread_run = await self.agent_factory.create_thread_run()
-                legacy_result = await thread_run.invoke(agent_input)
-                agent_response = legacy_result.response
-                raw_tool_calls = list(legacy_result.tool_calls)
-                tool_calls = extract_tool_names(legacy_result.tool_calls)
-                tool_results = legacy_result.tool_results
-                raw_usage_legacy: Any = legacy_result.token_usage
-                token_usage = (
-                    raw_usage_legacy
-                    if isinstance(raw_usage_legacy, TokenUsage)
-                    else None
-                )
-                backend_kind = "sk"
             else:
-                errors.append("No backend or agent_factory available")
+                errors.append("No backend available")
 
             invoke_elapsed = time.time() - invoke_start
             logger.debug(
@@ -1890,8 +1851,6 @@ class TestExecutor:
             logger.debug("TestExecutor shutting down")
             if self._backend is not None:
                 await self._backend.teardown()
-            elif self.agent_factory is not None:
-                await self.agent_factory.shutdown()
             logger.debug("TestExecutor shutdown complete")
         except Exception as e:
             logger.error(f"Error during TestExecutor shutdown: {e}")
