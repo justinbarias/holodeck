@@ -19,7 +19,10 @@ from holodeck.lib.backends.base import (
 from holodeck.lib.backends.openai_agents_backend import (
     OpenAIAgentsBackend,
     OpenAIAgentsSession,
+    _azure_v1_base_url,
     _build_model,
+    _build_model_settings,
+    _is_reasoning_model,
     _parse_tool_arguments,
     _to_execution_result,
 )
@@ -91,9 +94,9 @@ class TestBuildModelOpenAI:
 
 @pytest.mark.unit
 class TestBuildModelAzure:
-    """Azure provider wraps AsyncAzureOpenAI as an OpenAIChatCompletionsModel."""
+    """Azure provider wraps AsyncOpenAI (v1 surface) as an OpenAIResponsesModel."""
 
-    def test_builds_chat_completions_model_and_disables_tracing(
+    def test_builds_responses_model_and_disables_tracing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("AZURE_OPENAI_API_KEY", "az-key")
@@ -104,27 +107,26 @@ class TestBuildModelAzure:
             endpoint="https://x.openai.azure.com",
         )
 
-        sentinel_client = MagicMock(name="async_azure_client")
-        sentinel_model = MagicMock(name="chat_completions_model")
+        sentinel_client = MagicMock(name="async_openai_client")
+        sentinel_model = MagicMock(name="responses_model")
         with (
+            patch("openai.AsyncOpenAI", return_value=sentinel_client) as client_ctor,
             patch(
-                "openai.AsyncAzureOpenAI", return_value=sentinel_client
-            ) as azure_ctor,
-            patch(
-                "agents.OpenAIChatCompletionsModel", return_value=sentinel_model
+                "agents.OpenAIResponsesModel", return_value=sentinel_model
             ) as model_ctor,
             patch("agents.set_tracing_disabled") as disable_tracing,
         ):
-            # endpoint comes from env since config endpoint is None
             result = _build_model(agent)
 
         assert result is sentinel_model
         disable_tracing.assert_called_once_with(True)
-        azure_ctor.assert_called_once()
-        _, kwargs = azure_ctor.call_args
+        client_ctor.assert_called_once()
+        _, kwargs = client_ctor.call_args
         assert kwargs["api_key"] == "az-key"
-        assert kwargs["azure_endpoint"] == "https://x.openai.azure.com"
-        assert kwargs["api_version"]  # a GA default is applied
+        # A bare resource endpoint is normalized to the /openai/v1 surface.
+        assert kwargs["base_url"] == "https://x.openai.azure.com/openai/v1"
+        # No api-version is forced when the config does not pin one.
+        assert "default_query" not in kwargs
         # Deployment name is passed as the model.
         _, model_kwargs = model_ctor.call_args
         assert model_kwargs["model"] == "my-deployment"
@@ -139,13 +141,13 @@ class TestBuildModelAzure:
             api_version="2099-01-01",
         )
         with (
-            patch("openai.AsyncAzureOpenAI") as azure_ctor,
-            patch("agents.OpenAIChatCompletionsModel"),
+            patch("openai.AsyncOpenAI") as client_ctor,
+            patch("agents.OpenAIResponsesModel"),
             patch("agents.set_tracing_disabled"),
         ):
             _build_model(agent)
-        _, kwargs = azure_ctor.call_args
-        assert kwargs["api_version"] == "2099-01-01"
+        _, kwargs = client_ctor.call_args
+        assert kwargs["default_query"] == {"api-version": "2099-01-01"}
 
     def test_missing_key_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
@@ -178,6 +180,90 @@ class TestBuildModelUnsupported:
         agent = _make_agent(provider, "some-model")
         with pytest.raises(BackendInitError, match="does not support provider"):
             _build_model(agent)
+
+
+@pytest.mark.unit
+class TestAzureV1BaseUrl:
+    """Endpoint normalization to the OpenAI-compatible /openai/v1 surface."""
+
+    def test_bare_endpoint_gets_v1_appended(self) -> None:
+        assert (
+            _azure_v1_base_url("https://x.openai.azure.com")
+            == "https://x.openai.azure.com/openai/v1"
+        )
+
+    def test_trailing_slash_stripped_before_append(self) -> None:
+        assert (
+            _azure_v1_base_url("https://x.services.ai.azure.com/")
+            == "https://x.services.ai.azure.com/openai/v1"
+        )
+
+    def test_v1_endpoint_left_as_is(self) -> None:
+        assert (
+            _azure_v1_base_url("https://x.services.ai.azure.com/openai/v1")
+            == "https://x.services.ai.azure.com/openai/v1"
+        )
+
+    def test_v1_endpoint_with_trailing_slash_normalized(self) -> None:
+        assert (
+            _azure_v1_base_url("https://x.openai.azure.com/openai/v1/")
+            == "https://x.openai.azure.com/openai/v1"
+        )
+
+
+@pytest.mark.unit
+class TestIsReasoningModel:
+    """Name-based heuristic for OpenAI reasoning models."""
+
+    @pytest.mark.parametrize(
+        "name",
+        ["o1", "o1-mini", "o3", "o3-mini", "o4-mini", "gpt-5", "gpt-5.4", "GPT-5"],
+    )
+    def test_reasoning_models(self, name: str) -> None:
+        assert _is_reasoning_model(name) is True
+
+    @pytest.mark.parametrize(
+        "name",
+        ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-3.5-turbo", "my-deployment"],
+    )
+    def test_non_reasoning_models(self, name: str) -> None:
+        assert _is_reasoning_model(name) is False
+
+
+@pytest.mark.unit
+class TestBuildModelSettings:
+    """ModelSettings construction honoring reasoning-model constraints."""
+
+    def test_non_reasoning_forwards_sampling_params(self) -> None:
+        cfg = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-4o-mini",
+            temperature=0.3,
+            top_p=0.9,
+            max_tokens=1000,
+        )
+        with patch("agents.ModelSettings") as settings_ctor:
+            _build_model_settings(cfg)
+        _, kwargs = settings_ctor.call_args
+        assert kwargs["temperature"] == 0.3
+        assert kwargs["top_p"] == 0.9
+        assert kwargs["max_tokens"] == 1000
+
+    def test_reasoning_omits_sampling_params(self) -> None:
+        cfg = LLMProvider(
+            provider=ProviderEnum.AZURE_OPENAI,
+            name="gpt-5.4",
+            endpoint="https://x.openai.azure.com",
+            temperature=0.0,
+            top_p=0.5,
+            max_tokens=200,
+        )
+        with patch("agents.ModelSettings") as settings_ctor:
+            _build_model_settings(cfg)
+        _, kwargs = settings_ctor.call_args
+        assert "temperature" not in kwargs
+        assert "top_p" not in kwargs
+        assert kwargs["max_tokens"] == 200
 
 
 # ---------------------------------------------------------------------------
@@ -382,12 +468,12 @@ class TestBackendInitialize:
         )
         backend = OpenAIAgentsBackend(agent)
         sdk_agent = MagicMock(name="sdk_agent")
-        sentinel_model = MagicMock(name="chat_completions_model")
+        sentinel_model = MagicMock(name="responses_model")
         with (
             patch("agents.Agent", return_value=sdk_agent) as agent_ctor,
             patch("agents.ModelSettings"),
-            patch("openai.AsyncAzureOpenAI"),
-            patch("agents.OpenAIChatCompletionsModel", return_value=sentinel_model),
+            patch("openai.AsyncOpenAI"),
+            patch("agents.OpenAIResponsesModel", return_value=sentinel_model),
             patch("agents.set_tracing_disabled"),
             patch(
                 "holodeck.lib.backends.openai_agents_tool_adapters.build_sdk_tools",

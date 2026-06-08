@@ -28,17 +28,12 @@ from holodeck.lib.backends.base import (
     ExecutionResult,
 )
 from holodeck.models.agent import Agent
-from holodeck.models.llm import ProviderEnum
+from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.token_usage import TokenUsage
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
-    from agents import OpenAIChatCompletionsModel, RunResult
+    from agents import ModelSettings, OpenAIResponsesModel, RunResult
     from pydantic import SecretStr
-
-# A current Azure OpenAI GA API version. Used when the agent config does not
-# pin one and ``AZURE_OPENAI_API_VERSION`` is unset. ``AsyncAzureOpenAI``
-# requires an explicit ``api_version``.
-_DEFAULT_AZURE_API_VERSION = "2024-10-21"
 
 
 def _resolve_secret(value: SecretStr | None) -> str | None:
@@ -48,25 +43,51 @@ def _resolve_secret(value: SecretStr | None) -> str | None:
     return value.get_secret_value() or None
 
 
-def _build_model(agent: Agent) -> str | OpenAIChatCompletionsModel:
+def _azure_v1_base_url(endpoint: str) -> str:
+    """Normalize an Azure endpoint to the OpenAI-compatible ``/openai/v1`` base.
+
+    The Responses API is served from the Azure ``v1`` surface (both
+    ``*.openai.azure.com`` and Foundry ``*.services.ai.azure.com`` resources).
+    A bare resource endpoint has ``/openai/v1`` appended; an endpoint that
+    already targets the v1 surface is used as-is.
+    """
+    base = endpoint.rstrip("/")
+    if base.endswith("/openai/v1"):
+        return base
+    return f"{base}/openai/v1"
+
+
+def _is_reasoning_model(name: str) -> bool:
+    """Heuristic for OpenAI reasoning models (o-series, ``gpt-5``+).
+
+    Reasoning models reject the sampling params ``temperature`` / ``top_p`` and
+    use ``max_output_tokens`` rather than ``max_tokens``. For Azure the *name* is
+    the deployment name, so this matches the common convention of embedding the
+    base model in the deployment name (opaque deployment names won't be
+    detected, in which case set sane sampling params in the config).
+    """
+    n = name.strip().lower()
+    return n.startswith(("o1", "o3", "o4", "gpt-5"))
+
+
+def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
     """Build the SDK ``model=`` argument for *agent* and validate credentials.
 
-    For ``provider: openai`` the default Responses client is used, so the model
-    name string is returned; ``OPENAI_API_KEY`` (or an explicit
-    ``model.api_key``) must be available.
+    Both providers run on the Responses API. For ``provider: openai`` the
+    default Responses client is used, so the model-name string is returned;
+    ``OPENAI_API_KEY`` (or an explicit ``model.api_key``) must be available.
 
-    For ``provider: azure_openai`` an ``AsyncAzureOpenAI`` client is wrapped as
-    an ``OpenAIChatCompletionsModel`` (Azure speaks Chat Completions, not the
-    Responses API). SDK tracing is disabled because no OpenAI-platform key is
-    present to upload traces with.
+    For ``provider: azure_openai`` a plain ``AsyncOpenAI`` client pointed at the
+    Azure ``/openai/v1`` surface is wrapped as an ``OpenAIResponsesModel``. SDK
+    tracing is disabled because no OpenAI-platform key is present to upload
+    traces with.
 
     Args:
         agent: The agent configuration whose ``model`` selects the provider.
 
     Returns:
-        Either the model-name string (OpenAI) or an
-        ``OpenAIChatCompletionsModel`` instance (Azure), ready to pass as the
-        SDK ``Agent(model=...)`` argument.
+        Either the model-name string (OpenAI) or an ``OpenAIResponsesModel``
+        instance (Azure), ready to pass as the SDK ``Agent(model=...)`` argument.
 
     Raises:
         BackendInitError: If a required credential is missing, or the provider
@@ -104,29 +125,48 @@ def _build_model(agent: Agent) -> str | OpenAIChatCompletionsModel:
                 "AZURE_OPENAI_ENDPOINT is required for provider 'azure_openai'. "
                 "Set it in the environment or as model.endpoint in the agent config."
             )
-        api_version = (
-            model_cfg.api_version
-            or os.environ.get("AZURE_OPENAI_API_VERSION")
-            or _DEFAULT_AZURE_API_VERSION
-        )
 
-        from agents import OpenAIChatCompletionsModel, set_tracing_disabled
-        from openai import AsyncAzureOpenAI
+        from agents import OpenAIResponsesModel, set_tracing_disabled
+        from openai import AsyncOpenAI
 
         # No OpenAI-platform key is available in the Azure dev path, so disable
         # the SDK's trace upload (it would otherwise fail / leak).
         set_tracing_disabled(True)
 
-        client = AsyncAzureOpenAI(
-            api_key=api_key,
-            api_version=api_version,
-            azure_endpoint=endpoint,
-        )
+        client_kwargs: dict[str, Any] = {
+            "api_key": api_key,
+            "base_url": _azure_v1_base_url(endpoint),
+        }
+        # The v1 surface does not require an api-version; honor one only if the
+        # config pins it (e.g. to opt into a preview surface).
+        if model_cfg.api_version:
+            client_kwargs["default_query"] = {"api-version": model_cfg.api_version}
+
+        client = AsyncOpenAI(**client_kwargs)
         # For Azure, ``model`` is the deployment name (model_cfg.name).
-        return OpenAIChatCompletionsModel(model=model_cfg.name, openai_client=client)
+        return OpenAIResponsesModel(model=model_cfg.name, openai_client=client)
 
     raise BackendInitError(
         f"The openai_agents backend does not support provider '{provider.value}'."
+    )
+
+
+def _build_model_settings(model_cfg: LLMProvider) -> ModelSettings:
+    """Build SDK ``ModelSettings`` for *model_cfg*, honoring reasoning models.
+
+    Reasoning models (o-series, ``gpt-5``+) reject ``temperature`` / ``top_p``,
+    so those are omitted for them; ``max_tokens`` is always forwarded (the SDK
+    maps it to the Responses ``max_output_tokens``, which reasoning models
+    accept).
+    """
+    from agents import ModelSettings
+
+    if _is_reasoning_model(model_cfg.name):
+        return ModelSettings(max_tokens=model_cfg.max_tokens)
+    return ModelSettings(
+        temperature=model_cfg.temperature,
+        top_p=model_cfg.top_p,
+        max_tokens=model_cfg.max_tokens,
     )
 
 
@@ -330,7 +370,6 @@ class OpenAIAgentsBackend:
             ConfigError: If a tool config is unsupported or fails to load.
         """
         from agents import Agent as SDKAgent
-        from agents import ModelSettings
 
         from holodeck.lib.backends.openai_agents_tool_adapters import build_sdk_tools
         from holodeck.lib.instruction_resolver import resolve_instructions
@@ -342,12 +381,7 @@ class OpenAIAgentsBackend:
         )
         tools = build_sdk_tools(self._agent_config.tools, base_dir)
 
-        model_cfg = self._agent_config.model
-        model_settings = ModelSettings(
-            temperature=model_cfg.temperature,
-            top_p=model_cfg.top_p,
-            max_tokens=model_cfg.max_tokens,
-        )
+        model_settings = _build_model_settings(self._agent_config.model)
 
         self._sdk_agent = SDKAgent(
             name=self._agent_config.name,
