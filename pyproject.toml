@@ -122,6 +122,11 @@ otel-all = [
 # Claude GenAI instrumentation (OTel semantic conventions)
 claude-otel = ["otel-instrumentation-claude-agent-sdk>=0.0.6,<0.1.0"]
 
+# OpenAI Agents SDK backend (provider: openai / azure_openai). Optional so
+# non-OpenAI backends incur no install/import cost — the import is gated lazily
+# inside holodeck.lib.backends.openai_agents_backend.
+openai-agents = ["openai-agents==0.17.4"]
+
 # Evaluation-runs dashboard (Dash + Plotly + pandas). Pixel-fidelity rewrite of
 # the Streamlit draft — handoff CSS tokens paste into assets/ verbatim.
 dashboard = [
