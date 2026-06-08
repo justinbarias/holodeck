@@ -32,7 +32,8 @@ from holodeck.models.llm import ProviderEnum
 from holodeck.models.token_usage import TokenUsage
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
-    pass
+    from agents import OpenAIChatCompletionsModel, RunResult
+    from pydantic import SecretStr
 
 # A current Azure OpenAI GA API version. Used when the agent config does not
 # pin one and ``AZURE_OPENAI_API_VERSION`` is unset. ``AsyncAzureOpenAI``
@@ -40,19 +41,14 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
 _DEFAULT_AZURE_API_VERSION = "2024-10-21"
 
 
-def _resolve_secret(value: Any) -> str | None:
-    """Return the plain string for a config value that may be a ``SecretStr``."""
+def _resolve_secret(value: SecretStr | None) -> str | None:
+    """Return the plain string for a ``SecretStr`` credential, or ``None``."""
     if value is None:
         return None
-    getter = getattr(value, "get_secret_value", None)
-    if callable(getter):
-        secret = getter()
-        return str(secret) if secret else None
-    text = str(value)
-    return text or None
+    return value.get_secret_value() or None
 
 
-def _build_model(agent: Agent) -> Any:
+def _build_model(agent: Agent) -> str | OpenAIChatCompletionsModel:
     """Build the SDK ``model=`` argument for *agent* and validate credentials.
 
     For ``provider: openai`` the default Responses client is used, so the model
@@ -151,7 +147,7 @@ def _parse_tool_arguments(raw: Any) -> dict[str, Any]:
     return {}
 
 
-def _to_execution_result(result: Any) -> ExecutionResult:
+def _to_execution_result(result: RunResult) -> ExecutionResult:
     """Map an SDK run result onto a provider-agnostic ``ExecutionResult``.
 
     Extracts the final text, tool calls / results (parallel lists for positional
@@ -199,7 +195,7 @@ def _to_execution_result(result: Any) -> ExecutionResult:
             )
 
     token_usage = TokenUsage.zero()
-    usage = getattr(getattr(result, "context_wrapper", None), "usage", None)
+    usage = getattr(result.context_wrapper, "usage", None)
     if usage is not None:
         prompt = int(getattr(usage, "input_tokens", 0) or 0)
         completion = int(getattr(usage, "output_tokens", 0) or 0)
@@ -210,8 +206,7 @@ def _to_execution_result(result: Any) -> ExecutionResult:
             total_tokens=total,
         )
 
-    raw_responses = getattr(result, "raw_responses", None) or []
-    num_turns = max(1, len(raw_responses))
+    num_turns = max(1, len(result.raw_responses))
 
     return ExecutionResult(
         response=response,

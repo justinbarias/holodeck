@@ -83,7 +83,9 @@ def _derive_params_schema(
     sig = inspect.signature(func)
     try:
         hints = typing.get_type_hints(func)
-    except Exception:
+    except (NameError, TypeError):
+        # Annotations referencing names not in scope (forward refs) or otherwise
+        # unresolvable — fall back to the raw signature annotations below.
         hints = {}
     for name, param in sig.parameters.items():
         if name in ("self", "cls"):
@@ -171,10 +173,9 @@ def build_sdk_tools(
                 )
             )
         else:
-            tool_type = getattr(cfg, "type", type(cfg).__name__)
             raise ConfigError(
-                f"tools.{getattr(cfg, 'name', '?')}",
-                f"'{tool_type}' tools are not yet supported on the openai_agents "
+                f"tools.{cfg.name}",
+                f"'{cfg.type}' tools are not yet supported on the openai_agents "
                 "backend (MVP supports function tools only).",
             )
 
