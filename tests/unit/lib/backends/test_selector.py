@@ -1,7 +1,12 @@
-"""Unit tests for holodeck.lib.backends.selector (Phase 4A + Phase 8B TDD).
+"""Unit tests for holodeck.lib.backends.selector.
+
+Routing contract (post OpenAI-Agents MVP):
+    openai / azure_openai -> OpenAIAgentsBackend
+    anthropic / ollama    -> ClaudeBackend
+    anything else         -> BackendInitError
 
 Class:
-    TestBackendSelector: 7 tests for BackendSelector routing logic.
+    TestBackendSelector: BackendSelector routing logic.
 """
 
 from typing import Any
@@ -17,6 +22,10 @@ from holodeck.models.llm import LLMProvider, ProviderEnum
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
+# The OpenAI Agents backend is imported lazily inside select(), so it is patched
+# at its definition module rather than on the selector module.
+_OPENAI_BACKEND = "holodeck.lib.backends.openai_agents_backend.OpenAIAgentsBackend"
 
 
 def _make_agent(provider: ProviderEnum, **model_overrides: Any) -> Agent:
@@ -45,45 +54,51 @@ class TestBackendSelector:
     """Tests for BackendSelector.select() provider routing."""
 
     @pytest.mark.asyncio
-    @patch("holodeck.lib.backends.selector.SKBackend")
-    async def test_openai_returns_sk_backend(self, mock_sk_cls: Any) -> None:
-        """provider=openai routes to SKBackend; the class is instantiated once."""
+    @patch(_OPENAI_BACKEND)
+    async def test_openai_returns_openai_agents_backend(
+        self, mock_openai_cls: Any
+    ) -> None:
+        """provider=openai routes to OpenAIAgentsBackend; instantiated once."""
         mock_backend = AsyncMock()
-        mock_sk_cls.return_value = mock_backend
+        mock_openai_cls.return_value = mock_backend
 
         backend = await BackendSelector.select(_make_agent(ProviderEnum.OPENAI))
 
-        mock_sk_cls.assert_called_once()
+        mock_openai_cls.assert_called_once()
         assert backend is mock_backend
+        mock_backend.initialize.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch("holodeck.lib.backends.selector.SKBackend")
-    async def test_azure_openai_returns_sk_backend(self, mock_sk_cls: Any) -> None:
-        """provider=azure_openai routes to SKBackend."""
+    @patch(_OPENAI_BACKEND)
+    async def test_azure_openai_returns_openai_agents_backend(
+        self, mock_openai_cls: Any
+    ) -> None:
+        """provider=azure_openai routes to OpenAIAgentsBackend."""
         mock_backend = AsyncMock()
-        mock_sk_cls.return_value = mock_backend
+        mock_openai_cls.return_value = mock_backend
 
         backend = await BackendSelector.select(_make_agent(ProviderEnum.AZURE_OPENAI))
 
-        mock_sk_cls.assert_called_once()
-        assert backend is mock_backend
-
-    @pytest.mark.asyncio
-    @patch("holodeck.lib.backends.selector.SKBackend")
-    async def test_ollama_returns_sk_backend(self, mock_sk_cls: Any) -> None:
-        """provider=ollama routes to SKBackend."""
-        mock_backend = AsyncMock()
-        mock_sk_cls.return_value = mock_backend
-
-        backend = await BackendSelector.select(_make_agent(ProviderEnum.OLLAMA))
-
-        mock_sk_cls.assert_called_once()
+        mock_openai_cls.assert_called_once()
         assert backend is mock_backend
 
     @pytest.mark.asyncio
     @patch("holodeck.lib.backends.selector.ClaudeBackend")
+    async def test_ollama_returns_claude_backend(self, mock_claude_cls: Any) -> None:
+        """provider=ollama routes to ClaudeBackend."""
+        mock_backend = AsyncMock()
+        mock_claude_cls.return_value = mock_backend
+
+        backend = await BackendSelector.select(_make_agent(ProviderEnum.OLLAMA))
+
+        mock_claude_cls.assert_called_once()
+        assert backend is mock_backend
+        mock_backend.initialize.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @patch("holodeck.lib.backends.selector.ClaudeBackend")
     async def test_anthropic_returns_claude_backend(self, mock_claude_cls: Any) -> None:
-        """T023: provider=anthropic routes to ClaudeBackend."""
+        """provider=anthropic routes to ClaudeBackend."""
         mock_backend = AsyncMock()
         mock_claude_cls.return_value = mock_backend
 
@@ -99,7 +114,7 @@ class TestBackendSelector:
     async def test_anthropic_passes_tool_instances_and_mode(
         self, mock_claude_cls: Any
     ) -> None:
-        """T024: selector passes tool_instances/mode to ClaudeBackend."""
+        """selector passes tool_instances/mode to ClaudeBackend."""
         mock_backend = AsyncMock()
         mock_claude_cls.return_value = mock_backend
 
@@ -120,7 +135,7 @@ class TestBackendSelector:
 
     @pytest.mark.asyncio
     async def test_unsupported_provider_raises_backend_init_error(self) -> None:
-        """T025: Unsupported provider raises BackendInitError."""
+        """Unsupported provider raises BackendInitError."""
         # Use a known provider but manipulate to simulate unsupported
         agent = _make_agent(ProviderEnum.OPENAI)
         # Monkey-patch to simulate an unsupported provider
@@ -130,13 +145,13 @@ class TestBackendSelector:
             await BackendSelector.select(agent)
 
     @pytest.mark.asyncio
-    @patch("holodeck.lib.backends.selector.SKBackend")
+    @patch(_OPENAI_BACKEND)
     async def test_initialize_awaited_on_returned_backend(
-        self, mock_sk_cls: Any
+        self, mock_openai_cls: Any
     ) -> None:
         """select() awaits initialize() on the backend before returning."""
         mock_backend = AsyncMock()
-        mock_sk_cls.return_value = mock_backend
+        mock_openai_cls.return_value = mock_backend
 
         await BackendSelector.select(_make_agent(ProviderEnum.OPENAI))
 

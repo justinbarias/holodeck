@@ -8,7 +8,6 @@ from typing import Any
 
 from holodeck.lib.backends.base import AgentBackend, BackendInitError
 from holodeck.lib.backends.claude_backend import ClaudeBackend
-from holodeck.lib.backends.sk_backend import SKBackend
 from holodeck.models.agent import Agent
 from holodeck.models.llm import ProviderEnum
 
@@ -37,16 +36,16 @@ class BackendSelector:
         """
         provider = agent.model.provider
 
-        if provider in (
-            ProviderEnum.OPENAI,
-            ProviderEnum.AZURE_OPENAI,
-            ProviderEnum.OLLAMA,
-        ):
-            backend = SKBackend(agent_config=agent)
-            await backend.initialize()
-            return backend
+        if provider in (ProviderEnum.OPENAI, ProviderEnum.AZURE_OPENAI):
+            # Lazy import keeps the optional openai-agents SDK off the import
+            # path for non-OpenAI providers (SC-005).
+            from holodeck.lib.backends.openai_agents_backend import OpenAIAgentsBackend
 
-        if provider == ProviderEnum.ANTHROPIC:
+            openai_backend = OpenAIAgentsBackend(agent=agent)
+            await openai_backend.initialize()
+            return openai_backend
+
+        if provider in (ProviderEnum.ANTHROPIC, ProviderEnum.OLLAMA):
             claude_backend = ClaudeBackend(
                 agent=agent,
                 tool_instances=tool_instances,
