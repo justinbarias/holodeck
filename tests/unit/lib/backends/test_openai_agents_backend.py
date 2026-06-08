@@ -401,10 +401,40 @@ class TestSession:
         assert "kaput" in (result.error_reason or "")
 
     @pytest.mark.asyncio
-    async def test_send_streaming_fallback_yields_response(self) -> None:
+    async def test_send_streaming_yields_text_deltas(self) -> None:
+        from openai.types.responses import ResponseTextDeltaEvent
+
         session = OpenAIAgentsSession(MagicMock(), MagicMock())
-        fake_result = _fake_run_result(final_output="streamed")
+
+        def _delta_event(delta: str) -> MagicMock:
+            data = MagicMock(spec=ResponseTextDeltaEvent)
+            data.delta = delta
+            return MagicMock(type="raw_response_event", data=data)
+
+        # A non-text raw event and a non-raw lifecycle event must be skipped.
+        other_raw = MagicMock(type="raw_response_event", data=MagicMock())
+        lifecycle = MagicMock(type="run_item_stream_event", data=MagicMock())
+
+        events = [
+            _delta_event("Hel"),
+            other_raw,
+            _delta_event("lo"),
+            lifecycle,
+            _delta_event(" world"),
+        ]
+
+        async def _stream_events():  # type: ignore[no-untyped-def]
+            for ev in events:
+                yield ev
+
+        streamed = MagicMock()
+        streamed.stream_events = _stream_events
         with patch("agents.Runner") as runner:
-            runner.run = AsyncMock(return_value=fake_result)
+            runner.run_streamed = MagicMock(return_value=streamed)
             chunks = [c async for c in session.send_streaming("hi")]
-        assert "".join(chunks) == "streamed"
+        assert "".join(chunks) == "Hello world"
+        assert chunks == ["Hel", "lo", " world"]
+        runner.run_streamed.assert_called_once()
+        # session= is threaded so the SDK persists streamed-turn history
+        _, kwargs = runner.run_streamed.call_args
+        assert "session" in kwargs

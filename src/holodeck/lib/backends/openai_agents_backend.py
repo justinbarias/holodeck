@@ -266,17 +266,27 @@ class OpenAIAgentsSession:
     async def send_streaming(self, message: str) -> AsyncGenerator[str, None]:
         """Stream the agent response token by token.
 
-        MVP fallback: delegates to :meth:`send` and yields the full response as
-        a single chunk. Real token-delta streaming is implemented separately.
+        Runs the SDK agent loop via ``Runner.run_streamed`` and forwards each
+        model text delta as it arrives. Text deltas surface as raw-response
+        events carrying a ``ResponseTextDeltaEvent``; tool-call and lifecycle
+        events are ignored for the streamed text channel.
 
         Args:
             message: The user message to send to the agent.
 
         Yields:
-            String chunks of the agent response.
+            String chunks of the agent response as the model produces them.
         """
-        result = await self.send(message)
-        yield result.response
+        from agents import Runner
+        from openai.types.responses import ResponseTextDeltaEvent
+
+        result = Runner.run_streamed(self._sdk_agent, message, session=self._session)
+        async for event in result.stream_events():
+            if event.type != "raw_response_event":
+                continue
+            data = event.data
+            if isinstance(data, ResponseTextDeltaEvent) and data.delta:
+                yield data.delta
 
     async def close(self) -> None:
         """Release the SQLite session connection, if any."""
