@@ -2,7 +2,7 @@
 
 **Spec:** `specs/035-openai-agents-backend/spec.md`
 **Scope of this plan:** A single vertical slice — *chat with one OpenAI/Azure-OpenAI agent that runs the SDK agent loop and calls custom Python (function) tools* — plus the routing flip and the surgical removal of the SK **agent-execution** path.
-**Status:** Draft for review
+**Status:** Complete — all tasks done; live-verified against Azure (`gpt-5.4`) via `holodeck chat`
 
 ## Overview
 
@@ -38,12 +38,17 @@ this MVP** and tracked as follow-ups.
 
 ## Architecture decisions
 
-- **Azure uses Chat Completions, not Responses.** For `provider: azure_openai` the backend
-  builds `AsyncAzureOpenAI(api_key, api_version, azure_endpoint)` and wraps it as
-  `OpenAIChatCompletionsModel(model=<deployment>, openai_client=...)`, passed as the agent's
-  `model=`. It also calls `set_tracing_disabled(True)` (no dashboard upload; and the SDK won't
-  try to upload traces with a key it doesn't have). For `provider: openai` the default Responses
-  client + a model-name string is used.
+- **Azure uses the Responses API (v1 surface).** For `provider: azure_openai` the backend builds
+  a plain `AsyncOpenAI(api_key, base_url=<endpoint>/openai/v1)` and wraps it as
+  `OpenAIResponsesModel(model=<deployment>, openai_client=...)`, passed as the agent's `model=`.
+  This is required for reasoning models (o-series, `gpt-5`+), which reject `temperature`/`top_p`
+  and need `max_output_tokens` (the SDK maps `max_tokens → max_output_tokens` on Responses). It
+  also calls `set_tracing_disabled(True)` (no dashboard upload; the SDK won't try to upload traces
+  with a key it doesn't have). For `provider: openai` the default Responses client + a model-name
+  string is used.
+  *(Originally planned as Chat Completions; switched to Responses during implementation to support
+  reasoning models — see the `_build_model` / `_is_reasoning_model` / `_build_model_settings`
+  helpers.)*
 - **Lazy import gate.** `import agents` (the `openai-agents` package) happens *inside* the
   backend module's functions/methods, never at a module top-level that other backends import —
   preserving SC-005 (other backends incur no import cost / failure).
@@ -74,9 +79,9 @@ this MVP** and tracked as follow-ups.
 **Description:** Add `openai-agents` (pinned) as an optional dependency and confirm the import is
 lazy so non-OpenAI backends are unaffected.
 **Acceptance criteria:**
-- [ ] `openai-agents==<pinned>` added to `pyproject.toml` (optional extra, e.g. `openai_agents`).
-- [ ] `import agents` only occurs inside functions/methods of the new backend module.
-- [ ] Importing `holodeck.lib.backends.selector` with the extra *uninstalled* does not raise.
+- [x] `openai-agents==<pinned>` added to `pyproject.toml` (optional extra, e.g. `openai_agents`).
+- [x] `import agents` only occurs inside functions/methods of the new backend module.
+- [x] Importing `holodeck.lib.backends.selector` with the extra *uninstalled* does not raise.
 **Verification:** `uv sync` resolves; `python -c "import holodeck.lib.backends.selector"` in an
 env without the extra succeeds; `make lint` clean.
 **Dependencies:** None
@@ -86,13 +91,13 @@ env without the extra succeeds; `make lint` clean.
 #### Task 2: Provider→client/model builder + credential pre-flight
 **Description:** A helper that, given an `Agent`, returns the SDK `model=` argument and validates
 credentials: `openai` → model-name string (default client) requiring `OPENAI_API_KEY`;
-`azure_openai` → `OpenAIChatCompletionsModel` over `AsyncAzureOpenAI` requiring
+`azure_openai` → `OpenAIResponsesModel` over `AsyncOpenAI` (v1 surface) requiring
 `AZURE_OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT`, and `set_tracing_disabled(True)`.
 **Acceptance criteria:**
-- [ ] Missing required env var → `BackendInitError` naming the exact var (US1 scenario 3).
-- [ ] Azure path builds `AsyncAzureOpenAI` + `OpenAIChatCompletionsModel(model=<deployment>)` and
+- [x] Missing required env var → `BackendInitError` naming the exact var (US1 scenario 3).
+- [x] Azure path builds `AsyncOpenAI` + `OpenAIResponsesModel(model=<deployment>)` and
       disables SDK tracing.
-- [ ] OpenAI path returns the model name for the default Responses client.
+- [x] OpenAI path returns the model name for the default Responses client.
 **Verification:** `tests/unit/lib/backends/test_openai_agents_backend.py` cases for both
 providers + missing-cred (mocked SDK). `make type-check`.
 **Dependencies:** Task 1
@@ -106,11 +111,11 @@ providers + missing-cred (mocked SDK). `make type-check`.
 `Runner` + `SQLiteSession`. `invoke_once`/`send` call `Runner.run(...)`; `create_session` returns
 a session holding a `SQLiteSession`. Model the shape on `sk_backend.py`.
 **Acceptance criteria:**
-- [ ] All four `AgentBackend` and four `AgentSession` methods implemented (`prepare`/`close`
+- [x] All four `AgentBackend` and four `AgentSession` methods implemented (`prepare`/`close`
       no-ops where appropriate).
-- [ ] `invoke_once` and `send` return an `ExecutionResult` with `response` populated from
+- [x] `invoke_once` and `send` return an `ExecutionResult` with `response` populated from
       `result.final_output`.
-- [ ] Runtime failures are wrapped as `BackendSessionError` with `error_reason` set.
+- [x] Runtime failures are wrapped as `BackendSessionError` with `error_reason` set.
 **Verification:** Protocol-conformance + single-turn + multi-turn unit tests (mocked `Runner`).
 **Dependencies:** Task 2
 **Files:** `src/holodeck/lib/backends/openai_agents_backend.py`
@@ -119,12 +124,12 @@ a session holding a `SQLiteSession`. Model the shape on `sk_backend.py`.
 #### Task 4: Full `ExecutionResult` mapping
 **Description:** Populate every `ExecutionResult` field from the SDK run result.
 **Acceptance criteria:**
-- [ ] `tool_calls`/`tool_results` extracted from `result.new_items`
+- [x] `tool_calls`/`tool_results` extracted from `result.new_items`
       (tool-call vs tool-output items); `token_usage` from the run usage
       (`input_tokens`/`output_tokens`/`total_tokens`); `num_turns` from raw-response count;
       `thinking=""`.
-- [ ] `is_error`/`error_reason` set on failure.
-- [ ] Shapes match what `chat/executor.py` and the test runner already consume.
+- [x] `is_error`/`error_reason` set on failure.
+- [x] Shapes match what `chat/executor.py` and the test runner already consume.
 **Verification:** Unit test asserts a tool-calling run yields non-empty `tool_calls`/`tool_results`
 and non-zero `token_usage` (mocked run items).
 **Dependencies:** Task 3
@@ -138,12 +143,12 @@ and non-zero `token_usage` (mocked run items).
 `agents.FunctionTool`, reusing `load_function_tool` + a JSON-schema deriver. Non-function tool
 types raise a clear `ConfigError`.
 **Acceptance criteria:**
-- [ ] A YAML `type: function` tool loads its callable and is invoked by the agent loop with args
+- [x] A YAML `type: function` tool loads its callable and is invoked by the agent loop with args
       from the model; the return value reaches the model (verified via a mocked run that drives
       the tool).
-- [ ] `parameters` schema from YAML (when present) is used; otherwise derived from the callable
+- [x] `parameters` schema from YAML (when present) is used; otherwise derived from the callable
       signature.
-- [ ] A `vectorstore`/`mcp`/`hierarchical_document`/`skill`/`prompt` tool on an `openai_agents`
+- [x] A `vectorstore`/`mcp`/`hierarchical_document`/`skill`/`prompt` tool on an `openai_agents`
       agent raises `ConfigError` naming the unsupported type.
 **Verification:** `tests/unit/lib/backends/test_openai_agents_tool_adapters.py` — function happy
 path + each unsupported-type error.
@@ -153,10 +158,10 @@ path + each unsupported-type error.
 **Scope:** M
 
 ### Checkpoint A — Non-streaming chat works end-to-end
-- [ ] Against Azure (real creds), `holodeck chat` on an `provider: azure_openai` agent with one
+- [x] Against Azure (real creds), `holodeck chat` on an `provider: azure_openai` agent with one
       Python function tool completes a turn that calls the tool.
-- [ ] All unit tests pass; `make format lint type-check` clean.
-- [ ] **Review with user before proceeding to the SK carve.**
+- [x] All unit tests pass; `make format lint type-check` clean.
+- [x] **Review with user before proceeding to the SK carve.**
 
 ### Phase 3 — Real streaming
 
@@ -166,10 +171,10 @@ text from `raw_response_event` → `ResponseTextDeltaEvent.delta`; capture final
 the stream completes so a subsequent `ExecutionResult` (or the chat executor's accounting) is
 correct.
 **Acceptance criteria:**
-- [ ] `send_streaming` yields multiple text chunks for a multi-token response (mocked event
+- [x] `send_streaming` yields multiple text chunks for a multi-token response (mocked event
       stream).
-- [ ] Final token usage is captured after stream end.
-- [ ] `chat/executor.py` consumes the stream with no protocol change (Open Question 5 in spec).
+- [x] Final token usage is captured after stream end.
+- [x] `chat/executor.py` consumes the stream with no protocol change (Open Question 5 in spec).
 **Verification:** Unit test feeds a fake event stream and asserts chunk sequence + final usage;
 manual Azure `holodeck chat` shows incremental output.
 **Dependencies:** Task 4
@@ -182,9 +187,9 @@ manual Azure `holodeck chat` shows incremental output.
 **Description:** Update `BackendSelector`: `anthropic → claude`, `openai`/`azure_openai →
 openai_agents`, `ollama → claude`. Remove the SK provider branch.
 **Acceptance criteria:**
-- [ ] `provider: openai`/`azure_openai` selects `OpenAIAgentsBackend`.
-- [ ] `provider: ollama` selects `ClaudeBackend`.
-- [ ] No selector path returns `SKBackend`.
+- [x] `provider: openai`/`azure_openai` selects `OpenAIAgentsBackend`.
+- [x] `provider: ollama` selects `ClaudeBackend`.
+- [x] No selector path returns `SKBackend`.
 **Verification:** `tests/unit/lib/backends/` selector tests updated; `make test-unit` green.
 **Dependencies:** Tasks 3–5 (new backend must work before it becomes default)
 **Files:** `src/holodeck/lib/backends/selector.py`
@@ -200,11 +205,11 @@ agent path depends on `AgentFactory` for services. Rewire `test_runner/executor.
 selected backend (`OpenAIAgentsBackend`) rather than `AgentFactory`. Remove obsolete SK
 agent-execution tests; keep RAG/service tests.
 **Acceptance criteria:**
-- [ ] `sk_backend.py` and `agent_factory.py` removed; no import references remain.
-- [ ] RAG path (vectorstore/hierarchical-doc init + embeddings + contextualization) still works —
+- [x] `sk_backend.py` and `agent_factory.py` removed; no import references remain.
+- [x] RAG path (vectorstore/hierarchical-doc init + embeddings + contextualization) still works —
       its factories in `tool_initializer.py` are unchanged.
-- [ ] `holodeck test` runs an `openai`/`azure_openai` agent via `OpenAIAgentsBackend`.
-- [ ] Obsolete SK agent tests removed; full suite green.
+- [x] `holodeck test` runs an `openai`/`azure_openai` agent via `OpenAIAgentsBackend`.
+- [x] Obsolete SK agent tests removed; full suite green.
 **Verification:** `make test` (full, parallel) green; a vectorstore agent still initializes its
 store + answers a grounded query; `make type-check` clean.
 **Dependencies:** Task 7
@@ -217,10 +222,10 @@ store + answers a grounded query; `make type-check` clean.
 **Scope:** L  *(largest task — `test_runner` rewiring is the real work; verify with the full suite)*
 
 ### Checkpoint B — Routing flipped, SK carved
-- [ ] Full test suite green.
-- [ ] `chat` + `test` work for `openai`/`azure_openai` via the new backend; `ollama` via Claude;
+- [x] Full test suite green.
+- [x] `chat` + `test` work for `openai`/`azure_openai` via the new backend; `ollama` via Claude;
       `anthropic` unchanged.
-- [ ] RAG/embedding path unaffected.
+- [x] RAG/embedding path unaffected.
 
 ### Phase 5 — Tests & docs
 
@@ -229,8 +234,8 @@ store + answers a grounded query; `make type-check` clean.
 population, Azure-client construction, missing-cred errors, function-tool invocation, streaming
 deltas, unsupported-tool errors.
 **Acceptance criteria:**
-- [ ] New tests cover both providers and the streaming path (all mocked — no network/key).
-- [ ] Coverage for the new modules is comparable to the Claude/SK backend tests.
+- [x] New tests cover both providers and the streaming path (all mocked — no network/key).
+- [x] Coverage for the new modules is comparable to the Claude/SK backend tests.
 **Verification:** `make test-unit -n auto`; `make test-coverage` shows the new modules covered.
 **Dependencies:** Tasks 6, 8
 **Files:** `tests/unit/lib/backends/test_openai_agents_backend.py`,
@@ -241,8 +246,8 @@ deltas, unsupported-tool errors.
 **Description:** One integration test (skipped without Azure creds) that runs a single `holodeck
 chat` turn calling a Python tool against a live Azure deployment.
 **Acceptance criteria:**
-- [ ] Test skips cleanly when `AZURE_OPENAI_*` env is absent.
-- [ ] With creds, a tool-calling turn returns a grounded response and streams.
+- [x] Test skips cleanly when `AZURE_OPENAI_*` env is absent.
+- [x] With creds, a tool-calling turn returns a grounded response and streams.
 **Verification:** Run locally with Azure creds; confirm pass + skip-without-creds.
 **Dependencies:** Task 6
 **Files:** `tests/integration/test_openai_agents_chat_e2e.py`
@@ -252,7 +257,7 @@ chat` turn calling a Python tool against a live Azure deployment.
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Azure (Chat Completions) streaming events differ from Responses-API shape | Med | Task 6 normalizes on `raw_response_event`/`ResponseTextDeltaEvent`; verify both providers against the SDK adapter during impl |
+| ~~Azure (Chat Completions) streaming events differ from Responses-API shape~~ | — | Resolved: Azure now uses the Responses API too, so both providers share the `raw_response_event`/`ResponseTextDeltaEvent` shape |
 | Deleting `AgentFactory` breaks the RAG/embedding path | Med | Factories already live in `tool_initializer.py` (verified) and stay untouched; full-suite gate + vectorstore-init verification (Task 8 / Checkpoint B) |
 | `test_runner/executor.py` rewiring off `AgentFactory` regresses `holodeck test` | High | `_detect_backend_kind` + executor pairing is the real work in Task 8; covered by `test_executor*`; full suite is the gate |
 | No OpenAI key → `provider: openai` path unverified | Med | Code it to spec, validate via mocks; mark live `openai` validation as a follow-up when a key exists |
@@ -266,12 +271,12 @@ MCP/vectorstore/hierarchical/skill/hosted tools on this backend (US3/US5) · sub
 (US3) · YAML hooks (US3) · cost/fallback/effort/disallowed (US4) · OTel tracing-mirror (US7) ·
 live `provider: openai` validation · full `semantic-kernel` dependency removal.
 
-## Open questions
+## Open questions (resolved)
 
-- **Pin version** for `openai-agents` — confirm the latest stable at implementation time and
-  that it exposes `Agent`, `Runner`, `SQLiteSession`, `FunctionTool`, `OpenAIChatCompletionsModel`,
-  `set_tracing_disabled`.
-- **Azure `api_version`** default — pick a current GA version; expose override via existing model
-  config if one already exists.
+- **Pin version** for `openai-agents` — resolved: pinned `openai-agents==0.17.4` (with
+  `openai==2.41.0`); exposes `Agent`, `Runner`, `SQLiteSession`, `FunctionTool`,
+  `OpenAIResponsesModel`, `set_tracing_disabled`, `set_default_openai_key`.
+- **Azure `api_version`** — resolved: the `/openai/v1` Responses surface needs no `api-version`;
+  one is forwarded via `default_query` only if `model.api_version` is pinned.
 - **`thinking` field** — left `""` for MVP; revisit if a reasoning model surfaces reasoning
   items through the SDK.
