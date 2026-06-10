@@ -127,4 +127,3 @@ Provides intelligent document search that understands document structure, extrac
         - get_definition
         - set_embedding_service
         - set_context_generator
-        - set_chat_service

@@ -6,7 +6,13 @@ embedding/context-gen layer."*
 **Scope:** Replace Semantic Kernel's `*TextEmbedding` (embedding) and `*ChatCompletion` +
 `LLMContextGenerator` (contextual-retrieval chat) with **LiteLLM**, while **keeping every SK
 vector-store abstraction** (`@vectorstoremodel`, `VectorStoreField`, the `data.vector` connectors).
-**Status:** Draft for review
+**Status:** Implemented (hard cutover — open question 1 resolved in favor of no
+rollback flag, since both seams were validated in-session against live Azure
+OpenAI; `litellm` added as a core dep, resolving open question 2; Ollama left
+to manual smokes, resolving open question 3). Azure mapping deviates from the
+draft: it routes through the OpenAI-compatible `/openai/v1` surface via
+LiteLLM's generic `openai/` provider (matching the OpenAI Agents backend's
+Responses-API convention) instead of `azure/<deployment>` + api_version.
 
 ---
 

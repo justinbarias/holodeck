@@ -216,14 +216,6 @@ class TestHierarchicalDocumentToolInit:
         assert hasattr(tool, "_embedding_service")
         assert tool._embedding_service is None
 
-    def test_init_has_chat_service_attribute(self, tmp_path: Path) -> None:
-        """Test that tool has _chat_service attribute."""
-        config = create_config(tmp_path)
-        tool = HierarchicalDocumentTool(config)
-
-        assert hasattr(tool, "_chat_service")
-        assert tool._chat_service is None
-
     def test_init_has_collection_attribute(self, tmp_path: Path) -> None:
         """Test that tool has _collection attribute."""
         config = create_config(tmp_path)
@@ -241,16 +233,6 @@ class TestHierarchicalDocumentToolInit:
         tool.set_embedding_service(mock_service)
 
         assert tool._embedding_service == mock_service
-
-    def test_set_chat_service(self, tmp_path: Path) -> None:
-        """Test chat service injection via set_chat_service."""
-        config = create_config(tmp_path)
-        tool = HierarchicalDocumentTool(config)
-
-        mock_service = MagicMock()
-        tool.set_chat_service(mock_service)
-
-        assert tool._chat_service == mock_service
 
 
 class TestExecutionConfigPlumbing:
@@ -1225,7 +1207,6 @@ class TestToolFactoryIntegration:
         assert tool.config == config
         assert tool._initialized is False
         assert hasattr(tool, "set_embedding_service")
-        assert hasattr(tool, "set_chat_service")
         assert hasattr(tool, "initialize")
         assert hasattr(tool, "search")
 
@@ -1257,20 +1238,15 @@ class TestSetContextGenerator:
         assert tool._context_generator is gen2
 
     @pytest.mark.asyncio
-    async def test_ingest_uses_context_generator_without_chat_service(
-        self, tmp_path: Path
-    ) -> None:
-        """Test _ingest_documents works with set_context_generator
-        when _chat_service is None."""
+    async def test_ingest_uses_injected_context_generator(self, tmp_path: Path) -> None:
+        """Test _ingest_documents works with set_context_generator."""
         config = create_config(tmp_path, contextual_embeddings=True)
         tool = HierarchicalDocumentTool(config)
 
-        # Set a mock context generator directly (no chat service)
+        # Set a mock context generator directly
         mock_generator = AsyncMock()
         mock_generator.contextualize_batch.return_value = ["Contextualized content"]
         tool.set_context_generator(mock_generator)
-
-        assert tool._chat_service is None  # Confirm no chat service
 
         with (
             patch.object(tool, "_setup_collection"),
@@ -1280,24 +1256,6 @@ class TestSetContextGenerator:
 
         # Context generator should have been called
         mock_generator.contextualize_batch.assert_called()
-
-
-class TestSetChatServiceWithoutContextualEmbeddings:
-    """Tests for set_chat_service when contextual_embeddings is disabled."""
-
-    def test_set_chat_service_without_contextual_embeddings(
-        self, tmp_path: Path
-    ) -> None:
-        """Test set_chat_service logs debug when contextual_embeddings is False."""
-        config = create_config(tmp_path, contextual_embeddings=False)
-        tool = HierarchicalDocumentTool(config)
-
-        mock_chat_service = MagicMock()
-        tool.set_chat_service(mock_chat_service)
-
-        # Should not create context generator
-        assert tool._context_generator is None
-        assert tool._chat_service == mock_chat_service
 
 
 class TestDatabaseConfigHandling:

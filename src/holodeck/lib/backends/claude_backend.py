@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import claude_agent_sdk
-import jsonschema  # type: ignore[import-untyped]
+import jsonschema
 from ag_ui.core import (
     AssistantMessage as AguiAssistantMessage,
 )

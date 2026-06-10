@@ -35,14 +35,22 @@ if env_path.exists():
 # Check if we should skip LLM integration tests
 SKIP_LLM_TESTS = os.getenv("SKIP_LLM_INTEGRATION_TESTS", "false").lower() == "true"
 
+
+def _real_credential(value: str | None) -> str | None:
+    """Treat unset or .env.example placeholder values ("your-...") as missing."""
+    if not value or value.startswith("your-"):
+        return None
+    return value
+
+
 # OpenAI configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = _real_credential(os.getenv("OPENAI_API_KEY"))
 OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
 OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
 # Azure OpenAI configuration
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_API_KEY = _real_credential(os.getenv("AZURE_OPENAI_API_KEY"))
+AZURE_OPENAI_ENDPOINT = _real_credential(os.getenv("AZURE_OPENAI_ENDPOINT"))
 AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o")
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME = os.getenv(
     "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME", "text-embedding-3-small"
@@ -96,61 +104,72 @@ def create_test_config(
 
 
 def create_openai_embedding_service() -> Any:
-    """Create OpenAI embedding service.
+    """Create OpenAI embedding service (LiteLLM-backed).
 
     Returns:
-        OpenAITextEmbedding service instance.
+        LiteLLMEmbeddingService instance.
     """
-    from semantic_kernel.connectors.ai.open_ai import OpenAITextEmbedding
+    from holodeck.lib.litellm_support import (
+        LiteLLMEmbeddingService,
+        LiteLLMModelSpec,
+    )
 
-    return OpenAITextEmbedding(
-        ai_model_id=OPENAI_EMBEDDING_MODEL,
-        api_key=OPENAI_API_KEY,
+    return LiteLLMEmbeddingService(
+        LiteLLMModelSpec(model=OPENAI_EMBEDDING_MODEL, api_key=OPENAI_API_KEY)
+    )
+
+
+def _azure_provider() -> Any:
+    """Azure OpenAI LLMProvider built from the integration environment."""
+    from holodeck.models.llm import LLMProvider, ProviderEnum
+
+    return LLMProvider(
+        provider=ProviderEnum.AZURE_OPENAI,
+        name=AZURE_OPENAI_DEPLOYMENT_NAME,
+        api_key=AZURE_OPENAI_API_KEY,
+        endpoint=AZURE_OPENAI_ENDPOINT,
     )
 
 
 def create_azure_embedding_service() -> Any:
-    """Create Azure OpenAI embedding service.
+    """Create Azure OpenAI embedding service (LiteLLM-backed).
 
     Returns:
-        AzureTextEmbedding service instance.
+        LiteLLMEmbeddingService instance.
     """
-    from semantic_kernel.connectors.ai.open_ai import AzureTextEmbedding
-
-    return AzureTextEmbedding(
-        deployment_name=AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME,
-        endpoint=AZURE_OPENAI_ENDPOINT,
-        api_key=AZURE_OPENAI_API_KEY,
+    from holodeck.lib.litellm_support import (
+        LiteLLMEmbeddingService,
+        resolve_litellm_model,
     )
 
+    spec = resolve_litellm_model(
+        _azure_provider(),
+        kind="embedding",
+        model_name=AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME,
+    )
+    return LiteLLMEmbeddingService(spec)
 
-def create_openai_chat_service() -> Any:
-    """Create OpenAI chat service for contextual embeddings.
+
+def create_openai_chat_spec() -> Any:
+    """Create OpenAI LiteLLM model spec for contextual embeddings.
 
     Returns:
-        OpenAIChatCompletion service instance.
+        LiteLLMModelSpec instance (chat kind).
     """
-    from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
+    from holodeck.lib.litellm_support import LiteLLMModelSpec
 
-    return OpenAIChatCompletion(
-        ai_model_id=OPENAI_MODEL_NAME,
-        api_key=OPENAI_API_KEY,
-    )
+    return LiteLLMModelSpec(model=OPENAI_MODEL_NAME, api_key=OPENAI_API_KEY)
 
 
-def create_azure_chat_service() -> Any:
-    """Create Azure OpenAI chat service for contextual embeddings.
+def create_azure_chat_spec() -> Any:
+    """Create Azure OpenAI LiteLLM model spec for contextual embeddings.
 
     Returns:
-        AzureChatCompletion service instance.
+        LiteLLMModelSpec instance (chat kind).
     """
-    from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
+    from holodeck.lib.litellm_support import resolve_litellm_model
 
-    return AzureChatCompletion(
-        deployment_name=AZURE_OPENAI_DEPLOYMENT_NAME,
-        endpoint=AZURE_OPENAI_ENDPOINT,
-        api_key=AZURE_OPENAI_API_KEY,
-    )
+    return resolve_litellm_model(_azure_provider(), kind="chat")
 
 
 @pytest.mark.integration
@@ -385,11 +404,12 @@ class TestContextualEmbeddings:
 
     @skip_if_no_azure
     @pytest.mark.asyncio
-    async def test_contextual_embeddings_with_chat_service(self) -> None:
+    async def test_contextual_embeddings_with_llm_generator(self) -> None:
         """Test LLMContextGenerator prepends context to chunks.
 
         Validates:
-        1. Contextual embeddings are enabled and work with chat service
+        1. Contextual embeddings are enabled and work with a LiteLLM-backed
+           context generator
         2. Context generator produces contextualized content
         3. Search still works with contextualized embeddings
         """
@@ -402,12 +422,11 @@ class TestContextualEmbeddings:
         )
         tool = HierarchicalDocumentTool(config)
 
-        # Set up both embedding and chat services (using Azure OpenAI)
+        # Set up embedding service + context generator (using Azure OpenAI)
         tool.set_embedding_service(create_azure_embedding_service())
-        chat_service = create_azure_chat_service()
-        tool.set_chat_service(chat_service)
-
-        tool._context_generator = LLMContextGenerator(chat_service=chat_service)
+        tool.set_context_generator(
+            LLMContextGenerator(model_spec=create_azure_chat_spec())
+        )
 
         await tool.initialize()
 

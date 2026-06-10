@@ -141,7 +141,6 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         # Service injection attributes
         self._embedding_service: Any = None
-        self._chat_service: Any = None
         self._collection: Any = None
         self._provider: str = "in-memory"
         self._embedding_dimensions: int | None = None
@@ -188,35 +187,6 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             generator: A ContextGenerator protocol implementation.
         """
         self._context_generator = generator
-
-    def set_chat_service(self, service: Any) -> None:
-        """Set the chat service for LLM context generation.
-
-        This enables contextual embeddings via the LLMContextGenerator.
-        When contextual_embeddings is enabled in config, this also creates
-        the LLMContextGenerator instance.
-
-        Args:
-            service: Semantic Kernel ChatCompletion service instance.
-        """
-        self._chat_service = service
-
-        # Create LLMContextGenerator if contextual embeddings are enabled
-        if self.config.contextual_embeddings and service is not None:
-            from holodeck.lib.llm_context_generator import LLMContextGenerator
-
-            self._context_generator = LLMContextGenerator(
-                chat_service=service,
-                max_context_tokens=self.config.context_max_tokens,
-                concurrency=self.config.context_concurrency,
-            )
-            logger.info(
-                f"LLMContextGenerator created for {self.config.name} "
-                f"(max_tokens={self.config.context_max_tokens}, "
-                f"concurrency={self.config.context_concurrency})"
-            )
-        else:
-            logger.debug("Chat service set for HierarchicalDocumentTool")
 
     def set_source_context(self, source_root: Path, is_remote: bool) -> None:
         """Set source context for stable record keys.

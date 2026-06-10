@@ -1046,13 +1046,19 @@ await backend.teardown()
 
 ### 10. ContextGenerator Resolution Chain
 
-When initializing hierarchical document tools, the context generator is resolved via a 5-tier priority chain:
+When initializing hierarchical document tools, the context generator is resolved via a 4-tier priority chain:
 
 1. **Caller-provided** `context_generator` (highest priority)
-2. **Caller-provided** `chat_service` → wrapped in `LLMContextGenerator`
-3. **Tool config** `context_model` → creates chat service → `LLMContextGenerator`
-4. **Anthropic provider** → `ClaudeSDKContextGenerator` (uses `claude-haiku-4-5` via SDK `query()`)
-5. **None** → graceful degradation (chunks without contextual embeddings)
+2. **Tool config** `context_model` → LiteLLM-backed `LLMContextGenerator`
+3. **Anthropic provider** → `ClaudeSDKContextGenerator` (uses `claude-haiku-4-5` via SDK `query()`)
+4. **None** → graceful degradation (chunks without contextual embeddings)
+
+Embeddings and the contextual-retrieval chat calls go through **LiteLLM**
+(`holodeck/lib/litellm_support.py` maps `LLMProvider` → LiteLLM call args;
+Azure uses the OpenAI-compatible `/openai/v1` surface). The Semantic Kernel
+vector-store abstractions (`@vectorstoremodel`, `VectorStoreField`, the
+`data.vector` connectors) and the `split_plaintext_paragraph` chunker are
+retained — only the embedding/chat model calls moved off SK.
 
 ---
 
