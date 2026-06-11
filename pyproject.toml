@@ -61,6 +61,7 @@ dependencies = [
     "python-frontmatter>=1.1,<2.0",
     "optuna>=4.8.0",
     "litellm>=1.80.0,<1.89.0",
+    "bkflow-feel==1.2.0",  # FEEL evaluator (036); pinned stable — see specs/036-deterministic-spine/research.md
 ]
 
 [project.scripts]
@@ -172,6 +173,12 @@ packages = ["src/holodeck"]
 
 [tool.uv]
 prerelease = "allow"  # Allow pre-releases (required for azure-ai-agents via semantic-kernel)
+override-dependencies = [
+    # bkflow-feel pins pytz<2024, which would downgrade pytz (and drag optuna
+    # 4.9->4.8). The pin is overly conservative — pytz's API is stable and the
+    # FEEL conformance suite (tests/unit/workflow/) verifies compatibility.
+    "pytz>=2024",
+]
 constraint-dependencies = [
     "sentry-sdk>=2.0.0,<3.0.0",  # Pin to stable; deepeval pulls alpha 3.0 which is deprecated
     "filelock>=3.20.3",  # CVE-2025-68146 fix

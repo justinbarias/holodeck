@@ -5,7 +5,7 @@
 > parallel once their dependencies land.
 
 ## Phase 0 — De-risk
-- [ ] **T1** FEEL evaluator spike (bkflow-feel → pySFeel fallback); record decision + supported subset in `research.md`
+- [x] **T1** FEEL evaluator spike (bkflow-feel → pySFeel fallback); record decision + supported subset in `research.md` — **chose bkflow-feel 1.2.0 (MIT); full FR-010 subset covered; caveats + static-rejection list in research.md**
 
 ## Phase 1 — US1: single determination node (P1)
 - [ ] **T2** Workflow Pydantic models + DAG validation + `schemas/workflow.schema.json` + sync test
