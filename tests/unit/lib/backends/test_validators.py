@@ -12,6 +12,7 @@ from holodeck.lib.backends.validators import (
     validate_credentials,
     validate_embedding_provider,
     validate_nodejs,
+    validate_openai_agents,
     validate_response_format,
     validate_working_directory,
 )
@@ -612,3 +613,58 @@ class TestValidateResponseFormat:
         with pytest.raises(ConfigError) as exc_info:
             validate_response_format(missing)
         assert exc_info.value.field == "response_format"
+
+
+@pytest.mark.unit
+class TestValidateOpenAIAgents:
+    """A2 — collect-all-errors, side-effect-free openai_agents preflight."""
+
+    def _openai_agent(self, **openai: object) -> Agent:
+        kwargs: dict = {
+            "name": "a",
+            "model": LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            "instructions": Instructions(inline="hi"),
+        }
+        if openai:
+            kwargs["openai"] = openai
+        return Agent(**kwargs)
+
+    def test_passes_with_valid_creds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        validate_openai_agents(self._openai_agent())  # must not raise
+
+    def test_missing_credential_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        with pytest.raises(ConfigError, match="OPENAI_API_KEY"):
+            validate_openai_agents(self._openai_agent())
+
+    def test_collects_missing_creds_and_tool_conflict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        agent = self._openai_agent(
+            permissions={"allowed_tools": ["x", "y"], "disallowed_tools": ["y"]}
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            validate_openai_agents(agent)
+        message = str(exc_info.value)
+        assert "OPENAI_API_KEY" in message  # credential error
+        assert "y" in message  # conflict error — both surfaced together
+
+    def test_tool_conflict_alone_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        agent = self._openai_agent(
+            permissions={"allowed_tools": ["z"], "disallowed_tools": ["z"]}
+        )
+        with pytest.raises(ConfigError, match="z"):
+            validate_openai_agents(agent)
+
+    def test_no_sdk_side_effects(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        with (
+            patch("agents.set_default_openai_key") as set_key,
+            patch("agents.set_tracing_disabled") as disable_tracing,
+        ):
+            validate_openai_agents(self._openai_agent())
+        set_key.assert_not_called()
+        disable_tracing.assert_not_called()

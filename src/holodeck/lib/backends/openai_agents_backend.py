@@ -70,24 +70,20 @@ def _is_reasoning_model(name: str) -> bool:
     return n.startswith(("o1", "o3", "o4", "gpt-5"))
 
 
-def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
-    """Build the SDK ``model=`` argument for *agent* and validate credentials.
+def _preflight_credentials(agent: Agent) -> tuple[str, str | None]:
+    """Validate provider credentials for *agent* without any global side effects.
 
-    Both providers run on the Responses API. For ``provider: openai`` the
-    default Responses client is used, so the model-name string is returned;
-    ``OPENAI_API_KEY`` (or an explicit ``model.api_key``) must be available.
-
-    For ``provider: azure_openai`` a plain ``AsyncOpenAI`` client pointed at the
-    Azure ``/openai/v1`` surface is wrapped as an ``OpenAIResponsesModel``. SDK
-    tracing is disabled because no OpenAI-platform key is present to upload
-    traces with.
+    Resolves and checks the required credentials for the configured provider and
+    returns ``(api_key, endpoint)`` (``endpoint`` is ``None`` for ``openai``).
+    Unlike :func:`_build_model`, this performs **no** SDK global mutation
+    (``set_default_openai_key`` / ``set_tracing_disabled``), so it is safe to
+    call from config-time validation (``validate_openai_agents``).
 
     Args:
         agent: The agent configuration whose ``model`` selects the provider.
 
     Returns:
-        Either the model-name string (OpenAI) or an ``OpenAIResponsesModel``
-        instance (Azure), ready to pass as the SDK ``Agent(model=...)`` argument.
+        ``(api_key, endpoint)`` — ``endpoint`` is ``None`` for ``openai``.
 
     Raises:
         BackendInitError: If a required credential is missing, or the provider
@@ -103,12 +99,7 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
                 "OPENAI_API_KEY is required for provider 'openai'. "
                 "Set it in the environment or as model.api_key in the agent config."
             )
-        # The default Responses client reads OPENAI_API_KEY from the env; make
-        # an explicit config-supplied key authoritative for this process.
-        from agents import set_default_openai_key
-
-        set_default_openai_key(api_key)
-        return model_cfg.name
+        return api_key, None
 
     if provider == ProviderEnum.AZURE_OPENAI:
         api_key = _resolve_secret(model_cfg.api_key) or os.environ.get(
@@ -125,29 +116,117 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
                 "AZURE_OPENAI_ENDPOINT is required for provider 'azure_openai'. "
                 "Set it in the environment or as model.endpoint in the agent config."
             )
-
-        from agents import OpenAIResponsesModel, set_tracing_disabled
-        from openai import AsyncOpenAI
-
-        # No OpenAI-platform key is available in the Azure dev path, so disable
-        # the SDK's trace upload (it would otherwise fail / leak).
-        set_tracing_disabled(True)
-
-        client_kwargs: dict[str, Any] = {
-            "api_key": api_key,
-            "base_url": _azure_v1_base_url(endpoint),
-        }
-        # The v1 surface does not require an api-version; honor one only if the
-        # config pins it (e.g. to opt into a preview surface).
-        if model_cfg.api_version:
-            client_kwargs["default_query"] = {"api-version": model_cfg.api_version}
-
-        client = AsyncOpenAI(**client_kwargs)
-        # For Azure, ``model`` is the deployment name (model_cfg.name).
-        return OpenAIResponsesModel(model=model_cfg.name, openai_client=client)
+        return api_key, endpoint
 
     raise BackendInitError(
         f"The openai_agents backend does not support provider '{provider.value}'."
+    )
+
+
+def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
+    """Build the SDK ``model=`` argument for *agent* and validate credentials.
+
+    Both providers run on the Responses API. For ``provider: openai`` the
+    default Responses client is used, so the model-name string is returned;
+    ``OPENAI_API_KEY`` (or an explicit ``model.api_key``) must be available.
+
+    For ``provider: azure_openai`` a plain ``AsyncOpenAI`` client pointed at the
+    Azure ``/openai/v1`` surface is wrapped as an ``OpenAIResponsesModel``. SDK
+    tracing is disabled because no OpenAI-platform key is present to upload
+    traces with.
+
+    Credential resolution and validation are delegated to the side-effect-free
+    :func:`_preflight_credentials`; this function additionally performs the SDK
+    global mutations (``set_default_openai_key`` / ``set_tracing_disabled``)
+    that must NOT run during config-time validation.
+
+    Args:
+        agent: The agent configuration whose ``model`` selects the provider.
+
+    Returns:
+        Either the model-name string (OpenAI) or an ``OpenAIResponsesModel``
+        instance (Azure), ready to pass as the SDK ``Agent(model=...)`` argument.
+
+    Raises:
+        BackendInitError: If a required credential is missing, or the provider
+            is not supported by this backend.
+    """
+    model_cfg = agent.model
+    api_key, endpoint = _preflight_credentials(agent)
+
+    if model_cfg.provider == ProviderEnum.OPENAI:
+        # The default Responses client reads OPENAI_API_KEY from the env; make
+        # an explicit config-supplied key authoritative for this process.
+        from agents import set_default_openai_key
+
+        set_default_openai_key(api_key)
+        return model_cfg.name
+
+    # AZURE_OPENAI — _preflight_credentials guarantees the provider is one of
+    # the two supported values (otherwise it already raised) and a non-None
+    # endpoint here.
+    if endpoint is None:  # pragma: no cover - preflight guarantees non-None
+        raise BackendInitError(
+            "AZURE_OPENAI_ENDPOINT is required for provider 'azure_openai'."
+        )
+
+    from agents import OpenAIResponsesModel, set_tracing_disabled
+    from openai import AsyncOpenAI
+
+    # No OpenAI-platform key is available in the Azure dev path, so disable
+    # the SDK's trace upload (it would otherwise fail / leak).
+    set_tracing_disabled(True)
+
+    client_kwargs: dict[str, Any] = {
+        "api_key": api_key,
+        "base_url": _azure_v1_base_url(endpoint),
+    }
+    # The v1 surface does not require an api-version; honor one only if the
+    # config pins it (e.g. to opt into a preview surface).
+    if model_cfg.api_version:
+        client_kwargs["default_query"] = {"api-version": model_cfg.api_version}
+
+    client = AsyncOpenAI(**client_kwargs)
+    # For Azure, ``model`` is the deployment name (model_cfg.name).
+    return OpenAIResponsesModel(model=model_cfg.name, openai_client=client)
+
+
+def _max_turns(agent: Agent) -> int:
+    """Return the configured ``max_turns`` for *agent* (default 20 when unset)."""
+    if agent.openai is not None:
+        return agent.openai.max_turns
+    return 20
+
+
+def _build_run_config(agent: Agent, *, group_id: str | None = None) -> Any:
+    """Build an SDK ``RunConfig`` carrying trace identity and sensitivity.
+
+    Every ``Runner.run`` call carries ``workflow_name`` (the agent name); session
+    runs additionally carry ``group_id`` to correlate the session's turns in the
+    trace. ``trace_include_sensitive_data`` is bound to
+    ``observability.traces.capture_content`` — the SDK default is **True** (via
+    env), which would upload raw tool inputs/outputs to platform.openai.com, so
+    HoloDeck sets it explicitly to keep traces clean unless content capture is
+    opted in.
+
+    Args:
+        agent: The agent configuration.
+        group_id: The session id for session runs; ``None`` for ``invoke_once``.
+
+    Returns:
+        A populated ``RunConfig``.
+    """
+    from agents import RunConfig
+
+    capture_content = False
+    if agent.observability is not None:
+        capture_content = agent.observability.traces.capture_content
+
+    return RunConfig(
+        workflow_name=agent.name,
+        group_id=group_id,
+        trace_metadata={"holodeck.agent": agent.name},
+        trace_include_sensitive_data=capture_content,
     )
 
 
@@ -266,10 +345,37 @@ class OpenAIAgentsSession:
     processes.
     """
 
-    def __init__(self, sdk_agent: Any, sqlite_session: Any) -> None:
-        """Bind the session to an SDK agent and its SQLite-backed history."""
+    def __init__(
+        self,
+        sdk_agent: Any,
+        sqlite_session: Any,
+        *,
+        agent_config: Agent | None = None,
+        group_id: str | None = None,
+        max_turns: int = 20,
+    ) -> None:
+        """Bind the session to an SDK agent and its SQLite-backed history.
+
+        Args:
+            sdk_agent: The built SDK ``Agent``.
+            sqlite_session: The SDK ``SQLiteSession`` persisting turn history.
+            agent_config: The HoloDeck agent config used to build the per-run
+                ``RunConfig``. When ``None`` no ``RunConfig`` is attached.
+            group_id: The session id, carried as ``RunConfig.group_id`` so the
+                session's turns correlate in the trace.
+            max_turns: The agent-loop cap passed to ``Runner.run``.
+        """
         self._sdk_agent = sdk_agent
         self._session = sqlite_session
+        self._agent_config = agent_config
+        self._group_id = group_id
+        self._max_turns = max_turns
+
+    def _run_config(self) -> Any:
+        """Build the session ``RunConfig`` (carrying ``group_id``), or ``None``."""
+        if self._agent_config is None:
+            return None
+        return _build_run_config(self._agent_config, group_id=self._group_id)
 
     async def prepare(self) -> None:
         """No-op. The SQLite session is ready at construction time."""
@@ -289,7 +395,13 @@ class OpenAIAgentsSession:
         from agents import Runner
 
         try:
-            result = await Runner.run(self._sdk_agent, message, session=self._session)
+            result = await Runner.run(
+                self._sdk_agent,
+                message,
+                session=self._session,
+                max_turns=self._max_turns,
+                run_config=self._run_config(),
+            )
         except Exception as exc:  # noqa: BLE001 - surfaced via ExecutionResult
             return ExecutionResult(
                 response="",
@@ -315,7 +427,13 @@ class OpenAIAgentsSession:
         from agents import Runner
         from openai.types.responses import ResponseTextDeltaEvent
 
-        result = Runner.run_streamed(self._sdk_agent, message, session=self._session)
+        result = Runner.run_streamed(
+            self._sdk_agent,
+            message,
+            session=self._session,
+            max_turns=self._max_turns,
+            run_config=self._run_config(),
+        )
         async for event in result.stream_events():
             if event.type != "raw_response_event":
                 continue
@@ -421,7 +539,12 @@ class OpenAIAgentsBackend:
         from agents import Runner
 
         try:
-            result = await Runner.run(sdk_agent, message)
+            result = await Runner.run(
+                sdk_agent,
+                message,
+                max_turns=_max_turns(self._agent_config),
+                run_config=_build_run_config(self._agent_config),
+            )
         except Exception as exc:  # noqa: BLE001 - re-raised as backend error
             raise BackendSessionError(
                 f"OpenAI Agents run failed: {type(exc).__name__}: {exc}"
@@ -442,8 +565,15 @@ class OpenAIAgentsBackend:
         sdk_agent = self._require_agent()
         from agents import SQLiteSession
 
-        session = SQLiteSession(f"holodeck-{uuid.uuid4().hex}")
-        return OpenAIAgentsSession(sdk_agent=sdk_agent, sqlite_session=session)
+        session_id = f"holodeck-{uuid.uuid4().hex}"
+        session = SQLiteSession(session_id)
+        return OpenAIAgentsSession(
+            sdk_agent=sdk_agent,
+            sqlite_session=session,
+            agent_config=self._agent_config,
+            group_id=session_id,
+            max_turns=_max_turns(self._agent_config),
+        )
 
     async def teardown(self) -> None:
         """Release backend resources. No-op for this backend."""

@@ -305,6 +305,49 @@ def validate_working_directory(path: str | None) -> None:
         )
 
 
+def validate_openai_agents(agent: Agent) -> None:
+    """Validate an ``openai_agents`` agent's config, collecting all errors.
+
+    Runs the side-effect-free credential preflight and the ``openai.permissions``
+    consistency check (``allowed_tools ∩ disallowed_tools`` must be empty) in a
+    single pass, surfacing every problem together rather than failing on the
+    first one (FR-110). This intentionally does NOT trigger the SDK global
+    mutations that ``_build_model`` performs (``set_default_openai_key`` /
+    ``set_tracing_disabled``) — credential resolution is delegated to the
+    side-effect-free ``_preflight_credentials`` helper.
+
+    Args:
+        agent: Agent configuration to validate.
+
+    Raises:
+        ConfigError: If any credential is missing or tool lists conflict; the
+            message aggregates every problem found.
+    """
+    from holodeck.lib.backends.openai_agents_backend import _preflight_credentials
+
+    errors: list[str] = []
+
+    try:
+        _preflight_credentials(agent)
+    except Exception as exc:  # noqa: BLE001 - aggregated into a single ConfigError
+        errors.append(str(exc))
+
+    openai_cfg = agent.openai
+    if openai_cfg is not None and openai_cfg.permissions is not None:
+        allowed = set(openai_cfg.permissions.allowed_tools or [])
+        disallowed = set(openai_cfg.permissions.disallowed_tools or [])
+        conflict = sorted(allowed & disallowed)
+        if conflict:
+            errors.append(
+                "Tools listed in both allowed_tools and disallowed_tools: "
+                f"{', '.join(conflict)}. A tool cannot be both allowed and "
+                "disallowed."
+            )
+
+    if errors:
+        raise ConfigError("openai", " ".join(errors))
+
+
 def validate_response_format(response_format: dict[str, Any] | str | None) -> None:
     """Validate response format schema is serializable and accessible.
 

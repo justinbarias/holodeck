@@ -610,3 +610,107 @@ class TestSession:
         sqlite_session = SimpleNamespace()  # no .close attribute
         session = OpenAIAgentsSession(MagicMock(), sqlite_session)
         await session.close()  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Task A2 — max_turns wiring + side-effect-free preflight
+# Task A3 — RunConfig plumbing (workflow_name / group_id / trace sensitivity)
+# ---------------------------------------------------------------------------
+
+
+def _make_agent_with_openai(
+    *, max_turns: int | None = None, capture_content: bool | None = None
+) -> Agent:
+    """Agent with an openai: block and optional observability tracing config."""
+    kwargs: dict = {
+        "name": "test-agent",
+        "model": LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o-mini"),
+        "instructions": Instructions(inline="Be helpful."),
+    }
+    if max_turns is not None:
+        kwargs["openai"] = {"max_turns": max_turns}
+    if capture_content is not None:
+        kwargs["observability"] = {"traces": {"capture_content": capture_content}}
+    return Agent(**kwargs)
+
+
+@pytest.mark.unit
+class TestMaxTurnsWiring:
+    """openai.max_turns reaches Runner.run; default 20 when unset."""
+
+    @pytest.mark.asyncio
+    async def test_invoke_once_default_max_turns(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _initialized_backend(monkeypatch)  # no openai block
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(return_value=_fake_run_result(final_output="ok"))
+            await backend.invoke_once("hi")
+        assert runner.run.call_args.kwargs["max_turns"] == 20
+
+    @pytest.mark.asyncio
+    async def test_invoke_once_configured_max_turns(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        backend = OpenAIAgentsBackend(_make_agent_with_openai(max_turns=7))
+        backend._sdk_agent = MagicMock(name="sdk_agent")
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(return_value=_fake_run_result(final_output="ok"))
+            await backend.invoke_once("hi")
+        assert runner.run.call_args.kwargs["max_turns"] == 7
+
+
+@pytest.mark.unit
+class TestRunConfigBuild:
+    """A3 — _build_run_config maps identity + trace sensitivity."""
+
+    def test_invoke_run_config_has_workflow_name_no_group(self) -> None:
+        from holodeck.lib.backends.openai_agents_backend import _build_run_config
+
+        rc = _build_run_config(_make_agent_with_openai())
+        assert rc.workflow_name == "test-agent"
+        assert rc.group_id is None
+
+    def test_capture_content_false_by_default(self) -> None:
+        from holodeck.lib.backends.openai_agents_backend import _build_run_config
+
+        rc = _build_run_config(_make_agent_with_openai())
+        assert rc.trace_include_sensitive_data is False
+
+    def test_capture_content_true_includes_sensitive(self) -> None:
+        from holodeck.lib.backends.openai_agents_backend import _build_run_config
+
+        rc = _build_run_config(_make_agent_with_openai(capture_content=True))
+        assert rc.trace_include_sensitive_data is True
+
+    def test_session_run_config_carries_group_id(self) -> None:
+        from holodeck.lib.backends.openai_agents_backend import _build_run_config
+
+        rc = _build_run_config(_make_agent_with_openai(), group_id="sess-1")
+        assert rc.group_id == "sess-1"
+
+    @pytest.mark.asyncio
+    async def test_invoke_once_passes_run_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _initialized_backend(monkeypatch)
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(return_value=_fake_run_result(final_output="ok"))
+            await backend.invoke_once("hi")
+        rc = runner.run.call_args.kwargs["run_config"]
+        assert rc.workflow_name == "test-agent"
+
+    @pytest.mark.asyncio
+    async def test_session_send_passes_group_id_run_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _initialized_backend(monkeypatch)
+        with patch("agents.SQLiteSession", return_value=MagicMock()):
+            session = await backend.create_session()
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(return_value=_fake_run_result(final_output="ok"))
+            await session.send("hi")
+        kwargs = runner.run.call_args.kwargs
+        assert kwargs["max_turns"] == 20
+        assert kwargs["run_config"].group_id is not None
