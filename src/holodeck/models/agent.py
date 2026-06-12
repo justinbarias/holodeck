@@ -21,6 +21,7 @@ from holodeck.models.deployment import DeploymentConfig
 from holodeck.models.evaluation import EvaluationConfig
 from holodeck.models.llm import LLMProvider
 from holodeck.models.observability import ObservabilityConfig
+from holodeck.models.openai_config import OpenAIConfig
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.tool import ToolUnion
 
@@ -113,6 +114,13 @@ class Agent(BaseModel):
         description=(
             "Claude Agent SDK-specific settings. "
             "Applicable only when model.provider: anthropic."
+        ),
+    )
+    openai: OpenAIConfig | None = Field(
+        default=None,
+        description=(
+            "OpenAI Agents SDK-specific settings. "
+            "Applicable only when model.provider: openai or azure_openai."
         ),
     )
 
