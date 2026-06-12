@@ -7,9 +7,9 @@ acceptance criteria + verification pass.
 
 ## Phase A — `openai:` config foundation
 - [x] A1 — `OpenAIConfig` model + `openai:` block on `Agent` (+ schema regen)  · M
-- [ ] A2 — Backend consumes `OpenAIConfig`; **side-effect-free** collect-all-errors `validate_openai_agents`  · S
-- [ ] A3 — `RunConfig` plumbing: `workflow_name` (all runs) / `group_id` (session runs) / `trace_metadata`; `trace_include_sensitive_data` ← `capture_content`  · S
-- [ ] **Checkpoint A** — block validates, backend reads sizing/turns, RunConfig wired, validation side-effect-free, suite green, schema valid
+- [x] A2 — Backend consumes `OpenAIConfig`; **side-effect-free** collect-all-errors `validate_openai_agents`  · S
+- [x] A3 — `RunConfig` plumbing: `workflow_name` (all runs) / `group_id` (session runs) / `trace_metadata`; `trace_include_sensitive_data` ← `capture_content`  · S
+- [x] **Checkpoint A** — block validates, backend reads sizing/turns, RunConfig wired, validation side-effect-free, suite green, schema valid
 
 ## Phase B — Native RAG tool adapters
 - [ ] B1 — vectorstore + hierarchical_document → SDK `FunctionTool` (reuse `.search()`/embedder); `type: prompt` → skip-with-warning  · M
