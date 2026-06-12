@@ -6,7 +6,7 @@ follow-up specs: **P3 hardened/Envoy**, **US8 sandbox**, **computer-use**, **HIT
 acceptance criteria + verification pass.
 
 ## Phase A — `openai:` config foundation
-- [ ] A1 — `OpenAIConfig` model + `openai:` block on `Agent` (+ schema regen)  · M
+- [x] A1 — `OpenAIConfig` model + `openai:` block on `Agent` (+ schema regen)  · M
 - [ ] A2 — Backend consumes `OpenAIConfig`; **side-effect-free** collect-all-errors `validate_openai_agents`  · S
 - [ ] A3 — `RunConfig` plumbing: `workflow_name` (all runs) / `group_id` (session runs) / `trace_metadata`; `trace_include_sensitive_data` ← `capture_content`  · S
 - [ ] **Checkpoint A** — block validates, backend reads sizing/turns, RunConfig wired, validation side-effect-free, suite green, schema valid
