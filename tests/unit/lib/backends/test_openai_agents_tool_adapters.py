@@ -149,7 +149,7 @@ class TestBuildFunctionTools:
 class TestUnsupportedTools:
     @pytest.mark.parametrize(
         "tool_type",
-        ["vectorstore", "mcp", "hierarchical_document", "skill", "prompt"],
+        ["mcp", "skill"],
     )
     def test_unsupported_type_raises_naming_type(self, tool_type: str) -> None:
         cfg = SimpleNamespace(type=tool_type, name="x")
@@ -157,6 +157,141 @@ class TestUnsupportedTools:
             build_sdk_tools([cfg], base_dir=None)  # type: ignore[list-item]
 
     def test_error_mentions_backend(self) -> None:
-        cfg = SimpleNamespace(type="vectorstore", name="kb")
+        cfg = SimpleNamespace(type="mcp", name="srv")
         with pytest.raises(ConfigError, match="openai_agents"):
             build_sdk_tools([cfg], base_dir=None)  # type: ignore[list-item]
+
+
+# ---------------------------------------------------------------------------
+# build_sdk_tools — vectorstore / hierarchical_document / prompt (B1)
+# ---------------------------------------------------------------------------
+
+
+class _FakeVectorStore:
+    """Stand-in for an initialized VectorStoreTool."""
+
+    is_initialized = True
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    async def search(self, query: str) -> str:
+        return self._text
+
+
+class _FakeResult:
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def format(self) -> str:
+        return self._text
+
+
+class _FakeHierDoc:
+    """Stand-in for an initialized HierarchicalDocumentTool."""
+
+    _initialized = True
+
+    def __init__(self, results: list[_FakeResult]) -> None:
+        self._results = results
+
+    async def search(self, query: str) -> list[_FakeResult]:
+        return self._results
+
+
+@pytest.mark.unit
+class TestVectorstoreAdapter:
+    def _cfg(self) -> object:
+        from holodeck.models.tool import VectorstoreTool
+
+        return VectorstoreTool(name="kb", description="knowledge base", source=".")
+
+    def test_builds_search_tool_and_invokes(self) -> None:
+        import asyncio
+
+        cfg = self._cfg()
+        inst = _FakeVectorStore("found: 42")
+        tools = build_sdk_tools([cfg], base_dir=None, tool_instances={"kb": inst})  # type: ignore[list-item]
+        assert len(tools) == 1
+        assert tools[0].name == "kb_search"
+        assert set(tools[0].params_json_schema["properties"]) == {"query"}
+        out = asyncio.run(tools[0].on_invoke_tool(None, '{"query": "life"}'))
+        assert out == "found: 42"
+
+    def test_empty_result_returns_no_results_sentinel(self) -> None:
+        import asyncio
+
+        tools = build_sdk_tools(
+            [self._cfg()],  # type: ignore[list-item]
+            base_dir=None,
+            tool_instances={"kb": _FakeVectorStore("")},
+        )
+        out = asyncio.run(tools[0].on_invoke_tool(None, '{"query": "x"}'))
+        assert out == "No results found."
+
+    def test_missing_instance_raises_backend_init_error(self) -> None:
+        from holodeck.lib.backends.base import BackendInitError
+
+        with pytest.raises(BackendInitError, match="kb"):
+            build_sdk_tools([self._cfg()], base_dir=None, tool_instances={})  # type: ignore[list-item]
+
+
+@pytest.mark.unit
+class TestHierarchicalDocAdapter:
+    def _cfg(self) -> object:
+        from holodeck.models.tool import HierarchicalDocumentToolConfig
+
+        return HierarchicalDocumentToolConfig(
+            name="docs", description="docs", source="."
+        )
+
+    def test_joins_results_with_separator(self) -> None:
+        import asyncio
+
+        inst = _FakeHierDoc([_FakeResult("A"), _FakeResult("B")])
+        tools = build_sdk_tools(
+            [self._cfg()],  # type: ignore[list-item]
+            base_dir=None,
+            tool_instances={"docs": inst},
+        )
+        assert tools[0].name == "docs_search"
+        out = asyncio.run(tools[0].on_invoke_tool(None, '{"query": "x"}'))
+        assert out == "A\n---\nB"
+
+    def test_empty_results_returns_sentinel(self) -> None:
+        import asyncio
+
+        tools = build_sdk_tools(
+            [self._cfg()],  # type: ignore[list-item]
+            base_dir=None,
+            tool_instances={"docs": _FakeHierDoc([])},
+        )
+        out = asyncio.run(tools[0].on_invoke_tool(None, '{"query": "x"}'))
+        assert out == "No results found."
+
+    def test_missing_instance_raises_backend_init_error(self) -> None:
+        from holodeck.lib.backends.base import BackendInitError
+
+        with pytest.raises(BackendInitError, match="docs"):
+            build_sdk_tools([self._cfg()], base_dir=None, tool_instances={})  # type: ignore[list-item]
+
+
+@pytest.mark.unit
+class TestPromptToolSkipped:
+    def test_prompt_tool_skipped_with_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        from holodeck.models.tool import PromptTool
+
+        cfg = PromptTool(
+            name="p",
+            description="a prompt",
+            template="Do {{topic}}",
+            parameters={"topic": {"type": "string"}},
+        )
+        with caplog.at_level(logging.WARNING):
+            tools = build_sdk_tools([cfg], base_dir=None)
+        assert tools == []
+        assert any("prompt" in r.message and "p" in r.message for r in caplog.records)

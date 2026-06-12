@@ -15,6 +15,7 @@ extra is not installed (SC-005).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import uuid
 from collections.abc import AsyncGenerator
@@ -30,10 +31,13 @@ from holodeck.lib.backends.base import (
 from holodeck.models.agent import Agent
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.token_usage import TokenUsage
+from holodeck.models.tool import HierarchicalDocumentToolConfig, VectorstoreTool
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
     from agents import ModelSettings, OpenAIResponsesModel, RunConfig, RunResult
     from pydantic import SecretStr
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_secret(value: SecretStr | None) -> str | None:
@@ -469,6 +473,8 @@ class OpenAIAgentsBackend:
         self._agent_config = agent
         self._base_dir = base_dir
         self._sdk_agent: Any | None = None
+        self._tool_instances: dict[str, Any] = {}
+        self._owned_tools: list[Any] = []
 
     def _resolve_base_dir(self) -> Path | None:
         """Return the explicit base_dir or the ``agent_base_dir`` context value."""
@@ -497,7 +503,10 @@ class OpenAIAgentsBackend:
         instructions = resolve_instructions(
             self._agent_config.instructions, base_dir=base_dir
         )
-        tools = build_sdk_tools(self._agent_config.tools, base_dir)
+        await self._initialize_tool_instances()
+        tools = build_sdk_tools(
+            self._agent_config.tools, base_dir, tool_instances=self._tool_instances
+        )
 
         model_settings = _build_model_settings(self._agent_config.model)
 
@@ -508,6 +517,49 @@ class OpenAIAgentsBackend:
             tools=tools,
             model_settings=model_settings,
         )
+
+    async def _initialize_tool_instances(self) -> None:
+        """Initialize vectorstore / hierarchical-document tool instances.
+
+        Populates ``self._tool_instances`` (keyed by config name) so
+        ``build_sdk_tools`` can wrap each ``.search()`` callable, and records the
+        instances in ``self._owned_tools`` for cleanup at teardown. Skips when the
+        agent declares no RAG tools. Embedding-provider validation runs first so a
+        misconfiguration fails before any ingestion work.
+
+        Raises:
+            ConfigError: If the embedding provider is invalid for these tools.
+            BackendInitError: If tool initialization fails.
+        """
+        agent = self._agent_config
+        if not agent.tools:
+            return
+        has_rag = any(
+            isinstance(t, VectorstoreTool | HierarchicalDocumentToolConfig)
+            for t in agent.tools
+        )
+        if not has_rag:
+            return
+
+        from holodeck.lib.backends.validators import validate_embedding_provider
+        from holodeck.lib.tool_initializer import ToolInitializerError, initialize_tools
+
+        validate_embedding_provider(agent)
+
+        base = self._resolve_base_dir()
+        try:
+            instances = await initialize_tools(
+                agent=agent,
+                execution_config=agent.execution,
+                base_dir=str(base) if base is not None else None,
+            )
+        except ToolInitializerError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - normalized to BackendInitError
+            raise BackendInitError(f"Failed to initialize tools: {exc}") from exc
+
+        self._tool_instances = instances
+        self._owned_tools = list(instances.values())
 
     def _require_agent(self) -> Any:
         """Return the built SDK agent or raise if ``initialize`` was skipped."""
@@ -576,5 +628,13 @@ class OpenAIAgentsBackend:
         )
 
     async def teardown(self) -> None:
-        """Release backend resources. No-op for this backend."""
-        return None
+        """Release backend resources, cleaning up owned RAG tool instances."""
+        for tool_inst in self._owned_tools:
+            cleanup = getattr(tool_inst, "cleanup", None)
+            if callable(cleanup):
+                try:
+                    await cleanup()
+                except Exception as exc:  # noqa: BLE001 - best-effort cleanup
+                    logger.warning("Error cleaning up tool: %s", exc)
+        self._owned_tools = []
+        self._tool_instances = {}

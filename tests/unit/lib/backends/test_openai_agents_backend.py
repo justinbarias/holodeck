@@ -714,3 +714,91 @@ class TestRunConfigBuild:
         kwargs = runner.run.call_args.kwargs
         assert kwargs["max_turns"] == 20
         assert kwargs["run_config"].group_id is not None
+
+
+# ---------------------------------------------------------------------------
+# Task B1 — RAG tool-instance initialization + teardown cleanup
+# ---------------------------------------------------------------------------
+
+
+def _agent_with_vectorstore() -> Agent:
+    from holodeck.models.tool import VectorstoreTool
+
+    return Agent(
+        name="test-agent",
+        model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o-mini"),
+        instructions=Instructions(inline="Be helpful."),
+        tools=[VectorstoreTool(name="kb", description="knowledge", source=".")],
+    )
+
+
+@pytest.mark.unit
+class TestRagInstanceInit:
+    """initialize() builds RAG instances and threads them into build_sdk_tools."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_threads_instances_and_validates_embeddings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        backend = OpenAIAgentsBackend(_agent_with_vectorstore())
+        fake_instances = {"kb": MagicMock(name="vs_instance")}
+        with (
+            patch("agents.Agent", return_value=MagicMock(name="sdk_agent")),
+            patch("agents.ModelSettings"),
+            patch("agents.set_default_openai_key"),
+            patch(
+                "holodeck.lib.tool_initializer.initialize_tools",
+                new=AsyncMock(return_value=fake_instances),
+            ) as init_tools,
+            patch(
+                "holodeck.lib.backends.validators.validate_embedding_provider"
+            ) as validate_embeddings,
+            patch(
+                "holodeck.lib.backends.openai_agents_tool_adapters.build_sdk_tools",
+                return_value=[],
+            ) as build_tools,
+        ):
+            await backend.initialize()
+        init_tools.assert_awaited_once()
+        validate_embeddings.assert_called_once()
+        assert build_tools.call_args.kwargs["tool_instances"] == fake_instances
+
+    @pytest.mark.asyncio
+    async def test_initialize_skips_rag_init_without_rag_tools(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        agent = _make_agent(ProviderEnum.OPENAI, "gpt-4o-mini")  # no tools
+        backend = OpenAIAgentsBackend(agent)
+        with (
+            patch("agents.Agent", return_value=MagicMock()),
+            patch("agents.ModelSettings"),
+            patch("agents.set_default_openai_key"),
+            patch(
+                "holodeck.lib.tool_initializer.initialize_tools",
+                new=AsyncMock(return_value={}),
+            ) as init_tools,
+            patch(
+                "holodeck.lib.backends.openai_agents_tool_adapters.build_sdk_tools",
+                return_value=[],
+            ),
+        ):
+            await backend.initialize()
+        init_tools.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestTeardownCleansOwnedTools:
+    @pytest.mark.asyncio
+    async def test_teardown_awaits_cleanup_and_clears(self) -> None:
+        agent = _make_agent()
+        backend = OpenAIAgentsBackend(agent)
+        inst = MagicMock(name="owned_tool")
+        inst.cleanup = AsyncMock()
+        backend._owned_tools = [inst]
+        backend._tool_instances = {"kb": inst}
+        await backend.teardown()
+        inst.cleanup.assert_awaited_once()
+        assert backend._owned_tools == []
+        assert backend._tool_instances == {}
