@@ -32,7 +32,7 @@ from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.token_usage import TokenUsage
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
-    from agents import ModelSettings, OpenAIResponsesModel, RunResult
+    from agents import ModelSettings, OpenAIResponsesModel, RunConfig, RunResult
     from pydantic import SecretStr
 
 
@@ -198,7 +198,7 @@ def _max_turns(agent: Agent) -> int:
     return 20
 
 
-def _build_run_config(agent: Agent, *, group_id: str | None = None) -> Any:
+def _build_run_config(agent: Agent, *, group_id: str | None = None) -> RunConfig:
     """Build an SDK ``RunConfig`` carrying trace identity and sensitivity.
 
     Every ``Runner.run`` call carries ``workflow_name`` (the agent name); session
@@ -371,7 +371,7 @@ class OpenAIAgentsSession:
         self._group_id = group_id
         self._max_turns = max_turns
 
-    def _run_config(self) -> Any:
+    def _run_config(self) -> RunConfig | None:
         """Build the session ``RunConfig`` (carrying ``group_id``), or ``None``."""
         if self._agent_config is None:
             return None
