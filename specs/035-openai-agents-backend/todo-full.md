@@ -12,8 +12,8 @@ acceptance criteria + verification pass.
 - [x] **Checkpoint A** — block validates, backend reads sizing/turns, RunConfig wired, validation side-effect-free, suite green, schema valid
 
 ## Phase B — Native RAG tool adapters
-- [ ] B1 — vectorstore + hierarchical_document → SDK `FunctionTool` (reuse `.search()`/embedder); `type: prompt` → skip-with-warning  · M
-- [ ] **Checkpoint B** — grounded query answers; tool-init endpoints smoke green
+- [x] B1 — vectorstore + hierarchical_document → SDK `FunctionTool` (reuse `.search()`/embedder); `type: prompt` → skip-with-warning  · M
+- [x] **Checkpoint B** — grounded query answers; tool-init endpoints smoke green *(unit/mocked; creds-gated live check deferred to K2)*
 
 ## Phase C — MCP transports (spec 027)
 - [ ] C1 — stdio/sse/http → `agents.mcp.*`; websocket skip; `create_static_tool_filter` (note: SDK-built FunctionTools — no guardrail/wrapper attachment)  · M
