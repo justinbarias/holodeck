@@ -8,7 +8,7 @@
 - [x] **T1** FEEL evaluator spike (bkflow-feel → pySFeel fallback); record decision + supported subset in `research.md` — **chose bkflow-feel 1.2.0 (MIT); full FR-010 subset covered; caveats + static-rejection list in research.md**
 
 ## Phase 1 — US1: single determination node (P1)
-- [ ] **T2** Workflow Pydantic models + DAG validation + `schemas/workflow.schema.json` + sync test
+- [x] **T2** Workflow Pydantic models + DAG validation + `schemas/workflow.schema.json` + sync test — **shape-discriminated node union (edge/policy/human), extra=forbid closes the AI-as-verdict route (SC-008); `source:` annotation added; 24 tests green**
 - [ ] **T3** Decision-table model + loader + FEEL subset wrapper (static rejection w/ locator) *(needs T1)*
 - [ ] **T4** Hit-policy evaluation UNIQUE/FIRST/PRIORITY + SC-004 conformance suite *(needs T3)*
 - [ ] **T5** Edge-node executor + schema gate (Claude-only, mocked backend tests) *(needs T2)*
