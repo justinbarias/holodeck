@@ -7,8 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **OpenAI Agents native backend** (Feature #035) — `model.provider: openai` and `azure_openai` now run on a first-class backend built directly on the OpenAI Agents SDK (`Agent` + `Runner`), replacing the former Semantic Kernel agent path. Verified end-to-end against Azure OpenAI with the financial-assistant sample (hierarchical-document RAG over Qdrant + numeric eval).
+  - **Tools**: Python `function` tools, plus `vectorstore` and `hierarchical_document` RAG tools (reusing the same `.search()`/embedding layer as the Claude backend; surfaced to the model as `{name}_search`).
+  - **MCP**: `stdio` / `sse` / `http` transports map to the SDK MCP server classes with `${VAR}` env/header substitution and per-server `allowed_tools` static filtering; `transport: websocket` is skipped with a warning.
+  - **Structured output**: `response_format` (JSON-schema dict or file path) drives the SDK output type; strict mode auto-enables when the schema qualifies. **Note:** OpenAI structured outputs reject `oneOf` — use `anyOf` (the same schema works on the Claude backend).
+  - **Reasoning `thinking`**: populated from reasoning-model summaries when `effort` is set.
+  - **`openai:` config block** (sibling of `claude:`): `max_turns`, `effort` (`low|medium|high|max`; `max` → SDK `xhigh`), `max_budget_usd` (per-session cost cap → `BackendBudgetExceededError` with partial response), `fallback_model` (one fallback attempt on 429/5xx after primary retries exhaust), `disallowed_tools`, `permissions`, and serve-sizing knobs.
+  - **Tracing**: an OTel-mirroring `TracingProcessor` reflects SDK spans into the HoloDeck OTel pipeline. `provider: openai` retains the platform.openai.com upload alongside the mirror; `azure_openai` mirrors only; `observability.disable_provider_tracing: true` forces mirror-only. `trace_include_sensitive_data` is tied to `observability.traces.capture_content` (default off).
+  - **Roadmap (not yet shipped on this backend)**: subagents/handoffs, YAML hooks, hosted tools, default credential-redaction guardrails, and `holodeck serve` / `holodeck deploy` (all fully supported on the Claude backend).
+
 ### Changed
 
+- **Backend routing.** `openai` / `azure_openai` now route to the OpenAI Agents native backend (previously the Semantic Kernel path); `ollama` routes to the Claude backend. Selection remains automatic by `model.provider`.
+- **Documentation overhaul.** Semantic Kernel is no longer presented as a user-facing backend; a new [OpenAI Backend](guides/openai-backend.md) guide is added and the Semantic Kernel Backend guide is removed (Ollama setup migrated into [LLM Providers](guides/llm-providers.md)). Every guide now leads with a runnable **Quick start** section before reference detail.
 - **Claude backend now defaults to settings isolation.** The spawned `claude` CLI subprocess no longer inherits plugins, skills, or hooks from `~/.claude` or `.claude/`. HoloDeck passes `setting_sources=[]` to the SDK unless the agent's YAML opts in via the new `claude.setting_sources` field. Accepted values: `user`, `project`, `local`, or `all`. **Migration:** if your agents relied on host-machine Claude config (e.g. a project `CLAUDE.md` or a custom skill), add `setting_sources: [project]` (or the layers you need) to the `claude:` block. See [Claude Backend → Settings isolation](guides/claude-backend.md#settings-isolation-plugins-skills-hooks).
 - **OTel instrumentation bumped to `otel-instrumentation-claude-agent-sdk>=0.0.6`**, which structurally fixes the frozen `from claude_agent_sdk import query` import path so `invoke_agent` / `execute_tool` spans are emitted regardless of how callers reference the SDK's top-level `query()`.
 
