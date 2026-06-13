@@ -71,6 +71,16 @@ All verified against bkflow-feel **1.2.0** (the spike initially probed
    `lark.exceptions.UnexpectedInput` (parse time); type/value errors as
    `bkflow_feel.exceptions.ValidationError` (eval time). Both must be caught
    and re-raised through `holodeck.lib.errors` with locators.
+6. **`date(..)` accepts only a quoted literal, not a variable.** `date(income.
+   statement_date)` does **not** parse — the `date_func` production wants a
+   string literal (`date("2026-01-01")`), so the `dmn-yaml-mapping.md` example
+   `date(application_date) - date(income.statement_date)` is unevaluable as
+   written. → Date-typed inputs are supplied to the FEEL context as Python
+   `datetime.date` objects and subtracted directly (`application_date -
+   income.statement_date`), which yields a `timedelta` (caveat 1). The
+   gate-schema `format: date` fields become `date` objects at the workflow
+   boundary; the table's `inputs[].expression` does bare subtraction, never
+   `date(variable)`.
 
 ## Static-rejection list (input to T3)
 

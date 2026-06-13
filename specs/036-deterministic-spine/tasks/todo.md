@@ -9,7 +9,7 @@
 
 ## Phase 1 — US1: single determination node (P1)
 - [x] **T2** Workflow Pydantic models + DAG validation + `schemas/workflow.schema.json` + sync test — **shape-discriminated node union (edge/policy/human), extra=forbid closes the AI-as-verdict route (SC-008); `source:` annotation added; 24 tests green**
-- [ ] **T3** Decision-table model + loader + FEEL subset wrapper (static rejection w/ locator) *(needs T1)*
+- [x] **T3** Decision-table model + loader + FEEL subset wrapper (static rejection w/ locator) *(needs T1)* — **`DecisionTable` owns `hit_policy`; keyed `when` cells; three failure channels (DecisionTableError / FeelValidationError w/ table·rule·cell locator / pydantic ValidationError); allowlist walker over the lark tree; 104 workflow tests green. research.md caveat 6 records `date(literal)`-only.**
 - [ ] **T4** Hit-policy evaluation UNIQUE/FIRST/PRIORITY + SC-004 conformance suite *(needs T3)*
 - [ ] **T5** Edge-node executor + schema gate (Claude-only, mocked backend tests) *(needs T2)*
 - [ ] **T6** Runner + `holodeck workflow run` (single level, minimal OTel spans) *(needs T4, T5)*
