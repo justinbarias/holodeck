@@ -50,7 +50,7 @@ nav:
     - Deployment: guides/deployment.md
     - Observability: guides/observability.md
   - Examples:
-    - Overview: examples/README.md
+    - Examples: examples/README.md
   - API Reference:
     - Models: api/models.md
     - Configuration: api/config-loader.md
