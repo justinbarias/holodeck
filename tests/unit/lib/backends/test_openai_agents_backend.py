@@ -22,6 +22,7 @@ from holodeck.lib.backends.openai_agents_backend import (
     _azure_v1_base_url,
     _build_model,
     _build_model_settings,
+    _build_reasoning,
     _is_reasoning_model,
     _parse_tool_arguments,
     _to_execution_result,
@@ -405,12 +406,26 @@ def _fake_run_result(
     output_tokens: int = 0,
     total_tokens: int = 0,
     raw_response_count: int = 1,
+    reasoning_summaries: list[str] | None = None,
 ) -> MagicMock:
     """Build a stand-in RunResult with the attributes the mapper reads."""
-    from agents.items import ToolCallItem, ToolCallOutputItem
+    from agents.items import ReasoningItem, ToolCallItem, ToolCallOutputItem
     from openai.types.responses import ResponseFunctionToolCall
+    from openai.types.responses.response_reasoning_item import (
+        ResponseReasoningItem,
+        Summary,
+    )
 
     new_items: list = []
+    if reasoning_summaries is not None:
+        raw_reasoning = ResponseReasoningItem(
+            id="reason-1",
+            type="reasoning",
+            summary=[
+                Summary(text=text, type="summary_text") for text in reasoning_summaries
+            ],
+        )
+        new_items.append(ReasoningItem(agent=MagicMock(), raw_item=raw_reasoning))
     if tool_call:
         raw_call = ResponseFunctionToolCall(
             call_id="call-1",
@@ -496,6 +511,78 @@ class TestToExecutionResult:
         assert mapped.token_usage.prompt_tokens == 0
         assert mapped.token_usage.completion_tokens == 0
         assert mapped.token_usage.total_tokens == 0
+
+
+@pytest.mark.unit
+class TestThinkingExtraction:
+    """Populating ExecutionResult.thinking from ReasoningItem summaries (FR-004)."""
+
+    def test_no_reasoning_items_leaves_thinking_empty(self) -> None:
+        result = _to_execution_result(_fake_run_result())
+        assert result.thinking == ""
+
+    def test_reasoning_summaries_joined(self) -> None:
+        result = _to_execution_result(
+            _fake_run_result(reasoning_summaries=["First thought", "Second thought"])
+        )
+        assert result.thinking == "First thought\n\nSecond thought"
+
+    def test_empty_summary_entries_ignored(self) -> None:
+        result = _to_execution_result(
+            _fake_run_result(reasoning_summaries=["", "Kept"])
+        )
+        assert result.thinking == "Kept"
+
+
+@pytest.mark.unit
+class TestStructuredOutput:
+    """Populating ExecutionResult.structured_output from final_output (FR-004)."""
+
+    def test_no_schema_leaves_structured_output_none(self) -> None:
+        result = _to_execution_result(
+            _fake_run_result(final_output='{"answer": "42"}'), structured=False
+        )
+        assert result.structured_output is None
+
+    def test_dict_final_output_parsed(self) -> None:
+        result = _to_execution_result(
+            _fake_run_result(final_output=None), structured=True
+        )
+        # final_output None -> structured stays None.
+        assert result.structured_output is None
+
+    def test_dict_final_output(self) -> None:
+        fake = _fake_run_result()
+        fake.final_output = {"answer": "42"}
+        result = _to_execution_result(fake, structured=True)
+        assert result.structured_output == {"answer": "42"}
+
+    def test_json_string_final_output_parsed(self) -> None:
+        result = _to_execution_result(
+            _fake_run_result(final_output='{"answer": "42"}'), structured=True
+        )
+        assert result.structured_output == {"answer": "42"}
+
+    def test_pydantic_model_final_output_dumped(self) -> None:
+        fake = _fake_run_result()
+        fake.final_output = SimpleNamespace(model_dump=lambda: {"k": "v"})
+        result = _to_execution_result(fake, structured=True)
+        assert result.structured_output == {"k": "v"}
+
+
+@pytest.mark.unit
+class TestBuildReasoningSummary:
+    """_build_reasoning requests summary='auto' so thinking has content."""
+
+    def test_effort_sets_summary_auto(self) -> None:
+        reasoning = _build_reasoning(OpenAIConfig(effort="high"))
+        assert reasoning is not None
+        assert reasoning.effort == "high"
+        assert reasoning.summary == "auto"
+
+    def test_no_effort_returns_none(self) -> None:
+        assert _build_reasoning(OpenAIConfig()) is None
+        assert _build_reasoning(None) is None
 
 
 @pytest.mark.unit
@@ -612,6 +699,71 @@ class TestBackendInitialize:
         _, agent_kwargs = agent_ctor.call_args
         assert agent_kwargs["model"] is sentinel_model
 
+    @pytest.mark.asyncio
+    async def test_initialize_no_response_format_leaves_output_type_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        agent = _make_agent(ProviderEnum.OPENAI, "gpt-4o-mini")
+        backend = OpenAIAgentsBackend(agent)
+        with (
+            patch("agents.Agent", return_value=MagicMock()) as agent_ctor,
+            patch("agents.ModelSettings"),
+            patch("agents.set_default_openai_key"),
+            patch(
+                "holodeck.lib.backends.openai_agents_tool_adapters.build_sdk_tools",
+                return_value=[],
+            ),
+        ):
+            await backend.initialize()
+        _, agent_kwargs = agent_ctor.call_args
+        assert agent_kwargs["output_type"] is None
+        assert backend._has_structured_output is False
+
+    @pytest.mark.asyncio
+    async def test_initialize_wires_response_format_to_output_type(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        agent = _make_agent(ProviderEnum.OPENAI, "gpt-4o-mini")
+        agent.response_format = {
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+        }
+        backend = OpenAIAgentsBackend(agent)
+        with (
+            patch("agents.Agent", return_value=MagicMock()) as agent_ctor,
+            patch("agents.ModelSettings"),
+            patch("agents.set_default_openai_key"),
+            patch(
+                "holodeck.lib.backends.openai_agents_tool_adapters.build_sdk_tools",
+                return_value=[],
+            ),
+        ):
+            await backend.initialize()
+        from agents.agent_output import AgentOutputSchemaBase
+
+        _, agent_kwargs = agent_ctor.call_args
+        assert isinstance(agent_kwargs["output_type"], AgentOutputSchemaBase)
+        assert agent_kwargs["output_type"].json_schema() == agent.response_format
+        assert backend._has_structured_output is True
+
+    @pytest.mark.asyncio
+    async def test_structured_output_surfaced_in_invoke_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        agent = _make_agent(ProviderEnum.OPENAI, "gpt-4o-mini")
+        backend = OpenAIAgentsBackend(agent)
+        backend._sdk_agent = MagicMock(name="sdk_agent")
+        backend._has_structured_output = True
+        fake = _fake_run_result()
+        fake.final_output = {"answer": "42"}
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(return_value=fake)
+            exec_result = await backend.invoke_once("q")
+        assert exec_result.structured_output == {"answer": "42"}
+
 
 @pytest.mark.unit
 class TestBackendInvokeOnce:
@@ -666,6 +818,16 @@ class TestSession:
         # session= is threaded through so the SDK persists history
         _, kwargs = runner.run.call_args
         assert "session" in kwargs
+
+    @pytest.mark.asyncio
+    async def test_send_surfaces_structured_output(self) -> None:
+        session = OpenAIAgentsSession(MagicMock(), MagicMock(), structured_output=True)
+        fake = _fake_run_result()
+        fake.final_output = {"answer": "42"}
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(return_value=fake)
+            result = await session.send("hello")
+        assert result.structured_output == {"answer": "42"}
 
     @pytest.mark.asyncio
     async def test_send_returns_error_result_on_failure(self) -> None:

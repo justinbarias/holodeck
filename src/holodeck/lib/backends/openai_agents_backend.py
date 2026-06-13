@@ -342,18 +342,23 @@ def _build_reasoning(openai_cfg: OpenAIConfig | None) -> Reasoning | None:
     client supports). When ``effort`` is unset, no reasoning settings are
     produced.
 
+    ``summary="auto"`` is requested alongside the effort so reasoning models
+    emit reasoning summaries — the source of ``ExecutionResult.thinking`` (FR-004).
+    Without it the run produces ``ReasoningItem``s with empty summaries and
+    ``thinking`` stays empty.
+
     Args:
         openai_cfg: The agent's ``openai`` config block, or ``None``.
 
     Returns:
-        A ``Reasoning`` carrying the mapped effort, or ``None`` when no effort
-        is configured.
+        A ``Reasoning`` carrying the mapped effort and ``summary="auto"``, or
+        ``None`` when no effort is configured.
     """
     if openai_cfg is None or openai_cfg.effort is None:
         return None
     from openai.types.shared import Reasoning
 
-    return Reasoning(effort=_EFFORT_TO_REASONING[openai_cfg.effort])
+    return Reasoning(effort=_EFFORT_TO_REASONING[openai_cfg.effort], summary="auto")
 
 
 def _build_model_settings(
@@ -406,14 +411,77 @@ def _parse_tool_arguments(raw: Any) -> dict[str, Any]:
     return {}
 
 
-def _to_execution_result(result: RunResult) -> ExecutionResult:
-    """Map an SDK run result onto a provider-agnostic ``ExecutionResult``.
+def _extract_thinking(result: RunResult) -> str:
+    """Join reasoning-summary texts from a run's ``ReasoningItem``s (FR-004).
 
-    Extracts the final text, tool calls / results (parallel lists for positional
-    pairing, matching the SK contract), token usage, and the turn count.
+    Each ``ReasoningItem`` carries a ``summary`` list whose entries expose
+    ``.text``. Summaries are only present when the request set
+    ``Reasoning(summary="auto")`` (see :func:`_build_reasoning`); non-reasoning
+    models or runs without summaries yield an empty string.
 
     Args:
         result: A ``RunResult`` from ``Runner.run``.
+
+    Returns:
+        The reasoning summaries joined with a blank-line separator, or ``""``.
+    """
+    from agents.items import ReasoningItem
+
+    parts: list[str] = []
+    for item in result.new_items:
+        if not isinstance(item, ReasoningItem):
+            continue
+        for entry in getattr(item.raw_item, "summary", None) or []:
+            text = getattr(entry, "text", "")
+            if text:
+                parts.append(text)
+    return "\n\n".join(parts)
+
+
+def _coerce_structured_output(final: object) -> dict[str, Any] | None:
+    """Coerce a structured ``final_output`` into a dict, or ``None``.
+
+    When an output schema is active the SDK parses the model's JSON into the
+    validated object; ``JSONSchemaOutputSchema.validate_json`` returns a dict, so
+    ``final_output`` is already a dict in that path. A pydantic model is dumped
+    via ``model_dump``; a JSON string is parsed defensively. Anything that cannot
+    be represented as a dict yields ``None``.
+
+    Args:
+        final: The run's ``final_output``.
+
+    Returns:
+        The structured output as a dict, or ``None``.
+    """
+    if isinstance(final, dict):
+        return final
+    model_dump = getattr(final, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        return dumped if isinstance(dumped, dict) else None
+    if isinstance(final, str):
+        try:
+            parsed = json.loads(final)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _to_execution_result(
+    result: RunResult, *, structured: bool = False
+) -> ExecutionResult:
+    """Map an SDK run result onto a provider-agnostic ``ExecutionResult``.
+
+    Extracts the final text, tool calls / results (parallel lists for positional
+    pairing, matching the SK contract), token usage, the turn count, reasoning
+    ``thinking``, and — when *structured* — the parsed ``structured_output``.
+
+    Args:
+        result: A ``RunResult`` from ``Runner.run``.
+        structured: Whether an output schema was set on the agent. When ``True``
+            ``final_output`` is coerced into ``structured_output``; when ``False``
+            ``structured_output`` stays ``None`` (the default behavior).
 
     Returns:
         A populated ``ExecutionResult``.
@@ -422,6 +490,7 @@ def _to_execution_result(result: RunResult) -> ExecutionResult:
 
     final = result.final_output
     response = str(final) if final is not None else ""
+    structured_output = _coerce_structured_output(final) if structured else None
 
     tool_calls: list[dict[str, Any]] = []
     tool_results: list[dict[str, Any]] = []
@@ -472,8 +541,9 @@ def _to_execution_result(result: RunResult) -> ExecutionResult:
         tool_calls=tool_calls,
         tool_results=tool_results,
         token_usage=token_usage,
+        structured_output=structured_output,
         num_turns=num_turns,
-        thinking="",
+        thinking=_extract_thinking(result),
     )
 
 
@@ -516,6 +586,7 @@ class OpenAIAgentsSession:
         group_id: str | None = None,
         max_turns: int = 20,
         budget_usd: float | None = None,
+        structured_output: bool = False,
     ) -> None:
         """Bind the session to an SDK agent and its SQLite-backed history.
 
@@ -530,6 +601,8 @@ class OpenAIAgentsSession:
             budget_usd: The configured ``max_budget_usd``. When set, a single
                 cost accountant is shared across every turn so the budget covers
                 the whole session; when ``None`` no cost hooks are attached.
+            structured_output: Whether the agent has an output schema, so each
+                turn's ``final_output`` is parsed into ``structured_output``.
         """
         self._sdk_agent = sdk_agent
         self._session = sqlite_session
@@ -537,6 +610,7 @@ class OpenAIAgentsSession:
         self._group_id = group_id
         self._max_turns = max_turns
         self._budget_usd = budget_usd
+        self._structured_output = structured_output
         # One accountant shared across the session's turns (FR-032).
         self._accountant: Any | None = None
 
@@ -598,7 +672,7 @@ class OpenAIAgentsSession:
                 is_error=True,
                 error_reason=f"{type(exc).__name__}: {exc}",
             )
-        return _to_execution_result(result)
+        return _to_execution_result(result, structured=self._structured_output)
 
     async def send_streaming(self, message: str) -> AsyncGenerator[str, None]:
         """Stream the agent response token by token.
@@ -665,6 +739,7 @@ class OpenAIAgentsBackend:
         self._agent_config = agent
         self._base_dir = base_dir
         self._sdk_agent: Any | None = None
+        self._has_structured_output = False
         self._tool_instances: dict[str, Any] = {}
         self._owned_tools: list[Any] = []
         self._mcp_servers: list[Any] = []
@@ -688,6 +763,10 @@ class OpenAIAgentsBackend:
         """
         from agents import Agent as SDKAgent
 
+        from holodeck.lib.backends.openai_agents_output import (
+            build_output_schema,
+            load_response_format_schema,
+        )
         from holodeck.lib.backends.openai_agents_tool_adapters import build_sdk_tools
         from holodeck.lib.backends.validators import validate_openai_agents
         from holodeck.lib.instruction_resolver import resolve_instructions
@@ -715,6 +794,13 @@ class OpenAIAgentsBackend:
             self._agent_config.model, self._agent_config.openai
         )
 
+        # FR-004: wire response_format (dict | str path | None) to output_type.
+        schema = load_response_format_schema(
+            self._agent_config.response_format, base_dir
+        )
+        output_type = build_output_schema(schema) if schema is not None else None
+        self._has_structured_output = output_type is not None
+
         self._sdk_agent = SDKAgent(
             name=self._agent_config.name,
             instructions=instructions,
@@ -722,6 +808,7 @@ class OpenAIAgentsBackend:
             tools=tools,
             mcp_servers=mcp_servers,
             model_settings=model_settings,
+            output_type=output_type,
         )
 
     async def _initialize_mcp_servers(
@@ -859,7 +946,7 @@ class OpenAIAgentsBackend:
             raise BackendSessionError(
                 f"OpenAI Agents run failed: {type(exc).__name__}: {exc}"
             ) from exc
-        return _to_execution_result(result)
+        return _to_execution_result(result, structured=self._has_structured_output)
 
     def _invoke_hooks(self) -> Any | None:
         """Build single-call budget hooks, or ``None`` when no budget is set.
@@ -901,6 +988,7 @@ class OpenAIAgentsBackend:
             group_id=session_id,
             max_turns=_max_turns(self._agent_config),
             budget_usd=_max_budget_usd(self._agent_config),
+            structured_output=self._has_structured_output,
         )
 
     async def teardown(self) -> None:

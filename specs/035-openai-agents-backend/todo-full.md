@@ -34,8 +34,8 @@ acceptance criteria + verification pass.
 - [x] F2 — `disallowed_tools` config-time filter; allow∩disallow → load fail  · S
 - [x] F3 — `max_budget_usd` → cost-accountant `RunHooks` + price table + `BackendBudgetExceededError`  · M
 - [x] F4 — `fallback_model` → wrapping `Model`; ordering vs `ModelSettings.retry` defined + tested  · M
-- [ ] F5 — structured output: `response_format` → custom `JSONSchemaOutputSchema(AgentOutputSchemaBase)`; `thinking` from `ReasoningItem`s + `Reasoning(summary="auto")` (FR-004)  · M
-- [ ] **Checkpoint F** — each field behaves per FR; structured/thinking parity; suite green
+- [x] F5 — structured output: `response_format` → custom `JSONSchemaOutputSchema(AgentOutputSchemaBase)`; `thinking` from `ReasoningItem`s + `Reasoning(summary="auto")` (FR-004)  · M
+- [x] **Checkpoint F** — each field behaves per FR; structured/thinking parity; suite green *(unit/mocked; creds-gated live checks at K2)*
 
 ## Phase G — Hosted tools (US5)
 - [ ] G1 — `HostedTool` model + 5 factories (nested `tool_config` built from YAML); `ComputerTool` → clear load error; allowed on Azure (runtime-gated)  · M
