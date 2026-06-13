@@ -152,6 +152,7 @@ def _build_http_server(tool: MCPTool) -> MCPServer:
 def build_mcp_servers(
     mcp_tools: list[MCPTool] | None,
     base_dir: Path | None,
+    disallowed: set[str] | None = None,
 ) -> list[MCPServer]:
     """Translate HoloDeck MCP tool configs into SDK MCP server objects.
 
@@ -161,16 +162,26 @@ def build_mcp_servers(
     connected — the backend must ``await server.connect()`` each before passing
     them to ``Agent(mcp_servers=...)`` and ``await server.cleanup()`` at teardown.
 
+    An MCP tool whose ``name`` appears in *disallowed* drops the **whole** server
+    (FR-034). Tool-level subsetting within a server is a separate concern handled
+    by ``allowed_tools`` via :func:`_build_tool_filter`.
+
     Args:
         mcp_tools: MCP tool configurations from the agent YAML (may be ``None``).
         base_dir: Directory used to resolve relative stdio ``args`` paths
             (typically the agent project root).
+        disallowed: MCP tool ``name`` values to drop entirely. ``None`` (the
+            default) applies no filtering.
 
     Returns:
         A list of (unconnected) ``agents.mcp`` MCP server objects.
     """
+    blocked = disallowed or set()
     servers: list[MCPServer] = []
     for tool in mcp_tools or []:
+        if tool.name in blocked:
+            logger.debug("Dropping disallowed MCP server '%s'.", tool.name)
+            continue
         if tool.transport == TransportType.STDIO:
             servers.append(_build_stdio_server(tool, base_dir))
         elif tool.transport == TransportType.SSE:

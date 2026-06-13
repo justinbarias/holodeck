@@ -308,10 +308,12 @@ def validate_working_directory(path: str | None) -> None:
 def validate_openai_agents(agent: Agent) -> None:
     """Validate an ``openai_agents`` agent's config, collecting all errors.
 
-    Runs the side-effect-free credential preflight and the ``openai.permissions``
-    consistency check (``allowed_tools ∩ disallowed_tools`` must be empty) in a
-    single pass, surfacing every problem together rather than failing on the
-    first one (FR-110). This intentionally does NOT trigger the SDK global
+    Runs the side-effect-free credential preflight and the tool-permission
+    consistency check (``permissions.allowed_tools`` must not intersect the
+    union of ``permissions.disallowed_tools`` and the top-level
+    ``openai.disallowed_tools`` — FR-034) in a single pass, surfacing every
+    problem together rather than failing on the first one (FR-110). This
+    intentionally does NOT trigger the SDK global
     mutations that ``_build_model`` performs (``set_default_openai_key`` /
     ``set_tracing_disabled``) — credential resolution is delegated to the
     side-effect-free ``_preflight_credentials`` helper.
@@ -333,9 +335,16 @@ def validate_openai_agents(agent: Agent) -> None:
         errors.append(str(exc))
 
     openai_cfg = agent.openai
-    if openai_cfg is not None and openai_cfg.permissions is not None:
-        allowed = set(openai_cfg.permissions.allowed_tools or [])
-        disallowed = set(openai_cfg.permissions.disallowed_tools or [])
+    if openai_cfg is not None:
+        # The disallow set spans both the spec-026 top-level
+        # ``openai.disallowed_tools`` and ``openai.permissions.disallowed_tools``
+        # (FR-034); either, intersected with ``permissions.allowed_tools``, is a
+        # load failure.
+        disallowed = set(openai_cfg.disallowed_tools or [])
+        allowed: set[str] = set()
+        if openai_cfg.permissions is not None:
+            allowed = set(openai_cfg.permissions.allowed_tools or [])
+            disallowed |= set(openai_cfg.permissions.disallowed_tools or [])
         conflict = sorted(allowed & disallowed)
         if conflict:
             errors.append(

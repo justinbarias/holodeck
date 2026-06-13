@@ -226,8 +226,17 @@ def build_sdk_tools(
     tool_configs: list[ToolUnion] | None,
     base_dir: Path | None,
     tool_instances: dict[str, Any] | None = None,
+    disallowed: set[str] | None = None,
 ) -> list[SDKTool]:
     """Translate HoloDeck tool configs into SDK ``FunctionTool`` instances.
+
+    Tools whose HoloDeck *config* name appears in *disallowed* are filtered out
+    before any SDK tool is constructed (FR-034). Matching is on the config name
+    as written in YAML — not the SDK tool name — so a disallowed vectorstore /
+    hierarchical-document tool is dropped before it can produce its
+    ``{name}_search`` SDK tool. This keeps the disallow list portable: an
+    operator names the tool the way they declared it, regardless of how the
+    backend renames it for the SDK.
 
     Args:
         tool_configs: All tool configurations from the agent YAML (may be None).
@@ -236,6 +245,8 @@ def build_sdk_tools(
         tool_instances: Initialized vectorstore / hierarchical-document tool
             instances keyed by config name (built by ``initialize_tools``).
             Required for those two tool types.
+        disallowed: HoloDeck config names to omit from the built tool surface.
+            ``None`` (the default) applies no filtering.
 
     Returns:
         A list of ``agents.FunctionTool`` objects ready to pass to ``Agent``.
@@ -248,9 +259,15 @@ def build_sdk_tools(
     """
     from agents import FunctionTool as SDKFunctionTool
 
+    blocked = disallowed or set()
     instances = tool_instances or {}
     tools: list[SDKTool] = []
     for cfg in tool_configs or []:
+        if cfg.name in blocked:
+            # Filter on the config name, before building, so a disallowed
+            # vectorstore/hier-doc tool never produces a ``{name}_search`` tool.
+            logger.debug("Skipping disallowed tool '%s'.", cfg.name)
+            continue
         if isinstance(cfg, FunctionTool):
             func = load_function_tool(cfg, base_dir=base_dir)
             schema = _derive_params_schema(func, cfg.parameters)

@@ -31,7 +31,7 @@ acceptance criteria + verification pass.
 
 ## Phase F — Spec-026 config mappings (US4) + parity gaps
 - [x] F1 — `effort` → `ModelSettings(reasoning=…)`; `max` → `"xhigh"` (documented deviation)  · S
-- [ ] F2 — `disallowed_tools` config-time filter; allow∩disallow → load fail  · S
+- [x] F2 — `disallowed_tools` config-time filter; allow∩disallow → load fail  · S
 - [ ] F3 — `max_budget_usd` → cost-accountant `RunHooks` + price table + `BackendBudgetExceededError`  · M
 - [ ] F4 — `fallback_model` → wrapping `Model`; ordering vs `ModelSettings.retry` defined + tested  · M
 - [ ] F5 — structured output: `response_format` → custom `JSONSchemaOutputSchema(AgentOutputSchemaBase)`; `thinking` from `ReasoningItem`s + `Reasoning(summary="auto")` (FR-004)  · M

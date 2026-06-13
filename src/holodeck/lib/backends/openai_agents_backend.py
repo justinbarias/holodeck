@@ -205,6 +205,30 @@ def _max_turns(agent: Agent) -> int:
     return 20
 
 
+def _disallowed_tool_names(agent: Agent) -> set[str]:
+    """Return the HoloDeck config names to drop from the resolved tool surface.
+
+    The disallow set is the union of the spec-026 top-level
+    ``openai.disallowed_tools`` and ``openai.permissions.disallowed_tools``
+    (FR-034). Both are config-time filters keyed on the HoloDeck config name,
+    so callers compare against the tool's YAML ``name`` — not the SDK tool name.
+
+    Args:
+        agent: The agent configuration.
+
+    Returns:
+        The set of disallowed config names (empty when no ``openai`` block or no
+        disallow lists are configured).
+    """
+    openai_cfg = agent.openai
+    if openai_cfg is None:
+        return set()
+    blocked: set[str] = set(openai_cfg.disallowed_tools or [])
+    if openai_cfg.permissions is not None:
+        blocked |= set(openai_cfg.permissions.disallowed_tools or [])
+    return blocked
+
+
 def _build_run_config(agent: Agent, *, group_id: str | None = None) -> RunConfig:
     """Build an SDK ``RunConfig`` carrying trace identity and sensitivity.
 
@@ -544,18 +568,27 @@ class OpenAIAgentsBackend:
         from agents import Agent as SDKAgent
 
         from holodeck.lib.backends.openai_agents_tool_adapters import build_sdk_tools
+        from holodeck.lib.backends.validators import validate_openai_agents
         from holodeck.lib.instruction_resolver import resolve_instructions
 
+        # FR-034 / FR-110: fail load on credential gaps and allow ∩ disallow
+        # conflicts (all problems surfaced together) before any SDK side effects.
+        validate_openai_agents(self._agent_config)
+
         base_dir = self._resolve_base_dir()
+        disallowed = _disallowed_tool_names(self._agent_config)
         model = _build_model(self._agent_config)
         instructions = resolve_instructions(
             self._agent_config.instructions, base_dir=base_dir
         )
         await self._initialize_tool_instances()
         tools = build_sdk_tools(
-            self._agent_config.tools, base_dir, tool_instances=self._tool_instances
+            self._agent_config.tools,
+            base_dir,
+            tool_instances=self._tool_instances,
+            disallowed=disallowed,
         )
-        mcp_servers = await self._initialize_mcp_servers(base_dir)
+        mcp_servers = await self._initialize_mcp_servers(base_dir, disallowed)
 
         model_settings = _build_model_settings(
             self._agent_config.model, self._agent_config.openai
@@ -570,7 +603,9 @@ class OpenAIAgentsBackend:
             model_settings=model_settings,
         )
 
-    async def _initialize_mcp_servers(self, base_dir: Path | None) -> list[Any]:
+    async def _initialize_mcp_servers(
+        self, base_dir: Path | None, disallowed: set[str] | None = None
+    ) -> list[Any]:
         """Build and connect SDK MCP servers from the agent's MCP tools.
 
         Translates ``type: mcp`` tool configs into SDK MCP server objects and
@@ -582,6 +617,7 @@ class OpenAIAgentsBackend:
 
         Args:
             base_dir: Directory for resolving relative stdio ``args`` paths.
+            disallowed: MCP tool ``name`` values to drop entirely (FR-034).
 
         Returns:
             The list of connected SDK MCP server objects (empty when the agent
@@ -596,7 +632,7 @@ class OpenAIAgentsBackend:
         mcp_tools = [
             t for t in (self._agent_config.tools or []) if isinstance(t, MCPTool)
         ]
-        servers = build_mcp_servers(mcp_tools, base_dir)
+        servers = build_mcp_servers(mcp_tools, base_dir, disallowed)
 
         connected: list[Any] = []
         try:
