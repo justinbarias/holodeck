@@ -30,11 +30,14 @@ from holodeck.lib.backends.base import (
 )
 from holodeck.models.agent import Agent
 from holodeck.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.openai_config import OpenAIConfig
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool import HierarchicalDocumentToolConfig, VectorstoreTool
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
     from agents import ModelSettings, OpenAIResponsesModel, RunConfig, RunResult
+    from openai.types.shared import Reasoning
+    from openai.types.shared.reasoning_effort import ReasoningEffort
     from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
@@ -234,22 +237,66 @@ def _build_run_config(agent: Agent, *, group_id: str | None = None) -> RunConfig
     )
 
 
-def _build_model_settings(model_cfg: LLMProvider) -> ModelSettings:
+_EFFORT_TO_REASONING: dict[str, ReasoningEffort] = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "max": "xhigh",
+}
+
+
+def _build_reasoning(openai_cfg: OpenAIConfig | None) -> Reasoning | None:
+    """Build an SDK ``Reasoning`` from ``openai.effort``, or ``None``.
+
+    Maps the HoloDeck ``effort`` levels onto the OpenAI ``ReasoningEffort``
+    literal. ``max`` maps to ``"xhigh"`` (the strongest level the installed
+    client supports). When ``effort`` is unset, no reasoning settings are
+    produced.
+
+    Args:
+        openai_cfg: The agent's ``openai`` config block, or ``None``.
+
+    Returns:
+        A ``Reasoning`` carrying the mapped effort, or ``None`` when no effort
+        is configured.
+    """
+    if openai_cfg is None or openai_cfg.effort is None:
+        return None
+    from openai.types.shared import Reasoning
+
+    return Reasoning(effort=_EFFORT_TO_REASONING[openai_cfg.effort])
+
+
+def _build_model_settings(
+    model_cfg: LLMProvider, openai_cfg: OpenAIConfig | None = None
+) -> ModelSettings:
     """Build SDK ``ModelSettings`` for *model_cfg*, honoring reasoning models.
 
     Reasoning models (o-series, ``gpt-5``+) reject ``temperature`` / ``top_p``,
     so those are omitted for them; ``max_tokens`` is always forwarded (the SDK
     maps it to the Responses ``max_output_tokens``, which reasoning models
-    accept).
+    accept). When ``openai.effort`` is set it is mapped onto the Responses
+    ``reasoning.effort`` for both reasoning and non-reasoning models.
+
+    Args:
+        model_cfg: The agent's model provider config.
+        openai_cfg: The agent's ``openai`` config block carrying ``effort``,
+            or ``None``.
+
+    Returns:
+        A populated ``ModelSettings``.
     """
     from agents import ModelSettings
 
+    reasoning = _build_reasoning(openai_cfg)
+
     if _is_reasoning_model(model_cfg.name):
-        return ModelSettings(max_tokens=model_cfg.max_tokens)
+        return ModelSettings(max_tokens=model_cfg.max_tokens, reasoning=reasoning)
     return ModelSettings(
         temperature=model_cfg.temperature,
         top_p=model_cfg.top_p,
         max_tokens=model_cfg.max_tokens,
+        reasoning=reasoning,
     )
 
 
@@ -510,7 +557,9 @@ class OpenAIAgentsBackend:
         )
         mcp_servers = await self._initialize_mcp_servers(base_dir)
 
-        model_settings = _build_model_settings(self._agent_config.model)
+        model_settings = _build_model_settings(
+            self._agent_config.model, self._agent_config.openai
+        )
 
         self._sdk_agent = SDKAgent(
             name=self._agent_config.name,

@@ -30,7 +30,7 @@ acceptance criteria + verification pass.
 - [ ] **Checkpoint E** — observation works; failure fires + error string; function reject continues run; input reject aborts w/ message; MCP reject fails load; modify warns; ordering correct (hosted paths verified at Checkpoint G)
 
 ## Phase F — Spec-026 config mappings (US4) + parity gaps
-- [ ] F1 — `effort` → `ModelSettings(reasoning=…)`; `max` → `"xhigh"` (documented deviation)  · S
+- [x] F1 — `effort` → `ModelSettings(reasoning=…)`; `max` → `"xhigh"` (documented deviation)  · S
 - [ ] F2 — `disallowed_tools` config-time filter; allow∩disallow → load fail  · S
 - [ ] F3 — `max_budget_usd` → cost-accountant `RunHooks` + price table + `BackendBudgetExceededError`  · M
 - [ ] F4 — `fallback_model` → wrapping `Model`; ordering vs `ModelSettings.retry` defined + tested  · M

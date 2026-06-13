@@ -28,6 +28,7 @@ from holodeck.lib.backends.openai_agents_backend import (
 )
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.openai_config import OpenAIConfig
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -264,6 +265,44 @@ class TestBuildModelSettings:
         assert "temperature" not in kwargs
         assert "top_p" not in kwargs
         assert kwargs["max_tokens"] == 200
+
+    def test_effort_high_sets_reasoning_high(self) -> None:
+        cfg = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-5",
+            max_tokens=1000,
+        )
+        settings = _build_model_settings(cfg, OpenAIConfig(effort="high"))
+        assert settings.reasoning is not None
+        assert settings.reasoning.effort == "high"
+
+    def test_effort_max_maps_to_xhigh(self) -> None:
+        cfg = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-5",
+            max_tokens=1000,
+        )
+        settings = _build_model_settings(cfg, OpenAIConfig(effort="max"))
+        assert settings.reasoning is not None
+        assert settings.reasoning.effort == "xhigh"
+
+    def test_no_effort_leaves_reasoning_unset(self) -> None:
+        cfg = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-5",
+            max_tokens=1000,
+        )
+        settings = _build_model_settings(cfg, OpenAIConfig())
+        assert settings.reasoning is None
+
+    def test_no_openai_config_leaves_reasoning_unset(self) -> None:
+        cfg = LLMProvider(
+            provider=ProviderEnum.OPENAI,
+            name="gpt-5",
+            max_tokens=1000,
+        )
+        settings = _build_model_settings(cfg, None)
+        assert settings.reasoning is None
 
 
 # ---------------------------------------------------------------------------
