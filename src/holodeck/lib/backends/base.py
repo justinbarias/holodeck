@@ -256,6 +256,43 @@ class BackendTimeoutError(BackendError):
     pass
 
 
+class BackendBudgetExceededError(BackendError):
+    """Raised when an agent run exceeds its configured ``max_budget_usd`` cap.
+
+    Carries the partial assistant response produced before the cap tripped and
+    the accumulated spend, so callers can surface a graceful "budget exceeded"
+    result with whatever the model managed to produce.
+
+    Attributes:
+        partial_response: The assistant text accumulated before the cap tripped
+            (may be empty if the budget was exhausted before any text).
+        accumulated_cost_usd: The total accumulated spend in USD at the point of
+            the abort (always at or above the configured budget).
+        budget_usd: The configured budget cap that was exceeded.
+    """
+
+    def __init__(
+        self,
+        partial_response: str,
+        accumulated_cost_usd: float,
+        budget_usd: float,
+    ) -> None:
+        """Create a budget-exceeded error with the partial run state.
+
+        Args:
+            partial_response: Assistant text accumulated before the abort.
+            accumulated_cost_usd: Total accumulated spend in USD.
+            budget_usd: The configured budget cap that was exceeded.
+        """
+        self.partial_response = partial_response
+        self.accumulated_cost_usd = accumulated_cost_usd
+        self.budget_usd = budget_usd
+        super().__init__(
+            f"Run aborted: accumulated cost ${accumulated_cost_usd:.6f} "
+            f"exceeded the configured max_budget_usd of ${budget_usd:.6f}."
+        )
+
+
 @runtime_checkable
 class ContextGenerator(Protocol):
     """Backend-agnostic contextual embedding generation.

@@ -941,3 +941,108 @@ class TestMcpServerWiring:
         await backend.teardown()
         server.cleanup.assert_awaited_once()
         assert backend._mcp_servers == []
+
+
+# ---------------------------------------------------------------------------
+# Task F3 — max_budget_usd cost-accountant RunHooks wiring
+# ---------------------------------------------------------------------------
+
+
+def _make_agent_with_budget(budget: float | None) -> Agent:
+    """Agent with an openai: block carrying max_budget_usd (or omitting it)."""
+    openai_block: dict = {}
+    if budget is not None:
+        openai_block["max_budget_usd"] = budget
+    return Agent(
+        name="test-agent",
+        model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o-mini"),
+        instructions=Instructions(inline="Be helpful."),
+        openai=openai_block or None,
+    )
+
+
+@pytest.mark.unit
+class TestBudgetHooksWiring:
+    """openai.max_budget_usd attaches cost hooks; unset → no hooks (zero cost)."""
+
+    @pytest.mark.asyncio
+    async def test_no_budget_passes_no_hooks_invoke(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        backend = _initialized_backend(monkeypatch)  # no openai block
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(return_value=_fake_run_result(final_output="ok"))
+            await backend.invoke_once("hi")
+        assert runner.run.call_args.kwargs["hooks"] is None
+
+    @pytest.mark.asyncio
+    async def test_budget_attaches_hooks_invoke(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        backend = OpenAIAgentsBackend(_make_agent_with_budget(0.05))
+        backend._sdk_agent = MagicMock(name="sdk_agent")
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(return_value=_fake_run_result(final_output="ok"))
+            await backend.invoke_once("hi")
+        assert runner.run.call_args.kwargs["hooks"] is not None
+
+    @pytest.mark.asyncio
+    async def test_invoke_budget_exceeded_returns_error_result(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from holodeck.lib.backends.base import BackendBudgetExceededError
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        backend = OpenAIAgentsBackend(_make_agent_with_budget(0.01))
+        backend._sdk_agent = MagicMock(name="sdk_agent")
+        exc = BackendBudgetExceededError(
+            partial_response="half an answer",
+            accumulated_cost_usd=0.5,
+            budget_usd=0.01,
+        )
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(side_effect=exc)
+            result = await backend.invoke_once("expensive query")
+        assert result.is_error is True
+        assert result.response == "half an answer"
+        assert "max_budget_usd exceeded" in (result.error_reason or "")
+        assert "0.5" in (result.error_reason or "")
+
+    @pytest.mark.asyncio
+    async def test_session_budget_exceeded_returns_error_result(self) -> None:
+        from holodeck.lib.backends.base import BackendBudgetExceededError
+
+        session = OpenAIAgentsSession(MagicMock(), MagicMock(), budget_usd=0.01)
+        exc = BackendBudgetExceededError(
+            partial_response="partial turn",
+            accumulated_cost_usd=0.2,
+            budget_usd=0.01,
+        )
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(side_effect=exc)
+            result = await session.send("hi")
+        assert result.is_error is True
+        assert result.response == "partial turn"
+        assert "max_budget_usd exceeded" in (result.error_reason or "")
+
+    @pytest.mark.asyncio
+    async def test_session_shares_one_accountant_across_turns(self) -> None:
+        session = OpenAIAgentsSession(MagicMock(), MagicMock(), budget_usd=1.0)
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(return_value=_fake_run_result(final_output="ok"))
+            await session.send("turn one")
+            first = session._accountant
+            await session.send("turn two")
+            second = session._accountant
+        # The same accountant instance persists so the budget covers the session.
+        assert first is not None
+        assert first is second
+
+    @pytest.mark.asyncio
+    async def test_session_no_budget_passes_no_hooks(self) -> None:
+        session = OpenAIAgentsSession(MagicMock(), MagicMock())  # no budget
+        with patch("agents.Runner") as runner:
+            runner.run = AsyncMock(return_value=_fake_run_result(final_output="ok"))
+            await session.send("hi")
+        assert runner.run.call_args.kwargs["hooks"] is None

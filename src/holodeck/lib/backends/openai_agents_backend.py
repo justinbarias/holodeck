@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from holodeck.lib.backends.base import (
     AgentSession,
+    BackendBudgetExceededError,
     BackendInitError,
     BackendSessionError,
     ExecutionResult,
@@ -203,6 +204,17 @@ def _max_turns(agent: Agent) -> int:
     if agent.openai is not None:
         return agent.openai.max_turns
     return 20
+
+
+def _max_budget_usd(agent: Agent) -> float | None:
+    """Return the configured ``openai.max_budget_usd`` for *agent*, or ``None``.
+
+    ``None`` means no budget is configured, so no cost-accountant hooks are
+    attached and the run incurs zero accounting overhead (FR-032).
+    """
+    if agent.openai is not None:
+        return agent.openai.max_budget_usd
+    return None
 
 
 def _disallowed_tool_names(agent: Agent) -> set[str]:
@@ -412,6 +424,28 @@ def _to_execution_result(result: RunResult) -> ExecutionResult:
     )
 
 
+def _budget_error_result(exc: BackendBudgetExceededError) -> ExecutionResult:
+    """Map a budget-exceeded error onto an error ``ExecutionResult``.
+
+    Preserves the partial response the model produced before the cap tripped and
+    records the accumulated cost in ``error_reason`` (FR-032).
+
+    Args:
+        exc: The raised :class:`BackendBudgetExceededError`.
+
+    Returns:
+        An ``ExecutionResult`` with ``is_error=True`` and the partial response.
+    """
+    return ExecutionResult(
+        response=exc.partial_response,
+        is_error=True,
+        error_reason=(
+            f"max_budget_usd exceeded: accumulated cost "
+            f"${exc.accumulated_cost_usd:.6f} >= budget ${exc.budget_usd:.6f}"
+        ),
+    )
+
+
 class OpenAIAgentsSession:
     """Stateful multi-turn session backed by an SDK ``SQLiteSession``.
 
@@ -428,6 +462,7 @@ class OpenAIAgentsSession:
         agent_config: Agent | None = None,
         group_id: str | None = None,
         max_turns: int = 20,
+        budget_usd: float | None = None,
     ) -> None:
         """Bind the session to an SDK agent and its SQLite-backed history.
 
@@ -439,18 +474,42 @@ class OpenAIAgentsSession:
             group_id: The session id, carried as ``RunConfig.group_id`` so the
                 session's turns correlate in the trace.
             max_turns: The agent-loop cap passed to ``Runner.run``.
+            budget_usd: The configured ``max_budget_usd``. When set, a single
+                cost accountant is shared across every turn so the budget covers
+                the whole session; when ``None`` no cost hooks are attached.
         """
         self._sdk_agent = sdk_agent
         self._session = sqlite_session
         self._agent_config = agent_config
         self._group_id = group_id
         self._max_turns = max_turns
+        self._budget_usd = budget_usd
+        # One accountant shared across the session's turns (FR-032).
+        self._accountant: Any | None = None
 
     def _run_config(self) -> RunConfig | None:
         """Build the session ``RunConfig`` (carrying ``group_id``), or ``None``."""
         if self._agent_config is None:
             return None
         return _build_run_config(self._agent_config, group_id=self._group_id)
+
+    def _hooks(self) -> Any | None:
+        """Build budget hooks bound to this session's shared accountant, or None.
+
+        Returns ``None`` (no hooks, zero overhead) when no budget is configured.
+        The accountant is created lazily on first use and reused across turns so
+        the budget covers the whole session rather than resetting each turn.
+        """
+        if self._budget_usd is None:
+            return None
+        from holodeck.lib.backends.openai_agents_cost import (
+            CostAccountant,
+            build_cost_hooks,
+        )
+
+        if self._accountant is None:
+            self._accountant = CostAccountant(budget_usd=self._budget_usd)
+        return build_cost_hooks(self._accountant)
 
     async def prepare(self) -> None:
         """No-op. The SQLite session is ready at construction time."""
@@ -476,7 +535,10 @@ class OpenAIAgentsSession:
                 session=self._session,
                 max_turns=self._max_turns,
                 run_config=self._run_config(),
+                hooks=self._hooks(),
             )
+        except BackendBudgetExceededError as exc:
+            return _budget_error_result(exc)
         except Exception as exc:  # noqa: BLE001 - surfaced via ExecutionResult
             return ExecutionResult(
                 response="",
@@ -508,13 +570,19 @@ class OpenAIAgentsSession:
             session=self._session,
             max_turns=self._max_turns,
             run_config=self._run_config(),
+            hooks=self._hooks(),
         )
-        async for event in result.stream_events():
-            if event.type != "raw_response_event":
-                continue
-            data = event.data
-            if isinstance(data, ResponseTextDeltaEvent) and data.delta:
-                yield data.delta
+        try:
+            async for event in result.stream_events():
+                if event.type != "raw_response_event":
+                    continue
+                data = event.data
+                if isinstance(data, ResponseTextDeltaEvent) and data.delta:
+                    yield data.delta
+        except BackendBudgetExceededError:
+            # The budget tripped mid-stream; the deltas produced so far have
+            # already been yielded, so end the stream gracefully (FR-032).
+            return
 
     async def close(self) -> None:
         """Release the SQLite session connection, if any."""
@@ -728,12 +796,34 @@ class OpenAIAgentsBackend:
                 message,
                 max_turns=_max_turns(self._agent_config),
                 run_config=_build_run_config(self._agent_config),
+                hooks=self._invoke_hooks(),
             )
+        except BackendBudgetExceededError as exc:
+            # Surface the budget abort as an error result so the partial response
+            # and accumulated cost are preserved (FR-032), not lost to a raise.
+            return _budget_error_result(exc)
         except Exception as exc:  # noqa: BLE001 - re-raised as backend error
             raise BackendSessionError(
                 f"OpenAI Agents run failed: {type(exc).__name__}: {exc}"
             ) from exc
         return _to_execution_result(result)
+
+    def _invoke_hooks(self) -> Any | None:
+        """Build single-call budget hooks, or ``None`` when no budget is set.
+
+        ``invoke_once`` is stateless, so each call gets a fresh accountant; the
+        whole turn's spend is what the budget covers. Returns ``None`` (zero
+        overhead) when ``openai.max_budget_usd`` is unset.
+        """
+        budget = _max_budget_usd(self._agent_config)
+        if budget is None:
+            return None
+        from holodeck.lib.backends.openai_agents_cost import (
+            CostAccountant,
+            build_cost_hooks,
+        )
+
+        return build_cost_hooks(CostAccountant(budget_usd=budget))
 
     async def create_session(self, *, eager_connect: bool = True) -> AgentSession:
         """Create a stateful multi-turn session backed by a fresh SQLiteSession.
@@ -757,6 +847,7 @@ class OpenAIAgentsBackend:
             agent_config=self._agent_config,
             group_id=session_id,
             max_turns=_max_turns(self._agent_config),
+            budget_usd=_max_budget_usd(self._agent_config),
         )
 
     async def teardown(self) -> None:
