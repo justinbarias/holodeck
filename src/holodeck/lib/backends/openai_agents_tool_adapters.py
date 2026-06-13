@@ -9,10 +9,12 @@ its stringified result.
 
 Supported types: function, vectorstore, and hierarchical_document tools (the
 last two wrap the same initialized ``.search()`` instances the Claude adapter
-uses, supplied via ``tool_instances``). ``type: prompt`` tools are skipped with
-a warning — no backend has a runtime adapter for them. Any other tool type
-raises :class:`ConfigError` naming the unsupported type, so misconfigured agents
-fail fast rather than silently dropping tools.
+uses, supplied via ``tool_instances``). ``type: mcp`` tools are skipped here —
+they become SDK ``mcp_servers`` built separately by
+:mod:`holodeck.lib.backends.openai_agents_mcp`. ``type: prompt`` tools are
+skipped with a warning — no backend has a runtime adapter for them. Any other
+tool type raises :class:`ConfigError` naming the unsupported type, so
+misconfigured agents fail fast rather than silently dropping tools.
 
 All ``import agents`` happen inside functions to keep the optional SDK import
 lazy (SC-005).
@@ -35,6 +37,7 @@ from holodeck.lib.function_tool_loader import load_function_tool
 from holodeck.models.tool import (
     FunctionTool,
     HierarchicalDocumentToolConfig,
+    MCPTool,
     PromptTool,
     ToolUnion,
     VectorstoreTool,
@@ -282,6 +285,11 @@ def build_sdk_tools(
                     strict_json_schema=False,
                 )
             )
+        elif isinstance(cfg, MCPTool):
+            # MCP tools become SDK ``mcp_servers`` (built separately via
+            # ``openai_agents_mcp.build_mcp_servers``), not ``FunctionTool``s, so
+            # they are skipped here rather than wrapped.
+            continue
         elif isinstance(cfg, PromptTool):
             logger.warning(
                 "Tool '%s' (type: prompt) has no runtime adapter on any backend; "

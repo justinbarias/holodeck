@@ -149,7 +149,7 @@ class TestBuildFunctionTools:
 class TestUnsupportedTools:
     @pytest.mark.parametrize(
         "tool_type",
-        ["mcp", "skill"],
+        ["skill"],
     )
     def test_unsupported_type_raises_naming_type(self, tool_type: str) -> None:
         cfg = SimpleNamespace(type=tool_type, name="x")
@@ -157,9 +157,26 @@ class TestUnsupportedTools:
             build_sdk_tools([cfg], base_dir=None)  # type: ignore[list-item]
 
     def test_error_mentions_backend(self) -> None:
-        cfg = SimpleNamespace(type="mcp", name="srv")
+        cfg = SimpleNamespace(type="skill", name="srv")
         with pytest.raises(ConfigError, match="openai_agents"):
             build_sdk_tools([cfg], base_dir=None)  # type: ignore[list-item]
+
+
+@pytest.mark.unit
+class TestMCPToolsSkipped:
+    """MCP tools are not wrapped as FunctionTools (they become mcp_servers)."""
+
+    def test_mcp_tool_skipped_no_function_tool(self) -> None:
+        from holodeck.models.tool import MCPTool
+
+        cfg = MCPTool(
+            name="files",
+            description="filesystem server",
+            transport="stdio",
+            command="npx",
+            args=["-y", "server"],
+        )
+        assert build_sdk_tools([cfg], base_dir=None) == []
 
 
 # ---------------------------------------------------------------------------

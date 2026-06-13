@@ -802,3 +802,103 @@ class TestTeardownCleansOwnedTools:
         inst.cleanup.assert_awaited_once()
         assert backend._owned_tools == []
         assert backend._tool_instances == {}
+
+
+# ---------------------------------------------------------------------------
+# Task C1 — MCP server wiring + connect/cleanup lifecycle
+# ---------------------------------------------------------------------------
+
+
+def _agent_with_mcp() -> Agent:
+    from holodeck.models.tool import MCPTool
+
+    return Agent(
+        name="test-agent",
+        model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o-mini"),
+        instructions=Instructions(inline="Be helpful."),
+        tools=[
+            MCPTool(
+                name="files",
+                description="filesystem server",
+                transport="stdio",
+                command="npx",
+                args=["-y", "server"],
+            )
+        ],
+    )
+
+
+@pytest.mark.unit
+class TestMcpServerWiring:
+    """initialize() builds, connects, and threads MCP servers into the Agent."""
+
+    @pytest.mark.asyncio
+    async def test_mcp_servers_connected_and_passed_to_agent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        backend = OpenAIAgentsBackend(_agent_with_mcp())
+        server = MagicMock(name="mcp_server")
+        server.connect = AsyncMock()
+        server.cleanup = AsyncMock()
+        with (
+            patch(
+                "agents.Agent", return_value=MagicMock(name="sdk_agent")
+            ) as agent_ctor,
+            patch("agents.ModelSettings"),
+            patch("agents.set_default_openai_key"),
+            patch(
+                "holodeck.lib.backends.openai_agents_tool_adapters.build_sdk_tools",
+                return_value=[],
+            ),
+            patch(
+                "holodeck.lib.backends.openai_agents_mcp.build_mcp_servers",
+                return_value=[server],
+            ) as build_mcp,
+        ):
+            await backend.initialize()
+        build_mcp.assert_called_once()
+        server.connect.assert_awaited_once()
+        # The connected server reaches Agent(mcp_servers=...)
+        assert agent_ctor.call_args.kwargs["mcp_servers"] == [server]
+        assert backend._mcp_servers == [server]
+
+    @pytest.mark.asyncio
+    async def test_connect_failure_cleans_up_and_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        backend = OpenAIAgentsBackend(_agent_with_mcp())
+        good = MagicMock(name="good_server")
+        good.connect = AsyncMock()
+        good.cleanup = AsyncMock()
+        bad = MagicMock(name="bad_server")
+        bad.connect = AsyncMock(side_effect=RuntimeError("boom"))
+        with (
+            patch("agents.Agent", return_value=MagicMock()),
+            patch("agents.ModelSettings"),
+            patch("agents.set_default_openai_key"),
+            patch(
+                "holodeck.lib.backends.openai_agents_tool_adapters.build_sdk_tools",
+                return_value=[],
+            ),
+            patch(
+                "holodeck.lib.backends.openai_agents_mcp.build_mcp_servers",
+                return_value=[good, bad],
+            ),
+            pytest.raises(BackendInitError, match="MCP server"),
+        ):
+            await backend.initialize()
+        # The already-connected server is cleaned up; the failing one is not.
+        good.connect.assert_awaited_once()
+        good.cleanup.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_teardown_cleans_up_mcp_servers(self) -> None:
+        backend = OpenAIAgentsBackend(_make_agent())
+        server = MagicMock(name="mcp_server")
+        server.cleanup = AsyncMock()
+        backend._mcp_servers = [server]
+        await backend.teardown()
+        server.cleanup.assert_awaited_once()
+        assert backend._mcp_servers == []

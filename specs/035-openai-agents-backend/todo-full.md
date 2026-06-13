@@ -16,7 +16,7 @@ acceptance criteria + verification pass.
 - [x] **Checkpoint B** — grounded query answers; tool-init endpoints smoke green *(unit/mocked; creds-gated live check deferred to K2)*
 
 ## Phase C — MCP transports (spec 027)
-- [ ] C1 — stdio/sse/http → `agents.mcp.*`; websocket skip; `create_static_tool_filter` (note: SDK-built FunctionTools — no guardrail/wrapper attachment)  · M
+- [x] C1 — stdio/sse/http → `agents.mcp.*`; websocket skip; `create_static_tool_filter` (note: SDK-built FunctionTools — no guardrail/wrapper attachment)  · M
 
 ## Phase D — Subagents + skills (handoffs)
 - [ ] D1 — `openai.agents` → SDK sub-Agents + `handoffs` + `RECOMMENDED_PROMPT_PREFIX` + model-literal validation  · M

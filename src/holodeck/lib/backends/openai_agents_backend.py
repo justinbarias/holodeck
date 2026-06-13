@@ -475,6 +475,7 @@ class OpenAIAgentsBackend:
         self._sdk_agent: Any | None = None
         self._tool_instances: dict[str, Any] = {}
         self._owned_tools: list[Any] = []
+        self._mcp_servers: list[Any] = []
 
     def _resolve_base_dir(self) -> Path | None:
         """Return the explicit base_dir or the ``agent_base_dir`` context value."""
@@ -507,6 +508,7 @@ class OpenAIAgentsBackend:
         tools = build_sdk_tools(
             self._agent_config.tools, base_dir, tool_instances=self._tool_instances
         )
+        mcp_servers = await self._initialize_mcp_servers(base_dir)
 
         model_settings = _build_model_settings(self._agent_config.model)
 
@@ -515,8 +517,53 @@ class OpenAIAgentsBackend:
             instructions=instructions,
             model=model,
             tools=tools,
+            mcp_servers=mcp_servers,
             model_settings=model_settings,
         )
+
+    async def _initialize_mcp_servers(self, base_dir: Path | None) -> list[Any]:
+        """Build and connect SDK MCP servers from the agent's MCP tools.
+
+        Translates ``type: mcp`` tool configs into SDK MCP server objects and
+        opens each connection (the SDK requires ``connect()`` before a server is
+        passed to ``Agent(mcp_servers=...)``). Connected servers are recorded in
+        ``self._mcp_servers`` so ``teardown`` can ``cleanup()`` them. If a
+        connection fails, already-connected servers are cleaned up before the
+        error is re-raised, so no connection is leaked.
+
+        Args:
+            base_dir: Directory for resolving relative stdio ``args`` paths.
+
+        Returns:
+            The list of connected SDK MCP server objects (empty when the agent
+            declares no MCP tools).
+
+        Raises:
+            BackendInitError: If an MCP server fails to connect.
+        """
+        from holodeck.lib.backends.openai_agents_mcp import build_mcp_servers
+        from holodeck.models.tool import MCPTool
+
+        mcp_tools = [
+            t for t in (self._agent_config.tools or []) if isinstance(t, MCPTool)
+        ]
+        servers = build_mcp_servers(mcp_tools, base_dir)
+
+        connected: list[Any] = []
+        try:
+            for server in servers:
+                await server.connect()
+                connected.append(server)
+        except Exception as exc:  # noqa: BLE001 - normalized to BackendInitError
+            for server in connected:
+                try:
+                    await server.cleanup()
+                except Exception as cleanup_exc:  # noqa: BLE001 - best-effort
+                    logger.warning("Error cleaning up MCP server: %s", cleanup_exc)
+            raise BackendInitError(f"Failed to connect MCP server: {exc}") from exc
+
+        self._mcp_servers = connected
+        return connected
 
     async def _initialize_tool_instances(self) -> None:
         """Initialize vectorstore / hierarchical-document tool instances.
@@ -628,7 +675,7 @@ class OpenAIAgentsBackend:
         )
 
     async def teardown(self) -> None:
-        """Release backend resources, cleaning up owned RAG tool instances."""
+        """Release backend resources, cleaning up RAG tools and MCP servers."""
         for tool_inst in self._owned_tools:
             cleanup = getattr(tool_inst, "cleanup", None)
             if callable(cleanup):
@@ -638,3 +685,10 @@ class OpenAIAgentsBackend:
                     logger.warning("Error cleaning up tool: %s", exc)
         self._owned_tools = []
         self._tool_instances = {}
+
+        for server in self._mcp_servers:
+            try:
+                await server.cleanup()
+            except Exception as exc:  # noqa: BLE001 - best-effort cleanup
+                logger.warning("Error cleaning up MCP server: %s", exc)
+        self._mcp_servers = []
