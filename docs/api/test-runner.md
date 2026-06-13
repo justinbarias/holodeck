@@ -7,7 +7,7 @@ The framework follows a sequential flow:
 
 1. Load agent configuration from YAML
 2. Resolve execution configuration (CLI > YAML > env > defaults)
-3. Initialize components (FileProcessor, AgentFactory/Backend, Evaluators)
+3. Initialize components (FileProcessor, AgentBackend, Evaluators)
 4. Execute each test case (file processing, agent invocation, tool validation, evaluation)
 5. Generate a `TestReport` with summary statistics
 
@@ -16,8 +16,10 @@ The framework follows a sequential flow:
 ## Executor
 
 The executor module coordinates all stages of test execution. It owns configuration
-resolution, evaluator creation, the agent invocation dispatch (backend or legacy
-factory), and report generation.
+resolution, evaluator creation, agent invocation, and report generation. Agents are
+driven through the provider-agnostic `AgentBackend` interface — the executor
+auto-selects the correct backend (Claude or OpenAI Agents) via `BackendSelector`
+based on `model.provider`, or uses one injected by the caller.
 
 ### TestExecutor
 
@@ -59,37 +61,14 @@ constructor. Eliminates repetitive `if/elif` chains when creating RAG evaluators
 
 ---
 
-## Agent Factory
+## Agent Invocation
 
-The agent factory module provides Semantic Kernel-based agent creation, invocation
-with timeout/retry logic, and response/tool-call extraction.
-
-### AgentFactory
-
-::: holodeck.lib.test_runner.agent_factory.AgentFactory
-    options:
-      docstring_style: google
-      show_source: true
-
-### AgentThreadRun
-
-Encapsulates a single agent execution thread with an isolated `ChatHistory`.
-Created by `AgentFactory.create_thread_run()` to ensure test-case isolation.
-
-::: holodeck.lib.test_runner.agent_factory.AgentThreadRun
-    options:
-      docstring_style: google
-      show_source: true
-
-### AgentExecutionResult
-
-Dataclass returned by `AgentThreadRun.invoke()` containing tool calls, tool results,
-the full conversation history, optional token usage, and the extracted response text.
-
-::: holodeck.lib.test_runner.agent_factory.AgentExecutionResult
-    options:
-      docstring_style: google
-      show_source: true
+Agent execution is delegated to the backend layer rather than a test-runner-owned
+agent factory. The executor invokes `AgentBackend.invoke_once()` (or runs a
+multi-turn session) and normalizes the returned `ExecutionResult` — response text,
+tool calls, tool results, and token usage — for evaluation. See the
+[Backend Abstraction](backends.md) reference for `AgentBackend`, `BackendSelector`,
+and `ExecutionResult`.
 
 ---
 

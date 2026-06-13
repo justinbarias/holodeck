@@ -107,8 +107,10 @@ provider setup functions.
 
 ## Instrumentation (`instrumentation`)
 
-Semantic Kernel telemetry integration. Sets the environment variables that
-Semantic Kernel reads at startup to emit GenAI semantic convention spans.
+Wires up the internal instrumentation layer so it emits GenAI
+semantic-convention spans. Sets the environment variables that the underlying
+connector library reads at startup to turn on diagnostic and
+sensitive-content tracing.
 
 ::: holodeck.lib.observability.instrumentation.enable_semantic_kernel_telemetry
     options:

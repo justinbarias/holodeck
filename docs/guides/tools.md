@@ -504,4 +504,4 @@ Use descriptive names and clear descriptions (the model decides when to call a t
 - [Vector Stores](vector-stores.md) — RAG provider setup
 - [MCP CLI](mcp-cli.md) — discovering and managing MCP servers
 - [File References](file-references.md) — path resolution
-- [Examples](../examples/) — complete tool usage
+- [Examples](../examples/README.md) — complete tool usage

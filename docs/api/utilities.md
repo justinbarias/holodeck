@@ -92,7 +92,7 @@ Text splitting and structure-aware chunking for preparing documents for embeddin
 
 ### Text Chunker
 
-Token-based text splitting using Semantic Kernel's paragraph splitter.
+A token-based paragraph splitter (built on the SK connector library internally).
 
 ::: holodeck.lib.text_chunker.TextChunker
     options:
@@ -154,7 +154,7 @@ Uses the Claude Agent SDK `query()` function for contextual embeddings. Supports
 
 ### LLM Context Generator
 
-Uses Semantic Kernel chat completion services for contextual embeddings. Supports adaptive concurrency on rate limiting and exponential backoff retry logic.
+Uses the configured chat-completion provider for contextual embeddings. Supports adaptive concurrency on rate limiting and exponential backoff retry logic.
 
 ::: holodeck.lib.llm_context_generator.RetryConfig
     options:
@@ -170,7 +170,7 @@ Uses Semantic Kernel chat completion services for contextual embeddings. Support
 
 ## Tool Initialization
 
-Shared tool initialization for VectorStoreTool and HierarchicalDocumentTool. Provider-agnostic: works for both SK and Claude backend paths.
+Shared tool initialization for VectorStoreTool and HierarchicalDocumentTool. Provider-agnostic: works across every backend (OpenAI Agents and Claude).
 
 ::: holodeck.lib.tool_initializer.resolve_embedding_model
     options:
@@ -207,7 +207,7 @@ Resolves agent instructions from `Instructions` config objects, supporting both 
 
 ## Vector Store
 
-Unified interface for working with various vector storage backends through Semantic Kernel's VectorStoreCollection abstractions. Supports PostgreSQL (pgvector), Azure AI Search, Qdrant, Weaviate, ChromaDB, FAISS, Pinecone, and more.
+Unified interface for working with various vector storage backends through vector store connectors (PostgreSQL/pgvector, Azure AI Search, Qdrant, Weaviate, ChromaDB, FAISS, Pinecone, …).
 
 ::: holodeck.lib.vector_store.ChromaConnectionParams
     options:

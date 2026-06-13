@@ -11,6 +11,7 @@ This directory contains example agent.yaml files demonstrating different feature
 | [`with_evaluations.yaml`](#with-evaluations) | Quality assurance | DeepEval metrics, NLP metrics, per-metric model override |
 | [`with_global_config.yaml`](#with-global-config) | Multi-environment setups | Config precedence, env var substitution, inheritance |
 | [`claude_agent.yaml`](#claude-agent) | Claude-native agents | OAuth auth, embedding_provider, Claude SDK settings, extended thinking |
+| [`financial-assistant/openai`](#openai-financial-assistant) | OpenAI Agents backend (RAG + eval) | `azure_openai`, `openai:` block, hierarchical_document over Qdrant, numeric eval, structured output |
 
 ---
 
@@ -363,6 +364,127 @@ holodeck test claude_agent.yaml
 - `embedding_provider` — Required because Anthropic does not provide embedding models; must use a separate provider (Ollama, OpenAI) for vectorstore/hierarchical_document tools
 - `claude` section — SDK-specific settings: `permission_mode`, `max_turns`, `extended_thinking`, `web_search`, `bash`, `file_system`, `subagents`, `allowed_tools`
 - All Claude capabilities default to disabled (least-privilege)
+
+---
+
+### OpenAI Financial Assistant {#openai-financial-assistant}
+
+**Purpose**: End-to-end OpenAI Agents backend agent — RAG over a financial-filing
+corpus with numeric evaluation and native structured output.
+
+> **Note**: The `sample/` directory is gitignored and not shipped in-tree, so the
+> key `agent.yaml` excerpts are shown inline below rather than linked. This agent
+> lives at `sample/financial-assistant/openai/` and pairs with
+> `sample/test-openai-sdk-agent/` (a deterministic function-tool warehouse agent
+> that verifies the OpenAI Agents backend with `holodeck test`).
+
+**Features**:
+- **Azure OpenAI provider** → routed to the OpenAI Agents backend automatically
+- **`openai:` block** — `max_turns` plus reasoning `effort: high` for the
+  multi-step ratio/derivation turns in the ConvFinQA suite
+- **`hierarchical_document` tool** — hybrid (dense + sparse) search over a
+  ConvFinQA SEC-filing archive stored in Qdrant; Azure OpenAI supplies both
+  embeddings and context generation
+- **Native structured output** — `response_format` forces a `{"answer": …}`
+  envelope the evaluator grades directly
+- **Numeric evaluation** — the `numeric` standard metric grades the `answer`
+  leaf with relative tolerance, accepting percentages and thousands separators
+
+**When to use**:
+- Building an OpenAI/Azure OpenAI agent that needs grounded retrieval over a
+  document corpus
+- Enforcing a machine-checkable answer schema instead of policing format in the
+  prompt
+- Grading numeric answers with tolerance rather than exact string match
+
+**Model + `openai:` block** (Azure OpenAI → OpenAI Agents backend):
+```yaml
+model:
+  provider: azure_openai
+  name: ${AZURE_OPENAI_DEPLOYMENT_NAME}
+  endpoint: ${AZURE_OPENAI_ENDPOINT}
+  api_key: ${AZURE_OPENAI_API_KEY}
+  temperature: 0.0
+
+# OpenAI Agents SDK backend settings
+openai:
+  max_turns: 20
+  effort: high   # reasoning model — turn-2 derivations need effort requested
+
+# Anthropic does not embed; Azure OpenAI supplies embeddings here
+embedding_provider:
+  provider: azure_openai
+  name: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME}
+  endpoint: ${AZURE_OPENAI_ENDPOINT}
+  api_key: ${AZURE_OPENAI_API_KEY}
+```
+
+**Structured output** (the SDK enforces this schema on every final response):
+```yaml
+response_format:
+  type: object
+  additionalProperties: false
+  required: [answer]
+  properties:
+    answer:
+      anyOf:
+        - type: number
+        - type: string
+          pattern: "^(-?\\d+(\\.\\d+)?%?|NaN)$"
+```
+
+**Hierarchical-document RAG over Qdrant** (hybrid search):
+```yaml
+tools:
+  - name: convfinqa_archive
+    type: hierarchical_document
+    source: data/convfinqa-source-5.pdf
+    search_mode: hybrid
+    semantic_weight: 0.2
+    keyword_weight: 0.8
+    top_k: 8
+    contextual_embeddings: false
+    context_model:
+      provider: azure_openai
+      name: ${AZURE_OPENAI_DEPLOYMENT_NAME}
+      endpoint: ${AZURE_OPENAI_ENDPOINT}
+      api_key: ${AZURE_OPENAI_API_KEY}
+    database:
+      provider: qdrant
+      connection_string: ${QDRANT_URL}
+```
+
+**Numeric evaluation** (grades the `answer` leaf):
+```yaml
+evaluations:
+  metrics:
+    - type: standard
+      metric: numeric
+      response_path: answer
+      relative_tolerance: 0.01
+      accept_percent: true
+      accept_thousands_separators: true
+```
+
+**Try it**:
+```bash
+export AZURE_OPENAI_API_KEY=your-key-here
+export AZURE_OPENAI_ENDPOINT=https://your-instance.openai.azure.com/
+export AZURE_OPENAI_DEPLOYMENT_NAME=your-chat-deployment
+export AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME=your-embedding-deployment
+export QDRANT_URL=https://your-qdrant-cluster
+
+holodeck test agent.yaml      # runs the ConvFinQA verification suite
+holodeck chat agent.yaml      # interactive multi-turn session
+```
+
+**Key Concepts**:
+- `provider: azure_openai` (and `openai`) route to the OpenAI Agents backend via
+  `BackendSelector` — no backend is named in the YAML
+- The `openai:` block is the OpenAI sibling of the `claude:` block; see the
+  [OpenAI Backend guide](../guides/openai-backend.md)
+- `hierarchical_document` + Qdrant gives native dense+sparse hybrid retrieval
+- `response_format` + the `numeric` metric make answers machine-checkable
 
 ---
 

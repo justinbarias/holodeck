@@ -65,7 +65,7 @@ The same extras work with `pip install holodeck-ai[<extra>]`.
 | `pinecone`  | Serverless, managed cloud              | Low              |
 | `in-memory` | Testing and prototyping                | None             |
 
-See the [Tools Guide](tools.md#supported-vector-database-providers) for the complete list.
+See the [Tools Guide](tools.md) for the complete list.
 
 ## Configuring vector stores
 
