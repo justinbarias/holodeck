@@ -184,6 +184,93 @@ class TestBuildModelUnsupported:
 
 
 @pytest.mark.unit
+class TestBuildModelFallback:
+    """``openai.fallback_model`` wraps the primary in a fallback Model (FR-033)."""
+
+    def test_openai_no_fallback_returns_plain_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without fallback_model the OpenAI path returns the bare name."""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        agent = _make_agent(ProviderEnum.OPENAI, "gpt-4o")
+        agent.openai = OpenAIConfig()
+        with patch("agents.set_default_openai_key"):
+            result = _build_model(agent)
+        assert result == "gpt-4o"
+
+    def test_openai_fallback_wraps_via_provider(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With fallback_model the OpenAI path returns a wrapping Model built
+        from two provider-resolved models sharing one client."""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        agent = _make_agent(ProviderEnum.OPENAI, "gpt-4o")
+        agent.openai = OpenAIConfig(fallback_model="gpt-4o-mini")
+
+        primary_model = MagicMock(name="primary_model")
+        fallback_model = MagicMock(name="fallback_model")
+        provider = MagicMock(name="provider")
+        provider.get_model.side_effect = [primary_model, fallback_model]
+        wrapped = MagicMock(name="wrapped_model")
+
+        with (
+            patch("agents.set_default_openai_key"),
+            patch(
+                "agents.models.openai_provider.OpenAIProvider", return_value=provider
+            ),
+            patch(
+                "holodeck.lib.backends.openai_agents_fallback.build_fallback_model",
+                return_value=wrapped,
+            ) as build,
+        ):
+            result = _build_model(agent)
+
+        assert result is wrapped
+        assert provider.get_model.call_args_list[0].args == ("gpt-4o",)
+        assert provider.get_model.call_args_list[1].args == ("gpt-4o-mini",)
+        build.assert_called_once_with(primary_model, fallback_model)
+
+    def test_azure_fallback_reuses_same_client(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """For Azure, the fallback deployment is built on the SAME client."""
+        monkeypatch.setenv("AZURE_OPENAI_API_KEY", "az-key")
+        agent = _make_agent(
+            ProviderEnum.AZURE_OPENAI,
+            "primary-dep",
+            endpoint="https://x.openai.azure.com",
+        )
+        agent.openai = OpenAIConfig(fallback_model="fallback-dep")
+
+        sentinel_client = MagicMock(name="async_openai_client")
+        primary_model = MagicMock(name="primary_responses_model")
+        fallback_responses_model = MagicMock(name="fallback_responses_model")
+        wrapped = MagicMock(name="wrapped_model")
+
+        with (
+            patch("openai.AsyncOpenAI", return_value=sentinel_client),
+            patch(
+                "agents.OpenAIResponsesModel",
+                side_effect=[primary_model, fallback_responses_model],
+            ) as model_ctor,
+            patch("agents.set_tracing_disabled"),
+            patch(
+                "holodeck.lib.backends.openai_agents_fallback.build_fallback_model",
+                return_value=wrapped,
+            ) as build,
+        ):
+            result = _build_model(agent)
+
+        assert result is wrapped
+        # Both responses models share the one Azure client.
+        assert model_ctor.call_args_list[0].kwargs["openai_client"] is sentinel_client
+        assert model_ctor.call_args_list[1].kwargs["openai_client"] is sentinel_client
+        assert model_ctor.call_args_list[0].kwargs["model"] == "primary-dep"
+        assert model_ctor.call_args_list[1].kwargs["model"] == "fallback-dep"
+        build.assert_called_once_with(primary_model, fallback_responses_model)
+
+
+@pytest.mark.unit
 class TestAzureV1BaseUrl:
     """Endpoint normalization to the OpenAI-compatible /openai/v1 surface."""
 

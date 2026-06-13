@@ -37,6 +37,8 @@ from holodeck.models.tool import HierarchicalDocumentToolConfig, VectorstoreTool
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
     from agents import ModelSettings, OpenAIResponsesModel, RunConfig, RunResult
+    from agents.models.interface import Model
+    from openai import AsyncOpenAI
     from openai.types.shared import Reasoning
     from openai.types.shared.reasoning_effort import ReasoningEffort
     from pydantic import SecretStr
@@ -131,7 +133,40 @@ def _preflight_credentials(agent: Agent) -> tuple[str, str | None]:
     )
 
 
-def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
+def _fallback_model_name(agent: Agent) -> str | None:
+    """Return the configured ``openai.fallback_model`` for *agent*, or ``None``."""
+    if agent.openai is not None:
+        return agent.openai.fallback_model
+    return None
+
+
+def _build_azure_client(
+    api_key: str, endpoint: str, api_version: str | None
+) -> AsyncOpenAI:
+    """Build the Azure ``AsyncOpenAI`` client for the ``/openai/v1`` surface.
+
+    Args:
+        api_key: The resolved Azure API key.
+        endpoint: The resolved Azure resource endpoint.
+        api_version: An optional pinned ``api-version`` query value.
+
+    Returns:
+        A configured ``AsyncOpenAI`` client targeting the Azure v1 surface.
+    """
+    from openai import AsyncOpenAI
+
+    client_kwargs: dict[str, Any] = {
+        "api_key": api_key,
+        "base_url": _azure_v1_base_url(endpoint),
+    }
+    # The v1 surface does not require an api-version; honor one only if the
+    # config pins it (e.g. to opt into a preview surface).
+    if api_version:
+        client_kwargs["default_query"] = {"api-version": api_version}
+    return AsyncOpenAI(**client_kwargs)
+
+
+def _build_model(agent: Agent) -> str | OpenAIResponsesModel | Model:
     """Build the SDK ``model=`` argument for *agent* and validate credentials.
 
     Both providers run on the Responses API. For ``provider: openai`` the
@@ -143,6 +178,13 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
     tracing is disabled because no OpenAI-platform key is present to upload
     traces with.
 
+    When ``openai.fallback_model`` is set, the primary model is wrapped in a
+    fallback ``Model`` (FR-033): on a retryable upstream error (429 / 5xx) the
+    request is re-issued once against the fallback model, built with the *same*
+    credentials/client as the primary (for Azure the fallback name is a
+    deployment on the same endpoint). Without ``fallback_model`` the primary is
+    returned directly, with no wrapper.
+
     Credential resolution and validation are delegated to the side-effect-free
     :func:`_preflight_credentials`; this function additionally performs the SDK
     global mutations (``set_default_openai_key`` / ``set_tracing_disabled``)
@@ -152,8 +194,9 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
         agent: The agent configuration whose ``model`` selects the provider.
 
     Returns:
-        Either the model-name string (OpenAI) or an ``OpenAIResponsesModel``
-        instance (Azure), ready to pass as the SDK ``Agent(model=...)`` argument.
+        The model-name string (OpenAI, no fallback), an ``OpenAIResponsesModel``
+        instance (Azure, no fallback), or a wrapping fallback ``Model`` when
+        ``openai.fallback_model`` is set — ready to pass as ``Agent(model=...)``.
 
     Raises:
         BackendInitError: If a required credential is missing, or the provider
@@ -161,6 +204,7 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
     """
     model_cfg = agent.model
     api_key, endpoint = _preflight_credentials(agent)
+    fallback_name = _fallback_model_name(agent)
 
     if model_cfg.provider == ProviderEnum.OPENAI:
         # The default Responses client reads OPENAI_API_KEY from the env; make
@@ -168,7 +212,19 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
         from agents import set_default_openai_key
 
         set_default_openai_key(api_key)
-        return model_cfg.name
+        if fallback_name is None:
+            return model_cfg.name
+        # Resolve both names to concrete Models via the default OpenAI provider
+        # so they share one client, then wrap them.
+        from agents.models.openai_provider import OpenAIProvider
+
+        from holodeck.lib.backends.openai_agents_fallback import build_fallback_model
+
+        provider = OpenAIProvider()
+        return build_fallback_model(
+            provider.get_model(model_cfg.name),
+            provider.get_model(fallback_name),
+        )
 
     # AZURE_OPENAI — _preflight_credentials guarantees the provider is one of
     # the two supported values (otherwise it already raised) and a non-None
@@ -179,24 +235,21 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel:
         )
 
     from agents import OpenAIResponsesModel, set_tracing_disabled
-    from openai import AsyncOpenAI
 
     # No OpenAI-platform key is available in the Azure dev path, so disable
     # the SDK's trace upload (it would otherwise fail / leak).
     set_tracing_disabled(True)
 
-    client_kwargs: dict[str, Any] = {
-        "api_key": api_key,
-        "base_url": _azure_v1_base_url(endpoint),
-    }
-    # The v1 surface does not require an api-version; honor one only if the
-    # config pins it (e.g. to opt into a preview surface).
-    if model_cfg.api_version:
-        client_kwargs["default_query"] = {"api-version": model_cfg.api_version}
-
-    client = AsyncOpenAI(**client_kwargs)
+    client = _build_azure_client(api_key, endpoint, model_cfg.api_version)
     # For Azure, ``model`` is the deployment name (model_cfg.name).
-    return OpenAIResponsesModel(model=model_cfg.name, openai_client=client)
+    primary = OpenAIResponsesModel(model=model_cfg.name, openai_client=client)
+    if fallback_name is None:
+        return primary
+    # The fallback is a deployment name on the SAME Azure endpoint/client.
+    from holodeck.lib.backends.openai_agents_fallback import build_fallback_model
+
+    fallback = OpenAIResponsesModel(model=fallback_name, openai_client=client)
+    return build_fallback_model(primary, fallback)
 
 
 def _max_turns(agent: Agent) -> int:
