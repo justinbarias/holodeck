@@ -489,8 +489,18 @@ def _to_execution_result(
     from agents.items import ToolCallItem, ToolCallOutputItem
 
     final = result.final_output
-    response = str(final) if final is not None else ""
     structured_output = _coerce_structured_output(final) if structured else None
+    if final is None:
+        response = ""
+    elif isinstance(final, str):
+        response = final
+    elif structured_output is not None:
+        # The SDK parsed the model's JSON into an object; re-serialize it as
+        # canonical JSON — str() would yield a Python repr (single quotes)
+        # that downstream graders cannot json.loads().
+        response = json.dumps(structured_output)
+    else:
+        response = str(final)
 
     tool_calls: list[dict[str, Any]] = []
     tool_results: list[dict[str, Any]] = []

@@ -569,6 +569,30 @@ class TestStructuredOutput:
         result = _to_execution_result(fake, structured=True)
         assert result.structured_output == {"k": "v"}
 
+    def test_dict_final_output_response_is_json_text(self) -> None:
+        # response must be canonical JSON (double quotes), not a Python dict
+        # repr — downstream graders json.loads() it (response_path extraction).
+        import json
+
+        fake = _fake_run_result()
+        fake.final_output = {"answer": 31903.6}
+        result = _to_execution_result(fake, structured=True)
+        assert json.loads(result.response) == {"answer": 31903.6}
+
+    def test_pydantic_final_output_response_is_json_text(self) -> None:
+        import json
+
+        fake = _fake_run_result()
+        fake.final_output = SimpleNamespace(model_dump=lambda: {"answer": "NaN"})
+        result = _to_execution_result(fake, structured=True)
+        assert json.loads(result.response) == {"answer": "NaN"}
+
+    def test_string_final_output_response_unchanged(self) -> None:
+        result = _to_execution_result(
+            _fake_run_result(final_output='{"answer": "42"}'), structured=True
+        )
+        assert result.response == '{"answer": "42"}'
+
 
 @pytest.mark.unit
 class TestBuildReasoningSummary:
