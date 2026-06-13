@@ -1,17 +1,10 @@
 # Claude Backend
 
-The Claude backend runs your agent on top of the [Claude Agent SDK](https://docs.anthropic.com/en/api/agent-sdk) — Anthropic's first-class agent runtime. It is automatically selected when `model.provider: anthropic` is set in your agent configuration.
-
-This guide is for backend-specific behaviour: authentication, Claude Agent SDK capabilities (permission modes, extended thinking, web search, subagents, etc.), and the full configuration reference. For shared concepts like tools, observability, and vector stores, see the dedicated guides for each.
+The Claude backend runs your agent on top of the [Claude Agent SDK](https://docs.anthropic.com/en/api/agent-sdk) — Anthropic's first-class agent runtime. It is automatically selected when `model.provider` is `anthropic` or `ollama` (local models).
 
 ## Quick start
 
-### Prerequisites
-
-- **Node.js 18+** — required by the Claude Agent SDK subprocess. Verify with `node --version`.
-- An Anthropic credential. The simplest is a Claude Code OAuth token (recommended for Claude Code users).
-
-### Minimal agent
+Prerequisites: **Node.js 18+** (the SDK spawns a `claude` CLI subprocess — verify with `node --version`) and an Anthropic credential (a Claude Code OAuth token is simplest).
 
 ```yaml
 # agent.yaml
@@ -28,14 +21,17 @@ instructions:
 
 ```bash
 # .env
-CLAUDE_CODE_OAUTH_TOKEN=your-oauth-token
+CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN}
 ```
-
-Verify:
 
 ```bash
 holodeck chat agent.yaml
+# → starts an interactive chat session backed by Claude
 ```
+
+## How it works
+
+`BackendSelector` routes `provider: anthropic` (and `ollama`) to the Claude backend, which drives the Claude Agent SDK. Every Claude-specific capability lives under the top-level `claude:` block and defaults to disabled (least-privilege). The backend fully supports `holodeck chat`, `test`, `serve`, and `deploy`. Using OpenAI or Azure models instead? See the [OpenAI Backend](openai-backend.md) guide. For shared concepts, see the [Tools](tools.md), [Observability](observability.md), and [Vector Stores](vector-stores.md) guides.
 
 ## Advanced configuration
 
@@ -510,6 +506,10 @@ Check [Anthropic's model documentation](https://docs.anthropic.com/en/docs/about
 | `ANTHROPIC_FOUNDRY_RESOURCE`      | `foundry`               | Foundry resource name                             |
 | `ANTHROPIC_FOUNDRY_BASE_URL`      | `foundry`               | Alternate Foundry base URL                        |
 
+## Serve and deploy
+
+The Claude backend fully supports `holodeck serve` and `holodeck deploy` — there are no backend-specific restrictions. See [Agent Server](serve.md) and [Deployment](deployment.md) for the workflow, and [Production considerations](#production-considerations-memory-and-concurrency) above for sizing the per-turn subprocess memory under `serve`.
+
 ## Troubleshooting
 
 ### Cloud auth context missing
@@ -543,10 +543,6 @@ Check [Anthropic's model documentation](https://docs.anthropic.com/en/docs/about
 1. Verify the key: `echo $ANTHROPIC_API_KEY`.
 2. Ensure no extra whitespace.
 3. For OAuth, regenerate via the Claude Code CLI.
-
-## Limitations
-
-- `holodeck serve` and container deployment do not currently support `provider: anthropic`. Both are planned in a future release. See [Agent Server](serve.md) and [Deployment](deployment.md) for the current SK-only support matrix.
 
 ## Next steps
 

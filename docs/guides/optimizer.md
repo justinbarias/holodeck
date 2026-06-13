@@ -11,6 +11,16 @@ accepted improvement so wins compound into one improved `agent.yaml`.
 The original `agent.yaml` is **never modified**. Every trial is logged, and the
 best candidate is written to `results/optimizer/<run-id>/best.yaml`.
 
+## Quick start
+
+Add an `evaluations.optimizer` block to an agent that already has metrics (see [Configuration](#configuration) below), then run:
+
+```bash
+holodeck test optimize agent.yaml
+# → streams per-trial losses, then prints a baseline → best summary;
+#   writes results/optimizer/<run-id>/best.yaml
+```
+
 ## How it works
 
 The optimizer nests four concepts. From smallest unit to largest:

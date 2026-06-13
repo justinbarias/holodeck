@@ -2,46 +2,43 @@
 
 This guide explains how to define AI agents using HoloDeck's `agent.yaml` configuration file.
 
-## Overview
+## Quick start
 
-An agent configuration file defines a single AI agent with everything it needs:
-
-- **Model settings**: Which LLM provider to use (OpenAI, Azure, Anthropic)
-- **Instructions**: System prompt (from a file or inline)
-- **Tools**: Capabilities the agent can use (search, functions, APIs, templates)
-- **Evaluations**: Metrics to measure quality
-- **Test cases**: Scenarios to validate the agent
-
-All configuration is declarative—no code required.
-
-## Basic Structure
+A minimal valid `agent.yaml` needs just three things: a `name`, a `model`, and `instructions`.
 
 ```yaml
-name: my-agent                    # Required: Agent name
-description: Agent description    # Optional: What this agent does
-author: "Your Name"               # Optional: Who created this agent
-
-model:                            # Required: LLM configuration
-  provider: anthropic             # Required: openai|azure_openai|anthropic|ollama
-  name: claude-sonnet-4-20250514  # Required: Model identifier
-  auth_provider: oauth_token      # Optional: Uses CLAUDE_CODE_OAUTH_TOKEN env var
-  temperature: 0.7                # Optional: 0.0-2.0
-  max_tokens: 2000                # Optional: Maximum generation tokens
-
-instructions:                     # Required: System prompt
-  inline: "You are a helpful..."  # Option 1: Inline text
-  # OR
-  # file: instructions.txt        # Option 2: External file
-
-tools: []                         # Optional: Agent capabilities
-evaluations:                      # Optional: Quality metrics
-  metrics: []
-test_cases: []                    # Optional: Test scenarios
+name: my-agent
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+instructions:
+  inline: "You are a helpful assistant."
 ```
 
-> **Backend auto-selection**: HoloDeck picks the execution backend from the `provider` field. `anthropic` routes to the [Claude Backend](claude-backend.md); everything else (`openai`, `azure_openai`, `ollama`) routes to the [Semantic Kernel Backend](semantic-kernel-backend.md). See those guides for backend-specific configuration.
+Chat with it:
 
-## Agent Name
+```bash
+holodeck chat agent.yaml
+```
+
+Expected output:
+
+```
+You: Hello!
+my-agent: Hi! How can I help you today?
+```
+
+That is the whole contract. Everything else — tools, evaluations, test cases, structured output — is optional and layered on top.
+
+## How it works
+
+HoloDeck loads `agent.yaml`, validates it with Pydantic against the agent schema, and resolves any [file references](file-references.md) relative to the YAML's directory. The execution backend is selected automatically from `model.provider` (see below), so the same config runs on any provider without code changes. Secrets are never hardcoded — use environment variables and [global configuration](global-config.md). The sections below are a field-by-field reference; most fields are optional.
+
+> **Backend auto-selection**: HoloDeck picks the execution backend from the `provider` field. `anthropic` and `ollama` route to the [Claude Backend](claude-backend.md); `openai` and `azure_openai` route to the [OpenAI Agents Backend](openai-backend.md). Provider-specific settings live in optional top-level `claude:` and `openai:` blocks — see those guides.
+
+## Field Reference
+
+### Agent Name
 
 - **Required**: Yes
 - **Type**: String
@@ -52,7 +49,7 @@ test_cases: []                    # Optional: Test scenarios
 name: customer-support
 ```
 
-## Agent Description
+### Agent Description
 
 - **Required**: No
 - **Type**: String
@@ -63,7 +60,7 @@ name: customer-support
 description: Handles customer support queries with ticket creation
 ```
 
-## Agent Author
+### Agent Author
 
 - **Required**: No
 - **Type**: String
@@ -79,11 +76,11 @@ This field is useful for:
 - Understanding who to contact for questions about the agent
 - Tracking agent ownership and maintenance responsibility
 
-## Model Configuration
+### Model Configuration
 
 Defines which LLM provider and model to use.
 
-### Provider Field
+#### Provider Field
 
 - **Required**: Yes
 - **Type**: String (Enum)
@@ -98,7 +95,7 @@ model:
   provider: anthropic
 ```
 
-### Model Name
+#### Model Name
 
 - **Required**: Yes
 - **Type**: String
@@ -114,7 +111,7 @@ model:
   name: gpt-4o
 ```
 
-### Temperature
+#### Temperature
 
 - **Optional**: Yes
 - **Type**: Float
@@ -130,7 +127,7 @@ model:
   temperature: 0.8  # More creative
 ```
 
-### Max Tokens
+#### Max Tokens
 
 - **Optional**: Yes
 - **Type**: Integer
@@ -142,7 +139,7 @@ model:
   max_tokens: 4000
 ```
 
-### Top P
+#### Top P
 
 - **Optional**: Yes
 - **Type**: Float
@@ -154,7 +151,7 @@ model:
   top_p: 0.9
 ```
 
-### Authentication Provider
+#### Authentication Provider
 
 - **Optional**: Yes (defaults to `api_key`)
 - **Type**: String (Enum)
@@ -176,7 +173,7 @@ model:
   auth_provider: oauth_token  # Uses CLAUDE_CODE_OAUTH_TOKEN env var
 ```
 
-## Embedding Provider
+### Embedding Provider
 
 When using `model.provider: anthropic` with **vectorstore** or **hierarchical_document** tools, you **must** define an `embedding_provider` at the agent level. This is because Anthropic does not provide embedding models — a separate provider is needed to generate embeddings for semantic search.
 
@@ -198,19 +195,20 @@ embedding_provider:
 
 > **Note**: `embedding_provider` is ignored when using `openai`, `azure_openai`, or `ollama` as the main provider, since those providers can generate embeddings natively.
 
-## Claude Agent SDK Settings
+### Provider-Specific Settings (`claude:` / `openai:`)
 
-When using `model.provider: anthropic`, the agent.yaml accepts a top-level `claude:` section for backend-specific capabilities (permission modes, extended thinking, web search, subagents, bash, file_system, working_directory, max_turns, allowed_tools, setting_sources).
+Each backend reads an optional top-level block for capabilities that only apply to that provider. These blocks are documented in their respective backend guides, not duplicated here:
 
-HoloDeck **defaults to settings isolation**: the spawned SDK subprocess does not inherit plugins, skills, or hooks from `~/.claude` or `.claude/`. Opt in per-agent via `claude.setting_sources` — see [Claude Backend: Settings isolation](claude-backend.md#settings-isolation-plugins-skills-hooks).
+- **`claude:`** — used when `model.provider: anthropic`. Covers permission modes, extended thinking, web search, subagents, bash, file_system, working_directory, max_turns, allowed_tools, and setting_sources. HoloDeck **defaults to settings isolation**: the spawned SDK subprocess does not inherit plugins, skills, or hooks from `~/.claude` or `.claude/`; opt in per-agent via `claude.setting_sources`. See [Claude Backend](claude-backend.md).
+- **`openai:`** — used when `model.provider` is `openai` or `azure_openai`. Covers reasoning effort, budget caps, model fallback, structured output, and tracing. See [OpenAI Backend](openai-backend.md).
 
-See [Claude Backend](claude-backend.md) for the full reference and examples. The `claude` block is ignored for non-Anthropic providers.
+Each block is ignored when it does not match the active provider.
 
-## Instructions
+### Instructions
 
 Defines the system prompt that guides agent behavior.
 
-### Inline Instructions
+#### Inline Instructions
 
 Embed the prompt directly in `agent.yaml`:
 
@@ -225,7 +223,7 @@ instructions:
     - Escalate complex issues to supervisors
 ```
 
-### File-Based Instructions
+#### File-Based Instructions
 
 Reference an external file (path relative to `agent.yaml`):
 
@@ -245,13 +243,13 @@ Guidelines:
 - Escalate complex issues to supervisors
 ```
 
-### Rules
+#### Rules
 
 - **Exactly one required**: Either `inline` OR `file`, not both
 - **Max length** (inline): 5000 characters
 - **File path**: Relative to `agent.yaml` directory (see File References guide)
 
-### Prompt Versioning (YAML Frontmatter)
+#### Prompt Versioning (YAML Frontmatter)
 
 When you use `instructions.file`, HoloDeck also parses optional YAML frontmatter at the top of the file to version and label the prompt. The frontmatter block is stripped before the body reaches the LLM — your prompt text is unchanged.
 
@@ -289,7 +287,7 @@ Any other keys are preserved under `extra` on the persisted run record — unkno
 - Malformed YAML frontmatter fails the test run with a clear `ConfigError` — you cannot silently ship an unparseable prompt header.
 - Inline instructions (`instructions.inline`) skip frontmatter entirely and always resolve to `version: auto-<sha256[:8]>` with `source: inline`.
 
-## Response Format
+### Response Format
 
 Defines the expected structure of the agent's responses (agent-level only).
 
@@ -300,7 +298,7 @@ The `response_format` field constrains the LLM to generate structured output fol
 - Validating response quality programmatically
 - Guiding the LLM toward well-formatted outputs
 
-### Inline Response Format
+#### Inline Response Format
 
 Define the schema directly in `agent.yaml`:
 
@@ -325,7 +323,7 @@ response_format:
   additionalProperties: false
 ```
 
-### File-Based Response Format
+#### File-Based Response Format
 
 Reference an external JSON Schema file (path relative to `agent.yaml`):
 
@@ -360,7 +358,7 @@ File at `schemas/response.json`:
 }
 ```
 
-### Supported JSON Schema Keywords
+#### Supported JSON Schema Keywords
 
 Response format uses a **Basic JSON Schema** subset supporting:
 
@@ -374,7 +372,7 @@ Response format uses a **Basic JSON Schema** subset supporting:
 - `maximum` - Maximum numeric value
 - `additionalProperties` - Whether to allow extra properties (true|false)
 
-### Unsupported Keywords
+#### Unsupported Keywords
 
 The following keywords are **not supported** and will cause validation errors:
 
@@ -387,14 +385,14 @@ The following keywords are **not supported** and will cause validation errors:
 - `minItems`, `maxItems` - Array length constraints
 - And other JSON Schema draft keywords
 
-### Rules
+#### Rules
 
 - **Optional**: Response format is not required
 - **Agent-level only**: Not inherited from global configuration
 - **Validated at load time**: Invalid schemas cause errors with clear messages
 - **File path**: Relative to `agent.yaml` directory
 
-### Validation
+#### Validation
 
 Invalid response formats will produce clear error messages:
 
@@ -411,7 +409,7 @@ File: schemas/response.json
 Details: Keyword '$ref' is not supported. Use basic JSON Schema keywords only.
 ```
 
-## Tools
+### Tools
 
 Define capabilities the agent can use. See the [Tools Reference Guide](tools.md) for detailed documentation.
 
@@ -446,13 +444,13 @@ tools:
         description: Text to summarize
 ```
 
-### Tool Constraints
+#### Tool Constraints
 
 - **Max tools**: 50 per agent
 - **Tool names**: Must be unique, alphanumeric + underscores
 - **Required fields**: `name`, `description`, `type`
 
-## Evaluations
+### Evaluations
 
 Defines metrics to measure agent quality. See the [Evaluations Guide](evaluations.md) for details.
 
@@ -471,7 +469,7 @@ evaluations:
       threshold: 0.75
 ```
 
-## Test Cases
+### Test Cases
 
 Defines scenarios to validate agent behavior.
 
@@ -486,7 +484,7 @@ test_cases:
     expected_tools: []
 ```
 
-### Test Case Fields
+#### Test Case Fields
 
 - **name**: Test identifier (optional)
 - **input**: User query (required, max 5000 chars)
@@ -494,7 +492,7 @@ test_cases:
 - **ground_truth**: Expected response for comparison (optional)
 - **files**: Multimodal inputs like images, PDFs (optional, max 10 per test)
 
-### Constraints
+#### Constraints
 
 - **Max test cases**: 100 per agent
 - **Test names**: Must be unique if provided

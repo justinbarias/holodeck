@@ -2,15 +2,30 @@
 
 This guide explains how file paths work in HoloDeck configurations.
 
-## Overview
+## Quick start
 
-HoloDeck uses file references in several places:
+Point a config field at a file with a relative path, or inject an environment variable with `${VAR}`. Both resolve when the agent loads.
 
-- **Instructions**: `instructions.file` for system prompts
-- **Tools**: `source` for vectorstore data, `file` for function code
-- **Prompts**: `file` for template files
+```yaml
+# agent.yaml — paths resolve relative to this file's directory
+instructions:
+  file: system_prompt.txt            # → project/system_prompt.txt
 
-This guide explains path resolution rules.
+tools:
+  - type: vectorstore
+    source: ${DATA_DIR}/kb.json      # ${VAR} expands from the environment
+```
+
+```bash
+export DATA_DIR=/home/user/data
+holodeck chat agent.yaml
+```
+
+If a referenced file is missing, the load fails fast with the resolved path it expected to find — no silent runtime surprises.
+
+## How it works
+
+Every file path in an `agent.yaml` is resolved relative to the directory containing that YAML (not your shell's working directory), so agents stay portable across machines. Absolute paths (`/...`), home expansion (`~`), and environment variables (`${VAR}`) are all supported, and `${VAR}` is the recommended way to keep secrets and machine-specific roots out of the config. HoloDeck validates every path at load time. The sections below cover the resolution rules, validation, and project-layout patterns in detail.
 
 ## Path Resolution Rules
 
@@ -384,6 +399,56 @@ instructions.file → /home/user/templates/system_prompt.txt
 tools[0].source → /home/user/data/knowledge_base/
 ```
 
+## Best Practices
+
+1. **Use Relative Paths**: Keep agents portable across machines
+   ```yaml
+   instructions:
+     file: system_prompt.txt  # Good
+     # NOT: file: /home/user/project/system_prompt.txt
+   ```
+
+2. **Organize by Type**: Group related files
+   ```
+   project/
+   ├── prompts/          ← All prompt templates
+   ├── data/             ← All data files
+   ├── tools/            ← All function tools
+   └── agent.yaml
+   ```
+
+3. **Document Structure**: Include README
+   ```
+   project/
+   ├── README.md         ← Explain file structure
+   ├── agent.yaml
+   ├── system_prompt.txt
+   └── ...
+   ```
+
+4. **Use Consistent Naming**: Predictable organization
+   ```
+   project/
+   ├── prompts/          ← Not prompt/ or system_prompts/
+   ├── tools/            ← Not tool/ or functions/
+   └── data/             ← Not database/ or knowledge_base/
+   ```
+
+5. **Don't Hardcode Paths**: Use environment variables or global config
+   ```yaml
+   # Wrong:
+   instructions:
+     file: /Users/john/project/system_prompt.txt
+
+   # Right:
+   instructions:
+     file: system_prompt.txt
+   ```
+
+6. **Verify on Startup**: HoloDeck checks all paths when agent loads
+   - No runtime surprises
+   - Errors caught early
+
 ## Troubleshooting
 
 ### Error: "File not found"
@@ -492,56 +557,6 @@ tools[0].source → /home/user/data/knowledge_base/
    instructions:
      file: /path/to/templates/system_prompt.txt
    ```
-
-## Best Practices
-
-1. **Use Relative Paths**: Keep agents portable across machines
-   ```yaml
-   instructions:
-     file: system_prompt.txt  # Good
-     # NOT: file: /home/user/project/system_prompt.txt
-   ```
-
-2. **Organize by Type**: Group related files
-   ```
-   project/
-   ├── prompts/          ← All prompt templates
-   ├── data/             ← All data files
-   ├── tools/            ← All function tools
-   └── agent.yaml
-   ```
-
-3. **Document Structure**: Include README
-   ```
-   project/
-   ├── README.md         ← Explain file structure
-   ├── agent.yaml
-   ├── system_prompt.txt
-   └── ...
-   ```
-
-4. **Use Consistent Naming**: Predictable organization
-   ```
-   project/
-   ├── prompts/          ← Not prompt/ or system_prompts/
-   ├── tools/            ← Not tool/ or functions/
-   └── data/             ← Not database/ or knowledge_base/
-   ```
-
-5. **Don't Hardcode Paths**: Use environment variables or global config
-   ```yaml
-   # Wrong:
-   instructions:
-     file: /Users/john/project/system_prompt.txt
-
-   # Right:
-   instructions:
-     file: system_prompt.txt
-   ```
-
-6. **Verify on Startup**: HoloDeck checks all paths when agent loads
-   - No runtime surprises
-   - Errors caught early
 
 ## Next Steps
 
