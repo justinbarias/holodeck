@@ -37,7 +37,7 @@ nav:
     - Agent Configuration: guides/agent-configuration.md
     - LLM Providers: guides/llm-providers.md
     - Claude Backend: guides/claude-backend.md
-    - Semantic Kernel Backend: guides/semantic-kernel-backend.md
+    - OpenAI Backend: guides/openai-backend.md
     - Tools: guides/tools.md
     - MCP CLI: guides/mcp-cli.md
     - Vector Stores: guides/vector-stores.md
@@ -93,7 +93,7 @@ plugins:
       markdown_description: |
         HoloDeck is an open-source, no-code platform for building, testing,
         and deploying AI agents via YAML. This index points LLMs at the
-        canonical docs for the CLI, agent schema, backends (Claude / SK),
+        canonical docs for the CLI, agent schema, backends (Claude / OpenAI Agents),
         tools (vectorstore, MCP, hierarchical_document), evaluations,
         and the agent server.
       full_output: llms-full.txt
@@ -105,7 +105,7 @@ plugins:
           - guides/agent-configuration.md
           - guides/llm-providers.md
           - guides/claude-backend.md
-          - guides/semantic-kernel-backend.md
+          - guides/openai-backend.md
           - guides/tools.md
           - guides/mcp-cli.md
           - guides/vector-stores.md

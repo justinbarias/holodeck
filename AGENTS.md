@@ -87,8 +87,8 @@ Define success criteria and verify them.
 - **Language:** Python 3.10+
 - **Package Manager:** UV (fast, modern replacement for pip/Poetry)
 - **Agent Backends:** Multi-backend architecture
-  - Semantic Kernel (OpenAI, Azure OpenAI, Ollama)
-  - Claude Agent SDK (native Anthropic — first-class citizen)
+  - OpenAI Agents SDK (OpenAI, Azure OpenAI)
+  - Claude Agent SDK (native Anthropic — first-class citizen; also serves local Ollama)
 - **CLI:** Click
 - **Configuration:** Pydantic v2 + YAML
 - **Testing:** Pytest with async support
@@ -134,11 +134,11 @@ Define success criteria and verify them.
 │  ├─ ExecutionResult: Unified response model                  │
 │  └─ ContextGenerator: Contextual embeddings protocol         │
 ├─────────────────────────────┬───────────────────────────────┤
-│   SK Backend                │   Claude Backend              │
-│   (OpenAI, Azure, Ollama)   │   (Anthropic — first-class)   │
-│  ├─ ChatCompletionAgent     │  ├─ Claude Agent SDK          │
-│  ├─ SK Tool Plugins         │  ├─ Tool Adapters + MCP Bridge│
-│  └─ SK Memory / History     │  ├─ OTel Bridge               │
+│   OpenAI Agents Backend     │   Claude Backend              │
+│   (OpenAI, Azure OpenAI)    │   (Anthropic, Ollama)         │
+│  ├─ OpenAI Agents SDK       │  ├─ Claude Agent SDK          │
+│  ├─ Tool Adapters + MCP     │  ├─ Tool Adapters + MCP Bridge│
+│  └─ Tracing + Cost          │  ├─ OTel Bridge               │
 │                             │  └─ Startup Validators        │
 └─────────────────────────────┴───────────────────────────────┘
                            ▼
@@ -170,8 +170,8 @@ Define success criteria and verify them.
 
 - Protocol-driven: `AgentBackend`, `AgentSession`, `ContextGenerator` define provider-agnostic interfaces
 - `BackendSelector.select()` auto-routes by `model.provider`:
-  - OpenAI / Azure OpenAI / Ollama → `SKBackend` (Semantic Kernel)
-  - Anthropic → `ClaudeBackend` (Claude Agent SDK — first-class citizen)
+  - OpenAI / Azure OpenAI → `OpenAIAgentsBackend` (OpenAI Agents SDK)
+  - Anthropic / Ollama → `ClaudeBackend` (Claude Agent SDK — first-class citizen)
 - Tool adapters bridge HoloDeck tools (VectorStore, HierarchicalDocument) to SDK MCP format
 - MCP bridge translates HoloDeck MCP configs to Claude SDK subprocess configs
 - OTel bridge translates observability config to subprocess environment variables

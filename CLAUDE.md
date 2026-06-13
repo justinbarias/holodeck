@@ -76,8 +76,8 @@ For multi-step tasks, state a brief plan with per-step verification.
 │  BackendSelector · AgentBackend · AgentSession ·             │
 │  ExecutionResult · ContextGenerator                          │
 ├─────────────────────────────┬───────────────────────────────┤
-│   SK Backend                │   Claude Backend              │
-│   (OpenAI, Azure, Ollama)   │   (Anthropic — first-class)   │
+│   OpenAI Agents Backend     │   Claude Backend              │
+│   (OpenAI, Azure OpenAI)    │   (Anthropic, Ollama)         │
 └─────────────────────────────┴───────────────────────────────┘
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -100,8 +100,8 @@ For multi-step tasks, state a brief plan with per-step verification.
 
 ### Backend Routing
 
-- OpenAI / Azure OpenAI / Ollama → `SKBackend`
-- Anthropic → `ClaudeBackend`
+- OpenAI / Azure OpenAI → `OpenAIAgentsBackend`
+- Anthropic / Ollama → `ClaudeBackend`
 
 | Protocol           | Methods                                                           |
 | ------------------ | ----------------------------------------------------------------- |

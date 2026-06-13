@@ -8,7 +8,7 @@ Get HoloDeck installed and ready to build AI agents.
 - **uv** - The fast Python package installer
 - **Node.js 18+** (required for Claude Agent SDK backend) — check with `node --version`
 
-> **Note**: Node.js is only required if you plan to use `provider: anthropic`. Other providers (OpenAI, Azure, Ollama) do not require it.
+> **Note**: Node.js is required for the Claude backend, which serves `provider: anthropic` and local `provider: ollama` models. The OpenAI Agents backend (`provider: openai`, `azure_openai`) does not require it.
 
 ### Installing uv
 
