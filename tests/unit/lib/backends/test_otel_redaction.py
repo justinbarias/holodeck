@@ -60,6 +60,57 @@ def test_redacting_processor_handles_tool_input_namespace():
 
 
 @pytest.mark.unit
+def test_redacting_processor_scrubs_litellm_input_messages():
+    """LiteLLM emits content under gen_ai.input.messages (GenAI semconv)."""
+    provider, exporter = _new_provider_with_redaction()
+    tracer = provider.get_tracer(__name__)
+    payload = '[{"role": "user", "content": "key is ghp_' + "x" * 36 + '"}]'
+    with tracer.start_as_current_span("litellm_request") as span:
+        span.set_attribute("gen_ai.input.messages", payload)
+    span_data = exporter.get_finished_spans()[0]
+    attr = span_data.attributes["gen_ai.input.messages"]
+    assert "ghp_" not in attr
+    assert "[REDACTED:github-token]" in attr
+
+
+@pytest.mark.unit
+def test_redacting_processor_scrubs_litellm_output_messages():
+    """LiteLLM emits completions under gen_ai.output.messages."""
+    provider, exporter = _new_provider_with_redaction()
+    tracer = provider.get_tracer(__name__)
+    payload = '[{"role": "assistant", "content": "token AKIA' + "A" * 16 + '"}]'
+    with tracer.start_as_current_span("litellm_request") as span:
+        span.set_attribute("gen_ai.output.messages", payload)
+    span_data = exporter.get_finished_spans()[0]
+    attr = span_data.attributes["gen_ai.output.messages"]
+    assert "AKIA" not in attr
+
+
+@pytest.mark.unit
+def test_redacting_processor_scrubs_litellm_system_instructions():
+    """LiteLLM emits the system prompt under gen_ai.system_instructions."""
+    provider, exporter = _new_provider_with_redaction()
+    tracer = provider.get_tracer(__name__)
+    with tracer.start_as_current_span("litellm_request") as span:
+        span.set_attribute("gen_ai.system_instructions", "use ghp_" + "x" * 36)
+    span_data = exporter.get_finished_spans()[0]
+    assert "ghp_" not in span_data.attributes["gen_ai.system_instructions"]
+
+
+@pytest.mark.unit
+def test_redacting_processor_keeps_legacy_genai_prefixes():
+    """Legacy gen_ai.prompt / gen_ai.completion remain covered (back-compat)."""
+    provider, exporter = _new_provider_with_redaction()
+    tracer = provider.get_tracer(__name__)
+    with tracer.start_as_current_span("chat") as span:
+        span.set_attribute("gen_ai.prompt.0.content", "ghp_" + "x" * 36)
+        span.set_attribute("gen_ai.completion.0.content", "ghp_" + "y" * 36)
+    span_data = exporter.get_finished_spans()[0]
+    assert "ghp_" not in span_data.attributes["gen_ai.prompt.0.content"]
+    assert "ghp_" not in span_data.attributes["gen_ai.completion.0.content"]
+
+
+@pytest.mark.unit
 def test_redacting_processor_logs_error_when_attributes_missing(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

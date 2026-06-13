@@ -11,18 +11,14 @@ from configuration resolution through result reporting:
    - Invokes agents with test inputs
    - Runs evaluations on outputs
    - Generates test reports
+   - Selects and drives the provider-agnostic AgentBackend
 
-2. `agent_factory`: Creates agent instances from configuration
-   - Resolves LLM provider settings
-   - Loads and validates tool configurations
-   - Instantiates agents with proper initialization
-
-3. `progress`: Real-time test execution progress indicators
+2. `progress`: Real-time test execution progress indicators
    - Shows test progress during batch execution
    - Displays success/failure statistics
    - Provides visual feedback to users
 
-4. `reporter`: Test result reporting and formatting
+3. `reporter`: Test result reporting and formatting
    - Generates structured test reports
    - Supports multiple output formats (JSON, HTML, markdown)
    - Summarizes metrics and evaluation results
@@ -47,7 +43,6 @@ from configuration resolution through result reporting:
 
 Classes:
     TestExecutor: Main test execution orchestrator
-    AgentFactory: Agent instantiation from configuration
     ProgressIndicator: Real-time progress tracking
     TestReporter: Result report generation
 

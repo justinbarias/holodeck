@@ -87,8 +87,8 @@ Define success criteria and verify them.
 - **Language:** Python 3.10+
 - **Package Manager:** UV (fast, modern replacement for pip/Poetry)
 - **Agent Backends:** Multi-backend architecture
-  - Semantic Kernel (OpenAI, Azure OpenAI, Ollama)
-  - Claude Agent SDK (native Anthropic — first-class citizen)
+  - OpenAI Agents SDK (OpenAI, Azure OpenAI)
+  - Claude Agent SDK (native Anthropic — first-class citizen; also serves local Ollama)
 - **CLI:** Click
 - **Configuration:** Pydantic v2 + YAML
 - **Testing:** Pytest with async support
@@ -134,11 +134,11 @@ Define success criteria and verify them.
 │  ├─ ExecutionResult: Unified response model                  │
 │  └─ ContextGenerator: Contextual embeddings protocol         │
 ├─────────────────────────────┬───────────────────────────────┤
-│   SK Backend                │   Claude Backend              │
-│   (OpenAI, Azure, Ollama)   │   (Anthropic — first-class)   │
-│  ├─ ChatCompletionAgent     │  ├─ Claude Agent SDK          │
-│  ├─ SK Tool Plugins         │  ├─ Tool Adapters + MCP Bridge│
-│  └─ SK Memory / History     │  ├─ OTel Bridge               │
+│   OpenAI Agents Backend     │   Claude Backend              │
+│   (OpenAI, Azure OpenAI)    │   (Anthropic, Ollama)         │
+│  ├─ OpenAI Agents SDK       │  ├─ Claude Agent SDK          │
+│  ├─ Tool Adapters + MCP     │  ├─ Tool Adapters + MCP Bridge│
+│  └─ Tracing + Cost          │  ├─ OTel Bridge               │
 │                             │  └─ Startup Validators        │
 └─────────────────────────────┴───────────────────────────────┘
                            ▼
@@ -170,8 +170,8 @@ Define success criteria and verify them.
 
 - Protocol-driven: `AgentBackend`, `AgentSession`, `ContextGenerator` define provider-agnostic interfaces
 - `BackendSelector.select()` auto-routes by `model.provider`:
-  - OpenAI / Azure OpenAI / Ollama → `SKBackend` (Semantic Kernel)
-  - Anthropic → `ClaudeBackend` (Claude Agent SDK — first-class citizen)
+  - OpenAI / Azure OpenAI → `OpenAIAgentsBackend` (OpenAI Agents SDK)
+  - Anthropic / Ollama → `ClaudeBackend` (Claude Agent SDK — first-class citizen)
 - Tool adapters bridge HoloDeck tools (VectorStore, HierarchicalDocument) to SDK MCP format
 - MCP bridge translates HoloDeck MCP configs to Claude SDK subprocess configs
 - OTel bridge translates observability config to subprocess environment variables
@@ -1036,10 +1036,9 @@ await backend.teardown()
 1. **Node.js validation** — `validate_nodejs()` checks `node` is on PATH
 2. **Credentials validation** — `validate_credentials()` checks API key / OAuth / Bedrock / Vertex / Foundry
 3. **Embedding provider validation** — `validate_embedding_provider()` ensures external embedding config when using vectorstore tools
-4. **Tool filtering warning** — `validate_tool_filtering()` warns if tool_filtering set (Claude SDK manages selection natively)
-5. **Tool initialization** — `tool_initializer.initialize_tools()` creates vectorstore/hierarchical-doc tool instances
-6. **Tool adapters** — `create_tool_adapters()` wraps HoloDeck tools as SDK-compatible MCP tools
-7. **SDK server** — `build_holodeck_sdk_server()` bundles adapters into in-process MCP server
+4. **Tool initialization** — `tool_initializer.initialize_tools()` creates vectorstore/hierarchical-doc tool instances
+5. **Tool adapters** — `create_tool_adapters()` wraps HoloDeck tools as SDK-compatible MCP tools
+6. **SDK server** — `build_holodeck_sdk_server()` bundles adapters into in-process MCP server
 8. **External MCP** — `build_claude_mcp_configs()` translates MCP tool configs to SDK format
 9. **OTel env vars** — `translate_observability()` configures OpenTelemetry for subprocess
 10. **Build options** — `build_options()` assembles `ClaudeAgentOptions` from all above
@@ -1047,13 +1046,19 @@ await backend.teardown()
 
 ### 10. ContextGenerator Resolution Chain
 
-When initializing hierarchical document tools, the context generator is resolved via a 5-tier priority chain:
+When initializing hierarchical document tools, the context generator is resolved via a 4-tier priority chain:
 
 1. **Caller-provided** `context_generator` (highest priority)
-2. **Caller-provided** `chat_service` → wrapped in `LLMContextGenerator`
-3. **Tool config** `context_model` → creates chat service → `LLMContextGenerator`
-4. **Anthropic provider** → `ClaudeSDKContextGenerator` (uses `claude-haiku-4-5` via SDK `query()`)
-5. **None** → graceful degradation (chunks without contextual embeddings)
+2. **Tool config** `context_model` → LiteLLM-backed `LLMContextGenerator`
+3. **Anthropic provider** → `ClaudeSDKContextGenerator` (uses `claude-haiku-4-5` via SDK `query()`)
+4. **None** → graceful degradation (chunks without contextual embeddings)
+
+Embeddings and the contextual-retrieval chat calls go through **LiteLLM**
+(`holodeck/lib/litellm_support.py` maps `LLMProvider` → LiteLLM call args;
+Azure uses the OpenAI-compatible `/openai/v1` surface). The Semantic Kernel
+vector-store abstractions (`@vectorstoremodel`, `VectorStoreField`, the
+`data.vector` connectors) and the `split_plaintext_paragraph` chunker are
+retained — only the embedding/chat model calls moved off SK.
 
 ---
 

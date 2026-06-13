@@ -187,7 +187,6 @@ class TestMetricsConfig:
         config = MetricsConfig()
         assert config.enabled is True
         assert config.export_interval_ms == 5000
-        assert config.include_semantic_kernel_metrics is True
 
     def test_export_interval_minimum_rejected(self) -> None:
         """Test export_interval_ms rejects values below 1000ms."""

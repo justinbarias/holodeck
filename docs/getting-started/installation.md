@@ -8,7 +8,7 @@ Get HoloDeck installed and ready to build AI agents.
 - **uv** - The fast Python package installer
 - **Node.js 18+** (required for Claude Agent SDK backend) — check with `node --version`
 
-> **Note**: Node.js is only required if you plan to use `provider: anthropic`. Other providers (OpenAI, Azure, Ollama) do not require it.
+> **Note**: Node.js is required for the Claude backend, which serves `provider: anthropic` and local `provider: ollama` models. The OpenAI Agents backend (`provider: openai`, `azure_openai`) does not require it.
 
 ### Installing uv
 
@@ -40,6 +40,23 @@ uv tool install holodeck-ai@latest --prerelease allow --python 3.10
 ```
 
 This installs the `holodeck` command-line tool globally, available from any directory.
+
+### Backends: what's included vs. an extra
+
+- **Claude backend** — `provider: anthropic` and local `provider: ollama`. **Included in the base install** (no extra required); needs Node.js 18+ (see [Prerequisites](#prerequisites)).
+- **OpenAI Agents backend** — `provider: openai` and `azure_openai`. Shipped as an **optional extra** so non-OpenAI installs stay lean (the SDK is imported only when this backend runs). Install it with the `openai-agents` extra:
+
+```bash
+uv tool install "holodeck-ai[openai-agents]@latest" --prerelease allow --python 3.10
+```
+
+Extras compose — e.g. the OpenAI backend plus a Qdrant vector store for RAG:
+
+```bash
+uv tool install "holodeck-ai[openai-agents,qdrant]@latest" --prerelease allow --python 3.10
+```
+
+> **Without the extra**, an `openai` / `azure_openai` agent fails at startup with a missing-dependency error pointing you here.
 
 ### Install with Vector Store Providers (Optional)
 
@@ -163,12 +180,16 @@ Run LLMs locally with no API keys. Supports Llama, Mistral, Phi, and many more m
 
 ### OpenAI
 
+Runs on the OpenAI Agents backend — install the [`openai-agents` extra](#backends-whats-included-vs-an-extra) first.
+
 ```bash
 OPENAI_API_KEY=sk-...
 OPENAI_ORG_ID=optional-org-id
 ```
 
 ### Azure OpenAI
+
+Also runs on the OpenAI Agents backend (requires the [`openai-agents` extra](#backends-whats-included-vs-an-extra)). `name` is your **deployment** name.
 
 ```bash
 AZURE_OPENAI_API_KEY=your-key-here

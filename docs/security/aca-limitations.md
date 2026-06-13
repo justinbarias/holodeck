@@ -61,3 +61,19 @@ has no active issue for `securityContext` support as of 2026-05-23.
 
 If you need them, AKS (or a non-Azure runtime) is the right deployment
 target — not a different HoloDeck configuration.
+
+## Deferred surfaces
+
+A few hardening surfaces referenced elsewhere are deferred to follow-up
+specs and are **not yet available on any backend**:
+
+- **`deployment.security_profile: hardened` (P3 / Envoy sidecar)** — the
+  `--network none` + Unix-socket egress-proxy equivalent in the table
+  above. Tracked but not shipped.
+- **US8 sandbox mode** — per-session ephemeral sandboxing for tool
+  execution.
+- **Computer-use** — the hosted computer-use tool surface.
+
+These are roadmap items, not configuration flags you can turn on today.
+Until they land, the image-layer + ACA-exposed controls described above
+are the available hardening surface.

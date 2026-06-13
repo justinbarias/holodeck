@@ -1,8 +1,8 @@
 """Shared tool initialization for VectorStoreTool and HierarchicalDocumentTool.
 
-Provider-agnostic: works for both SK (AgentFactory) and Claude (ClaudeBackend) paths.
-The embedding service created here uses SK TextEmbedding classes — these are lightweight
-wrappers around OpenAI/Azure/Ollama APIs and do NOT require the full SK kernel.
+Provider-agnostic: embedding and contextual-retrieval chat calls go through
+LiteLLM (see ``holodeck.lib.litellm_support``); the SK vector-store
+abstractions (connectors, record models) are unaffected.
 """
 
 from __future__ import annotations
@@ -18,10 +18,6 @@ from holodeck.models.llm import ProviderEnum
 
 # Remote URI schemes that require SourceResolver
 _REMOTE_SCHEMES = ("s3://", "az://", "https://", "http://")
-
-# Default Azure OpenAI API version — latest GA as of 2024-10-21.
-# SK may default to unsupported preview versions; this ensures compatibility.
-AZURE_OPENAI_DEFAULT_API_VERSION = "2024-10-21"
 
 
 def _is_remote_source(source: str) -> bool:
@@ -99,7 +95,7 @@ def resolve_embedding_model(agent: Agent) -> str:
 
 
 def create_embedding_service(agent: Agent) -> Any:
-    """Create an SK TextEmbedding service from agent config.
+    """Create a LiteLLM-backed embedding service from agent config.
 
     For Anthropic provider: uses ``agent.embedding_provider`` config.
     For OpenAI/Azure/Ollama: uses ``agent.model`` config directly.
@@ -108,14 +104,14 @@ def create_embedding_service(agent: Agent) -> Any:
         agent: Agent configuration.
 
     Returns:
-        An initialized TextEmbedding service instance.
+        An initialized LiteLLMEmbeddingService instance.
 
     Raises:
         ToolInitializerError: If provider doesn't support embeddings.
     """
-    from semantic_kernel.connectors.ai.open_ai import (
-        AzureTextEmbedding,
-        OpenAITextEmbedding,
+    from holodeck.lib.litellm_support import (
+        LiteLLMEmbeddingService,
+        resolve_litellm_model,
     )
 
     provider = _resolve_embedding_provider(agent)
@@ -128,52 +124,16 @@ def create_embedding_service(agent: Agent) -> Any:
         provider,
     )
 
-    api_key_raw = (
-        model_config.api_key.get_secret_value()
-        if model_config.api_key is not None
-        else None
+    spec = resolve_litellm_model(
+        model_config, kind="embedding", model_name=embedding_model
     )
-
-    if provider == ProviderEnum.OPENAI:
-        return OpenAITextEmbedding(
-            ai_model_id=embedding_model,
-            api_key=api_key_raw,
-        )
-
-    if provider == ProviderEnum.AZURE_OPENAI:
-        azure_embed_kwargs: dict[str, Any] = {
-            "deployment_name": embedding_model,
-            "endpoint": model_config.endpoint,
-            "api_key": api_key_raw,
-            "api_version": model_config.api_version or AZURE_OPENAI_DEFAULT_API_VERSION,
-        }
-        return AzureTextEmbedding(**azure_embed_kwargs)
-
-    if provider == ProviderEnum.OLLAMA:
-        try:
-            from semantic_kernel.connectors.ai.ollama import OllamaTextEmbedding
-        except ImportError as exc:
-            raise ToolInitializerError(
-                "Ollama provider requires 'ollama' package. "
-                "Install with: pip install ollama"
-            ) from exc
-
-        return OllamaTextEmbedding(
-            ai_model_id=embedding_model,
-            host=model_config.endpoint if model_config.endpoint else None,
-        )
-
-    raise ToolInitializerError(
-        f"Embedding service not supported for provider: {provider}. "
-        "Vectorstore tools require OpenAI, Azure OpenAI, or Ollama provider."
-    )
+    return LiteLLMEmbeddingService(spec)
 
 
 async def initialize_tools(
     agent: Agent,
     force_ingest: bool = False,
     execution_config: ExecutionConfig | None = None,
-    chat_service: Any | None = None,
     base_dir: str | None = None,
     context_generator: Any | None = None,
 ) -> dict[str, Any]:
@@ -186,7 +146,6 @@ async def initialize_tools(
         agent: Agent configuration.
         force_ingest: Force re-ingestion of vector store source files.
         execution_config: Execution configuration for file processing.
-        chat_service: Optional chat service for hierarchical doc tools.
         base_dir: Base directory for resolving relative source paths.
             If None, falls back to agent_base_dir context variable.
         context_generator: Optional pre-built ContextGenerator instance.
@@ -250,7 +209,6 @@ async def initialize_tools(
         hd_instances = await initialize_hierarchical_doc_tools(
             agent=agent,
             embedding_service=embedding_service,
-            chat_service=chat_service,
             force_ingest=force_ingest,
             provider_type=provider_type,
             base_dir=effective_base_dir,
@@ -324,7 +282,7 @@ async def _initialize_vectorstore_tools(
 
     Args:
         agent: Agent configuration.
-        embedding_service: SK TextEmbedding service.
+        embedding_service: Embedding service (LiteLLMEmbeddingService).
         force_ingest: Force re-ingestion of source files.
         execution_config: Execution configuration.
         provider_type: Provider type string for dimension resolution.
@@ -422,99 +380,24 @@ def _resolve_context_model_config(
     return agent.model
 
 
-def _create_chat_service_from_config(model_config: Any) -> Any:
-    """Create an SK ChatCompletion service from an LLMProvider config.
-
-    Args:
-        model_config: LLMProvider instance.
-
-    Returns:
-        An initialized ChatCompletion service.
-
-    Raises:
-        ToolInitializerError: If provider is unsupported.
-    """
-    from semantic_kernel.connectors.ai.open_ai import (
-        AzureChatCompletion,
-        OpenAIChatCompletion,
-    )
-
-    api_key_raw = (
-        model_config.api_key.get_secret_value()
-        if model_config.api_key is not None
-        else None
-    )
-
-    if model_config.provider == ProviderEnum.AZURE_OPENAI:
-        azure_chat_kwargs: dict[str, Any] = {
-            "deployment_name": model_config.name,
-            "endpoint": model_config.endpoint,
-            "api_key": api_key_raw,
-            "api_version": model_config.api_version or AZURE_OPENAI_DEFAULT_API_VERSION,
-        }
-        return AzureChatCompletion(**azure_chat_kwargs)
-
-    if model_config.provider == ProviderEnum.OPENAI:
-        return OpenAIChatCompletion(
-            ai_model_id=model_config.name,
-            api_key=api_key_raw,
-        )
-
-    if model_config.provider == ProviderEnum.ANTHROPIC:
-        try:
-            from semantic_kernel.connectors.ai.anthropic import (
-                AnthropicChatCompletion,
-            )
-        except ImportError as exc:
-            raise ToolInitializerError(
-                "Anthropic provider requires 'anthropic' package. "
-                "Install with: pip install anthropic"
-            ) from exc
-        return AnthropicChatCompletion(
-            ai_model_id=model_config.name,
-            api_key=api_key_raw,
-        )
-
-    if model_config.provider == ProviderEnum.OLLAMA:
-        try:
-            from semantic_kernel.connectors.ai.ollama import OllamaChatCompletion
-        except ImportError as exc:
-            raise ToolInitializerError(
-                "Ollama provider requires 'ollama' package. "
-                "Install with: pip install ollama"
-            ) from exc
-        return OllamaChatCompletion(
-            ai_model_id=model_config.name,
-            host=model_config.endpoint if model_config.endpoint else None,
-        )
-
-    raise ToolInitializerError(
-        f"Chat service not supported for provider: {model_config.provider}. "
-        "Context model requires OpenAI, Azure OpenAI, Anthropic, or Ollama provider."
-    )
-
-
 def _resolve_context_generator(
     agent: Agent,
     tool_config: Any,
     context_generator: Any | None = None,
-    chat_service: Any | None = None,
 ) -> Any | None:
     """Resolve the ContextGenerator for a hierarchical document tool.
 
-    Implements a 5-tier priority chain:
+    Implements a 4-tier priority chain:
 
     1. Caller-provided ``context_generator`` (highest priority)
-    2. Caller-provided ``chat_service`` → wrap in LLMContextGenerator
-    3. ``tool_config.context_model`` → create chat service → LLMContextGenerator
-    4. Anthropic agent provider → ClaudeSDKContextGenerator
-    5. None (graceful degradation)
+    2. ``tool_config.context_model`` → LiteLLM-backed LLMContextGenerator
+    3. Anthropic agent provider → ClaudeSDKContextGenerator
+    4. None (graceful degradation)
 
     Args:
         agent: Agent configuration.
         tool_config: HierarchicalDocumentToolConfig instance.
         context_generator: Pre-built ContextGenerator, if any.
-        chat_service: Pre-built SK ChatCompletion service, if any.
 
     Returns:
         A ContextGenerator instance, or None if none could be resolved.
@@ -527,26 +410,13 @@ def _resolve_context_generator(
         )
         return context_generator
 
-    # Priority 2: caller-provided chat service → wrap in LLMContextGenerator
-    if chat_service is not None:
-        from holodeck.lib.llm_context_generator import LLMContextGenerator
-
-        logger.debug(
-            "Wrapping caller chat service in LLMContextGenerator for tool '%s'",
-            tool_config.name,
-        )
-        return LLMContextGenerator(
-            chat_service=chat_service,
-            max_context_tokens=tool_config.context_max_tokens,
-            concurrency=tool_config.context_concurrency,
-        )
-
-    # Priority 3: tool_config.context_model → create chat service → LLMContextGenerator
+    # Priority 2: tool_config.context_model → LiteLLM-backed LLMContextGenerator
     if tool_config.context_model is not None:
+        from holodeck.lib.litellm_support import resolve_litellm_model
         from holodeck.lib.llm_context_generator import LLMContextGenerator
 
         context_llm = _resolve_context_model_config(agent, tool_config)
-        svc = _create_chat_service_from_config(context_llm)
+        spec = resolve_litellm_model(context_llm, kind="chat")
         logger.debug(
             "Created LLMContextGenerator from context_model for tool '%s': "
             "provider=%s, model=%s",
@@ -555,12 +425,12 @@ def _resolve_context_generator(
             context_llm.name,
         )
         return LLMContextGenerator(
-            chat_service=svc,
+            model_spec=spec,
             max_context_tokens=tool_config.context_max_tokens,
             concurrency=tool_config.context_concurrency,
         )
 
-    # Priority 4: Anthropic agent → ClaudeSDKContextGenerator
+    # Priority 3: Anthropic agent → ClaudeSDKContextGenerator
     if agent.model.provider == ProviderEnum.ANTHROPIC:
         from holodeck.lib.claude_context_generator import (
             ClaudeContextConfig,
@@ -578,7 +448,7 @@ def _resolve_context_generator(
             max_context_tokens=tool_config.context_max_tokens,
         )
 
-    # Priority 5: no generator available
+    # Priority 4: no generator available
     logger.debug(
         "No context generator available for tool '%s'",
         tool_config.name,
@@ -589,7 +459,6 @@ def _resolve_context_generator(
 async def initialize_hierarchical_doc_tools(
     agent: Agent,
     embedding_service: Any,
-    chat_service: Any | None,
     force_ingest: bool,
     provider_type: str,
     base_dir: str | None = None,
@@ -600,8 +469,7 @@ async def initialize_hierarchical_doc_tools(
 
     Args:
         agent: Agent configuration.
-        embedding_service: SK TextEmbedding service.
-        chat_service: Optional chat service for context generation.
+        embedding_service: Embedding service (LiteLLMEmbeddingService).
         force_ingest: Force re-ingestion of source files.
         provider_type: Provider type string for dimension resolution.
         base_dir: Base directory for resolving relative source paths.
@@ -655,12 +523,11 @@ async def initialize_hierarchical_doc_tools(
                     )
                 tool.set_embedding_service(embedding_service)
 
-                # Resolve context generator via 5-tier priority chain
+                # Resolve context generator via 4-tier priority chain
                 resolved_generator = _resolve_context_generator(
                     agent=agent,
                     tool_config=tool_config,
                     context_generator=context_generator,
-                    chat_service=chat_service,
                 )
                 if resolved_generator is not None:
                     tool.set_context_generator(resolved_generator)

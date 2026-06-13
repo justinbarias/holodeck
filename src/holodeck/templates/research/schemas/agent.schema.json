@@ -2348,12 +2348,6 @@
           "minimum": 1000,
           "title": "Export Interval Ms",
           "type": "integer"
-        },
-        "include_semantic_kernel_metrics": {
-          "default": true,
-          "description": "Include Semantic Kernel internal metrics",
-          "title": "Include Semantic Kernel Metrics",
-          "type": "boolean"
         }
       },
       "title": "MetricsConfig",
@@ -3007,63 +3001,6 @@
       "title": "TestCaseModel",
       "type": "object"
     },
-    "ToolFilterConfig": {
-      "additionalProperties": false,
-      "description": "Configuration for automatic tool filtering.\n\nDefines how tools are filtered per request to reduce token usage.\nWhen enabled, only the most relevant tools (based on semantic similarity\nto the user query) are included in each LLM call.\n\nAttributes:\n    enabled: Enable or disable tool filtering globally.\n    top_k: Maximum number of tools to include per request.\n    similarity_threshold: Minimum similarity score for tool inclusion.\n    always_include: Tool names that are always included regardless of score.\n    always_include_top_n_used: Number of most-used tools to always include.\n    search_method: Method for tool search (semantic, bm25, or hybrid).",
-      "properties": {
-        "enabled": {
-          "default": false,
-          "description": "Enable tool filtering",
-          "title": "Enabled",
-          "type": "boolean"
-        },
-        "top_k": {
-          "default": 5,
-          "description": "Maximum tools per request (1-50)",
-          "maximum": 50,
-          "minimum": 1,
-          "title": "Top K",
-          "type": "integer"
-        },
-        "similarity_threshold": {
-          "default": 0.3,
-          "description": "Minimum similarity score for inclusion (0.0-1.0)",
-          "maximum": 1.0,
-          "minimum": 0.0,
-          "title": "Similarity Threshold",
-          "type": "number"
-        },
-        "always_include": {
-          "description": "Tool names always included in context",
-          "items": {
-            "type": "string"
-          },
-          "title": "Always Include",
-          "type": "array"
-        },
-        "always_include_top_n_used": {
-          "default": 3,
-          "description": "Number of most-used tools to always include (0-20)",
-          "maximum": 20,
-          "minimum": 0,
-          "title": "Always Include Top N Used",
-          "type": "integer"
-        },
-        "search_method": {
-          "default": "semantic",
-          "description": "Tool search method: semantic, bm25, or hybrid",
-          "enum": [
-            "semantic",
-            "bm25",
-            "hybrid"
-          ],
-          "title": "Search Method",
-          "type": "string"
-        }
-      },
-      "title": "ToolFilterConfig",
-      "type": "object"
-    },
     "TracingConfig": {
       "additionalProperties": false,
       "description": "Tracing-specific configuration.\n\nControls distributed tracing settings including sampling rate,\ncontent capture, and redaction patterns for sensitive data.",
@@ -3591,18 +3528,6 @@
       "default": null,
       "description": "Agent tools (vectorstore, function, mcp, prompt)",
       "title": "Tools"
-    },
-    "tool_filtering": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/ToolFilterConfig"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Automatic tool filtering configuration. When enabled, dynamically filters tools per request based on semantic similarity to reduce token usage."
     },
     "evaluations": {
       "anyOf": [

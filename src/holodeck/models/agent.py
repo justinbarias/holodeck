@@ -15,13 +15,13 @@ else:
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from holodeck.lib.tool_filter.models import ToolFilterConfig
 from holodeck.models.claude_config import ClaudeConfig
 from holodeck.models.config import ExecutionConfig
 from holodeck.models.deployment import DeploymentConfig
 from holodeck.models.evaluation import EvaluationConfig
 from holodeck.models.llm import LLMProvider
 from holodeck.models.observability import ObservabilityConfig
+from holodeck.models.openai_config import OpenAIConfig
 from holodeck.models.test_case import TestCaseModel
 from holodeck.models.tool import ToolUnion
 
@@ -87,14 +87,6 @@ class Agent(BaseModel):
     tools: list[ToolUnion] | None = Field(
         default=None, description="Agent tools (vectorstore, function, mcp, prompt)"
     )
-    tool_filtering: ToolFilterConfig | None = Field(
-        default=None,
-        description=(
-            "Automatic tool filtering configuration. When enabled, dynamically "
-            "filters tools per request based on semantic similarity to reduce "
-            "token usage."
-        ),
-    )
     evaluations: EvaluationConfig | None = Field(
         default=None, description="Evaluation configuration"
     )
@@ -122,6 +114,13 @@ class Agent(BaseModel):
         description=(
             "Claude Agent SDK-specific settings. "
             "Applicable only when model.provider: anthropic."
+        ),
+    )
+    openai: OpenAIConfig | None = Field(
+        default=None,
+        description=(
+            "OpenAI Agents SDK-specific settings. "
+            "Applicable only when model.provider: openai or azure_openai."
         ),
     )
 

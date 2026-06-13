@@ -24,8 +24,11 @@ _warned_missing_attributes_attr = False
 
 # Span attribute name prefixes whose values are scrubbed. Anything with a
 # different prefix is left alone — these namespaces are the ones the GenAI
-# instrumentor (`otel-instrumentation-claude-agent-sdk`) populates with
-# tool I/O content.
+# instrumentors populate with prompt/completion/tool I/O content:
+# `otel-instrumentation-claude-agent-sdk` uses the tool.* / gen_ai.tool.*
+# and legacy gen_ai.prompt / gen_ai.completion names; LiteLLM's OTel
+# callback emits message content under the current GenAI semconv names
+# gen_ai.input.messages / gen_ai.output.messages / gen_ai.system_instructions.
 _REDACTED_PREFIXES: tuple[str, ...] = (
     "tool.input",
     "tool.output",
@@ -33,6 +36,9 @@ _REDACTED_PREFIXES: tuple[str, ...] = (
     "gen_ai.tool.output",
     "gen_ai.prompt",
     "gen_ai.completion",
+    "gen_ai.input.messages",
+    "gen_ai.output.messages",
+    "gen_ai.system_instructions",
 )
 
 

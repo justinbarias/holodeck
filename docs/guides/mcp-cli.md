@@ -1,17 +1,35 @@
 # MCP CLI Guide
 
-The `holodeck mcp` command group provides tools to discover, install, and manage MCP (Model Context Protocol) servers for your agents.
+The `holodeck mcp` command group lets you discover, add, list, and remove MCP (Model Context Protocol) servers for your agents.
 
-## Overview
+## Quick start
 
-MCP servers extend your agent's capabilities by providing access to external tools and services. The MCP CLI integrates with the [official MCP Registry](https://registry.modelcontextprotocol.io) to help you:
+Add one MCP server from the registry to your `agent.yaml`, then list it back.
 
-- **Search** for available MCP servers
-- **Add** servers to your agent or global configuration
-- **List** installed servers
-- **Remove** servers you no longer need
+```bash
+# Add the filesystem server to agent.yaml in the current directory
+holodeck mcp add io.github.modelcontextprotocol/server-filesystem
 
-## Quick Reference
+# Confirm it's installed
+holodeck mcp list
+```
+
+Expected output:
+
+```
+MCP servers in agent.yaml:
+
+NAME        VERSION   TRANSPORT   DESCRIPTION
+filesystem  1.0.0     stdio       Secure file operations
+```
+
+The server now appears under `tools:` in `agent.yaml` and is available the next time you run `holodeck chat` or `holodeck test`.
+
+## How it works
+
+The MCP CLI integrates with the [official MCP Registry](https://registry.modelcontextprotocol.io) so you can **search** for servers, **add** them to an agent or global config, **list** what's installed, and **remove** servers. Added servers are written into the agent's `tools:` section (or global `mcp_servers:`) and connect over a transport. HoloDeck supports the **stdio**, **sse**, and **http** transports across backends; on the OpenAI backend a `transport: websocket` server is skipped with a warning (see the [OpenAI backend guide](openai-backend.md)). See the [Tools Guide](tools.md) for the full MCP tool schema.
+
+## Quick reference
 
 | Command | Description |
 |---------|-------------|
@@ -386,12 +404,12 @@ Error: Server 'filesystem' is already configured
 ### Transport Not Supported
 
 ```
-Error: Server does not support stdio transport
+Warning: transport 'websocket' is not supported on the OpenAI backend; server skipped
 ```
 
-**Cause:** The server only supports transports that HoloDeck doesn't currently implement (SSE, HTTP).
+**Cause:** HoloDeck supports the stdio, sse, and http transports. On the OpenAI backend, a server declaring `transport: websocket` is skipped with a warning.
 
-**Solution:** Choose a different server that supports stdio transport, or wait for future HoloDeck releases with additional transport support.
+**Solution:** Use a server that offers stdio, sse, or http, or run the agent on the Claude backend. See the [OpenAI backend guide](openai-backend.md) for backend-specific transport behavior.
 
 ### No Agent Configuration Found
 

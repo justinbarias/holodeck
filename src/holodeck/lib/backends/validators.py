@@ -278,29 +278,6 @@ def validate_embedding_provider(agent: Agent) -> None:
         )
 
 
-def validate_tool_filtering(agent: Agent) -> None:
-    """Warn if tool_filtering is configured for Anthropic provider.
-
-    Claude Agent SDK manages tool selection natively; tool_filtering is a
-    Semantic Kernel feature that is not supported by the Claude backend.
-
-    This validator never raises — it only emits a warning. The
-    tool_filtering field is not mutated.
-
-    Args:
-        agent: Agent configuration to validate.
-    """
-    if agent.tool_filtering is None:
-        return
-
-    if agent.model.provider == ProviderEnum.ANTHROPIC:
-        logger.warning(
-            "tool_filtering is configured but will be ignored when using "
-            "provider: anthropic with the Claude Agent SDK backend. "
-            "Claude manages tool selection natively.",
-        )
-
-
 def validate_working_directory(path: str | None) -> None:
     """Warn if CLAUDE.md in working directory may conflict with agent instructions.
 
@@ -326,6 +303,58 @@ def validate_working_directory(path: str | None) -> None:
             "instructions. Review the file to avoid unexpected behavior.",
             path,
         )
+
+
+def validate_openai_agents(agent: Agent) -> None:
+    """Validate an ``openai_agents`` agent's config, collecting all errors.
+
+    Runs the side-effect-free credential preflight and the tool-permission
+    consistency check (``permissions.allowed_tools`` must not intersect the
+    union of ``permissions.disallowed_tools`` and the top-level
+    ``openai.disallowed_tools`` — FR-034) in a single pass, surfacing every
+    problem together rather than failing on the first one (FR-110). This
+    intentionally does NOT trigger the SDK global
+    mutations that ``_build_model`` performs (``set_default_openai_key`` /
+    ``set_tracing_disabled``) — credential resolution is delegated to the
+    side-effect-free ``_preflight_credentials`` helper.
+
+    Args:
+        agent: Agent configuration to validate.
+
+    Raises:
+        ConfigError: If any credential is missing or tool lists conflict; the
+            message aggregates every problem found.
+    """
+    from holodeck.lib.backends.openai_agents_backend import _preflight_credentials
+
+    errors: list[str] = []
+
+    try:
+        _preflight_credentials(agent)
+    except Exception as exc:  # noqa: BLE001 - aggregated into a single ConfigError
+        errors.append(str(exc))
+
+    openai_cfg = agent.openai
+    if openai_cfg is not None:
+        # The disallow set spans both the spec-026 top-level
+        # ``openai.disallowed_tools`` and ``openai.permissions.disallowed_tools``
+        # (FR-034); either, intersected with ``permissions.allowed_tools``, is a
+        # load failure.
+        disallowed = set(openai_cfg.disallowed_tools or [])
+        allowed: set[str] = set()
+        if openai_cfg.permissions is not None:
+            allowed = set(openai_cfg.permissions.allowed_tools or [])
+            disallowed |= set(openai_cfg.permissions.disallowed_tools or [])
+        conflict = sorted(allowed & disallowed)
+        if conflict:
+            errors.append(
+                "Tools listed in both allowed_tools and disallowed_tools: "
+                f"{', '.join(conflict)}. A tool cannot be both allowed and "
+                "disallowed."
+            )
+
+    if errors:
+        raise ConfigError("openai", " ".join(errors))
 
 
 def validate_response_format(response_format: dict[str, Any] | str | None) -> None:

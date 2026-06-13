@@ -16,6 +16,7 @@ semantic_kernel library is not available in the test environment.
 """
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -113,6 +114,46 @@ from holodeck.tools.hierarchical_document_tool import (  # noqa: E402
     HierarchicalDocumentTool,
 )
 
+# Capture the configured mock modules so the autouse fixture below can
+# re-establish them for each test, then restore sys.modules to its pre-import
+# state. This is critical for parallel execution (pytest-xdist): leaving the
+# injected MagicMocks in sys.modules makes later modules' patch() targets (e.g.
+# ``semantic_kernel.connectors.ai.open_ai.*`` in test_tool_initializer) resolve
+# against a cached mock whose parent package never got the attribute set,
+# raising ``AttributeError: module ... has no attribute 'open_ai'``.
+_sk_mock_modules: dict[str, object] = {
+    name: sys.modules[name] for name in _mocked_modules
+}
+for module_name in _all_sk_modules:
+    if module_name in _saved_modules:
+        sys.modules[module_name] = _saved_modules[module_name]
+    else:
+        sys.modules.pop(module_name, None)
+
+
+@pytest.fixture(autouse=True)
+def _sk_module_mocks() -> Iterator[None]:
+    """Re-establish the semantic_kernel sys.modules mocks for the test's duration.
+
+    ``hierarchical_document_tool`` imports semantic_kernel lazily at runtime, so
+    the import-time mocks must be present while a test runs. They are removed
+    again afterwards so they never pollute other test modules during parallel
+    (pytest-xdist) execution.
+    """
+    previous: dict[str, object] = {}
+    for name, mock in _sk_mock_modules.items():
+        if name in sys.modules:
+            previous[name] = sys.modules[name]
+        sys.modules[name] = mock
+    try:
+        yield
+    finally:
+        for name in _sk_mock_modules:
+            if name in previous:
+                sys.modules[name] = previous[name]
+            else:
+                sys.modules.pop(name, None)
+
 
 def create_config(
     tmp_path: Path, **overrides: object
@@ -175,14 +216,6 @@ class TestHierarchicalDocumentToolInit:
         assert hasattr(tool, "_embedding_service")
         assert tool._embedding_service is None
 
-    def test_init_has_chat_service_attribute(self, tmp_path: Path) -> None:
-        """Test that tool has _chat_service attribute."""
-        config = create_config(tmp_path)
-        tool = HierarchicalDocumentTool(config)
-
-        assert hasattr(tool, "_chat_service")
-        assert tool._chat_service is None
-
     def test_init_has_collection_attribute(self, tmp_path: Path) -> None:
         """Test that tool has _collection attribute."""
         config = create_config(tmp_path)
@@ -200,16 +233,6 @@ class TestHierarchicalDocumentToolInit:
         tool.set_embedding_service(mock_service)
 
         assert tool._embedding_service == mock_service
-
-    def test_set_chat_service(self, tmp_path: Path) -> None:
-        """Test chat service injection via set_chat_service."""
-        config = create_config(tmp_path)
-        tool = HierarchicalDocumentTool(config)
-
-        mock_service = MagicMock()
-        tool.set_chat_service(mock_service)
-
-        assert tool._chat_service == mock_service
 
 
 class TestExecutionConfigPlumbing:
@@ -1184,7 +1207,6 @@ class TestToolFactoryIntegration:
         assert tool.config == config
         assert tool._initialized is False
         assert hasattr(tool, "set_embedding_service")
-        assert hasattr(tool, "set_chat_service")
         assert hasattr(tool, "initialize")
         assert hasattr(tool, "search")
 
@@ -1216,20 +1238,15 @@ class TestSetContextGenerator:
         assert tool._context_generator is gen2
 
     @pytest.mark.asyncio
-    async def test_ingest_uses_context_generator_without_chat_service(
-        self, tmp_path: Path
-    ) -> None:
-        """Test _ingest_documents works with set_context_generator
-        when _chat_service is None."""
+    async def test_ingest_uses_injected_context_generator(self, tmp_path: Path) -> None:
+        """Test _ingest_documents works with set_context_generator."""
         config = create_config(tmp_path, contextual_embeddings=True)
         tool = HierarchicalDocumentTool(config)
 
-        # Set a mock context generator directly (no chat service)
+        # Set a mock context generator directly
         mock_generator = AsyncMock()
         mock_generator.contextualize_batch.return_value = ["Contextualized content"]
         tool.set_context_generator(mock_generator)
-
-        assert tool._chat_service is None  # Confirm no chat service
 
         with (
             patch.object(tool, "_setup_collection"),
@@ -1239,24 +1256,6 @@ class TestSetContextGenerator:
 
         # Context generator should have been called
         mock_generator.contextualize_batch.assert_called()
-
-
-class TestSetChatServiceWithoutContextualEmbeddings:
-    """Tests for set_chat_service when contextual_embeddings is disabled."""
-
-    def test_set_chat_service_without_contextual_embeddings(
-        self, tmp_path: Path
-    ) -> None:
-        """Test set_chat_service logs debug when contextual_embeddings is False."""
-        config = create_config(tmp_path, contextual_embeddings=False)
-        tool = HierarchicalDocumentTool(config)
-
-        mock_chat_service = MagicMock()
-        tool.set_chat_service(mock_chat_service)
-
-        # Should not create context generator
-        assert tool._context_generator is None
-        assert tool._chat_service == mock_chat_service
 
 
 class TestDatabaseConfigHandling:
@@ -1575,79 +1574,6 @@ class TestGetDefinition:
 
         result = tool.get_definition("nonexistent")
         assert result is None
-
-
-class TestToSemanticKernelFunction:
-    """Tests for to_semantic_kernel_function method."""
-
-    @pytest.mark.asyncio
-    async def test_sk_function_returns_results(self, tmp_path: Path) -> None:
-        """Test SK function wrapper returns formatted results."""
-        config = create_config(tmp_path)
-        tool = HierarchicalDocumentTool(config)
-        tool._initialized = True
-        tool._embedding_dimensions = 1536
-
-        mock_embed = AsyncMock()
-        mock_embed.generate_embeddings.return_value = [[0.1] * 1536]
-        tool._embedding_service = mock_embed
-
-        mock_result = MagicMock()
-        mock_result.record = MagicMock()
-        mock_result.record.id = "chunk_0"
-        mock_result.record.content = "Test content"
-        mock_result.record.source_path = "/test.md"
-        mock_result.record.parent_chain = "[]"
-        mock_result.record.section_id = ""
-        mock_result.score = 0.85
-
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        async def mock_results():
-            yield mock_result
-
-        mock_search_results = MagicMock()
-        mock_search_results.results = mock_results()
-        mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
-
-        sk_func = tool.to_semantic_kernel_function()
-        result = await sk_func("test query")
-
-        assert isinstance(result, str)
-        assert "Test content" in result
-
-    @pytest.mark.asyncio
-    async def test_sk_function_no_results(self, tmp_path: Path) -> None:
-        """Test SK function returns message when no results."""
-        config = create_config(tmp_path)
-        tool = HierarchicalDocumentTool(config)
-        tool._initialized = True
-        tool._embedding_dimensions = 1536
-
-        mock_embed = AsyncMock()
-        mock_embed.generate_embeddings.return_value = [[0.1] * 1536]
-        tool._embedding_service = mock_embed
-
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        async def mock_results():
-            return
-            yield  # Empty generator
-
-        mock_search_results = MagicMock()
-        mock_search_results.results = mock_results()
-        mock_collection.search = AsyncMock(return_value=mock_search_results)
-        tool._collection = mock_collection
-
-        sk_func = tool.to_semantic_kernel_function()
-        result = await sk_func("test query")
-
-        assert result == "No results found."
 
 
 class TestRelativePathResolution:

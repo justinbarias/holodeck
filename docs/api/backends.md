@@ -10,10 +10,10 @@ provider-specific types leak through.
 `BackendSelector` inspects `model.provider` and instantiates the correct
 backend automatically:
 
-| Provider                        | Backend        |
-|---------------------------------|----------------|
-| `openai`, `azure_openai`, `ollama` | `SKBackend`    |
-| `anthropic`                     | `ClaudeBackend` |
+| Provider                  | Backend                |
+|---------------------------|------------------------|
+| `openai`, `azure_openai`  | `OpenAIAgentsBackend`  |
+| `anthropic`, `ollama`     | `ClaudeBackend`        |
 
 ---
 
@@ -23,6 +23,11 @@ Defines the provider-agnostic contracts that every backend must satisfy and the
 unified result types returned to callers.
 
 ### ExecutionResult
+
+The unified result type returned by every backend. Fields: `response`,
+`tool_calls`, `tool_results`, `token_usage`, `structured_output`, `num_turns`,
+`is_error`, `error_reason`, and `thinking` (extended-thinking text, empty when
+disabled or unsupported by the active backend).
 
 ::: holodeck.lib.backends.base.ExecutionResult
     options:
@@ -95,22 +100,22 @@ Routes an `Agent` configuration to the correct backend based on
 
 ---
 
-## `holodeck.lib.backends.sk_backend` -- Semantic Kernel Backend
+## `holodeck.lib.backends.openai_agents_backend` -- OpenAI Agents Backend
 
-Wraps the existing `AgentFactory` / `AgentThreadRun` infrastructure behind the
-provider-agnostic backend interfaces. Handles OpenAI, Azure OpenAI, and Ollama
-providers.
+Implements the backend for `provider: openai` and `provider: azure_openai`
+natively on the OpenAI Agents SDK, behind the provider-agnostic backend
+interfaces.
 
-### SKBackend
+### OpenAIAgentsBackend
 
-::: holodeck.lib.backends.sk_backend.SKBackend
+::: holodeck.lib.backends.openai_agents_backend.OpenAIAgentsBackend
     options:
       docstring_style: google
       show_source: true
 
-### SKSession
+### OpenAIAgentsSession
 
-::: holodeck.lib.backends.sk_backend.SKSession
+::: holodeck.lib.backends.openai_agents_backend.OpenAIAgentsSession
     options:
       docstring_style: google
       show_source: true
@@ -119,9 +124,9 @@ providers.
 
 ## `holodeck.lib.backends.claude_backend` -- Claude Agent SDK Backend
 
-Implements the backend for `provider: anthropic`. Single-turn invocations use
-the top-level `query()` SDK function; multi-turn chat sessions use
-`ClaudeSDKClient`.
+Implements the backend for `provider: anthropic` (and local `provider: ollama`
+models). Single-turn invocations use the top-level `query()` SDK function;
+multi-turn chat sessions use `ClaudeSDKClient`.
 
 ### ClaudeBackend
 
@@ -234,13 +239,6 @@ runtime.
 ### validate_embedding_provider
 
 ::: holodeck.lib.backends.validators.validate_embedding_provider
-    options:
-      docstring_style: google
-      show_source: true
-
-### validate_tool_filtering
-
-::: holodeck.lib.backends.validators.validate_tool_filtering
     options:
       docstring_style: google
       show_source: true

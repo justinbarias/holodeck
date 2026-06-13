@@ -1,39 +1,37 @@
 # Global Configuration Guide
 
-This guide explains HoloDeck's global configuration system for shared settings across agents.
+Share provider credentials, model defaults, and execution settings across all your agents so you don't repeat them in every `agent.yaml`.
 
-## Overview
+## Quick start
 
-Global configuration lives at `~/.holodeck/config.yaml` and provides default settings that apply to all agents. Use global config to:
+Put shared settings in `~/.holodeck/config.yaml` (user-level) or a `config.yaml` next to your agents (project-level), and keep secrets in a `.env` referenced as `${VAR}`.
 
-- Set default LLM providers and credentials
-- Define reusable vectorstore connections
-- Configure deployment defaults
-- Store API keys securely
-- Reduce duplication across agent.yaml files
-
-## Basic Structure
+**Precedence (highest wins):** shell env > project `.env` > `~/.holodeck/.env`; and for config values: `agent.yaml` > project `config.yaml` > `~/.holodeck/config.yaml`.
 
 ```yaml
-# config.yaml (project root or ~/.holodeck/config.yaml)
-
+# ~/.holodeck/config.yaml — shared defaults for every agent
 providers:
   azure_openai:
     provider: azure_openai
     name: gpt-4o
-    temperature: 0.3
-    max_tokens: 2048
     endpoint: ${AZURE_OPENAI_ENDPOINT}
     api_key: ${AZURE_OPENAI_API_KEY}
-
-execution:
-  file_timeout: 30
-  llm_timeout: 60
-  download_timeout: 30
-  cache_enabled: true
-  cache_dir: .holodeck_cache
-  verbose: false
 ```
+
+```bash
+# ~/.holodeck/.env — secrets, never committed
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY}
+```
+
+```bash
+holodeck config init -g   # scaffolds ~/.holodeck/config.yaml
+holodeck test agent.yaml  # agent picks up the shared providers automatically
+```
+
+## How it works
+
+A global `config.yaml` provides defaults that apply to all agents — provider credentials, model settings, vectorstore connections, and execution timeouts. An `agent.yaml` only needs to name a `provider`; the matching block from global config fills in the rest. Anything an agent sets explicitly overrides the global default. Provider routing is by `model.provider`: `openai`/`azure_openai` use the [OpenAI Backend](openai-backend.md), `anthropic`/`ollama` use the [Claude Backend](claude-backend.md).
 
 ## Configuration Precedence
 
@@ -67,85 +65,28 @@ When multiple configuration sources define the same setting, HoloDeck applies th
 └──────────────────────────────┘
 ```
 
-### Examples
+### Example
 
-#### Example 1: Provider Override
-
-Global config:
+Global config sets defaults; `agent.yaml` overrides what it names explicitly:
 
 ```yaml
+# global config
 providers:
   openai:
-    model: gpt-4o-mini
+    name: gpt-4o-mini
     temperature: 0.7
-```
-
-Agent config:
-
-```yaml
-model:
-  provider: openai
-  name: gpt-4o # Overrides global default
-  temperature: 0.5 # Overrides global default
-```
-
-Result: Agent uses `gpt-4o` at temperature `0.5` (agent config wins)
-
-#### Example 2: Environment Variable
-
-Global config:
-
-```yaml
-providers:
-  openai:
     api_key: ${OPENAI_API_KEY}
 ```
 
-Agent config:
-
 ```yaml
+# agent.yaml
 model:
   provider: openai
+  name: gpt-4o      # overrides the global name
+  temperature: 0.5  # overrides the global temperature
 ```
 
-Environment:
-
-```bash
-export OPENAI_API_KEY="sk-..."
-```
-
-Result: Uses environment variable for API key
-
-#### Example 3: Full Precedence Chain
-
-Global config:
-
-```yaml
-providers:
-  default_model: gpt-4o-mini
-
-deployment:
-  default_port: 8000
-```
-
-Agent config:
-
-```yaml
-model:
-  provider: openai
-  # No explicit temperature
-
-deployment:
-  port: 8080 # Overrides global
-```
-
-Environment:
-
-```bash
-export TEMPERATURE=0.5
-```
-
-Result: Model uses `gpt-4o-mini`, port is `8080`, temperature is `0.5`
+Result: the agent uses `gpt-4o` at temperature `0.5`, with the API key resolved from `${OPENAI_API_KEY}`. Any field the agent omits (here, none) would fall back to the global default.
 
 ## Inheritance Rules
 
@@ -367,96 +308,6 @@ execution:
   cache_enabled: true
   cache_dir: .holodeck_cache
   verbose: false
-```
-
-## Usage Patterns
-
-### Pattern 1: Secure API Keys
-
-Keep secrets in global config with environment variable substitution:
-
-Global config (project root):
-
-```yaml
-# config.yaml
-providers:
-  azure_openai:
-    provider: azure_openai
-    name: gpt-4o
-    endpoint: ${AZURE_OPENAI_ENDPOINT}
-    api_key: ${AZURE_OPENAI_API_KEY}
-```
-
-Agent config:
-
-```yaml
-# agent.yaml
-model:
-  provider: azure_openai
-  # Credentials come from global config
-```
-
-Environment:
-
-```bash
-export AZURE_OPENAI_ENDPOINT="https://..."
-export AZURE_OPENAI_API_KEY="..."
-```
-
-### Pattern 2: Execution Defaults
-
-Set timeouts and caching for all agents:
-
-Global config:
-
-```yaml
-# config.yaml
-providers:
-  azure_openai:
-    provider: azure_openai
-    name: gpt-4o
-    api_key: ${AZURE_OPENAI_API_KEY}
-
-execution:
-  file_timeout: 30
-  llm_timeout: 60
-  cache_enabled: true
-  verbose: false
-```
-
-All agents inherit these execution settings automatically.
-
-### Pattern 3: Multiple Providers
-
-Configure multiple providers for different use cases:
-
-Global config:
-
-```yaml
-# config.yaml
-providers:
-  azure_openai:
-    provider: azure_openai
-    name: gpt-4o
-    api_key: ${AZURE_OPENAI_API_KEY}
-    endpoint: ${AZURE_OPENAI_ENDPOINT}
-
-  openai:
-    provider: openai
-    name: gpt-4o-mini
-    api_key: ${OPENAI_API_KEY}
-
-execution:
-  llm_timeout: 60
-```
-
-Agent config (use either provider):
-
-```yaml
-# agent.yaml
-model:
-  provider: azure_openai # or openai
-  # Model name and settings come from global config
 ```
 
 ## Creating Configuration

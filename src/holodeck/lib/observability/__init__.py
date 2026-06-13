@@ -36,6 +36,7 @@ from holodeck.lib.observability.errors import (
     ObservabilityError,
 )
 from holodeck.lib.observability.instrumentation import (
+    enable_litellm_telemetry,
     enable_semantic_kernel_telemetry,
 )
 from holodeck.lib.observability.providers import (
@@ -56,6 +57,7 @@ __all__ = [
     "get_observability_context",
     # Instrumentation
     "enable_semantic_kernel_telemetry",
+    "enable_litellm_telemetry",
     # Context
     "ObservabilityContext",
     # Errors

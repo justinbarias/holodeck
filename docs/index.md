@@ -7,7 +7,7 @@
 ## Key Features
 
 - **No-Code Agent Definition**: Define agents, tools, and evaluations in simple YAML files
-- **Multi-Provider Support**: Ollama (local inference), OpenAI, Azure OpenAI, Anthropic
+- **Multi-Provider Support**: Anthropic and local Ollama via the Claude backend; OpenAI and Azure OpenAI via the OpenAI Agents backend
 - **Flexible Tool Integration**: Vector stores, custom functions, MCP servers, and AI-powered tools
 - **Built-in Testing & Evaluation**: Run evaluations with multiple metrics, customize models per metric
 - **Multimodal Test Support**: Images, PDFs, Word docs, Excel sheets, and mixed media in test cases

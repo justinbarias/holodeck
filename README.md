@@ -13,8 +13,9 @@ HoloDeck is an open-source experimentation platform that enables teams to create
 ## ✨ Features
 
 - **🎯 No-Code Agent Definition** - Define agents using simple YAML configuration
-- **🧠 Claude Code Native** - First-class Anthropic integration with extended thinking, subagents, and native tool bridging
-- **🔀 Multi-Backend Architecture** - Seamless provider routing between Semantic Kernel (OpenAI/Azure/Ollama) and Claude Agent SDK (Anthropic)
+- **🧠 Claude Native** - First-class Anthropic integration (extended thinking, subagents, native tool bridging); also serves local Ollama models
+- **⚡ OpenAI Agents Native** - First-class OpenAI / Azure OpenAI backend on the OpenAI Agents SDK — function + RAG tools, MCP, structured output, reasoning effort, budgets, and model fallback
+- **🔀 Multi-Backend Architecture** - Automatic routing by `model.provider`: `openai` / `azure_openai` → OpenAI Agents backend, `anthropic` / `ollama` → Claude backend
 - **🧪 Hypothesis-Driven Testing** - Test agent behaviors against structured test cases
 - **📊 Integrated Evaluations** - DeepEval LLM-as-judge metrics (GEval, RAG) plus NLP metrics (F1, BLEU, ROUGE)
 - **📈 Evaluation Dashboard** - `holodeck test view` launches an interactive Dash UI for run history, regression detection, prompt-version drift, and side-by-side run comparison
@@ -30,6 +31,13 @@ HoloDeck is an open-source experimentation platform that enables teams to create
 
 ```bash
 pip install holodeck-ai
+```
+
+The Claude backend (`anthropic` / `ollama`) is included. For the OpenAI / Azure backend, add the `openai-agents` extra (and a vector-store extra such as `qdrant` for RAG):
+
+```bash
+pip install 'holodeck-ai[openai-agents]'
+# with RAG: pip install 'holodeck-ai[openai-agents,qdrant]'
 ```
 
 ### Create Your First Agent
@@ -358,7 +366,7 @@ For detailed development instructions, commit message format, PR workflow, and t
 
 ### Agent Definition
 
-Agents are defined using declarative YAML configuration. HoloDeck automatically selects the correct backend based on `model.provider` — Semantic Kernel for OpenAI/Azure/Ollama, Claude Agent SDK for Anthropic:
+Agents are defined using declarative YAML configuration. HoloDeck automatically selects the correct backend based on `model.provider` — the OpenAI Agents SDK for `openai` / `azure_openai`, the Claude Agent SDK for `anthropic` / `ollama`:
 
 ```yaml
 name: "research-agent"
@@ -559,14 +567,14 @@ test_cases:
    ┌────┴────┐         │                  │
    ▼         ▼         │                  │
 ┌──────┐ ┌──────┐      │                  │
-│  SK  │ │Claude│      ├─ DeepEval       ├─ FastAPI
-│Backend││Backend│      ├─ NLP Metrics    ├─ Docker
+│OpenAI│ │Claude│      ├─ DeepEval       ├─ FastAPI
+│Agents│ │Backend│      ├─ NLP Metrics    ├─ Docker
 └──────┘ └──────┘      ├─ Custom GEval   ├─ Cloud Deploy
    │         │         └─ Reporting      └─ Monitoring
-   ├─OpenAI  ├─ Claude Agent SDK
-   ├─Azure   ├─ Tool Adapters
-   ├─Ollama  ├─ MCP Bridge
-   └─MCP     └─ OTel Bridge
+   ├─OpenAI  ├─ Anthropic (Claude)
+   ├─Azure   ├─ Ollama (local)
+   ├─MCP     ├─ Tool Adapters / MCP Bridge
+   └─RAG     └─ OTel Bridge
 ```
 
 ---
@@ -596,105 +604,72 @@ holodeck init chatbot --template conversational
 
 ---
 
-## 📊 Monitoring & Observability (Planned)
+## 📊 Monitoring & Observability
 
-HoloDeck provides comprehensive observability with native **OpenTelemetry** support and **Semantic Conventions for Generative AI**.
+HoloDeck ships **native OpenTelemetry** instrumentation that follows the [Semantic Conventions for Generative AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/). Traces, metrics, and logs are emitted on both backends — turn it on with an `observability` block in your `agent.yaml`.
 
-### OpenTelemetry Integration
-
-HoloDeck automatically instruments your agents with OpenTelemetry traces, metrics, and logs following the [OpenTelemetry Semantic Conventions for Generative AI](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
-
-**Basic Configuration:**
+### Basic configuration
 
 ```yaml
 # agent.yaml
 observability:
   enabled: true
-  service_name: "customer-support-agent"
+  service_name: customer-support-agent
 
-  opentelemetry:
+  traces:
     enabled: true
-    endpoint: "http://localhost:4318" # OTLP endpoint
-    protocol: grpc # or http/protobuf
+    sample_rate: 1.0          # Sample 100% of traces
+    capture_content: true     # Capture prompt/response bodies (omit for PII-sensitive workloads)
 
-    traces:
-      enabled: true
-      sample_rate: 1.0 # Sample 100% of traces
+  metrics:
+    enabled: true
+    export_interval_ms: 5000  # Export metrics every 5s
 
-    metrics:
-      enabled: true
-      interval: 60 # Export metrics every 60s
-
-    logs:
-      enabled: true
-      level: info
+  logs:
+    enabled: true
+    level: INFO
 ```
 
-**Export to Observability Platforms:**
+### Exporters
+
+Configure one or more exporters under `observability.exporters`. The built-in
+exporters are `console`, `otlp`, `prometheus`, and `azure_monitor`.
 
 ```yaml
 observability:
-  opentelemetry:
-    enabled: true
-    exporters:
-      # Jaeger
-      - type: otlp
-        endpoint: "http://jaeger:4318"
+  enabled: true
+  service_name: customer-support-agent
+  exporters:
+    # Local debugging — pretty-print spans to stdout
+    console:
+      enabled: true
 
-      # Prometheus (metrics)
-      - type: prometheus
-        port: 8889
+    # OTLP — Jaeger, Grafana Tempo, Aspire Dashboard, Datadog, etc.
+    otlp:
+      enabled: true
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}   # e.g. http://localhost:4317
+      protocol: grpc                              # or http/protobuf
+      insecure: true                              # plaintext for local collectors
+      headers:                                    # e.g. vendor auth headers
+        x-api-key: ${OTEL_API_KEY}
 
-      # Datadog
-      - type: otlp
-        endpoint: "https://api.datadoghq.com"
-        headers:
-          DD-API-KEY: "${DATADOG_API_KEY}"
+    # Prometheus — scrape metrics from a pull endpoint
+    prometheus:
+      enabled: true
+      port: 8889
+
+    # Azure Monitor / Application Insights
+    azure_monitor:
+      enabled: true
+      connection_string: ${APPLICATIONINSIGHTS_CONNECTION_STRING}
 ```
 
-### Built-in Metrics
+### What gets instrumented
 
-**Request Metrics:**
-
-- `gen_ai.client.operation.duration` - Operation duration histogram
-- `gen_ai.client.token.usage` - Token usage counter
-- `gen_ai.client.request.count` - Request counter
-- `gen_ai.client.error.count` - Error counter
-
-**Agent-Specific Metrics:**
-
-- `holodeck.agent.requests.total` - Total agent requests
-- `holodeck.agent.requests.duration` - Request duration histogram
-- `holodeck.agent.tokens.total` - Total tokens used
-- `holodeck.agent.cost.total` - Total cost (USD)
-- `holodeck.tools.invocations.total` - Tool invocation count
-- `holodeck.evaluations.score` - Evaluation scores gauge
-
-### Cost Tracking
-
-HoloDeck automatically tracks costs based on token usage and model pricing:
-
-```yaml
-observability:
-  cost_tracking:
-    enabled: true
-
-    # Custom pricing (overrides defaults)
-    pricing:
-      openai:
-        gpt-4o:
-          input: 0.0025 # per 1K tokens
-          output: 0.0100
-        gpt-4o-mini:
-          input: 0.00015
-          output: 0.00060
-
-    # Cost alerts
-    alerts:
-      - threshold: 100.00 # USD
-        period: daily
-        notify: "${ALERT_EMAIL}"
-```
+Following the GenAI semantic conventions, HoloDeck records spans and metrics for
+model calls (token usage, latency, model name), tool invocations, and
+evaluation runs — so you can trace a full agent turn end-to-end in your existing
+observability stack.
 
 ---
 
@@ -703,10 +678,11 @@ observability:
 - [x] **v0.1** - Core agent engine + CLI
 - [x] **v0.2** - Evaluation framework (DeepEval, NLP), Tools (MCP, Vectorstore)
 - [x] **v0.3** - Claude Agent SDK native backend, multi-backend abstraction, API deployment, OpenTelemetry observability
-- [ ] **v0.4** - Web UI (no-code editor)
-- [ ] **v0.5** - Multi-agent orchestration
-- [ ] **v0.6** - Enterprise features (SSO, audit logs, RBAC)
-- [ ] **v1.0** - Production-ready release
+- [x] **v0.6** - OpenAI Agents SDK native backend (OpenAI + Azure OpenAI), litellm-based embeddings
+- [ ] **v0.7** - `holodeck serve` / `holodeck deploy` on the OpenAI Agents backend
+- [ ] **v0.8** - Web UI (no-code editor)
+- [ ] **v0.9** - Multi-agent orchestration
+- [ ] **v1.0** - Production-ready release (SSO, audit logs, RBAC)
 
 ---
 
@@ -736,8 +712,10 @@ MIT License - see [LICENSE](LICENSE) for details
 
 Built with:
 
-- [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Agent framework (OpenAI/Azure/Ollama)
 - [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/claude-code-sdk-docs) - Native Anthropic agent framework
+- [OpenAI Agents SDK](https://github.com/openai/openai-agents-python) - Native OpenAI / Azure OpenAI agent framework
+- [litellm](https://github.com/BerriAI/litellm) - Unified embeddings + completion gateway
+- [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Vector store connector layer
 - [DeepEval](https://github.com/confident-ai/deepeval) - LLM evaluation framework
 - [markitdown](https://github.com/microsoft/markitdown) - Document cracking into markdown for LLMs
 - [FastAPI](https://fastapi.tiangolo.com/) - API deployment (planned)

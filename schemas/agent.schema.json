@@ -2384,12 +2384,6 @@
           "minimum": 1000,
           "title": "Export Interval Ms",
           "type": "integer"
-        },
-        "include_semantic_kernel_metrics": {
-          "default": true,
-          "description": "Include Semantic Kernel internal metrics",
-          "title": "Include Semantic Kernel Metrics",
-          "type": "boolean"
         }
       },
       "title": "MetricsConfig",
@@ -2507,6 +2501,12 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "disable_provider_tracing": {
+          "default": false,
+          "description": "Suppress the model provider's own trace upload (e.g. the OpenAI Agents SDK upload to platform.openai.com), keeping only the OTel mirror. Applies to the openai_agents backend.",
+          "title": "Disable Provider Tracing",
+          "type": "boolean"
+        },
         "service_name": {
           "anyOf": [
             {
@@ -2546,6 +2546,176 @@
         }
       },
       "title": "ObservabilityConfig",
+      "type": "object"
+    },
+    "OpenAIConfig": {
+      "additionalProperties": false,
+      "description": "OpenAI Agents SDK-specific settings.\n\nAll fields optional. Applicable only when ``model.provider`` is ``openai``\nor ``azure_openai``.",
+      "properties": {
+        "max_concurrent_sessions": {
+          "anyOf": [
+            {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum concurrent active turns per serve instance. When unset, the serve layer derives the cap from the replica's memory limit divided by `session_memory_estimate_mib`.",
+          "title": "Max Concurrent Sessions"
+        },
+        "session_memory_estimate_mib": {
+          "default": 100,
+          "description": "Estimated peak resident memory (MiB) per concurrent active turn. Used by the serve layer to derive `max_concurrent_sessions` from the replica's memory limit. The openai_agents backend runs in-process (no per-turn subprocess), so the default is lower than the Claude backend's.",
+          "maximum": 2000,
+          "minimum": 50,
+          "title": "Session Memory Estimate Mib",
+          "type": "integer"
+        },
+        "max_turns": {
+          "default": 20,
+          "description": "Maximum agent loop iterations passed to Runner.run.",
+          "minimum": 1,
+          "title": "Max Turns",
+          "type": "integer"
+        },
+        "i_understand_this_is_unsafe": {
+          "default": false,
+          "description": "Acknowledge that enabling unsafe hosted tools (CodeInterpreterTool) permits server-side code execution. Required to load such tools.",
+          "title": "I Understand This Is Unsafe",
+          "type": "boolean"
+        },
+        "disable_default_hooks": {
+          "default": false,
+          "description": "Disable HoloDeck-provided default guardrails (credential redaction output guardrail). When True, the agent runs with ONLY user-defined hooks. Loud warning emitted at load time. Note: OTel attribute redaction runs independently and is NOT disabled by this flag.",
+          "title": "Disable Default Hooks",
+          "type": "boolean"
+        },
+        "disable_subprocess_env_scrub": {
+          "default": false,
+          "description": "Disable HoloDeck's default-on subprocess env scrubbing. When True, stdio MCP servers and shelling-out function tools inherit the full agent container env including provider credentials.",
+          "title": "Disable Subprocess Env Scrub",
+          "type": "boolean"
+        },
+        "permissions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenAIPermissionsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tool allow/deny lists for this backend."
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "max"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reasoning effort level for reasoning models. Mapped to the SDK's ReasoningEffort (`max` \u2192 `xhigh`).",
+          "title": "Effort"
+        },
+        "max_budget_usd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hard cap on session spend in USD. Must be > 0.",
+          "title": "Max Budget Usd"
+        },
+        "fallback_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model used when the primary model is unavailable.",
+          "title": "Fallback Model"
+        },
+        "disallowed_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tools that must never be used; removed from the resolved agent at build time.",
+          "title": "Disallowed Tools"
+        }
+      },
+      "title": "OpenAIConfig",
+      "type": "object"
+    },
+    "OpenAIPermissionsConfig": {
+      "additionalProperties": false,
+      "description": "Tool permission lists for the OpenAI Agents backend.",
+      "properties": {
+        "allowed_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Explicit tool allowlist. None = all configured tools.",
+          "title": "Allowed Tools"
+        },
+        "disallowed_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tools that must never be used; takes precedence over allowed_tools.",
+          "title": "Disallowed Tools"
+        }
+      },
+      "title": "OpenAIPermissionsConfig",
       "type": "object"
     },
     "OptimizerConfig": {
@@ -3175,63 +3345,6 @@
       "title": "TextualAxis",
       "type": "object"
     },
-    "ToolFilterConfig": {
-      "additionalProperties": false,
-      "description": "Configuration for automatic tool filtering.\n\nDefines how tools are filtered per request to reduce token usage.\nWhen enabled, only the most relevant tools (based on semantic similarity\nto the user query) are included in each LLM call.\n\nAttributes:\n    enabled: Enable or disable tool filtering globally.\n    top_k: Maximum number of tools to include per request.\n    similarity_threshold: Minimum similarity score for tool inclusion.\n    always_include: Tool names that are always included regardless of score.\n    always_include_top_n_used: Number of most-used tools to always include.\n    search_method: Method for tool search (semantic, bm25, or hybrid).",
-      "properties": {
-        "enabled": {
-          "default": false,
-          "description": "Enable tool filtering",
-          "title": "Enabled",
-          "type": "boolean"
-        },
-        "top_k": {
-          "default": 5,
-          "description": "Maximum tools per request (1-50)",
-          "maximum": 50,
-          "minimum": 1,
-          "title": "Top K",
-          "type": "integer"
-        },
-        "similarity_threshold": {
-          "default": 0.3,
-          "description": "Minimum similarity score for inclusion (0.0-1.0)",
-          "maximum": 1.0,
-          "minimum": 0.0,
-          "title": "Similarity Threshold",
-          "type": "number"
-        },
-        "always_include": {
-          "description": "Tool names always included in context",
-          "items": {
-            "type": "string"
-          },
-          "title": "Always Include",
-          "type": "array"
-        },
-        "always_include_top_n_used": {
-          "default": 3,
-          "description": "Number of most-used tools to always include (0-20)",
-          "maximum": 20,
-          "minimum": 0,
-          "title": "Always Include Top N Used",
-          "type": "integer"
-        },
-        "search_method": {
-          "default": "semantic",
-          "description": "Tool search method: semantic, bm25, or hybrid",
-          "enum": [
-            "semantic",
-            "bm25",
-            "hybrid"
-          ],
-          "title": "Search Method",
-          "type": "string"
-        }
-      },
-      "title": "ToolFilterConfig",
-      "type": "object"
-    },
     "TracingConfig": {
       "additionalProperties": false,
       "description": "Tracing-specific configuration.\n\nControls distributed tracing settings including sampling rate,\ncontent capture, and redaction patterns for sensitive data.",
@@ -3760,18 +3873,6 @@
       "description": "Agent tools (vectorstore, function, mcp, prompt)",
       "title": "Tools"
     },
-    "tool_filtering": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/ToolFilterConfig"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Automatic tool filtering configuration. When enabled, dynamically filters tools per request based on semantic similarity to reduce token usage."
-    },
     "evaluations": {
       "anyOf": [
         {
@@ -3859,6 +3960,18 @@
       ],
       "default": null,
       "description": "Claude Agent SDK-specific settings. Applicable only when model.provider: anthropic."
+    },
+    "openai": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OpenAIConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "OpenAI Agents SDK-specific settings. Applicable only when model.provider: openai or azure_openai."
     },
     "test_cases_file": {
       "anyOf": [

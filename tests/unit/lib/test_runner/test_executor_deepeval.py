@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from holodeck.config.loader import ConfigLoader
+from holodeck.lib.backends.base import ExecutionResult
 from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.file_processor import FileProcessor
-from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentThreadRun
 from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.config import ExecutionConfig
@@ -436,23 +436,15 @@ class TestGEvalExecutionFlow:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        # Mock agent response
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Machine learning is a type of artificial intelligence."
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Machine learning is a type of artificial intelligence.",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Machine learning is a type of artificial intelligence."
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Mock GEval evaluator to return a score
         # Must use Mock() with proper get_param_spec, not AsyncMock
@@ -474,7 +466,7 @@ class TestGEvalExecutionFlow:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators={"Comprehensiveness": mock_geval_evaluator},
         )
 
@@ -545,22 +537,15 @@ class TestGEvalExecutionFlow:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "hola"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="hola",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "hola"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Mock evaluators with proper get_param_spec
         mock_bleu = Mock()
@@ -585,7 +570,7 @@ class TestGEvalExecutionFlow:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators={
                 "bleu": mock_bleu,
                 "Correctness": mock_geval,
@@ -659,22 +644,15 @@ class TestGEvalExecutionFlow:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Mock all possible evaluators with proper get_param_spec
         mock_bleu = Mock()
@@ -714,7 +692,7 @@ class TestGEvalExecutionFlow:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators=mock_evaluators,
         )
 

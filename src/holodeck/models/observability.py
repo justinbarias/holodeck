@@ -118,10 +118,6 @@ class MetricsConfig(BaseModel):
         ge=1000,
         description="Metrics export interval in milliseconds (minimum 1000ms)",
     )
-    include_semantic_kernel_metrics: bool = Field(
-        default=True,
-        description="Include Semantic Kernel internal metrics",
-    )
 
 
 class LogsConfig(BaseModel):
@@ -315,6 +311,14 @@ class ObservabilityConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = Field(default=False, description="Enable observability features")
+    disable_provider_tracing: bool = Field(
+        default=False,
+        description=(
+            "Suppress the model provider's own trace upload (e.g. the OpenAI "
+            "Agents SDK upload to platform.openai.com), keeping only the OTel "
+            "mirror. Applies to the openai_agents backend."
+        ),
+    )
     service_name: str | None = Field(
         default=None,
         description="Override service name (defaults to 'holodeck-{agent.name}')",

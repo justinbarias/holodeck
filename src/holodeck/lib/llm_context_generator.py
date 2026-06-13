@@ -24,18 +24,12 @@ from typing import TYPE_CHECKING, cast
 import tiktoken
 
 if TYPE_CHECKING:
-    from semantic_kernel.connectors.ai.chat_completion_client_base import (
-        ChatCompletionClientBase,
-    )
-    from semantic_kernel.connectors.ai.prompt_execution_settings import (
-        PromptExecutionSettings,
-    )
-
     from holodeck.lib.backends.base import ContextGenerator
 
     # Protocol conformance — verified at type-check time only
     _: ContextGenerator = cast("LLMContextGenerator", None)
 
+from holodeck.lib.litellm_support import LiteLLMModelSpec
 from holodeck.lib.structured_chunker import DocumentChunk
 
 logger = logging.getLogger(__name__)
@@ -84,16 +78,16 @@ class LLMContextGenerator:
     approach which prepends situational context to each chunk before embedding.
 
     Attributes:
-        _chat_service: Semantic Kernel chat completion service.
+        _model_spec: Resolved LiteLLM call arguments for the context model.
         _max_context_tokens: Maximum tokens for generated context (default: 100).
         _max_document_tokens: Maximum tokens for document in prompt (default: 8000).
         _concurrency: Current concurrency limit for batch processing.
         _retry_config: Configuration for exponential backoff retries.
 
     Example:
-        >>> from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion
-        >>> chat_service = OpenAIChatCompletion(ai_model_id="gpt-4o-mini")
-        >>> generator = LLMContextGenerator(chat_service=chat_service)
+        >>> from holodeck.lib.litellm_support import resolve_litellm_model
+        >>> spec = resolve_litellm_model(agent.model, kind="chat")
+        >>> generator = LLMContextGenerator(model_spec=spec)
         >>> context = await generator.generate_context(chunk_text, document_text)
     """
 
@@ -104,8 +98,7 @@ class LLMContextGenerator:
 
     def __init__(
         self,
-        chat_service: "ChatCompletionClientBase",
-        execution_settings: "PromptExecutionSettings | None" = None,
+        model_spec: LiteLLMModelSpec,
         max_context_tokens: int = DEFAULT_MAX_CONTEXT_TOKENS,
         max_document_tokens: int = DEFAULT_MAX_DOCUMENT_TOKENS,
         concurrency: int | None = None,
@@ -114,16 +107,13 @@ class LLMContextGenerator:
         """Initialize the LLM Context Generator.
 
         Args:
-            chat_service: Semantic Kernel chat completion service instance.
-            execution_settings: Optional prompt execution settings. If not provided,
-                defaults will be used with max_tokens set to max_context_tokens.
+            model_spec: Resolved LiteLLM call arguments (chat kind).
             max_context_tokens: Maximum tokens for generated context (default: 100).
             max_document_tokens: Maximum tokens for document truncation (default: 8000).
             concurrency: Maximum concurrent LLM requests (default: 10).
             retry_config: Configuration for retry logic. Uses defaults if not provided.
         """
-        self._chat_service = chat_service
-        self._execution_settings = execution_settings
+        self._model_spec = model_spec
         self._max_context_tokens = max_context_tokens
         self._max_document_tokens = max_document_tokens
         self._concurrency = (
@@ -201,31 +191,18 @@ class LLMContextGenerator:
         Raises:
             Exception: If the LLM call fails.
         """
-        # Import here to avoid circular imports and allow mocking
-        from semantic_kernel.connectors.ai.open_ai import (
-            OpenAIChatPromptExecutionSettings,
+        # Import here to defer the heavy litellm import and allow mocking
+        import litellm
+
+        response = await litellm.acompletion(
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=self._max_context_tokens,
+            **self._model_spec.call_kwargs(),
         )
-        from semantic_kernel.contents import ChatHistory
 
-        chat_history = ChatHistory()
-        chat_history.add_user_message(prompt)
-
-        # Call with or without execution settings
-        if self._execution_settings is not None:
-            result = await self._chat_service.get_chat_message_contents(
-                chat_history=chat_history,
-                settings=self._execution_settings,
-            )
-        else:
-            # When no settings provided, use service defaults
-            # Type ignore needed as SK types don't allow None settings
-            result = await self._chat_service.get_chat_message_contents(
-                chat_history=chat_history,
-                settings=OpenAIChatPromptExecutionSettings(),
-            )
-
-        if result and len(result) > 0:
-            content = result[0].content
+        choices = getattr(response, "choices", None)
+        if choices:
+            content = choices[0].message.content
             return str(content).strip() if content else ""
         return ""
 

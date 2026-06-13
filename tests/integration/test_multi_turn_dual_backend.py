@@ -1,13 +1,13 @@
 """Dual-backend smoke integration tests for multi-turn execution (T048–T050).
 
 These tests verify that the multi-turn dispatch path produces identical
-pass/fail behavior on both the SK backend (Ollama / OpenAI) and the
-Claude Agent SDK backend (SC-010).
+pass/fail behavior on both the OpenAI Agents backend (OpenAI / Azure) and
+the Claude Agent SDK backend (SC-010).
 
 Running the gated variants:
 
-    make test-integration HOLODECK_IT_OLLAMA=1    # SK via Ollama
-    make test-integration HOLODECK_IT_ANTHROPIC=1 # Claude SDK
+    make test-integration HOLODECK_IT_OPENAI=1     # OpenAI Agents
+    make test-integration HOLODECK_IT_ANTHROPIC=1  # Claude SDK
 
 Without those env vars set, the tests fall back to stubbed sessions so
 they run fast in the default integration suite.
@@ -101,10 +101,10 @@ def _executor_with_stub(backend_class_name: str) -> TestExecutor:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_sk_backend_three_turn_passes() -> None:
-    if os.getenv("HOLODECK_IT_OLLAMA") == "1":
-        pytest.skip("TODO: wire real SK+Ollama session — using stub for CI default")
-    executor = _executor_with_stub("SKBackend")
+async def test_openai_agents_backend_three_turn_passes() -> None:
+    if os.getenv("HOLODECK_IT_OPENAI") == "1":
+        pytest.skip("TODO: wire real OpenAI Agents session — using stub for CI default")
+    executor = _executor_with_stub("OpenAIAgentsBackend")
     report = await executor.execute_tests()
     assert len(report.results) == 1
     result = report.results[0]

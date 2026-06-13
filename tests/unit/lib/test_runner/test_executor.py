@@ -21,7 +21,6 @@ from holodeck.lib.backends.base import (
     ExecutionResult,
 )
 from holodeck.lib.file_processor import FileProcessor
-from holodeck.lib.test_runner.agent_factory import AgentFactory, AgentThreadRun
 from holodeck.lib.test_runner.executor import TestExecutor
 from holodeck.models.agent import Agent
 from holodeck.models.config import ExecutionConfig
@@ -135,7 +134,7 @@ class TestExecutorMainFlow:
         # Create mocks for dependencies
         mock_loader = Mock(spec=ConfigLoader)
         mock_file_processor = Mock(spec=FileProcessor)
-        mock_agent_factory = Mock(spec=AgentFactory)
+        mock_backend = Mock()
 
         # Setup mock config
         mock_config = Mock(spec=Agent)
@@ -152,13 +151,13 @@ class TestExecutorMainFlow:
                 agent_config_path=agent_config_path,
                 config_loader=mock_loader,
                 file_processor=mock_file_processor,
-                agent_factory=mock_agent_factory,
+                backend=mock_backend,
             )
 
         assert executor.agent_config_path == agent_config_path
         assert executor.agent_config is not None
         assert executor.file_processor is mock_file_processor
-        assert executor.agent_factory is mock_agent_factory
+        assert executor._backend is mock_backend
         mock_loader.load_agent_yaml.assert_called_once_with(agent_config_path)
 
     @pytest.mark.asyncio
@@ -166,7 +165,6 @@ class TestExecutorMainFlow:
         """Single test case execution captures agent response."""
         from unittest.mock import AsyncMock
 
-        from holodeck.lib.test_runner.agent_factory import AgentExecutionResult
         from holodeck.models.agent import Instructions
         from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
         from holodeck.models.llm import LLMProvider, ProviderEnum
@@ -221,19 +219,15 @@ class TestExecutorMainFlow:
         )
 
         # Mock agent execution result
-        mock_chat_history = Mock()
-        mock_result = AgentExecutionResult(
+        mock_result = ExecutionResult(
+            response="The answer is 4",
             tool_calls=[],
             tool_results=[],
-            chat_history=mock_chat_history,
-            response="The answer is 4",
         )
 
-        # Mock agent factory with thread run pattern
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Mock file processor
         mock_file_processor = Mock(spec=FileProcessor)
@@ -242,7 +236,7 @@ class TestExecutorMainFlow:
         executor = TestExecutor(
             agent_config_path="tests/fixtures/agents/test_agent.yaml",
             config_loader=mock_loader,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             file_processor=mock_file_processor,
         )
 
@@ -284,10 +278,9 @@ class TestExecutorMainFlow:
             assert metric_result.passed is not None
             assert metric_result.scale == "0-1"
 
-        # Verify agent factory was called with thread run pattern
-        mock_factory.create_thread_run.assert_called_once()
-        mock_thread_run.invoke.assert_called_once()
-        call_args = mock_thread_run.invoke.call_args[0][0]
+        # Verify backend was invoked with the test input
+        mock_backend.invoke_once.assert_awaited_once()
+        call_args = mock_backend.invoke_once.call_args[0][0]
         assert "What is 2+2?" in call_args
 
 
@@ -339,30 +332,22 @@ class TestFileProcessing:
         mock_processed.markdown_content = None
         mock_file_processor.process_file.return_value = mock_processed
 
-        # Mock agent factory
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Create executor
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         # Execute tests
@@ -412,28 +397,21 @@ class TestFileProcessing:
         mock_file_processor = Mock(spec=FileProcessor)
         mock_file_processor.process_file.side_effect = OSError("Disk error")
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         report = await executor.execute_tests()
@@ -484,16 +462,15 @@ class TestAgentInvocation:
         mock_file_processor = Mock(spec=FileProcessor)
 
         # Mock agent factory to raise TimeoutError
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(side_effect=TimeoutError())
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(side_effect=TimeoutError())
+        mock_backend.teardown = AsyncMock()
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         report = await executor.execute_tests()
@@ -540,16 +517,15 @@ class TestAgentInvocation:
         mock_file_processor = Mock(spec=FileProcessor)
 
         # Mock agent factory to raise generic exception
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(side_effect=ValueError("Invalid API key"))
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(side_effect=ValueError("Invalid API key"))
+        mock_backend.teardown = AsyncMock()
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         report = await executor.execute_tests()
@@ -612,28 +588,22 @@ class TestFileContentInAgent:
         async def capture_invoke(agent_input: str):
             nonlocal captured_input
             captured_input = agent_input
-            mock_result = Mock()
-            mock_result.tool_calls = []
-            mock_result.tool_results = []
-            mock_chat_history = Mock()
-            mock_message = Mock()
-            mock_message.role = "assistant"
-            mock_message.content = "Analysis complete"
-            mock_chat_history.messages = [mock_message]
-            mock_result.chat_history = mock_chat_history
-            mock_result.response = "Analysis complete"
+            mock_result = ExecutionResult(
+                response="Analysis complete",
+                tool_calls=[],
+                tool_results=[],
+            )
             return mock_result
 
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(side_effect=capture_invoke)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(side_effect=capture_invoke)
+        mock_backend.teardown = AsyncMock()
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         await executor.execute_tests()
@@ -685,22 +655,20 @@ class TestChatHistoryHandling:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        # Mock agent factory with empty chat history
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = None  # Empty chat history
-        mock_result.response = ""
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_result = ExecutionResult(
+            response="",
+            tool_calls=[],
+            tool_results=[],
+        )
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         report = await executor.execute_tests()
@@ -837,22 +805,15 @@ class TestEvaluationMetrics:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = response
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response=response,
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = response
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         mock_evaluator = AsyncMock()
         mock_evaluator.evaluate = AsyncMock(return_value={score_key: score_value})
@@ -861,7 +822,7 @@ class TestEvaluationMetrics:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators={metric_name: mock_evaluator},
         )
 
@@ -921,22 +882,15 @@ class TestEvaluationMetrics:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Mock evaluator that raises exception
         # Must return proper ParamSpec for get_param_spec() to avoid coroutine issues
@@ -956,7 +910,7 @@ class TestEvaluationMetrics:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators={"groundedness": mock_evaluator},
         )
 
@@ -1009,30 +963,23 @@ class TestToolCallValidationInExecution:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Result"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Result",
+            tool_calls=[
+                {"name": "search"},
+                {"name": "calculator"},
+            ],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = [
-            {"name": "search"},
-            {"name": "calculator"},
-        ]
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Result"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         report = await executor.execute_tests()
@@ -1102,22 +1049,15 @@ class TestContextInEvaluation:
         mock_processed.original.path = "context.txt"
         mock_file_processor.process_file.return_value = mock_processed
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response based on context"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response based on context",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response based on context"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Track what gets passed to evaluator
         evaluation_kwargs: dict = {}
@@ -1140,7 +1080,7 @@ class TestContextInEvaluation:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators={"groundedness": mock_evaluator},
         )
 
@@ -1191,28 +1131,21 @@ class TestNoMetricsConfigured:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         report = await executor.execute_tests()
@@ -1285,22 +1218,15 @@ class TestReportGeneration:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         mock_evaluator = Mock()
         mock_evaluator.name = "meteor"
@@ -1315,7 +1241,7 @@ class TestReportGeneration:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators={"meteor": mock_evaluator},
         )
 
@@ -1365,28 +1291,21 @@ class TestReportGeneration:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         # Simulate import failure
@@ -1474,22 +1393,15 @@ class TestPerTestMetricResolution:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response based on context"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response based on context",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response based on context"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         mock_evaluators = {}
         for metric in eval_config.metrics:
@@ -1501,7 +1413,7 @@ class TestPerTestMetricResolution:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators=mock_evaluators,
         )
 
@@ -1567,22 +1479,15 @@ class TestPerTestMetricResolution:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         mock_evaluators = {
             "meteor": AsyncMock(evaluate=AsyncMock(return_value={"meteor": 0.85})),
@@ -1593,7 +1498,7 @@ class TestPerTestMetricResolution:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators=mock_evaluators,
         )
 
@@ -1701,22 +1606,15 @@ class TestPerTestMetricResolution:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         mock_evaluators = {
             "meteor": AsyncMock(evaluate=AsyncMock(return_value={"meteor": 0.85})),
@@ -1728,7 +1626,7 @@ class TestPerTestMetricResolution:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators=mock_evaluators,
         )
 
@@ -1803,22 +1701,15 @@ class TestPerTestMetricResolution:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         mock_evaluators = {
             "meteor": AsyncMock(evaluate=AsyncMock(return_value={"meteor": 0.85})),
@@ -1829,7 +1720,7 @@ class TestPerTestMetricResolution:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators=mock_evaluators,
         )
 
@@ -1882,22 +1773,15 @@ class TestProgressCallbackIntegration:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Track callback invocations
         callback_invocations = []
@@ -1909,7 +1793,7 @@ class TestProgressCallbackIntegration:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             progress_callback=progress_callback,
         )
 
@@ -1950,29 +1834,22 @@ class TestProgressCallbackIntegration:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Create executor without callback (None)
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             progress_callback=None,
         )
 
@@ -2013,22 +1890,15 @@ class TestProgressCallbackIntegration:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Test Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Test Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Test Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         callback_results = []
 
@@ -2039,7 +1909,7 @@ class TestProgressCallbackIntegration:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             progress_callback=progress_callback,
         )
 
@@ -2087,22 +1957,15 @@ class TestProgressCallbackIntegration:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Track callback invocations with test names
         callback_results = []
@@ -2114,7 +1977,7 @@ class TestProgressCallbackIntegration:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             progress_callback=progress_callback,
         )
 
@@ -2157,22 +2020,15 @@ class TestProgressCallbackIntegration:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         call_order = []
 
@@ -2183,7 +2039,7 @@ class TestProgressCallbackIntegration:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             progress_callback=progress_callback,
         )
 
@@ -2393,23 +2249,15 @@ class TestOnTestStartCallback:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        # Mock agent factory
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Response"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Response",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Response"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Track callback invocations
         callback_invocations = []
@@ -2421,7 +2269,7 @@ class TestOnTestStartCallback:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             on_test_start=on_test_start_callback,
         )
 
@@ -2672,24 +2520,20 @@ class TestChatHistoryEdgeCases:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        # Mock agent factory with chat history but empty messages
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_chat_history = Mock()
-        mock_chat_history.messages = []  # Empty messages list
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = ""
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_result = ExecutionResult(
+            response="",
+            tool_calls=[],
+            tool_results=[],
+        )
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         report = await executor.execute_tests()
@@ -2750,29 +2594,21 @@ class TestUnconfiguredMetrics:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        # Mock agent factory
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "Answer"
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="Answer",
+            tool_calls=[],
+            tool_results=[],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = []
-        mock_result.tool_results = []
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "Answer"
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         executor = TestExecutor(
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
         )
 
         report = await executor.execute_tests()
@@ -3059,28 +2895,20 @@ class TestDynamicRetrievalContext:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        # Mock agent response with tool results (should be ignored)
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "AI is artificial intelligence."
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="AI is artificial intelligence.",
+            tool_calls=[{"name": "vectorstore-knowledge_base"}],
+            tool_results=[
+                {
+                    "name": "vectorstore-knowledge_base",
+                    "result": "Dynamic context from vectorstore",
+                }
+            ],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = [{"name": "vectorstore-knowledge_base"}]
-        mock_result.tool_results = [
-            {
-                "name": "vectorstore-knowledge_base",
-                "result": "Dynamic context from vectorstore",
-            }
-        ]
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "AI is artificial intelligence."
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Track what gets passed to evaluator
         evaluation_kwargs: dict = {}
@@ -3109,7 +2937,7 @@ class TestDynamicRetrievalContext:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators={"faithfulness": mock_evaluator},
         )
 
@@ -3184,28 +3012,20 @@ class TestDynamicRetrievalContext:
 
         mock_file_processor = Mock(spec=FileProcessor)
 
-        # Mock agent response with tool results
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "AI is artificial intelligence."
-        mock_chat_history.messages = [mock_message]
+        mock_result = ExecutionResult(
+            response="AI is artificial intelligence.",
+            tool_calls=[{"name": "vectorstore-knowledge_base"}],
+            tool_results=[
+                {
+                    "name": "vectorstore-knowledge_base",
+                    "result": "Dynamic context from vectorstore search",
+                }
+            ],
+        )
 
-        mock_result = Mock()
-        mock_result.tool_calls = [{"name": "vectorstore-knowledge_base"}]
-        mock_result.tool_results = [
-            {
-                "name": "vectorstore-knowledge_base",
-                "result": "Dynamic context from vectorstore search",
-            }
-        ]
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "AI is artificial intelligence."
-
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         # Track what gets passed to evaluator
         evaluation_kwargs: dict = {}
@@ -3234,7 +3054,7 @@ class TestDynamicRetrievalContext:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators={"faithfulness": mock_evaluator},
         )
 
@@ -3317,24 +3137,18 @@ class TestDynamicRetrievalContext:
         mock_file_processor = Mock(spec=FileProcessor)
 
         # Agent produced a response but invoked only a non-retrieval tool.
-        mock_chat_history = Mock()
-        mock_message = Mock()
-        mock_message.role = "assistant"
-        mock_message.content = "AI is artificial intelligence."
-        mock_chat_history.messages = [mock_message]
 
-        mock_result = Mock()
-        mock_result.tool_calls = [{"name": "format_citation"}]
-        mock_result.tool_results = [
-            {"name": "format_citation", "result": "formatted"},
-        ]
-        mock_result.chat_history = mock_chat_history
-        mock_result.response = "AI is artificial intelligence."
+        mock_result = ExecutionResult(
+            response="AI is artificial intelligence.",
+            tool_calls=[{"name": "format_citation"}],
+            tool_results=[
+                {"name": "format_citation", "result": "formatted"},
+            ],
+        )
 
-        mock_thread_run = Mock(spec=AgentThreadRun)
-        mock_thread_run.invoke = AsyncMock(return_value=mock_result)
-        mock_factory = Mock(spec=AgentFactory)
-        mock_factory.create_thread_run = AsyncMock(return_value=mock_thread_run)
+        mock_backend = Mock()
+        mock_backend.invoke_once = AsyncMock(return_value=mock_result)
+        mock_backend.teardown = AsyncMock()
 
         mock_evaluator = Mock()
         mock_evaluator.name = "faithfulness"
@@ -3356,7 +3170,7 @@ class TestDynamicRetrievalContext:
             agent_config_path="test.yaml",
             config_loader=mock_loader,
             file_processor=mock_file_processor,
-            agent_factory=mock_factory,
+            backend=mock_backend,
             evaluators={"faithfulness": mock_evaluator},
         )
 

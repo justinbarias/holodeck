@@ -1,273 +1,141 @@
 # Vector Stores Guide
 
-This guide explains how to set up and configure vector stores for semantic search in HoloDeck agents.
+This guide explains how to set up and configure vector stores for semantic search (RAG) in HoloDeck agents.
 
-## Overview
+## Quick start
 
-Vector stores enable semantic search capabilities for your agents, allowing them to search through documents, knowledge bases, and structured data using natural language queries. HoloDeck uses vector embeddings to find semantically similar content.
+Run a local Qdrant, point one `vectorstore` tool at a folder of documents, and chat with your agent. HoloDeck ingests the source on first run and answers from it.
 
-### Why Use Vector Stores?
+```bash
+# 1. Start a local Qdrant
+docker run -d --name qdrant -p 6333:6333 qdrant/qdrant
+```
 
-- **Semantic Search**: Find relevant information based on meaning, not just keywords
-- **RAG (Retrieval-Augmented Generation)**: Ground agent responses in your data
-- **Knowledge Bases**: Build searchable document repositories
-- **FAQ Systems**: Match user questions to relevant answers
+```yaml
+# agent.yaml
+name: knowledge-agent
+model:
+  provider: openai          # also works on provider: anthropic
+  name: gpt-4o
+instructions:
+  inline: Search the knowledge base before answering.
+tools:
+  - name: search-kb
+    type: vectorstore
+    description: Search the knowledge base
+    source: knowledge_base/  # folder of docs to ingest
+    database:
+      provider: qdrant
+      connection_string: http://localhost:6333
+```
 
-## Installing Vector Store Providers
+```bash
+holodeck chat   # ingests knowledge_base/ on first run, then answers from it
+```
+
+Expected: the agent calls `search-kb`, retrieves matching chunks, and grounds its reply in your documents.
+
+## How it works
+
+A `vectorstore` tool embeds your `source` documents into chunks and stores them in a vector database, then retrieves the most semantically similar chunks at query time to ground the agent's answer (RAG). Embeddings work across providers, and `vectorstore` (and `hierarchical_document`) RAG tools run on **both** the Claude and OpenAI backends. The vector store connectors are internally built on the Semantic Kernel connector library — an implementation detail that gives you a uniform API across providers; on Qdrant the connector layer also supports native hybrid (dense + sparse) search. See the [OpenAI backend](openai-backend.md) and [Claude backend](claude-backend.md) guides for backend specifics, and the [Tools Guide](tools.md) for the full tool schema.
+
+---
+
+## Installing vector store providers
 
 HoloDeck uses optional dependencies for vector database providers. Install only what you need:
 
-### Individual Providers
-
 ```bash
-# PostgreSQL with pgvector
-uv add holodeck-ai[postgres]
-
-# Qdrant
-uv add holodeck-ai[qdrant]
-
-# Pinecone
-uv add holodeck-ai[pinecone]
-
-# ChromaDB
-uv add holodeck-ai[chromadb]
+uv add holodeck-ai[qdrant]        # Qdrant
+uv add holodeck-ai[postgres]      # PostgreSQL with pgvector
+uv add holodeck-ai[chromadb]      # ChromaDB
+uv add holodeck-ai[pinecone]      # Pinecone
+uv add holodeck-ai[vectorstores]  # all of the above
 ```
 
-### All Vector Stores
+The same extras work with `pip install holodeck-ai[<extra>]`.
 
-```bash
-# Install all vector store providers at once
-uv add holodeck-ai[vectorstores]
-```
+## Supported providers
 
-### With pip
+| Provider    | Best for                               | Setup complexity |
+| ----------- | -------------------------------------- | ---------------- |
+| `qdrant`    | High-performance production, hybrid search | Medium       |
+| `chromadb`  | Lightweight development, Python-native | Low              |
+| `postgres`  | Existing PostgreSQL infrastructure     | Medium           |
+| `pinecone`  | Serverless, managed cloud              | Low              |
+| `in-memory` | Testing and prototyping                | None             |
 
-```bash
-pip install holodeck-ai[postgres]
-pip install holodeck-ai[qdrant]
-pip install holodeck-ai[pinecone]
-pip install holodeck-ai[chromadb]
-# Or all at once
-pip install holodeck-ai[vectorstores]
-```
+See the [Tools Guide](tools.md) for the complete list.
 
----
+## Configuring vector stores
 
-## Prerequisites
+You can configure a store inline (as in the Quick start) or define it once in global config and reference it by name.
 
-Before setting up a vector store, you need a container runtime:
+### Global configuration (config.yaml)
 
-### Docker (Recommended)
-
-Docker is the most common container runtime. Install it from [docker.com](https://docs.docker.com/get-docker/).
-
-**Verify installation:**
-
-```bash
-docker --version
-# Docker version 24.0.0, build ...
-```
-
-### Podman (Alternative)
-
-Podman is a daemonless container engine, useful in environments where Docker isn't available.
-
-**Install on Linux:**
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install podman
-
-# Fedora/RHEL
-sudo dnf install podman
-```
-
-**Install on macOS:**
-
-```bash
-brew install podman
-podman machine init
-podman machine start
-```
-
-**Verify installation:**
-
-```bash
-podman --version
-# podman version 4.0.0
-```
-
-> **Note**: Podman commands are compatible with Docker. Replace `docker` with `podman` in the examples below.
-
----
-
-## Setting Up ChromaDB
-
-[ChromaDB](https://www.trychroma.com/) is an open-source embedding database that's simple to set up and ideal for development. It provides a lightweight vector database with native Python support.
-
-### Quick Start with Docker
-
-**Run ChromaDB:**
-
-```bash
-docker run -d \
-  --name chromadb \
-  -p 8000:8000 \
-  -v ./chroma-data:/chroma/chroma \
-  -e IS_PERSISTENT=TRUE \
-  -e ANONYMIZED_TELEMETRY=FALSE \
-  chromadb/chroma:latest
-```
-
-This exposes:
-
-- **Port 8000**: ChromaDB HTTP API (for HoloDeck connections)
-
-**Verify ChromaDB is running:**
-
-```bash
-curl http://localhost:8000/api/v2/heartbeat
-# {"nanosecond heartbeat":1234567890}
-```
-
-### Docker Compose (Recommended for Projects)
-
-Create a `docker-compose.yml` file in your project root:
+Define reusable vector store connections, then reference them from any agent:
 
 ```yaml
-version: "3.9"
-
-services:
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: holodeck-chromadb
-    ports:
-      - "8000:8000"
-    volumes:
-      - chroma-data:/chroma/chroma
-    environment:
-      - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
-      - ANONYMIZED_TELEMETRY=FALSE
-    restart: unless-stopped
-
-volumes:
-  chroma-data:
+# config.yaml (project root or ~/.holodeck/config.yaml)
+vectorstores:
+  my-qdrant-store:
+    provider: qdrant
+    url: http://localhost:6333
+  my-chroma-store:
+    provider: chromadb
+    connection_string: http://localhost:8000
+  my-postgres-store:
+    provider: postgres
+    connection_string: ${DATABASE_URL}
 ```
-
-**Start the service:**
-
-```bash
-docker compose up -d
-```
-
-**Stop the service:**
-
-```bash
-docker compose down
-```
-
-### Podman Equivalent
-
-```bash
-podman run -d \
-  --name chromadb \
-  -p 8000:8000 \
-  -v ./chroma-data:/chroma/chroma \
-  -e IS_PERSISTENT=TRUE \
-  -e ANONYMIZED_TELEMETRY=FALSE \
-  docker.io/chromadb/chroma:latest
-```
-
-### ChromaDB Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `IS_PERSISTENT` | Enable data persistence | `FALSE` |
-| `PERSIST_DIRECTORY` | Path for persistent storage | `/chroma/chroma` |
-| `ANONYMIZED_TELEMETRY` | Send anonymous usage data | `TRUE` |
-
-> **Version Pinning**: For stability, pin to a specific version (e.g., `chromadb/chroma:0.6.3`) instead of `latest` to avoid unexpected changes during upgrades.
-
-> **Security Advisory**: `chromadb` is currently affected by
-> [CVE-2026-45829 / GHSA-f4j7-r4q5-qw2c](https://github.com/advisories/GHSA-f4j7-r4q5-qw2c),
-> a pre-authentication code injection issue in ChromaDB server versions 1.0.0
-> and later when the server accepts a malicious model repository with
-> `trust_remote_code=true`. As of this documentation update, upstream has not
-> published a fixed `chromadb` release. Until a fix is available, run ChromaDB
-> only on trusted networks, do not expose it directly to the public internet,
-> and treat model repository inputs as trusted administrative data.
-
----
-
-## Setting Up PostgreSQL with pgvector
-
-[PostgreSQL with pgvector](https://github.com/pgvector/pgvector) provides production-grade vector storage with full SQL capabilities. It's ideal if you already have PostgreSQL infrastructure.
-
-### Quick Start with Docker
-
-**Run PostgreSQL with pgvector:**
-
-```bash
-docker run -d \
-  --name postgres \
-  -p 5432:5432 \
-  -e POSTGRES_PASSWORD=your_password \
-  -v pgdata:/var/lib/postgresql/data \
-  pgvector/pgvector:pg17
-```
-
-This exposes:
-
-- **Port 5432**: PostgreSQL database (for HoloDeck connections)
-
-**Verify PostgreSQL is running:**
-
-```bash
-docker exec -it postgres psql -U postgres -c "SELECT 1;"
-```
-
-### Docker Compose (Recommended for Projects)
 
 ```yaml
-version: "3.9"
-
-services:
-  postgres:
-    image: pgvector/pgvector:pg17
-    container_name: holodeck-postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=holodeck
-    restart: unless-stopped
-
-volumes:
-  pgdata:
+# agent.yaml
+tools:
+  - name: search-kb
+    type: vectorstore
+    description: Search the knowledge base
+    source: knowledge_base/
+    database: my-qdrant-store   # reference to config.yaml
 ```
 
-### PostgreSQL Environment Variables
+### Tuning ingestion and embeddings
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `POSTGRES_PASSWORD` | Database password (required) | - |
-| `POSTGRES_USER` | Database user | `postgres` |
-| `POSTGRES_DB` | Default database name | `postgres` |
+Set embedding model and chunking on the tool. The embedding model is provider-neutral — pick one your configured model provider exposes:
 
-> **Security**: Always use environment variables for passwords. Never commit plaintext passwords to version control.
+```yaml
+tools:
+  - name: search-kb
+    type: vectorstore
+    description: Search the knowledge base
+    source: knowledge_base/
+    database: my-qdrant-store
+    embedding_model: text-embedding-3-small
+    chunk_size: 512
+    chunk_overlap: 50
+```
+
+### Environment variables
+
+Store sensitive connection details in environment variables and reference them with `${VAR}`:
+
+```bash
+# .env file (DO NOT commit to version control)
+DATABASE_URL=postgresql://user:password@localhost:5432/mydb
+QDRANT_API_KEY=your-api-key
+```
+
+> **Security**: Always use `${VAR_NAME}` for passwords, API keys, and sensitive connection details. Never commit plaintext credentials to version control.
 
 ---
 
-## Setting Up Qdrant
+## Running a vector database
 
-[Qdrant](https://qdrant.tech/) is a high-performance vector database designed for production workloads. It supports both HTTP and gRPC protocols.
+All providers below run locally in a container. You need a container runtime — [Docker](https://docs.docker.com/get-docker/) (recommended) or Podman. Podman commands are Docker-compatible; replace `docker` with `podman` in the examples.
 
-### Quick Start with Docker
+### Qdrant
 
-**Run Qdrant:**
+[Qdrant](https://qdrant.tech/) is a high-performance vector database designed for production workloads. It supports HTTP and gRPC, and native hybrid (dense + sparse) search.
 
 ```bash
 docker run -d \
@@ -278,23 +146,15 @@ docker run -d \
   qdrant/qdrant
 ```
 
-This exposes:
-
-- **Port 6333**: HTTP API (for HoloDeck connections)
-- **Port 6334**: gRPC API (for high-performance connections)
-
-**Verify Qdrant is running:**
+Exposes port **6333** (HTTP API) and **6334** (gRPC). Verify:
 
 ```bash
 curl http://localhost:6333/healthz
-# {"title":"qdrant - vector search engine","version":"..."}
 ```
 
-### Docker Compose (Recommended for Projects)
+Docker Compose:
 
 ```yaml
-version: "3.9"
-
 services:
   qdrant:
     image: qdrant/qdrant:latest
@@ -310,37 +170,71 @@ volumes:
   qdrant-data:
 ```
 
-### Qdrant with API Key (Production)
+For production, enable API key auth with `QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}`, and pin a version (e.g. `qdrant/qdrant:v1.9.0`) instead of `latest`.
 
-For production deployments, enable API key authentication:
+### ChromaDB
 
-```yaml
-services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant-data:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+[ChromaDB](https://www.trychroma.com/) is a lightweight, Python-native embedding database that's ideal for development.
+
+```bash
+docker run -d \
+  --name chromadb \
+  -p 8000:8000 \
+  -v ./chroma-data:/chroma/chroma \
+  -e IS_PERSISTENT=TRUE \
+  -e ANONYMIZED_TELEMETRY=FALSE \
+  chromadb/chroma:latest
 ```
 
-> **Version Pinning**: For stability, pin to a specific version (e.g., `qdrant/qdrant:v1.9.0`) instead of `latest`.
+Exposes port **8000** (HTTP API). Verify:
 
----
+```bash
+curl http://localhost:8000/api/v2/heartbeat
+```
 
-## Setting Up Pinecone
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `IS_PERSISTENT` | Enable data persistence | `FALSE` |
+| `PERSIST_DIRECTORY` | Path for persistent storage | `/chroma/chroma` |
+| `ANONYMIZED_TELEMETRY` | Send anonymous usage data | `TRUE` |
 
-[Pinecone](https://www.pinecone.io/) is a fully managed, serverless vector database. For production, use the cloud service with an API key. For local development and testing, use Pinecone Local.
+> **Security Advisory**: `chromadb` is currently affected by
+> [CVE-2026-45829 / GHSA-f4j7-r4q5-qw2c](https://github.com/advisories/GHSA-f4j7-r4q5-qw2c),
+> a pre-authentication code injection issue in ChromaDB server versions 1.0.0
+> and later when the server accepts a malicious model repository with
+> `trust_remote_code=true`. As of this documentation update, upstream has not
+> published a fixed `chromadb` release. Until a fix is available, run ChromaDB
+> only on trusted networks, do not expose it directly to the public internet,
+> and treat model repository inputs as trusted administrative data.
 
-### Cloud Setup (Production)
+### PostgreSQL with pgvector
 
-1. Create an account at [pinecone.io](https://www.pinecone.io/)
-2. Create an index in the Pinecone console
-3. Copy your API key from the console
+[PostgreSQL with pgvector](https://github.com/pgvector/pgvector) provides production-grade vector storage with full SQL capabilities — ideal if you already run PostgreSQL.
 
-**Configure in HoloDeck:**
+```bash
+docker run -d \
+  --name postgres \
+  -p 5432:5432 \
+  -e POSTGRES_PASSWORD=${POSTGRES_PASSWORD} \
+  -v pgdata:/var/lib/postgresql/data \
+  pgvector/pgvector:pg17
+```
+
+Exposes port **5432**. Verify:
+
+```bash
+docker exec -it postgres psql -U postgres -c "SELECT 1;"
+```
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `POSTGRES_PASSWORD` | Database password (required) | - |
+| `POSTGRES_USER` | Database user | `postgres` |
+| `POSTGRES_DB` | Default database name | `postgres` |
+
+### Pinecone
+
+[Pinecone](https://www.pinecone.io/) is a fully managed, serverless vector database. For production, use the cloud service with an API key:
 
 ```yaml
 database:
@@ -349,17 +243,7 @@ database:
   namespace: my-namespace  # optional
 ```
 
-### Local Development with Docker
-
-For local development without a Pinecone account, use [Pinecone Local](https://www.pinecone.io/learn/series/vector-databases-in-production-for-busy-engineers/cicd-pinecone-local/):
-
-**Pull the image:**
-
-```bash
-docker pull ghcr.io/pinecone-io/pinecone-index:latest
-```
-
-**Run Pinecone Local:**
+For local development without an account, use [Pinecone Local](https://www.pinecone.io/learn/series/vector-databases-in-production-for-busy-engineers/cicd-pinecone-local/):
 
 ```bash
 docker run -d \
@@ -373,107 +257,13 @@ docker run -d \
   ghcr.io/pinecone-io/pinecone-index:latest
 ```
 
-This exposes:
-
-- **Port 5081**: Pinecone Local API
-
-### Pinecone Local Environment Variables
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `PORT` | API port | `5081` |
-| `INDEX_TYPE` | Index type | `serverless` |
-| `DIMENSION` | Vector dimensions | `1536` |
-| `METRIC` | Distance metric | `cosine`, `euclidean`, `dotproduct` |
-
 > **Note**: Pinecone Local is for development and testing only. Use the cloud service for production workloads.
 
 ---
 
-## Configuring Vector Stores in HoloDeck
+## Connection string formats
 
-### Global Configuration (config.yaml)
-
-Define reusable vector store connections in your global configuration:
-
-```yaml
-# config.yaml (project root or ~/.holodeck/config.yaml)
-
-vectorstores:
-  # ChromaDB (lightweight, Python-native)
-  my-chroma-store:
-    provider: chromadb
-    connection_string: http://localhost:8000
-
-  # PostgreSQL with pgvector
-  my-postgres-store:
-    provider: postgres
-    connection_string: ${DATABASE_URL}
-
-  # Qdrant (high-performance)
-  my-qdrant-store:
-    provider: qdrant
-    url: http://localhost:6333
-```
-
-### Environment Variables
-
-Store sensitive connection details in environment variables:
-
-```bash
-# .env file (DO NOT commit to version control)
-DATABASE_URL=postgresql://user:password@localhost:5432/mydb
-QDRANT_API_KEY=your-api-key
-```
-
-### Agent Configuration (agent.yaml)
-
-Reference the global vector store in your agent's tools:
-
-```yaml
-# agent.yaml
-name: knowledge-agent
-description: Agent with semantic search capabilities
-
-model:
-  provider: openai
-  name: gpt-4o
-
-instructions:
-  inline: |
-    You are a helpful assistant with access to a knowledge base.
-    Use the search tool to find relevant information before answering.
-
-tools:
-  - name: search-kb
-    description: Search the knowledge base for relevant information
-    type: vectorstore
-    source: knowledge_base/
-    database: my-chroma-store  # Reference to config.yaml
-```
-
-### Inline Database Configuration
-
-Alternatively, configure the database directly in `agent.yaml`:
-
-```yaml
-tools:
-  - name: search-docs
-    description: Search technical documentation
-    type: vectorstore
-    source: docs/
-    database:
-      provider: chromadb
-      connection_string: http://localhost:8000
-```
-
----
-
-## Connection String Formats
-
-### PostgreSQL Connection Strings
-
-PostgreSQL uses standard connection string format:
+### PostgreSQL
 
 | Format | Example |
 |--------|---------|
@@ -481,37 +271,15 @@ PostgreSQL uses standard connection string format:
 | With credentials | `postgresql://user:password@localhost:5432/mydb` |
 | With SSL | `postgresql://user:password@host:5432/mydb?sslmode=require` |
 
-```yaml
-database:
-  provider: postgres
-  connection_string: postgresql://user:password@localhost:5432/mydb
-```
-
-### ChromaDB Connection Strings
-
-ChromaDB accepts HTTP/HTTPS URLs or local paths:
+### ChromaDB
 
 | Format | Example |
 |--------|---------|
 | HTTP | `http://localhost:8000` |
 | HTTPS | `https://chroma.example.com` |
-| Local persistent | (use `persist_directory` instead) |
+| Local persistent | use `persist_directory: ./data/chromadb` instead |
 
-```yaml
-# Remote server
-database:
-  provider: chromadb
-  connection_string: http://localhost:8000
-
-# Local persistent storage
-database:
-  provider: chromadb
-  persist_directory: ./data/chromadb
-```
-
-### Qdrant Connection Strings
-
-Qdrant supports multiple connection formats:
+### Qdrant
 
 | Format | Example |
 |--------|---------|
@@ -521,50 +289,15 @@ Qdrant supports multiple connection formats:
 | In-memory | `:memory:` |
 | Local path | `/path/to/qdrant/data` |
 
-```yaml
-# HTTP connection
-database:
-  provider: qdrant
-  connection_string: http://localhost:6333
+For remote Qdrant, add `api_key: ${QDRANT_API_KEY}`.
 
-# With API key (recommended for remote)
-database:
-  provider: qdrant
-  connection_string: https://qdrant.example.com:6333
-  api_key: ${QDRANT_API_KEY}
+### Pinecone
 
-# gRPC for high-performance
-database:
-  provider: qdrant
-  connection_string: qdrant+grpc://localhost:6334
-```
-
-### Pinecone Connection
-
-Pinecone uses API key authentication (no connection string):
-
-```yaml
-database:
-  provider: pinecone
-  api_key: ${PINECONE_API_KEY}
-  namespace: my-namespace  # optional
-```
-
-Or use the connection string format:
-
-```yaml
-database:
-  provider: pinecone
-  connection_string: pinecone://pc-abc123@my-namespace
-```
-
-> **Security**: Always use environment variables (`${VAR_NAME}`) for passwords, API keys, and sensitive connection details. Never commit plaintext credentials to version control.
+Pinecone uses API key authentication (no connection string), or the `pinecone://pc-abc123@my-namespace` connection-string form.
 
 ---
 
-## Complete Example
-
-### Project Structure
+## Complete example
 
 ```
 my-agent-project/
@@ -577,9 +310,8 @@ my-agent-project/
 └── docker-compose.yml
 ```
 
-### config.yaml
-
 ```yaml
+# config.yaml
 providers:
   openai:
     provider: openai
@@ -588,17 +320,12 @@ providers:
 
 vectorstores:
   knowledge-store:
-    provider: chromadb
-    connection_string: http://localhost:8000
-
-execution:
-  cache_enabled: true
-  verbose: false
+    provider: qdrant
+    url: http://localhost:6333
 ```
 
-### agent.yaml
-
 ```yaml
+# agent.yaml
 name: support-agent
 description: Customer support agent with knowledge base search
 
@@ -611,7 +338,6 @@ instructions:
   inline: |
     You are a customer support specialist.
     Always search the knowledge base before answering questions.
-    Provide accurate, helpful responses based on the documentation.
 
 tools:
   - name: search-kb
@@ -629,125 +355,60 @@ test_cases:
     expected_tools: [search-kb]
 ```
 
-### .env
-
-```bash
-OPENAI_API_KEY=sk-...
-```
-
-### docker-compose.yml
-
 ```yaml
-version: "3.9"
-
+# docker-compose.yml
 services:
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: holodeck-chromadb
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: holodeck-qdrant
     ports:
-      - "8000:8000"
+      - "6333:6333"
     volumes:
-      - chroma-data:/chroma/chroma
-    environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
+      - qdrant-data:/qdrant/storage
 
 volumes:
-  chroma-data:
+  qdrant-data:
 ```
 
-### Running the Agent
+Run it:
 
 ```bash
-# 1. Start ChromaDB
-docker compose up -d
-
-# 2. Verify ChromaDB is running
-curl http://localhost:8000/api/v2/heartbeat
-
-# 3. Run the agent (uses agent.yaml by default)
-holodeck test
+docker compose up -d           # 1. Start Qdrant
+curl http://localhost:6333/healthz   # 2. Verify it's up
+holodeck test                  # 3. Run the agent (uses agent.yaml by default)
 ```
-
----
-
-## Supported Vector Store Providers
-
-HoloDeck supports multiple vector database backends. See the [Tools Guide](tools.md#supported-vector-database-providers) for the complete list.
-
-| Provider    | Best For                             | Setup Complexity |
-| ----------- | ------------------------------------ | ---------------- |
-| `chromadb`  | Lightweight development, Python-native | Low              |
-| `postgres`  | Existing PostgreSQL infrastructure   | Medium           |
-| `qdrant`    | High-performance production          | Medium           |
-| `pinecone`  | Serverless, managed cloud            | Low              |
-| `in-memory` | Testing and prototyping              | None             |
 
 ---
 
 ## Troubleshooting
 
-### Cannot connect to ChromaDB
+### Cannot connect to the vector database
 
-**Error:** `Connection refused` or `Cannot connect to http://localhost:8000`
+**Error:** `Connection refused` or `Cannot connect to http://localhost:<port>`
 
-**Solutions:**
-
-1. Verify ChromaDB is running:
-   ```bash
-   docker ps | grep chromadb
-   ```
-
-2. Check the container logs:
-   ```bash
-   docker logs holodeck-chromadb
-   ```
-
-3. Test connectivity:
-   ```bash
-   curl http://localhost:8000/api/v2/heartbeat
-   ```
-
-4. Ensure port 8000 is not blocked by firewall
+1. Verify the container is running: `docker ps | grep <name>`
+2. Check logs: `docker logs <name>`
+3. Test connectivity (Qdrant: `curl http://localhost:6333/healthz`; ChromaDB: `curl http://localhost:8000/api/v2/heartbeat`)
+4. Ensure the port isn't blocked by a firewall
 
 ### Data not persisting
 
-**Solution:** Mount a volume for data persistence:
-
-```bash
-docker run -d \
-  --name chromadb \
-  -p 8000:8000 \
-  -v chroma-data:/chroma/chroma \
-  -e IS_PERSISTENT=TRUE \
-  chromadb/chroma:latest
-```
+Mount a named volume for persistence — e.g. `-v qdrant-data:/qdrant/storage` (Qdrant) or `-v chroma-data:/chroma/chroma -e IS_PERSISTENT=TRUE` (ChromaDB).
 
 ### Container already exists
 
-**Error:** `container name "chromadb" is already in use`
+**Error:** `container name "<name>" is already in use`
 
-**Solution:** Remove the existing container:
-
-```bash
-docker rm -f chromadb
-```
+Remove the existing container: `docker rm -f <name>`
 
 ---
 
-## Additional Resources
+## Additional resources
 
-- [ChromaDB on Docker Hub](https://hub.docker.com/r/chromadb/chroma)
-- [ChromaDB Documentation](https://docs.trychroma.com/)
-- [Qdrant Documentation](https://qdrant.tech/documentation/)
-- [PostgreSQL pgvector](https://github.com/pgvector/pgvector)
-- [Tools Reference Guide](tools.md) - Complete vectorstore tool configuration
-- [Global Configuration Guide](global-config.md) - Shared settings across agents
-
-## Next Steps
-
-- See [Tools Reference](tools.md) for vectorstore tool options (chunk size, embedding models, etc.)
-- See [Agent Configuration](agent-configuration.md) for complete agent setup
-- See [LLM Providers Guide](llm-providers.md) for configuring the LLM that powers your agent
-- See [Evaluations Guide](evaluations.md) for testing your agent's search quality
-- See [Global Configuration](global-config.md) for sharing vectorstore configs across agents
+- [Tools Reference Guide](tools.md) - Complete vectorstore tool configuration (chunk size, embedding models, hybrid search)
+- [OpenAI Backend Guide](openai-backend.md) / [Claude Backend Guide](claude-backend.md) - Backend specifics for RAG tools
+- [Agent Configuration](agent-configuration.md) - Complete agent setup
+- [LLM Providers Guide](llm-providers.md) - Configuring the LLM that powers your agent
+- [Evaluations Guide](evaluations.md) - Testing your agent's search quality
+- [Global Configuration Guide](global-config.md) - Sharing vectorstore configs across agents
+- [Qdrant Documentation](https://qdrant.tech/documentation/) · [ChromaDB Documentation](https://docs.trychroma.com/) · [PostgreSQL pgvector](https://github.com/pgvector/pgvector)

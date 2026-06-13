@@ -19,7 +19,7 @@ dependencies = [
     "jsonschema>=4.0.0,<5.0.0",
     "semantic-kernel>=1.39.4,<2.0.0",
     "markitdown[all]>=0.1.4,<0.2.0",
-    "pypdf>=6.10.2",
+    "pypdf>=6.12.0",
     "azure-ai-evaluation>=1.13.0,<2.0.0",
     "evaluate>=0.4.6,<0.5.0",
     "aiofiles>=25.1.0,<26.0.0",
@@ -45,8 +45,8 @@ dependencies = [
     "opentelemetry-sdk>=1.20.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.20.0,<2.0.0",
-    "rank-bm25>=0.2.2,<0.3.0",  # BM25 sparse indexing (fallback for providers without native hybrid)
-    "opensearch-py>=2.0.0,<3.0.0",  # OpenSearch client for production keyword index
+    "rank-bm25>=0.2.2,<0.3.0", # BM25 sparse indexing (fallback for providers without native hybrid)
+    "opensearch-py>=2.0.0,<3.0.0", # OpenSearch client for production keyword index
     "tiktoken>=0.12.0",
     "aiohttp>=3.13.4",
     "httpx>=0.27",
@@ -55,6 +55,7 @@ dependencies = [
     "claude-agent-sdk==0.2.82",
     "python-frontmatter>=1.1,<2.0",
     "optuna>=4.8.0",
+    "litellm>=1.80.0,<1.89.0",
 ]
 
 [project.scripts]
@@ -121,6 +122,11 @@ otel-all = [
 
 # Claude GenAI instrumentation (OTel semantic conventions)
 claude-otel = ["otel-instrumentation-claude-agent-sdk>=0.0.6,<0.1.0"]
+
+# OpenAI Agents SDK backend (provider: openai / azure_openai). Optional so
+# non-OpenAI backends incur no install/import cost — the import is gated lazily
+# inside holodeck.lib.backends.openai_agents_backend.
+openai-agents = ["openai-agents==0.17.4"]
 
 # Evaluation-runs dashboard (Dash + Plotly + pandas). Pixel-fidelity rewrite of
 # the Streamlit draft — handoff CSS tokens paste into assets/ verbatim.
@@ -229,6 +235,14 @@ warn_unreachable = true
 module = "google.*"
 ignore_missing_imports = true
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+# litellm ships py.typed but its internals import the google.* namespace
+# packages, which trips mypy's incremental-cache fixup ("Cannot find module
+# for google"). Skip following into litellm — call sites keep their own
+# annotations.
+module = "litellm.*"
+follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 # Dash lacks type stubs; dashboard callbacks take arbitrary dicts from dcc.Store.

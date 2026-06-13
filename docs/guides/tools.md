@@ -1,149 +1,130 @@
-# Tools Reference Guide
+# Tools
 
-This guide explains HoloDeck's six tool types that extend agent capabilities.
+Tools are agent capabilities defined in `agent.yaml`. They work on both backends — the [OpenAI](openai-backend.md) backend (`openai`/`azure_openai`) and the [Claude](claude-backend.md) backend (`anthropic`/`ollama`) dispatch every tool type through the same loader.
 
-## Overview
+## Quick start
 
-Tools are agent capabilities defined in `agent.yaml`. HoloDeck supports six tool types:
-
-| Tool Type                        | Description                              | Status         |
-| -------------------------------- | ---------------------------------------- | -------------- |
-| **Vectorstore Tools**            | Semantic search over data                | ✅ Implemented |
-| **Hierarchical Document Tools**  | Structure-aware hybrid document search   | ✅ Implemented |
-| **MCP Tools**                    | Model Context Protocol servers           | ✅ Implemented |
-| **Function Tools**               | Custom Python functions                  | ✅ Implemented |
-| **Prompt Tools**                 | LLM-powered semantic functions           | 🚧 Planned     |
-
-> **Note**: **Vectorstore Tools**, **Hierarchical Document Tools**, **MCP Tools**, and **Function Tools** are fully implemented. Prompt tools are defined in the configuration schema but not yet functional.
-
-## Tool Filtering
-
-Tool filtering automatically reduces tool context per request by selecting only the most relevant tools. It builds an in-memory index of tool metadata and uses Semantic Kernel's `FunctionChoiceBehavior` to include a filtered set of tools for each query.
-
-### Agent Configuration
+A minimal agent with one function tool — deterministic enough to verify with `holodeck test`.
 
 ```yaml
 # agent.yaml
-name: support-agent
+name: math-agent
+
 model:
   provider: openai
   name: gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}
+  temperature: 0.0
+
 instructions:
-  file: instructions/system.md
-
-tool_filtering:
-  enabled: true
-  top_k: 5
-  similarity_threshold: 0.3
-  always_include_top_n_used: 3
-  search_method: semantic
-
+  inline: "You are a calculator. Use the tools to answer arithmetic questions."
 
 tools:
-  - name: filesystem
-    type: mcp
-    description: Read and write files
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
+  - name: subtract
+    type: function
+    description: "Compute a - b. Pass a and b as numeric strings; returns the difference as a string."
+    file: tools/math.py
+    function: subtract
 ```
 
-### Configuration Knobs
+```python
+# tools/math.py
+def subtract(a: str, b: str) -> str:
+    """Compute ``a - b`` for two numeric string operands.
 
-- `top_k`: Max tools per request (includes always-included tools)
-- `similarity_threshold`: Filter out tools scoring below this value
-- `always_include`: Tool names always available (full name or function name suffix)
-- `always_include_top_n_used`: Keep most-used tools in context (usage-aware)
-- `search_method`: `semantic`, `bm25`, or `hybrid`
+    Args:
+        a: Minuend as a numeric string (e.g. ``"206588"``).
+        b: Subtrahend as a numeric string.
 
-### Sensible Defaults
+    Returns:
+        The difference ``a - b`` as a string.
+    """
+    return str(float(a.replace(",", "")) - float(b.replace(",", "")))
+```
 
-| Parameter | Default | Rationale |
-| --- | --- | --- |
-| `top_k` | 5 | Enough tools for most tasks without token bloat |
-| `similarity_threshold` | 0.3 | Include tools at least 30% as relevant as top result |
-| `always_include` | `[]` | Agent-specific—add your critical tools here |
-| `always_include_top_n_used` | 3 | Keep frequently used tools in context |
-| `search_method` | `semantic` | Best semantic match for short prompts |
+```bash
+holodeck chat agent.yaml   # then ask: "What is 206588 minus 1500?"
+# Agent calls subtract(a="206588", b="1500") → 205088.0
+```
 
-### Threshold Tuning by Search Method
+## How it works
 
-All search methods return normalized scores in the 0-1 range, so `similarity_threshold` is consistent across methods.
+HoloDeck supports five tool types: **function** (Python callables), **vectorstore** (semantic search), **hierarchical_document** (structure-aware hybrid search), **mcp** (Model Context Protocol servers), and **prompt** (LLM-powered semantic functions — schema-defined, execution still planned). Both backends load tools at agent-startup, derive each tool's schema from its config (function type hints, MCP server discovery, etc.), and surface them to the model. RAG tools (`vectorstore`, `hierarchical_document`) embed your data — see [Vector Stores](vector-stores.md) for provider setup. MCP servers run as subprocesses managed by the agent lifecycle — see the [MCP CLI](mcp-cli.md) guide for discovery and config. The sections below are condensed reference for each type.
 
-| Method | Good Match Range | Recommended Threshold |
-| --- | --- | --- |
-| `semantic` | 0.4 - 0.6 | 0.3 - 0.4 |
-| `bm25` (normalized) | 0.8 - 1.0 | 0.5 - 0.6 |
-| `hybrid` (normalized) | 0.8 - 1.0 | 0.5 - 0.6 |
+### Common fields
 
-A threshold of 0.3 means "include tools scoring at least 30% of what the top result scores."
-
-> **Tip**: `always_include_top_n_used` tracks usage across requests, so early or accidental tool calls can bias results. Set it to 0 during development if you want to avoid usage bias.
-
-## Common Tool Fields
-
-All tools share these fields:
+All tools share `name` (1–100 chars, alphanumeric + underscores, unique on the agent — used to reference the tool in test cases and logs), `description` (≤500 chars, helps the model decide when to call it), and `type` (the discriminator that determines which extra fields apply).
 
 ```yaml
 tools:
-  - name: tool-id # Required: Tool identifier (unique)
-    description: What it does # Required: Human-readable description
-    type: vectorstore|function|mcp|prompt # Required: Tool type
+  - name: search_kb
+    description: Search company knowledge base for answers
+    type: vectorstore
 ```
 
-### Name
-
-- **Required**: Yes
-- **Type**: String
-- **Format**: 1-100 characters, alphanumeric + underscores
-- **Uniqueness**: Must be unique within agent
-- **Purpose**: Used to reference tool in test cases, execution logs
-
-```yaml
-- name: search_kb
-```
-
-### Description
-
-- **Required**: Yes
-- **Type**: String
-- **Max Length**: 500 characters
-- **Purpose**: Helps agent understand when to use this tool
-
-```yaml
-- description: Search company knowledge base for answers
-```
-
-### Type
-
-- **Required**: Yes
-- **Type**: String (Enum)
-- **Options**: `vectorstore`, `hierarchical_document`, `function`, `mcp`, `prompt`
-- **Purpose**: Determines which additional fields are required
-
-```yaml
-- type: vectorstore
-```
+| Tool Type               | Use case                                | Status         |
+| ----------------------- | --------------------------------------- | -------------- |
+| `function`              | Custom Python logic                     | ✅ Implemented |
+| `vectorstore`           | Semantic search over data               | ✅ Implemented |
+| `hierarchical_document` | Structure-aware hybrid document search  | ✅ Implemented |
+| `mcp`                   | Model Context Protocol servers (stdio)  | ✅ Implemented |
+| `prompt`                | LLM-powered semantic functions          | 🚧 Planned     |
 
 ---
 
-## Vectorstore Tools ✅
+## Function tools ✅
 
-> **Status**: Fully implemented
+Execute custom Python functions defined in your project. Function tools are imported at agent-config load time via `importlib.util.spec_from_file_location`, validated as callable, and surfaced to the model with the function's signature and docstring as the tool's parameter schema and description. `src/holodeck/lib/function_tool_loader.py:load_function_tool` is shared by both backends.
 
-!!! warning "Anthropic Users: Embedding Provider Required"
+**Use when:** custom business logic the agent calls deterministically; pure functions (math, parsing, formatting); lightweight integrations with libraries already in your venv; anything where an MCP subprocess would be overkill.
+
+### Fields
+
+| Field      | Type   | Required | Notes                                                                 |
+|------------|--------|----------|-----------------------------------------------------------------------|
+| `name`     | string | Yes      | Tool identifier (unique on agent)                                     |
+| `description` | string | Yes   | Shown to the model — the function's docstring complements it          |
+| `type`     | `"function"` | Yes | Discriminator                                                         |
+| `file`     | string (path) | Yes | Python file containing the function. Resolved relative to the directory holding `agent.yaml` (absolute paths also work) |
+| `function` | string | Yes      | Name of the callable inside `file`                                    |
+| `parameters` | dict | No       | Optional schema for introspection. Backends derive JSON schema from type annotations when omitted |
+| `defer_loading` | bool | No (`true`) | When `true`, excluded from the initial tool context and surfaced via tool filtering on demand. Set `false` for tools the agent should always have available |
+
+See `src/holodeck/models/tool.py:FunctionTool` for the full Pydantic model. A complete working sample lives at `sample/financial-assistant/claude/` (wires `subtract` and `divide` into an agent).
+
+### How loading works
+
+At agent-startup (not first call), the shared loader:
+
+1. Resolves `tool.file` relative to the agent project root (the directory holding `agent.yaml`); absolute paths pass through unchanged.
+2. Builds an import spec and executes the module in isolation under a synthesized name (`holodeck_function_tool_<tool.name>`), so two tools with the same source file don't collide.
+3. Looks up `tool.function` and verifies the attribute is callable.
+4. Returns the callable to the backend, which wraps it as a native tool (an OpenAI Agents SDK function tool or a Claude SDK in-process MCP tool).
+
+Any failure — missing file, import error, missing attribute, attribute that isn't callable — is re-raised as a `ConfigError` keyed on `tools.<tool.name>`, so the agent fails to start with a clear message instead of crashing mid-test (FR-025).
+
+### Best practices
+
+- Keep each function focused on a single task — small, well-named tools are easier for the model to pick.
+- Add type hints on every parameter and the return, plus a short docstring; both feed the tool schema and description.
+- Make the function self-contained — the loader executes the module fresh, so don't rely on side-effects from other modules.
+- Return JSON-serializable values (strings, numbers, dicts, lists). Arbitrary objects fail when the backend serializes the result.
+- Validate inputs and raise a meaningful `ValueError` — the runtime captures it as the tool error and surfaces it to the agent.
+- Avoid long-running calls; prefer an MCP server when you need a separate process or async I/O at scale.
+- Prefer pure functions — trivially testable in isolation (e.g., `tests/unit/sample/test_financial_tools.py`).
+
+---
+
+## Vectorstore tools ✅
+
+Semantic search over unstructured or structured data — knowledge bases, FAQs, RAG context retrieval.
+
+!!! warning "Anthropic users: embedding provider required"
     Anthropic does not provide embedding models. When using `model.provider: anthropic`
     with vectorstore tools, you **must** define `embedding_provider` at the agent level.
     See [Embedding Provider](agent-configuration.md#embedding-provider).
 
-Semantic search over unstructured or structured data.
-
-### When to Use
-
-- Searching documents, knowledge bases, FAQs
-- Semantic similarity matching
-- Context retrieval for RAG (Retrieval-Augmented Generation)
-
-### Basic Example
+### Basic example
 
 ```yaml
 - name: search-kb
@@ -152,206 +133,22 @@ Semantic search over unstructured or structured data.
   source: knowledge_base/
 ```
 
-### Supported Vector Database Providers
+### Fields
 
-HoloDeck supports multiple vector database backends through Semantic Kernel's VectorStoreCollection abstractions. You can switch providers via configuration without changing your agent code.
+`source` (required) is the data file or directory to index. Supported: single files (`.txt`, `.md`, `.pdf`, `.json`, `.csv`), directories (recursively indexed), or remote URLs (auto-cached locally).
 
-| Provider    | Description                         | Connection                       | Install Command                |
-| ----------- | ----------------------------------- | -------------------------------- | ------------------------------ |
-| `postgres`  | PostgreSQL with pgvector extension  | `postgresql://user:pass@host/db` | `uv add holodeck-ai[postgres]` |
-| `qdrant`    | Qdrant vector database              | `http://localhost:6333`          | `uv add holodeck-ai[qdrant]`   |
-| `chromadb`  | ChromaDB (local or server)          | Local path or host URL           | `uv add holodeck-ai[chromadb]` |
-| `pinecone`  | Pinecone serverless vector database | API key + index name             | `uv add holodeck-ai[pinecone]` |
-| `in-memory` | Simple in-memory storage            | None required                    | Built-in                       |
-
-> **Tip**: Install all vector store providers at once with `uv add holodeck-ai[vectorstores]`. Use `in-memory` for development and testing without installing any dependencies. Switch to a persistent provider like `postgres`, `qdrant`, or `chromadb` for production.
-
-#### Database Configuration Examples
-
-**PostgreSQL with pgvector**
-
-```yaml
-- name: search-kb
-  type: vectorstore
-  source: knowledge_base/
-  database:
-    provider: postgres
-    connection_string: postgresql://user:password@localhost:5432/mydb
-```
-
-**Azure AI Search**
-
-```yaml
-- name: search-kb
-  type: vectorstore
-  source: knowledge_base/
-  database:
-    provider: azure-ai-search
-    connection_string: ${AZURE_SEARCH_ENDPOINT}
-    api_key: ${AZURE_SEARCH_API_KEY}
-```
-
-**Qdrant**
-
-```yaml
-- name: search-kb
-  type: vectorstore
-  source: knowledge_base/
-  database:
-    provider: qdrant
-    url: http://localhost:6333
-    # api_key: optional-api-key
-```
-
-**In-Memory (development only)**
-
-```yaml
-- name: search-kb
-  type: vectorstore
-  source: knowledge_base/
-  database:
-    provider: in-memory
-```
-
-**Reference to Global Config**
-
-You can also reference a named vectorstore from your global `config.yaml`:
-
-```yaml
-# In agent.yaml
-- name: search-kb
-  type: vectorstore
-  source: knowledge_base/
-  database: my-postgres-store # Reference to config.yaml vectorstores section
-```
-
-```yaml
-# In config.yaml
-vectorstores:
-  my-postgres-store:
-    provider: postgres
-    connection_string: ${DATABASE_URL}
-```
-
-### Required Fields
-
-#### Source
-
-- **Type**: String (path)
-- **Purpose**: Data file or directory to index
-- **Formats Supported**:
-  - Single files: `.txt`, `.md`, `.pdf`, `.json`, `.csv`
-  - Directories: Recursively indexes supported formats
-  - Remote URLs: File auto-cached locally
-
-```yaml
-source: knowledge_base/
-# OR
-source: docs.json
-# OR
-source: https://example.com/data.pdf
-```
-
-### Optional Fields
-
-#### Embedding Model
-
-- **Type**: String
-- **Purpose**: Which embedding model to use
-- **Default**: Provider-specific default
-- **Examples**: `text-embedding-3-small`, `text-embedding-ada-002`, `nomic-embed-text:latest`
-
-```yaml
-embedding_model: text-embedding-3-small
-```
-
-> **Embedding provider behaviour by backend:**
->
-> - **Semantic Kernel backend** (OpenAI, Azure OpenAI, Ollama): Uses the agent's own model provider for embeddings. The `embedding_model` field on the tool selects which embedding model to use from that provider.
-> - **Claude Agent SDK backend** (Anthropic): Anthropic does not offer embedding models. The agent-level `embedding_provider` is used instead, and the tool's `embedding_model` field selects the model within that provider.
-
-!!! danger "Mismatched embedding models across tools"
-    If your agent defines both **vectorstore** and **hierarchical_document** tools with
-    **different** `embedding_model` values, HoloDeck will raise a validation error at
-    startup. All embedding-based tools in an agent must use the same embedding model
-    because they share a single embedding provider instance.
-
-#### Vector Field
-
-- **Type**: String or List of strings
-- **Purpose**: Which field(s) to vectorize (for JSON/CSV)
-- **Default**: Auto-detect text fields
-- **Note**: XOR with `vector_fields` (use one or the other)
-
-```yaml
-vector_field: content
-# OR
-vector_field: [title, description]
-```
-
-#### Meta Fields
-
-- **Type**: List of strings
-- **Purpose**: Metadata fields to include in results
-- **Default**: All fields included
-
-```yaml
-meta_fields: [title, source, date]
-```
-
-#### Chunk Size
-
-- **Type**: Integer
-- **Purpose**: Characters per chunk for text splitting
-- **Default**: 512
-- **Constraint**: Must be > 0
-
-```yaml
-chunk_size: 1024
-```
-
-#### Chunk Overlap
-
-- **Type**: Integer
-- **Purpose**: Characters to overlap between chunks
-- **Default**: 0
-- **Constraint**: Must be >= 0
-
-```yaml
-chunk_overlap: 100
-```
-
-#### Record Path
-
-- **Type**: String
-- **Purpose**: Path to array in nested JSON (dot notation)
-- **Example**: For `{data: {items: [{...}]}}`, use `data.items`
-
-```yaml
-record_path: data.records
-```
-
-#### Record Prefix
-
-- **Type**: String
-- **Purpose**: Prefix added to record fields
-- **Default**: None
-
-```yaml
-record_prefix: record_
-```
-
-#### Meta Prefix
-
-- **Type**: String
-- **Purpose**: Prefix added to metadata fields
-- **Default**: None
-
-```yaml
-meta_prefix: meta_
-```
-
-### Complete Example
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `source` | path | — | **Required.** File, directory, or remote URL to index |
+| `embedding_model` | string | provider default | e.g. `text-embedding-3-small`, `nomic-embed-text:latest` |
+| `vector_field` | string \| list | auto-detect | Field(s) to vectorize (JSON/CSV). XOR with `vector_fields` |
+| `meta_fields` | list | all fields | Metadata fields to include in results |
+| `chunk_size` | int | `512` | Characters per chunk (> 0) |
+| `chunk_overlap` | int | `0` | Characters to overlap between chunks (≥ 0) |
+| `record_path` | string | — | Dot-path to array in nested JSON, e.g. `data.records` |
+| `record_prefix` | string | — | Prefix added to record fields |
+| `meta_prefix` | string | — | Prefix added to metadata fields |
+| `database` | object \| string | in-memory | Provider config or named reference to `config.yaml` |
 
 ```yaml
 - name: search-docs
@@ -365,76 +162,61 @@ meta_prefix: meta_
   chunk_overlap: 128
 ```
 
-### Data Format Examples
+!!! note "Embedding provider by backend"
+    - **OpenAI / Azure OpenAI / Ollama** (OpenAI Agents or Claude backend): use the agent's own model provider for embeddings; the tool's `embedding_model` selects which embedding model from that provider.
+    - **Anthropic** (Claude backend): Anthropic offers no embedding models — the agent-level `embedding_provider` is used instead, and `embedding_model` selects the model within it.
 
-**Text Files** (`.txt`, `.md`)
+!!! danger "Mismatched embedding models across tools"
+    If an agent defines both **vectorstore** and **hierarchical_document** tools with
+    **different** `embedding_model` values, HoloDeck raises a validation error at startup.
+    All embedding-based tools in an agent must share one embedding model (they share a
+    single embedding provider instance).
 
-```
-# Document Title
+### Database providers
 
-This is the document content that will be
-vectorized for semantic search.
-```
+HoloDeck supports multiple vector database backends through vector store connector libraries; switch providers via configuration without changing agent code. Provider options: `in-memory` (built-in, dev/test), `postgres` (pgvector), `qdrant`, `chromadb`, `pinecone`, `azure-ai-search`. Install all at once with `uv add holodeck-ai[vectorstores]`.
 
-**JSON** (Array of objects)
-
-```json
-[
-  {
-    "title": "Getting Started",
-    "content": "How to get started with the platform...",
-    "source": "docs/intro.md"
-  }
-]
-```
-
-**JSON** (Nested structure)
-
-```json
-{
-  "data": {
-    "records": [
-      {
-        "id": 1,
-        "title": "Article 1",
-        "content": "..."
-      }
-    ]
-  }
-}
+```yaml
+# Inline
+- name: search-kb
+  type: vectorstore
+  source: knowledge_base/
+  database:
+    provider: postgres
+    connection_string: postgresql://user:password@localhost:5432/mydb
 ```
 
-Use `record_path: data.records` to access records.
-
-**CSV**
-
-```csv
-title,content,source
-"Getting Started","How to get started...","docs/intro"
-"API Reference","API documentation...","docs/api"
+```yaml
+# Named reference (database: my-postgres-store) defined in config.yaml
+vectorstores:
+  my-postgres-store:
+    provider: postgres
+    connection_string: ${DATABASE_URL}
 ```
+
+For full provider setup (Docker, connection strings, Azure AI Search, env vars), see [Vector Stores](vector-stores.md).
+
+### Data formats
+
+- **Text** (`.txt`, `.md`): the whole file is chunked and vectorized.
+- **JSON** (array of objects): each object is a record; `vector_field` picks the text field(s).
+- **JSON** (nested): use `record_path: data.records` to reach the array.
+- **CSV**: header row defines fields; `vector_field` selects which to embed.
 
 ---
 
-## Hierarchical Document Tools ✅
+## Hierarchical document tools ✅
 
-> **Status**: Fully implemented
+Structure-aware hybrid document search combining semantic, keyword, and exact-match modalities with contextual embeddings for superior retrieval quality (Anthropic contextual retrieval approach — ~49% better retrieval).
 
-!!! warning "Anthropic Users: Embedding Provider Required"
+!!! warning "Anthropic users: embedding provider required"
     Anthropic does not provide embedding models. When using `model.provider: anthropic`
     with hierarchical document tools, you **must** define `embedding_provider` at the agent level.
     See [Embedding Provider](agent-configuration.md#embedding-provider).
 
-Structure-aware hybrid document search combining semantic, keyword, and exact match modalities with contextual embeddings for superior retrieval quality.
+**Use when:** searching structured/legal/regulatory documents with section hierarchy; hybrid search; RAG needing contextual embeddings; documents with heading-based structure (markdown, PDF, Word).
 
-### When to Use
-
-- Searching structured/legal/regulatory documents with section hierarchy
-- Hybrid search combining semantic, keyword, and exact match
-- RAG pipelines needing contextual embeddings (Anthropic approach — 49% better retrieval)
-- Documents with heading-based structure (markdown, PDF, Word)
-
-### Basic Example
+### Basic example
 
 ```yaml
 tools:
@@ -444,383 +226,93 @@ tools:
     source: "./docs/"
 ```
 
-The tool automatically:
+The tool automatically converts documents to markdown (markitdown), parses hierarchy from headings, chunks by structure (max 800 tokens), generates LLM context per chunk, embeds the contextualized text, and builds BM25 + exact-match indices.
 
-1. Converts documents to markdown (via markitdown)
-2. Parses hierarchical structure from headings
-3. Chunks by structure (max 800 tokens)
-4. Generates LLM context for each chunk (Anthropic contextual retrieval approach)
-5. Generates embeddings from contextualized text
-6. Builds BM25 and exact match indices
+### Fields
 
-### Required Fields
+`source` (required) is a document file or directory (`.md`, `.pdf`, `.docx`, `.txt`; directories recursively indexed).
 
-#### Source
+**Chunking**
 
-- **Type**: String (path)
-- **Purpose**: Path to document file or directory to index
-- **Formats Supported**: `.md`, `.pdf`, `.docx`, `.txt`
-- **Note**: Directories are recursively indexed
-
-```yaml
-source: "./docs/"
-# OR
-source: "./legal/compliance-manual.pdf"
-```
-
-### Optional Fields
-
-#### Chunking
-
-| Field | Type | Default | Range | Description |
-| --- | --- | --- | --- | --- |
-| `chunking_strategy` | Enum | `structure` | `structure`, `token` | `structure` parses markdown headings; `token` uses fixed token-based splitting |
-| `max_chunk_tokens` | Integer | `800` | 100–2000 | Maximum tokens per chunk |
-| `chunk_overlap` | Integer | `50` | 0–200 | Token overlap between chunks |
-
-```yaml
-chunking_strategy: structure
-max_chunk_tokens: 1000
-chunk_overlap: 100
-```
-
-#### Document Domain
-
-| Field | Type | Default | Description |
+| Field | Default | Range | Notes |
 | --- | --- | --- | --- |
-| `document_domain` | Enum | `none` | Domain-specific subsection detection patterns |
-| `max_subsection_depth` | Integer | None | Maximum subsection nesting depth (None = unlimited) |
+| `chunking_strategy` | `structure` | `structure`, `token` | `structure` parses markdown headings; `token` uses fixed splitting |
+| `max_chunk_tokens` | `800` | 100–2000 | Max tokens per chunk |
+| `chunk_overlap` | `50` | 0–200 | Token overlap between chunks |
 
-**Available domains:**
+**Document domain** (`document_domain`, default `none`) selects subsection-detection patterns: `us_legislative` ((a)(1)(A)(i)), `au_legislative` ((1)(a)(i)(A)), `academic` (1./1.1/1.1.1), `technical` (Step 1, Note:, Warning:), `legal_contract` (Article I, Section 1, (a) clauses). `max_subsection_depth` (int, default unlimited) caps nesting.
 
-| Domain | Description | Example Patterns |
-| --- | --- | --- |
-| `none` | No subsection patterns (default) | — |
-| `us_legislative` | US Code style | (a), (1), (A), (i) hierarchy |
-| `au_legislative` | Australian style | (1), (a), (i), (A) hierarchy |
-| `academic` | Academic papers | 1., 1.1, 1.1.1 numbered sections |
-| `technical` | Technical manuals | Step 1, 1.1, Note:, Warning: |
-| `legal_contract` | Legal contracts | Article I, Section 1, (a) clauses |
+**Search**
 
-```yaml
-document_domain: us_legislative
-max_subsection_depth: 3
-```
-
-#### Search
-
-| Field | Type | Default | Range | Description |
-| --- | --- | --- | --- | --- |
-| `search_mode` | Enum | `hybrid` | `semantic`, `keyword`, `exact`, `hybrid` | Search modality |
-| `top_k` | Integer | `10` | 1–100 | Number of results to return |
-| `min_score` | Float | None | 0.0–1.0 | Minimum similarity score threshold |
-| `semantic_weight` | Float | `0.5` | 0.0–1.0 | Weight for semantic search in hybrid mode |
-| `keyword_weight` | Float | `0.3` | 0.0–1.0 | Weight for keyword search in hybrid mode |
-| `exact_weight` | Float | `0.2` | 0.0–1.0 | Weight for exact match in hybrid mode |
-| `rrf_k` | Integer | `60` | ≥ 1 | Reciprocal Rank Fusion constant |
-
-> **Note**: In `hybrid` mode, `semantic_weight + keyword_weight + exact_weight` must sum to 1.0.
-
-```yaml
-search_mode: hybrid
-top_k: 15
-semantic_weight: 0.4
-keyword_weight: 0.4
-exact_weight: 0.2
-```
-
-#### Contextual Embeddings
-
-| Field | Type | Default | Range | Description |
-| --- | --- | --- | --- | --- |
-| `contextual_embeddings` | Boolean | `true` | — | Enable LLM-generated context per chunk |
-| `context_max_tokens` | Integer | `100` | 50–200 | Max tokens for context summary |
-| `context_concurrency` | Integer | `10` | 1–50 | Parallel LLM context generation requests |
-
-Contextual embeddings prepend an LLM-generated summary to each chunk before embedding, yielding ~49% better retrieval accuracy (per Anthropic research). Uses Claude Haiku by default.
-
-> **Embedding provider behaviour by backend:**
->
-> - **Semantic Kernel backend** (OpenAI, Azure OpenAI, Ollama): Uses the agent's own model provider for embeddings. The tool's `embedding_model` field (if set) selects the model within that provider.
-> - **Claude Agent SDK backend** (Anthropic): Anthropic does not offer embedding models. The agent-level `embedding_provider` is used instead for all embedding generation.
-
-```yaml
-contextual_embeddings: true
-context_max_tokens: 100
-context_concurrency: 15
-```
-
-#### Feature Extraction
-
-| Field | Type | Default | Description |
+| Field | Default | Range | Notes |
 | --- | --- | --- | --- |
-| `extract_definitions` | Boolean | `true` | Extract and index term definitions from documents |
-| `extract_cross_references` | Boolean | `true` | Extract and resolve cross-references between sections |
+| `search_mode` | `hybrid` | `semantic`, `keyword`, `exact`, `hybrid` | Search modality |
+| `top_k` | `10` | 1–100 | Results to return |
+| `min_score` | None | 0.0–1.0 | Minimum similarity threshold |
+| `semantic_weight` | `0.5` | 0.0–1.0 | Hybrid weight |
+| `keyword_weight` | `0.3` | 0.0–1.0 | Hybrid weight |
+| `exact_weight` | `0.2` | 0.0–1.0 | Hybrid weight |
+| `rrf_k` | `60` | ≥ 1 | Reciprocal Rank Fusion constant |
+
+In `hybrid` mode, the three weights must sum to 1.0. Pick modes by query type: `semantic` for concepts, `keyword` for technical terms, `exact` for section references (e.g. "Section 203(a)(1)"), `hybrid` for general purpose.
+
+**Contextual embeddings** (`contextual_embeddings`, default `true`) prepend an LLM-generated summary to each chunk before embedding for ~49% better retrieval (Anthropic research); uses Claude Haiku by default. Tune with `context_max_tokens` (default 100, range 50–200) and `context_concurrency` (default 10, range 1–50). Same embedding-provider-by-backend rules as vectorstore tools apply.
+
+**Feature extraction**: `extract_definitions` (default `true`) indexes term definitions; `extract_cross_references` (default `true`) resolves cross-references between sections.
+
+**Reranking**: set `enable_reranking: true` and supply `reranker_model` (an LLMProvider config) for LLM-based reranking of results.
+
+**Storage**: `database` (DatabaseConfig or named reference, default in-memory) — see [Vector Stores](vector-stores.md) for provider options. `keyword_index` configures the BM25 backend (default in-memory `rank_bm25`).
+
+### Keyword index: OpenSearch (production)
+
+For large corpora or multi-instance deployments, offload BM25 to an external OpenSearch cluster:
 
 ```yaml
-extract_definitions: true
-extract_cross_references: true
+keyword_index:
+  provider: opensearch
+  endpoint: "https://search.example.com:9200"
+  index_name: "my-keyword-index"
+  username: "${OPENSEARCH_USERNAME}"
+  password: "${OPENSEARCH_PASSWORD}"
+  verify_certs: true
+  timeout_seconds: 10
 ```
 
-#### Reranking
+Fields: `provider` (`in-memory` | `opensearch`), `endpoint`, `index_name`, `username`/`password` (basic auth) or `api_key`, `verify_certs` (default `true`), `timeout_seconds` (default 10, range 1–120). For local dev, run OpenSearch via Docker with `discovery.type=single-node` and `DISABLE_SECURITY_PLUGIN=true`, then use `endpoint: "http://localhost:9200"` with no auth. On Linux you may need `sudo sysctl -w vm.max_map_count=262144`.
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `enable_reranking` | Boolean | `false` | Enable LLM-based reranking of search results |
-| `reranker_model` | LLMProvider | None | LLM config for reranking (required when `enable_reranking: true`) |
+### Example configurations
 
 ```yaml
-enable_reranking: true
-reranker_model:
-  provider: openai
-  name: gpt-4o-mini
-  temperature: 0.0
+# Legal/regulatory — section references + definitions
+- name: legal_search
+  type: hierarchical_document
+  description: "Search legal documents"
+  source: "./legal/"
+  search_mode: hybrid
+  document_domain: us_legislative
+  extract_definitions: true
+  extract_cross_references: true
+  semantic_weight: 0.4
+  keyword_weight: 0.3
+  exact_weight: 0.3
 ```
-
-#### Storage
-
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `database` | DatabaseConfig / String | None | Vector database configuration or named reference (None = in-memory) |
-| `keyword_index` | KeywordIndexConfig | None | Keyword index backend configuration (None = in-memory BM25) |
-
-See [Vectorstore Tools — Database Configuration](#database-configuration-examples) for `database` provider options.
-
-### Search Modes
-
-| Mode | Use Case | Example Query |
-| --- | --- | --- |
-| `semantic` | Conceptual questions | "What are the compliance requirements?" |
-| `keyword` | Technical terms | "authentication timeout error" |
-| `exact` | Section references | "Section 203(a)(1)" |
-| `hybrid` | General purpose (default) | "reporting requirements in Section 5" |
-
-### Keyword Index Configuration
-
-#### In-Memory BM25 (Default)
-
-Zero-configuration — uses `rank_bm25` in-process. This is the default when `keyword_index` is omitted or set to `in-memory`.
 
 ```yaml
-tools:
-  - name: docs_search
-    type: hierarchical_document
-    description: "Search with in-memory BM25 keyword index"
-    source: "./docs/"
-    search_mode: hybrid
-    keyword_index:
-      provider: in-memory  # Optional — this is the default
+# Large corpus with persistence
+- name: knowledge_base
+  type: hierarchical_document
+  description: "Persistent knowledge base"
+  source: "./knowledge/"
+  database:
+    provider: postgres
+    connection_string: "${POSTGRES_URL}"
+  top_k: 20
 ```
 
-#### OpenSearch (Production)
+### Result format
 
-For production workloads, use an external OpenSearch cluster for the keyword index. This offloads BM25 scoring to a dedicated search engine, suitable for large corpora and multi-instance deployments.
-
-```yaml
-tools:
-  - name: docs_search
-    type: hierarchical_document
-    description: "Search with OpenSearch keyword backend"
-    source: "./docs/"
-    search_mode: hybrid
-    keyword_index:
-      provider: opensearch
-      endpoint: "https://search.example.com:9200"
-      index_name: "my-keyword-index"
-      username: "${OPENSEARCH_USERNAME}"
-      password: "${OPENSEARCH_PASSWORD}"
-      verify_certs: true
-      timeout_seconds: 10
-```
-
-**KeywordIndexConfig fields (OpenSearch):**
-
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `provider` | Enum | `in-memory` | `in-memory` or `opensearch` |
-| `endpoint` | String | None | OpenSearch endpoint URL (required for opensearch) |
-| `index_name` | String | None | OpenSearch index name (required for opensearch) |
-| `username` | String | None | Basic auth username |
-| `password` | String | None | Basic auth password |
-| `api_key` | String | None | API key auth (alternative to basic auth) |
-| `verify_certs` | Boolean | `true` | Verify TLS certificates |
-| `timeout_seconds` | Integer | `10` | Connection timeout in seconds (1–120) |
-
-### OpenSearch Docker Setup
-
-#### Development (security disabled)
-
-```bash
-docker run -d -p 9200:9200 -p 9600:9600 \
-  -e "discovery.type=single-node" \
-  -e "DISABLE_SECURITY_PLUGIN=true" \
-  opensearchproject/opensearch:latest
-```
-
-Then use `endpoint: "http://localhost:9200"` with no auth.
-
-#### With admin password (OpenSearch 2.12+)
-
-```bash
-docker run -d -p 9200:9200 -p 9600:9600 \
-  -e "discovery.type=single-node" \
-  -e "OPENSEARCH_INITIAL_ADMIN_PASSWORD=<YourStrongPassword1!>" \
-  opensearchproject/opensearch:latest
-```
-
-> **Note**: On Linux, you may need to increase the `vm.max_map_count` kernel setting:
-> ```bash
-> sudo sysctl -w vm.max_map_count=262144
-> ```
-
-**Verify OpenSearch is running:**
-
-```bash
-curl -s http://localhost:9200 | python -m json.tool
-```
-
-### Configuration Examples
-
-#### Semantic-Only Search
-
-Best for conceptual questions without specific terminology.
-
-```yaml
-tools:
-  - name: concept_search
-    type: hierarchical_document
-    description: "Search by concepts"
-    source: "./docs/"
-    search_mode: semantic
-    contextual_embeddings: true
-```
-
-#### Keyword-Heavy Search
-
-Best for technical documents with specific terminology.
-
-```yaml
-tools:
-  - name: tech_search
-    type: hierarchical_document
-    description: "Technical documentation search"
-    source: "./technical/"
-    search_mode: hybrid
-    semantic_weight: 0.3
-    keyword_weight: 0.5
-    exact_weight: 0.2
-```
-
-#### Legal/Regulatory Documents
-
-Optimized for section references and definitions.
-
-```yaml
-tools:
-  - name: legal_search
-    type: hierarchical_document
-    description: "Search legal documents"
-    source: "./legal/"
-    search_mode: hybrid
-    document_domain: us_legislative
-    extract_definitions: true
-    extract_cross_references: true
-    exact_weight: 0.3
-    keyword_weight: 0.3
-    semantic_weight: 0.4
-```
-
-#### Custom Context Model
-
-Specify a different LLM for context generation (defaults to Claude Haiku).
-
-```yaml
-tools:
-  - name: docs_search
-    type: hierarchical_document
-    description: "Search with custom context model"
-    source: "./docs/"
-    contextual_embeddings: true
-    context_max_tokens: 100
-    context_concurrency: 10
-```
-
-#### Large Corpus with Persistence
-
-```yaml
-tools:
-  - name: knowledge_base
-    type: hierarchical_document
-    description: "Persistent knowledge base"
-    source: "./knowledge/"
-    database:
-      provider: postgres
-      connection_string: "${POSTGRES_URL}"
-    top_k: 20
-```
-
-### How It Works
-
-#### Preprocessing Pipeline (Anthropic Contextual Retrieval)
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         INGESTION (per document)                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  document.pdf  →  [markitdown]  →  markdown text                        │
-│                                                                         │
-│  markdown text →  [StructuredChunker]  →  chunks with parent_chain      │
-│                                                                         │
-│  For each chunk:                                                        │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │ [LLM Context Generation] - Claude Haiku                          │  │
-│  │                                                                   │  │
-│  │ Input:  Whole document + chunk                                    │  │
-│  │ Output: "This chunk describes the reporting requirements under    │  │
-│  │          Section 203 of the Environmental Protection Act..."      │  │
-│  │                                                                   │  │
-│  │ Cost: ~$0.03 per 100-page document                                │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-│  contextualized = "{LLM context}\n\n{original chunk}"                   │
-│                                                                         │
-│  contextualized  →  [Embedding]  →  dense vector                        │
-│  contextualized  →  [BM25/Native] →  keyword index                      │
-│  section_id      →  [Dict]        →  exact match index                  │
-│                                                                         │
-│  Result: 49% better retrieval vs standard RAG (Anthropic research)      │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-#### Hybrid Search Flow
-
-```
-Query: "reporting requirements in Section 403"
-                    │
-    ┌───────────────┼───────────────┐
-    ▼               ▼               ▼
-[Semantic]      [BM25]          [Exact]
-contextualized  contextualized  section_id
-embeddings      text search     lookup
-    │               │               │
-    └───────────────┼───────────────┘
-                    ▼
-              [RRF Fusion]
-              k=60, weights
-                    │
-                    ▼
-            [Top K Results]
-```
-
-1. **Query Analysis**: Detects exact match patterns (section numbers, quoted phrases)
-2. **Parallel Search**: Runs semantic, keyword, and exact match searches
-3. **RRF Fusion**: Combines ranked results using Reciprocal Rank Fusion (k=60)
-4. **Enrichment**: Adds relevant definitions if terms are defined in documents
-
-### Result Format
-
-Each search result includes:
+Each result includes a score, source path, location breadcrumb (`Chapter 5 > Section 5.3 > Reporting Requirements`), section id, the chunk text, and any relevant definitions:
 
 ```
 [1] Score: 0.847 | Source: docs/compliance.md
@@ -828,46 +320,28 @@ Location: Chapter 5 > Section 5.3 > Reporting Requirements
 Section: sec_5_3
 
 Annual reporting must be submitted within 60 days of the fiscal year end.
-All covered entities must include revenue breakdowns by category.
 
 Relevant definitions:
   • Covered entity: Any organization with annual revenue exceeding...
 ```
 
-### Performance Tips
+### Performance & cost
 
-1. **Chunk size**: Default 800 tokens works well. Increase for dense technical content, decrease for granular retrieval.
-2. **Weights tuning**: Increase `semantic_weight` for conceptual queries, `keyword_weight` for technical terminology, `exact_weight` for regulatory documents.
-3. **Persistence**: For large corpora (>1000 documents), use a persistent database to avoid re-indexing on restart.
-4. **Contextual embeddings**: Keep enabled (default) for 49% better retrieval accuracy per Anthropic research.
-5. **Context generation cost**: ~$0.03 per 100-page document using Claude Haiku. Increase `context_concurrency` to reduce ingestion time.
-6. **Large documents**: For very large documents that exceed context limits, the tool automatically truncates the document context while preserving the chunk content.
-
-### Error Handling
-
-- **No results found**: Returns empty results — check that documents exist in `source` path and format is supported
-- **Slow ingestion**: Large PDFs take longer; consider splitting very large documents or using persistent storage
-- **Missing context**: Ensure `contextual_embeddings: true` (default) and documents have heading structure
+- Default 800-token chunks work well; increase for dense technical content, decrease for granular retrieval.
+- Tune weights: more `semantic_weight` for concepts, `keyword_weight` for terminology, `exact_weight` for regulatory text.
+- For >1000 documents, use a persistent database to avoid re-indexing on restart.
+- Keep `contextual_embeddings` on (default) for the ~49% accuracy gain; cost is ~$0.03 per 100-page document via Claude Haiku. Raise `context_concurrency` to speed ingestion.
+- Very large documents are auto-truncated for context while preserving chunk content.
 
 ---
 
-## MCP Tools ✅
+## MCP tools ✅
 
-> **Status**: Fully implemented (stdio transport)
+Model Context Protocol (MCP) server integrations let agents interact with external systems through a standardized protocol (stdio transport). Browse available servers at the [official registry](https://github.com/modelcontextprotocol/servers) — filesystem, GitHub, Slack, PostgreSQL, and more.
 
-Model Context Protocol (MCP) server integrations enable agents to interact with external systems through a standardized protocol. HoloDeck uses Semantic Kernel's MCP plugins for seamless integration.
+For discovery, adding, listing, and removing servers via the CLI (`holodeck mcp search/add/list/remove`) and global-vs-agent config precedence, see the [MCP CLI](mcp-cli.md) guide. This section covers the `agent.yaml` shape.
 
-> **Finding MCP Servers**: Browse the official MCP server registry at [github.com/modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) for a curated list of available servers including filesystem, GitHub, Slack, Google Drive, PostgreSQL, and many more community-contributed integrations.
-
-### When to Use
-
-- File system operations (read, write, list files)
-- GitHub/GitLab operations (issues, PRs, code)
-- Database access (SQLite, PostgreSQL)
-- Web browsing and search
-- Any standardized MCP server
-
-### Basic Example
+### Basic example
 
 ```yaml
 - name: filesystem
@@ -877,11 +351,23 @@ Model Context Protocol (MCP) server integrations enable agents to interact with 
   args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
 ```
 
-### Complete Example
+### Fields
+
+`command` (required, stdio) is how the server launches — one of `npx` (npm packages, auto-installs), `node` (local `.js` files), `uvx` (Python packages via uv), `docker` (containers). `args` (required) are the command-line arguments, usually the package name plus config.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `command` | enum | — | **Required.** `npx`, `node`, `uvx`, `docker` |
+| `args` | list[str] | — | **Required.** Server package name + arguments |
+| `transport` | enum | `stdio` | Only `stdio` is implemented |
+| `config` | object | — | Server-specific config (passed via `MCP_CONFIG` env var) |
+| `env` | object | — | Env vars for the server process; supports `${VAR}` substitution |
+| `env_file` | path | — | Load env vars from a `.env` file (`env` overrides) |
+| `request_timeout` | int | `30` | Per-request timeout (seconds) |
+| `encoding` | string | `utf-8` | stdio character encoding |
 
 ```yaml
 tools:
-  # MCP filesystem tool for reading/writing files
   - type: mcp
     name: filesystem
     description: Read and write files in the workspace data directory
@@ -892,131 +378,10 @@ tools:
     request_timeout: 30
 ```
 
-### Required Fields
-
-#### Command
-
-- **Type**: String (enum: `npx`, `node`, `uvx`, `docker`)
-- **Purpose**: How to launch the MCP server
-- **Required**: Yes (for stdio transport)
+### Sample servers
 
 ```yaml
-command: npx     # For npm packages (auto-installs if needed)
-# OR
-command: node    # For local .js files or installed packages
-# OR
-command: uvx     # For Python packages via uv
-# OR
-command: docker  # For containerized servers
-```
-
-**When to use each:**
-
-- `npx` - Run npm packages directly (e.g., `@modelcontextprotocol/server-filesystem`)
-- `node` - Run local JavaScript files (e.g., `./tools/my-server.js`)
-- `uvx` - Run Python packages via uv (e.g., `mcp-server-fetch`)
-- `docker` - Run containerized MCP servers
-
-#### Args
-
-- **Type**: List of strings
-- **Purpose**: Command-line arguments for the server
-- **Note**: Often includes the server package name and configuration
-
-```yaml
-args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
-```
-
-### Optional Fields
-
-#### Transport
-
-- **Type**: String (enum: `stdio`, `sse`, `websocket`, `http`)
-- **Default**: `stdio`
-- **Purpose**: Communication protocol with the server
-- **Note**: Currently only `stdio` is implemented
-
-```yaml
-transport: stdio # Default, works with most servers
-```
-
-#### Config
-
-- **Type**: Object (free-form)
-- **Purpose**: Server-specific configuration passed via MCP_CONFIG env var
-- **Validation**: Server validates at runtime
-
-```yaml
-config:
-  allowed_directories: ["./data", "/tmp"]
-  max_file_size: 1048576
-```
-
-#### Env
-
-- **Type**: Object (string key-value pairs)
-- **Purpose**: Environment variables for the server process
-- **Supports**: Variable substitution with `${VAR_NAME}`
-
-```yaml
-env:
-  GITHUB_TOKEN: "${GITHUB_TOKEN}"
-  API_KEY: "static-value"
-```
-
-#### Env File
-
-- **Type**: String (path)
-- **Purpose**: Load environment variables from a file
-- **Format**: Standard `.env` file format
-
-```yaml
-env_file: .env.mcp
-```
-
-#### Request Timeout
-
-- **Type**: Integer (seconds)
-- **Default**: 30
-- **Purpose**: Timeout for individual MCP requests
-
-```yaml
-request_timeout: 60
-```
-
-#### Encoding
-
-- **Type**: String
-- **Default**: `utf-8`
-- **Purpose**: Character encoding for stdio communication
-
-```yaml
-encoding: utf-8
-```
-
-### Sample MCP Servers
-
-#### Filesystem (stdio)
-
-Read, write, and manage files:
-
-```yaml
-- name: filesystem
-  type: mcp
-  description: File system operations
-  command: npx
-  args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
-  config:
-    allowed_directories: ["./data"]
-```
-
-**Tools provided**: `read_file`, `write_file`, `list_directory`, `create_directory`, `move_file`, `search_files`, `get_file_info`
-
-#### GitHub
-
-Interact with GitHub repositories:
-
-```yaml
+# GitHub
 - name: github
   type: mcp
   description: GitHub repository operations
@@ -1026,77 +391,8 @@ Interact with GitHub repositories:
     GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
 ```
 
-**Tools provided**: `search_repositories`, `create_issue`, `list_issues`, `get_file_contents`, `create_pull_request`, `fork_repository`
-
-#### SQLite
-
-Query SQLite databases:
-
 ```yaml
-- name: sqlite
-  type: mcp
-  description: SQLite database queries
-  command: npx
-  args:
-    [
-      "-y",
-      "@modelcontextprotocol/server-sqlite",
-      "--db-path",
-      "./data/database.db",
-    ]
-```
-
-**Tools provided**: `read_query`, `write_query`, `create_table`, `list_tables`, `describe_table`
-
-#### Brave Search
-
-Web search capabilities:
-
-```yaml
-- name: brave-search
-  type: mcp
-  description: Web search via Brave
-  command: npx
-  args: ["-y", "@modelcontextprotocol/server-brave-search"]
-  env:
-    BRAVE_API_KEY: "${BRAVE_API_KEY}"
-```
-
-**Tools provided**: `brave_web_search`, `brave_local_search`
-
-#### Puppeteer (Browser Automation)
-
-Browser automation and web scraping:
-
-```yaml
-- name: puppeteer
-  type: mcp
-  description: Browser automation
-  command: npx
-  args: ["-y", "@modelcontextprotocol/server-puppeteer"]
-```
-
-**Tools provided**: `puppeteer_navigate`, `puppeteer_screenshot`, `puppeteer_click`, `puppeteer_fill`, `puppeteer_evaluate`
-
-### Local Node.js Servers (node)
-
-For local JavaScript MCP server files, use `node`:
-
-```yaml
-- name: my-custom-server
-  type: mcp
-  description: Custom local MCP server
-  command: node
-  args: ["./tools/my-mcp-server.js", "--config", "./config.json"]
-```
-
-> **Note**: Use `node` for local `.js` files. Use `npx` for npm packages.
-
-### Python MCP Servers (uvx)
-
-For Python-based MCP servers, use `uvx`:
-
-```yaml
+# Python server via uvx (fetch web content)
 - name: mcp-server-fetch
   type: mcp
   description: Fetch web content
@@ -1104,28 +400,17 @@ For Python-based MCP servers, use `uvx`:
   args: ["mcp-server-fetch"]
 ```
 
-#### Memory (Short-Term Storage)
-
-Scratchpad for agent short-term memory storage:
-
 ```yaml
-- name: memory
+# Local Node.js file
+- name: my-custom-server
   type: mcp
-  description: Scratchpad for short term memory storage
-  command: uvx
-  args: ["basic-memory", "mcp"]
-  request_timeout: 30
+  description: Custom local MCP server
+  command: node
+  args: ["./tools/my-mcp-server.js", "--config", "./config.json"]
 ```
 
-**Tools provided**: `write_note`, `read_note`, `search_notes`, `delete_note`
-
-> **Use case**: Enable agents to persist information across conversation turns, store intermediate results, or maintain context during multi-step tasks, and especially between chat sessions.
-
-### Docker MCP Servers
-
-For containerized servers:
-
 ```yaml
+# Containerized
 - name: custom-server
   type: mcp
   description: Custom containerized server
@@ -1133,290 +418,27 @@ For containerized servers:
   args: ["run", "-i", "--rm", "my-mcp-server:latest"]
 ```
 
-### Environment Variable Patterns
-
-**Static values:**
-
-```yaml
-env:
-  API_KEY: "sk-1234567890"
-```
-
-**Environment substitution:**
-
-```yaml
-env:
-  GITHUB_TOKEN: "${GITHUB_TOKEN}" # From process environment
-```
-
-**From env file:**
-
-```yaml
-env_file: .env.mcp
-env:
-  OVERRIDE_VAR: "override-value" # Overrides env_file
-```
-
-### Error Handling
-
-- **Server unavailable**: Error during agent startup
-- **Connection timeout**: Configurable via `request_timeout`
-- **Invalid config**: Error during agent startup (validation)
-- **Runtime errors**: Logged and returned as tool error responses
+Other common servers: `@modelcontextprotocol/server-sqlite` (database queries), `@modelcontextprotocol/server-brave-search` (web search, needs `BRAVE_API_KEY`), `@modelcontextprotocol/server-puppeteer` (browser automation), `basic-memory` via uvx (short-term scratchpad across turns).
 
 ### Prerequisites
 
-MCP tools require the appropriate runtime to be installed on your machine based on the `command` you use:
+MCP tools require the runtime for your `command`: `npx`/`node` → Node.js 18+ ([nodejs.org](https://nodejs.org/)), `uvx` → [uv](https://astral.sh/uv), `docker` → [Docker](https://docker.com/). Verify with `node --version`, `uvx --version`, or `docker --version`.
 
-| Command  | Required Software | Installation                                                            |
-| -------- | ----------------- | ----------------------------------------------------------------------- |
-| `npx`    | Node.js + npm     | [nodejs.org](https://nodejs.org/) or `brew install node`                |
-| `node`   | Node.js           | [nodejs.org](https://nodejs.org/) or `brew install node`                |
-| `uvx`    | uv (Python)       | `curl -LsSf https://astral.sh/uv/install.sh \| sh` or `brew install uv` |
-| `docker` | Docker            | [docker.com](https://docker.com/) or `brew install --cask docker`       |
+### Lifecycle
 
-**Verify installation:**
-
-```bash
-# For npm-based MCP servers
-node --version    # Should show v18+ recommended
-npx --version
-
-# For Python-based MCP servers
-uv --version
-uvx --version
-
-# For containerized servers
-docker --version
-```
-
-> **Tip**: Most MCP servers use `npx` with npm packages. Ensure Node.js 18+ is installed for best compatibility.
-
-### Lifecycle Management
-
-MCP plugins are automatically managed:
-
-1. **Startup**: Plugin initialized and connected when agent starts
-2. **Execution**: Tools discovered and registered on the kernel
-3. **Shutdown**: Plugin properly closed when session ends
-
-> **Important**: Always terminate chat sessions properly (`exit` or `quit`) to ensure MCP servers are cleanly shut down.
+MCP plugins are managed automatically: connected on agent startup, tools discovered and registered, and properly closed when the session ends. Always terminate chat sessions cleanly (`exit`/`quit`) so servers shut down.
 
 ---
 
-## Function Tools ✅
+## Prompt tools 🚧
 
-> **Status**: Fully implemented (Semantic Kernel and Claude Agent SDK backends both dispatch through the same loader)
+> **Status:** Planned — configuration schema defined, execution not yet implemented.
 
-Execute custom Python functions defined in your project. Function tools are imported at agent-config load time via `importlib.util.spec_from_file_location`, validated as callable, and surfaced to the model with the function's signature and docstring as the tool's parameter schema and description.
+LLM-powered semantic functions with Mustache-style template substitution: text generation with templates, specialized task prompts, reusable prompt chains, A/B testing.
 
-### When to Use
+### Fields
 
-- Custom business logic the agent needs to call deterministically
-- Pure functions (math, parsing, formatting) that don't need an MCP wrapper
-- Lightweight integrations with libraries you already have in the venv
-- Anything where MCP would be overkill (no separate process, no protocol overhead)
-
-### Required Fields
-
-| Field      | Type   | Required | Notes                                                                 |
-|------------|--------|----------|-----------------------------------------------------------------------|
-| `name`     | string | Yes      | Tool identifier (alphanumeric + underscores, must be unique on agent) |
-| `description` | string | Yes   | Shown to the model — kept short, the function's docstring complements it |
-| `type`     | `"function"` | Yes | Discriminator                                                         |
-| `file`     | string (path) | Yes | Python file containing the function. Resolved relative to the directory containing `agent.yaml` (absolute paths also work) |
-| `function` | string | Yes      | Name of the callable inside `file`                                    |
-
-### Optional Fields
-
-| Field         | Type | Default | Notes                                                                                       |
-|---------------|------|---------|---------------------------------------------------------------------------------------------|
-| `parameters`  | dict | None    | Parameter schema for introspection. Optional — backends derive the JSON schema from the function's type annotations when omitted |
-| `defer_loading` | bool | `true` | When `true`, the tool is excluded from the initial tool context and surfaced via tool filtering on demand. Set to `false` for tools the agent should always have available |
-
-See `src/holodeck/models/tool.py:FunctionTool` for the full Pydantic model.
-
-### Basic Example
-
-`agent.yaml`:
-
-```yaml
-tools:
-  - name: subtract
-    type: function
-    description: "Compute a - b. Pass a and b as numeric strings; returns the difference as a string."
-    file: tools/financial_tools.py
-    function: subtract
-```
-
-`tools/financial_tools.py`:
-
-```python
-def subtract(a: str, b: str) -> str:
-    """Compute ``a - b`` for two numeric string operands.
-
-    Args:
-        a: Minuend as a numeric string (e.g. ``"206588"`` or ``"1,234.56"``).
-        b: Subtrahend as a numeric string.
-
-    Returns:
-        The difference ``a - b`` as a string.
-    """
-    return str(float(a.replace(",", "")) - float(b.replace(",", "")))
-```
-
-A complete working sample lives at `sample/financial-assistant/claude/` — `agent.yaml` wires `subtract` and `divide` into a Claude agent, and `tools/financial_tools.py` implements them.
-
-### How Loading Works
-
-`src/holodeck/lib/function_tool_loader.py:load_function_tool` is shared by both backends. At agent-startup (not first call) it:
-
-1. Resolves `tool.file` relative to the agent project root (the directory holding `agent.yaml`); absolute paths pass through unchanged.
-2. Builds an import spec via `importlib.util.spec_from_file_location` and executes the module in isolation under a synthesized module name (`holodeck_function_tool_<tool.name>`), so two tools with the same source file don't collide.
-3. Looks up `tool.function` on the loaded module and verifies the attribute is callable.
-4. Returns the callable to the backend, which then wraps it as a Semantic Kernel function or a Claude SDK in-process MCP tool.
-
-Any failure — missing file, import error, missing attribute, attribute that isn't callable — is re-raised as a `ConfigError` keyed on `tools.<tool.name>`, so the agent fails to start with a clear, actionable message instead of crashing mid-test (FR-025).
-
-### Adding a New Function Tool — Checklist
-
-1. **Create the Python file** under your agent project (commonly `tools/`):
-
-   ```python
-   # tools/my_tool.py
-   def my_tool(query: str, limit: int = 10) -> list[dict]:
-       """One-line description shown to the model alongside `description`.
-
-       Args:
-           query: ...
-           limit: ...
-
-       Returns:
-           List of result records.
-       """
-       ...
-   ```
-
-2. **Use type hints** on every parameter and the return — the backends generate the tool's JSON schema from them.
-
-3. **Make the function self-contained**. The loader executes the module fresh; relying on side-effects from other modules in your project may not work as expected.
-
-4. **Return JSON-serializable data**. Strings, numbers, booleans, lists, and dicts are safe; arbitrary objects will fail when the backend serializes the tool result for the model.
-
-5. **Wire it into `agent.yaml`**:
-
-   ```yaml
-   tools:
-     - name: my_tool
-       type: function
-       description: "Search the local catalog for matching records."
-       file: tools/my_tool.py
-       function: my_tool
-   ```
-
-6. **Run** `holodeck test agent.yaml` (or `holodeck chat`) — a load-time `ConfigError` here means the path or function name is wrong; fix and re-run.
-
-### Best Practices
-
-- Keep each function focused on a single task — small, well-named tools are easier for the model to pick.
-- Always add type hints + a short docstring; both feed the model's tool description.
-- Validate inputs and raise a meaningful `ValueError` — the runtime captures it as the tool error and surfaces it to the agent.
-- Return JSON-serializable values (strings, numbers, dicts, lists). Avoid returning complex objects.
-- Avoid long-running calls inside a function tool; prefer an MCP server when you need a separate process or async I/O at scale.
-- Prefer pure functions where possible — they're trivially testable in isolation (e.g., `tests/unit/sample/test_financial_tools.py`).
-
----
-
-## Prompt Tools 🚧
-
-> **Status**: Planned - Configuration schema defined, execution not yet implemented
-
-LLM-powered semantic functions with template substitution.
-
-### When to Use
-
-- Text generation with templates
-- Specialized prompts for specific tasks
-- Reusable prompt chains
-- A/B testing different prompts
-
-### Basic Example
-
-```yaml
-- name: summarize
-  description: Summarize text into key points
-  type: prompt
-  template: "Summarize this in 3 bullet points: {{text}}"
-  parameters:
-    text:
-      type: string
-      description: Text to summarize
-```
-
-### Required Fields
-
-#### Template or File
-
-Either `template` (inline) or `file` (external), not both:
-
-**Inline Template**
-
-- **Type**: String
-- **Max Length**: 5000 characters
-- **Syntax**: Mustache-style `{{variable}}`
-
-```yaml
-template: "Summarize: {{content}}"
-```
-
-**Template File**
-
-- **Type**: String (path)
-- **Path**: Relative to `agent.yaml`
-
-```yaml
-file: prompts/summarize.txt
-```
-
-File contents:
-
-```
-Summarize this text in 3 bullet points:
-
-{{text}}
-
-Focus on key takeaways.
-```
-
-#### Parameters
-
-- **Type**: Object mapping parameter names to schemas
-- **Purpose**: Template variables the agent can fill
-- **Required**: Yes (at least one)
-
-```yaml
-parameters:
-  text:
-    type: string
-    description: Text to process
-```
-
-### Optional Fields
-
-#### Model Override
-
-- **Type**: Model configuration object
-- **Purpose**: Use different model for this tool
-- **Default**: Uses agent's model
-
-```yaml
-model:
-  provider: openai
-  name: gpt-4 # Different from agent's model
-  temperature: 0.2
-```
-
-### Complete Example
+Provide either `template` (inline, ≤5000 chars, `{{variable}}` syntax) **or** `file` (path to an external template, relative to `agent.yaml`) — not both. `parameters` (required, ≥1) maps template variables to schemas the agent fills. Optional `model` overrides the agent's model for this tool.
 
 ```yaml
 - name: code-reviewer
@@ -1437,210 +459,49 @@ model:
       enum: [python, javascript, go, java]
 ```
 
-Template file (`prompts/code_review.txt`):
-
-```
-Review this {{language}} code for best practices.
-
-Code:
-{{code}}
-
-Provide:
-1. Issues found
-2. Suggestions for improvement
-3. Security considerations
-```
-
-### Template Syntax
-
-Variables use Mustache-style syntax:
-
-```
-Simple variable: {{name}}
-
-Conditionals (if parameter provided):
-{{#if description}}
-Description: {{description}}
-{{/if}}
-
-Loops (if parameter is array):
-{{#each items}}
-- {{this}}
-{{/each}}
-```
+Template syntax supports simple variables (`{{name}}`), conditionals (`{{#if description}}...{{/if}}`), and loops (`{{#each items}}- {{this}}{{/each}}`).
 
 ---
 
-## Tool Comparison
+## Tool comparison
 
-| Feature        | Vectorstore             | Hierarchical Document       | MCP                     | Function        | Prompt          |
-| -------------- | ----------------------- | --------------------------- | ----------------------- | --------------- | --------------- |
-| **Status**     | ✅ Implemented          | ✅ Implemented               | ✅ Implemented          | ✅ Implemented  | 🚧 Planned      |
-| **Use Case**   | Search data             | Structured document search  | External integrations   | Custom logic    | Template-based  |
-| **Execution**  | Vector similarity       | Hybrid RRF fusion           | MCP protocol (stdio)    | Python function | LLM generation  |
-| **Setup**      | Data files              | Document files              | Server config + runtime | Python files    | Template text   |
-| **Parameters** | Implicit (search query) | Implicit (search query)     | Server-specific tools   | Defined in code | Defined in YAML |
-| **Latency**    | Medium (~100ms)         | Medium (~100-300ms)         | Medium (~50-500ms)      | Low (<10ms)     | High (LLM call) |
-| **Cost**       | Embedding API           | Embedding + context LLM     | Server resource         | Internal        | LLM tokens      |
-
----
-
-## Common Patterns
-
-### Knowledge Base Search
-
-```yaml
-- name: search-kb
-  type: vectorstore
-  source: kb/
-  chunk_size: 512
-  embedding_model: text-embedding-3-small
-```
-
-### Database Query
-
-```yaml
-- name: query-db
-  type: function
-  file: tools/db.py
-  function: query
-  parameters:
-    sql:
-      type: string
-```
-
-### File Operations (MCP)
-
-```yaml
-- name: filesystem
-  type: mcp
-  description: Read and write files
-  command: npx
-  args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
-  config:
-    allowed_directories: ["./data"]
-```
-
-### GitHub Integration (MCP)
-
-```yaml
-- name: github
-  type: mcp
-  description: GitHub repository operations
-  command: npx
-  args: ["-y", "@modelcontextprotocol/server-github"]
-  env:
-    GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
-```
-
-### Structured Document Search
-
-```yaml
-- name: policy_search
-  type: hierarchical_document
-  description: "Search policy documents with section awareness"
-  source: "./policies/"
-  search_mode: hybrid
-  document_domain: legal_contract
-  extract_definitions: true
-  extract_cross_references: true
-  database:
-    provider: postgres
-    connection_string: "${POSTGRES_URL}"
-```
-
-### Text Transformation
-
-```yaml
-- name: translate
-  type: prompt
-  template: "Translate to {{language}}: {{text}}"
-  parameters:
-    text:
-      type: string
-    language:
-      type: string
-```
+| Feature        | Function        | Vectorstore             | Hierarchical Document       | MCP                     | Prompt          |
+| -------------- | --------------- | ----------------------- | --------------------------- | ----------------------- | --------------- |
+| **Status**     | ✅ Implemented  | ✅ Implemented          | ✅ Implemented               | ✅ Implemented          | 🚧 Planned      |
+| **Use case**   | Custom logic    | Search data             | Structured document search  | External integrations   | Template-based  |
+| **Execution**  | Python function | Vector similarity       | Hybrid RRF fusion           | MCP protocol (stdio)    | LLM generation  |
+| **Setup**      | Python files    | Data files              | Document files              | Server config + runtime | Template text   |
+| **Parameters** | Defined in code | Implicit (search query) | Implicit (search query)     | Server-specific tools   | Defined in YAML |
+| **Latency**    | Low (<10ms)     | Medium (~100ms)         | Medium (~100-300ms)         | Medium (~50-500ms)      | High (LLM call) |
+| **Cost**       | Internal        | Embedding API           | Embedding + context LLM     | Server resource         | LLM tokens      |
 
 ---
 
-## Error Handling
+## Troubleshooting
 
-### Vectorstore Tool Errors
+**Function tools** — all resolution failures raise `ConfigError` at agent startup (keyed on `tools.<name>`), so a misconfiguration fails fast instead of mid-test:
 
-- **No data found**: Returns empty results
-- **Invalid path**: Error during agent startup (config validation)
-- **Unsupported format**: Error during agent startup
+- **File not found**: `tool.file` doesn't resolve (relative paths resolve against the agent project root).
+- **Import failure**: the module raised during `exec_module` — the original traceback is chained.
+- **Function not found / not callable**: no matching attribute, or the attribute isn't callable (e.g. a constant).
+- **Runtime error inside the function**: caught by the backend and surfaced to the model as a tool error so the agent can recover.
 
-### Function Tool Errors
+**Vectorstore tools** — no data found returns empty results; invalid path or unsupported format errors at startup (config validation).
 
-All resolution failures raise `ConfigError` at agent startup (keyed on `tools.<name>`), so a misconfigured function tool fails fast instead of mid-test:
+**Hierarchical document tools** — no results: check `source` path and supported format; slow ingestion: split very large PDFs or use persistent storage; missing context: ensure `contextual_embeddings: true` (default) and that documents have heading structure.
 
-- **File not found**: `tool.file` does not resolve to an existing path (relative paths are resolved against the agent project root)
-- **Import failure**: The module raised an exception during `exec_module` — the original traceback is chained into the `ConfigError`
-- **Function not found**: The module loaded but has no attribute matching `tool.function`
-- **Not callable**: The attribute exists but is not callable (e.g., a constant rather than a function)
-- **Runtime error inside the function**: Caught by the backend, surfaced to the model as a tool error response so the agent can recover or retry
+**MCP tools** — server unavailable, invalid config, or runtime (npx/uvx/docker) not found error at startup; connection timeout is configurable via `request_timeout`; runtime errors are returned as tool error responses to the LLM.
 
-### MCP Tool Errors
+**Prompt tools** — invalid template errors at startup; LLM failure is a soft failure (logged, error message returned); template-rendering errors surface during execution.
 
-- **Server unavailable**: Error during agent startup (fails fast)
-- **Command not found**: Error if runtime (npx, uvx, docker) not installed
-- **Connection timeout**: Configurable via `request_timeout`, returns error
-- **Invalid config**: Error during agent startup (validation)
-- **Runtime errors**: Returned as tool error responses to the LLM
+### General best practices
 
-### Prompt Tool Errors
+Use descriptive names and clear descriptions (the model decides when to call a tool from them). Define parameters clearly, handle errors gracefully, test with realistic data, version tool files in source control, and include test cases that exercise each tool.
 
-- **Invalid template**: Error during agent startup
-- **LLM failure**: Soft failure (logged, error message returned)
-- **Template rendering**: Error during execution
+## Next steps
 
----
-
-## Performance Tips
-
-### Vectorstore Tools
-
-- Use appropriate chunk size (larger = fewer embeddings)
-- Enable caching for remote files
-- Reduce `vector_field` count if possible
-- Index only necessary fields
-
-### Function Tools
-
-- Keep functions fast (<1 second)
-- Use connection pooling for databases
-- Cache results when possible
-
-### MCP Tools
-
-- Use server-side filtering when available
-- Limit result sets
-- Cache responses locally
-
-### Prompt Tools
-
-- Use simpler models for repeated operations
-- Batch processing when possible
-- Limit template complexity
-
----
-
-## Best Practices
-
-1. **Clear Names**: Use descriptive tool names
-2. **Clear Descriptions**: Agent uses description to decide when to call tool
-3. **Parameters**: Define expected parameters clearly
-4. **Error Handling**: Handle errors gracefully
-5. **Performance**: Test with realistic data
-6. **Versioning**: Manage tool file versions in source control
-7. **Testing**: Include test cases that exercise each tool
-
----
-
-## Next Steps
-
-- See [Agent Configuration Guide](agent-configuration.md) for tool usage
-- See [File References Guide](file-references.md) for path resolution
-- See [Examples](../examples/) for complete tool usage
+- [Agent Configuration](agent-configuration.md) — tool usage in context
+- [Vector Stores](vector-stores.md) — RAG provider setup
+- [MCP CLI](mcp-cli.md) — discovering and managing MCP servers
+- [File References](file-references.md) — path resolution
+- [Examples](../examples/README.md) — complete tool usage

@@ -77,6 +77,28 @@ All capabilities default to disabled (least-privilege).
 
 ---
 
+## OpenAI Agents SDK
+
+Configuration models for the `openai:` block, applied when `model.provider` is
+`openai` or `azure_openai`. `OpenAIConfig` is the sibling of `ClaudeConfig`: it
+carries serve sizing (`max_concurrent_sessions`, `session_memory_estimate_mib`),
+the agent-loop bound (`max_turns`), reasoning `effort`, the `max_budget_usd`
+spend cap, `fallback_model`, tool allow/deny lists, and the safety/redaction
+opt-outs. All fields are optional. See the
+[OpenAI Backend guide](../guides/openai-backend.md) for end-to-end usage.
+
+::: holodeck.models.openai_config.OpenAIConfig
+    options:
+      docstring_style: google
+      show_source: true
+
+::: holodeck.models.openai_config.OpenAIPermissionsConfig
+    options:
+      docstring_style: google
+      show_source: true
+
+---
+
 ## Backend Abstraction Layer
 
 Provider-agnostic protocols and data classes for agent execution are documented in the
@@ -664,10 +686,6 @@ Custom exception classes from `holodeck.lib.errors` and
       docstring_style: google
       show_source: true
 
-::: holodeck.lib.errors.AgentFactoryError
-    options:
-      docstring_style: google
-
 ### Chat Errors
 
 ::: holodeck.lib.errors.ChatValidationError
@@ -677,18 +695,6 @@ Custom exception classes from `holodeck.lib.errors` and
 ::: holodeck.lib.errors.ChatSessionError
     options:
       docstring_style: google
-
-### Ollama Errors
-
-::: holodeck.lib.errors.OllamaConnectionError
-    options:
-      docstring_style: google
-      show_source: true
-
-::: holodeck.lib.errors.OllamaModelNotFoundError
-    options:
-      docstring_style: google
-      show_source: true
 
 ### MCP Registry Errors
 
