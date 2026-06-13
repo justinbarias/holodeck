@@ -5,11 +5,13 @@ required. The `openai-agents` package is installed (dev extra) so the lazy
 imports resolve, but each SDK symbol is patched per-test to observe behaviour.
 """
 
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import holodeck.lib.backends.openai_agents_backend as backend_module
 from holodeck.lib.backends.base import (
     AgentBackend,
     AgentSession,
@@ -23,12 +25,14 @@ from holodeck.lib.backends.openai_agents_backend import (
     _build_model,
     _build_model_settings,
     _build_reasoning,
+    _install_tracing_mirror,
     _is_reasoning_model,
     _parse_tool_arguments,
     _to_execution_result,
 )
 from holodeck.models.agent import Agent, Instructions
 from holodeck.models.llm import LLMProvider, ProviderEnum
+from holodeck.models.observability import ObservabilityConfig
 from holodeck.models.openai_config import OpenAIConfig
 
 # ---------------------------------------------------------------------------
@@ -98,7 +102,7 @@ class TestBuildModelOpenAI:
 class TestBuildModelAzure:
     """Azure provider wraps AsyncOpenAI (v1 surface) as an OpenAIResponsesModel."""
 
-    def test_builds_responses_model_and_disables_tracing(
+    def test_builds_responses_model_without_disabling_tracing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("AZURE_OPENAI_API_KEY", "az-key")
@@ -121,7 +125,9 @@ class TestBuildModelAzure:
             result = _build_model(agent)
 
         assert result is sentinel_model
-        disable_tracing.assert_called_once_with(True)
+        # H1: the SDK trace provider must NOT be disabled — that would starve the
+        # OTel-mirroring TracingProcessor installed at backend initialize().
+        disable_tracing.assert_not_called()
         client_ctor.assert_called_once()
         _, kwargs = client_ctor.call_args
         assert kwargs["api_key"] == "az-key"
@@ -145,7 +151,6 @@ class TestBuildModelAzure:
         with (
             patch("openai.AsyncOpenAI") as client_ctor,
             patch("agents.OpenAIResponsesModel"),
-            patch("agents.set_tracing_disabled"),
         ):
             _build_model(agent)
         _, kwargs = client_ctor.call_args
@@ -254,7 +259,6 @@ class TestBuildModelFallback:
                 "agents.OpenAIResponsesModel",
                 side_effect=[primary_model, fallback_responses_model],
             ) as model_ctor,
-            patch("agents.set_tracing_disabled"),
             patch(
                 "holodeck.lib.backends.openai_agents_fallback.build_fallback_model",
                 return_value=wrapped,
@@ -711,7 +715,6 @@ class TestBackendInitialize:
             patch("agents.ModelSettings"),
             patch("openai.AsyncOpenAI"),
             patch("agents.OpenAIResponsesModel", return_value=sentinel_model),
-            patch("agents.set_tracing_disabled"),
             patch(
                 "holodeck.lib.backends.openai_agents_tool_adapters.build_sdk_tools",
                 return_value=[],
@@ -1319,3 +1322,143 @@ class TestBudgetHooksWiring:
             runner.run = AsyncMock(return_value=_fake_run_result(final_output="ok"))
             await session.send("hi")
         assert runner.run.call_args.kwargs["hooks"] is None
+
+
+# ---------------------------------------------------------------------------
+# Task H1 — OTel-mirroring TracingProcessor installation + routing
+# ---------------------------------------------------------------------------
+
+
+def _obs_agent(
+    provider: ProviderEnum = ProviderEnum.OPENAI,
+    *,
+    enabled: bool = True,
+    traces_enabled: bool = True,
+    disable_provider_tracing: bool = False,
+) -> Agent:
+    """Build an Agent carrying an observability config for tracing tests."""
+    return Agent(
+        name="obs-agent",
+        model=LLMProvider(
+            provider=provider,
+            name="gpt-4o-mini" if provider == ProviderEnum.OPENAI else "dep",
+            endpoint=(
+                "https://x.openai.azure.com"
+                if provider == ProviderEnum.AZURE_OPENAI
+                else None
+            ),
+        ),
+        instructions=Instructions(inline="Be helpful."),
+        observability=ObservabilityConfig(
+            enabled=enabled,
+            disable_provider_tracing=disable_provider_tracing,
+            traces={"enabled": traces_enabled},
+        ),
+    )
+
+
+@pytest.fixture
+def reset_mirror_flag() -> Iterator[None]:
+    """Reset the module-level idempotency flag around each install test."""
+    backend_module._tracing_mirror_installed = False
+    yield
+    backend_module._tracing_mirror_installed = False
+
+
+@pytest.mark.unit
+class TestInstallTracingMirror:
+    """`_install_tracing_mirror` provider/override routing + gating (H1)."""
+
+    def test_openai_uses_add_trace_processor(self, reset_mirror_flag: None) -> None:
+        mirror = MagicMock(name="mirror")
+        with (
+            patch("agents.add_trace_processor") as add,
+            patch("agents.set_trace_processors") as set_procs,
+            patch(
+                "holodeck.lib.backends.openai_agents_tracing.build_tracing_mirror",
+                return_value=mirror,
+            ),
+        ):
+            _install_tracing_mirror(_obs_agent(ProviderEnum.OPENAI))
+        add.assert_called_once_with(mirror)
+        set_procs.assert_not_called()
+        assert backend_module._tracing_mirror_installed is True
+
+    def test_azure_uses_set_trace_processors(self, reset_mirror_flag: None) -> None:
+        mirror = MagicMock(name="mirror")
+        with (
+            patch("agents.add_trace_processor") as add,
+            patch("agents.set_trace_processors") as set_procs,
+            patch(
+                "holodeck.lib.backends.openai_agents_tracing.build_tracing_mirror",
+                return_value=mirror,
+            ),
+        ):
+            _install_tracing_mirror(_obs_agent(ProviderEnum.AZURE_OPENAI))
+        set_procs.assert_called_once_with([mirror])
+        add.assert_not_called()
+
+    def test_disable_provider_tracing_uses_set_for_openai(
+        self, reset_mirror_flag: None
+    ) -> None:
+        mirror = MagicMock(name="mirror")
+        with (
+            patch("agents.add_trace_processor") as add,
+            patch("agents.set_trace_processors") as set_procs,
+            patch(
+                "holodeck.lib.backends.openai_agents_tracing.build_tracing_mirror",
+                return_value=mirror,
+            ),
+        ):
+            _install_tracing_mirror(
+                _obs_agent(ProviderEnum.OPENAI, disable_provider_tracing=True)
+            )
+        set_procs.assert_called_once_with([mirror])
+        add.assert_not_called()
+
+    def test_not_installed_when_observability_disabled(
+        self, reset_mirror_flag: None
+    ) -> None:
+        with (
+            patch("agents.add_trace_processor") as add,
+            patch("agents.set_trace_processors") as set_procs,
+        ):
+            _install_tracing_mirror(_obs_agent(enabled=False))
+        add.assert_not_called()
+        set_procs.assert_not_called()
+        assert backend_module._tracing_mirror_installed is False
+
+    def test_not_installed_when_traces_disabled(self, reset_mirror_flag: None) -> None:
+        with (
+            patch("agents.add_trace_processor") as add,
+            patch("agents.set_trace_processors") as set_procs,
+        ):
+            _install_tracing_mirror(_obs_agent(traces_enabled=False))
+        add.assert_not_called()
+        set_procs.assert_not_called()
+
+    def test_not_installed_without_observability_block(
+        self, reset_mirror_flag: None
+    ) -> None:
+        agent = _make_agent(ProviderEnum.OPENAI, "gpt-4o-mini")
+        with (
+            patch("agents.add_trace_processor") as add,
+            patch("agents.set_trace_processors") as set_procs,
+        ):
+            _install_tracing_mirror(agent)
+        add.assert_not_called()
+        set_procs.assert_not_called()
+
+    def test_idempotent_across_calls(self, reset_mirror_flag: None) -> None:
+        mirror = MagicMock(name="mirror")
+        with (
+            patch("agents.add_trace_processor") as add,
+            patch("agents.set_trace_processors"),
+            patch(
+                "holodeck.lib.backends.openai_agents_tracing.build_tracing_mirror",
+                return_value=mirror,
+            ),
+        ):
+            _install_tracing_mirror(_obs_agent(ProviderEnum.OPENAI))
+            _install_tracing_mirror(_obs_agent(ProviderEnum.OPENAI))
+        add.assert_called_once_with(mirror)

@@ -45,6 +45,70 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
 
 logger = logging.getLogger(__name__)
 
+# Module-level idempotency guard for the OTel-mirroring TracingProcessor (H1).
+# The SDK keeps a single process-global trace-processor list, so the mirror is
+# installed at most once per process even when multiple backend instances are
+# initialized (e.g. several agents served in one worker). Set to ``True`` after
+# the first successful install.
+_tracing_mirror_installed = False
+
+
+def _tracing_enabled(agent: Agent) -> bool:
+    """Return whether OTel tracing is enabled for *agent*.
+
+    Mirrors how the CLI gates observability (``serve`` / ``chat``): tracing is
+    on only when ``observability.enabled`` and ``observability.traces.enabled``
+    are both true. When tracing is off the SDK mirror is not installed, so a run
+    incurs no mirroring overhead and emits no spans.
+
+    Args:
+        agent: The agent configuration.
+
+    Returns:
+        ``True`` when the OTel mirror should be installed for this agent.
+    """
+    obs = agent.observability
+    return obs is not None and obs.enabled and obs.traces.enabled
+
+
+def _install_tracing_mirror(agent: Agent) -> None:
+    """Install the OTel-mirroring SDK ``TracingProcessor`` once per process (H1).
+
+    Routing (only when :func:`_tracing_enabled`):
+
+    * ``observability.disable_provider_tracing: true`` → ``set_trace_processors``
+      (replaces the default exporter for either provider — no upload).
+    * ``provider: openai`` → ``add_trace_processor`` (the default
+      platform.openai.com exporter is retained alongside the mirror).
+    * ``provider: azure_openai`` → ``set_trace_processors`` (replaces the default
+      exporter; no OpenAI-platform upload, spans still flow to the mirror).
+
+    Installation is guarded by a module-level flag so multiple backend
+    instances / re-initializations do not stack mirrors on the SDK's
+    process-global processor list. When tracing is disabled for the agent the
+    mirror is not installed at all.
+
+    Args:
+        agent: The agent configuration (selects provider + tracing gate).
+    """
+    global _tracing_mirror_installed
+    if _tracing_mirror_installed or not _tracing_enabled(agent):
+        return
+
+    import agents
+
+    from holodeck.lib.backends.openai_agents_tracing import build_tracing_mirror
+
+    mirror = build_tracing_mirror(agent.name)
+    disable_provider = (
+        agent.observability is not None and agent.observability.disable_provider_tracing
+    )
+    if disable_provider or agent.model.provider == ProviderEnum.AZURE_OPENAI:
+        agents.set_trace_processors([mirror])
+    else:
+        agents.add_trace_processor(mirror)
+    _tracing_mirror_installed = True
+
 
 def _resolve_secret(value: SecretStr | None) -> str | None:
     """Return the plain string for a ``SecretStr`` credential, or ``None``."""
@@ -174,9 +238,11 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel | Model:
     ``OPENAI_API_KEY`` (or an explicit ``model.api_key``) must be available.
 
     For ``provider: azure_openai`` a plain ``AsyncOpenAI`` client pointed at the
-    Azure ``/openai/v1`` surface is wrapped as an ``OpenAIResponsesModel``. SDK
-    tracing is disabled because no OpenAI-platform key is present to upload
-    traces with.
+    Azure ``/openai/v1`` surface is wrapped as an ``OpenAIResponsesModel``. The
+    SDK trace upload is suppressed not here but at backend ``initialize()`` (H1),
+    which installs an OTel-mirroring ``TracingProcessor`` via
+    ``set_trace_processors`` — replacing the platform exporter while keeping
+    spans flowing to OTel.
 
     When ``openai.fallback_model`` is set, the primary model is wrapped in a
     fallback ``Model`` (FR-033): on a retryable upstream error (429 / 5xx) the
@@ -186,9 +252,9 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel | Model:
     returned directly, with no wrapper.
 
     Credential resolution and validation are delegated to the side-effect-free
-    :func:`_preflight_credentials`; this function additionally performs the SDK
-    global mutations (``set_default_openai_key`` / ``set_tracing_disabled``)
-    that must NOT run during config-time validation.
+    :func:`_preflight_credentials`; for ``provider: openai`` this function
+    additionally performs the SDK global mutation ``set_default_openai_key``,
+    which must NOT run during config-time validation.
 
     Args:
         agent: The agent configuration whose ``model`` selects the provider.
@@ -234,12 +300,14 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel | Model:
             "AZURE_OPENAI_ENDPOINT is required for provider 'azure_openai'."
         )
 
-    from agents import OpenAIResponsesModel, set_tracing_disabled
+    from agents import OpenAIResponsesModel
 
-    # No OpenAI-platform key is available in the Azure dev path, so disable
-    # the SDK's trace upload (it would otherwise fail / leak).
-    set_tracing_disabled(True)
-
+    # The SDK's default trace upload is suppressed without disabling the trace
+    # provider: the Azure path installs an OTel-mirroring TracingProcessor via
+    # ``set_trace_processors`` at backend initialize() (H1), which both replaces
+    # the platform.openai.com exporter and keeps spans flowing to the mirror.
+    # Calling ``set_tracing_disabled(True)`` here would make the provider return
+    # NoOp traces and starve that mirror, so it is intentionally NOT called.
     client = _build_azure_client(api_key, endpoint, model_cfg.api_version)
     # For Azure, ``model`` is the deployment name (model_cfg.name).
     primary = OpenAIResponsesModel(model=model_cfg.name, openai_client=client)
@@ -784,6 +852,10 @@ class OpenAIAgentsBackend:
         # FR-034 / FR-110: fail load on credential gaps and allow ∩ disallow
         # conflicts (all problems surfaced together) before any SDK side effects.
         validate_openai_agents(self._agent_config)
+
+        # Install the OTel-mirroring TracingProcessor once, before any run emits
+        # spans (H1). Gated on the agent's observability/tracing being enabled.
+        _install_tracing_mirror(self._agent_config)
 
         base_dir = self._resolve_base_dir()
         disallowed = _disallowed_tool_names(self._agent_config)

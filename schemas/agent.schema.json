@@ -2501,6 +2501,12 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "disable_provider_tracing": {
+          "default": false,
+          "description": "Suppress the model provider's own trace upload (e.g. the OpenAI Agents SDK upload to platform.openai.com), keeping only the OTel mirror. Applies to the openai_agents backend.",
+          "title": "Disable Provider Tracing",
+          "type": "boolean"
+        },
         "service_name": {
           "anyOf": [
             {

@@ -43,7 +43,7 @@ acceptance criteria + verification pass.
 - [ ] **Checkpoint G** — 5 hosted tools declarable; ComputerTool rejected cleanly; gate enforced; Azure load works; E2 hosted-reject paths verified
 
 ## Phase H — Tracing (US7)
-- [ ] H1 — OTel-mirror `TracingProcessor`; **remove MVP `set_tracing_disabled(True)`**; `add_trace_processor` (openai) / `set_trace_processors` (azure/override) at backend `initialize()` before any span; `observability.disable_provider_tracing`  · M
+- [x] H1 — OTel-mirror `TracingProcessor`; **remove MVP `set_tracing_disabled(True)`**; `add_trace_processor` (openai) / `set_trace_processors` (azure/override) at backend `initialize()` before any span; `observability.disable_provider_tracing`  · M
 
 ## Phase I — Serve/deploy parity + P1a/P2a
 - [ ] I1 — serve active-turn cap + 429/Retry-After + readiness + credential preflight + config echo  · M
