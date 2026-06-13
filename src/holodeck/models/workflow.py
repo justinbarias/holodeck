@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import sys
 from collections import Counter
-from enum import Enum
 from graphlib import CycleError, TopologicalSorter
 from typing import Annotated, Any, Literal
 
@@ -37,18 +36,6 @@ if sys.version_info >= (3, 11):
     from typing import Self
 else:
     from typing_extensions import Self
-
-
-class HitPolicy(str, Enum):
-    """DMN hit policies supported by the POC (FR-011).
-
-    ``COLLECT`` and the other DMN hit policies are deferred (see spec
-    Out of Scope).
-    """
-
-    UNIQUE = "UNIQUE"
-    FIRST = "FIRST"
-    PRIORITY = "PRIORITY"
 
 
 class EdgeRef(BaseModel):
@@ -111,7 +98,11 @@ class EdgeNode(BaseModel):
 
 
 class PolicyNode(BaseModel):
-    """A pure determination node: a DMN table evaluated over named inputs."""
+    """A pure determination node: a DMN table evaluated over named inputs.
+
+    The hit policy is a property of the referenced decision table (DMN-faithful,
+    single source of truth), not of the node — see ``DecisionTable.hit_policy``.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -124,7 +115,6 @@ class PolicyNode(BaseModel):
         min_length=1,
         description="Ids of the nodes whose verdicts/objects feed this table.",
     )
-    hit_policy: HitPolicy = Field(description="DMN hit policy for the table.")
     source: str | None = Field(
         default=None,
         description="Optional authority annotation (knowledgeSource-lite).",
@@ -150,7 +140,6 @@ class HumanNode(BaseModel):
         min_length=1,
         description="Ids of the nodes whose verdicts/objects feed this table.",
     )
-    hit_policy: HitPolicy = Field(description="DMN hit policy for the table.")
     requires_human: Literal[True] = Field(
         description="Marks this node as the human determination (always true).",
     )

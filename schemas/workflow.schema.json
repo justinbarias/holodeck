@@ -87,16 +87,6 @@
       "title": "GateRef",
       "type": "object"
     },
-    "HitPolicy": {
-      "description": "DMN hit policies supported by the POC (FR-011).\n\n``COLLECT`` and the other DMN hit policies are deferred (see spec\nOut of Scope).",
-      "enum": [
-        "UNIQUE",
-        "FIRST",
-        "PRIORITY"
-      ],
-      "title": "HitPolicy",
-      "type": "string"
-    },
     "HumanNode": {
       "additionalProperties": false,
       "description": "The bright line: a DMN table recommends, a named human decides.\n\nThe table is evaluated to produce a *recommendation* (refinements \u00a72); the\nCLI prompts a human to accept or override it. AI output may only draft the\nadvisory fields named in ``ai_may_draft`` \u2014 never the verdict (FR-015a).",
@@ -119,10 +109,6 @@
           "minItems": 1,
           "title": "Inputs",
           "type": "array"
-        },
-        "hit_policy": {
-          "$ref": "#/$defs/HitPolicy",
-          "description": "DMN hit policy for the table."
         },
         "requires_human": {
           "const": true,
@@ -189,7 +175,6 @@
         "id",
         "decision",
         "inputs",
-        "hit_policy",
         "requires_human"
       ],
       "title": "HumanNode",
@@ -197,7 +182,7 @@
     },
     "PolicyNode": {
       "additionalProperties": false,
-      "description": "A pure determination node: a DMN table evaluated over named inputs.",
+      "description": "A pure determination node: a DMN table evaluated over named inputs.\n\nThe hit policy is a property of the referenced decision table (DMN-faithful,\nsingle source of truth), not of the node \u2014 see ``DecisionTable.hit_policy``.",
       "properties": {
         "id": {
           "description": "Unique node id within the workflow.",
@@ -218,10 +203,6 @@
           "title": "Inputs",
           "type": "array"
         },
-        "hit_policy": {
-          "$ref": "#/$defs/HitPolicy",
-          "description": "DMN hit policy for the table."
-        },
         "source": {
           "anyOf": [
             {
@@ -239,8 +220,7 @@
       "required": [
         "id",
         "decision",
-        "inputs",
-        "hit_policy"
+        "inputs"
       ],
       "title": "PolicyNode",
       "type": "object"

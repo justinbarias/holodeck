@@ -10,7 +10,6 @@ from pydantic import ValidationError
 
 from holodeck.models.workflow import (
     EdgeNode,
-    HitPolicy,
     HumanNode,
     PolicyNode,
     Workflow,
@@ -26,13 +25,16 @@ def _edge(node_id: str) -> dict:
     }
 
 
-def _policy(node_id: str, inputs: list[str], hit_policy: str = "UNIQUE") -> dict:
-    """A minimal valid policy-node dict."""
+def _policy(node_id: str, inputs: list[str]) -> dict:
+    """A minimal valid policy-node dict.
+
+    The hit policy lives on the referenced table, not the node, so it is not
+    set here.
+    """
     return {
         "id": node_id,
         "decision": f"tables/{node_id}.dmn.yaml",
         "inputs": inputs,
-        "hit_policy": hit_policy,
     }
 
 
@@ -56,14 +58,13 @@ class TestNodeDiscrimination:
             _workflow([_edge("income"), _policy("afford", ["income"])])
         )
         assert isinstance(wf.nodes[1], PolicyNode)
-        assert wf.nodes[1].hit_policy is HitPolicy.UNIQUE
+        assert wf.nodes[1].decision == "tables/afford.dmn.yaml"
 
     def test_human_node_parses(self) -> None:
         human = {
             "id": "final",
             "decision": "tables/final.dmn.yaml",
             "inputs": ["afford"],
-            "hit_policy": "PRIORITY",
             "requires_human": True,
             "decided_by": "Hardship Officer",
             "draft": {"agent": "agents/reasons/agent.yaml"},
@@ -134,8 +135,8 @@ class TestDagValidation:
             _edge("income"),
             _edge("residency"),
             _policy("afford", ["income", "residency"]),
-            _policy("risk", ["income"], hit_policy="FIRST"),
-            _policy("final", ["afford", "risk"], hit_policy="PRIORITY"),
+            _policy("risk", ["income"]),
+            _policy("final", ["afford", "risk"]),
         ]
         wf = Workflow.model_validate(_workflow(nodes))
         assert len(wf.nodes) == 5
@@ -180,7 +181,6 @@ class TestHumanNodeDraftPairing:
             "id": "final",
             "decision": "tables/final.dmn.yaml",
             "inputs": ["afford"],
-            "hit_policy": "PRIORITY",
             "requires_human": True,
         }
         node.update(overrides)
