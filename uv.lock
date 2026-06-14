@@ -2416,7 +2416,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.0.0,<5.0.0" },
     { name = "litellm", specifier = ">=1.80.0,<1.89.0" },
     { name = "markitdown", extras = ["all"], specifier = ">=0.1.4,<0.2.0" },
-    { name = "mcp", specifier = ">=1.23" },
+    { name = "mcp", specifier = ">=1.23,<2" },
     { name = "mkdocs-llmstxt", marker = "extra == 'dev'", specifier = ">=0.4" },
     { name = "mkdocs-material", specifier = ">=9.6.22,<10.0.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'dev'", specifier = ">=0.25.0" },
