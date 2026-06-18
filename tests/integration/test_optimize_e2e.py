@@ -115,6 +115,79 @@ async def test_optimize_improves_and_writes_artifacts(tmp_path: Path) -> None:
     assert agent_path.read_text() == "name: e2e-opt-agent\n"
 
 
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_progress_stream_validates_against_schema(tmp_path: Path) -> None:
+    """A real run with a JsonlEmitter yields a schema-valid, ordered NDJSON stream
+    whose trial events match trials.jsonl field-for-field (FR-003, FR-004)."""
+    import io
+
+    from jsonschema import Draft202012Validator
+
+    from holodeck.optimizer.progress import JsonlEmitter, progress_json_schema
+
+    agent_path = tmp_path / "agent.yaml"
+    agent_path.write_text("name: e2e-opt-agent\n")
+
+    async def scorer(candidate: Agent) -> tuple[float, object]:
+        temp = candidate.model.temperature or 0.0
+        response = "hello" if temp >= 0.5 else "wrong"
+        return await score(
+            candidate,
+            str(agent_path),
+            {"equality": 1.0},
+            backend=_stub_backend(response),
+        )
+
+    config = OptimizerConfig(
+        loss={"equality": 1.0},
+        axes=AxesConfig(
+            numeric=[
+                NumericAxis(path="model.temperature", type="float", range=[0.0, 1.0])
+            ]
+        ),
+        min_delta=0.0,
+        max_cycles=1,
+        numeric_phase=PhaseConfig(max_trials=20, patience=20),
+        textual_phase=PhaseConfig(max_trials=1, patience=1),
+        seed=3,
+    )
+
+    buf = io.StringIO()
+    loop = OptimizerLoop(
+        original_agent=_agent(0.1),
+        scorer=scorer,  # type: ignore[arg-type]
+        config=config,
+        numeric_proposer=NumericProposer(axes=config.axes.numeric, seed=config.seed),
+        run_id="e2e-progress",
+        emitter=JsonlEmitter(buf),
+    )
+
+    result = await loop.run()
+    run_dir = write_outputs(result, tmp_path / "results")
+
+    validator = Draft202012Validator(progress_json_schema())
+    events = [json.loads(line) for line in buf.getvalue().splitlines()]
+    for event in events:
+        assert not list(validator.iter_errors(event)), event
+
+    # Loop emits run_started first and cycle_completed last (run_completed is CLI-only).
+    assert events[0]["event"] == "run_started"
+    assert events[-1]["event"] == "cycle_completed"
+
+    # Trial events equal the persisted trials.jsonl rows plus best_loss (FR-004).
+    rows = [
+        json.loads(line) for line in (run_dir / "trials.jsonl").read_text().splitlines()
+    ]
+    trial_events = [e for e in events if e["event"] == "trial"]
+    assert len(trial_events) == len(rows)
+    for event, row in zip(trial_events, rows, strict=True):
+        stripped = {
+            k: v for k, v in event.items() if k not in ("schema", "event", "best_loss")
+        }
+        assert stripped == row
+
+
 _TEXTUAL_GROUND_TRUTHS = ["a1", "a2", "a3"]
 
 

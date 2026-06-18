@@ -1,0 +1,585 @@
+{
+  "$defs": {
+    "Baseline": {
+      "additionalProperties": false,
+      "description": "The original agent's scalarized loss (the bar every trial must beat).",
+      "properties": {
+        "event": {
+          "const": "baseline",
+          "default": "baseline",
+          "title": "Event",
+          "type": "string"
+        },
+        "loss": {
+          "title": "Loss",
+          "type": "number"
+        },
+        "schema": {
+          "const": "holodeck.optimize.progress/v1",
+          "default": "holodeck.optimize.progress/v1",
+          "title": "Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "loss"
+      ],
+      "title": "Baseline",
+      "type": "object"
+    },
+    "CycleCompleted": {
+      "additionalProperties": false,
+      "description": "End of a cycle: accepts this cycle, the running best, and why it stopped.",
+      "properties": {
+        "accepted": {
+          "title": "Accepted",
+          "type": "integer"
+        },
+        "best_loss": {
+          "title": "Best Loss",
+          "type": "number"
+        },
+        "cycle": {
+          "title": "Cycle",
+          "type": "integer"
+        },
+        "event": {
+          "const": "cycle_completed",
+          "default": "cycle_completed",
+          "title": "Event",
+          "type": "string"
+        },
+        "schema": {
+          "const": "holodeck.optimize.progress/v1",
+          "default": "holodeck.optimize.progress/v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "stop_reason": {
+          "anyOf": [
+            {
+              "const": "no_accepts",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stop Reason"
+        }
+      },
+      "required": [
+        "cycle",
+        "accepted",
+        "best_loss"
+      ],
+      "title": "CycleCompleted",
+      "type": "object"
+    },
+    "CycleStarted": {
+      "additionalProperties": false,
+      "description": "Top of a coordinate-descent cycle; supplies the ``cycle x/of`` counter.",
+      "properties": {
+        "cycle": {
+          "title": "Cycle",
+          "type": "integer"
+        },
+        "event": {
+          "const": "cycle_started",
+          "default": "cycle_started",
+          "title": "Event",
+          "type": "string"
+        },
+        "of": {
+          "title": "Of",
+          "type": "integer"
+        },
+        "schema": {
+          "const": "holodeck.optimize.progress/v1",
+          "default": "holodeck.optimize.progress/v1",
+          "title": "Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cycle",
+        "of"
+      ],
+      "title": "CycleStarted",
+      "type": "object"
+    },
+    "ErrorEvent": {
+      "additionalProperties": false,
+      "description": "A recoverable or fatal error. Recoverable trial errors ride a ``trial`` event;\nthis terminal event signals a run-ending failure (``fatal=True``).",
+      "properties": {
+        "event": {
+          "const": "error",
+          "default": "error",
+          "title": "Event",
+          "type": "string"
+        },
+        "fatal": {
+          "title": "Fatal",
+          "type": "boolean"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "schema": {
+          "const": "holodeck.optimize.progress/v1",
+          "default": "holodeck.optimize.progress/v1",
+          "title": "Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message",
+        "fatal"
+      ],
+      "title": "ErrorEvent",
+      "type": "object"
+    },
+    "NumericAxisInfo": {
+      "additionalProperties": false,
+      "description": "A declared numeric axis, as advertised in ``run_started``.",
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "range": {
+          "items": {},
+          "title": "Range",
+          "type": "array"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "type",
+        "range"
+      ],
+      "title": "NumericAxisInfo",
+      "type": "object"
+    },
+    "PhaseCompleted": {
+      "additionalProperties": false,
+      "description": "End of a phase: how many trials it ran and how many it accepted.",
+      "properties": {
+        "accepted": {
+          "title": "Accepted",
+          "type": "integer"
+        },
+        "cycle": {
+          "title": "Cycle",
+          "type": "integer"
+        },
+        "event": {
+          "const": "phase_completed",
+          "default": "phase_completed",
+          "title": "Event",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "numeric",
+            "textual"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "schema": {
+          "const": "holodeck.optimize.progress/v1",
+          "default": "holodeck.optimize.progress/v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "trials": {
+          "title": "Trials",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cycle",
+        "phase",
+        "trials",
+        "accepted"
+      ],
+      "title": "PhaseCompleted",
+      "type": "object"
+    },
+    "PhaseStarted": {
+      "additionalProperties": false,
+      "description": "Start of a numeric or textual phase within a cycle.",
+      "properties": {
+        "cycle": {
+          "title": "Cycle",
+          "type": "integer"
+        },
+        "event": {
+          "const": "phase_started",
+          "default": "phase_started",
+          "title": "Event",
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "numeric",
+            "textual"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "schema": {
+          "const": "holodeck.optimize.progress/v1",
+          "default": "holodeck.optimize.progress/v1",
+          "title": "Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cycle",
+        "phase"
+      ],
+      "title": "PhaseStarted",
+      "type": "object"
+    },
+    "RunArtifacts": {
+      "additionalProperties": false,
+      "description": "Paths to the three run artifacts, as written by ``write_outputs``.",
+      "properties": {
+        "best_yaml": {
+          "title": "Best Yaml",
+          "type": "string"
+        },
+        "report_md": {
+          "title": "Report Md",
+          "type": "string"
+        },
+        "trials_jsonl": {
+          "title": "Trials Jsonl",
+          "type": "string"
+        }
+      },
+      "required": [
+        "best_yaml",
+        "trials_jsonl",
+        "report_md"
+      ],
+      "title": "RunArtifacts",
+      "type": "object"
+    },
+    "RunAxes": {
+      "additionalProperties": false,
+      "description": "The numeric and textual axes the run will sweep.",
+      "properties": {
+        "numeric": {
+          "items": {
+            "$ref": "#/$defs/NumericAxisInfo"
+          },
+          "title": "Numeric",
+          "type": "array"
+        },
+        "textual": {
+          "items": {
+            "$ref": "#/$defs/TextualAxisInfo"
+          },
+          "title": "Textual",
+          "type": "array"
+        }
+      },
+      "title": "RunAxes",
+      "type": "object"
+    },
+    "RunCompleted": {
+      "additionalProperties": false,
+      "description": "Closes the stream: final outcome plus the on-disk artifact paths.",
+      "properties": {
+        "accepted": {
+          "title": "Accepted",
+          "type": "integer"
+        },
+        "artifacts": {
+          "$ref": "#/$defs/RunArtifacts"
+        },
+        "baseline_loss": {
+          "title": "Baseline Loss",
+          "type": "number"
+        },
+        "best_loss": {
+          "title": "Best Loss",
+          "type": "number"
+        },
+        "cycles": {
+          "title": "Cycles",
+          "type": "integer"
+        },
+        "event": {
+          "const": "run_completed",
+          "default": "run_completed",
+          "title": "Event",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema": {
+          "const": "holodeck.optimize.progress/v1",
+          "default": "holodeck.optimize.progress/v1",
+          "title": "Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "baseline_loss",
+        "best_loss",
+        "accepted",
+        "cycles",
+        "artifacts"
+      ],
+      "title": "RunCompleted",
+      "type": "object"
+    },
+    "RunStarted": {
+      "additionalProperties": false,
+      "description": "Opens the stream: identifies the run and its search space.",
+      "properties": {
+        "agent": {
+          "title": "Agent",
+          "type": "string"
+        },
+        "axes": {
+          "$ref": "#/$defs/RunAxes"
+        },
+        "event": {
+          "const": "run_started",
+          "default": "run_started",
+          "title": "Event",
+          "type": "string"
+        },
+        "loss_weights": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Loss Weights",
+          "type": "object"
+        },
+        "max_cycles": {
+          "title": "Max Cycles",
+          "type": "integer"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema": {
+          "const": "holodeck.optimize.progress/v1",
+          "default": "holodeck.optimize.progress/v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "started_at": {
+          "title": "Started At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "agent",
+        "max_cycles",
+        "axes",
+        "loss_weights",
+        "started_at"
+      ],
+      "title": "RunStarted",
+      "type": "object"
+    },
+    "TextualAxisInfo": {
+      "additionalProperties": false,
+      "description": "A declared textual axis, as advertised in ``run_started``.",
+      "properties": {
+        "max_chars": {
+          "title": "Max Chars",
+          "type": "integer"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "max_chars"
+      ],
+      "title": "TextualAxisInfo",
+      "type": "object"
+    },
+    "Trial": {
+      "additionalProperties": false,
+      "description": "One scored (or skipped) trial.\n\nCarries every :class:`~holodeck.optimizer.models.TrialRecord` field verbatim plus\na running ``best_loss`` (the best loss *after* this trial's accept/reject decision).\nBuilt from the same record appended to ``trials.jsonl`` so the two never diverge.",
+      "properties": {
+        "accepted": {
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "baseline_loss": {
+          "title": "Baseline Loss",
+          "type": "number"
+        },
+        "best_loss": {
+          "title": "Best Loss",
+          "type": "number"
+        },
+        "cycle": {
+          "title": "Cycle",
+          "type": "integer"
+        },
+        "edit_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Edit Summary"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "event": {
+          "const": "trial",
+          "default": "trial",
+          "title": "Event",
+          "type": "string"
+        },
+        "excluded_metrics": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Metrics",
+          "type": "array"
+        },
+        "loss": {
+          "title": "Loss",
+          "type": "number"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Params"
+        },
+        "phase": {
+          "enum": [
+            "numeric",
+            "textual"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "schema": {
+          "const": "holodeck.optimize.progress/v1",
+          "default": "holodeck.optimize.progress/v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "textual_axis": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Textual Axis"
+        },
+        "trial_id": {
+          "title": "Trial Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "trial_id",
+        "cycle",
+        "phase",
+        "loss",
+        "baseline_loss",
+        "best_loss",
+        "accepted"
+      ],
+      "title": "Trial",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "baseline": "#/$defs/Baseline",
+      "cycle_completed": "#/$defs/CycleCompleted",
+      "cycle_started": "#/$defs/CycleStarted",
+      "error": "#/$defs/ErrorEvent",
+      "phase_completed": "#/$defs/PhaseCompleted",
+      "phase_started": "#/$defs/PhaseStarted",
+      "run_completed": "#/$defs/RunCompleted",
+      "run_started": "#/$defs/RunStarted",
+      "trial": "#/$defs/Trial"
+    },
+    "propertyName": "event"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/RunStarted"
+    },
+    {
+      "$ref": "#/$defs/Baseline"
+    },
+    {
+      "$ref": "#/$defs/CycleStarted"
+    },
+    {
+      "$ref": "#/$defs/PhaseStarted"
+    },
+    {
+      "$ref": "#/$defs/Trial"
+    },
+    {
+      "$ref": "#/$defs/PhaseCompleted"
+    },
+    {
+      "$ref": "#/$defs/CycleCompleted"
+    },
+    {
+      "$ref": "#/$defs/RunCompleted"
+    },
+    {
+      "$ref": "#/$defs/ErrorEvent"
+    }
+  ]
+}
