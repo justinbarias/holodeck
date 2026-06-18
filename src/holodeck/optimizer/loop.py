@@ -166,7 +166,11 @@ class OptimizerLoop:
                     ],
                 ),
                 loss_weights=dict(self.config.loss),
-                started_at=started.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                # Normalize to UTC before stamping the `Z` suffix so a naive or
+                # non-UTC `started_at` can't yield a silently wrong timestamp.
+                started_at=started.astimezone(timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
             )
         )
 
