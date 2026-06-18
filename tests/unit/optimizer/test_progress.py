@@ -17,6 +17,7 @@ from holodeck.optimizer.progress import (
     Baseline,
     CycleCompleted,
     CycleStarted,
+    ErrorEvent,
     JsonlEmitter,
     NullEmitter,
     PhaseCompleted,
@@ -158,6 +159,18 @@ class TestEmitters:
         emitter.emit(Baseline(loss=0.5))
         emitter.emit(Baseline(loss=0.4))
         assert stream.flushes == 2
+
+
+class TestParseEvent:
+    """parse_event round-trips an emitted line back to the original model."""
+
+    def test_round_trip(self) -> None:
+        for event in (
+            *_one_of_each(),
+            ErrorEvent(message="boom", fatal=True),
+        ):
+            decoded = json.loads(event.model_dump_json(by_alias=True))
+            assert parse_event(decoded) == event
 
 
 class TestPublishedSchema:

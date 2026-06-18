@@ -173,7 +173,11 @@ async def test_progress_stream_validates_against_schema(tmp_path: Path) -> None:
 
     # Loop emits run_started first and cycle_completed last (run_completed is CLI-only).
     assert events[0]["event"] == "run_started"
-    assert events[-1]["event"] == "cycle_completed"
+    assert events[-1]["event"] == "cycle_completed", (
+        "the loop must NOT emit run_completed; the CLI owns it (artifact paths are "
+        "only known after write_outputs). A refactor that moves it here would break "
+        "the documented loop/CLI emission split."
+    )
 
     # Trial events equal the persisted trials.jsonl rows plus best_loss (FR-004).
     rows = [
