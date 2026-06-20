@@ -11,6 +11,8 @@ budget; the whole run stops when a full cycle yields zero accepts or
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
+from typing import Literal
 
 from holodeck.lib.errors import OptimizerError
 from holodeck.models.agent import Agent
@@ -18,6 +20,21 @@ from holodeck.models.test_result import TestReport
 from holodeck.optimizer.config import OptimizerConfig, PhaseConfig
 from holodeck.optimizer.models import OptimizationResult, TrialRecord
 from holodeck.optimizer.mutator import apply_axes, apply_textual_edit
+from holodeck.optimizer.progress import (
+    Baseline,
+    CycleCompleted,
+    CycleStarted,
+    NullEmitter,
+    NumericAxisInfo,
+    PhaseCompleted,
+    PhaseStarted,
+    ProgressEmitter,
+    RunAxes,
+    RunStarted,
+    TextualAxisInfo,
+    Trial,
+    TrialStarted,
+)
 from holodeck.optimizer.proposers.base import Proposal, Proposer
 from holodeck.optimizer.telemetry import OptimizerTelemetry
 
@@ -40,6 +57,8 @@ class OptimizerLoop:
         textual_proposer: Proposer | None = None,
         run_id: str = "run",
         progress_callback: Callable[[TrialRecord], None] | None = None,
+        emitter: ProgressEmitter | None = None,
+        started_at: datetime | None = None,
     ) -> None:
         """Initialize the loop.
 
@@ -52,6 +71,10 @@ class OptimizerLoop:
             run_id: Identifier recorded on the result.
             progress_callback: Optional callback invoked with each TrialRecord as
                 it is produced (used to stream per-trial losses).
+            emitter: Structured progress sink for the NDJSON event stream. Defaults
+                to a no-op so the loop behaves identically when progress is off.
+            started_at: Run start timestamp stamped on ``run_started``; defaults to
+                the moment :meth:`run` is entered.
         """
         self.original_agent = original_agent
         self.scorer = scorer
@@ -60,6 +83,8 @@ class OptimizerLoop:
         self.textual_proposer = textual_proposer
         self.run_id = run_id
         self.progress_callback = progress_callback
+        self._emitter: ProgressEmitter = emitter or NullEmitter()
+        self._started_at = started_at
 
         self._trials: list[TrialRecord] = []
         self._trial_id = 0
@@ -73,13 +98,17 @@ class OptimizerLoop:
 
     async def run(self) -> OptimizationResult:
         """Execute the optimization and return the result."""
+        self._emit_run_started()
+
         with self._telemetry.baseline_span():
             self.best_loss, self.best_report = await self.scorer(self.original_agent)
         self.baseline_loss = self.best_loss
         logger.info("Baseline loss: %.4f", self.baseline_loss)
+        self._emitter.emit(Baseline(loss=self.baseline_loss))
 
         cycles_run = 0
         for cycle in range(self.config.max_cycles):
+            self._emitter.emit(CycleStarted(cycle=cycle, of=self.config.max_cycles))
             with self._telemetry.cycle_span(cycle):
                 accepts = 0
                 if self.numeric_proposer is not None:
@@ -92,6 +121,17 @@ class OptimizerLoop:
                     )
                 cycles_run += 1
             self._telemetry.record_cycle()
+            stop_reason: Literal["no_accepts"] | None = (
+                "no_accepts" if accepts == 0 else None
+            )
+            self._emitter.emit(
+                CycleCompleted(
+                    cycle=cycle,
+                    accepted=accepts,
+                    best_loss=self.best_loss,
+                    stop_reason=stop_reason,
+                )
+            )
             if accepts == 0:
                 logger.info("Cycle %d produced no accepts — stopping.", cycle)
                 break
@@ -108,6 +148,33 @@ class OptimizerLoop:
             trials=self._trials,
         )
 
+    def _emit_run_started(self) -> None:
+        """Open the progress stream with the run's identity and search space."""
+        started = self._started_at or datetime.now(timezone.utc)
+        self._emitter.emit(
+            RunStarted(
+                run_id=self.run_id,
+                agent=self.original_agent.name,
+                max_cycles=self.config.max_cycles,
+                axes=RunAxes(
+                    numeric=[
+                        NumericAxisInfo(path=a.path, type=a.type, range=a.range)
+                        for a in self.config.axes.numeric
+                    ],
+                    textual=[
+                        TextualAxisInfo(path=a.path, max_chars=a.max_chars)
+                        for a in self.config.axes.textual
+                    ],
+                ),
+                loss_weights=dict(self.config.loss),
+                # Normalize to UTC before stamping the `Z` suffix so a naive or
+                # non-UTC `started_at` can't yield a silently wrong timestamp.
+                started_at=started.astimezone(timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+            )
+        )
+
     async def _run_phase(
         self, cycle: int, proposer: Proposer, phase_cfg: PhaseConfig
     ) -> int:
@@ -115,7 +182,9 @@ class OptimizerLoop:
         proposer.begin(self.best_agent, self.best_report)
         accepts = 0
         no_improve = 0
+        trials_in_phase = 0
 
+        self._emitter.emit(PhaseStarted(cycle=cycle, phase=proposer.phase))
         with self._telemetry.phase_span(proposer.phase, cycle) as phase_span:
             for _ in range(phase_cfg.max_trials):
                 if no_improve >= phase_cfg.patience:
@@ -131,6 +200,7 @@ class OptimizerLoop:
                     break
 
                 self._trial_id += 1
+                trials_in_phase += 1
 
                 # The proposer could not produce a usable change — record a
                 # skipped trial that counts toward patience, and move on.
@@ -163,11 +233,30 @@ class OptimizerLoop:
                     continue
 
                 candidate = self._apply(proposal)
+                # The pre-trial best is the bar this candidate must beat. Capture it
+                # so the persisted ``baseline_loss`` stays pre-trial even after an
+                # accept advances ``self.best_loss`` below — the trial event then
+                # reports the *post*-decision running best.
+                baseline_for_trial = self.best_loss
+                # Announce the candidate before the (long) scoring window so live
+                # consumers can show what's being scored; the terminal `trial` event
+                # (same trial_id) carries the loss/accept outcome once scored.
+                self._emitter.emit(
+                    TrialStarted(
+                        trial_id=self._trial_id,
+                        cycle=cycle,
+                        phase=proposer.phase,
+                        baseline_loss=baseline_for_trial,
+                        params=proposal.params,
+                        textual_axis=proposal.textual_axis,
+                        edit_summary=proposal.edit_summary,
+                    )
+                )
                 with self._telemetry.trial_span(
                     trial_id=self._trial_id,
                     cycle=cycle,
                     phase=proposer.phase,
-                    baseline_loss=self.best_loss,
+                    baseline_loss=baseline_for_trial,
                     params=proposal.params,
                     textual_axis=proposal.textual_axis,
                     edit_summary=proposal.edit_summary,
@@ -175,7 +264,7 @@ class OptimizerLoop:
                     start = time.perf_counter()
                     loss, report = await self.scorer(candidate)
                     duration = time.perf_counter() - start
-                    accepted = self.best_loss - loss > self.config.min_delta
+                    accepted = baseline_for_trial - loss > self.config.min_delta
                     self._telemetry.record_trial_outcome(
                         trial_span, loss=loss, accepted=accepted
                     )
@@ -186,18 +275,16 @@ class OptimizerLoop:
                     accepted=accepted,
                 )
 
-                self._record(
-                    TrialRecord(
-                        trial_id=self._trial_id,
-                        cycle=cycle,
-                        phase=proposer.phase,
-                        loss=loss,
-                        baseline_loss=self.best_loss,
-                        accepted=accepted,
-                        params=proposal.params,
-                        textual_axis=proposal.textual_axis,
-                        edit_summary=proposal.edit_summary,
-                    )
+                record = TrialRecord(
+                    trial_id=self._trial_id,
+                    cycle=cycle,
+                    phase=proposer.phase,
+                    loss=loss,
+                    baseline_loss=baseline_for_trial,
+                    accepted=accepted,
+                    params=proposal.params,
+                    textual_axis=proposal.textual_axis,
+                    edit_summary=proposal.edit_summary,
                 )
                 proposer.tell(proposal, loss, accepted, report)
 
@@ -218,15 +305,32 @@ class OptimizerLoop:
                 else:
                     no_improve += 1
 
+                # Persist + emit after the accept decision so the trial event's
+                # best_loss reflects the running best *after* this trial.
+                self._record(record)
+
             self._telemetry.record_phase_accepts(phase_span, accepts)
 
+        self._emitter.emit(
+            PhaseCompleted(
+                cycle=cycle,
+                phase=proposer.phase,
+                trials=trials_in_phase,
+                accepted=accepts,
+            )
+        )
         return accepts
 
     def _record(self, record: TrialRecord) -> None:
-        """Append a trial record and notify the progress callback."""
+        """Append a trial record, notify the callback, and emit the trial event.
+
+        Called after the accept/reject decision so the emitted event's ``best_loss``
+        reflects the running best *after* this trial.
+        """
         self._trials.append(record)
         if self.progress_callback is not None:
             self.progress_callback(record)
+        self._emitter.emit(Trial(best_loss=self.best_loss, **record.model_dump()))
 
     def _apply(self, proposal: Proposal) -> Agent:
         """Apply a proposal to the current best agent, returning a new candidate."""

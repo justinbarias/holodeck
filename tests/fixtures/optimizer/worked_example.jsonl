@@ -1,0 +1,13 @@
+{"schema":"holodeck.optimize.progress/v1","event":"run_started","run_id":"20260618-115036-9b76c2","agent":"financial-assistant","max_cycles":1,"axes":{"numeric":[{"path":"tools[name=convfinqa_archive].top_k","type":"int","range":[4,12]},{"path":"tools[name=convfinqa_archive].min_score","type":"float","range":[0.0,0.8]}],"textual":[{"path":"instructions.inline","max_chars":6000}]},"loss_weights":{"numeric":1.0},"started_at":"2026-06-18T11:50:36Z"}
+{"schema":"holodeck.optimize.progress/v1","event":"baseline","loss":0.5}
+{"schema":"holodeck.optimize.progress/v1","event":"cycle_started","cycle":0,"of":1}
+{"schema":"holodeck.optimize.progress/v1","event":"phase_started","cycle":0,"phase":"numeric"}
+{"schema":"holodeck.optimize.progress/v1","event":"trial_started","trial_id":1,"cycle":0,"phase":"numeric","baseline_loss":0.5,"params":{"tools[name=convfinqa_archive].top_k":7,"tools[name=convfinqa_archive].min_score":0.7605},"textual_axis":null,"edit_summary":null}
+{"schema":"holodeck.optimize.progress/v1","event":"trial","trial_id":1,"cycle":0,"phase":"numeric","loss":0.75,"baseline_loss":0.5,"best_loss":0.5,"accepted":false,"params":{"tools[name=convfinqa_archive].top_k":7,"tools[name=convfinqa_archive].min_score":0.7605},"textual_axis":null,"edit_summary":null,"excluded_metrics":[],"error":null}
+{"schema":"holodeck.optimize.progress/v1","event":"phase_completed","cycle":0,"phase":"numeric","trials":1,"accepted":0}
+{"schema":"holodeck.optimize.progress/v1","event":"phase_started","cycle":0,"phase":"textual"}
+{"schema":"holodeck.optimize.progress/v1","event":"trial_started","trial_id":2,"cycle":0,"phase":"textual","baseline_loss":0.5,"params":null,"textual_axis":"instructions.inline","edit_summary":"Added a dedicated \"Year-switching\" subsection …"}
+{"schema":"holodeck.optimize.progress/v1","event":"trial","trial_id":2,"cycle":0,"phase":"textual","loss":0.5,"baseline_loss":0.5,"best_loss":0.5,"accepted":false,"params":null,"textual_axis":"instructions.inline","edit_summary":"Added a dedicated \"Year-switching\" subsection …","excluded_metrics":[],"error":null}
+{"schema":"holodeck.optimize.progress/v1","event":"phase_completed","cycle":0,"phase":"textual","trials":1,"accepted":0}
+{"schema":"holodeck.optimize.progress/v1","event":"cycle_completed","cycle":0,"accepted":0,"best_loss":0.5,"stop_reason":"no_accepts"}
+{"schema":"holodeck.optimize.progress/v1","event":"run_completed","run_id":"20260618-115036-9b76c2","baseline_loss":0.5,"best_loss":0.5,"accepted":0,"cycles":1,"artifacts":{"best_yaml":"results/optimizer-smoke/20260618-115036-9b76c2/best.yaml","trials_jsonl":"results/optimizer-smoke/20260618-115036-9b76c2/trials.jsonl","report_md":"results/optimizer-smoke/20260618-115036-9b76c2/report.md"}}

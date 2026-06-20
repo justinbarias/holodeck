@@ -13,13 +13,13 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-dateutil>=2.8.0",
     "urllib3>=2.6.0,<3.0.0",
-    "cryptography>=46.0.7,<47.0.0",
+    "cryptography>=48.0.1,<49.0.0",  # GHSA-537c-gmf6-5ccf fix
     "mkdocs-material>=9.6.22,<10.0.0",
     "twine>=6.2.0,<7.0.0",
     "jsonschema>=4.0.0,<5.0.0",
     "semantic-kernel>=1.39.4,<2.0.0",
     "markitdown[all]>=0.1.4,<0.2.0",
-    "pypdf>=6.12.0",
+    "pypdf>=6.13.3",  # GHSA-jm82-fx9c-mx94 fix
     "azure-ai-evaluation>=1.13.0,<2.0.0",
     "evaluate>=0.4.6,<0.5.0",
     "aiofiles>=25.1.0,<26.0.0",
@@ -38,10 +38,11 @@ dependencies = [
     "mcp>=1.23,<2",
     "inquirerpy>=0.3.4,<0.4.0",
     "fastapi>=0.115.0,<1.0.0",
-    # PYSEC-2026-161: pin starlette transitive (via fastapi/mcp) to the patched
-    # release. fastapi 0.128 and mcp 1.26 leave starlette unconstrained, so a
-    # direct pin is the only way to keep the lockfile on a non-vulnerable build.
-    "starlette>=1.0.1",
+    # Pin starlette transitive (via fastapi/mcp) to the patched release. fastapi
+    # and mcp leave starlette unconstrained, so a direct pin is the only way to
+    # keep the lockfile on a non-vulnerable build.
+    # CVE-2026-48817/48818/54282/54283 fix.
+    "starlette>=1.3.1",
     "uvicorn[standard]>=0.34.0,<1.0.0",
     "ag-ui-protocol>=0.1.18,<1.0.0",
     "werkzeug>=3.1.6",
@@ -179,13 +180,15 @@ constraint-dependencies = [
     "pyopenssl>=26.0.0",  # CVE-2026-27448, CVE-2026-27459 fix
     "pillow>=12.2.0",  # CVE-2026-25990 + CVE-2026-40192 fix
     "protobuf>=5.29.6",  # CVE-2026-0994 fix
-    "python-multipart>=0.0.26",  # CVE-2026-24486 + CVE-2026-40347 fix
+    "python-multipart>=0.0.31",  # CVE-2026-53538/53539/53540 fix (transitive via starlette)
     "pyarrow>=23.0.1",  # CVE-2026-25087 fix (use-after-free in IPC pre-buffering)
     "markdown>=3.10.2",  # bump to latest patch on the 3.10 line
     "pygments>=2.20.0",  # CVE-2026-4539 fix (AdlLexer ReDoS)
-    "aiohttp>=3.14.0",  # CVE-2026-34993 + CVE-2026-47265 fix
+    "aiohttp>=3.14.1",  # CVE-2026-54273..54280 fix
     "pyjwt>=2.13.0",  # PYSEC-2026-175/177/178/179 fix
     "pip>=26.1.2",  # PYSEC-2026-196 fix (transitive via pip-api)
+    "msgpack>=1.2.1",  # GHSA-6v7p-g79w-8964 fix (transitive)
+    "pydantic-settings>=2.14.2",  # GHSA-4xgf-cpjx-pc3j fix (transitive)
 ]
 
 [tool.black]
