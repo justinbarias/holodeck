@@ -8,14 +8,21 @@ import os
 from pathlib import Path
 
 # =============================================================================
-# CRITICAL: Set telemetry env vars BEFORE any library imports.
+# CRITICAL: Set telemetry/library env vars BEFORE any library imports.
 # - DEEPEVAL_TELEMETRY_OPT_OUT: Prevents deepeval from setting a TracerProvider
 # - SK env var: Enables Semantic Kernel telemetry
+# - GRPC_VERBOSITY: Silence gRPC C-core INFO logs — notably the
+#   "FD from fork parent still in poll list" lines grpcio prints straight to
+#   stderr after a fork (multiprocessing / pytest-xdist) when a channel exists
+#   (OTLP gRPC exporter, qdrant gRPC, deepeval). These bypass Python logging,
+#   so the C-core verbosity knob is the only way to quiet them. setdefault
+#   preserves an explicit operator override (e.g. GRPC_VERBOSITY=DEBUG).
 # =============================================================================
 os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 os.environ.setdefault(
     "SEMANTICKERNEL_EXPERIMENTAL_GENAI_ENABLE_OTEL_DIAGNOSTICS", "true"
 )
+os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
 
 from importlib.metadata import PackageNotFoundError, version
 
