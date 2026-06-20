@@ -171,6 +171,11 @@ class TestJsonMode:
         # The grammar opens and closes exactly once.
         assert [e["event"] for e in events].count("run_started") == 1
         assert [e["event"] for e in events].count("run_completed") == 1
+        # Each scored trial is announced by a trial_started with the same id.
+        started_ids = [e["trial_id"] for e in events if e["event"] == "trial_started"]
+        trial_ids = [e["trial_id"] for e in events if e["event"] == "trial"]
+        assert started_ids == trial_ids
+        assert started_ids  # the fixture run scores at least one trial
 
     def test_run_completed_carries_artifacts(self, tmp_path: Path) -> None:
         agent_path = tmp_path / "agent.yaml"

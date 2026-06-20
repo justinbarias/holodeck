@@ -33,6 +33,7 @@ from holodeck.optimizer.progress import (
     RunStarted,
     TextualAxisInfo,
     Trial,
+    TrialStarted,
 )
 from holodeck.optimizer.proposers.base import Proposal, Proposer
 from holodeck.optimizer.telemetry import OptimizerTelemetry
@@ -237,6 +238,20 @@ class OptimizerLoop:
                 # accept advances ``self.best_loss`` below — the trial event then
                 # reports the *post*-decision running best.
                 baseline_for_trial = self.best_loss
+                # Announce the candidate before the (long) scoring window so live
+                # consumers can show what's being scored; the terminal `trial` event
+                # (same trial_id) carries the loss/accept outcome once scored.
+                self._emitter.emit(
+                    TrialStarted(
+                        trial_id=self._trial_id,
+                        cycle=cycle,
+                        phase=proposer.phase,
+                        baseline_loss=baseline_for_trial,
+                        params=proposal.params,
+                        textual_axis=proposal.textual_axis,
+                        edit_summary=proposal.edit_summary,
+                    )
+                )
                 with self._telemetry.trial_span(
                     trial_id=self._trial_id,
                     cycle=cycle,

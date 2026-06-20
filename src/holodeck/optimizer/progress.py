@@ -100,6 +100,27 @@ class PhaseStarted(ProgressEvent):
     phase: Literal["numeric", "textual"]
 
 
+class TrialStarted(ProgressEvent):
+    """Opens a scored trial: the candidate being scored, before its loss is known.
+
+    Emitted right after a proposal is applied and before scoring begins, so a live
+    consumer can show *what* a trial is proposing during the (often minutes-long)
+    scoring window. Correlates with the terminal :class:`Trial` event via
+    ``trial_id``. Skipped/proposer-error trials have no scoring window and emit no
+    ``trial_started``. Deliberately omits ``loss``/``accepted``/``best_loss`` —
+    those are unknown until scoring completes.
+    """
+
+    event: Literal["trial_started"] = "trial_started"
+    trial_id: int
+    cycle: int
+    phase: Literal["numeric", "textual"]
+    baseline_loss: float
+    params: dict[str, Any] | None = None
+    textual_axis: str | None = None
+    edit_summary: str | None = None
+
+
 class Trial(ProgressEvent):
     """One scored (or skipped) trial.
 
@@ -180,6 +201,7 @@ ProgressEventUnion = Annotated[
     | Baseline
     | CycleStarted
     | PhaseStarted
+    | TrialStarted
     | Trial
     | PhaseCompleted
     | CycleCompleted

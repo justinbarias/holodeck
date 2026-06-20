@@ -537,6 +537,89 @@
       ],
       "title": "Trial",
       "type": "object"
+    },
+    "TrialStarted": {
+      "additionalProperties": false,
+      "description": "Opens a scored trial: the candidate being scored, before its loss is known.\n\nEmitted right after a proposal is applied and before scoring begins, so a live\nconsumer can show *what* a trial is proposing during the (often minutes-long)\nscoring window. Correlates with the terminal :class:`Trial` event via\n``trial_id``. Skipped/proposer-error trials have no scoring window and emit no\n``trial_started``. Deliberately omits ``loss``/``accepted``/``best_loss`` \u2014\nthose are unknown until scoring completes.",
+      "properties": {
+        "baseline_loss": {
+          "title": "Baseline Loss",
+          "type": "number"
+        },
+        "cycle": {
+          "title": "Cycle",
+          "type": "integer"
+        },
+        "edit_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Edit Summary"
+        },
+        "event": {
+          "const": "trial_started",
+          "default": "trial_started",
+          "title": "Event",
+          "type": "string"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Params"
+        },
+        "phase": {
+          "enum": [
+            "numeric",
+            "textual"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "schema": {
+          "const": "holodeck.optimize.progress/v1",
+          "default": "holodeck.optimize.progress/v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "textual_axis": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Textual Axis"
+        },
+        "trial_id": {
+          "title": "Trial Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "trial_id",
+        "cycle",
+        "phase",
+        "baseline_loss"
+      ],
+      "title": "TrialStarted",
+      "type": "object"
     }
   },
   "discriminator": {
@@ -549,7 +632,8 @@
       "phase_started": "#/$defs/PhaseStarted",
       "run_completed": "#/$defs/RunCompleted",
       "run_started": "#/$defs/RunStarted",
-      "trial": "#/$defs/Trial"
+      "trial": "#/$defs/Trial",
+      "trial_started": "#/$defs/TrialStarted"
     },
     "propertyName": "event"
   },
@@ -565,6 +649,9 @@
     },
     {
       "$ref": "#/$defs/PhaseStarted"
+    },
+    {
+      "$ref": "#/$defs/TrialStarted"
     },
     {
       "$ref": "#/$defs/Trial"

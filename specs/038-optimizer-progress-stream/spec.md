@@ -93,6 +93,7 @@ Each line: one JSON object, `schema` tag + `event` discriminator. In emission or
 | `baseline` | `loss` | `loop.py:79` (the baseline log site) |
 | `cycle_started` | `cycle` (0-based), `of` (= `max_cycles`) | top of each cycle — **supplies cycle x/N** |
 | `phase_started` | `cycle`, `phase` (`numeric`\|`textual`) | start of each phase |
+| `trial_started` | `trial_id`, `cycle`, `phase`, `baseline_loss`, `params`, `textual_axis`, `edit_summary` (no `loss`/`accepted`/`best_loss`) | each scored trial, **before scoring** — announces the candidate so a live view shows what's being scored; correlates with `trial` by `trial_id`. **Not** emitted for skipped/proposer-error trials. |
 | `trial` | **`TrialRecord.model_dump()`** (`trial_id,cycle,phase,loss,baseline_loss,accepted,params,textual_axis,edit_summary,excluded_metrics,error`) **+ `best_loss`** | each trial scored (`loop.py` ~142–195) |
 | `phase_completed` | `cycle`, `phase`, `trials`, `accepted` | end of each phase |
 | `cycle_completed` | `cycle`, `accepted`, `best_loss`, `stop_reason` (`null`\|`"no_accepts"`) | `loop.py:96` (the cycle-stop site) |
@@ -113,9 +114,11 @@ Rules:
 {"schema":"holodeck.optimize.progress/v1","event":"baseline","loss":0.5}
 {"schema":"holodeck.optimize.progress/v1","event":"cycle_started","cycle":0,"of":1}
 {"schema":"holodeck.optimize.progress/v1","event":"phase_started","cycle":0,"phase":"numeric"}
+{"schema":"holodeck.optimize.progress/v1","event":"trial_started","trial_id":1,"cycle":0,"phase":"numeric","baseline_loss":0.5,"params":{"tools[name=convfinqa_archive].top_k":7,"tools[name=convfinqa_archive].min_score":0.7605},"textual_axis":null,"edit_summary":null}
 {"schema":"holodeck.optimize.progress/v1","event":"trial","trial_id":1,"cycle":0,"phase":"numeric","loss":0.75,"baseline_loss":0.5,"best_loss":0.5,"accepted":false,"params":{"tools[name=convfinqa_archive].top_k":7,"tools[name=convfinqa_archive].min_score":0.7605},"textual_axis":null,"edit_summary":null,"excluded_metrics":[],"error":null}
 {"schema":"holodeck.optimize.progress/v1","event":"phase_completed","cycle":0,"phase":"numeric","trials":1,"accepted":0}
 {"schema":"holodeck.optimize.progress/v1","event":"phase_started","cycle":0,"phase":"textual"}
+{"schema":"holodeck.optimize.progress/v1","event":"trial_started","trial_id":2,"cycle":0,"phase":"textual","baseline_loss":0.5,"params":null,"textual_axis":"instructions.inline","edit_summary":"Added a dedicated \"Year-switching\" subsection …"}
 {"schema":"holodeck.optimize.progress/v1","event":"trial","trial_id":2,"cycle":0,"phase":"textual","loss":0.5,"baseline_loss":0.5,"best_loss":0.5,"accepted":false,"params":null,"textual_axis":"instructions.inline","edit_summary":"Added a dedicated \"Year-switching\" subsection …","excluded_metrics":[],"error":null}
 {"schema":"holodeck.optimize.progress/v1","event":"phase_completed","cycle":0,"phase":"textual","trials":1,"accepted":0}
 {"schema":"holodeck.optimize.progress/v1","event":"cycle_completed","cycle":0,"accepted":0,"best_loss":0.5,"stop_reason":"no_accepts"}
@@ -147,8 +150,11 @@ Additive only — no algorithm changes; `trials.jsonl`, `best.yaml`, `report.md`
   routes human/library logs to stderr.
 - **FR-003** Every event carries `schema:"holodeck.optimize.progress/v1"` and an `event` field, and
   follows the ordering invariant: `run_started` → `baseline` → (`cycle_started` → (`phase_started` →
-  `trial`+ → `phase_completed`)+ → `cycle_completed`)+ → `run_completed`; exactly one `run_started`
-  and one `run_completed`.
+  (`trial_started` → `trial`)+ → `phase_completed`)+ → `cycle_completed`)+ → `run_completed`; exactly
+  one `run_started` and one `run_completed`. Each scored trial emits `trial_started` immediately before
+  its `trial` (same `trial_id`); skipped/proposer-error trials emit only `trial` (with `error != null`)
+  and no `trial_started`. Tolerant consumers ignore unknown `event` values, so adding `trial_started`
+  is additive under `v1` (no schema-tag bump).
 - **FR-004** The `trial` event equals the matching `trials.jsonl` row (`TrialRecord`) field-for-field,
   plus a running `best_loss`.
 - **FR-005** `cycle_started` carries `{cycle (0-based), of}` so consumers can show cycle x/N.

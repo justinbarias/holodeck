@@ -27,6 +27,7 @@ from holodeck.optimizer.progress import (
     RunCompleted,
     RunStarted,
     Trial,
+    TrialStarted,
     parse_event,
     progress_json_schema,
 )
@@ -52,6 +53,13 @@ def _one_of_each() -> list:
         Baseline(loss=0.5),
         CycleStarted(cycle=0, of=2),
         PhaseStarted(cycle=0, phase="numeric"),
+        TrialStarted(
+            trial_id=1,
+            cycle=0,
+            phase="numeric",
+            baseline_loss=0.5,
+            params={"model.temperature": 0.7},
+        ),
         Trial(
             trial_id=1,
             cycle=0,
@@ -87,6 +95,26 @@ class TestEventModels:
             obj = json.loads(event.model_dump_json(by_alias=True))
             assert obj["schema"] == SCHEMA_VERSION
             assert "event" in obj
+
+    def test_trial_started_omits_post_scoring_fields(self) -> None:
+        # trial_started is emitted before scoring, so it must NOT carry loss /
+        # accepted / best_loss / excluded_metrics — only the proposal + the bar.
+        started = TrialStarted(
+            trial_id=3,
+            cycle=1,
+            phase="textual",
+            baseline_loss=0.42,
+            textual_axis="instructions.inline",
+            edit_summary="tightened the system prompt",
+        )
+        obj = json.loads(started.model_dump_json(by_alias=True))
+        assert obj["event"] == "trial_started"
+        assert obj["trial_id"] == 3
+        assert obj["baseline_loss"] == 0.42
+        assert obj["textual_axis"] == "instructions.inline"
+        assert obj["params"] is None
+        for absent in ("loss", "accepted", "best_loss", "excluded_metrics", "error"):
+            assert absent not in obj
 
     def test_trial_keeps_nulls_and_empty_lists(self) -> None:
         # A textual trial leaves params null and excluded_metrics empty — both must

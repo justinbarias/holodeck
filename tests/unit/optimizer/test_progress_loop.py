@@ -144,13 +144,16 @@ class TestEventOrdering:
     async def test_event_type_sequence(self) -> None:
         buf = io.StringIO()
         _, events = await _run_capturing(_accept_then_reject_loop(buf), buf)
+        # Each scored trial emits trial_started (pre-scoring) then trial (post-accept).
         # run_completed is CLI-emitted, so the loop ends at cycle_completed.
         assert [e["event"] for e in events] == [
             "run_started",
             "baseline",
             "cycle_started",
             "phase_started",
+            "trial_started",
             "trial",
+            "trial_started",
             "trial",
             "phase_completed",
             "cycle_completed",
@@ -272,13 +275,46 @@ class TestRecoverableError:
             emitter=JsonlEmitter(buf),
         )
         await loop.run()
-        trial = next(
-            json.loads(x)
-            for x in buf.getvalue().splitlines()
-            if json.loads(x)["event"] == "trial"
-        )
+        events = [json.loads(x) for x in buf.getvalue().splitlines()]
+        trial = next(e for e in events if e["event"] == "trial")
         assert trial["error"] == "optuna exhausted"
         assert trial["accepted"] is False
+        # A skipped trial never enters scoring, so it emits no trial_started.
+        assert not [e for e in events if e["event"] == "trial_started"]
+
+
+class TestTrialStarted:
+    """trial_started precedes each scored trial and correlates by trial_id."""
+
+    @pytest.mark.asyncio
+    async def test_started_precedes_trial_and_correlates(self) -> None:
+        buf = io.StringIO()
+        await _run_capturing(_accept_then_reject_loop(buf), buf)
+        events = [json.loads(x) for x in buf.getvalue().splitlines()]
+        started = [e for e in events if e["event"] == "trial_started"]
+        trials = [e for e in events if e["event"] == "trial"]
+        # One trial_started per scored trial, same ids in the same order.
+        assert [e["trial_id"] for e in started] == [e["trial_id"] for e in trials]
+        # Each trial_started appears before its matching trial in the stream.
+        order = [(e["event"], e["trial_id"]) for e in events if "trial" in e["event"]]
+        assert order == [
+            ("trial_started", 1),
+            ("trial", 1),
+            ("trial_started", 2),
+            ("trial", 2),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_started_carries_proposal_without_outcome(self) -> None:
+        buf = io.StringIO()
+        await _run_capturing(_accept_then_reject_loop(buf), buf)
+        events = [json.loads(x) for x in buf.getvalue().splitlines()]
+        started = next(e for e in events if e["event"] == "trial_started")
+        # Numeric proposal carried; pre-trial bar present; outcome fields absent.
+        assert started["params"] == {"model.temperature": 0.5}
+        assert started["baseline_loss"] == 0.6
+        for absent in ("loss", "accepted", "best_loss"):
+            assert absent not in started
 
 
 class TestSourceOfTruth:

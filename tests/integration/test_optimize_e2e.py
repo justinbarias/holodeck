@@ -191,6 +191,10 @@ async def test_progress_stream_validates_against_schema(tmp_path: Path) -> None:
         }
         assert stripped == row
 
+    # Each scored trial is announced by a trial_started carrying the same id.
+    started_ids = [e["trial_id"] for e in events if e["event"] == "trial_started"]
+    assert started_ids == [e["trial_id"] for e in trial_events]
+
 
 _TEXTUAL_GROUND_TRUTHS = ["a1", "a2", "a3"]
 
