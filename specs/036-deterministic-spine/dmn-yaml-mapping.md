@@ -5,6 +5,13 @@
 > illustrative, not normative until those tasks land. Produced 2026-06-10
 > from a design discussion on how the native YAML DSL relates to the OMG DMN
 > standard.
+>
+> **Note (2026-07-25):** the worked examples below still use the original
+> loan-hardship scenario. They are retained **as DMN-mapping illustrations only** —
+> the anchor sample has since moved to the Targeted Compliance Framework
+> (`spec.md` US6). The element-by-element mappings, the DRD semantics, and the
+> `source:`/`input_data` rows are all current; only the domain in the examples
+> is stale. The `date(..)` expression on line ~51 has been corrected in place.
 
 ## The honest claim
 
@@ -47,8 +54,13 @@ inputs:
   - name: surplus_ratio
     expression: (income.net_monthly_income - income.monthly_expenses) / income.net_monthly_income
     type: number
+  # CORRECTED 2026-07-25 — was `date(application_date) - date(income.statement_date)`,
+  # which research.md caveat 6 proved unevaluable: bkflow-feel's `date_func`
+  # production accepts only a quoted literal, not a variable. Date-typed gate
+  # fields cross the boundary as Python `datetime.date` and subtract bare;
+  # caveat 1 requires the wrapper to convert the resulting timedelta to days.
   - name: statement_age
-    expression: date(application_date) - date(income.statement_date)   # FEEL date difference
+    expression: application_date - income.statement_date
     type: days
   - name: residency_status
     expression: residency.status
@@ -155,6 +167,7 @@ nodes:
 | `<itemDefinition>` | the gate's JSON Schema |
 | `<informationRequirement>` (`requiredInput` / `requiredDecision`) | the `inputs:` list (kind implicit — resolved by what the id names) |
 | Acyclic requirements graph (DMN mandate) | FR-003 load-time cycle rejection — same constraint |
+| `<inputData>` **not agent-produced** | the workflow-level `input_data:` block (facts of record — prior state, case facts). Distinct from an edge node's gated output, which *is* agent-produced. |
 | `<knowledgeSource>` | **not modeled** — see proposal below |
 | `<businessKnowledgeModel>` (reusable invocable logic) | **not modeled** — every table is bound to exactly one node |
 | DMNDI (diagram layout) | **not modeled** — logical DRD only; visual modeler is North Star |
@@ -195,9 +208,18 @@ source: "Hardship Policy v4.2 §72"
    (decision tables only; no DRD-XML, BKM, or boxed expressions). Likely
    small once T3's model exists, if "bring your existing DMN" becomes a
    sales requirement.
-3. **AI-drafted from a policy document** — not in any spec yet. On-pattern
+3. **AI-drafted from a policy document** — **now specced: `specs/039-policy-generator`**
+   (was "not in any spec yet"). Emits tables *and* the `workflow.yaml` DRD, with
+   TODO markers where edge nodes go; edge agents stay hand-authored. On-pattern
    (AI drafts, human reviews/versions/commits — same move as
    `ai_may_draft: reasons`; the committed table stays deterministic), and
-   US5 policy tests are exactly how a drafted table would be verified.
-   Belongs in North Star / a follow-up spec, possibly dogfooded as a
-   HoloDeck agent whose `response_format` is the table schema.
+   US5 policy tests are exactly how a drafted table is verified.
+
+   036 ships only what makes a drafted table *safe to run*: the `provenance`
+   block (T3a) and the review gate — `holodeck workflow run` refuses a table with
+   `generated_by` and no `reviewed_by` (FR-030, SC-009). This extends "the LLM is
+   never the spine" to authoring time: without it, a model could be the spine by
+   writing the rules rather than by producing a verdict.
+
+   039 is **built only after 036's MVP ships**. Its golden corpus is pinned at
+   `specs/039-policy-generator/corpus-manifest.md`.

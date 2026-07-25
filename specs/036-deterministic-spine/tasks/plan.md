@@ -13,10 +13,15 @@
 Build a new self-contained subsystem — `src/holodeck/lib/workflow/` (engine),
 `src/holodeck/models/workflow.py` + `decision_table.py` + `run_record.py`
 (models), `src/holodeck/cli/commands/workflow.py` (CLI) — that runs a DAG of
-determination nodes: edge nodes (agents behind schema gates) feed policy nodes
-(DMN tables + FEEL) feeding a human node (CLI decision), with an OTel trace, a
-replayable local run record, and a policy-test executor. Anchor sample:
-loan-hardship underwriting.
+determination nodes: edge nodes (agents behind schema gates) and workflow-level
+`input_data` (facts of record) feed policy nodes (DMN tables + FEEL) feeding a
+human node (CLI decision), with an OTel trace, a replayable local run record, and
+a policy-test executor.
+
+**Anchor sample: Targeted Compliance Framework compliance determination**
+(retargeted 2026-07-25 from invented loan-hardship underwriting to real, public,
+citable Australian policy — see `spec.md` US6). There is now an explicit **MVP
+ship line**; see `spec.md` § "The MVP ship line" and `todo.md`.
 
 ## Architecture Decisions
 
@@ -38,26 +43,32 @@ loan-hardship underwriting.
 ```
 T1 FEEL spike
  │
- ├────────────► T3 table model + FEEL wrapper ──► T4 hit policies ──► T12 WorkflowTestExecutor
- │                                                    │
-T2 workflow models + schema ──► T5 edge executor      │
- │                                  │                 │
- └──────────────┬───────────────────┴─────────────────┘
-                ▼
-        T6 runner + CLI run (single level)
-                │
-        T7 multi-level composition
-                │
-        T8 human node prompt ──► T9 draft agent
-                │
-        T10 run record ──► T11 replay
-                │
-        T13 full OTel spans
-                │
-        T14 loan-hardship sample ──► T15 docs
+ ├────────────► T3 table model + FEEL wrapper ──► T3a provenance
+ │                        │
+ │                        └──► T4 hit policies ──────────────┐
+ │                                                           │
+T2 workflow models + schema ──► T2a input_data               │
+ │                    │                                      │
+ │                    └──► T5 edge executor ─────────────────┤
+ │                                                           ▼
+ └───────────────────────────────────► T6 runner + CLI run + review gate
+                                                  │
+                                          T7 multi-level composition
+                                                  │
+                                          T8 human node prompt
+                                                  │
+                                          T10 run record ──► T11 replay
+                                                  │
+                                    T13a "active months" spike
+                                                  │
+                                          T14 TCF sample
+        ═══════════════════════════════════════════════════════ MVP SHIP LINE
+                          post-MVP: T9 draft · T12 tests · T13 OTel · T15 docs
 ```
 
 Parallelizable once Phase 1 lands: T12 (needs only T4), T13 (needs T6).
+**T9 is no longer a dependency of T14** — the MVP sample's human node ships with
+no `draft:` block (permitted by FR-015a). T9 restores it post-MVP.
 
 ## Task List
 
@@ -123,6 +134,52 @@ rejects out-of-subset expressions at table load with a precise locator
 **Verification:** `pytest tests/unit/workflow/test_decision_table.py -n auto`
 
 **Dependencies:** T1 · **Files:** `src/holodeck/models/decision_table.py`, `src/holodeck/lib/workflow/feel.py`, tests · **Scope:** M
+
+#### Task 2a: Workflow-level `input_data:` *(amends landed T2)*
+
+**Description:** Add an optional workflow-level `input_data:` block to
+`src/holodeck/models/workflow.py`: a mapping of name → `{schema: <path>}`
+declaring typed facts supplied from outside the spine. `holodeck workflow run`
+gains `--input <payload.json>`; every declared fact is JSON-Schema-validated
+**before any node executes**, and a missing or invalid fact fails loudly.
+`input_data` names resolve in a node's `inputs:` list and in table input
+expressions identically to node verdicts. The model MUST make an agent-produced
+`input_data` entry unrepresentable (no `edge`/`agent` field). Re-publish
+`schemas/workflow.schema.json` via the generator + sync test.
+
+**Why an amendment:** T2 is committed. The schema is soft now and hardens with
+every task after T4 — this is the cheap moment (same reasoning that put `source:`
+into T2 early).
+
+**Acceptance criteria:**
+- [ ] Declared facts validate pre-execution; missing/invalid fails with a typed error naming the fact (FR-025).
+- [ ] `input_data` referenceable from `inputs:` and from table expressions (FR-026).
+- [ ] SC-010: schema-validation test proves no agent can produce an `input_data` value (FR-027).
+- [ ] Schema sync test passes.
+
+**Verification:** `pytest tests/unit/models/test_workflow.py tests/unit/test_workflow_schema_sync.py -n auto` · `make type-check`
+
+**Dependencies:** T2 · **Files:** `src/holodeck/models/workflow.py`, `scripts/generate_workflow_schema.py`, `schemas/workflow.schema.json`, tests · **Scope:** M
+
+#### Task 3a: `provenance:` on decision tables *(amends landed T3)*
+
+**Description:** Add an optional non-executable `provenance:` block to
+`DecisionTable` — `generated_by`, `source`, `source_doc`, `source_sha256`,
+`reviewed_by`, `reviewed_at`. A hand-authored table omits it entirely.
+`provenance` MUST NOT be referenceable from FEEL expressions or affect rule
+matching (FR-029, FR-032). Enforcement of the review gate itself lands in T6.
+
+**Why now:** spec 039 will emit generated tables. Without provenance the engine
+cannot distinguish an LLM-written table from a hand-written one, and the review
+gate (FR-030) has nothing to check.
+
+**Acceptance criteria:**
+- [ ] Table with full `provenance` loads; table without it loads unchanged.
+- [ ] A FEEL expression referencing `provenance.*` is rejected at load with a locator.
+
+**Verification:** `pytest tests/unit/workflow/test_decision_table.py -n auto`
+
+**Dependencies:** T3 · **Files:** `src/holodeck/models/decision_table.py`, tests · **Scope:** S
 
 #### Task 4: Hit-policy evaluation + conformance suite
 
@@ -227,7 +284,11 @@ explicit "no determination" status, nothing recorded as final (edge case).
 
 **Dependencies:** T7 · **Files:** `src/holodeck/lib/workflow/human.py`, `runner.py`, `cli/commands/workflow.py`, tests · **Scope:** M
 
-#### Task 9: Draft agent advisory path (`ai_may_draft: reasons`)
+#### Task 9: Draft agent advisory path (`ai_may_draft: reasons`) — **POST-MVP**
+
+> Documented here beside T8 for cohesion, but it sits **after the ship line**.
+> The MVP sample's human node has no `draft:` block (FR-015a permits it), so T14
+> no longer depends on this. T9 restores the block post-MVP.
 
 **Description:** When a human node declares `draft`, invoke the drafting agent
 (via `BackendSelector`, mocked in tests) to produce only the fields in
@@ -287,7 +348,7 @@ no fallback to on-disk tables.
 
 ---
 
-### Phase 5 — US5: policy-as-code testing (P3, parallelizable after T4)
+### Phase 6 — US5: policy-as-code testing (P3 — **POST-MVP**, parallelizable after T4)
 
 #### Task 12: `WorkflowTestExecutor` + `holodeck workflow test`
 
@@ -308,7 +369,7 @@ output on failure (FR-023, SC-006).
 
 ---
 
-### Phase 6 — Observability completion
+### Phase 7 — Observability completion (**POST-MVP**)
 
 #### Task 13: Full OTel GenAI span attributes
 
@@ -328,24 +389,62 @@ pipeline.
 
 ---
 
-### Phase 7 — US6: anchor sample + docs (P3)
+### Phase 5 — US6: anchor sample (P1 — the MVP's proof)
 
-#### Task 14: Loan-hardship underwriting sample
+#### Task 13a: "Active months" FEEL spike *(before T14)*
 
-**Description:** `sample/loan-hardship/`: three edge agents (anthropic
-provider — Claude-only POC), gate schemas, `tables/affordability.dmn.yaml`
-(UNIQUE, FEEL ranges + a date computation), `tables/risk.dmn.yaml` (FIRST),
-`tables/determination.dmn.yaml` (PRIORITY) under a `requires_human` node with
-`decided_by` and a draft agent. Tables bend to the T1-verified FEEL subset.
-Scripted-answer end-to-end run + replay (FR-024, SC-001/005/007).
+**Description:** Resolve spec Open Question 5. TCF expires demerits after "6
+**active** months" and resets after "3 **active** months compliant" — a count of
+months in which the participant was active, **not** elapsed calendar time, so it
+is not a date difference. Determine whether it is expressible via
+`inputs[].expression`, or must be pre-computed and supplied as `input_data`.
+Recall `research.md` caveat 6: `date(variable)` does not parse; date-typed
+fields cross the gate as `datetime.date` and subtract bare, yielding a
+`timedelta` that caveat 1 requires converting to days.
 
 **Acceptance criteria:**
-- [ ] US6 scenarios: end-to-end run composes both L2 verdicts + human decision; replay reproduces identically with zero LLM calls.
+- [ ] A written verdict in `research.md`: expressible, or pre-computed into `input_data` with the shape specified.
+- [ ] If the FEEL subset must narrow further, it is documented and SC-005 is amended (refinements §5: the sample bends to the subset, never the reverse).
+
+**Dependencies:** T3 · **Files:** `research.md`, a conformance test · **Scope:** S
+
+#### Task 14: Targeted Compliance Framework sample
+
+**Description:** `sample/tcf-compliance/` — one mutual-obligation compliance
+event under the Australian TCF, modelled as a **state transition**:
+
+- `input_data`: prior compliance state (zone, active demerits + accrual dates, prior penalty count, months compliant) with a JSON Schema. Never LLM-touched.
+- One edge node: an agent (anthropic provider — Claude-only POC) assessing the participant's stated reason against the enumerated factors of the *Reasonable Excuse Determination 2018* s5(2)(a)–(j), across a schema gate derived from that closed list.
+- `tables/zone.dmn.yaml` (`UNIQUE`) — next zone from prior state + this event.
+- `tables/penalty.dmn.yaml` (`FIRST`) — escalation: 1 week → 2 weeks → cancellation.
+- A `requires_human` node with `decided_by` (delegate) and **no `draft:` block** (T9 is post-MVP; FR-015a permits this).
+- Tables bend to the T1-verified FEEL subset and T13a's verdict.
+- `README.md` carrying the framing statement required by US6 — **not optional**.
+
+Source documents are pinned in `specs/039-policy-generator/corpus/` with hashes
+in `corpus-manifest.md`; each table's `provenance.source` cites its authority.
+
+**Acceptance criteria:**
+- [ ] US6 scenarios: end-to-end run composes zone + penalty verdicts and the human decision; replay reproduces identically with zero LLM calls.
+- [ ] US6 scenario 3: no agent produces any `input_data` fact (SC-010).
 - [ ] An integration test (marked `@pytest.mark.integration`) or documented quickstart demonstrates SC-007; unit-level path uses mocked edges.
+- [ ] README states the framing up front.
 
-**Verification:** `holodeck workflow run sample/loan-hardship/workflow.yaml` (scripted input) · `pytest tests/integration/test_loan_hardship_sample.py -n auto -m integration`
+**Verification:** `holodeck workflow run sample/tcf-compliance/workflow.yaml --input case.json` (scripted input) · `pytest tests/integration/test_tcf_sample.py -n auto -m integration`
 
-**Dependencies:** T9, T11 · **Files:** `sample/loan-hardship/**` (YAML/JSON), one integration test · **Scope:** M (mostly YAML)
+**Dependencies:** T11, T13a · **Files:** `sample/tcf-compliance/**` (YAML/JSON/MD), one integration test · **Scope:** M (mostly YAML)
+
+---
+
+## ▲ MVP SHIP LINE ▲
+
+**MVP = T4, T5, T6, T7, T8, T10, T11, T14** plus amendments **T2a**, **T3a** and
+spike **T13a**. Delivers SC-001…SC-005 and SC-007…SC-010; only **SC-006**
+(a table tested in isolation, needs T12) falls past the line.
+
+---
+
+### Phase 8 — Documentation (**POST-MVP**)
 
 #### Task 15: Documentation
 
@@ -364,8 +463,22 @@ conventions require.
 **Dependencies:** T14 · **Files:** `docs/workflows.md` (or docsite equivalent) · **Scope:** S
 
 ### Checkpoint 5 — feature complete
-- [ ] All SC-001…SC-008 demonstrably met (map each to its test in the PR description).
+- [ ] All SC-001…SC-010 demonstrably met (map each to its test in the PR description).
 - [ ] `make ci` clean. **Human review / PR.**
+
+---
+
+## Successor: 039 policy generator
+
+`specs/039-policy-generator/` — AI-drafted decision tables and `workflow.yaml`
+DRDs from policy documents, with TODO markers where edge nodes go. Specced in
+parallel with this work so its schema needs land here as additions (T2a, T3a)
+rather than as migrations later; **built only after this spec's MVP ships**.
+
+036 ships the two things that make a drafted table safe to run — the
+`provenance` block (T3a) and the review gate (T6) — and nothing else about
+generation. The golden corpus is already pinned:
+`specs/039-policy-generator/corpus-manifest.md`.
 
 ## Risks and Mitigations
 
