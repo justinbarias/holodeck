@@ -420,6 +420,22 @@ composed determination; `holodeck workflow replay` reproduces it identically.
 
 - BPMN/DMN **XML** import, visual modeling, sequence flows, events, timers, message flows, BPMN gateways.
 - DMN hit policies beyond `UNIQUE`/`FIRST`/`PRIORITY` (e.g. `COLLECT`, `RULE ORDER`, `OUTPUT ORDER`, aggregations) — only the three the sample uses are in v1.
+- **Iteration over a collection, and aggregation across the results.** A `PolicyNode` evaluates its table exactly once, over scalar named inputs. There is no way to say "evaluate this node once per element of a list-valued input and collect the verdicts", and no primitive that sums, counts, or caps across them.
+
+  This is a real limit, not an oversight, and it is reached by ordinary policy. A PBAS claim describes *several* activity incidents; TCF counts demerits *across* failures; PBAS caps points *per month*. Each needs the same missing capability.
+
+  **`COLLECT` is not the fix, and adopting it would be a mistake.** Hit policy resolves *multiple rules matching one evaluation*; this is *one rule matching each of many items*. Different axis. The tempting encoding — make the input the whole list, write rules like `list contains(activities, "job_interview")`, aggregate with `COLLECT SUM` — produces a plausible total while **silently losing multiplicity** (two job applications score 5, not 10) and discarding per-item fields such as contact hours, so every tiered activity collapses to one bucket. A quietly wrong determination is the exact failure this spec exists to prevent.
+
+  **The DMN-correct decomposition, recorded here so it is not re-derived:** DMN does not make the table handle the collection. The table stays scalar and becomes a **BKM** (Business Knowledge Model); an enclosing decision iterates over the collection with a **boxed iterator** (DMN 1.3+) or a literal FEEL expression, invoking the BKM per item, and a further decision aggregates:
+
+  | Decision | Input | Logic |
+  |---|---|---|
+  | `points_for_activity` (BKM) | one activity (scalars) | a decision table — unchanged from what this spec already ships |
+  | `total_points_for_claim` | the list | boxed iterator invoking the BKM per item, then an aggregator |
+
+  Multiplicity is preserved because each incident is a separate invocation. The spine already has the first row; it lacks the second.
+
+  Adding it is a spec-level capability, not a table feature: a fan-out node changes the run record (N verdicts per node), replay, OTel spans, and the DRD model. To be scoped separately. Until then, a workflow determines **one** item per run and the caller iterates.
 - A durable, DB-backed / signed determination record (POC uses OTel spans + a local run record). *North Star.*
 - A web/task-inbox HITL UI (CLI prompt only).
 - Deploy-as-API for workflows (`holodeck serve` / `deploy` integration).
