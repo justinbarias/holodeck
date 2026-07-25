@@ -147,19 +147,20 @@ nodes:
     gate: { schema: schemas/fraud-flag.json }
 
   # DMN <decision> — `inputs:` is the <informationRequirement> list.
+  # CORRECTED 2026-07-25 — `hit_policy:` was shown on each node until the T3
+  # refactor moved it onto the referenced table, where DMN puts it (one table,
+  # one hit policy, one source of truth). `PolicyNode` has no such field and
+  # forbids extras, so the earlier form no longer parses.
   - id: affordability
-    decision: tables/affordability.dmn.yaml
+    decision: tables/affordability.dmn.yaml   # the table declares UNIQUE
     inputs: [income, residency]          # requiredInput ×2
-    hit_policy: UNIQUE
   - id: risk_tier
-    decision: tables/risk.dmn.yaml
+    decision: tables/risk.dmn.yaml            # the table declares FIRST
     inputs: [doc_fraud_flag, income]
-    hit_policy: FIRST
 
   - id: final_determination
-    decision: tables/determination.dmn.yaml
+    decision: tables/determination.dmn.yaml   # the table declares PRIORITY
     inputs: [affordability, risk_tier]   # requiredDecision ×2
-    hit_policy: PRIORITY
     requires_human: true
     decided_by: "Hardship Officer"
     draft: { agent: agents/reasons-drafter/agent.yaml }
