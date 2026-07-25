@@ -331,6 +331,49 @@ explicit "no determination" status, nothing recorded as final (edge case).
 >    type an arbitrary points figure would be inventing a mechanism the source
 >    does not contain.
 
+> ### Transport: build the CLI only, but do not foreclose serve
+>
+> `holodeck serve` integration and a task-inbox HITL UI are both **Out of Scope**
+> (`spec.md`). Build the CLI prompt and nothing else. Two constraints exist only
+> to stop that choice becoming a dead end.
+>
+> **1. Keep `click` out of the runner.** One narrow seam: the runner asks
+> *something* for a decision and records what came back. It must return the
+> selected output, `decided_by`, a timestamp, and be able to say **aborted / no
+> determination**. CLI is the only implementation built now.
+>
+> *Stated tension:* a Protocol with a single implementation is speculative under
+> CLAUDE.md §2 ("no abstractions for single-use code"). It is justified here only
+> because the alternative — a runner importing `click` — is a **known** dead end
+> rather than a hypothetical one, and the seam is a few lines. If it grows past
+> that, it has become the thing the rule warns about. Do not add a registry, a
+> plugin point, or a second implementation.
+>
+> **2. If serve is ever wired: the runner emits the AG-UI events, never a model.**
+> AG-UI can carry this as a frontend `prompt_user` tool call — the mechanism at
+> `serve/protocols/agui.py:782`, where a run resumes from a `tool` message. But in
+> the *normal* AG-UI flow the **model** emits the tool call and the result returns
+> **to the model's context**. Routing a human node that way would put Claude
+> between the delegate and the verdict, free to paraphrase, drop, or re-interpret
+> the determination. That is precisely the invariant this spec exists to hold.
+>
+> Nothing in AG-UI requires a tool call to originate from an LLM — they are events
+> on a stream. So the runner emits `ToolCallStart/Args/End` for `prompt_user`
+> itself, awaits the `tool` message, and writes the decision straight into the
+> verdict. AG-UI stays pure transport and no model is in the loop. **The obvious
+> implementation is the wrong one; record this before anyone reaches for it.**
+>
+> **3. Durability is T10's problem, and it is nearly free.** A frontend tool
+> round-trip only works while someone is watching the stream; a delegate deciding
+> tomorrow needs the run to *suspend*, which an SSE connection cannot hold. The
+> **run record is already the resume token** — T11 replay reconstructs every
+> verdict up to the human node from snapshots with zero LLM calls, which is
+> exactly what resume requires. The only addition is a record whose status is
+> `awaiting_human` with the decision absent. So suspend/resume is **additive over
+> T10+T11, not a redesign** — a reason to keep them ahead of T14. Build none of it
+> in T8; just do not design a decision seam that cannot later be satisfied by a
+> value arriving from somewhere other than a terminal.
+
 **Verification:** `pytest tests/unit/workflow/test_human_node.py -n auto` · scripted `holodeck workflow run sample/pbas-points/workflow.yaml --input sample/pbas-points/case.json`
 
 **Dependencies:** T7 · **Files:** `src/holodeck/lib/workflow/human.py`, `runner.py`, `cli/commands/workflow.py`, tests, `sample/pbas-points/**` · **Scope:** M
