@@ -240,10 +240,17 @@ mapping per the `deploy.py` context-manager pattern, `click.echo` output.
 
 **Dependencies:** T4, T5 · **Files:** `src/holodeck/lib/workflow/runner.py`, `src/holodeck/cli/commands/workflow.py`, `src/holodeck/cli/main.py`, tests · **Scope:** M
 
-### Checkpoint 1 — US1 complete — **NOT complete** (human review outstanding)
-- [x] `make format && make lint && make type-check` clean; `pytest tests/unit -n auto` green — **5298 passing, 4 skipped; security and pre-commit also clean** at `1d9d2eb`.
-- [x] A single edge→policy workflow runs via CLI with a mocked agent — and live, via `sample/pbas-points/`.
-- [ ] **Human review before Phase 2** — outstanding. This is what blocks the checkpoint.
+### Checkpoint 1 — US1 complete — **PASSED 2026-07-25**
+- [x] `make format && make lint && make type-check` clean; `pytest tests/unit -n auto` green — **5298 passing, 4 skipped; security and pre-commit also clean**. Full `make ci` re-run green at checkpoint.
+- [x] A single edge→policy workflow runs via CLI with a mocked agent — **and live**, via `sample/pbas-points/`: free text classified by Claude, gate-validated, then `tables/points.dmn.yaml` rule 10 awarded 20 points `per_week`. The determination came from the table, not the model (SC-003, FR-005 demonstrated rather than asserted).
+- [x] **Human review before Phase 2** — done by the maintainer, who ran the live workflow.
+
+**Phase 2 is unblocked.** Carried forward as known-incomplete, not silently: FR-018
+unreachable from the CLI (see T6, closed by T13); `format: date` → `datetime.date`
+conversion absent (T13a prerequisite); no adversarial pass has yet audited the
+*seams between* tasks — each was audited in isolation, and both of the worst
+findings so far (the `!=` silent verdict, remote `$ref` fetching) lived at
+boundaries.
 
 ---
 
