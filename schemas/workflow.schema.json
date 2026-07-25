@@ -180,6 +180,22 @@
       "title": "HumanNode",
       "type": "object"
     },
+    "InputDataRef": {
+      "additionalProperties": false,
+      "description": "A declared fact of record entering the run from outside the spine.\n\nNamed for DMN's ``<inputData>``. These are the prior state and case facts a\nrun computes its transition from \u2014 supplied by the caller and validated\nagainst their declared JSON Schema before any node executes (FR-025).\n\nThe model is deliberately closed and carries *only* a schema path: there is\nno ``edge``/``agent`` field, so \"an agent produced this fact of record\" is\nunrepresentable (FR-027, SC-010).",
+      "properties": {
+        "schema": {
+          "description": "Path to this fact's JSON Schema, relative to workflow.yaml. The supplied value is validated against it before any node runs.",
+          "title": "Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema"
+      ],
+      "title": "InputDataRef",
+      "type": "object"
+    },
     "PolicyNode": {
       "additionalProperties": false,
       "description": "A pure determination node: a DMN table evaluated over named inputs.\n\nThe hit policy is a property of the referenced decision table (DMN-faithful,\nsingle source of truth), not of the node \u2014 see ``DecisionTable.hit_policy``.",
@@ -251,6 +267,22 @@
       "default": null,
       "description": "Optional authority annotation (knowledgeSource-lite).",
       "title": "Source"
+    },
+    "input_data": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/InputDataRef"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Typed facts of record supplied to the run from outside the spine (prior state, case facts), keyed by name. Referenceable from a node's inputs: exactly like a node verdict. Never LLM-produced.",
+      "title": "Input Data"
     },
     "nodes": {
       "description": "The workflow's determination and edge nodes.",

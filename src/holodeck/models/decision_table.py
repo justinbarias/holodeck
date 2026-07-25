@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import sys
 from collections import Counter
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,12 @@ if sys.version_info >= (3, 11):
     from typing import Self
 else:
     from typing_extensions import Self
+
+
+# ``provenance`` records how a table was authored, never what it decides.
+# Reserving the root name keeps it out of every input expression and rule cell,
+# so it can never influence a match (FR-032).
+_RESERVED_FEEL_ROOTS: frozenset[str] = frozenset({"provenance"})
 
 
 class HitPolicy(str, Enum):
@@ -104,6 +111,53 @@ class TableOutput(BaseModel):
     )
 
 
+class Provenance(BaseModel):
+    """How a decision table came to exist (FR-029).
+
+    Non-executable metadata: it is snapshotted into the run record and the
+    node's OTel span (FR-031) but is never visible to FEEL and never affects
+    rule matching (FR-032). A hand-authored table omits the block entirely.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    generated_by: str | None = Field(
+        default=None,
+        description="Model identifier that drafted the table; absent when "
+        "hand-authored.",
+    )
+    source: str | None = Field(
+        default=None,
+        description="The policy authority, e.g. 'Social Security Guide 3.11.13.50'.",
+    )
+    source_doc: str | None = Field(
+        default=None,
+        description="Path or reference to the source document.",
+    )
+    source_sha256: str | None = Field(
+        default=None,
+        description="SHA-256 digest of the source document.",
+    )
+    reviewed_by: str | None = Field(
+        default=None,
+        description="Human reviewer who signed the table off.",
+    )
+    reviewed_at: datetime | None = Field(
+        default=None,
+        description="When the review was recorded (ISO 8601).",
+    )
+
+    @property
+    def awaiting_review(self) -> bool:
+        """Whether generated policy still lacks a recorded human reviewer.
+
+        Returns:
+            ``True`` when ``generated_by`` is set and ``reviewed_by`` is not —
+            the state the FR-030 review gate refuses to run.
+        """
+        return self.generated_by is not None and self.reviewed_by is None
+
+
 class Rule(BaseModel):
     """One decision rule: keyed unary-test cells mapping to an output entry.
 
@@ -135,7 +189,8 @@ class DecisionTable(BaseModel):
     Validation at load enforces unique input/output names, that every rule
     cell and output entry references a declared column, output-value
     membership, ``then`` completeness, and the FEEL subset on every expression
-    and cell — all before any evaluation (FR-010/FR-012).
+    and cell — all before any evaluation (FR-010/FR-012). It also rejects any
+    FEEL reference to the non-executable ``provenance`` block (FR-032).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -167,6 +222,11 @@ class DecisionTable(BaseModel):
     source: str | None = Field(
         default=None,
         description="Optional authority annotation (knowledgeSource-lite).",
+    )
+    provenance: Provenance | None = Field(
+        default=None,
+        description="Optional non-executable record of how the table was "
+        "authored and reviewed (FR-029).",
     )
 
     @model_validator(mode="after")
@@ -207,13 +267,16 @@ class DecisionTable(BaseModel):
         # Static FEEL subset enforcement (raises FeelValidationError w/ locator).
         for inp in self.inputs:
             feel.validate_expression(
-                inp.expression, locator=f"table '{self.id}' input '{inp.name}'"
+                inp.expression,
+                locator=f"table '{self.id}' input '{inp.name}'",
+                reserved_roots=_RESERVED_FEEL_ROOTS,
             )
         for idx, rule in enumerate(self.rules, start=1):
             for cell_name, cell in rule.when.items():
                 feel.validate_unary_test(
                     cell,
                     locator=f"table '{self.id}' rule {idx} cell '{cell_name}'",
+                    reserved_roots=_RESERVED_FEEL_ROOTS,
                 )
         return self
 

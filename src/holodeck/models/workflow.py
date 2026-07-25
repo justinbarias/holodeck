@@ -80,6 +80,35 @@ class GateRef(BaseModel):
     )
 
 
+class InputDataRef(BaseModel):
+    """A declared fact of record entering the run from outside the spine.
+
+    Named for DMN's ``<inputData>``. These are the prior state and case facts a
+    run computes its transition from — supplied by the caller and validated
+    against their declared JSON Schema before any node executes (FR-025).
+
+    The model is deliberately closed and carries *only* a schema path: there is
+    no ``edge``/``agent`` field, so "an agent produced this fact of record" is
+    unrepresentable (FR-027, SC-010).
+    """
+
+    # Same schema/schema_path aliasing as GateRef, for the same reason — see
+    # the comment there. A bare model_dump() must emit `schema` so emitted
+    # artifacts (the T10 run record persists the input_data payload, FR-028)
+    # match the published workflow.schema.json.
+    model_config = ConfigDict(
+        extra="forbid", populate_by_name=True, serialize_by_alias=True
+    )
+
+    schema_path: str = Field(
+        alias="schema",
+        description=(
+            "Path to this fact's JSON Schema, relative to workflow.yaml. The "
+            "supplied value is validated against it before any node runs."
+        ),
+    )
+
+
 class DraftRef(BaseModel):
     """The optional drafting agent on a human node (``draft: {agent: ...}``)."""
 
@@ -242,6 +271,12 @@ class Workflow(BaseModel):
         default=None,
         description="Optional authority annotation (knowledgeSource-lite).",
     )
+    input_data: dict[str, InputDataRef] | None = Field(
+        default=None,
+        description="Typed facts of record supplied to the run from outside the "
+        "spine (prior state, case facts), keyed by name. Referenceable from a "
+        "node's inputs: exactly like a node verdict. Never LLM-produced.",
+    )
     nodes: list[NodeUnion] = Field(
         min_length=1,
         description="The workflow's determination and edge nodes.",
@@ -256,16 +291,33 @@ class Workflow(BaseModel):
             raise ValueError(f"Duplicate node id(s): {duplicates}")
 
         id_set = set(ids)
+        fact_names = set(self.input_data or {})
+        # One name, one meaning: a fact of record and a node cannot share a name,
+        # or `inputs: [x]` would be ambiguous between a supplied fact and a
+        # computed verdict.
+        collisions = sorted(fact_names & id_set)
+        if collisions:
+            raise ValueError(
+                f"input_data name(s) collide with node id(s): {collisions}"
+            )
+
         graph: dict[str, set[str]] = {}
         for node in self.nodes:
             inputs: list[str] = getattr(node, "inputs", None) or []
             for ref in inputs:
-                if ref not in id_set:
+                if ref not in id_set and ref not in fact_names:
                     raise ValueError(
                         f"Node '{node.id}' references unknown input '{ref}'"
                     )
             # graphlib maps a node to the set of nodes that must precede it.
-            graph[node.id] = set(inputs)
+            #
+            # input_data names are deliberately excluded: they are facts already
+            # in hand when the run starts, not work to schedule. Feeding them to
+            # graphlib would put them in the topological order as things to
+            # execute, and every consumer of that order would then have to filter
+            # them back out. They cannot participate in a cycle either — nothing
+            # produces them — so dropping them costs no validation.
+            graph[node.id] = {ref for ref in inputs if ref in id_set}
 
         try:
             TopologicalSorter(graph).prepare()

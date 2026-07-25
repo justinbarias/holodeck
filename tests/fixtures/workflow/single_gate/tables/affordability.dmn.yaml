@@ -1,0 +1,30 @@
+id: affordability
+name: Hardship affordability
+version: "2026-06-01.1"
+hit_policy: UNIQUE
+inputs:
+  - name: surplus_ratio
+    expression: "(evidence.net_income - evidence.expenses) / evidence.net_income"
+    type: number
+  - name: residency_status
+    expression: "applicant.residency_status"
+    type: string
+outputs:
+  - name: affordability
+    type: string
+    values: [affordable, marginal, unaffordable]
+rules:
+  - when:
+      surplus_ratio: ">= 0.25"
+      residency_status: '"verified"'
+    then:
+      affordability: affordable
+    annotation: Comfortable surplus, residency verified
+  - when:
+      surplus_ratio: "[0.10..0.25)"
+    then:
+      affordability: marginal
+  - when:
+      surplus_ratio: "< 0.10"
+    then:
+      affordability: unaffordable

@@ -5,6 +5,9 @@ output off the spine (FR-005/SC-008), and DAG validation — unique ids, resolve
 input references, and cycle rejection at load time (FR-003).
 """
 
+import json
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -12,6 +15,7 @@ from holodeck.models.workflow import (
     EdgeNode,
     GateRef,
     HumanNode,
+    InputDataRef,
     PolicyNode,
     Workflow,
 )
@@ -236,6 +240,121 @@ class TestSourceAnnotation:
         assert wf.source == "Hardship Policy v4.2"
         assert wf.nodes[0].source == "Income Policy §1"
         assert wf.nodes[1].source == "Hardship Policy v4.2 §72"
+
+
+@pytest.mark.unit
+class TestInputDataDeclaration:
+    """FR-025/FR-026: workflow-level facts of record, referenceable by name."""
+
+    def test_input_data_block_parses(self) -> None:
+        wf_dict = _workflow([_policy("zone", ["prior_state"])])
+        wf_dict["input_data"] = {"prior_state": {"schema": "schemas/prior.json"}}
+
+        wf = Workflow.model_validate(wf_dict)
+
+        assert wf.input_data is not None
+        assert wf.input_data["prior_state"].schema_path == "schemas/prior.json"
+
+    def test_workflow_without_input_data_is_unchanged(self) -> None:
+        wf = Workflow.model_validate(_workflow([_edge("income")]))
+
+        assert wf.input_data is None
+
+    def test_input_data_name_resolves_in_node_inputs(self) -> None:
+        # FR-026: a fact name is referenceable exactly like a node verdict.
+        nodes = [_edge("excuse"), _policy("zone", ["prior_state", "excuse"])]
+        wf_dict = _workflow(nodes)
+        wf_dict["input_data"] = {"prior_state": {"schema": "schemas/prior.json"}}
+
+        wf = Workflow.model_validate(wf_dict)
+
+        assert wf.nodes[1].inputs == ["prior_state", "excuse"]
+
+    def test_undeclared_fact_name_still_rejected(self) -> None:
+        wf_dict = _workflow([_policy("zone", ["prior_state"])])
+        wf_dict["input_data"] = {"other": {"schema": "schemas/other.json"}}
+
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(wf_dict)
+
+        assert "unknown input 'prior_state'" in str(exc.value)
+
+    def test_collision_with_node_id_rejected(self) -> None:
+        # One name, one meaning: `inputs: [zone]` must not be ambiguous.
+        nodes = [_edge("zone"), _policy("final", ["zone"])]
+        wf_dict = _workflow(nodes)
+        wf_dict["input_data"] = {"zone": {"schema": "schemas/zone.json"}}
+
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(wf_dict)
+
+        assert "collide" in str(exc.value)
+        assert "zone" in str(exc.value)
+
+    def test_fact_names_are_not_scheduled_as_nodes(self) -> None:
+        # input_data names are facts already in hand, not work to execute, so
+        # they must not appear as graph nodes. A fact sharing a name with a
+        # *node's* dependency set would otherwise widen the topological order.
+        wf_dict = _workflow([_policy("zone", ["prior_state"])])
+        wf_dict["input_data"] = {"prior_state": {"schema": "schemas/prior.json"}}
+
+        wf = Workflow.model_validate(wf_dict)
+
+        assert [node.id for node in wf.nodes] == ["zone"]
+
+    def test_bare_model_dump_emits_schema_key(self) -> None:
+        ref = InputDataRef.model_validate({"schema": "schemas/prior.json"})
+
+        assert ref.model_dump() == {"schema": "schemas/prior.json"}
+
+
+@pytest.mark.unit
+class TestInputDataIsNeverAgentProduced:
+    """FR-027/SC-010: an agent-produced fact of record is unrepresentable."""
+
+    def test_input_data_entry_cannot_declare_an_agent(self) -> None:
+        wf_dict = _workflow([_policy("zone", ["prior_state"])])
+        wf_dict["input_data"] = {
+            "prior_state": {
+                "schema": "schemas/prior.json",
+                "agent": "agents/sneaky/agent.yaml",
+            }
+        }
+
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(wf_dict)
+
+        assert "agent" in str(exc.value)
+
+    def test_input_data_entry_cannot_declare_an_edge(self) -> None:
+        wf_dict = _workflow([_policy("zone", ["prior_state"])])
+        wf_dict["input_data"] = {
+            "prior_state": {
+                "schema": "schemas/prior.json",
+                "edge": {"agent": "agents/sneaky/agent.yaml"},
+            }
+        }
+
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(wf_dict)
+
+        assert "edge" in str(exc.value)
+
+    def test_published_schema_closes_the_input_data_entry(self) -> None:
+        # SC-010 against the published artifact editors validate against, not
+        # just the in-process model.
+        schema_path = (
+            Path(__file__).resolve().parents[3] / "schemas" / "workflow.schema.json"
+        )
+        schema = json.loads(schema_path.read_text())
+
+        entry = schema["$defs"]["InputDataRef"]
+
+        assert entry["additionalProperties"] is False
+        assert set(entry["properties"]) == {"schema"}
+        assert schema["properties"]["input_data"]["anyOf"][0][
+            "additionalProperties"
+        ] == {"$ref": "#/$defs/InputDataRef"}
 
 
 class TestGateRefSerialization:

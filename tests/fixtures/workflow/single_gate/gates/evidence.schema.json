@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "net_income": { "type": "number" },
+    "expenses": { "type": "number" }
+  },
+  "required": ["net_income", "expenses"],
+  "additionalProperties": false
+}

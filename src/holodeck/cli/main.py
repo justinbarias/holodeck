@@ -90,6 +90,7 @@ from holodeck.cli.commands.init import init  # noqa: E402, F401
 from holodeck.cli.commands.mcp import mcp  # noqa: E402, F401
 from holodeck.cli.commands.serve import serve  # noqa: E402, F401
 from holodeck.cli.commands.test import test  # noqa: E402, F401
+from holodeck.cli.commands.workflow import workflow  # noqa: E402, F401
 
 # Register commands
 main.add_command(init)
@@ -99,6 +100,7 @@ main.add_command(config)
 main.add_command(deploy)
 main.add_command(mcp)
 main.add_command(serve)
+main.add_command(workflow)
 
 
 if __name__ == "__main__":

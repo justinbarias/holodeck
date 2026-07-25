@@ -527,3 +527,100 @@ class FeelEvaluationError(WorkflowError):
         self.locator = locator
         self.message = message
         super().__init__(f"FEEL evaluation error at {locator}: {message}")
+
+
+class TableEvalError(WorkflowError):
+    """Exception raised when a decision table cannot produce a single verdict.
+
+    The two loud-failure cases of FR-012: no rule matched and the table
+    declares no default, or a ``UNIQUE`` table matched more than one rule.
+    Silent degradation (picking a rule anyway) is never acceptable — a table
+    that cannot decide must stop the run.
+
+    Attributes:
+        message: Human-readable message naming the table and the failure.
+    """
+
+    def __init__(self, message: str) -> None:
+        """Initialize TableEvalError with a descriptive message."""
+        self.message = message
+        super().__init__(message)
+
+
+class GateValidationError(WorkflowError):
+    """Exception raised when an edge agent's output fails its schema gate.
+
+    Free text (no ``structured_output``) or output that does not satisfy the
+    node's ``gate.schema`` is rejected here, so ungated AI output never crosses
+    into the spine (FR-007, FR-008, SC-003).
+
+    Attributes:
+        node_id: The edge node whose output was rejected.
+        message: Description of the validation failure.
+    """
+
+    def __init__(self, node_id: str, message: str) -> None:
+        """Initialize GateValidationError with the node id and a message."""
+        self.node_id = node_id
+        self.message = message
+        super().__init__(f"gate rejected output of node '{node_id}': {message}")
+
+
+class GateSchemaError(WorkflowError):
+    """Exception raised when a node's gate schema itself cannot be used.
+
+    Distinct from :class:`GateValidationError`: this is a workflow-authoring
+    defect (missing file, malformed JSON, not a schema object), not a rejection
+    of AI output. Keeping the two apart matters because SC-003 counts gate
+    rejections as evidence about model output — a broken schema file is not
+    evidence about the model at all.
+
+    Attributes:
+        node_id: The edge node whose gate schema is unusable.
+        message: Description of the problem with the schema.
+    """
+
+    def __init__(self, node_id: str, message: str) -> None:
+        """Initialize GateSchemaError with the node id and a message."""
+        self.node_id = node_id
+        self.message = message
+        super().__init__(f"gate schema for node '{node_id}' is unusable: {message}")
+
+
+class InputDataError(WorkflowError):
+    """Exception raised when a declared ``input_data`` fact is missing/invalid.
+
+    Facts of record are validated against their declared JSON Schema before any
+    node executes, so a bad transition input stops the run rather than silently
+    flowing into a determination (FR-025).
+
+    Attributes:
+        name: The declared ``input_data`` fact at fault.
+        message: Description of what is missing or invalid.
+    """
+
+    def __init__(self, name: str, message: str) -> None:
+        """Initialize InputDataError with the fact name and a message."""
+        self.name = name
+        self.message = message
+        super().__init__(f"input_data '{name}': {message}")
+
+
+class PolicyReviewError(WorkflowError):
+    """Exception raised when a generated decision table has not been reviewed.
+
+    A table carrying ``provenance.generated_by`` without ``provenance.reviewed_by``
+    is AI-drafted policy that no human has signed off. Running it would let a
+    model's output become a determination, so the run is refused (FR-030,
+    SC-009). Hand-authored tables (no ``provenance`` block) are unaffected.
+
+    Attributes:
+        table_id: The unreviewed table.
+        message: Description of the refusal.
+    """
+
+    def __init__(self, table_id: str, message: str) -> None:
+        """Initialize PolicyReviewError with the table id and a message."""
+        self.table_id = table_id
+        self.message = message
+        super().__init__(f"refusing to run table '{table_id}': {message}")
