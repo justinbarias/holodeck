@@ -170,8 +170,17 @@ security: ## Run security checks
 	#                             ignore — every other prior advisory is now fixed upstream
 	#                             (pins in pyproject constraint-dependencies) or no longer
 	#                             flagged by pip-audit (advisory withdrawn / range corrected).
+	# PYSEC-2026-597 (nltk)     — aka CVE-2026-12243. The PYSEC ID is the one passed to
+	#                             --ignore-vuln below; pip-audit reports it under that ID.
+	#                             Path traversal in nltk.data.load()/find() via percent-encoded
+	#                             `..%2f` sequences. 3.9.4 is the latest release and is still
+	#                             affected; no fixed release exists. Transitive only (via
+	#                             azure-ai-evaluation, rouge-score) — HoloDeck never imports
+	#                             nltk and never calls the vulnerable loaders, so there is no
+	#                             reachable path. Drop this ignore when nltk ships a fix.
 	uv run pip-audit --progress-spinner=off \
-		--ignore-vuln CVE-2026-45829
+		--ignore-vuln CVE-2026-45829 \
+		--ignore-vuln PYSEC-2026-597
 	@echo "Scanning for security issues with Ruff..."
 	uv run ruff check $(SRC_DIR) --select S
 	@echo "Scanning for security issues with Bandit..."

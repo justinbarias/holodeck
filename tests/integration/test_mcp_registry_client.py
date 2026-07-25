@@ -2,7 +2,18 @@
 
 These tests make real HTTP calls to https://registry.modelcontextprotocol.io
 and verify the client correctly handles API responses and errors.
+
+Skipped by default. Unlike the other integration suites — which gate on a
+missing credential — these depend on a third-party service being both
+reachable *and* fast: ``MCPRegistryClient.DEFAULT_TIMEOUT`` is 5s ("fail
+fast"), and CI runners intermittently exceed it, failing a different subset
+of tests on each run. A reachability probe would not help, because the
+failure mode is a read timeout under load rather than a refused connection.
+
+Set ``SKIP_NETWORK_TESTS=false`` to exercise them against the live registry.
 """
+
+import os
 
 import pytest
 
@@ -19,6 +30,13 @@ from holodeck.models.registry import (
 from holodeck.services.mcp_registry import (
     MCPRegistryClient,
     registry_to_mcp_tool,
+)
+
+SKIP_NETWORK_TESTS = os.getenv("SKIP_NETWORK_TESTS", "true").lower() != "false"
+
+pytestmark = pytest.mark.skipif(
+    SKIP_NETWORK_TESTS,
+    reason="Live MCP registry not exercised (set SKIP_NETWORK_TESTS=false to run)",
 )
 
 

@@ -1,0 +1,282 @@
+{
+  "$defs": {
+    "DraftRef": {
+      "additionalProperties": false,
+      "description": "The optional drafting agent on a human node (``draft: {agent: ...}``).",
+      "properties": {
+        "agent": {
+          "description": "Path to the drafting agent's agent.yaml, relative to workflow.yaml. Produces only the advisory fields in ai_may_draft.",
+          "title": "Agent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "title": "DraftRef",
+      "type": "object"
+    },
+    "EdgeNode": {
+      "additionalProperties": false,
+      "description": "A leaf node that runs an agent and emits a gate-validated input object.\n\nEdge nodes never emit a verdict and never declare a decision table; the\nclosed schema (no ``decision``/``hit_policy``/``inputs`` fields) is what\nkeeps AI output off the spine (FR-005).",
+      "properties": {
+        "id": {
+          "description": "Unique node id within the workflow.",
+          "title": "Id",
+          "type": "string"
+        },
+        "edge": {
+          "$ref": "#/$defs/EdgeRef",
+          "description": "The agent that produces this node's object."
+        },
+        "gate": {
+          "$ref": "#/$defs/GateRef",
+          "description": "The schema gate the agent output must cross."
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional authority annotation (knowledgeSource-lite), e.g. \"Hardship Policy v4.2 \u00a772\"; recorded and emitted as a span attribute.",
+          "title": "Source"
+        }
+      },
+      "required": [
+        "id",
+        "edge",
+        "gate"
+      ],
+      "title": "EdgeNode",
+      "type": "object"
+    },
+    "EdgeRef": {
+      "additionalProperties": false,
+      "description": "The agent reference on an edge node (``edge: {agent: ...}``).",
+      "properties": {
+        "agent": {
+          "description": "Path to the edge agent's agent.yaml, relative to workflow.yaml.",
+          "title": "Agent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent"
+      ],
+      "title": "EdgeRef",
+      "type": "object"
+    },
+    "GateRef": {
+      "additionalProperties": false,
+      "description": "The schema gate on an edge node (``gate: {schema: ...}``).\n\nThe gate's JSON Schema is the typed boundary the agent's structured output\nmust satisfy before it may cross into the spine (FR-007).",
+      "properties": {
+        "schema": {
+          "description": "Path to the gate JSON Schema, relative to workflow.yaml. The edge agent's structured_output is validated against it at the gate.",
+          "title": "Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema"
+      ],
+      "title": "GateRef",
+      "type": "object"
+    },
+    "HumanNode": {
+      "additionalProperties": false,
+      "description": "The bright line: a DMN table recommends, a named human decides.\n\nThe table is evaluated to produce a *recommendation* (refinements \u00a72); the\nCLI prompts a human to accept or override it. AI output may only draft the\nadvisory fields named in ``ai_may_draft`` \u2014 never the verdict (FR-015a).",
+      "properties": {
+        "id": {
+          "description": "Unique node id within the workflow.",
+          "title": "Id",
+          "type": "string"
+        },
+        "decision": {
+          "description": "Path to the decision table (tables/*.dmn.yaml), relative to workflow.yaml.",
+          "title": "Decision",
+          "type": "string"
+        },
+        "inputs": {
+          "description": "Ids of the nodes whose verdicts/objects feed this table.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Inputs",
+          "type": "array"
+        },
+        "requires_human": {
+          "const": true,
+          "description": "Marks this node as the human determination (always true).",
+          "title": "Requires Human",
+          "type": "boolean"
+        },
+        "decided_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Declared decision-maker role or name (refinements \u00a76); confirmed or entered at the CLI prompt and recorded verbatim.",
+          "title": "Decided By"
+        },
+        "draft": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DraftRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional drafting agent; produces only ai_may_draft fields."
+        },
+        "ai_may_draft": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Advisory fields the drafting agent may produce (POC: [reasons]). Never populates the verdict.",
+          "title": "Ai May Draft"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional authority annotation (knowledgeSource-lite).",
+          "title": "Source"
+        }
+      },
+      "required": [
+        "id",
+        "decision",
+        "inputs",
+        "requires_human"
+      ],
+      "title": "HumanNode",
+      "type": "object"
+    },
+    "PolicyNode": {
+      "additionalProperties": false,
+      "description": "A pure determination node: a DMN table evaluated over named inputs.\n\nThe hit policy is a property of the referenced decision table (DMN-faithful,\nsingle source of truth), not of the node \u2014 see ``DecisionTable.hit_policy``.",
+      "properties": {
+        "id": {
+          "description": "Unique node id within the workflow.",
+          "title": "Id",
+          "type": "string"
+        },
+        "decision": {
+          "description": "Path to the decision table (tables/*.dmn.yaml), relative to workflow.yaml.",
+          "title": "Decision",
+          "type": "string"
+        },
+        "inputs": {
+          "description": "Ids of the nodes whose verdicts/objects feed this table.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Inputs",
+          "type": "array"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional authority annotation (knowledgeSource-lite).",
+          "title": "Source"
+        }
+      },
+      "required": [
+        "id",
+        "decision",
+        "inputs"
+      ],
+      "title": "PolicyNode",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The ``workflow.yaml`` artifact: a DAG of determination nodes.\n\nThe graph is the DMN Decision Requirement Diagram in logical form: a node's\n``inputs`` name the nodes below it. The graph must be acyclic with all\nreferences resolved \u2014 both are enforced at load, before any agent runs\n(FR-003).",
+  "properties": {
+    "name": {
+      "description": "Workflow identifier.",
+      "title": "Name",
+      "type": "string"
+    },
+    "version": {
+      "description": "Workflow version label.",
+      "title": "Version",
+      "type": "string"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional authority annotation (knowledgeSource-lite).",
+      "title": "Source"
+    },
+    "nodes": {
+      "description": "The workflow's determination and edge nodes.",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/EdgeNode"
+          },
+          {
+            "$ref": "#/$defs/PolicyNode"
+          },
+          {
+            "$ref": "#/$defs/HumanNode"
+          }
+        ]
+      },
+      "minItems": 1,
+      "title": "Nodes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "nodes"
+  ],
+  "title": "Workflow",
+  "type": "object"
+}

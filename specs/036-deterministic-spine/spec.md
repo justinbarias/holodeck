@@ -6,6 +6,17 @@
 **Author**: justinbarias (with Claude)
 **Input**: User description: "A new HoloDeck feature to model deterministic workflows and rules with BPMN & DMN. An engine that models deterministic workflows while using HoloDeck agents on the edges (leaf nodes). Ship 'just the gate' as a composable primitive; show how to compose multiple determination levels. FEEL required. `requires_human` = CLI prompt. Anchor sample: loan hardship underwriting."
 **Related**: `docs/ideas/deterministic-spine.md` (idea one-pager), `specs/029-subagent-orchestration`, `specs/018-otel-observability`, `specs/022-otel-genai-semconv`, `specs/006-agent-test-execution`
+**Successor**: `specs/039-policy-generator` — AI-drafted decision tables and DRDs from policy documents. Specced in parallel so its schema needs land as additions here while this schema is still soft; **built only after this spec's MVP ships**.
+
+> **Re-orientation, 2026-07-25.** Three changes from the original draft, all
+> recorded in `refinements.md` and the grilling session that produced them:
+> 1. **An MVP ship line now exists** (see below). The original tagged US1/US2/US3
+>    all P1 with no stopping point, which is a full build, not a slice.
+> 2. **The anchor sample moved** from invented loan-hardship underwriting to the
+>    Australian **Targeted Compliance Framework** — real, public, citable policy
+>    in the exact domain the Motivation names.
+> 3. **Generation is a named successor spec (039), not a phase here.** The
+>    headline claim of this spec is unchanged: the LLM is never the spine.
 **Concept ref**: *The Deterministic Spine* (FDE-01/A)
 
 ## Motivation
@@ -43,6 +54,52 @@ queryable) is **North Star, not POC** — the POC's audit surface is OpenTelemet
 spans plus the local run record, which are sufficient to *replay* a determination
 but are not themselves a legal-grade audit store.
 
+## The MVP ship line
+
+This spec has one explicit stopping point. Everything above the line is required
+to make the central claim; everything below it is real work that the claim does
+not depend on.
+
+**MVP = T4, T5, T6, T7, T8, T10, T11, T14** — a multi-level DAG that runs, pauses
+for a named human, records, and replays identically, demonstrated on the TCF
+sample.
+
+| | Delivered by the MVP |
+|---|---|
+| SC-001 | compose ≥3 determination levels |
+| SC-002 | replay from the record alone, 0 LLM calls |
+| SC-003 | gate rejects ungated AI output, 100% |
+| SC-004 | hit policies + conformance suite |
+| SC-005 | FEEL subset the sample needs |
+| SC-007 | sample runs and replays |
+| SC-008 | AI-as-verdict unrepresentable |
+| SC-009 | generated-but-unreviewed policy refuses to run |
+
+**Only SC-006 (a table tested in isolation) falls past the line**, because it
+needs the `WorkflowTestExecutor` (T12).
+
+Post-MVP, in order: **T9** (draft agent), **T12** (policy tests), **T13** (full
+OTel attributes), **T15** (docs). The MVP's human node therefore ships **without**
+a `draft:` block — permitted by FR-015a, which already allows a human node that
+presents composed inputs and the table's recommendation only.
+
+## A run is one state transition
+
+The spine is stateless. A run takes `(input_data, evidence) → verdict` and holds
+no memory between runs.
+
+Where a policy domain *is* stateful — TCF accrues demerits over time, expires
+them after 6 active months, and escalates penalties by prior-penalty count — the
+prior state is supplied as **`input_data`** (declared facts from a system of
+record) and the workflow computes the **next** state. One run models one
+compliance event.
+
+This keeps the DAG acyclic, stateless, and replayable, and it is the honest
+framing for an appeal: replaying a determination reproduces the transition that
+was actually made, against the policy version in force at the time.
+
+Maintaining the state across runs is **not** this spec's job and is not in scope.
+
 ## Architectural shape and what it adds
 
 The spine is a new, self-contained subsystem. It **reuses** the backend
@@ -69,6 +126,8 @@ no events/timers/message-flows.
 - **Edge node** — a leaf node that runs a HoloDeck agent; it emits a gate-validated *input object*, never a verdict.
 - **Schema gate** (`gate:`) — the typed boundary on an edge node where the agent's `structured_output` is validated before it may cross into the spine. **"Gate" always means this boundary** — never the DMN node. (The feature title's "Determination Gates" is shorthand for "determination nodes fed across schema gates.")
 - **Verdict** — a determination node's typed output; becomes a named input to dependent nodes.
+- **`input_data`** — a workflow-level block declaring typed facts supplied to the run from outside (prior state, case facts), validated against a JSON Schema. Named for DMN's `<inputData>`. **Never LLM-produced** — these are facts of record, and routing them through an agent would put a model upstream of data it has no business touching.
+- **`inputs:`** (on a node) — that node's *information requirements*: the ids of nodes (or `input_data` keys) whose values it consumes. **One word, one meaning:** node-level `inputs:` always means "what this node depends on," never "facts entering the workflow." That second sense is `input_data:` and only `input_data:`.
 
 ### Why "workflow" not "determination"
 
@@ -206,24 +265,51 @@ reflects table correctness independent of any agent.
 
 ---
 
-### User Story 6 — Loan hardship underwriting sample (Priority: P3)
+### User Story 6 — Targeted Compliance Framework sample (Priority: P1 — in the MVP)
 
-A complete, runnable sample lives under `sample/` demonstrating three Level-1
-edge agents (income/expense extraction, residency verification, document-fraud
-flag), two Level-2 tables (affordability `UNIQUE`, risk tier `FIRST`), and one
-Level-3 human determination (`PRIORITY`: auto-approve / refer-to-officer /
-decline). It runs one applicant end-to-end and then replays the record.
+A complete, runnable sample lives at `sample/tcf-compliance/` modelling one
+mutual-obligation compliance event under the Australian **Targeted Compliance
+Framework**:
 
-**Why this priority**: Proof and documentation, not core engine; P3.
+- **`input_data`** — the participant's prior compliance state from a system of
+  record: current zone, active demerit count and their accrual dates, prior
+  penalty count, months compliant. Never LLM-touched.
+- **Edge node** — an agent assesses the participant's *stated reason* for
+  non-compliance against the enumerated factors in the *Social Security
+  (Administration) (Reasonable Excuse – Participation Payments) Determination
+  2018* (s5 matters to consider, s6 matters excluded), emitting a typed object
+  across a schema gate.
+- **Policy nodes** — a zone/demerit table (`UNIQUE`) computing the next zone from
+  prior state plus this event, and a penalty escalation table (`FIRST`).
+- **Human node** — a named delegate accepts or overrides the table's
+  recommendation. No `draft:` block in the MVP.
 
-**Independent Test**: `holodeck workflow run sample/loan-hardship/workflow.yaml`
-completes end-to-end with a scripted human answer and prints a composed
-determination; `holodeck workflow replay` reproduces it identically.
+**Why this is the anchor**: the statute itself draws the schema gate. "Was there
+a reasonable excuse?" is a judgement over free text — an edge node. "What zone,
+what penalty?" is arithmetic over prior state — a policy node. "Who decided?" is
+a named human. HoloDeck does not have to argue for that boundary; Parliament
+already drew it. This is the concrete answer to the Motivation's Robodebt
+reference: the same class of determination, made reproducible, replayable, and
+attributable to a person.
+
+**Why P1, not P3**: it is the MVP's proof. SC-005 and SC-007 are defined in terms
+of it, so it is not optional decoration.
+
+**Framing obligation**: the sample's README MUST state up front that it
+demonstrates *constraining* automated decision-making — auditable, replayable,
+human-attributed, with the model structurally excluded from the verdict — and
+that it is not a proposal to automate welfare penalties. This is stated
+deliberately, not discovered by a reader.
+
+**Independent Test**: `holodeck workflow run sample/tcf-compliance/workflow.yaml
+--input case.json` completes end-to-end with a scripted human answer and prints a
+composed determination; `holodeck workflow replay` reproduces it identically.
 
 **Acceptance Scenarios**:
 
-1. **Given** the sample, **When** run end-to-end, **Then** it produces a final determination composed from both Level-2 verdicts and a human decision.
+1. **Given** the sample, **When** run end-to-end, **Then** it produces a final determination composed from the zone and penalty verdicts and a human decision.
 2. **Given** the sample's run record, **When** replayed, **Then** the determination is reproduced identically with no LLM calls.
+3. **Given** prior state supplied as `input_data`, **When** the workflow runs, **Then** it emits the *next* state, and no agent is invoked to produce any `input_data` fact.
 
 ---
 
@@ -249,6 +335,12 @@ determination; `holodeck workflow replay` reproduces it identically.
 - **FR-004**: System MUST validate the workflow against a published JSON schema (consistent with `schemas/agent.schema.json` conventions) with Pydantic v2 models.
 - **FR-005**: The workflow schema MUST make "AI output as a verdict" *unrepresentable*: only policy and human nodes emit verdicts (via a DMN table), and edge nodes emit only gate-validated inputs. There is no node kind through which AI output can become a verdict, so the "LLM is never the spine" invariant holds *by construction of the schema* rather than by a runtime check.
 
+**Input data (facts of record)**
+- **FR-025**: System MUST support a workflow-level `input_data:` block declaring named, typed facts supplied to the run from outside the spine, each with a JSON Schema. `holodeck workflow run` MUST accept the payload (e.g. `--input case.json`), validate every declared fact against its schema before any node executes, and fail loudly on a missing or schema-invalid fact.
+- **FR-026**: `input_data` values MUST be referenceable by name in a node's `inputs:` list and in decision-table input expressions, identically to node verdicts.
+- **FR-027**: No agent may produce an `input_data` value. The schema MUST make this unrepresentable (an `input_data` entry has no `edge`/`agent` field), so facts of record are structurally distinguishable from LLM-derived evidence.
+- **FR-028**: The run record MUST persist the validated `input_data` payload so replay reproduces the transition from the same facts.
+
 **Edge nodes & schema gates**
 - **FR-006**: System MUST invoke an edge node's agent via `BackendSelector`, provider-agnostically, reusing `ExecutionResult`.
 - **FR-007**: System MUST validate the edge agent's `structured_output` against the node's per-node `gate.schema` (JSON Schema / Pydantic) and MUST reject free text or schema-invalid output at the gate.
@@ -260,6 +352,19 @@ determination; `holodeck workflow replay` reproduces it identically.
 - **FR-011**: System MUST support the hit policies **UNIQUE**, **FIRST**, and **PRIORITY** — the three the anchor sample uses — with standard DMN semantics for each. (`COLLECT` and other DMN hit policies are deferred; see Out of Scope.)
 - **FR-012**: System MUST fail loudly on no-match (absent a declared default output) and on a `UNIQUE` table with multiple matches.
 - **FR-013**: Each decision table MUST carry a **version** identifier (a label). The run record MUST embed a **content snapshot** of each table used (not merely the version id), so replay does not depend on an external registry or the current on-disk file.
+
+**Policy provenance & the authoring-time review gate**
+
+> Rationale: a generator (spec 039) moves the model *upstream of the rules
+> themselves*. "The LLM is never the spine" is hollow if an LLM-written table can
+> execute without a human ever reading it — the model would be the spine at
+> authoring time instead of runtime. These requirements close that path, and they
+> live here (not in 039) because the schema and the engine are here.
+
+- **FR-029**: A decision table MAY carry an optional `provenance:` block recording how it came to exist: `generated_by` (model id), `source` (the authority, e.g. `"Social Security Guide 3.11.13.50"`), `source_doc`, `source_sha256`, `reviewed_by`, `reviewed_at`. A hand-authored table omits the block entirely and is unaffected.
+- **FR-030**: `holodeck workflow run` MUST refuse to execute a table whose `provenance.generated_by` is set and whose `provenance.reviewed_by` is absent, failing with a typed error naming the table. AI-drafted policy MUST NOT reach a determination without a recorded human reviewer.
+- **FR-031**: The run record and the node's OTel span MUST carry each table's provenance, so a determination can be traced to the policy authority and the reviewer who signed it off.
+- **FR-032**: `provenance` is non-executable metadata. It MUST NOT be referenceable from FEEL expressions or influence rule matching.
 
 **Human nodes**
 - **FR-014**: System MUST pause at a `requires_human` node and present, at the CLI, the composed inputs and — if the node declares a `draft` agent with `ai_may_draft: reasons` — the AI-drafted reasons, then prompt for a human selection among the table's declared outputs.
@@ -283,17 +388,18 @@ determination; `holodeck workflow replay` reproduces it identically.
 - **FR-023**: System MUST allow decision tables to be tested via the existing HoloDeck test/eval framework — asserting a table's verdict for given inputs independent of any agent.
 
 **Sample**
-- **FR-024**: System MUST ship a runnable `loan-hardship` sample under `sample/` exercising three edge agents, two policy tables, and one human determination, plus a replay.
+- **FR-024**: System MUST ship a runnable `tcf-compliance` sample under `sample/` exercising `input_data` (prior compliance state), one edge agent (reasonable-excuse assessment), two policy tables (zone `UNIQUE`, penalty escalation `FIRST`), and one human determination, plus a replay. Its README MUST carry the framing statement required by US6.
 
 ### Key Entities
 
-- **Workflow**: the DAG artifact (`workflow.yaml`); an ordered set of Nodes plus metadata (name, version).
+- **Workflow**: the DAG artifact (`workflow.yaml`); an ordered set of Nodes plus metadata (name, version) and an optional `input_data:` block.
+- **InputData**: a workflow-level declaration of a named, typed fact supplied from outside the spine (prior state, case facts), with a JSON Schema. Not a node; has no agent; validated before execution and persisted into the run record.
 - **Node**: one of: **EdgeNode** (agent + schema gate; emits a gate-validated input, never a verdict), **PolicyNode** (decision table + inputs + hit policy), **HumanNode** (decision table + inputs + `requires_human` + optional `draft` agent + optional `ai_may_draft`). Has a unique `id` and declared `inputs`.
 - **Gate**: a per-node schema (`gate.schema`) defining the typed object that may cross from an edge agent into the spine.
-- **DecisionTable**: a versioned DMN table (`tables/*.dmn.yaml`) — input expressions, rules (FEEL), outputs, and a hit policy.
+- **DecisionTable**: a versioned DMN table (`tables/*.dmn.yaml`) — input expressions, rules (FEEL), outputs, a hit policy, and an optional non-executable `provenance` block (how it was authored, from which authority, reviewed by whom).
 - **HitPolicy**: `UNIQUE` | `FIRST` | `PRIORITY` (`COLLECT` and others deferred — see Out of Scope).
 - **Verdict**: a node's typed output; becomes a named input to dependent nodes.
-- **RunRecord**: the persisted, replayable artifact — gated edge outputs, matched rules, **content snapshots of the tables and gate schemas used** (with version labels), human decision, advisory AI drafts, timestamps.
+- **RunRecord**: the persisted, replayable artifact — the validated `input_data` payload, gated edge outputs, matched rules, **content snapshots of the tables and gate schemas used** (with version labels and provenance), the table's recommendation and the human decision (flagged when they differ), `decided_by`, advisory AI drafts, timestamps.
 
 ## Success Criteria *(mandatory)*
 
@@ -303,10 +409,12 @@ determination; `holodeck workflow replay` reproduces it identically.
 - **SC-002**: Replaying any completed run — **using only the run record** (no on-disk tables, no registry) — reproduces the final verdict and every policy node's matched rule **100% identically**, with **0** LLM/agent calls during replay.
 - **SC-003**: A schema-invalid or free-text edge output is rejected at the gate in **100%** of cases — no verdict is ever produced from ungated AI output.
 - **SC-004**: The three hit policies (`UNIQUE`/`FIRST`/`PRIORITY`) evaluate correctly against a conformance test suite, including no-match and `UNIQUE` multi-match edge cases.
-- **SC-005**: The FEEL subset required by the loan-hardship sample (numeric comparison, ranges, and at least one date computation) evaluates correctly via the embedded evaluator.
-- **SC-006**: A decision table can be tested in isolation; editing a rule causes the corresponding policy test to fail with an expected-vs-actual diff.
-- **SC-007**: The loan-hardship sample runs end-to-end and replays identically, demonstrated in CI or a documented quickstart.
+- **SC-005**: The FEEL subset required by the TCF sample (numeric comparison, ranges, and at least one date computation — demerit expiry over active months) evaluates correctly via the embedded evaluator, or the documented narrowed subset with the sample adjusted accordingly.
+- **SC-006**: A decision table can be tested in isolation; editing a rule causes the corresponding policy test to fail with an expected-vs-actual diff. *(Post-MVP — needs T12.)*
+- **SC-007**: The TCF sample runs end-to-end and replays identically, demonstrated in CI or a documented quickstart.
 - **SC-008**: The workflow schema makes "AI output as a verdict" unrepresentable — there is no node kind that lets AI output become a verdict or a decision input; verified by schema-validation tests, not runtime fuzzing.
+- **SC-009**: A decision table carrying `provenance.generated_by` without `provenance.reviewed_by` is refused by `holodeck workflow run` in **100%** of cases — AI-drafted policy never reaches a determination unreviewed. Hand-authored tables (no `provenance` block) are unaffected.
+- **SC-010**: No `input_data` fact can be produced by an agent — verified by schema-validation tests. Facts of record and LLM-derived evidence are structurally distinguishable in the run record.
 
 ## Out of Scope (POC)
 
@@ -318,13 +426,24 @@ determination; `holodeck workflow replay` reproduces it identically.
 - Versioned policy **registry**, compliance export, replay UI.
 - Bidirectional graphs / callback re-extraction (strictly one-directional v1).
 - Coupling to the aspirational `experiment.yaml` orchestration.
+- **Persisting state between runs.** A run computes one transition from supplied `input_data`; maintaining the participant's compliance state across events is the caller's job (see "A run is one state transition").
+- **AI-drafted decision tables and DRDs** — `specs/039-policy-generator`. This spec ships only the artifacts that make a drafted table safe to run: the `provenance` block and the review gate (FR-029…FR-032).
+- Confidence-scored gate fields / low-confidence routing (no convention exists; self-reported confidence is unreliable). *North Star.*
 
-## Open Questions (resolve in `/speckit.plan`)
+## Open Questions
 
-1. **Which Python FEEL evaluator to embed**, and the precise FEEL subset the real tables need (numeric, ranges, dates, `contains`, list functions). Candidates to spike: SpiffWorkflow's DMN/FEEL, or a standalone FEEL library. *(Recommended: run the FEEL spike before planning — it is the one assumption that can invalidate the approach.)*
-2. **Run record format & location** — JSON shape and where it is written (e.g. `.holodeck/runs/<id>.json`), given the DB-backed record is deferred.
-3. **Gate ↔ `ExecutionResult.structured_output` binding** — confirm the per-node `gate:` block validates `structured_output` cleanly for both SK and Claude backends, including the low-confidence-field convention.
-4. **`workflow` CLI namespace** — confirm `holodeck workflow` is a free verb (no clash with existing/planned commands). The relationship to `experiment` is already decided: decoupled (see Out of Scope).
+**Resolved**
+
+1. ~~Which Python FEEL evaluator to embed~~ — **bkflow-feel 1.2.0** (MIT). Full FR-010 subset covered; caveats and the static-rejection list are in `research.md`. Landed in T1.
+2. ~~Run record format & location~~ — `.holodeck/runs/<id>.json`, canonical JSON (sorted keys), sha256 over embedded snapshots. Decided in `tasks/plan.md`.
+3. ~~Gate ↔ `ExecutionResult.structured_output` binding~~ — confirmed for Claude (`Agent.response_format` → `structured_output`, already schema-validated). SK is out of POC scope; confidence gating is cut (refinements §1, §4).
+4. ~~`workflow` CLI namespace~~ — free verb, no clash (refinements, codebase grounding).
+
+**Open**
+
+5. **Is TCF's "active months" expressible in the FEEL subset?** Demerit expiry ("6 active months") and reset ("3 active months compliant") count *months in which the participant was active*, not elapsed calendar time — that is not a date difference. Likely pre-computed into `input_data` or a table `inputs[].expression`, but **this needs a spike before T14**, since SC-005 is defined in terms of the sample. Note `research.md` caveat 6: `date(variable)` does not parse; date-typed fields cross the gate as `date` objects and subtract bare.
+6. **Which TCF slice the sample models.** The full framework (zones, fast-track demerits, capability interviews/assessments, escalation, reset) is larger than a sample needs. Pick the smallest slice that still exercises `UNIQUE` + `FIRST` + a human node.
+7. **Does 039's fidelity SC score decomposition or only table content?** Recommendation: tables numerically, DRD shape qualitatively. Resolve in 039.
 
 ## North Star (named, not built)
 

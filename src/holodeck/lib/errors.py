@@ -464,3 +464,66 @@ class CloudSDKNotInstalledError(DeploymentError):
             f"Install it with: {install_cmd}"
         )
         super().__init__("deploy", message)
+
+
+# Deterministic-spine (036) workflow exceptions
+
+
+class WorkflowError(HoloDeckError):
+    """Base exception for the deterministic-spine workflow subsystem (036)."""
+
+    pass
+
+
+class DecisionTableError(WorkflowError):
+    """Exception raised when a DMN decision table is structurally invalid.
+
+    Covers malformed table shape and cross-field problems (e.g. a rule cell
+    naming an undeclared input, an output entry outside its declared values).
+
+    Attributes:
+        message: Human-readable error message, ideally with a table locator.
+    """
+
+    def __init__(self, message: str) -> None:
+        """Initialize DecisionTableError with a descriptive message."""
+        self.message = message
+        super().__init__(message)
+
+
+class FeelValidationError(WorkflowError):
+    """Exception raised when a FEEL expression is malformed or out-of-subset.
+
+    Raised at table-load time by the static FEEL validator (allowlist walker),
+    so off-subset policy logic never reaches evaluation. Carries a locator
+    (table id, rule index, cell) to make the failure actionable (FR-010/FR-012).
+
+    Attributes:
+        locator: Where the offending expression lives (e.g.
+            ``table 'affordability' rule 2 cell 'statement_age'``).
+        message: Description of what is wrong with the expression.
+    """
+
+    def __init__(self, locator: str, message: str) -> None:
+        """Initialize FeelValidationError with a locator and message."""
+        self.locator = locator
+        self.message = message
+        super().__init__(f"FEEL validation error at {locator}: {message}")
+
+
+class FeelEvaluationError(WorkflowError):
+    """Exception raised when a FEEL expression fails to evaluate at runtime.
+
+    Wraps the embedded evaluator's type/value errors with a locator so a
+    failure during table evaluation names the offending cell (FR-012).
+
+    Attributes:
+        locator: Where the offending expression lives.
+        message: Description of the evaluation failure.
+    """
+
+    def __init__(self, locator: str, message: str) -> None:
+        """Initialize FeelEvaluationError with a locator and message."""
+        self.locator = locator
+        self.message = message
+        super().__init__(f"FEEL evaluation error at {locator}: {message}")
