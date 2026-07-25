@@ -55,7 +55,21 @@ class GateRef(BaseModel):
     must satisfy before it may cross into the spine (FR-007).
     """
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    # `schema` shadows BaseModel.schema(), hence the schema_path attribute name.
+    #
+    # serialize_by_alias makes a plain model_dump() emit `schema` rather than
+    # `schema_path`. Re-validation works either way (populate_by_name accepts
+    # both), so this is not a round-trip bug — the risk is emitted artifacts:
+    # a bare dump written to YAML/JSON produced `schema_path:`, which does not
+    # match the published workflow.schema.json. Matters from T10 onward, where
+    # the run record serialises gate references.
+    #
+    # serialization_alias alone does NOT fix this — it still requires
+    # model_dump(by_alias=True). serialize_by_alias is the config that changes
+    # the default (pydantic >= 2.11; this project is on 2.13).
+    model_config = ConfigDict(
+        extra="forbid", populate_by_name=True, serialize_by_alias=True
+    )
 
     schema_path: str = Field(
         alias="schema",

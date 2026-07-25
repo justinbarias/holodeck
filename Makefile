@@ -170,7 +170,9 @@ security: ## Run security checks
 	#                             ignore — every other prior advisory is now fixed upstream
 	#                             (pins in pyproject constraint-dependencies) or no longer
 	#                             flagged by pip-audit (advisory withdrawn / range corrected).
-	# CVE-2026-12243 (nltk)     — path traversal in nltk.data.load()/find() via percent-encoded
+	# PYSEC-2026-597 (nltk)     — aka CVE-2026-12243. The PYSEC ID is the one passed to
+	#                             --ignore-vuln below; pip-audit reports it under that ID.
+	#                             Path traversal in nltk.data.load()/find() via percent-encoded
 	#                             `..%2f` sequences. 3.9.4 is the latest release and is still
 	#                             affected; no fixed release exists. Transitive only (via
 	#                             azure-ai-evaluation, rouge-score) — HoloDeck never imports

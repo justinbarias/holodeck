@@ -248,3 +248,35 @@ class TestLoader:
         path.write_text(yaml.safe_dump(_table(rules=rules)), encoding="utf-8")
         with pytest.raises(DecisionTableError):
             load_decision_table(path)
+
+
+class TestPriorityRequiresValues:
+    """PRIORITY ranks by each output's ``values`` ordering (FR-011).
+
+    Without ``values`` there is nothing to rank by, so the table would silently
+    degrade to first-match instead of failing. These pin the load-time error.
+    """
+
+    def test_priority_without_values_raises(self) -> None:
+        """PRIORITY + an output missing 'values' fails at load with a locator."""
+        table = _table(hit_policy="PRIORITY")
+        table["outputs"] = [{"name": "affordability", "type": "string"}]
+
+        with pytest.raises(DecisionTableError) as exc_info:
+            DecisionTable.model_validate(table)
+
+        message = str(exc_info.value)
+        assert "PRIORITY" in message
+        assert "affordability" in message
+
+    def test_priority_with_values_is_accepted(self) -> None:
+        """The same table validates once 'values' declares the ordering."""
+        assert DecisionTable.model_validate(_table(hit_policy="PRIORITY"))
+
+    @pytest.mark.parametrize("policy", ["UNIQUE", "FIRST"])
+    def test_other_policies_do_not_require_values(self, policy: str) -> None:
+        """Only PRIORITY needs an ordering; UNIQUE/FIRST are unaffected."""
+        table = _table(hit_policy=policy)
+        table["outputs"] = [{"name": "affordability", "type": "string"}]
+
+        assert DecisionTable.model_validate(table)

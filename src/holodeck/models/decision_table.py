@@ -180,6 +180,19 @@ class DecisionTable(BaseModel):
         input_set = set(input_names)
         output_by_name = {out.name: out for out in self.outputs}
 
+        # PRIORITY ranks matched rules by each output's `values` ordering
+        # (highest first). Without `values` there is nothing to rank by, so the
+        # table would silently degrade to first-match rather than failing. Catch
+        # it at load time, where the locator is precise (FR-011, FR-012).
+        if self.hit_policy is HitPolicy.PRIORITY:
+            unranked = [out.name for out in self.outputs if out.values is None]
+            if unranked:
+                raise DecisionTableError(
+                    f"table '{self.id}': hit policy PRIORITY requires 'values' "
+                    f"on every output to define the priority ordering; "
+                    f"missing on: {unranked}"
+                )
+
         for idx, rule in enumerate(self.rules, start=1):
             for cell_name in rule.when:
                 if cell_name not in input_set:

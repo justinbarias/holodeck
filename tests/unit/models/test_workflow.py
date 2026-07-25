@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from holodeck.models.workflow import (
     EdgeNode,
+    GateRef,
     HumanNode,
     PolicyNode,
     Workflow,
@@ -235,3 +236,28 @@ class TestSourceAnnotation:
         assert wf.source == "Hardship Policy v4.2"
         assert wf.nodes[0].source == "Income Policy §1"
         assert wf.nodes[1].source == "Hardship Policy v4.2 §72"
+
+
+class TestGateRefSerialization:
+    """A bare model_dump() must emit the published key, not the attribute name.
+
+    ``schema`` shadows ``BaseModel.schema()``, so the attribute is
+    ``schema_path``. Without serialize_by_alias a plain dump emits
+    ``schema_path``, producing YAML/JSON that does not match
+    workflow.schema.json. Re-validation is unaffected (populate_by_name accepts
+    both) — the risk is emitted artifacts, from T10's run record onward.
+    """
+
+    def test_bare_model_dump_emits_schema_key(self) -> None:
+        """model_dump() without by_alias still emits 'schema'."""
+        gate = GateRef.model_validate({"schema": "schemas/income.json"})
+
+        assert gate.model_dump() == {"schema": "schemas/income.json"}
+
+    def test_dump_round_trips_through_validation(self) -> None:
+        """A bare dump re-validates and preserves the path."""
+        gate = GateRef.model_validate({"schema": "schemas/income.json"})
+
+        assert GateRef.model_validate(gate.model_dump()).schema_path == (
+            "schemas/income.json"
+        )
