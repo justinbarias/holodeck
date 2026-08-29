@@ -112,11 +112,15 @@ class TableOutput(BaseModel):
 
 
 class Provenance(BaseModel):
-    """How a decision table came to exist (FR-029).
+    """How a decision table came to exist.
 
-    Non-executable metadata: it is snapshotted into the run record and the
-    node's OTel span (FR-031) but is never visible to FEEL and never affects
-    rule matching (FR-032). A hand-authored table omits the block entirely.
+    Non-executable metadata: never visible to FEEL, never affects rule
+    matching. A hand-authored table omits the block entirely. Its 036
+    consumers (the run record and the FR-030 review gate) were removed with
+    the overlay engine; the block is kept because a table's origin is part of
+    the authored artifact, and the Temporal-era record of a decision (SPEC.md)
+    is expected to snapshot it again. ``awaiting_review`` currently has no
+    production caller.
     """
 
     model_config = ConfigDict(extra="forbid")

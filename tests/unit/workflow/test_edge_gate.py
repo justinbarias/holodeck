@@ -151,7 +151,9 @@ def _install_backend(
     selector = _RecordingSelector(
         _FakeBackend(result, invoke_error=invoke_error, teardown_error=teardown_error)
     )
-    monkeypatch.setattr(edge, "BackendSelector", selector)
+    # execute_edge_node imports BackendSelector lazily (so the pure gate half
+    # of edge.py stays SDK-free), so the patch lands on the selector module.
+    monkeypatch.setattr("holodeck.lib.backends.selector.BackendSelector", selector)
     return selector
 
 
@@ -1966,3 +1968,41 @@ class TestGatePathConfinement:
     ) -> None:
         # The confinement check must not break ordinary nested layouts.
         assert edge.load_gate_schema(node, workflow_dir)
+
+
+@pytest.mark.unit
+class TestGatedOutputRoundTrip:
+    """A GatedOutput must survive dump -> validate (Temporal data-converter shape)."""
+
+    def test_round_trips(self) -> None:
+        gated = edge.GatedOutput(
+            node_id="evidence",
+            value={"net_income": 1200.0},
+            gate_schema={"type": "object", "properties": {"net_income": {}}},
+        )
+
+        assert edge.GatedOutput.model_validate(gated.model_dump()) == gated
+
+
+@pytest.mark.unit
+class TestFormatCheckerRegistration:
+    """The format checkers the gate relies on must actually be registered.
+
+    _apply_gate passes format_checker=validator_cls.FORMAT_CHECKER; without
+    the jsonschema[format-nongpl] extra those checkers are silently absent and
+    a gate declaring `format: email` accepts everything. This fails loudly on
+    that dependency drift instead.
+    """
+
+    @pytest.mark.parametrize(
+        "format_name", ["date", "date-time", "email", "uri", "uuid"]
+    )
+    def test_checker_is_registered(self, format_name: str) -> None:
+        import jsonschema
+
+        checkers = jsonschema.Draft202012Validator.FORMAT_CHECKER.checkers
+
+        assert format_name in checkers, (
+            f"format {format_name!r} has no registered checker — is the "
+            "jsonschema[format-nongpl] extra installed?"
+        )

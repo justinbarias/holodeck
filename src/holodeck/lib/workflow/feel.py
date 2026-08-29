@@ -145,14 +145,30 @@ def _cached_parse(text: str) -> lark.Tree:
     """Parse FEEL text once per distinct string.
 
     Table cells are a small, immutable set of strings evaluated once per rule
-    per decision, so an uncached parse costs O(rules x columns) lark parses per
-    verdict — which multiplies again when the evaluator runs inside Temporal
-    workflow code, re-executed on every replay. The returned tree is shared
-    between callers and must be treated as read-only; every existing consumer
-    only walks it. Failures are not cached (lru_cache does not cache raises),
-    which is fine: malformed cells are rejected once at load.
+    per decision — a cost that multiplies again when the evaluator runs inside
+    Temporal workflow code, re-executed on every replay. This cache removes
+    the static-analysis parse only: ``parse_expression`` still parses
+    internally on every evaluation, so the win is roughly half the parse
+    count, not its elimination. Caching the evaluator's own AST would mean
+    reaching into ``bkflow_feel`` internals; revisit if the replay path makes
+    the remaining half measurable. The returned tree is shared between callers
+    and must be treated as read-only; every existing consumer only walks it.
+    Failures are not cached (lru_cache does not cache raises), which is fine:
+    malformed cells are rejected once at load.
     """
     return cast(lark.Tree, parser.parse(text))
+
+
+@functools.lru_cache(maxsize=1024)
+def _cached_referenced_paths(text: str) -> frozenset[tuple[str, ...]]:
+    """The referenced paths of ``text``, cached on the same key as the parse.
+
+    ``_evaluate`` re-derives the paths on every call and they are a pure
+    function of the source string, so the walk is cached alongside the tree.
+    Only reachable for text that already parsed (callers parse first), so no
+    locator is needed here.
+    """
+    return _referenced_paths(_cached_parse(text))
 
 
 def _parse_tree(text: str, *, locator: str) -> lark.Tree:
@@ -212,8 +228,11 @@ def referenced_roots(text: str, *, locator: str) -> frozenset[str]:
 
     Exposed for callers that know something this module cannot: which names are
     actually on offer. A decision table's FEEL is validated standalone, so only
-    the workflow node that mounts it can say whether ``evidence.net_income``
-    names anything at all — and it can only say so from the roots.
+    the caller that mounts it — under 036 the (removed) workflow node, under
+    SPEC.md the code composing a table's inputs — can say whether
+    ``evidence.net_income`` names anything at all, and it can only say so from
+    the roots. No production caller exists between those two worlds; the
+    function is kept as the public seam that check re-enters through.
 
     Args:
         text: FEEL expression source.
@@ -401,8 +420,11 @@ def _evaluate(
             f"binding would be invisible to every expression",
         )
     # Parsed again here (the evaluator parses internally): the tree is the only
-    # place the referenced paths are visible ahead of evaluation.
-    paths = _referenced_paths(_parse_tree(text, locator=locator))
+    # place the referenced paths are visible ahead of evaluation. The explicit
+    # _parse_tree call is the locator-bearing syntax gate; both it and the
+    # path walk behind it are cached per source string.
+    _parse_tree(text, locator=locator)
+    paths = _cached_referenced_paths(text)
     missing = sorted({path[0] for path in paths} - bindings.keys())
     if missing:
         names = ", ".join(repr(name) for name in missing)

@@ -24,7 +24,7 @@ import datetime
 from collections.abc import Iterator, Mapping
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from holodeck.lib.errors import TableEvalError
 from holodeck.lib.workflow import feel
@@ -89,7 +89,12 @@ class Verdict(BaseModel):
         """
         return copy.deepcopy(value)
 
-    @computed_field  # type: ignore[prop-decorator]
+    # A plain property, deliberately not a computed_field: computed fields are
+    # included in model_dump() but rejected by validation, and extra="forbid"
+    # turns Verdict.model_validate(verdict.model_dump()) into a hard error —
+    # exactly the dict -> JSON -> back round trip a Temporal data converter
+    # performs on anything held in workflow state. Logs and spans read the
+    # property; serialized verdicts carry only real fields.
     @property
     def rule_identity(self) -> str:
         """Human-readable identity of the decision source, for logs and spans."""

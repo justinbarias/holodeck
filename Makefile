@@ -176,7 +176,8 @@ security: ## Run security checks
 	#                             chromadb *client* only — it never runs the ChromaDB server
 	#                             process or its auth providers, so no vulnerable path is
 	#                             reachable from this codebase. Drop these when chromadb
-	#                             ships a fix and the pin can move.
+	#                             ships a fix and the pin can move. Re-check by 2026-12:
+	#                             four indefinite ignores accumulate quietly.
 	uv run pip-audit --progress-spinner=off \
 		--ignore-vuln CVE-2026-45829 \
 		--ignore-vuln CVE-2026-45830 \

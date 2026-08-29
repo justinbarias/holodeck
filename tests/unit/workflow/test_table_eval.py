@@ -712,3 +712,45 @@ def test_number_column_rejects_a_boolean() -> None:
     # Act / Assert
     with pytest.raises(TableEvalError, match="'number' column"):
         evaluate(table, {"loan": {"flag": True}})
+
+
+@pytest.mark.unit
+class TestVerdictRoundTrip:
+    """A Verdict must survive dump -> validate.
+
+    That dict -> JSON -> back trip is what a Temporal data converter performs
+    on anything held in workflow state; a computed field plus extra="forbid"
+    silently breaks it (this pins the fix that made rule_identity a plain
+    property).
+    """
+
+    def test_matched_rule_round_trips(self) -> None:
+        # Arrange
+        verdict = Verdict(
+            table_id="points",
+            table_version="1.0",
+            outputs={"points": 20, "nested": {"unit": "per_week"}},
+            matched_rule_index=3,
+            matched_rule_annotation="rule note",
+        )
+
+        # Act
+        revalidated = Verdict.model_validate(verdict.model_dump())
+
+        # Assert
+        assert revalidated == verdict
+        assert revalidated.rule_identity == "rule 3"
+
+    def test_default_verdict_round_trips(self) -> None:
+        # Arrange
+        verdict = Verdict(
+            table_id="points",
+            table_version="1.0",
+            outputs={"points": 0},
+            matched_rule_index=None,
+            is_default=True,
+        )
+
+        # Act / Assert
+        assert Verdict.model_validate(verdict.model_dump()) == verdict
+        assert verdict.rule_identity == "default, no rule matched"

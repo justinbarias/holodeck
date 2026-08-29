@@ -22,6 +22,12 @@ the only references that resolve are the ones the document carries itself and
 the metaschemas ``jsonschema`` bundles. Whichever way a reference is settled,
 the schema snapshotted in :class:`GatedOutput` is exactly the schema enforced.
 
+The load-time ``$ref`` walk below exists for correctness first, economy
+second: ``validate()`` resolves references lazily, so an unresolvable ``$ref``
+in a branch no instance happens to reach is silently never checked — a gate
+that looks enforced but has a dead limb. The walk makes that an authoring
+error at load, deterministically; the saved agent call is a side benefit.
+
 *When* an unresolvable reference is discovered depends on the gate's dialect,
 and only two dialects are checked at load:
 
@@ -34,8 +40,11 @@ and only two dialects are checked at load:
   what it still does not model is listed in :func:`_collect_refs`.
 * **Every other dialect** — draft-07, draft-06, draft-04, draft-03, or the
   ``Specification.OPAQUE`` fallback, whose subresource table is empty and
-  would make the walk a no-op anyway. For these **no load-time reference check
-  runs at all**; the gate loads unexamined and any resolution failure surfaces
+  would make the walk a no-op anyway. (OPAQUE is narrower than it reads:
+  ``validator_for`` falls back to 2020-12 for a ``$schema`` it does not
+  recognise at all, so OPAQUE is reachable only for a dialect ``jsonschema``
+  knows but ``referencing`` does not.) For these **no load-time reference
+  check runs at all**; the gate loads unexamined and any resolution failure surfaces
   at validate time, after one agent call, through the backstop in
   :func:`_apply_gate`. Why the line is drawn there is in
   :data:`_WALKED_SPECIFICATIONS`.
@@ -54,7 +63,7 @@ import copy
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import jsonschema
 import jsonschema.validators
@@ -65,8 +74,18 @@ from referencing.exceptions import NoSuchResource, Unresolvable
 from referencing.jsonschema import DRAFT201909, DRAFT202012, specification_with
 
 from holodeck.config.context import agent_base_dir
-from holodeck.lib.backends.base import AgentBackend, ExecutionResult
-from holodeck.lib.backends.selector import BackendSelector
+
+if TYPE_CHECKING:
+    # Annotation-only: importing anything under holodeck.lib.backends at
+    # runtime executes that package's __init__, which eagerly imports the
+    # concrete backends and with them the Claude Agent SDK.
+    from holodeck.lib.backends.base import AgentBackend, ExecutionResult
+# BackendSelector is imported lazily inside execute_edge_node, not here:
+# selector.py imports the concrete backends (and with them the Claude Agent
+# SDK) at module scope, so a module-level import would drag the whole backend
+# stack into any importer of the pure gate half — load_gate_schema and
+# _apply_gate must stay importable from Temporal workflow code, which forbids
+# I/O imports (SPEC.md section 7). test_import_purity.py pins this.
 from holodeck.lib.errors import ExecutionError, GateSchemaError, GateValidationError
 from holodeck.models.agent import Agent
 from holodeck.models.workflow import EdgeNode
@@ -598,6 +617,9 @@ async def execute_edge_node(
     # repeatedly by a long-lived caller (a future server/embedded run), and a
     # ContextVar mutated with no restore would leak this node's directory into
     # whatever runs after it.
+    # Deferred import — see the note at the top of the module's import block.
+    from holodeck.lib.backends.selector import BackendSelector
+
     token = agent_base_dir.set(str(agent_path.parent))
     try:
         backend: AgentBackend = await BackendSelector.select(agent)
