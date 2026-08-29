@@ -190,9 +190,17 @@ test must prove that they pass Temporal's workflow sandbox validation.
 
 ## 12. Open questions
 
-- Package name for the dependency extra: `holodeck[temporal]` is the working assumption.
-- Worker configuration shape: flags, environment variables, or a small `worker.yaml`. Decide during D4 design.
-- Which `temporalio.contrib.openai_agents` seams transfer, and which do not. Answer with a source check at design time.
+All three were resolved in the 2026-08-29 planning session; the full decision
+record is in `tasks/plan.md`.
+
+- Dependency extra: `holodeck[temporal]`, exact pin `temporalio==1.32.0`.
+- Worker configuration: a `worker.yaml` (Pydantic model, inline node list,
+  registration only — no control flow) + env-var overrides + `--config` /
+  `--task-queue` flags.
+- `temporalio.contrib.openai_agents` seams: the plugin pattern, worker-side
+  activity state, and the timeout/retry parameters object transfer. The
+  granularity does not — it puts the agent loop in workflow code with one
+  activity per model call; this spec runs one activity per whole agent run.
 
 ## 13. Glossary of retained 036 identifiers
 
