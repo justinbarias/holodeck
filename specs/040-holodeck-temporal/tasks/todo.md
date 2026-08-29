@@ -9,6 +9,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 - [x] **T2** Payload models: `AgentActivityInput`, `AgentActivityResult`; `ActivityParameters` as workflow-side scheduling helper (`to_activity_kwargs()`, no heartbeat); `output_as()` typed accessor (S)
 - [x] **T3** Activity factory: `EdgeNode` → named async activity; gate mandatory; `BackendSelector.invoke_once`; envelope return (M)
 - [x] **T4** Error taxonomy: gate failure retryable, authoring faults `non_retryable=True`, transport retryable (S)
+- [x] **T15** Live phase-1 e2e: real Temporal workflow + agent activity against live Claude (`start_local` dev server, oauth, `SKIP_LLM_INTEGRATION_TESTS=false`) (S)
 
 ### Checkpoint 1
 - [x] Factory output is a valid activity definition (mocked backend); unit suite + quality gates clean

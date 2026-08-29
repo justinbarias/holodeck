@@ -57,6 +57,7 @@ history), and the timeout/retry parameters object.
 - [x] T2: Payload and parameter models
 - [x] T3: Activity factory
 - [x] T4: Error taxonomy and retry classification
+- [x] T15: Live phase-1 e2e (real workflow, live Claude)
 
 ### Checkpoint 1: Foundation
 - [ ] Factory output is a valid Temporal activity definition (mocked backend)
@@ -189,6 +190,29 @@ retryable `ApplicationError` typed by class name). Authoring faults
 
 **Dependencies:** T3
 **Files likely touched:** `src/holodeck/temporal/activity.py` (or `errors.py`), `tests/unit/temporal/test_retry_classification.py`
+**Estimated scope:** S
+
+### Task 15: Live phase-1 end-to-end (real workflow, live Claude)
+
+**Description:** *(added 2026-08-30, user-requested Phase 1 addition)* One live
+integration test proving the whole phase-1 stack with zero mocks: a
+user-authored Temporal workflow (`EvidenceWorkflow`) schedules the T3
+activity by name with `ActivityParameters`, on a `WorkflowEnvironment.start_local`
+dev server with the pydantic data converter, against a real `ClaudeBackend`
+call (oauth). Asserts the workflow receives exactly the gate-validated dict.
+Skip conventions match the other live suites: requires
+`CLAUDE_CODE_OAUTH_TOKEN` in `tests/integration/.env` and
+`SKIP_LLM_INTEGRATION_TESTS=false` in the shell env.
+
+**Acceptance criteria:**
+- [x] Workflow completes against live Claude; output dict passes the gate schema exactly
+- [x] Skips cleanly without credentials or with `SKIP_LLM_INTEGRATION_TESTS=true`
+
+**Verification:**
+- [x] `SKIP_LLM_INTEGRATION_TESTS=false pytest tests/integration/temporal/ -m slow`
+
+**Dependencies:** T3, T4
+**Files likely touched:** `tests/integration/temporal/test_live_agent_workflow.py`
 **Estimated scope:** S
 
 ### Task 5: D3 helper surface + sandbox-safety unit test
