@@ -20,12 +20,14 @@ here — never ``temporalio.worker``, ``temporalio.client``, or
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from temporalio.common import RetryPolicy
 
 from holodeck.models.token_usage import TokenUsage
+
+OutputT = TypeVar("OutputT", bound=BaseModel)
 
 
 class AgentActivityInput(BaseModel):
@@ -63,6 +65,24 @@ class AgentActivityResult(BaseModel):
     token_usage: TokenUsage = Field(default_factory=TokenUsage.zero)
     num_turns: int = Field(default=1, ge=0)
     agent_id: str
+
+    def output_as(self, model: type[OutputT]) -> OutputT:
+        """Validate ``output`` into a caller-supplied Pydantic model.
+
+        The wire payload stays a plain dict (stable history, FR-008); this is
+        workflow-side sugar for typed access to the gate-validated object.
+
+        Args:
+            model: A Pydantic model matching the edge node's gate schema.
+
+        Returns:
+            The ``output`` dict validated into ``model``.
+
+        Raises:
+            pydantic.ValidationError: If ``output`` does not conform to
+                ``model``.
+        """
+        return model.model_validate(self.output)
 
 
 class ActivityParameters(BaseModel):

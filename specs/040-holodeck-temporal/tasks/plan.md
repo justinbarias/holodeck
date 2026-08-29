@@ -87,6 +87,7 @@ history), and the timeout/retry parameters object.
 - [ ] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
 - [ ] T12: OTel test AC-6
 - [ ] T13: Live smoke test, `sample/` copy, docs, index row
+- [ ] T14: Gate-schema codegen (`holodeck generate models`)
 
 ### Checkpoint: Complete
 - [ ] AC-1 through AC-6 demonstrated by tests
@@ -389,6 +390,34 @@ spec status line.
 **Dependencies:** T11, T12
 **Files likely touched:** `tests/integration/temporal/test_smoke_live.py`, `docs/…`, `specs/index.md`, `specs/040-holodeck-temporal/spec.md`
 **Estimated scope:** S
+
+### Task 14: Gate-schema codegen (`holodeck generate models`)
+
+**Description:** *(added 2026-08-30, user-requested scope addition)* CLI verb
+that generates typed Pydantic models from gate JSON Schemas, so workflow code
+gets static typing over `AgentActivityResult.output` instead of a bare dict.
+Reads edge-node declarations (a `worker.yaml` `nodes:` list or explicit
+`agent.yaml` paths), resolves each gate schema through the existing
+`load_gate_schema` seam, and emits a generated module (e.g. `models_gen.py`)
+via `datamodel-code-generator`. Pairs with `AgentActivityResult.output_as()`
+(added in T2 follow-up): `result.output_as(EvidenceOutput)`. Generated code
+must be pure Pydantic — sandbox-safe, importable from workflow code. The wire
+envelope is untouched: `output` stays a plain dict in history (FR-008);
+codegen is developer-ergonomics only.
+
+**Acceptance criteria:**
+- [ ] `holodeck generate models --config worker.yaml` emits a module with one model per edge node gate schema, deterministic output (stable ordering, no timestamps)
+- [ ] Generated module imports cleanly inside the workflow sandbox (reuse the T5 harness)
+- [ ] `result.output_as(GeneratedModel)` round-trips the hardship fixtures
+- [ ] Staleness detectable: regenerating over an unchanged schema is a no-op diff (CI-checkable)
+
+**Verification:**
+- [ ] `pytest tests/unit/temporal/test_codegen.py -n auto`
+- [ ] Quality gates as in T1
+
+**Dependencies:** T5 (sandbox harness), T7 (`WorkerConfig`/worker.yaml loader), T9 (fixtures)
+**Files likely touched:** `src/holodeck/cli/commands/generate.py`, `src/holodeck/temporal/codegen.py`, `tests/unit/temporal/test_codegen.py`, `pyproject.toml` (dev/extra dep `datamodel-code-generator`)
+**Estimated scope:** M
 
 ## Risks and Mitigations
 

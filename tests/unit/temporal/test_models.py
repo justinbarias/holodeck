@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from temporalio.common import RetryPolicy
 from temporalio.contrib.pydantic import pydantic_data_converter
 
@@ -119,6 +119,36 @@ class TestAgentActivityResult:
         assert decoded == result
         assert type(decoded.output) is dict
         assert decoded.token_usage.total_tokens == 160
+
+    def test_output_as_validates_into_caller_model(self) -> None:
+        # Arrange
+        class Verdict(BaseModel):
+            eligible: bool
+            reason: str
+
+        result = AgentActivityResult(
+            output={"eligible": True, "reason": "income below threshold"},
+            agent_id="evidence-extractor",
+        )
+
+        # Act
+        verdict = result.output_as(Verdict)
+
+        # Assert
+        assert isinstance(verdict, Verdict)
+        assert verdict.eligible is True
+        assert verdict.reason == "income below threshold"
+
+    def test_output_as_raises_on_nonconforming_output(self) -> None:
+        # Arrange
+        class Verdict(BaseModel):
+            eligible: bool
+
+        result = AgentActivityResult(output={"wrong": 1}, agent_id="a")
+
+        # Act / Assert
+        with pytest.raises(ValidationError):
+            result.output_as(Verdict)
 
 
 class TestActivityParametersValidation:

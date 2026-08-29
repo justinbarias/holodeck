@@ -36,6 +36,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 - [ ] **T11** Integration AC-4 (worker subprocess e2e) + AC-5 (replay, zero LLM calls) + Worker-init sandbox backstop (M)
 - [ ] **T12** OTel AC-6: span parity with `holodeck test`; GenAI spans nest under activity span (M)
 - [ ] **T13** Live smoke `@slow`, `sample/temporal-hardship/` demo, docs, `specs/index.md` row (S)
+- [ ] **T14** Gate-schema codegen: `holodeck generate models` — typed Pydantic models from gate schemas, pairs with `output_as()` (M)
 
 ### Checkpoint: Complete
 - [ ] AC-1 … AC-6 demonstrated by named tests; `make ci` clean; spec status updated
