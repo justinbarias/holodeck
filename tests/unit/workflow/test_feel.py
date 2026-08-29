@@ -464,6 +464,22 @@ class TestLiteralFactNames:
 
 
 @pytest.mark.unit
+class TestReferencedRoots:
+    """The public seam a table-mounting caller checks name availability by."""
+
+    def test_returns_bare_and_dot_path_roots(self) -> None:
+        roots = feel.referenced_roots(
+            "evidence.net_income > threshold and flag", locator="loc"
+        )
+        assert roots == {"evidence", "threshold", "flag"}
+
+    def test_malformed_expression_raises_with_locator(self) -> None:
+        with pytest.raises(FeelValidationError) as exc:
+            feel.referenced_roots("a ++ b", locator="rule 3")
+        assert "rule 3" in str(exc.value)
+
+
+@pytest.mark.unit
 class TestNegativeLiterals:
     """Negative thresholds are inside the subset.
 
@@ -520,6 +536,25 @@ class TestNotUnaryTest:
     )
     def test_compilation(self, cell: str, expected: str) -> None:
         assert feel.compile_unary_test(cell) == expected
+
+    def test_nested_negation_collapses_by_parity(self) -> None:
+        # not(not(X)) is X; the unwrap is iterative, so depth is data, not
+        # stack.
+        assert feel.compile_unary_test('not(not("a"))') == '__cell_input__ = "a"'
+        assert (
+            feel.compile_unary_test('not(not(not("a")))') == 'not(__cell_input__ = "a")'
+        )
+
+    def test_not_bomb_does_not_out_recurse_the_compiler(self) -> None:
+        # A 2000-deep not() shell previously blew the stack as a bare
+        # RecursionError out of load-time validation. Even depth over the
+        # always-match cell is the always-match cell; odd depth matches
+        # nothing.
+        even_bomb = "not(" * 2000 + "-" + ")" * 2000
+        odd_bomb = "not(" * 2001 + "-" + ")" * 2001
+
+        assert feel.compile_unary_test(even_bomb) is None
+        assert feel.compile_unary_test(odd_bomb) == "false"
 
     def test_not_prefixed_name_is_not_mistaken_for_negation(self) -> None:
         # A bare unquoted name starting with "not" is still the (broken)

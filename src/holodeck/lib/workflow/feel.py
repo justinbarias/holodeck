@@ -337,35 +337,39 @@ def compile_unary_test(text: str) -> str | None:
         A full boolean FEEL expression, or ``None`` for the irrelevant cell.
     """
     stripped = text.strip()
-    if stripped == "-":
-        return None
     # DMN's negation form: `not(X)` means "the input does NOT satisfy the
     # unary test X". Without this branch the fall-through below would compile
     # it to `input = not(X)` — accepted at load (not_func is an allowed node,
     # the only free root is the cell input) and then either wrongly matched or
-    # a type error at evaluation. Compile the inner test recursively and negate
-    # the whole predicate instead. `not(-)` negates the always-match cell, so
-    # it matches nothing. A multi-test `not("a","b")` falls through like any
-    # comma disjunction and is rejected as malformed at load — loud, like the
-    # positive comma form.
-    if (
+    # a type error at evaluation. Unwrapped iteratively (a recursive unwrap
+    # would let a `not(`-bomb escape as a bare RecursionError) and collapsed
+    # by parity: negating a predicate twice is the predicate. Whitespace
+    # between `not` and `(` is tolerated on purpose — `not ("verified")` must
+    # not fall through to the equality branch. A multi-test `not("a","b")`
+    # falls through like any comma disjunction and is rejected as malformed
+    # at load — loud, like the positive comma form.
+    negations = 0
+    while (
         stripped.startswith("not")
         and stripped[3:].lstrip().startswith("(")
         and stripped.endswith(")")
     ):
-        # Whitespace-tolerant on purpose: `not ("verified")` must not fall
-        # through to the equality branch and compile to the very
-        # mis-compilation this branch exists to prevent.
-        inner = compile_unary_test(stripped[stripped.index("(", 3) + 1 : -1])
-        if inner is None:
-            return "false"
-        return f"not({inner})"
+        stripped = stripped[stripped.index("(", 3) + 1 : -1].strip()
+        negations += 1
+    negate = negations % 2 == 1
+    if stripped == "-":
+        # `not(-)` negates the always-match cell, so it matches nothing.
+        return "false" if negate else None
     if stripped.startswith(("[", "(")):
-        return f"{_CELL_INPUT} in {stripped}"
-    for op in _COMPARISON_OPS:
-        if stripped.startswith(op):
-            return f"{_CELL_INPUT} {stripped}"
-    return f"{_CELL_INPUT} = {stripped}"
+        compiled = f"{_CELL_INPUT} in {stripped}"
+    else:
+        for op in _COMPARISON_OPS:
+            if stripped.startswith(op):
+                compiled = f"{_CELL_INPUT} {stripped}"
+                break
+        else:
+            compiled = f"{_CELL_INPUT} = {stripped}"
+    return f"not({compiled})" if negate else compiled
 
 
 def validate_unary_test(

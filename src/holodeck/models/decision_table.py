@@ -106,6 +106,12 @@ class TableOutput(BaseModel):
     When ``values`` is declared, every rule (and the default) must emit one of
     them; under ``PRIORITY`` the list also fixes the resolution order, highest
     first.
+
+    ``values`` is ``list[str]``, and ``PRIORITY`` requires ``values`` on every
+    output — so a ``PRIORITY`` table is limited to string outputs today. A
+    ``number``/``boolean`` output under ``PRIORITY`` fails at load (the
+    membership check compares against strings). Widening ``values`` is a D3
+    table-step question (SPEC.md).
     """
 
     model_config = ConfigDict(extra="forbid")

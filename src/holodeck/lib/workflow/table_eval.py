@@ -173,6 +173,16 @@ def _matching_rules(
 ) -> Iterator[tuple[int, Rule]]:
     """Yield ``(1-based index, rule)`` for every rule whose cells all match."""
     for index, rule in enumerate(table.rules, start=1):
+        for cell_name in rule.when:
+            # Same posture as _priority_rank: DecisionTable._validate pins
+            # every cell name to an input column, but evaluate() accepts any
+            # instance, so an invariant break stays inside the declared
+            # channel instead of escaping as KeyError.
+            if cell_name not in column_values:
+                raise TableEvalError(
+                    f"table '{table.id}': rule {index} tests unknown column "
+                    f"'{cell_name}'; the table bypassed load-time validation"
+                )
         if all(
             feel.evaluate_unary_test(
                 cell,

@@ -513,6 +513,27 @@ def test_days_column_rejects_a_non_duration_value() -> None:
 
 
 @pytest.mark.unit
+def test_post_load_mutation_fails_in_channel_not_as_keyerror() -> None:
+    """An invariant break stays a TableEvalError (same posture as _priority_rank).
+
+    DecisionTable is not frozen, so a rule mutated after load can test a
+    column no input declares; evaluate() must fail loudly in its declared
+    channel, never as a bare KeyError.
+    """
+    # Arrange — mutate a validated table behind the loader's back.
+    table = _table()
+    object.__setattr__(
+        table.rules[0], "when", {"ghost_column": ">= 1", **table.rules[0].when}
+    )
+
+    # Act / Assert
+    with pytest.raises(TableEvalError) as exc:
+        evaluate(table, NAMED_INPUTS)
+    assert "unknown column 'ghost_column'" in str(exc.value)
+    assert "bypassed load-time validation" in str(exc.value)
+
+
+@pytest.mark.unit
 def test_no_match_emits_the_declared_default() -> None:
     """A no-match with a declared default yields it, marked as the default."""
     # Arrange

@@ -103,11 +103,14 @@ logger = logging.getLogger(__name__)
 def _refuse_retrieval(uri: str) -> Resource[Any]:
     """Refuse to fetch a reference the gate schema did not carry itself.
 
-    ``jsonschema`` resolves ``$ref`` lazily at validate time and, left at its
-    defaults, retrieves remote references over the network with a blocking
-    ``urlopen``. That would make a workflow file an SSRF vector, put sync I/O
-    on the event loop, and — worst — mean the gate actually enforced is not the
-    ``gate_schema`` snapshotted for replay (T10).
+    Enforced rather than inherited: since 4.18 ``jsonschema``'s own default
+    registry already refuses unknown references (the network-fetching
+    ``RefResolver`` is the deprecated path), so today this makes the
+    invariant explicit rather than closing a live hole. It stays because the
+    stakes are the module's, not the library's: a retrieving registry passed
+    by a future caller would make a workflow file an SSRF vector, put sync
+    I/O on the event loop, and — worst — mean the gate actually enforced is
+    not the ``gate_schema`` snapshotted for replay (T10).
 
     Args:
         uri: The reference the validator asked to retrieve.
@@ -718,7 +721,11 @@ async def execute_edge_node(
 
     token = agent_base_dir.set(str(agent_path.parent))
     try:
-        backend: AgentBackend = await BackendSelector.select(agent)
+        # mode="test" spelled out (it is the default): its permission mapping
+        # is the `holodeck test` one, which is what a non-interactive edge run
+        # wants today. Whether a headless Temporal activity needs its own mode
+        # is a D1 question.
+        backend: AgentBackend = await BackendSelector.select(agent, mode="test")
         try:
             result = await backend.invoke_once(message)
         except Exception as exc:
