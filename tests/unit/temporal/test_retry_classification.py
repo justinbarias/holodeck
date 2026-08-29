@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 from temporalio.exceptions import ApplicationError
 
+import holodeck.temporal.activity as activity_module
 from holodeck.lib.errors import (
     ConfigError,
     ExecutionError,
@@ -141,7 +142,10 @@ class TestNonRetryableChannel:
         def _broken_gate(*args: Any, **kwargs: Any) -> Any:
             raise GateSchemaError("evidence", "schema became unusable")
 
-        monkeypatch.setattr("holodeck.temporal.activity._apply_gate", _broken_gate)
+        # Patch the module object, not the dotted string: the import-guard suite
+        # re-imports holodeck.temporal fresh, and on the same xdist worker the
+        # package attribute 'activity' may be absent when a string path resolves.
+        monkeypatch.setattr(activity_module, "_apply_gate", _broken_gate)
 
         # Act / Assert
         with pytest.raises(ApplicationError) as excinfo:
