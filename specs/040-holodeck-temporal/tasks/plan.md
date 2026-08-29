@@ -54,7 +54,7 @@ history), and the timeout/retry parameters object.
 ### Phase 1: Foundation (D1 core)
 
 - [x] T1: `holodeck[temporal]` extra, exact pin, package skeleton
-- [ ] T2: Payload and parameter models
+- [x] T2: Payload and parameter models
 - [ ] T3: Activity factory
 - [ ] T4: Error taxonomy and retry classification
 
