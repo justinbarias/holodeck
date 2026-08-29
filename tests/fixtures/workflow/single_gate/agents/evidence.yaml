@@ -1,7 +1,0 @@
-name: hardship-evidence
-description: Edge agent that extracts income evidence from the case facts.
-model:
-  provider: anthropic
-  name: claude-sonnet-4-20250514
-instructions:
-  inline: "Extract the applicant's net income and monthly expenses."

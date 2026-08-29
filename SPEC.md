@@ -106,9 +106,11 @@ tests/integration/temporal/   # Against temporal server start-dev
 Reused, not moved: `holodeck.lib.workflow.table_eval`, `holodeck.lib.workflow.edge`,
 `holodeck.models.decision_table`, `holodeck.lib.backends.*`.
 
-Untouched for now: the `holodeck workflow` CLI verb and
-`holodeck.lib.workflow.runner`. A later decision keeps them or retires them.
-Do not delete them.
+Removed with the pivot (not shipped): the `holodeck workflow` CLI verb, the
+DAG runner (`holodeck.lib.workflow.runner`), the `input_data` validator, the
+DAG models (`Workflow`, `PolicyNode`, `HumanNode`), and
+`schemas/workflow.schema.json`. Only the `EdgeNode` family remains in
+`holodeck.models.workflow`, because the gate executor consumes it.
 
 ## 6. Tech stack and constraints
 
@@ -153,7 +155,6 @@ test must prove that they pass Temporal's workflow sandbox validation.
 
 - Any new HoloDeck-owned workflow definition format. This spec forbids one.
   A future exception needs an explicit decision.
-- Deletion or deprecation of the `holodeck workflow` verb.
 - A second orchestration engine, or an abstraction layer for one.
 - A portable run-record artifact.
 
@@ -181,7 +182,7 @@ test must prove that they pass Temporal's workflow sandbox validation.
 | 5 | The gate lives inside the activity. A gate failure is a retryable activity fault. |
 | 6 | Records = Temporal event history + existing OTel spans. Nothing new in v1. |
 | 7 | DMN/FEEL table evaluation survives as a deterministic helper in workflow code. |
-| 8 | 036 is archived. Its green Phase 1 code is merged and reused. T7+ is not built. |
+| 8 | 036 is archived. The kept primitives (gate, table-eval, FEEL) merge and are reused. The overlay engine (runner, DAG models, workflow schema, CLI verb) is deleted before merge. T7+ is not built. |
 | 9 | The stated durability pressure (retry and timeout of agent calls) lives in agent execution, not in the 036 spine. |
 
 ## 12. Open questions

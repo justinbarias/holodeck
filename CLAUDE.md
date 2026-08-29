@@ -11,7 +11,7 @@ HoloDeck is an open-source, no-code platform for building, testing, and deployin
 - **Comprehensive agent docs:** `AGENTS.md`
 - **Product & user documentation:** `docs/`
 - **Feature specs and status:** `specs/<feature>/` — read the whole feature directory before working on one
-- **YAML schemas:** `schemas/agent.schema.json`, `schemas/workflow.schema.json`, `schemas/optimize-progress.schema.json`
+- **YAML schemas:** `schemas/agent.schema.json`, `schemas/optimize-progress.schema.json`
 
 ## Codebase Index
 
@@ -21,12 +21,12 @@ The map below is the fastest way to locate code. Every path is relative to `src/
 src/holodeck/
 ├── cli/                    Click entry point (holodeck)
 │   └── commands/           One module per subcommand:
-│                           init, test, chat, serve, deploy, workflow,
+│                           init, test, chat, serve, deploy,
 │                           optimize, mcp, config, test_view
 ├── config/                 ConfigLoader, validation, env/YAML merge
 ├── models/                 Pydantic v2 schema layer (no I/O, no business logic)
 │   ├── agent.py            Agent — root model for agent.yaml
-│   ├── workflow.py         Workflow — root model for workflow.yaml (036)
+│   ├── workflow.py         EdgeNode — schema-gated agent boundary (from 036)
 │   ├── decision_table.py   DecisionTable + loader (DMN-style tables)
 │   ├── llm.py              LLMProvider union
 │   ├── claude_config.py    Claude backend options
@@ -46,13 +46,11 @@ src/holodeck/
 │   │   ├── otel_bridge.py            Observability config → subprocess env vars
 │   │   ├── validators.py             Pre-flight checks (Node.js, credentials)
 │   │   └── openai_agents_*.py        OpenAI Agents SDK backend + adapters
-│   ├── workflow/           Deterministic spine (feature 036)
-│   │   ├── runner.py       prepare_workflow (all validation, zero LLM) /
-│   │   │                   execute_workflow (topological execution)
-│   │   ├── edge.py         Edge-node executor + gate schema validation
+│   ├── workflow/           Deterministic primitives kept from 036 (archived);
+│   │   │                   reuse surface for the Temporal pivot (SPEC.md)
+│   │   ├── edge.py         Edge executor + gate schema validation
 │   │   ├── table_eval.py   Hit-policy evaluation (UNIQUE/FIRST/PRIORITY) → Verdict
-│   │   ├── feel.py         FEEL expression subset (bkflow-feel) + static rejection
-│   │   └── input_data.py   Fact-of-record validation against JSON Schema
+│   │   └── feel.py         FEEL expression subset (bkflow-feel) + static rejection
 │   ├── evaluators/         NLP, Azure AI, DeepEval metric implementations
 │   ├── test_runner/        Test execution engine
 │   ├── eval_run/           Evaluation run orchestration
@@ -82,7 +80,6 @@ tests/
 └── fixtures/               Committed test fixtures
 
 schemas/                    Published JSON Schemas — keep in sync with models/
-                            (sync enforced by tests/unit/test_workflow_schema_sync.py)
 docs/                       Docsite content (https://docs.useholodeck.ai/)
 sample/                     Local-only sample agents (git-ignored, see .gitignore)
 specs/                      Feature specs, plans, task lists per feature
