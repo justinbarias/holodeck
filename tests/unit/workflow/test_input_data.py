@@ -292,6 +292,37 @@ class TestValidateInputData:
         assert exc.value.name == "prior_state"
         assert "cannot read schema" in str(exc.value)
 
+    def test_date_time_format_constraint_is_enforced(self, tmp_path: Path) -> None:
+        """``format: date-time`` is enforced by a declared dependency, not luck.
+
+        Before pinning ``jsonschema[format-nongpl]`` this format only happened
+        to be checked because ``rfc3339-validator`` was pulled in transitively
+        by an unrelated dependency (openapi-core); an unrelated dependency bump
+        could silently have dropped the check with no test failure. This pins
+        the guarantee explicitly.
+        """
+        # Arrange
+        _write_schema(
+            tmp_path,
+            "prior_state",
+            {
+                "type": "object",
+                "properties": {
+                    "recorded_at": {"type": "string", "format": "date-time"}
+                },
+                "required": ["recorded_at"],
+            },
+        )
+        wf = _workflow({"prior_state": {"schema": "schemas/prior_state.json"}})
+
+        # Act / Assert
+        with pytest.raises(InputDataError) as exc:
+            validate_input_data(
+                wf, {"prior_state": {"recorded_at": "not-a-date-time"}}, tmp_path
+            )
+        assert exc.value.name == "prior_state"
+        assert "schema-invalid" in str(exc.value)
+
     def test_undeclared_payload_keys_warn_via_logging(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:

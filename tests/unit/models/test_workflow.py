@@ -178,6 +178,123 @@ class TestDagValidation:
 
 
 @pytest.mark.unit
+class TestFeelSafeNames:
+    """Node ids and input_data keys must be usable as FEEL root names.
+
+    A node's verdict is dot-pathed by its id (``prior_state.income``) and an
+    input_data key binds the same way; a name outside the FEEL identifier
+    shape, or one colliding with a FEEL literal/reserved root, breaks
+    downstream at evaluation time with a message that does not point back at
+    the offending name.
+    """
+
+    def test_hyphenated_node_id_rejected(self) -> None:
+        nodes = [_edge("prior-state")]
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(_workflow(nodes))
+        assert "prior-state" in str(exc.value)
+        assert "FEEL-safe identifier" in str(exc.value)
+
+    def test_node_id_matching_a_feel_literal_rejected(self) -> None:
+        nodes = [_edge("true")]
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(_workflow(nodes))
+        assert "'true'" in str(exc.value)
+        assert "FEEL literal" in str(exc.value)
+
+    def test_node_id_matching_a_reserved_root_rejected(self) -> None:
+        nodes = [_edge("provenance")]
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(_workflow(nodes))
+        assert "provenance" in str(exc.value)
+
+    def test_digit_leading_node_id_rejected(self) -> None:
+        nodes = [_edge("1income")]
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(_workflow(nodes))
+        assert "1income" in str(exc.value)
+
+    def test_hyphenated_input_data_key_rejected(self) -> None:
+        wf_dict = _workflow([_policy("zone", ["prior-state"])])
+        wf_dict["input_data"] = {"prior-state": {"schema": "schemas/prior.json"}}
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(wf_dict)
+        assert "prior-state" in str(exc.value)
+        assert "FEEL-safe identifier" in str(exc.value)
+
+    def test_input_data_key_matching_a_feel_literal_rejected(self) -> None:
+        wf_dict = _workflow([_policy("zone", ["false"])])
+        wf_dict["input_data"] = {"false": {"schema": "schemas/false.json"}}
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(wf_dict)
+        assert "'false'" in str(exc.value)
+        assert "FEEL literal" in str(exc.value)
+
+    # The FEEL grammar has keyword rules as well as a CNAME terminal, so a name
+    # matching the identifier shape can still fail to parse as a variable. Every
+    # name below is accepted by the identifier pattern and rejected by the
+    # grammar; the list is what the grammar actually rejects, not a subset.
+    @pytest.mark.parametrize(
+        "keyword",
+        [
+            "after",
+            "all",
+            "any",
+            "before",
+            "contains",
+            "count",
+            "date",
+            "day",
+            "ends",
+            "every",
+            "get",
+            "includes",
+            "is",
+            "list",
+            "matches",
+            "month",
+            "not",
+            "now",
+            "some",
+            "starts",
+            "string",
+            "time",
+            "today",
+        ],
+    )
+    def test_node_id_that_is_a_feel_keyword_rejected(self, keyword: str) -> None:
+        """A keyword id parses as a keyword, never as a reference to the node.
+
+        Left unchecked, ``id: date`` is accepted and the failure surfaces as
+        ``malformed FEEL expression`` against the *table* — blaming the wrong
+        artifact for a defect in the node id.
+        """
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(_workflow([_edge(keyword)]))
+        assert f"'{keyword}'" in str(exc.value)
+
+    def test_input_data_key_that_is_a_feel_keyword_rejected(self) -> None:
+        wf_dict = _workflow([_policy("zone", ["date"])])
+        wf_dict["input_data"] = {"date": {"schema": "schemas/date.json"}}
+        with pytest.raises(ValidationError) as exc:
+            Workflow.model_validate(wf_dict)
+        assert "'date'" in str(exc.value)
+
+    @pytest.mark.parametrize(
+        "name", ["evidence", "prior_state", "_private", "a1", "and", "or", "in", "if"]
+    )
+    def test_names_the_grammar_binds_as_variables_are_accepted(self, name: str) -> None:
+        """The check defers to the grammar, so it must not over-reject.
+
+        ``and``/``or``/``in``/``if`` appear in the grammar as operators but are
+        still bound as plain variables when they stand alone, so they remain
+        legal names.
+        """
+        wf = Workflow.model_validate(_workflow([_edge(name)]))
+        assert wf.nodes[0].id == name
+
+
+@pytest.mark.unit
 class TestHumanNodeDraftPairing:
     """FR-015a: a drafting agent and its advisory fields go together."""
 

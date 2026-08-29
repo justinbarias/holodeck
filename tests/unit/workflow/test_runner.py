@@ -31,6 +31,7 @@ from holodeck.lib.backends.base import ExecutionResult
 from holodeck.lib.backends.claude_backend import ClaudeBackend
 from holodeck.lib.backends.openai_agents_backend import OpenAIAgentsBackend
 from holodeck.lib.errors import (
+    ConfigError,
     DecisionTableError,
     GateSchemaError,
     GateValidationError,
@@ -38,6 +39,7 @@ from holodeck.lib.errors import (
     PolicyReviewError,
     WorkflowError,
 )
+from holodeck.lib.errors import FileNotFoundError as HoloDeckFileNotFoundError
 from holodeck.lib.workflow import edge, runner
 from holodeck.models.observability import ObservabilityConfig
 
@@ -355,6 +357,121 @@ def _break_gate_schema(workflow_path: Path) -> None:
     )
 
 
+def _break_gate_schema_structure(workflow_path: Path) -> None:
+    """Leave the gate parseable JSON, but not a valid JSON Schema.
+
+    ``required`` must be an array. Nothing about the file is wrong until the
+    schema is judged as a schema, which is the whole point: the defect is
+    invisible to a read-and-parse check and would otherwise surface only once
+    the agent's output was handed to the validator.
+    """
+    (workflow_path.parent / "gates" / "evidence.schema.json").write_text(
+        json.dumps(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "required": "net_income",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_gate_schema(workflow_path: Path, schema: dict[str, Any]) -> None:
+    """Replace the edge node's gate schema with ``schema``."""
+    (workflow_path.parent / "gates" / "evidence.schema.json").write_text(
+        json.dumps(schema), encoding="utf-8"
+    )
+
+
+def _gate_ref_to_a_remote_document(workflow_path: Path) -> None:
+    """Point the gate at a schema only a network fetch could supply."""
+    _write_gate_schema(
+        workflow_path,
+        {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {"net_income": {"$ref": "https://example.com/nope.json"}},
+        },
+    )
+
+
+def _gate_ref_to_a_sibling_file(workflow_path: Path) -> None:
+    """Point the gate at a sibling file, which retrieval refuses to load."""
+    _write_gate_schema(
+        workflow_path,
+        {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {"net_income": {"$ref": "money.json"}},
+        },
+    )
+
+
+def _gate_ref_typos_a_local_pointer(workflow_path: Path) -> None:
+    """Typo a pointer into the gate's own ``$defs`` — no network involved.
+
+    The likeliest ``$ref`` defect an author actually writes: ``$defs`` defines
+    ``Money`` and the reference asks for ``Mony``. Everything needed to settle
+    it is inside the file.
+    """
+    _write_gate_schema(
+        workflow_path,
+        {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "$defs": {"Money": {"type": "number"}},
+            "properties": {"net_income": {"$ref": "#/$defs/Mony"}},
+            "required": ["net_income"],
+        },
+    )
+
+
+def _gate_ref_hidden_under_a_property_named_default(workflow_path: Path) -> None:
+    """Hide a remote ``$ref`` under a property literally named ``default``.
+
+    The reference walk once skipped ``const``/``enum``/``default``/``examples``
+    wherever the *key* appeared, so this entirely ordinary field name hid its
+    subtree — and the remote reference in it — from load-time checking. The
+    run then reached the edge agent and only discovered the defect after
+    paying for the call, which is exactly what FR-003 forbids.
+    """
+    _write_gate_schema(
+        workflow_path,
+        {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {"default": {"$ref": "https://example.com/nope.json"}},
+        },
+    )
+
+
+def _misname_table_input_root(workflow_path: Path) -> None:
+    """Typo the root of a table input expression so nothing feeds it.
+
+    The node declares ``inputs: [evidence, applicant]``; the table now reads
+    ``evidnce``. The table alone cannot tell — it never sees the node — so only
+    the runner can catch it, and it must do so before the edge agent runs.
+    """
+    _rewrite_table(
+        workflow_path,
+        inputs=[
+            {
+                "name": "surplus_ratio",
+                "expression": (
+                    "(evidnce.net_income - evidnce.expenses) / evidnce.net_income"
+                ),
+                "type": "number",
+            },
+            {
+                "name": "residency_status",
+                "expression": "applicant.residency_status",
+                "type": "string",
+            },
+        ],
+    )
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -364,6 +481,16 @@ def _break_gate_schema(workflow_path: Path) -> None:
         (_make_unresolved, VALID_PAYLOAD, PydanticValidationError),
         (_delete_table, VALID_PAYLOAD, DecisionTableError),
         (_break_gate_schema, VALID_PAYLOAD, GateSchemaError),
+        (_break_gate_schema_structure, VALID_PAYLOAD, GateSchemaError),
+        (_gate_ref_to_a_remote_document, VALID_PAYLOAD, GateSchemaError),
+        (_gate_ref_to_a_sibling_file, VALID_PAYLOAD, GateSchemaError),
+        (_gate_ref_typos_a_local_pointer, VALID_PAYLOAD, GateSchemaError),
+        (
+            _gate_ref_hidden_under_a_property_named_default,
+            VALID_PAYLOAD,
+            GateSchemaError,
+        ),
+        (_misname_table_input_root, VALID_PAYLOAD, WorkflowError),
         (lambda _: None, {}, InputDataError),
         (lambda _: None, {"applicant": {"residency_status": "maybe"}}, InputDataError),
     ],
@@ -372,6 +499,12 @@ def _break_gate_schema(workflow_path: Path) -> None:
         "unresolved-reference",
         "missing-table",
         "unusable-gate-schema",
+        "structurally-invalid-gate-schema",
+        "gate-ref-to-a-remote-document",
+        "gate-ref-to-a-sibling-file",
+        "gate-ref-typos-a-local-pointer",
+        "gate-ref-hidden-under-a-property-named-default",
+        "table-input-names-an-undeclared-root",
         "missing-fact",
         "schema-invalid-fact",
     ],
@@ -383,7 +516,16 @@ async def test_load_time_failures_never_invoke_an_agent(
     payload: dict[str, Any],
     expected: type[Exception],
 ) -> None:
-    """Validation failures stop the run before a backend is ever selected."""
+    """Validation failures stop the run before a backend is ever selected.
+
+    The four ``gate-ref-*`` cases are all 2020-12 gates, and that is not
+    incidental: ``load_gate_schema`` walks a gate's ``$ref``\\ s only for the
+    dialects in ``edge._WALKED_SPECIFICATIONS`` (2020-12 and 2019-09, plus a
+    gate with no ``$schema``). An identical defect written in draft-07,
+    draft-06, draft-04 or draft-03 is *not* caught here — it costs exactly one
+    agent call and is then refused by the backstop in ``_apply_gate``, which
+    ``test_a_skipped_dialect_gate_is_refused_after_one_agent_call`` pins.
+    """
     # Arrange
     selector = _install_backend(monkeypatch, _gated(dict(VALID_EVIDENCE)))
     mutate(workflow_path)
@@ -394,6 +536,60 @@ async def test_load_time_failures_never_invoke_an_agent(
 
     assert selector.calls == []
     assert selector.backend.messages == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "gate_schema",
+    [
+        {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "dependencies": {
+                "net_income": ["expenses"],
+                "expenses": {"$ref": "https://example.com/nope.json"},
+            },
+        },
+        {
+            "$schema": "http://json-schema.org/draft-03/schema#",
+            "type": "object",
+            "extends": {"$ref": "https://example.com/nope.json"},
+        },
+    ],
+    ids=["draft-07-dependencies-non-schema-first", "draft-03-extends-as-object"],
+)
+async def test_a_skipped_dialect_gate_is_refused_after_one_agent_call(
+    monkeypatch: pytest.MonkeyPatch, workflow_path: Path, gate_schema: dict[str, Any]
+) -> None:
+    """The honest limit of FR-003, and the guarantee that replaces it.
+
+    Both gates hold a remote ``$ref`` that no instance can satisfy, in the two
+    shapes ``referencing``'s pre-2019 subresource tables mishandle: a
+    ``dependencies`` whose first value is an array (the table then yields
+    nothing at all) and a draft-03 ``extends`` written as an object (the table
+    yields its *keys*). ``load_gate_schema`` does not walk these dialects at
+    all, precisely so that nothing rests on those tables — so unlike the
+    2020-12 equivalents in
+    ``test_load_time_failures_never_invoke_an_agent``, each costs one agent
+    call.
+
+    What must still hold is the channel: exactly one invocation, then a
+    ``GateSchemaError``. Not two calls, not a ``GateValidationError`` blaming
+    the model for an authoring defect, and — the reason this test exists — not
+    the bare ``AttributeError`` ``referencing`` raises when its crawl meets the
+    ``str``/``list`` those tables hand it.
+    """
+    # Arrange
+    selector = _install_backend(monkeypatch, _gated(dict(VALID_EVIDENCE)))
+    _write_gate_schema(workflow_path, gate_schema)
+
+    # Act / Assert
+    with pytest.raises(GateSchemaError):
+        await runner.run_workflow(workflow_path, VALID_PAYLOAD)
+
+    assert len(selector.calls) == 1
+    assert len(selector.backend.messages) == 1
 
 
 @pytest.mark.unit
@@ -419,6 +615,112 @@ async def test_invalid_fact_fails_before_any_backend_is_constructed(
     assert excinfo.value.name == "applicant"
     assert selector.calls == []
     assert selector.backend.messages == []
+
+
+# ---------------------------------------------------------------------------
+# FR-003 — the edge agent config is part of "everything resolves first".
+# ---------------------------------------------------------------------------
+
+SECOND_AGENT_YAML = """\
+name: hardship-evidence-b
+description: A second edge agent.
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+instructions:
+  inline: "Extract the applicant's monthly expenses."
+"""
+
+
+def _add_second_edge_node(workflow_path: Path, agent_yaml: str | None) -> None:
+    """Append a second edge node whose ``agent.yaml`` is ``agent_yaml``.
+
+    Two edge nodes is the minimum that can show the defect: with one, the only
+    agent is also the first, so a broken config costs nothing whichever half of
+    the runner discovers it. ``None`` leaves the file absent entirely.
+    """
+    if agent_yaml is not None:
+        (workflow_path.parent / "agents" / "evidence_b.yaml").write_text(
+            agent_yaml, encoding="utf-8"
+        )
+    data = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    data["nodes"].insert(
+        1,
+        {
+            "id": "evidence_b",
+            "edge": {"agent": "agents/evidence_b.yaml"},
+            "gate": {"schema": "gates/evidence.schema.json"},
+        },
+    )
+    workflow_path.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("agent_yaml", "expected"),
+    [
+        (None, HoloDeckFileNotFoundError),
+        ("name: broken\nmodel:\n  provider: nope\n  name: x\n", ConfigError),
+    ],
+    ids=["missing-agent-yaml", "invalid-agent-yaml"],
+)
+async def test_a_broken_edge_agent_config_never_bills_an_earlier_node(
+    monkeypatch: pytest.MonkeyPatch,
+    workflow_path: Path,
+    agent_yaml: str | None,
+    expected: type[Exception],
+) -> None:
+    """An unloadable ``agent.yaml`` is an authoring defect, so it costs nothing.
+
+    The workflow has two edge nodes; only the second one's config is broken. If
+    the config were read at execution time, the first node's agent would have
+    been invoked — and billed — before anything noticed.
+    """
+    # Arrange
+    selector = _install_backend(monkeypatch, _gated(dict(VALID_EVIDENCE)))
+    _add_second_edge_node(workflow_path, agent_yaml)
+
+    # Act / Assert
+    with pytest.raises(expected):
+        await runner.run_workflow(workflow_path, VALID_PAYLOAD)
+
+    assert selector.calls == []
+    assert selector.backend.messages == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_agent_swapped_after_preparation_is_not_the_one_invoked(
+    monkeypatch: pytest.MonkeyPatch, workflow_path: Path
+) -> None:
+    """What runs is what was validated: the agent file is read exactly once.
+
+    Rewriting ``agents/evidence.yaml`` between preparation and execution — with
+    a different provider, no less — must not change which agent the backend
+    selector is handed.
+    """
+    # Arrange
+    selector = _install_backend(monkeypatch, _gated(dict(VALID_EVIDENCE)))
+    prepared = runner.prepare_workflow(workflow_path, VALID_PAYLOAD)
+    (workflow_path.parent / "agents" / "evidence.yaml").write_text(
+        "name: swapped-in\n"
+        "description: Not the agent that was validated.\n"
+        "model:\n"
+        "  provider: openai\n"
+        "  name: gpt-4o\n"
+        "instructions:\n"
+        '  inline: "Do something else entirely."\n',
+        encoding="utf-8",
+    )
+
+    # Act
+    await runner.execute_workflow(prepared)
+
+    # Assert — the prepared agent, not whatever the file says now.
+    (invoked,) = selector.calls
+    assert invoked.name == "hardship-evidence"
+    assert invoked.model.provider.value == "anthropic"
 
 
 # ---------------------------------------------------------------------------

@@ -17,9 +17,28 @@ backend that flags an error while still returning an object — what
 ``ClaudeBackend`` does when the model violates its own ``response_format`` —
 has produced evidence about the model, and that evidence goes to the gate.
 
-Gate validation never touches the network. Remote ``$ref`` retrieval is
-refused outright, so the schema snapshotted in :class:`GatedOutput` is exactly
-the schema that was enforced.
+Gate validation never touches the network: retrieval is refused outright, so
+the only references that resolve are the ones the document carries itself and
+the metaschemas ``jsonschema`` bundles. Whichever way a reference is settled,
+the schema snapshotted in :class:`GatedOutput` is exactly the schema enforced.
+
+*When* an unresolvable reference is discovered depends on the gate's dialect,
+and only two dialects are checked at load:
+
+* **2020-12 and 2019-09** — including a gate with no ``$schema`` at all, since
+  that is the dialect ``jsonschema`` itself falls back to. For these,
+  :func:`load_gate_schema` walks the document and resolves every ``$ref``
+  :func:`_collect_refs` reaches, so an unresolvable one — remote,
+  sibling-file, or a mistyped pointer into the gate's own ``$defs`` — is an
+  authoring defect found before an agent call. Even here the walk is partial:
+  what it still does not model is listed in :func:`_collect_refs`.
+* **Every other dialect** — draft-07, draft-06, draft-04, draft-03, or the
+  ``Specification.OPAQUE`` fallback, whose subresource table is empty and
+  would make the walk a no-op anyway. For these **no load-time reference check
+  runs at all**; the gate loads unexamined and any resolution failure surfaces
+  at validate time, after one agent call, through the backstop in
+  :func:`_apply_gate`. Why the line is drawn there is in
+  :data:`_WALKED_SPECIFICATIONS`.
 
 What crosses is the :class:`GatedOutput`: the *validated object*, never the raw
 model text (FR-008). It carries the gate schema by **content**, not by path, so
@@ -31,7 +50,6 @@ goes through ``BackendSelector`` so the protocol contract is unchanged.
 
 from __future__ import annotations
 
-import asyncio
 import copy
 import json
 import logging
@@ -40,15 +58,17 @@ from typing import Any
 
 import jsonschema
 import jsonschema.validators
+from jsonschema.validators import SPECIFICATIONS
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from referencing import Registry, Resource
+from referencing import Registry, Resource, Specification
 from referencing.exceptions import NoSuchResource, Unresolvable
+from referencing.jsonschema import DRAFT201909, DRAFT202012, specification_with
 
 from holodeck.config.context import agent_base_dir
-from holodeck.config.loader import ConfigLoader
 from holodeck.lib.backends.base import AgentBackend, ExecutionResult
 from holodeck.lib.backends.selector import BackendSelector
 from holodeck.lib.errors import ExecutionError, GateSchemaError, GateValidationError
+from holodeck.models.agent import Agent
 from holodeck.models.workflow import EdgeNode
 
 logger = logging.getLogger(__name__)
@@ -80,6 +100,149 @@ def _refuse_retrieval(uri: str) -> Resource[Any]:
 _NO_RETRIEVAL_REGISTRY: Registry[Any] = Registry(
     retrieve=_refuse_retrieval  # type: ignore[call-arg]
 )
+
+#: Registry the load-time ``$ref`` walk resolves against. It must be exactly
+#: what the validator itself would use, or the walk would refuse a reference
+#: the gate can in fact resolve: ``jsonschema`` combines any caller-supplied
+#: registry with ``SPECIFICATIONS`` (the metaschemas it ships) before building
+#: a resolver, so a schema referring to a metaschema resolves at validate time
+#: and must resolve here too. Nothing in ``SPECIFICATIONS`` is retrieved — it
+#: is bundled — so this adds no network reach.
+_GATE_REF_REGISTRY: Registry[Any] = SPECIFICATIONS.combine(_NO_RETRIEVAL_REGISTRY)
+
+#: The dialects whose ``subresources_of`` table the load-time walk trusts.
+#:
+#: The walk delegates descent to ``referencing`` (see :func:`_collect_refs`),
+#: which is right only where that table is. For the pre-2019 dialects it is
+#: not, in two ways that both *hide* a reference rather than invent one:
+#:
+#: * ``_subresources_of_with_crazy_items_dependencies`` (draft-07/06/04) reads
+#:   only the first value of ``dependencies`` and yields nothing at all if that
+#:   value is not a Mapping, so ``{"a": ["b"], "c": {"$ref": ...}}`` conceals
+#:   the reference entirely.
+#: * draft-03 lists ``extends`` as holding an *array* of subschemas, so for the
+#:   equally legal object form it yields the object's keys — strings.
+#:
+#: A hidden reference bills an agent call for a defect the author could have
+#: been told about at load. The alternative — hand-rolling descent for those
+#: dialects — risks the far worse error of walking into a place that is not a
+#: subschema and refusing a gate ``validate()`` would accept. So these dialects
+#: are not walked: a missed early catch costs one call and is still caught
+#: correctly by :func:`_apply_gate`, and nothing rests on a table known to be
+#: wrong.
+#:
+#: 2020-12 and 2019-09 are on this list for two reasons. Every keyword their
+#: tables list is constrained by their metaschema to hold schemas, and
+#: ``check_schema`` runs before the walk — so nothing but a schema (or a
+#: boolean) is ever descended into, and the crawl cannot be handed a ``str`` or
+#: a ``list``. And in the other direction their tables are complete: of the
+#: keywords those validators evaluate as subschemas, neither table omits any.
+#: The keyword both tables *do* omit, ``dependencies``, is deprecated and
+#: evaluated by neither validator, so no reference under it is resolved at
+#: either end. What the walk still does not reach is in :func:`_collect_refs`.
+_WALKED_SPECIFICATIONS: frozenset[Specification[Any]] = frozenset(
+    {DRAFT202012, DRAFT201909}
+)
+
+
+def _gate_specification(validator_cls: type[Any]) -> Specification[Any]:
+    """Return the ``referencing`` specification ``validator_cls`` resolves under.
+
+    Derived exactly the way ``jsonschema.validators.create`` derives it — from
+    the dialect id of the validator's own metaschema, falling back to
+    ``Specification.OPAQUE`` for a dialect ``referencing`` does not know. Using
+    the same object means the walk's notion of "this is a subschema" and its
+    base-URI arithmetic are the validator's, not an approximation of them.
+
+    Args:
+        validator_cls: The validator class ``validator_for`` chose for the gate.
+
+    Returns:
+        The specification whose subresource table and ``$id`` rules apply.
+    """
+    return specification_with(
+        validator_cls.ID_OF(validator_cls.META_SCHEMA) or "urn:unknown-dialect",
+        default=Specification.OPAQUE,
+    )
+
+
+def _collect_refs(
+    spec: Specification[Any], schema: Any, resolver: Any
+) -> list[tuple[str, Any]]:
+    r"""Collect the ``$ref``\ s in schema position, each with its own scope.
+
+    Only ever called for a dialect in :data:`_WALKED_SPECIFICATIONS`; every
+    other dialect skips the walk entirely, so nothing below applies to it.
+
+    Descent is delegated to ``spec.subresources_of`` — ``referencing``'s own
+    table of which keywords hold subschemas under the gate's dialect, the same
+    table it crawls a document by to discover nested ``$id``\ s and anchors —
+    so the walk enters a value exactly where that value begins a subschema.
+    Two consequences matter:
+
+    * A key is only ever read as a keyword in keyword position. A property,
+      pattern property, dependent schema or ``$defs`` entry may be *named*
+      ``$ref``, ``const``, ``properties`` or anything else; the walk descends
+      into its value regardless and reads ``$ref`` only where a subschema
+      actually begins.
+    * The walk never enters the value of ``const``, ``enum``, ``default`` or
+      ``examples``: no dialect's table lists them, so a ``$ref``-shaped literal
+      there is treated as the data it is.
+
+    Each reference is paired with the resolver in force where it appears, so a
+    nested ``$id`` rebases a relative reference here by the same rule — and the
+    same ``Resolver.in_subresource`` call — the validator applies as it
+    descends.
+
+    Not modelled, and therefore left to the runtime backstop in
+    :func:`_apply_gate`:
+
+    * ``$dynamicRef`` and ``$recursiveRef`` — their target is chosen from the
+      dynamic scope of a particular validation, not from the document.
+    * A subschema that declares its own ``$schema``. The walk descends under
+      the *root* dialect's table from top to bottom and never re-dialects an
+      embedded resource, so a ``$ref`` only the embedded dialect's table would
+      reach — draft-03 ``extends``, draft-07 ``dependencies`` — is invisible to
+      it, even though ``jsonschema`` honours that ``$schema`` and does reach
+      the reference. Re-dialecting would mean walking by the very tables
+      :data:`_WALKED_SPECIFICATIONS` refuses to trust.
+    * ``dependencies``. It survives in the 2020-12 and 2019-09 metaschemas as a
+      deprecated keyword and may hold schemas, but neither dialect's table
+      lists it and neither validator evaluates it, so a ``$ref`` there is never
+      resolved at either end.
+    * Anything at a location the dialect's table does not call a subschema: an
+      unlisted keyword's value, or a literal that some ``$ref`` elsewhere
+      points into. The walk walks the document; it never follows a reference
+      to its target.
+    * A ``$ref`` whose value is not a string; it is skipped rather than
+      guessed at.
+
+    Args:
+        spec: The specification returned by :func:`_gate_specification`.
+        schema: The parsed gate schema, or any fragment of it.
+        resolver: The ``referencing`` resolver in force at ``schema``.
+
+    Returns:
+        ``(reference, resolver)`` pairs in document order, duplicates kept.
+    """
+    found: list[tuple[str, Any]] = []
+
+    def walk(node: Any, scope: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        ref = node.get("$ref")
+        if isinstance(ref, str):
+            found.append((ref, scope))
+        for child in spec.subresources_of(node):
+            # Both walked dialects allow a boolean wherever they allow a
+            # schema. One carries neither a reference nor an `$id`, so there is
+            # nothing to collect and nothing to rebase against.
+            if not isinstance(child, dict):
+                continue
+            walk(child, scope.in_subresource(spec.create_resource(child)))
+
+    walk(schema, resolver)
+    return found
 
 
 class GatedOutput(BaseModel):
@@ -135,9 +298,15 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
 
     Raises:
         GateSchemaError: If the schema file cannot be read, is not a JSON
-            object, or declares a type the spine cannot address. These are
-            authoring defects, deliberately not ``GateValidationError`` — see
-            that class's docstring.
+            object, is not a valid JSON Schema, or declares a type the spine
+            cannot address — and, *for a gate whose dialect is one of*
+            :data:`_WALKED_SPECIFICATIONS` only, if it carries a ``$ref`` in a
+            schema position :func:`_collect_refs` reaches that cannot be
+            resolved without retrieval. A gate in any other dialect gets no
+            reference check here at all; its references are settled at validate
+            time by :func:`_apply_gate`. These are authoring defects,
+            deliberately not ``GateValidationError`` — see that class's
+            docstring.
     """
     path = (workflow_dir / node.gate.schema_path).resolve()
     try:
@@ -158,6 +327,73 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
             f"gate schema '{path}' must be a JSON object, got "
             f"{type(schema).__name__}",
         )
+
+    # Whether the document is a *schema* is judged here, not at validate time:
+    # `{"required": "name"}` parses, reads, and looks like a gate, so nothing
+    # short of the metaschema catches it. Deferring it to the first output would
+    # spend an agent call to discover a typo in a file the author already wrote.
+    validator_cls = jsonschema.validators.validator_for(schema)
+    try:
+        validator_cls.check_schema(schema)
+    except jsonschema.SchemaError as exc:
+        raise GateSchemaError(
+            node.id, f"gate schema '{path}' is not a valid JSON Schema: {exc.message}"
+        ) from exc
+
+    # References are settled here too — but only for the dialects
+    # `_WALKED_SPECIFICATIONS` names. jsonschema resolves them lazily, at
+    # validate time; that is its default, not a constraint. Resolving them
+    # against the registry, the specification and the scope the validator would
+    # itself have used decides a remote ref, a sibling-file ref, and a mistyped
+    # local pointer with no network access at all. Left to validate time, each
+    # of those costs an agent call to discover a defect in a file the author
+    # already wrote. For any other dialect the walk does not run and every
+    # reference is left exactly where jsonschema puts it: validate time.
+    #
+    # Where it does run, *reference resolution* is stricter here than at
+    # validate time, deliberately: a reference is refused even where no
+    # instance would reach it — an unreferenced `$defs` entry, or the losing
+    # branch of an `if`/`then`. `validator.validate()` resolves lazily and so
+    # accepts such a gate for every instance that misses the branch. A
+    # reference that cannot resolve at all is an authoring defect whether or
+    # not this run's output touches it; refusing it costs nothing but a message
+    # naming the ref, whereas accepting it ships a gate that stops constraining
+    # anything the first time an instance does reach that branch. The reverse
+    # direction — refusing a reference `validate()` would resolve for *every*
+    # instance — is what `_collect_refs` is built to avoid. (Reference
+    # resolution is not the only way load is stricter than validate time:
+    # `check_schema` above refuses documents `validate()` raises no schema
+    # error on at all — `{"required": "name"}` runs, as a demand for the
+    # properties `n`, `a`, `m` and `e`.)
+    spec = _gate_specification(validator_cls)
+    if spec in _WALKED_SPECIFICATIONS:
+        resolver = _GATE_REF_REGISTRY.resolver_with_root(spec.create_resource(schema))
+        for ref, scope in _collect_refs(spec, schema, resolver):
+            try:
+                scope.lookup(ref)
+            except Unresolvable as exc:
+                raise GateSchemaError(
+                    node.id,
+                    f"gate schema '{path}' references '{ref}', which it does "
+                    f"not carry and retrieval is refused: {exc}",
+                ) from exc
+            except AttributeError as exc:
+                # Resolving a reference makes `referencing` crawl the whole
+                # document, and the crawl re-dialects an embedded resource from
+                # its own `$schema` — including into the pre-2019 tables
+                # `_WALKED_SPECIFICATIONS` refuses to walk by. Those hand a
+                # `str`/`list` to `_legacy_anchor_in_id`, which calls `.get` on
+                # it. Narrowing the walk does not put this out of reach: the
+                # root dialect can be 2020-12 and the embedded one draft-03.
+                # It is still an authoring defect, so it leaves through the
+                # channel this function declares rather than as a traceback.
+                raise GateSchemaError(
+                    node.id,
+                    f"gate schema '{path}' references '{ref}', and the "
+                    f"document could not be crawled to resolve it "
+                    f"({type(exc).__name__}: {exc}); an embedded subschema "
+                    f"puts a non-schema where its declared dialect expects one",
+                ) from exc
 
     # The spine addresses an edge value by node id (`inputs: [<node id>]`) and
     # dot-paths its fields in FEEL, so a gate that asks the model for anything
@@ -188,15 +424,23 @@ def _apply_gate(
     Args:
         node_id: Id of the edge node, used to locate any failure.
         result: The agent's execution result.
-        gate_schema: The parsed gate JSON Schema.
+        gate_schema: The gate JSON Schema, already checked by
+            :func:`load_gate_schema`.
 
     Returns:
         The :class:`GatedOutput` carrying the validated object.
 
     Raises:
-        GateSchemaError: If the gate schema is not a valid JSON Schema, or
-            refers to a resource it does not carry — authoring defects, not
-            rejections of the model's output.
+        GateSchemaError: If a reference cannot be resolved here. For a gate in
+            a dialect :data:`_WALKED_SPECIFICATIONS` does not name — draft-07,
+            draft-06, draft-04, draft-03 — this is not a backstop but the
+            *only* check there is: :func:`load_gate_schema` performs no
+            reference walk for those at all. For the two dialects it does walk,
+            this is the backstop, and what still arrives here is what that walk
+            does not model: ``$dynamicRef``/``$recursiveRef``, whose target
+            comes from the dynamic scope of this validation rather than from
+            the document, and a reference inside a subschema that declares its
+            own ``$schema``. The full list is in :func:`_collect_refs`.
         GateValidationError: If the agent produced free text, or the structured
             output does not satisfy the gate schema.
     """
@@ -209,13 +453,6 @@ def _apply_gate(
         )
 
     validator_cls = jsonschema.validators.validator_for(gate_schema)
-    try:
-        validator_cls.check_schema(gate_schema)
-    except jsonschema.SchemaError as exc:
-        raise GateSchemaError(
-            node_id, f"gate schema is not a valid JSON Schema: {exc.message}"
-        ) from exc
-
     validator = validator_cls(
         gate_schema,
         registry=_NO_RETRIEVAL_REGISTRY,
@@ -231,6 +468,21 @@ def _apply_gate(
             node_id,
             f"gate schema reference could not be resolved (the gate is not "
             f"self-contained and retrieval is refused): {exc}",
+        ) from exc
+    except AttributeError as exc:
+        # Same upstream defect `load_gate_schema` converts: resolving a
+        # reference crawls the document, and the pre-2019 subresource tables
+        # yield a `str` (draft-03 `extends` written as an object) or a `list`
+        # (a `dependencies` whose first value is a schema and a later one an
+        # array) where a schema is expected, so the crawl calls `.get` on it.
+        # Reachable from any dialect, because an embedded subschema may declare
+        # a legacy `$schema` of its own. The gate cannot be applied; that is an
+        # authoring defect, and it must not escape as a bare AttributeError.
+        raise GateSchemaError(
+            node_id,
+            f"gate schema could not be applied under its declared dialect "
+            f"({type(exc).__name__}: {exc}); a subschema puts a non-schema "
+            f"where that dialect expects one",
         ) from exc
     except jsonschema.ValidationError as exc:
         raise GateValidationError(
@@ -275,68 +527,83 @@ async def _teardown(backend: AgentBackend, node_id: str) -> None:
 
 async def execute_edge_node(
     node: EdgeNode,
-    workflow_dir: Path,
+    agent: Agent,
+    agent_path: Path,
     message: str,
+    gate_schema: dict[str, Any],
 ) -> GatedOutput:
     """Run an edge node's agent and gate its structured output.
 
-    The gate schema is loaded *before* the agent is invoked: a node that cannot
-    gate must not spend an agent call, and the failure is the workflow author's,
-    not the model's.
+    Neither the gate nor the agent is read here: :func:`load_gate_schema` and
+    ``ConfigLoader.load_agent_yaml`` both run at preparation, and handing their
+    results down is what makes the schema enforced here — and snapshotted into
+    the :class:`GatedOutput` — and the agent invoked here the very objects that
+    were approved. Re-reading either file would reopen a window the width of a
+    model call between validation and use.
 
     Args:
         node: The edge node to execute.
-        workflow_dir: Directory containing ``workflow.yaml``; both
-            ``edge.agent`` and ``gate.schema`` are resolved relative to it.
+        agent: The node's agent configuration, loaded at preparation.
+        agent_path: Path the ``agent`` was loaded from. Its parent becomes the
+            ``agent_base_dir`` a backend resolves relative ``file:`` tool
+            references against; the file itself is not re-read.
         message: The prompt handed to the edge agent. Composed by the caller
             (the runner, T6) — this function orchestrates a single node only.
+        gate_schema: The node's gate schema as returned by
+            :func:`load_gate_schema`.
 
     Returns:
         The :class:`GatedOutput` whose ``value`` is the canonical object
         crossing into the spine.
 
     Raises:
-        GateSchemaError: If the gate schema cannot be loaded, is not a valid
-            JSON Schema, describes something the spine cannot address, or is
-            not self-contained — all workflow-authoring defects.
         GateValidationError: If the agent returned free text or schema-invalid
             output. An ``is_error`` result that nonetheless carries structured
             output lands here, not in ``ExecutionError``: the model produced
             something, and what it produced is evidence about the model.
+        GateSchemaError: Only as the backstop described in :func:`_apply_gate` —
+            the authoring defects preparation is able to judge are settled
+            there.
         ExecutionError: If the invocation produced nothing to judge — it raised,
             or it failed with no structured output. Distinct from a gate
             rejection: a broken invocation is not evidence about the model.
-        holodeck.lib.errors.FileNotFoundError: If the referenced ``agent.yaml``
-            does not exist.
-        ConfigError: If the referenced ``agent.yaml`` is invalid.
-        BackendInitError: If no backend supports the agent's provider.
+        BackendInitError: If constructing or initialising the backend fails.
+            Not surfaced at preparation: knowing it requires *building* a
+            backend, which ``prepare_workflow`` deliberately does not do
+            (FR-003). Its unsupported-provider case is unreachable from an
+            ``agent.yaml`` — ``model.provider`` is an enum every branch of
+            ``BackendSelector`` covers, and an unknown value is a ``ConfigError``
+            at load.
     """
-    gate_schema = await asyncio.to_thread(load_gate_schema, node, workflow_dir)
-
-    agent_path = (workflow_dir / node.edge.agent).resolve()
-    agent = await asyncio.to_thread(ConfigLoader().load_agent_yaml, str(agent_path))
-
     # Backends resolve a tool's relative `file:` against the agent_base_dir
     # contextvar. Only load_agent_and_config (the `test`/`chat` path) sets it;
     # loading the YAML directly does not, so without this an edge agent's
     # function tool resolves against the process CWD and is found only when the
     # run happens to start in the agent's directory. Same value that path sets:
     # the agent YAML's own parent.
-    agent_base_dir.set(str(agent_path.parent))
-
-    backend: AgentBackend = await BackendSelector.select(agent)
+    #
+    # Reset via token rather than left set: this module may be called
+    # repeatedly by a long-lived caller (a future server/embedded run), and a
+    # ContextVar mutated with no restore would leak this node's directory into
+    # whatever runs after it.
+    token = agent_base_dir.set(str(agent_path.parent))
     try:
-        result = await backend.invoke_once(message)
-    except Exception as exc:
+        backend: AgentBackend = await BackendSelector.select(agent)
+        try:
+            result = await backend.invoke_once(message)
+        except Exception as exc:
+            await _teardown(backend, node.id)
+            raise ExecutionError(
+                f"edge node '{node.id}': agent invocation raised "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
         await _teardown(backend, node.id)
-        raise ExecutionError(
-            f"edge node '{node.id}': agent invocation raised "
-            f"{type(exc).__name__}: {exc}"
-        ) from exc
-    await _teardown(backend, node.id)
 
-    if result.is_error and result.structured_output is None:
-        raise ExecutionError(
-            f"edge node '{node.id}': agent invocation failed: {result.error_reason}"
-        )
-    return _apply_gate(node.id, result, gate_schema)
+        if result.is_error and result.structured_output is None:
+            raise ExecutionError(
+                f"edge node '{node.id}': agent invocation failed: "
+                f"{result.error_reason}"
+            )
+        return _apply_gate(node.id, result, gate_schema)
+    finally:
+        agent_base_dir.reset(token)

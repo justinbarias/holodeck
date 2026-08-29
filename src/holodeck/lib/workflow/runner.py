@@ -8,9 +8,15 @@ The module is split into two halves on purpose:
 
 * :func:`prepare_workflow` does **all** validation — parse the graph (cycles and
   unresolved references), validate every declared fact of record, resolve every
-  gate schema, load every decision table, and apply the FR-030 review gate. It
-  never constructs a backend, so any of those failures costs zero LLM calls
-  (FR-003).
+  gate schema, load every edge node's ``agent.yaml``, load every decision table,
+  check each table reads only what its node feeds it, and apply the FR-030
+  review gate. It never constructs a backend, so any of those failures costs
+  zero LLM calls (FR-003). Every file it names it also keeps, so no gate schema,
+  agent config or decision table is re-read once execution starts. That is not
+  the same as "execution reads nothing": an ``agent.yaml`` names further files
+  — instruction files, ``file:`` tool sources, MCP server definitions — and
+  those are still resolved by the backend at invocation, outside this module's
+  reach.
 * :func:`execute_workflow` walks the prepared graph in topological order and is
   the only half that can reach a model.
 
@@ -35,18 +41,22 @@ from typing import TYPE_CHECKING, Any, NoReturn
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from holodeck.config.loader import ConfigLoader
 from holodeck.lib.errors import ConfigError, PolicyReviewError, WorkflowError
 from holodeck.lib.logging_config import get_logger
 from holodeck.lib.observability import get_tracer
 
 # load_gate_schema is edge.py's own definition of "this gate is usable". The
-# runner must apply it to *every* edge node before the first agent runs (FR-003)
-# — execute_edge_node only checks its own node, by which time an earlier node
-# may already have spent a model call. Re-implementing the check here would let
-# the two drift, so the owning module's helper is reused as-is.
+# runner applies it to *every* edge node before the first agent runs (FR-003) —
+# a gate resolved node-by-node would be checked only once an earlier node had
+# already spent a model call. Re-implementing the check here would let the two
+# drift, so the owning module's helper is reused as-is, and its result is kept
+# and handed back to execute_edge_node.
 from holodeck.lib.workflow.edge import GatedOutput, execute_edge_node, load_gate_schema
+from holodeck.lib.workflow.feel import referenced_roots
 from holodeck.lib.workflow.input_data import validate_input_data
 from holodeck.lib.workflow.table_eval import Verdict, evaluate
+from holodeck.models.agent import Agent
 from holodeck.models.decision_table import DecisionTable, load_decision_table
 from holodeck.models.observability import ObservabilityConfig
 from holodeck.models.workflow import EdgeNode, HumanNode, PolicyNode, Workflow
@@ -84,6 +94,23 @@ class PreparedWorkflow(BaseModel):
     )
     tables: dict[str, DecisionTable] = Field(
         description="Loaded, review-gated decision table per policy node id.",
+    )
+    gate_schemas: dict[str, dict[str, Any]] = Field(
+        description="Resolved gate schema per edge node id. Held by content so "
+        "the schema an output is judged against — and snapshotted into the run "
+        "record — is the one preparation approved, not whatever the file says "
+        "by the time the agent returns.",
+    )
+    agents: dict[str, Agent] = Field(
+        description="Loaded agent configuration per edge node id. Held for the "
+        "same reason as the gate schemas: the agent invoked is the one "
+        "preparation validated, not whatever agent.yaml holds by the time an "
+        "earlier node's model call returns.",
+    )
+    agent_paths: dict[str, Path] = Field(
+        description="Path each edge node's agent was loaded from. Kept because "
+        "its parent is the agent_base_dir a backend resolves relative 'file:' "
+        "tool references against; the file itself is never re-read.",
     )
     facts: dict[str, Any] = Field(
         description="The validated facts of record, keyed by declared name.",
@@ -190,15 +217,51 @@ def _enforce_review_gate(table: DecisionTable) -> None:
         )
 
 
+def _check_table_inputs(node: PolicyNode, table: DecisionTable) -> None:
+    """Refuse a table that reads a name its node does not feed it.
+
+    A ``DecisionTable`` validates its FEEL standalone: it cannot know which
+    node mounts it, so a typo'd or stale expression root is invisible to it and
+    surfaces only as an unbound variable at evaluation — after every edge agent
+    above it has been billed. ``_named_inputs`` binds exactly the node's
+    declared ``inputs``, so that list is the complete set of legitimate roots
+    and the check is an exact one. (``provenance`` needs no allowance: it is
+    reserved, and an expression naming it never survives table load — FR-032.)
+
+    Args:
+        node: The policy node the table is mounted on.
+        table: Its loaded decision table.
+
+    Raises:
+        WorkflowError: If any input expression references a root the node does
+            not declare.
+    """
+    declared = set(node.inputs)
+    for column in table.inputs:
+        locator = f"table '{table.id}' input '{column.name}'"
+        unknown = sorted(
+            referenced_roots(column.expression, locator=locator) - declared
+        )
+        if unknown:
+            names = ", ".join(repr(name) for name in unknown)
+            raise WorkflowError(
+                f"node '{node.id}': {locator} reads {names}, which the node does "
+                f"not declare in its inputs {sorted(declared)}"
+            )
+
+
 def prepare_workflow(
     workflow_path: str | Path, payload: Mapping[str, Any] | None = None
 ) -> PreparedWorkflow:
     """Load and validate everything a run needs, before any agent is invoked.
 
     Parses the graph, validates the supplied facts of record against their
-    declared schemas, resolves every edge node's gate schema, loads every
-    referenced decision table, and applies the FR-030 review gate. No backend is
-    constructed, so every failure here costs zero LLM calls (FR-003).
+    declared schemas, resolves every edge node's gate schema and agent
+    configuration, loads every referenced decision table, checks each table
+    reads only what its node feeds it, and applies the FR-030 review gate. No
+    backend is constructed, so every failure here costs zero LLM calls
+    (FR-003) — including a defect in the *last* node of a workflow whose
+    earlier nodes would each have been billed to reach it.
 
     Args:
         workflow_path: Path to ``workflow.yaml``.
@@ -209,8 +272,12 @@ def prepare_workflow(
         The :class:`PreparedWorkflow`.
 
     Raises:
-        ConfigError: If the workflow file cannot be read or is not a mapping.
-        WorkflowError: If the workflow contains a human node (T8).
+        ConfigError: If the workflow file cannot be read or is not a mapping,
+            or if an edge node's ``agent.yaml`` is invalid.
+        holodeck.lib.errors.FileNotFoundError: If an edge node's ``agent.yaml``
+            does not exist.
+        WorkflowError: If the workflow contains a human node (T8), or a
+            decision table reads a name its node does not declare.
         InputDataError: If a declared fact is missing or schema-invalid (FR-025).
         GateSchemaError: If an edge node's gate schema is unusable.
         DecisionTableError: If a referenced decision table is missing or invalid.
@@ -224,15 +291,27 @@ def prepare_workflow(
     workflow_dir = path.resolve().parent
     facts = validate_input_data(workflow, dict(payload or {}), workflow_dir)
 
+    loader = ConfigLoader()
     tables: dict[str, DecisionTable] = {}
+    gate_schemas: dict[str, dict[str, Any]] = {}
+    agents: dict[str, Agent] = {}
+    agent_paths: dict[str, Path] = {}
     for node in workflow.nodes:
         if isinstance(node, EdgeNode):
-            load_gate_schema(node, workflow_dir)
+            gate_schemas[node.id] = load_gate_schema(node, workflow_dir)
+            # Read here, not in execute_edge_node: a missing or invalid
+            # agent.yaml is an authoring defect, and discovering it node-by-node
+            # bills every earlier edge agent first. Reading it once also closes
+            # the swap window — what preparation validated is what runs.
+            agent_path = (workflow_dir / node.edge.agent).resolve()
+            agent_paths[node.id] = agent_path
+            agents[node.id] = loader.load_agent_yaml(str(agent_path))
             continue
         if isinstance(node, HumanNode):
             _reject_human_node(node.id)
         table = load_decision_table(workflow_dir / node.decision)
         _enforce_review_gate(table)
+        _check_table_inputs(node, table)
         tables[node.id] = table
 
     return PreparedWorkflow(
@@ -240,6 +319,9 @@ def prepare_workflow(
         workflow_dir=workflow_dir,
         order=_execution_order(workflow),
         tables=tables,
+        gate_schemas=gate_schemas,
+        agents=agents,
+        agent_paths=agent_paths,
         facts=facts,
     )
 
@@ -361,10 +443,15 @@ async def execute_workflow(
         WorkflowError: If a human node is reached (T8), or an input cannot be
             bound.
         GateValidationError: If an edge agent's output is rejected at its gate.
-        GateSchemaError: If a gate schema turns out to be an invalid JSON Schema.
+        GateSchemaError: Only for the reference forms preparation's ``$ref``
+            walk does not model — see :func:`~holodeck.lib.workflow.edge.
+            _apply_gate`.
         TableEvalError: If a table cannot produce exactly one verdict.
         FeelEvaluationError: If a table expression or rule cell fails to evaluate.
         ExecutionError: If an edge agent invocation itself failed.
+        BackendInitError: If a backend cannot be constructed or initialised for
+            an edge agent — the one edge-node failure that is unavoidably here,
+            because knowing it requires building a backend (FR-003).
     """
     tracer: Tracer | None = None
     if observability is not None and observability.enabled:
@@ -381,7 +468,11 @@ async def execute_workflow(
             if isinstance(node, EdgeNode):
                 logger.info("Executing edge node '%s'", node_id)
                 gated_outputs[node_id] = await execute_edge_node(
-                    node, prepared.workflow_dir, prompt
+                    node,
+                    prepared.agents[node_id],
+                    prepared.agent_paths[node_id],
+                    prompt,
+                    prepared.gate_schemas[node_id],
                 )
             elif isinstance(node, PolicyNode):
                 logger.info("Evaluating policy node '%s'", node_id)

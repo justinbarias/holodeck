@@ -19,11 +19,12 @@ evaluation: in-house (T4)"): the embedded evaluator handles expressions only.
 
 from __future__ import annotations
 
+import copy
 import datetime
 from collections.abc import Iterator, Mapping
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 from holodeck.lib.errors import TableEvalError
 from holodeck.lib.workflow import feel
@@ -43,6 +44,13 @@ class Verdict(BaseModel):
     reconstruct *which* rule of *which* table version decided: a no-match that
     fell through to the table's ``default`` is marked explicitly rather than
     being indistinguishable from a rule hit.
+
+    ``outputs`` is deep-copied on construction, the same as
+    :class:`~holodeck.lib.workflow.edge.GatedOutput`. Pydantic's ``frozen``
+    only rebind-guards the top-level attributes; without the copy a caller
+    holding the returned verdict could mutate a nested value and corrupt the
+    ``DecisionTable`` the outputs were built from (``rule.then``/``default``
+    are shared, not copied, by :func:`evaluate`).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -67,6 +75,19 @@ class Verdict(BaseModel):
         description="True when no rule matched and the declared default was "
         "emitted.",
     )
+
+    @field_validator("outputs", mode="before")
+    @classmethod
+    def _detach(cls, value: Any) -> Any:
+        """Deep-copy the mapping so ``frozen`` holds all the way down.
+
+        Args:
+            value: The mapping as supplied by the caller.
+
+        Returns:
+            A copy that shares no nested container with the caller's object.
+        """
+        return copy.deepcopy(value)
 
     @computed_field  # type: ignore[prop-decorator]
     @property

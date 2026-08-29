@@ -91,6 +91,38 @@ def test_unique_single_match_returns_verdict_with_provenance() -> None:
 
 
 @pytest.mark.unit
+def test_verdict_outputs_deep_copy_isolates_the_source_table() -> None:
+    """Mutating a returned ``Verdict.outputs`` must not corrupt the table.
+
+    ``outputs`` is built from ``rule.then`` (and ``table.default``), both
+    ``dict[str, Any]`` on the loaded ``DecisionTable`` — sharing the same
+    hazard :class:`~holodeck.lib.workflow.edge.GatedOutput` deep-copies
+    against. Without the copy, a caller mutating a nested value on the
+    verdict mutates the table itself, corrupting it for the rest of the run.
+    """
+    # Arrange
+    table = _table(
+        outputs=[AFFORDABILITY_OUTPUT, {"name": "reasons", "type": "string"}],
+        rules=[
+            {
+                "when": {"surplus_ratio": ">= 0.25", "residency_status": '"verified"'},
+                "then": {
+                    "affordability": "affordable",
+                    "reasons": ["comfortable surplus"],
+                },
+            },
+        ],
+    )
+
+    # Act
+    verdict = evaluate(table, NAMED_INPUTS)
+    verdict.outputs["reasons"].append("forged evidence")
+
+    # Assert — the source rule's `then` is untouched.
+    assert table.rules[0].then["reasons"] == ["comfortable surplus"]
+
+
+@pytest.mark.unit
 def test_unique_multi_match_raises_naming_all_matched_rules() -> None:
     """FR-012: a UNIQUE table matching several rules fails loudly."""
     # Arrange — rules 1 and 3 both match surplus_ratio = 0.4.

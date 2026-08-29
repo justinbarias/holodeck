@@ -22,6 +22,7 @@
       "properties": {
         "id": {
           "description": "Unique node id within the workflow.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Id",
           "type": "string"
         },
@@ -93,6 +94,7 @@
       "properties": {
         "id": {
           "description": "Unique node id within the workflow.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Id",
           "type": "string"
         },
@@ -202,6 +204,7 @@
       "properties": {
         "id": {
           "description": "Unique node id within the workflow.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
           "title": "Id",
           "type": "string"
         },
@@ -282,6 +285,9 @@
       ],
       "default": null,
       "description": "Typed facts of record supplied to the run from outside the spine (prior state, case facts), keyed by name. Referenceable from a node's inputs: exactly like a node verdict. Never LLM-produced.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
       "title": "Input Data"
     },
     "nodes": {

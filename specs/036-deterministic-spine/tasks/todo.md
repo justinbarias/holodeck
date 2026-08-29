@@ -30,6 +30,15 @@
   - **What remains is proof, not build.** Nothing defends composition today — there is no `test_composition.py` and `test_runner.py` covers only single-level DAGs. The audit's `all()`→`any()` mutation in the hit-policy matcher survived because correct code with no test defending it looks exactly like broken code. Write the 3→2→1 integration test (diamond shape, dot-path into an upstream verdict), and close US2 scenario 3 **through the CLI** — unresolved reference → exit 2, no agent invoked. *(The cycle, scenario 2, is already covered end to end.)*
   - **Sample-proof:** PBAS gains a genuine two-level DRD. Footnote (1) of the source — *"These tasks and activities are available to Workforce Australia Services participants only"* — is an eligibility precondition attached to rows, not a points rule; it is currently encoded inline as rules 5/6 of `tables/points.dmn.yaml`. Split it into `tables/eligibility.dmn.yaml`, keyed on `activity.activity_type` + `participant.stream`, whose verdict is a named input to `points_award`. **Refactor plus a level:** the verdict for every existing case, including the `workforce_australia_online` + `drivers_licence_attainment` case, must not change.
   - *Note:* footnote (1) covers exactly **one** of the eleven modelled activities (driver's licence attainment), so the eligibility table is thin unless the taxonomy also picks up a footnote **(2)** row (*"available to Workforce Australia Online participants only"* — online learning modules, Youth Advisory Sessions). Adding one is optional but makes the level restrict in both directions instead of one.
+  - **Deferred from the 036 review round (2026-07-25), not part of T7's proof:**
+    `runner._check_table_inputs` checks only the dot-path *roots* an input
+    expression reads, so a typo'd *field* (`evidence.net_incom`, where the node
+    does declare `evidence`) still reaches evaluation and costs an edge-agent
+    call. It is now cheaply checkable — `PreparedWorkflow.gate_schemas` holds
+    each edge node's gate by content, and `input_data` schemas are on disk — but
+    it is new capability, not a defect fix: a root check and a field check are
+    different validations. Note it only holds for gates that actually declare
+    `properties`; an open gate (`{}`) can promise nothing about its fields.
 - [ ] **CHECKPOINT 2** — composition proven
 
 ## Phase 3 — US3: human determination (P1)
@@ -86,6 +95,16 @@ policy nobody can accuse us of having invented.
 ---
 
 ## Phase 6 — Post-MVP
+- [ ] **Layering: `models` → `lib` inversion across two private names.**
+      `models/workflow.py` imports `_LITERAL_NAMES` (and `referenced_roots`) from
+      `lib.workflow.feel` and `_RESERVED_FEEL_ROOTS` from
+      `models.decision_table`. Two of the three are underscore-prefixed, so a
+      model layer now depends on private members of the lib layer. It works and
+      is not circular, but the coupling is real: node-id validity is defined by
+      the embedded FEEL grammar, which lives in `lib`. Either promote the two
+      names to public API (`LITERAL_NAMES`, `RESERVED_FEEL_ROOTS`) or move the
+      name-validity predicate into `lib.workflow.feel` and have the model call
+      one public function. Raised in the 036 review round (2026-07-25).
 - [ ] **T9** Draft agent advisory path (`ai_may_draft: reasons`) *(needs T8)* — restores the `draft:` block to the sample
   - **Sample-proof:** PBAS's human node gains a `draft:` block producing advisory **reasons** for the activity-bonus decision — never the points value, and never a bonus amount. The source states no amount, so a drafted number would be invented policy.
 - [ ] **T12** `WorkflowTestExecutor` + `holodeck workflow test` with expected-vs-actual diff *(needs T4)* — delivers SC-006

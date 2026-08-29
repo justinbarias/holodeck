@@ -18,6 +18,7 @@ Design input: ``specs/036-deterministic-spine/dmn-yaml-mapping.md``.
 
 from __future__ import annotations
 
+import re
 import sys
 from collections import Counter
 from graphlib import CycleError, TopologicalSorter
@@ -32,10 +33,105 @@ from pydantic import (
     model_validator,
 )
 
+from holodeck.lib.errors import FeelValidationError
+from holodeck.lib.workflow.feel import _LITERAL_NAMES, referenced_roots
+from holodeck.models.decision_table import _RESERVED_FEEL_ROOTS
+
 if sys.version_info >= (3, 11):
     from typing import Self
 else:
     from typing_extensions import Self
+
+# A node id or input_data key is used as a FEEL root name — a node's verdict
+# is dot-pathed by its id (`prior_state.income`), and an input_data key binds
+# the same way. Anything outside this shape either fails to parse as a single
+# identifier (`prior-state.income` parses as subtraction) or silently shadows
+# a FEEL literal — both break downstream, after every upstream edge agent has
+# already run, with a message that does not point back at the offending name.
+#
+# Kept as a string as well as a compiled pattern because it is published: it is
+# emitted verbatim into `schemas/workflow.schema.json` (see the node models and
+# `Workflow.input_data`), so an author's editor rejects the same names this
+# validator does rather than showing green on a file the runner refuses.
+_FEEL_SAFE_IDENTIFIER_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+_FEEL_SAFE_IDENTIFIER: re.Pattern[str] = re.compile(_FEEL_SAFE_IDENTIFIER_PATTERN)
+
+# Published alongside each node id, and as `propertyNames` on `input_data`, so
+# `schemas/workflow.schema.json` carries the same shape constraint the model
+# enforces. It is `json_schema_extra` rather than `Field(pattern=...)` on
+# purpose: pydantic's own pattern failure reads "String should match pattern
+# '^[A-Za-z_]...'", whereas `_validate_feel_safe_name` tells the author *why*
+# the name cannot work. Both read the one constant above, so they cannot drift.
+#
+# The keyword restriction (`_binds_as_a_feel_variable`) is deliberately not
+# published: it is a property of the embedded FEEL grammar, not a regular
+# language, so JSON Schema cannot express it. An editor therefore accepts
+# `id: date` and the model rejects it — the shape is published, the grammar is
+# not.
+_FEEL_SAFE_NAME_JSON_SCHEMA: dict[str, Any] = {"pattern": _FEEL_SAFE_IDENTIFIER_PATTERN}
+
+
+def _binds_as_a_feel_variable(name: str) -> bool:
+    """Report whether FEEL parses ``name`` as a reference to ``name``.
+
+    The identifier pattern above matches the grammar's ``CNAME`` terminal, but
+    the grammar also has keyword rules that win over it — ``date``, ``not``,
+    ``list``, ``today`` and some twenty others parse as keywords, so a node id
+    of ``date`` yields ``malformed FEEL expression`` against the *table* that
+    reads it. The check is a round trip through the real parser rather than a
+    hand-copied keyword list: the list belongs to the embedded grammar, and a
+    copy of it here would silently drift the next time that dependency moves.
+
+    Args:
+        name: A candidate node id or input_data key.
+
+    Returns:
+        ``True`` if parsing ``name`` yields exactly one referenced root and it
+        is ``name`` itself.
+    """
+    try:
+        return referenced_roots(name, locator="name") == {name}
+    except FeelValidationError:
+        return False
+
+
+def _validate_feel_safe_name(name: str, kind: str) -> None:
+    """Reject a node id / input_data key FEEL cannot bind unambiguously.
+
+    Args:
+        name: The node id or input_data key to check.
+        kind: Human-readable label for the error message (e.g. "node id").
+
+    Raises:
+        ValueError: If the name is not a FEEL-safe identifier, collides with a
+            FEEL literal (``true``/``false``/``null``) or a name FEEL reserves
+            as non-executable metadata (e.g. ``provenance``), or is a FEEL
+            keyword the grammar will not bind as a variable.
+    """
+    if not _FEEL_SAFE_IDENTIFIER.match(name):
+        raise ValueError(
+            f"{kind} {name!r} is not a FEEL-safe identifier: it must start "
+            "with a letter or underscore and contain only letters, digits, "
+            "and underscores, or it will not resolve when referenced from a "
+            "decision table"
+        )
+    if name in _LITERAL_NAMES:
+        raise ValueError(
+            f"{kind} {name!r} collides with the FEEL literal {name!r}; a "
+            "binding under this name would be invisible to every expression"
+        )
+    if name in _RESERVED_FEEL_ROOTS:
+        raise ValueError(
+            f"{kind} {name!r} collides with a name FEEL reserves as "
+            "non-executable metadata and cannot be referenced from a "
+            "decision table"
+        )
+    if not _binds_as_a_feel_variable(name):
+        raise ValueError(
+            f"{kind} {name!r} is a FEEL keyword, not a variable name: a "
+            f"decision table reading {name}.field does not parse, and the "
+            f"failure it reports names the table rather than this {kind}"
+        )
 
 
 class EdgeRef(BaseModel):
@@ -130,7 +226,10 @@ class EdgeNode(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(description="Unique node id within the workflow.")
+    id: str = Field(
+        description="Unique node id within the workflow.",
+        json_schema_extra=_FEEL_SAFE_NAME_JSON_SCHEMA,
+    )
     edge: EdgeRef = Field(description="The agent that produces this node's object.")
     gate: GateRef = Field(description="The schema gate the agent output must cross.")
     source: str | None = Field(
@@ -149,7 +248,10 @@ class PolicyNode(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(description="Unique node id within the workflow.")
+    id: str = Field(
+        description="Unique node id within the workflow.",
+        json_schema_extra=_FEEL_SAFE_NAME_JSON_SCHEMA,
+    )
     decision: str = Field(
         description="Path to the decision table (tables/*.dmn.yaml), relative to "
         "workflow.yaml.",
@@ -174,7 +276,10 @@ class HumanNode(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(description="Unique node id within the workflow.")
+    id: str = Field(
+        description="Unique node id within the workflow.",
+        json_schema_extra=_FEEL_SAFE_NAME_JSON_SCHEMA,
+    )
     decision: str = Field(
         description="Path to the decision table (tables/*.dmn.yaml), relative to "
         "workflow.yaml.",
@@ -276,6 +381,10 @@ class Workflow(BaseModel):
         description="Typed facts of record supplied to the run from outside the "
         "spine (prior state, case facts), keyed by name. Referenceable from a "
         "node's inputs: exactly like a node verdict. Never LLM-produced.",
+        # propertyNames, not patternProperties: the latter constrains only the
+        # keys that already match and says nothing about the rest, so it would
+        # publish the shape without rejecting anything.
+        json_schema_extra={"propertyNames": _FEEL_SAFE_NAME_JSON_SCHEMA},
     )
     nodes: list[NodeUnion] = Field(
         min_length=1,
@@ -292,6 +401,12 @@ class Workflow(BaseModel):
 
         id_set = set(ids)
         fact_names = set(self.input_data or {})
+
+        for node_id in ids:
+            _validate_feel_safe_name(node_id, "node id")
+        for fact_name in fact_names:
+            _validate_feel_safe_name(fact_name, "input_data name")
+
         # One name, one meaning: a fact of record and a node cannot share a name,
         # or `inputs: [x]` would be ambiguous between a supplied fact and a
         # computed verdict.

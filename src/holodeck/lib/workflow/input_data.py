@@ -139,12 +139,14 @@ def validate_input_data(
             validator_cls = jsonschema.validators.validator_for(schema)
             validator_cls.check_schema(schema)
             # format_checker matches the edge gate (edge.py). Both are typed
-            # boundaries into the spine, so a `format:` a fact schema declares
-            # must be enforced, not treated as an annotation — otherwise a
-            # declared constraint silently does nothing. Also makes
-            # research.md caveat 6's `format: date` -> datetime.date
-            # conversion safe: an unparseable date is rejected here rather
-            # than exploding at conversion.
+            # boundaries into the spine, so a `format:` the checker implements
+            # is enforced rather than treated as an annotation. It does not
+            # make *every* format a constraint: a name jsonschema ships no
+            # checker for — a draft3-only format like `color`, or a
+            # misspelling like `emial` — is still accepted and ignored, and no
+            # error says so. What this does buy is research.md caveat 6's
+            # `format: date` -> datetime.date conversion: an unparseable date
+            # is rejected here rather than exploding at conversion.
             validator = validator_cls(
                 schema,
                 registry=_NO_REMOTE_REGISTRY,

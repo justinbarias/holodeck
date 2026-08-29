@@ -191,6 +191,27 @@ def _root_names(tree: lark.Tree) -> frozenset[str]:
     return frozenset(path[0] for path in _referenced_paths(tree))
 
 
+def referenced_roots(text: str, *, locator: str) -> frozenset[str]:
+    """Return the root variable names a FEEL expression reads.
+
+    Exposed for callers that know something this module cannot: which names are
+    actually on offer. A decision table's FEEL is validated standalone, so only
+    the workflow node that mounts it can say whether ``evidence.net_income``
+    names anything at all — and it can only say so from the roots.
+
+    Args:
+        text: FEEL expression source.
+        locator: Human-readable location for error messages.
+
+    Returns:
+        Every root name referenced, bare or as the head of a dot-path.
+
+    Raises:
+        FeelValidationError: If the expression is malformed.
+    """
+    return _root_names(_parse_tree(text, locator=locator))
+
+
 def _unresolvable(path: tuple[str, ...], bindings: dict[str, Any]) -> str | None:
     """Describe why a dot-path cannot resolve, or ``None`` when it resolves.
 
