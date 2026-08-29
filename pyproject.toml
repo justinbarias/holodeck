@@ -13,7 +13,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "python-dateutil>=2.8.0",
     "urllib3>=2.6.0,<3.0.0",
-    "cryptography>=48.0.1,<49.0.0",  # GHSA-537c-gmf6-5ccf fix
+    "cryptography>=50.0.0,<51.0.0",  # PYSEC-2026-3552/3553/3554 fix (50.0.0)
     "mkdocs-material>=9.6.22,<10.0.0",
     "twine>=6.2.0,<7.0.0",
     # format-nongpl (not the bare "format" extra): "format" pulls in rfc3987,
