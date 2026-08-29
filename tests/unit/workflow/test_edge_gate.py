@@ -1914,3 +1914,55 @@ def test_a_ref_inside_an_embedded_legacy_resource_is_not_walked(
     # Assert
     assert loaded == schema
     assert usable is False
+
+
+@pytest.mark.unit
+class TestGatePathConfinement:
+    """A gate schema path must resolve inside the workflow directory.
+
+    The module refuses remote ``$ref`` retrieval because a workflow file is
+    attacker-influenceable; a ``gate.schema`` of ``/etc/passwd`` or ``../../x``
+    is the same hole through the front door and gets the same refusal.
+    """
+
+    @pytest.mark.parametrize(
+        "schema_path",
+        [
+            "../outside.schema.json",
+            "gates/../../outside.schema.json",
+        ],
+    )
+    def test_traversal_is_rejected(self, workflow_dir: Path, schema_path: str) -> None:
+        # Arrange — the file exists, so only the confinement check can reject.
+        (workflow_dir.parent / "outside.schema.json").write_text("{}", encoding="utf-8")
+        node = EdgeNode(
+            id="evidence",
+            edge={"agent": "agents/evidence.yaml"},  # type: ignore[arg-type]
+            gate={"schema": schema_path},  # type: ignore[arg-type]
+        )
+
+        # Act / Assert
+        with pytest.raises(GateSchemaError) as exc:
+            edge.load_gate_schema(node, workflow_dir)
+        assert "escapes the workflow directory" in str(exc.value)
+
+    def test_absolute_path_is_rejected(self, workflow_dir: Path) -> None:
+        # Arrange — an absolute path replaces workflow_dir entirely under `/`.
+        outside = workflow_dir.parent / "outside.schema.json"
+        outside.write_text("{}", encoding="utf-8")
+        node = EdgeNode(
+            id="evidence",
+            edge={"agent": "agents/evidence.yaml"},  # type: ignore[arg-type]
+            gate={"schema": str(outside)},  # type: ignore[arg-type]
+        )
+
+        # Act / Assert
+        with pytest.raises(GateSchemaError) as exc:
+            edge.load_gate_schema(node, workflow_dir)
+        assert "escapes the workflow directory" in str(exc.value)
+
+    def test_nested_relative_path_inside_stays_legal(
+        self, workflow_dir: Path, node: EdgeNode
+    ) -> None:
+        # The confinement check must not break ordinary nested layouts.
+        assert edge.load_gate_schema(node, workflow_dir)

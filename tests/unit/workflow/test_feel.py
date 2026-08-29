@@ -461,3 +461,48 @@ class TestLiteralFactNames:
 
     def test_a_normal_fact_name_is_unaffected(self) -> None:
         assert feel.evaluate_expression("truthy", {"truthy": 5}, locator="loc") == 5
+
+
+@pytest.mark.unit
+class TestNotUnaryTest:
+    """DMN ``not(...)`` cells negate the inner test instead of comparing to it.
+
+    Before the fix, ``not("verified")`` compiled to
+    ``__cell_input__ = not("verified")`` — accepted at load and then wrongly
+    matched or a type error at evaluation.
+    """
+
+    @pytest.mark.parametrize(
+        ("cell", "expected"),
+        [
+            ('not("verified")', 'not(__cell_input__ = "verified")'),
+            ("not(< 5)", "not(__cell_input__ < 5)"),
+            ("not([1..10])", "not(__cell_input__ in [1..10])"),
+            ("not(-)", "false"),
+        ],
+    )
+    def test_compilation(self, cell: str, expected: str) -> None:
+        assert feel.compile_unary_test(cell) == expected
+
+    def test_validates_at_load(self) -> None:
+        feel.validate_unary_test('not("verified")', locator="loc")
+
+    @pytest.mark.parametrize(
+        ("cell", "value", "expected"),
+        [
+            ('not("verified")', "verified", False),
+            ('not("verified")', "other", True),
+            ("not(< 5)", 3, False),
+            ("not(< 5)", 7, True),
+            ("not([1..10])", 5, False),
+            ("not([1..10])", 11, True),
+        ],
+    )
+    def test_evaluation_negates(self, cell: str, value: object, expected: bool) -> None:
+        assert feel.evaluate_unary_test(cell, value, locator="loc") is expected
+
+    def test_multi_test_negation_is_rejected_loudly(self) -> None:
+        # The comma-disjunction form is outside the subset; inside not() it
+        # must fail at load like the positive form, never silently.
+        with pytest.raises(FeelValidationError):
+            feel.validate_unary_test('not("a","b")', locator="loc")

@@ -1,5 +1,9 @@
 # DMN ↔ HoloDeck YAML Mapping
 
+> **ARCHIVED (2026-08-29).** Part of the archived 036 spec — see the
+> banner in `spec.md` and the successor `SPEC.md` at the project root.
+
+
 > Companion artifact to `spec.md` / `refinements.md` / `tasks/plan.md`.
 > Status: **design input** for T2 (workflow models) and T3 (table model) —
 > illustrative, not normative until those tasks land. Produced 2026-06-10

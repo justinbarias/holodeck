@@ -37,6 +37,7 @@ bare variable subtraction (``a - b`` over date objects), which yields a
 
 from __future__ import annotations
 
+import functools
 from typing import Any, cast
 
 import lark.exceptions
@@ -139,10 +140,25 @@ _EXPRESSION_TRANSFORMER = FEELTransformer()
 _UNARY_TEST_TRANSFORMER = _FloatLiteralTransformer()
 
 
+@functools.lru_cache(maxsize=1024)
+def _cached_parse(text: str) -> lark.Tree:
+    """Parse FEEL text once per distinct string.
+
+    Table cells are a small, immutable set of strings evaluated once per rule
+    per decision, so an uncached parse costs O(rules x columns) lark parses per
+    verdict — which multiplies again when the evaluator runs inside Temporal
+    workflow code, re-executed on every replay. The returned tree is shared
+    between callers and must be treated as read-only; every existing consumer
+    only walks it. Failures are not cached (lru_cache does not cache raises),
+    which is fine: malformed cells are rejected once at load.
+    """
+    return cast(lark.Tree, parser.parse(text))
+
+
 def _parse_tree(text: str, *, locator: str) -> lark.Tree:
     """Parse FEEL text, raising :class:`FeelValidationError` on syntax errors."""
     try:
-        return cast(lark.Tree, parser.parse(text))
+        return _cached_parse(text)
     except lark.exceptions.UnexpectedInput as exc:
         raise FeelValidationError(
             locator, f"malformed FEEL expression: {text!r}"
@@ -299,6 +315,20 @@ def compile_unary_test(text: str) -> str | None:
     stripped = text.strip()
     if stripped == "-":
         return None
+    # DMN's negation form: `not(X)` means "the input does NOT satisfy the
+    # unary test X". Without this branch the fall-through below would compile
+    # it to `input = not(X)` — accepted at load (not_func is an allowed node,
+    # the only free root is the cell input) and then either wrongly matched or
+    # a type error at evaluation. Compile the inner test recursively and negate
+    # the whole predicate instead. `not(-)` negates the always-match cell, so
+    # it matches nothing. A multi-test `not("a","b")` falls through like any
+    # comma disjunction and is rejected as malformed at load — loud, like the
+    # positive comma form.
+    if stripped.startswith("not(") and stripped.endswith(")"):
+        inner = compile_unary_test(stripped[4:-1])
+        if inner is None:
+            return "false"
+        return f"not({inner})"
     if stripped.startswith(("[", "(")):
         return f"{_CELL_INPUT} in {stripped}"
     for op in _COMPARISON_OPS:

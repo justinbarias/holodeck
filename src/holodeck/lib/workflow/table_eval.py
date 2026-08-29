@@ -40,7 +40,7 @@ from holodeck.models.decision_table import (
 class Verdict(BaseModel):
     """The single decision a table produced, with its provenance.
 
-    Carries enough identity for the run record (T10) and OTel spans (T13) to
+    Carries enough identity for a run record or an OTel span to
     reconstruct *which* rule of *which* table version decided: a no-match that
     fell through to the table's ``default`` is marked explicitly rather than
     being indistinguishable from a rule hit.

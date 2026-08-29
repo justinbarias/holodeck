@@ -1,5 +1,11 @@
 # Research: FEEL Evaluator Spike (T1, Phase 0)
 
+> **ARCHIVED as a spec, RETAINED as rationale (2026-08-29).** 036 is
+> archived (see `spec.md`), but the FEEL evaluator and decision-table
+> caveats recorded here still govern the kept primitives in
+> `holodeck.lib.workflow` and are cited from their docstrings.
+
+
 > Resolves the FR-010 NEEDS CLARIFICATION and refinements §5 ("FEEL syntax is
 > the contract"). Produced 2026-06-11 from a hands-on spike on branch
 > `036-deterministic-spine`. Behavior pinned by

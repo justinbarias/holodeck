@@ -41,8 +41,8 @@ and only two dialects are checked at load:
   :data:`_WALKED_SPECIFICATIONS`.
 
 What crosses is the :class:`GatedOutput`: the *validated object*, never the raw
-model text (FR-008). It carries the gate schema by **content**, not by path, so
-a run record can snapshot what the output was actually judged against (T10).
+model text. It carries the gate schema by **content**, not by path, so any
+record of the run can snapshot what the output was actually judged against.
 
 Per refinements §1 the POC validates the Claude backend only; dispatch still
 goes through ``BackendSelector`` so the protocol contract is unchanged.
@@ -309,6 +309,18 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
             docstring.
     """
     path = (workflow_dir / node.gate.schema_path).resolve()
+    # Confine the gate to the workflow directory. The module already treats a
+    # workflow file as attacker-influenceable enough to refuse remote $ref
+    # retrieval; letting `gate.schema` itself name `/etc/passwd` or `../../x`
+    # would be the same hole through the front door. An absolute schema_path
+    # replaces workflow_dir entirely under `/`, so resolve-then-check is the
+    # only shape that catches both forms.
+    if not path.is_relative_to(workflow_dir.resolve()):
+        raise GateSchemaError(
+            node.id,
+            f"gate schema '{node.gate.schema_path}' escapes the workflow "
+            f"directory '{workflow_dir}'",
+        )
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -547,8 +559,8 @@ async def execute_edge_node(
         agent_path: Path the ``agent`` was loaded from. Its parent becomes the
             ``agent_base_dir`` a backend resolves relative ``file:`` tool
             references against; the file itself is not re-read.
-        message: The prompt handed to the edge agent. Composed by the caller
-            (the runner, T6) — this function orchestrates a single node only.
+        message: The prompt handed to the edge agent. Composed by the caller —
+            this function orchestrates a single node only.
         gate_schema: The node's gate schema as returned by
             :func:`load_gate_schema`.
 
@@ -568,9 +580,9 @@ async def execute_edge_node(
             or it failed with no structured output. Distinct from a gate
             rejection: a broken invocation is not evidence about the model.
         BackendInitError: If constructing or initialising the backend fails.
-            Not surfaced at preparation: knowing it requires *building* a
-            backend, which ``prepare_workflow`` deliberately does not do
-            (FR-003). Its unsupported-provider case is unreachable from an
+            Not surfaced by any load-time validation: knowing it requires
+            *building* a backend, which costs a connection attempt before the
+            first agent call. Its unsupported-provider case is unreachable from an
             ``agent.yaml`` — ``model.provider`` is an enum every branch of
             ``BackendSelector`` covers, and an unknown value is a ``ConfigError``
             at load.

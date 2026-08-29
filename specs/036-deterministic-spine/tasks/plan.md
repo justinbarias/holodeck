@@ -1,5 +1,9 @@
 # Implementation Plan: Deterministic Spine (036)
 
+> **ARCHIVED (2026-08-29).** Part of the archived 036 spec — see the
+> banner in `spec.md` and the successor `SPEC.md` at the project root.
+
+
 > Sources: `specs/036-deterministic-spine/spec.md` + `refinements.md` (binding
 > decisions: Claude-only edges; human-node table computes a recommendation;
 > new `WorkflowTestExecutor`; confidence gating cut; FEEL syntax is the
