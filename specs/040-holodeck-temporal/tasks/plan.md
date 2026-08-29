@@ -130,12 +130,13 @@ workflow-side helper: `to_activity_kwargs()` expands it into
 module must stay sandbox-safe (it ships to workflow code with the D3 surface).
 
 **Acceptance criteria:**
-- [ ] Payload models serialize/deserialize through `temporalio.contrib.pydantic` converter
-- [ ] `AgentActivityResult.output` holds a plain dict (the gate-validated object), never model text
-- [ ] `ActivityParameters.to_activity_kwargs()` yields valid `RetryPolicy`/timedelta kwargs; a parameters object with neither closing timeout is refused at validation
+- [x] Payload models serialize/deserialize through `temporalio.contrib.pydantic` converter
+- [x] `AgentActivityResult.output` holds a plain dict (the gate-validated object), never model text
+- [x] `ActivityParameters.to_activity_kwargs()` yields valid `RetryPolicy`/timedelta kwargs; a parameters object with neither closing timeout is refused at validation
+- [x] *(follow-up, 2026-08-30)* `AgentActivityResult.output_as(Model)` validates the output dict into a caller-supplied Pydantic model (workflow-side sugar; wire stays a dict)
 
 **Verification:**
-- [ ] `pytest tests/unit/temporal/test_models.py -n auto`
+- [x] `pytest tests/unit/temporal/test_models.py -n auto`
 - [ ] Quality gates as in T1
 
 **Dependencies:** T1
