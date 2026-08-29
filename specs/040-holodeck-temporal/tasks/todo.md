@@ -7,7 +7,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 
 - [x] **T1** `holodeck[temporal]` extra, exact pin `temporalio==1.32.0`, package skeleton with import guard (S)
 - [x] **T2** Payload models: `AgentActivityInput`, `AgentActivityResult`; `ActivityParameters` as workflow-side scheduling helper (`to_activity_kwargs()`, no heartbeat); `output_as()` typed accessor (S)
-- [ ] **T3** Activity factory: `EdgeNode` → named async activity; gate mandatory; `BackendSelector.invoke_once`; envelope return (M)
+- [x] **T3** Activity factory: `EdgeNode` → named async activity; gate mandatory; `BackendSelector.invoke_once`; envelope return (M)
 - [ ] **T4** Error taxonomy: gate failure retryable, authoring faults `non_retryable=True`, transport retryable (S)
 
 ### Checkpoint 1
