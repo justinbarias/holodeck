@@ -15,7 +15,13 @@ import pytest
 
 pytestmark = pytest.mark.unit
 
-_FORBIDDEN = ("claude_agent_sdk", "holodeck.lib.backends.selector")
+_FORBIDDEN = (
+    "claude_agent_sdk",
+    # The package __init__ is what eagerly imports the concrete backends, so
+    # pin it as well as the selector module.
+    "holodeck.lib.backends",
+    "holodeck.lib.backends.selector",
+)
 
 _PROBE = """
 import sys

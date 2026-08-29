@@ -1971,6 +1971,56 @@ class TestGatePathConfinement:
 
 
 @pytest.mark.unit
+class TestGateSchemaLoadGuards:
+    """Load-time guards over the gate document itself."""
+
+    def test_null_permitting_gate_is_rejected(
+        self, workflow_dir: Path, node: EdgeNode
+    ) -> None:
+        # Arrange — a gate promising null can never accept it: _apply_gate
+        # reads structured_output None as "free text, nothing to validate".
+        (workflow_dir / "gates" / "evidence.schema.json").write_text(
+            json.dumps({"type": ["object", "null"]}), encoding="utf-8"
+        )
+
+        # Act / Assert
+        with pytest.raises(GateSchemaError) as exc:
+            edge.load_gate_schema(node, workflow_dir)
+        assert "null" in str(exc.value)
+
+    def test_overdeep_gate_is_rejected_as_schema_error(
+        self, workflow_dir: Path, node: EdgeNode
+    ) -> None:
+        # Arrange — 150 nested levels: past the walk's 100-level bound, far
+        # short of the interpreter's recursion limit.
+        schema: dict = {"type": "object"}
+        for _ in range(150):
+            schema = {"type": "object", "properties": {"a": schema}}
+        (workflow_dir / "gates" / "evidence.schema.json").write_text(
+            json.dumps(schema), encoding="utf-8"
+        )
+
+        # Act / Assert — GateSchemaError, never a bare RecursionError.
+        with pytest.raises(GateSchemaError) as exc:
+            edge.load_gate_schema(node, workflow_dir)
+        assert "deeper than 100 levels" in str(exc.value)
+
+    def test_oversized_gate_is_rejected(
+        self, workflow_dir: Path, node: EdgeNode
+    ) -> None:
+        # Arrange — just past the 5 MB cap.
+        big = '{"type": "object", "description": "' + "x" * (5 * 1024 * 1024) + '"}'
+        (workflow_dir / "gates" / "evidence.schema.json").write_text(
+            big, encoding="utf-8"
+        )
+
+        # Act / Assert
+        with pytest.raises(GateSchemaError) as exc:
+            edge.load_gate_schema(node, workflow_dir)
+        assert "exceeds 5 MB" in str(exc.value)
+
+
+@pytest.mark.unit
 class TestGatedOutputRoundTrip:
     """A GatedOutput must survive dump -> validate (Temporal data-converter shape)."""
 

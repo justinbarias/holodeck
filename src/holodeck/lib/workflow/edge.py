@@ -78,8 +78,11 @@ from holodeck.config.context import agent_base_dir
 if TYPE_CHECKING:
     # Annotation-only: importing anything under holodeck.lib.backends at
     # runtime executes that package's __init__, which eagerly imports the
-    # concrete backends and with them the Claude Agent SDK.
+    # concrete backends and with them the Claude Agent SDK. Agent is here for
+    # consistency with the module's import-purity stance — it is used only as
+    # an annotation on execute_edge_node.
     from holodeck.lib.backends.base import AgentBackend, ExecutionResult
+    from holodeck.models.agent import Agent
 # BackendSelector is imported lazily inside execute_edge_node, not here:
 # selector.py imports the concrete backends (and with them the Claude Agent
 # SDK) at module scope, so a module-level import would drag the whole backend
@@ -87,7 +90,6 @@ if TYPE_CHECKING:
 # _apply_gate must stay importable from Temporal workflow code, which forbids
 # I/O imports (SPEC.md section 7). test_import_purity.py pins this.
 from holodeck.lib.errors import ExecutionError, GateSchemaError, GateValidationError
-from holodeck.models.agent import Agent
 from holodeck.models.workflow import EdgeNode
 
 logger = logging.getLogger(__name__)
@@ -185,6 +187,34 @@ def _gate_specification(validator_cls: type[Any]) -> Specification[Any]:
     )
 
 
+class _WalkDepthError(Exception):
+    """Internal: the reference walk hit its depth bound.
+
+    Converted to :class:`GateSchemaError` (with the node and path) by
+    ``load_gate_schema`` — kept internal so the walk itself needs no knowledge
+    of either.
+    """
+
+
+def _exceeds_depth(document: Any, limit: int) -> bool:
+    """Report whether ``document`` nests deeper than ``limit`` levels.
+
+    Iterative on purpose: this runs *before* ``check_schema`` and the ``$ref``
+    walk, both of which recurse and would surface an overdeep document as a
+    bare ``RecursionError`` outside the module's declared error taxonomy.
+    """
+    stack: list[tuple[Any, int]] = [(document, 0)]
+    while stack:
+        node, depth = stack.pop()
+        if depth > limit:
+            return True
+        if isinstance(node, dict):
+            stack.extend((child, depth + 1) for child in node.values())
+        elif isinstance(node, list):
+            stack.extend((child, depth + 1) for child in node)
+    return False
+
+
 def _collect_refs(
     spec: Specification[Any], schema: Any, resolver: Any
 ) -> list[tuple[str, Any]]:
@@ -246,7 +276,13 @@ def _collect_refs(
     """
     found: list[tuple[str, Any]] = []
 
-    def walk(node: Any, scope: Any) -> None:
+    def walk(node: Any, scope: Any, depth: int = 0) -> None:
+        # Depth-bounded: the document comes from a file this module already
+        # treats as attacker-influenceable, and an unbounded recursion would
+        # escape the declared taxonomy as a bare RecursionError. 100 levels is
+        # far past any real gate and far short of the interpreter limit.
+        if depth > 100:
+            raise _WalkDepthError()
         if not isinstance(node, dict):
             return
         ref = node.get("$ref")
@@ -258,7 +294,7 @@ def _collect_refs(
             # nothing to collect and nothing to rebase against.
             if not isinstance(child, dict):
                 continue
-            walk(child, scope.in_subresource(spec.create_resource(child)))
+            walk(child, scope.in_subresource(spec.create_resource(child)), depth + 1)
 
     walk(schema, resolver)
     return found
@@ -341,6 +377,12 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
             f"directory '{workflow_dir}'",
         )
     try:
+        # Size-capped for the same reason the walk below is depth-bounded: the
+        # file is attacker-influenceable, and 5 MB is far past any real gate.
+        if path.stat().st_size > 5 * 1024 * 1024:
+            raise GateSchemaError(
+                node.id, f"gate schema '{path}' exceeds 5 MB; refusing to load it"
+            )
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise GateSchemaError(
@@ -357,6 +399,15 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
             node.id,
             f"gate schema '{path}' must be a JSON object, got "
             f"{type(schema).__name__}",
+        )
+    # Checked before check_schema and the $ref walk, both of which recurse:
+    # without this, an overdeep document escapes as a bare RecursionError
+    # instead of the authoring error it is.
+    if _exceeds_depth(schema, 100):
+        raise GateSchemaError(
+            node.id,
+            f"gate schema '{path}' nests deeper than 100 levels; refusing "
+            f"to walk it",
         )
 
     # Whether the document is a *schema* is judged here, not at validate time:
@@ -399,7 +450,15 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
     spec = _gate_specification(validator_cls)
     if spec in _WALKED_SPECIFICATIONS:
         resolver = _GATE_REF_REGISTRY.resolver_with_root(spec.create_resource(schema))
-        for ref, scope in _collect_refs(spec, schema, resolver):
+        try:
+            collected = _collect_refs(spec, schema, resolver)
+        except _WalkDepthError:
+            raise GateSchemaError(
+                node.id,
+                f"gate schema '{path}' nests deeper than 100 levels; refusing "
+                f"to walk it",
+            ) from None
+        for ref, scope in collected:
             try:
                 scope.lookup(ref)
             except Unresolvable as exc:
@@ -443,6 +502,18 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
             node.id,
             f"gate schema '{path}' must describe an object the spine can name "
             f"fields on, but declares type {declared!r}",
+        )
+    # `null` is a promise the executor cannot keep: _apply_gate reads
+    # `structured_output is None` as "the agent produced free text, nothing to
+    # validate", so a null value would be rejected with a misleading message
+    # and charged to the model. An authoring defect, settled at load like the
+    # non-object case above.
+    if permitted is not None and "null" in permitted:
+        raise GateSchemaError(
+            node.id,
+            f"gate schema '{path}' permits type 'null', which the gate can "
+            f"never accept: an absent structured output is indistinguishable "
+            f"from a null one",
         )
     return schema
 
@@ -564,6 +635,13 @@ async def execute_edge_node(
     gate_schema: dict[str, Any],
 ) -> GatedOutput:
     """Run an edge node's agent and gate its structured output.
+
+    Provisional pending the Temporal activity design (SPEC.md D1): the
+    activity wrapper may invoke the backend against Temporal's own
+    retry/timeout/cancellation seams rather than through this function, in
+    which case this invocation half is replaced and only the pure gate half
+    of the module survives. Kept meanwhile as the one tested reference for
+    the invocation-plus-gate sequencing.
 
     Neither the gate nor the agent is read here: :func:`load_gate_schema` and
     ``ConfigLoader.load_agent_yaml`` both run at preparation, and handing their
