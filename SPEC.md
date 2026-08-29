@@ -36,6 +36,9 @@ A Python package that turns an agent definition into a Temporal activity.
 - Input: a path to `agent.yaml`, or a loaded `Agent` model.
 - Output: an activity function that a workflow can call.
 - The activity invokes the agent through `BackendSelector`. No new backend code.
+- The activity resolves an `EdgeNode` agent reference through
+  `edge.resolve_agent_path`, never by a plain path join. That function is the
+  path-confinement control, and it has no other caller that keeps it honest.
 - Retry and timeout values come from configuration, with Temporal defaults as fallback.
 - The activity emits the existing OTel GenAI spans (specs 018 and 022).
 
@@ -190,3 +193,22 @@ test must prove that they pass Temporal's workflow sandbox validation.
 - Package name for the dependency extra: `holodeck[temporal]` is the working assumption.
 - Worker configuration shape: flags, environment variables, or a small `worker.yaml`. Decide during D4 design.
 - Which `temporalio.contrib.openai_agents` seams transfer, and which do not. Answer with a source check at design time.
+
+## 13. Glossary of retained 036 identifiers
+
+The kept modules cite requirement tags from `specs/036-deterministic-spine/`,
+which is archived. This table gives each tag a live one-line meaning.
+
+| Tag | Meaning |
+| --- | --- |
+| FR-006 | The edge agent is invoked through `BackendSelector`, never a concrete backend. |
+| FR-007 | The agent's `structured_output` is validated against the node's JSON Schema gate. |
+| FR-008 | The gate-validated object is the canonical value for every downstream consumer. The raw model text never crosses. |
+| FR-010 | FEEL is restricted to a fixed subset. Constructs outside it are rejected statically at load. |
+| FR-012 | Failures are loud. No silent fallback, no default that hides an error. |
+| FR-030 | A generated table had a human review gate. Removed with the overlay engine; `Provenance.awaiting_review` is its remnant. |
+| FR-032 | Provenance metadata is not executable. FEEL cannot reference it. |
+| SC-003 | A gate rejection counts as evidence about model output. The error channels keep model faults separate from authoring faults. |
+| T1, T3, T5, T10 | 036 task numbers: FEEL conformance suite (T1), determination engine (T3), edge executor (T5), run-record snapshot (T10). |
+| refinements §1 | The POC validated the Claude backend only. Dispatch still goes through `BackendSelector`. |
+| research.md caveats 1–6 | Verified quirks of the embedded FEEL evaluator (date handling, numeric strictness, silent `None` reads, native exceptions). The archived file holds the details; the docstrings in `feel.py` restate what the code corrects. |

@@ -129,8 +129,11 @@ def evaluate(table: DecisionTable, named_inputs: Mapping[str, Any]) -> Verdict:
         FeelEvaluationError: If an input expression or a rule cell fails to
             evaluate (propagated with its locator).
     """
+    # One dict build for all columns; _column_value hands it to the evaluator,
+    # which requires a real dict.
+    bindings = dict(named_inputs)
     column_values = {
-        inp.name: _column_value(table, inp, named_inputs) for inp in table.inputs
+        inp.name: _column_value(table, inp, bindings) for inp in table.inputs
     }
     matches = _matching_rules(table, column_values)
 
@@ -182,13 +185,11 @@ def _matching_rules(
 
 
 def _column_value(
-    table: DecisionTable, inp: TableInput, named_inputs: Mapping[str, Any]
+    table: DecisionTable, inp: TableInput, bindings: dict[str, Any]
 ) -> Any:
     """Evaluate one input column's expression, coercing ``days`` columns."""
     locator = f"table '{table.id}' input '{inp.name}'"
-    value = feel.evaluate_expression(
-        inp.expression, dict(named_inputs), locator=locator
-    )
+    value = feel.evaluate_expression(inp.expression, bindings, locator=locator)
     if inp.type is FeelType.DAYS:
         return _to_days(value, locator)
     if inp.type is FeelType.NUMBER:
@@ -254,10 +255,19 @@ def _priority_rank(table: DecisionTable, rule: Rule) -> tuple[int, ...]:
     """Rank a matched rule under PRIORITY; lower tuples are higher priority."""
     ranks: list[int] = []
     for output in table.outputs:
-        # T3 guarantees every output declares `values` under PRIORITY and that
-        # every rule's entry is one of them, so the lookup always resolves.
+        # DecisionTable._validate guarantees every output declares `values`
+        # under PRIORITY and that every rule's entry is one of them. evaluate()
+        # accepts any DecisionTable instance though, so an invariant break
+        # stays inside the declared channel instead of escaping as ValueError.
         values = output.values or []
-        ranks.append(values.index(rule.then[output.name]))
+        try:
+            ranks.append(values.index(rule.then[output.name]))
+        except ValueError as exc:
+            raise TableEvalError(
+                f"table '{table.id}': output '{output.name}' value "
+                f"{rule.then[output.name]!r} is not in the declared values "
+                f"list; the table bypassed load-time validation"
+            ) from exc
     return tuple(ranks)
 
 

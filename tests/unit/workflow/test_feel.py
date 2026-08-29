@@ -464,6 +464,37 @@ class TestLiteralFactNames:
 
 
 @pytest.mark.unit
+class TestNegativeLiterals:
+    """Negative thresholds are inside the subset.
+
+    The grammar lexes ``-30`` as a single number token (no distinct
+    unary-minus node), so nothing here trips the allowlist — pinned because a
+    ``days`` column explicitly supports negative durations and a real table
+    will write ``< -30``.
+    """
+
+    @pytest.mark.parametrize(
+        ("cell", "value", "expected"),
+        [
+            ("< -30", -45, True),
+            ("< -30", -10, False),
+            ("[-5..5]", 0, True),
+            ("[-5..5]", -6, False),
+            (">= -0.5", -0.25, True),
+        ],
+    )
+    def test_negative_thresholds_validate_and_evaluate(
+        self, cell: str, value: float, expected: bool
+    ) -> None:
+        feel.validate_unary_test(cell, locator="loc")
+        assert feel.evaluate_unary_test(cell, value, locator="loc") is expected
+
+    def test_negative_literal_in_expression(self) -> None:
+        feel.validate_expression("a - -3", locator="loc")
+        assert feel.evaluate_expression("a - -3", {"a": 1}, locator="loc") == 4
+
+
+@pytest.mark.unit
 class TestNotUnaryTest:
     """DMN ``not(...)`` cells negate the inner test instead of comparing to it.
 
@@ -476,6 +507,12 @@ class TestNotUnaryTest:
         ("cell", "expected"),
         [
             ('not("verified")', 'not(__cell_input__ = "verified")'),
+            # Spacing variants must not fall through to the equality branch —
+            # that fall-through is the mis-compilation the branch prevents.
+            ('not ("verified")', 'not(__cell_input__ = "verified")'),
+            ('not  ("verified")', 'not(__cell_input__ = "verified")'),
+            ("not (< 5)", "not(__cell_input__ < 5)"),
+            ("not (-)", "false"),
             ("not(< 5)", "not(__cell_input__ < 5)"),
             ("not([1..10])", "not(__cell_input__ in [1..10])"),
             ("not(-)", "false"),
@@ -483,6 +520,13 @@ class TestNotUnaryTest:
     )
     def test_compilation(self, cell: str, expected: str) -> None:
         assert feel.compile_unary_test(cell) == expected
+
+    def test_not_prefixed_name_is_not_mistaken_for_negation(self) -> None:
+        # A bare unquoted name starting with "not" is still the (broken)
+        # equality form and must be rejected at load for naming a free
+        # variable, not silently treated as a negation.
+        with pytest.raises(FeelValidationError):
+            feel.validate_unary_test("notable", locator="loc")
 
     def test_validates_at_load(self) -> None:
         feel.validate_unary_test('not("verified")', locator="loc")

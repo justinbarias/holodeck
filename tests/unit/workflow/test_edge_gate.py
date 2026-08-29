@@ -2079,6 +2079,24 @@ class TestGateSchemaLoadGuards:
             edge.load_gate_schema(node, workflow_dir)
         assert "deeper than 100 levels" in str(exc.value)
 
+    def test_json_parser_recursion_bomb_is_rejected_as_schema_error(
+        self, workflow_dir: Path, node: EdgeNode
+    ) -> None:
+        # Arrange — json.loads is the first recursive consumer of the file,
+        # ahead of _exceeds_depth: a '['-bomb far under the size cap
+        # out-recurses the C scanner and must still leave through the
+        # declared channel, not as a bare RecursionError.
+        (workflow_dir / "gates" / "evidence.schema.json").write_text(
+            "[" * 100_000, encoding="utf-8"
+        )
+
+        # Act / Assert
+        with pytest.raises(GateSchemaError) as exc:
+            edge.load_gate_schema(node, workflow_dir)
+        assert "not valid JSON" in str(exc.value) or "too deeply to parse" in str(
+            exc.value
+        )
+
     def test_deep_but_legal_gate_still_loads(
         self, workflow_dir: Path, node: EdgeNode
     ) -> None:

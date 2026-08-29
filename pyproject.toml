@@ -76,7 +76,7 @@ dependencies = [
     "python-frontmatter>=1.1,<2.0",
     "optuna>=4.8.0",
     "litellm>=1.80.0,<1.89.0",
-    "bkflow-feel==1.2.0",  # FEEL evaluator (036); pinned stable — see specs/036-deterministic-spine/research.md
+    "bkflow-feel==1.2.0",  # FEEL evaluator; exact pin is load-bearing for correctness, not just stability: feel.py shares FEELTransformer singletons across concurrent evaluations on the strength of 1.2.0's verified statelessness
 ]
 
 [project.scripts]

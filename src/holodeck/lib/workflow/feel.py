@@ -348,8 +348,15 @@ def compile_unary_test(text: str) -> str | None:
     # it matches nothing. A multi-test `not("a","b")` falls through like any
     # comma disjunction and is rejected as malformed at load — loud, like the
     # positive comma form.
-    if stripped.startswith("not(") and stripped.endswith(")"):
-        inner = compile_unary_test(stripped[4:-1])
+    if (
+        stripped.startswith("not")
+        and stripped[3:].lstrip().startswith("(")
+        and stripped.endswith(")")
+    ):
+        # Whitespace-tolerant on purpose: `not ("verified")` must not fall
+        # through to the equality branch and compile to the very
+        # mis-compilation this branch exists to prevent.
+        inner = compile_unary_test(stripped[stripped.index("(", 3) + 1 : -1])
         if inner is None:
             return "false"
         return f"not({inner})"

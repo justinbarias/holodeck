@@ -396,6 +396,14 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
         raise GateSchemaError(
             node.id, f"gate schema '{path}' is not valid JSON: {exc}"
         ) from exc
+    except RecursionError as exc:
+        # json.loads is the first recursive consumer of the document — a
+        # '['-bomb well under the size cap out-recurses the C scanner before
+        # _exceeds_depth below ever sees the parse. Same authoring defect,
+        # same channel.
+        raise GateSchemaError(
+            node.id, f"gate schema '{path}' nests too deeply to parse"
+        ) from exc
     if not isinstance(schema, dict):
         raise GateSchemaError(
             node.id,
