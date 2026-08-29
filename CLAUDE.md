@@ -10,7 +10,7 @@ HoloDeck is an open-source, no-code platform for building, testing, and deployin
 - **Vision & roadmap:** `VISION.md`
 - **Comprehensive agent docs:** `AGENTS.md`
 - **Product & user documentation:** `docs/`
-- **Feature specs and status:** `specs/<feature>/` — read the whole feature directory before working on one. New specs live in `specs/<NNN>-<feature>/spec.md` (first in the post-speckit format: `specs/040-holodeck-temporal/spec.md`); earlier spec-kit-era artifacts in `specs/` and `.specify/` stay for history.
+- **Feature specs and status:** `specs/index.md` is the inventory (status, task counts); read the whole feature directory before working on one. New specs live in `specs/<NNN>-<feature>/spec.md` (first in the post-speckit format: `specs/040-holodeck-temporal/spec.md`); earlier spec-kit-era artifacts in `specs/` and `.specify/` stay for history. Keep the index row current when a spec's status changes.
 - **YAML schemas:** `schemas/agent.schema.json`, `schemas/optimize-progress.schema.json`
 
 ## Codebase Index
