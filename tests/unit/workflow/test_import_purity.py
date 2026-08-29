@@ -31,6 +31,7 @@ import holodeck.lib.workflow.feel
 import holodeck.models.workflow
 import holodeck.models.decision_table
 leaked = [name for name in {forbidden!r} if name in sys.modules]
+print("LEAKED:", ", ".join(leaked) if leaked else "none")
 sys.exit(1 if leaked else 0)
 """
 
@@ -43,7 +44,11 @@ def test_gate_and_table_modules_import_without_the_backend_stack() -> None:
         timeout=120,
     )
 
+    # The probe prints its verdict and exits 1 on a leak; any other outcome
+    # (an ImportError, a crash) has no LEAKED line and a different traceback,
+    # so a failure names its cause instead of just "nonzero".
     assert result.returncode == 0, (
-        "importing the workflow-safe modules pulled in the backend stack "
-        f"(stderr: {result.stderr.strip()})"
+        "importing the workflow-safe modules failed or pulled in the backend "
+        f"stack (stdout: {result.stdout.strip()!r}, "
+        f"stderr: {result.stderr.strip()!r})"
     )

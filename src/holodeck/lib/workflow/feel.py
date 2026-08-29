@@ -136,6 +136,11 @@ class _FloatLiteralTransformer(FEELTransformer):
 # Full expressions keep the stock literal typing: they compute over facts, and
 # widening every literal there would break `int`-typed fact arithmetic for no
 # gain. Only unary tests — where the strictness trap actually bites — widen.
+#
+# Shared singletons are safe: FEELTransformer holds no per-transform state
+# (verified against bkflow-feel 1.2.0 — its methods build AST nodes from their
+# arguments only, and context is passed separately to parse_expression), so
+# concurrent evaluations cannot interfere.
 _EXPRESSION_TRANSFORMER = FEELTransformer()
 _UNARY_TEST_TRANSFORMER = _FloatLiteralTransformer()
 

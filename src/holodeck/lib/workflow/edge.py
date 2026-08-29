@@ -381,7 +381,9 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
         # is attacker-influenceable (see _MAX_GATE_BYTES).
         if path.stat().st_size > _MAX_GATE_BYTES:
             raise GateSchemaError(
-                node.id, f"gate schema '{path}' exceeds 5 MB; refusing to load it"
+                node.id,
+                f"gate schema '{path}' exceeds {_MAX_GATE_BYTES} bytes; "
+                f"refusing to load it",
             )
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
@@ -453,13 +455,22 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
                 # it. Narrowing the walk does not put this out of reach: the
                 # root dialect can be 2020-12 and the embedded one draft-03.
                 # It is still an authoring defect, so it leaves through the
-                # channel this function declares rather than as a traceback.
+                # channel this function declares rather than as a traceback —
+                # but the catch is wider than that one cause, so the message
+                # hedges and the real traceback goes to the debug log.
+                logger.debug(
+                    "gate schema '%s': AttributeError while resolving '%s'",
+                    path,
+                    ref,
+                    exc_info=True,
+                )
                 raise GateSchemaError(
                     node.id,
                     f"gate schema '{path}' references '{ref}', and the "
                     f"document could not be crawled to resolve it "
-                    f"({type(exc).__name__}: {exc}); an embedded subschema "
-                    f"puts a non-schema where its declared dialect expects one",
+                    f"({type(exc).__name__}: {exc}); most commonly an embedded "
+                    f"subschema puts a non-schema where its declared dialect "
+                    f"expects one",
                 ) from exc
 
     # The spine addresses an edge value by node id (`inputs: [<node id>]`) and
@@ -557,11 +568,18 @@ def _apply_gate(
         # Reachable from any dialect, because an embedded subschema may declare
         # a legacy `$schema` of its own. The gate cannot be applied; that is an
         # authoring defect, and it must not escape as a bare AttributeError.
+        # The catch is wider than that one cause (it wraps the whole
+        # validate()), so the message hedges and the traceback goes to debug.
+        logger.debug(
+            "edge node '%s': AttributeError while applying the gate",
+            node_id,
+            exc_info=True,
+        )
         raise GateSchemaError(
             node_id,
             f"gate schema could not be applied under its declared dialect "
-            f"({type(exc).__name__}: {exc}); a subschema puts a non-schema "
-            f"where that dialect expects one",
+            f"({type(exc).__name__}: {exc}); most commonly a subschema puts a "
+            f"non-schema where that dialect expects one",
         ) from exc
     except jsonschema.ValidationError as exc:
         raise GateValidationError(
@@ -643,6 +661,9 @@ async def execute_edge_node(
         crossing into the spine.
 
     Raises:
+        ConfigError: If the agent declares no ``response_format`` — it could
+            never produce structured output, so every run would spend a model
+            call to discover an authoring defect.
         GateValidationError: If the agent returned free text or schema-invalid
             output. An ``is_error`` result that nonetheless carries structured
             output lands here, not in ``ExecutionError``: the model produced
@@ -661,6 +682,18 @@ async def execute_edge_node(
             ``BackendSelector`` covers, and an unknown value is a ``ConfigError``
             at load.
     """
+    # An agent with no response_format can never produce structured_output
+    # (ClaudeBackend builds its output format from it), so every run would
+    # burn a model call and land at _apply_gate's "free text" rejection —
+    # an SC-003 gate rejection charged to a model that was never asked for
+    # structure. The author's defect, caught before any backend is built.
+    if agent.response_format is None:
+        raise ConfigError(
+            f"nodes.{node.id}.edge.agent",
+            "edge agent declares no response_format, so it can never produce "
+            "structured output for the gate",
+        )
+
     # Backends resolve a tool's relative `file:` against the agent_base_dir
     # contextvar. Only load_agent_and_config (the `test`/`chat` path) sets it;
     # loading the YAML directly does not, so without this an edge agent's

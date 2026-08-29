@@ -534,6 +534,7 @@ def test_no_match_emits_the_declared_default() -> None:
     assert verdict.matched_rule_index is None
     assert verdict.is_default is True
     assert verdict.rule_identity == "default, no rule matched"
+    assert verdict.matched_rule_annotation is None
     assert verdict.table_version == "2026-06-01.1"
 
 

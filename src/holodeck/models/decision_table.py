@@ -335,6 +335,13 @@ class DecisionTable(BaseModel):
 def load_decision_table(path: str | Path) -> DecisionTable:
     """Load and validate a decision table from a ``*.dmn.yaml`` file.
 
+    Trust posture: a table is read with ``yaml.safe_load`` but gets none of
+    the size/depth caps the gate-schema loader applies — it is held to the
+    lower trust of a file the author runs locally, not the
+    attacker-influenceable posture ``edge.load_gate_schema`` assumes.
+    Revisiting that (with the loader itself) belongs to the D3 table-step
+    design (SPEC.md).
+
     Args:
         path: Path to the decision-table YAML file.
 
@@ -342,8 +349,8 @@ def load_decision_table(path: str | Path) -> DecisionTable:
         The validated :class:`DecisionTable`.
 
     Raises:
-        DecisionTableError: If the file cannot be read, is not a YAML mapping,
-            or has a structural/cross-field problem.
+        DecisionTableError: If the file cannot be read, is not valid YAML, is
+            not a YAML mapping, or has a structural/cross-field problem.
         FeelValidationError: If any FEEL expression is malformed or out-of-subset.
         pydantic.ValidationError: On a field-shape problem (e.g. missing
             ``version``).
@@ -355,7 +362,12 @@ def load_decision_table(path: str | Path) -> DecisionTable:
         raise DecisionTableError(
             f"could not read decision table '{file_path}': {exc}"
         ) from exc
-    data = yaml.safe_load(raw)
+    try:
+        data = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        raise DecisionTableError(
+            f"decision table '{file_path}' is not valid YAML: {exc}"
+        ) from exc
     if not isinstance(data, dict):
         raise DecisionTableError(
             f"decision table '{file_path}' must be a YAML mapping, got "

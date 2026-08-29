@@ -247,6 +247,15 @@ class TestLoader:
             load_decision_table(tmp_path / "nope.dmn.yaml")
         assert "could not read" in str(exc.value)
 
+    def test_malformed_yaml_raises_decision_table_error(self, tmp_path: Path) -> None:
+        # A scanner error must leave through the module's declared channel,
+        # not as a bare yaml.YAMLError a WorkflowError catcher would miss.
+        path = tmp_path / "broken.dmn.yaml"
+        path.write_text("id: [unclosed\n  bracket: {", encoding="utf-8")
+        with pytest.raises(DecisionTableError) as exc:
+            load_decision_table(path)
+        assert "is not valid YAML" in str(exc.value)
+
     def test_non_mapping_yaml_raises_decision_table_error(self, tmp_path: Path) -> None:
         path = tmp_path / "list.dmn.yaml"
         path.write_text("- just\n- a\n- list\n", encoding="utf-8")

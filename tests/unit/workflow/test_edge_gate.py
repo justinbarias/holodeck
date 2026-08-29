@@ -45,6 +45,25 @@ model:
   name: claude-sonnet-4-20250514
 instructions:
   inline: "Extract the applicant's income evidence."
+response_format:
+  type: object
+  properties:
+    net_income:
+      type: number
+    residency_status:
+      type: string
+"""
+
+# The same agent with no response_format: it can never produce structured
+# output, so execute_edge_node must refuse it before any backend is built.
+AGENT_YAML_NO_RESPONSE_FORMAT = """\
+name: hardship-evidence
+description: Edge agent under test
+model:
+  provider: anthropic
+  name: claude-sonnet-4-20250514
+instructions:
+  inline: "Extract the applicant's income evidence."
 """
 
 GATE_SCHEMA: dict[str, Any] = {
@@ -170,9 +189,32 @@ async def _execute(
     still observe rather than one they assume.
     """
     gate_schema = edge.load_gate_schema(node, workflow_dir)
-    agent_path = (workflow_dir / node.edge.agent).resolve()
+    agent_path = edge.resolve_agent_path(node, workflow_dir)
     agent = ConfigLoader().load_agent_yaml(str(agent_path))
     return await edge.execute_edge_node(node, agent, agent_path, message, gate_schema)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_agent_without_response_format_is_refused_before_any_call(
+    workflow_dir: Path, node: EdgeNode
+) -> None:
+    """No response_format means no structured output is ever possible.
+
+    Without the guard every run would spend a model call to land at the
+    gate's "free text" rejection — an SC-003 rejection charged to a model
+    that was never asked for structure. The autouse forbid_real_backends
+    fixture proves nothing was built; no fake backend is installed at all.
+    """
+    # Arrange
+    (workflow_dir / "agents" / "evidence.yaml").write_text(
+        AGENT_YAML_NO_RESPONSE_FORMAT, encoding="utf-8"
+    )
+
+    # Act / Assert
+    with pytest.raises(ConfigError) as exc:
+        await _execute(node, workflow_dir, "Extract the evidence.")
+    assert "response_format" in str(exc.value)
 
 
 @pytest.mark.unit
@@ -2072,10 +2114,11 @@ class TestGateSchemaLoadGuards:
             encoding="utf-8",
         )
 
-        # Act / Assert
+        # Act / Assert — the message derives from the (patched) constant, so
+        # the guard and its report cannot drift apart.
         with pytest.raises(GateSchemaError) as exc:
             edge.load_gate_schema(node, workflow_dir)
-        assert "exceeds 5 MB" in str(exc.value)
+        assert "exceeds 16 bytes" in str(exc.value)
 
 
 @pytest.mark.unit
