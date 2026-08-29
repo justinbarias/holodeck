@@ -53,7 +53,7 @@ history), and the timeout/retry parameters object.
 
 ### Phase 1: Foundation (D1 core)
 
-- [ ] T1: `holodeck[temporal]` extra, exact pin, package skeleton
+- [x] T1: `holodeck[temporal]` extra, exact pin, package skeleton
 - [ ] T2: Payload and parameter models
 - [ ] T3: Activity factory
 - [ ] T4: Error taxonomy and retry classification
@@ -103,13 +103,13 @@ naming the sandbox-test dependency as the reason for the exact pin.
 holodeck[temporal]") on import when `temporalio` is missing.
 
 **Acceptance criteria:**
-- [ ] `uv sync --extra temporal` installs `temporalio==1.32.0` on Python 3.10
-- [ ] Importing `holodeck.temporal` without the extra raises the guarded error, not `ModuleNotFoundError`
-- [ ] Core install (`uv sync`) does not pull `temporalio`
+- [x] `uv sync --extra temporal` installs `temporalio==1.32.0` on Python 3.10
+- [x] Importing `holodeck.temporal` without the extra raises the guarded error, not `ModuleNotFoundError`
+- [x] Core install (`uv sync`) does not pull `temporalio`
 
 **Verification:**
-- [ ] `pytest tests/unit/temporal/test_import_guard.py -n auto`
-- [ ] `make lint && make type-check && make security`
+- [x] `pytest tests/unit/temporal/test_import_guard.py -n auto`
+- [x] `make lint && make type-check && make security`
 
 **Dependencies:** None
 **Files likely touched:** `pyproject.toml`, `uv.lock`, `src/holodeck/temporal/__init__.py`, `tests/unit/temporal/test_import_guard.py`

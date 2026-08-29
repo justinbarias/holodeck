@@ -63,6 +63,9 @@ src/holodeck/
 │   ├── vectorstore_tool.py
 │   ├── hierarchical_document_tool.py
 │   └── mcp/                MCP tool integration
+├── temporal/               Temporal integration (spec 040) — agent activities,
+│                           gate seam, workflow-safe helpers. Guarded behind
+│                           the `temporal` extra (`temporalio`).
 ├── serve/                  HTTP server (AG-UI protocol, sessions, middleware)
 ├── deploy/                 Docker build (builder.py, dockerfile.py) +
 │   └── deployers/          per-target deployers (Azure Container Apps, …)
