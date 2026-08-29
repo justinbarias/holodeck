@@ -1,5 +1,13 @@
 # Feature Specification: Deterministic Spine — Composable Workflow Determination Gates
 
+> **ARCHIVED — PIVOTED, 2026-08-29.** This spec is frozen after Phase 1
+> (Checkpoint 1 passed; T7+ never built). The thesis moved from a decisions
+> product to orchestration: HoloDeck agents become first-class citizens on
+> Temporal, and no HoloDeck-owned workflow engine ships. The DMN/FEEL table
+> evaluator and the schema gate survive as reusable primitives. Successor:
+> `SPEC.md` (project root), which records the decisions that produced the
+> pivot.
+
 **Feature Branch**: `036-deterministic-spine`
 **Created**: 2026-05-30
 **Status**: Draft for review

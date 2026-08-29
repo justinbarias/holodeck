@@ -1,5 +1,10 @@
 # TODO: Deterministic Spine (036)
 
+> **ARCHIVED — PIVOTED, 2026-08-29.** Work stopped after Phase 1 plus the
+> review-round hardening. T7 and everything after it will not be built. See
+> the archive banner in `../spec.md` and the successor `SPEC.md` at the
+> project root.
+
 > Condensed task list — full acceptance criteria and verification steps in
 > `plan.md`. Restructured 2026-07-25 around an explicit **MVP ship line**;
 > anchor sample retargeted from loan-hardship to the Targeted Compliance
