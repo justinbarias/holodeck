@@ -87,8 +87,9 @@ if TYPE_CHECKING:
 # selector.py imports the concrete backends (and with them the Claude Agent
 # SDK) at module scope, so a module-level import would drag the whole backend
 # stack into any importer of the pure gate half — load_gate_schema and
-# _apply_gate must stay importable from Temporal workflow code, which forbids
-# I/O imports (SPEC.md section 7). test_import_purity.py pins this.
+# _apply_gate must stay importable from Temporal workflow code, which
+# forbids I/O imports (spec 040 section 7, specs/040-holodeck-temporal/spec.md).
+# test_import_purity.py pins this.
 from holodeck.lib.errors import (
     ConfigError,
     ExecutionError,
@@ -325,8 +326,9 @@ def resolve_agent_path(node: EdgeNode, workflow_dir: Path) -> Path:
     The confinement seam for ``EdgeRef.agent`` — the same control
     :func:`load_gate_schema` applies to ``gate.schema``. The 036 loader that
     resolved this path was removed with the overlay engine; whatever consumes
-    an :class:`EdgeNode` next (the Temporal activity wrapper, SPEC.md D1) must
-    resolve the reference through here rather than joining the path itself.
+    an :class:`EdgeNode` next (the Temporal activity wrapper, spec 040 D1)
+    must resolve the reference through here rather than joining the path
+    itself.
 
     Args:
         node: The edge node whose ``edge.agent`` is being resolved.
@@ -642,7 +644,7 @@ async def execute_edge_node(
 ) -> GatedOutput:
     """Run an edge node's agent and gate its structured output.
 
-    Provisional pending the Temporal activity design (SPEC.md D1): the
+    Provisional pending the Temporal activity design (spec 040 D1): the
     activity wrapper may invoke the backend against Temporal's own
     retry/timeout/cancellation seams rather than through this function, in
     which case this invocation half is replaced and only the pure gate half

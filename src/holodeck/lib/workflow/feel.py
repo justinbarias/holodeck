@@ -234,7 +234,7 @@ def referenced_roots(text: str, *, locator: str) -> frozenset[str]:
     Exposed for callers that know something this module cannot: which names are
     actually on offer. A decision table's FEEL is validated standalone, so only
     the caller that mounts it — under 036 the (removed) workflow node, under
-    SPEC.md the code composing a table's inputs — can say whether
+    spec 040 the code composing a table's inputs — can say whether
     ``evidence.net_income`` names anything at all, and it can only say so from
     the roots. No production caller exists between those two worlds; the
     function is kept as the public seam that check re-enters through.

@@ -1,7 +1,8 @@
 """The workflow-safe modules must not drag the backend stack in.
 
-SPEC.md section 7: helpers destined for Temporal workflow code must not import
-I/O modules. ``edge.py`` therefore imports ``BackendSelector`` lazily inside
+Spec 040 section 7 (specs/040-holodeck-temporal/spec.md): helpers destined
+for Temporal workflow code must not import I/O modules. ``edge.py``
+therefore imports ``BackendSelector`` lazily inside
 ``execute_edge_node`` — a module-scope import would pull the Claude Agent SDK
 into any importer of the pure gate half (``load_gate_schema``/``_apply_gate``).
 These tests run in a subprocess so a previously imported SDK in the test

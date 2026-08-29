@@ -7,7 +7,7 @@
 > (2026-05-30), which is itself **archived after the 2026-08-29 pivot** — the
 > overlay engine and the `holodeck workflow run|replay` CLI described below were
 > removed, and only the schema gate and DMN/FEEL table evaluation survive as
-> primitives. The authoritative spec is now `SPEC.md` at the project root
+> primitives. The authoritative spec is now `specs/040-holodeck-temporal/spec.md`
 > (HoloDeck agents on Temporal). This doc is retained as the original ideation
 > record only.
 

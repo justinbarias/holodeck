@@ -1,7 +1,7 @@
 # Implementation Plan: Deterministic Spine (036)
 
 > **ARCHIVED (2026-08-29).** Part of the archived 036 spec — see the
-> banner in `spec.md` and the successor `SPEC.md` at the project root.
+> banner in `spec.md` and the successor `specs/040-holodeck-temporal/spec.md`.
 
 
 > Sources: `specs/036-deterministic-spine/spec.md` + `refinements.md` (binding

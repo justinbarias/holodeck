@@ -5,7 +5,7 @@
 > product to orchestration: HoloDeck agents become first-class citizens on
 > Temporal, and no HoloDeck-owned workflow engine ships. The DMN/FEEL table
 > evaluator and the schema gate survive as reusable primitives. Successor:
-> `SPEC.md` (project root), which records the decisions that produced the
+> `specs/040-holodeck-temporal/spec.md`, which records the decisions that produced the
 > pivot.
 
 **Feature Branch**: `036-deterministic-spine`

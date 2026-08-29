@@ -73,7 +73,8 @@ class FeelType(str, Enum):
     ``boolean`` and ``date`` are declarative — a mistyped value surfaces
     through a rule cell's evaluation (data-dependent under ``FIRST``), not at
     the column, and output columns are not checked against their type at all.
-    Closing that gap belongs to the table-step design (SPEC.md D3).
+    Closing that gap belongs to the table-step design (spec 040 D3,
+    specs/040-holodeck-temporal/).
     """
 
     NUMBER = "number"
@@ -111,7 +112,7 @@ class TableOutput(BaseModel):
     output — so a ``PRIORITY`` table is limited to string outputs today. A
     ``number``/``boolean`` output under ``PRIORITY`` fails at load (the
     membership check compares against strings). Widening ``values`` is a D3
-    table-step question (SPEC.md).
+    table-step question (specs/040-holodeck-temporal/spec.md).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -131,8 +132,8 @@ class Provenance(BaseModel):
     matching. A hand-authored table omits the block entirely. Its 036
     consumers (the run record and the FR-030 review gate) were removed with
     the overlay engine; the block is kept because a table's origin is part of
-    the authored artifact, and the Temporal-era record of a decision (SPEC.md)
-    is expected to snapshot it again. ``awaiting_review`` currently has no
+    the authored artifact, and the Temporal-era record of a decision
+    (spec 040) is expected to snapshot it again. ``awaiting_review`` currently has no
     production caller.
     """
 
@@ -346,7 +347,7 @@ def load_decision_table(path: str | Path) -> DecisionTable:
     lower trust of a file the author runs locally, not the
     attacker-influenceable posture ``edge.load_gate_schema`` assumes.
     Revisiting that (with the loader itself) belongs to the D3 table-step
-    design (SPEC.md).
+    design (specs/040-holodeck-temporal/spec.md).
 
     Args:
         path: Path to the decision-table YAML file.

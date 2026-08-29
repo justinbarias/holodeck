@@ -10,7 +10,7 @@ HoloDeck is an open-source, no-code platform for building, testing, and deployin
 - **Vision & roadmap:** `VISION.md`
 - **Comprehensive agent docs:** `AGENTS.md`
 - **Product & user documentation:** `docs/`
-- **Feature specs and status:** `specs/<feature>/` — read the whole feature directory before working on one. New specs use `SPEC.md`-style documents (see the project root); `specs/` and `.specify/` hold the earlier spec-kit-era artifacts and stay for history.
+- **Feature specs and status:** `specs/<feature>/` — read the whole feature directory before working on one. New specs live in `specs/<NNN>-<feature>/spec.md` (first in the post-speckit format: `specs/040-holodeck-temporal/spec.md`); earlier spec-kit-era artifacts in `specs/` and `.specify/` stay for history.
 - **YAML schemas:** `schemas/agent.schema.json`, `schemas/optimize-progress.schema.json`
 
 ## Codebase Index
@@ -47,7 +47,7 @@ src/holodeck/
 │   │   ├── validators.py             Pre-flight checks (Node.js, credentials)
 │   │   └── openai_agents_*.py        OpenAI Agents SDK backend + adapters
 │   ├── workflow/           Deterministic primitives kept from 036 (archived);
-│   │   │                   reuse surface for the Temporal pivot (SPEC.md)
+│   │   │                   reuse surface for the Temporal pivot (specs/040-holodeck-temporal/spec.md)
 │   │   ├── edge.py         Edge executor + gate schema validation
 │   │   ├── table_eval.py   Hit-policy evaluation (UNIQUE/FIRST/PRIORITY) → Verdict
 │   │   └── feel.py         FEEL expression subset (bkflow-feel) + static rejection

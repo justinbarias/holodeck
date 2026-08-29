@@ -1,7 +1,7 @@
 # DMN ↔ HoloDeck YAML Mapping
 
 > **ARCHIVED (2026-08-29).** Part of the archived 036 spec — see the
-> banner in `spec.md` and the successor `SPEC.md` at the project root.
+> banner in `spec.md` and the successor `specs/040-holodeck-temporal/spec.md`.
 
 
 > Companion artifact to `spec.md` / `refinements.md` / `tasks/plan.md`.
