@@ -18,12 +18,10 @@ class EdgeRef(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # NOTE: unlike gate.schema (confined to the workflow directory by
-    # load_gate_schema), this path has no confinement check in shipped code —
-    # the loader that resolved it was removed with the 036 runner, and nothing
-    # loads an EdgeNode from an untrusted file today. Whatever consumes this
-    # model next (the Temporal activity wrapper, SPEC.md D1) must confine the
-    # resolved path the same way before reading it.
+    # Confinement lives in holodeck.lib.workflow.edge.resolve_agent_path, the
+    # same control load_gate_schema applies to gate.schema. Consumers resolve
+    # this reference through that function, never by joining the path
+    # themselves.
     agent: str = Field(
         description="Path to the edge agent's agent.yaml.",
     )

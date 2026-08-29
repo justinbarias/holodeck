@@ -67,6 +67,13 @@ class FeelType(str, Enum):
     ``days`` is a HoloDeck convenience for a date difference coerced to a
     number of days (research.md caveat 1); ``date`` columns are supplied as
     ``datetime.date`` objects at the workflow boundary (caveat 6).
+
+    Enforcement today is partial: only ``number`` and ``days`` are coerced
+    and checked at the column boundary during evaluation. ``string``,
+    ``boolean`` and ``date`` are declarative — a mistyped value surfaces
+    through a rule cell's evaluation (data-dependent under ``FIRST``), not at
+    the column, and output columns are not checked against their type at all.
+    Closing that gap belongs to the table-step design (SPEC.md D3).
     """
 
     NUMBER = "number"

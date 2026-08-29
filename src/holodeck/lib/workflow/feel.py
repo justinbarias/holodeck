@@ -141,40 +141,40 @@ _UNARY_TEST_TRANSFORMER = _FloatLiteralTransformer()
 
 
 @functools.lru_cache(maxsize=1024)
-def _cached_parse(text: str) -> lark.Tree:
-    """Parse FEEL text once per distinct string.
+def _cached_referenced_paths(text: str) -> frozenset[tuple[str, ...]]:
+    """The referenced paths of ``text`` — the evaluation path's static analysis.
 
     Table cells are a small, immutable set of strings evaluated once per rule
     per decision — a cost that multiplies again when the evaluator runs inside
-    Temporal workflow code, re-executed on every replay. This cache removes
-    the static-analysis parse only: ``parse_expression`` still parses
-    internally on every evaluation, so the win is roughly half the parse
-    count, not its elimination. Caching the evaluator's own AST would mean
-    reaching into ``bkflow_feel`` internals; revisit if the replay path makes
-    the remaining half measurable. The returned tree is shared between callers
-    and must be treated as read-only; every existing consumer only walks it.
-    Failures are not cached (lru_cache does not cache raises), which is fine:
-    malformed cells are rejected once at load.
+    Temporal workflow code, re-executed on every replay. Only the immutable
+    derived frozenset is cached; the parse tree is built and discarded inside
+    this call, so no shared mutable state ever leaves the cache. The win is
+    roughly half the parse count, not its elimination: ``parse_expression``
+    still parses internally on every evaluation, and caching the evaluator's
+    own AST would mean reaching into ``bkflow_feel`` internals — revisit if
+    the replay path makes the remaining half measurable. Failures are not
+    cached (lru_cache does not cache raises), which is fine: malformed cells
+    are rejected once at load.
+
+    Raises:
+        lark.exceptions.UnexpectedInput: If ``text`` is malformed. Callers
+            translate this with their own locator.
     """
-    return cast(lark.Tree, parser.parse(text))
-
-
-@functools.lru_cache(maxsize=1024)
-def _cached_referenced_paths(text: str) -> frozenset[tuple[str, ...]]:
-    """The referenced paths of ``text``, cached on the same key as the parse.
-
-    ``_evaluate`` re-derives the paths on every call and they are a pure
-    function of the source string, so the walk is cached alongside the tree.
-    Only reachable for text that already parsed (callers parse first), so no
-    locator is needed here.
-    """
-    return _referenced_paths(_cached_parse(text))
+    return _referenced_paths(cast(lark.Tree, parser.parse(text)))
 
 
 def _parse_tree(text: str, *, locator: str) -> lark.Tree:
-    """Parse FEEL text, raising :class:`FeelValidationError` on syntax errors."""
+    """Parse FEEL text, raising :class:`FeelValidationError` on syntax errors.
+
+    Parses fresh on every call, deliberately: a lark tree is mutable, and a
+    cache would hand every caller the same instance — one in-place transform
+    would silently corrupt every later call for the same source string. All
+    callers are load-time validators, where the parse cost is irrelevant; the
+    per-evaluation path caches the immutable derived artifact instead
+    (:func:`_cached_referenced_paths`).
+    """
     try:
-        return _cached_parse(text)
+        return cast(lark.Tree, parser.parse(text))
     except lark.exceptions.UnexpectedInput as exc:
         raise FeelValidationError(
             locator, f"malformed FEEL expression: {text!r}"
@@ -419,12 +419,17 @@ def _evaluate(
             f"'{shadowed[0]}' is a FEEL literal, not a usable fact name: the "
             f"binding would be invisible to every expression",
         )
-    # Parsed again here (the evaluator parses internally): the tree is the only
-    # place the referenced paths are visible ahead of evaluation. The explicit
-    # _parse_tree call is the locator-bearing syntax gate; both it and the
-    # path walk behind it are cached per source string.
-    _parse_tree(text, locator=locator)
-    paths = _cached_referenced_paths(text)
+    # The static analysis is the syntax gate too: _cached_referenced_paths
+    # parses internally (the evaluator will parse again — the paths are only
+    # visible ahead of evaluation via this walk), and a malformed expression
+    # surfaces here with this caller's locator. Post-load text has already
+    # been validated, so this is a belt.
+    try:
+        paths = _cached_referenced_paths(text)
+    except lark.exceptions.UnexpectedInput as exc:
+        raise FeelValidationError(
+            locator, f"malformed FEEL expression: {text!r}"
+        ) from exc
     missing = sorted({path[0] for path in paths} - bindings.keys())
     if missing:
         names = ", ".join(repr(name) for name in missing)

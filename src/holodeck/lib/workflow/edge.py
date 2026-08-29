@@ -89,7 +89,12 @@ if TYPE_CHECKING:
 # stack into any importer of the pure gate half — load_gate_schema and
 # _apply_gate must stay importable from Temporal workflow code, which forbids
 # I/O imports (SPEC.md section 7). test_import_purity.py pins this.
-from holodeck.lib.errors import ExecutionError, GateSchemaError, GateValidationError
+from holodeck.lib.errors import (
+    ConfigError,
+    ExecutionError,
+    GateSchemaError,
+    GateValidationError,
+)
 from holodeck.models.workflow import EdgeNode
 
 logger = logging.getLogger(__name__)
@@ -133,37 +138,25 @@ _GATE_REF_REGISTRY: Registry[Any] = SPECIFICATIONS.combine(_NO_RETRIEVAL_REGISTR
 
 #: The dialects whose ``subresources_of`` table the load-time walk trusts.
 #:
-#: The walk delegates descent to ``referencing`` (see :func:`_collect_refs`),
-#: which is right only where that table is. For the pre-2019 dialects it is
-#: not, in two ways that both *hide* a reference rather than invent one:
-#:
-#: * ``_subresources_of_with_crazy_items_dependencies`` (draft-07/06/04) reads
-#:   only the first value of ``dependencies`` and yields nothing at all if that
-#:   value is not a Mapping, so ``{"a": ["b"], "c": {"$ref": ...}}`` conceals
-#:   the reference entirely.
-#: * draft-03 lists ``extends`` as holding an *array* of subschemas, so for the
-#:   equally legal object form it yields the object's keys — strings.
-#:
-#: A hidden reference bills an agent call for a defect the author could have
-#: been told about at load. The alternative — hand-rolling descent for those
-#: dialects — risks the far worse error of walking into a place that is not a
-#: subschema and refusing a gate ``validate()`` would accept. So these dialects
-#: are not walked: a missed early catch costs one call and is still caught
-#: correctly by :func:`_apply_gate`, and nothing rests on a table known to be
-#: wrong.
-#:
-#: 2020-12 and 2019-09 are on this list for two reasons. Every keyword their
-#: tables list is constrained by their metaschema to hold schemas, and
-#: ``check_schema`` runs before the walk — so nothing but a schema (or a
-#: boolean) is ever descended into, and the crawl cannot be handed a ``str`` or
-#: a ``list``. And in the other direction their tables are complete: of the
-#: keywords those validators evaluate as subschemas, neither table omits any.
-#: The keyword both tables *do* omit, ``dependencies``, is deprecated and
-#: evaluated by neither validator, so no reference under it is resolved at
-#: either end. What the walk still does not reach is in :func:`_collect_refs`.
+#: The invariant: the walk only runs where ``referencing``'s subresource table
+#: is known-complete and known to yield only schemas (2020-12, 2019-09). The
+#: pre-2019 tables both *hide* references (draft-07/06/04 ``dependencies``,
+#: draft-03 object-form ``extends``), and hand-rolling descent for them risks
+#: the worse error of refusing a gate ``validate()`` would accept. An unwalked
+#: dialect degrades to the runtime backstop in :func:`_apply_gate` — a quieter
+#: check, never a wrong one. The per-dialect behaviour is pinned by
+#: ``test_dialect_matrix_pins_where_an_unresolvable_ref_is_caught``.
 _WALKED_SPECIFICATIONS: frozenset[Specification[Any]] = frozenset(
     {DRAFT202012, DRAFT201909}
 )
+
+#: Load-time bounds on the gate document. The file is attacker-influenceable
+#: (same posture as the retrieval refusal), and both ``check_schema`` and the
+#: ``$ref`` walk recurse — an unbounded document would escape the module's
+#: error taxonomy as a bare ``RecursionError``. 100 levels / 5 MB are far past
+#: any real gate and far short of the interpreter's limits.
+_MAX_GATE_DEPTH = 100
+_MAX_GATE_BYTES = 5 * 1024 * 1024
 
 
 def _gate_specification(validator_cls: type[Any]) -> Specification[Any]:
@@ -187,21 +180,15 @@ def _gate_specification(validator_cls: type[Any]) -> Specification[Any]:
     )
 
 
-class _WalkDepthError(Exception):
-    """Internal: the reference walk hit its depth bound.
-
-    Converted to :class:`GateSchemaError` (with the node and path) by
-    ``load_gate_schema`` — kept internal so the walk itself needs no knowledge
-    of either.
-    """
-
-
 def _exceeds_depth(document: Any, limit: int) -> bool:
     """Report whether ``document`` nests deeper than ``limit`` levels.
 
     Iterative on purpose: this runs *before* ``check_schema`` and the ``$ref``
     walk, both of which recurse and would surface an overdeep document as a
-    bare ``RecursionError`` outside the module's declared error taxonomy.
+    bare ``RecursionError`` outside the module's declared error taxonomy. It
+    counts raw container depth, which bounds every later recursion: each step
+    of the ``$ref`` walk descends at least one container level, so a document
+    that passes here cannot push the walk past the same limit.
     """
     stack: list[tuple[Any, int]] = [(document, 0)]
     while stack:
@@ -220,51 +207,27 @@ def _collect_refs(
 ) -> list[tuple[str, Any]]:
     r"""Collect the ``$ref``\ s in schema position, each with its own scope.
 
-    Only ever called for a dialect in :data:`_WALKED_SPECIFICATIONS`; every
-    other dialect skips the walk entirely, so nothing below applies to it.
-
-    Descent is delegated to ``spec.subresources_of`` — ``referencing``'s own
-    table of which keywords hold subschemas under the gate's dialect, the same
-    table it crawls a document by to discover nested ``$id``\ s and anchors —
-    so the walk enters a value exactly where that value begins a subschema.
-    Two consequences matter:
-
-    * A key is only ever read as a keyword in keyword position. A property,
-      pattern property, dependent schema or ``$defs`` entry may be *named*
-      ``$ref``, ``const``, ``properties`` or anything else; the walk descends
-      into its value regardless and reads ``$ref`` only where a subschema
-      actually begins.
-    * The walk never enters the value of ``const``, ``enum``, ``default`` or
-      ``examples``: no dialect's table lists them, so a ``$ref``-shaped literal
-      there is treated as the data it is.
-
-    Each reference is paired with the resolver in force where it appears, so a
-    nested ``$id`` rebases a relative reference here by the same rule — and the
-    same ``Resolver.in_subresource`` call — the validator applies as it
-    descends.
+    Only ever called for a dialect in :data:`_WALKED_SPECIFICATIONS`. Descent
+    is delegated to ``spec.subresources_of`` — ``referencing``'s own table of
+    which keywords hold subschemas — so the walk enters a value exactly where
+    a subschema begins: a *property named* ``$ref`` is data, a ``$ref``-shaped
+    literal under ``const``/``enum`` is data, and ``$ref`` is read only in
+    keyword position. Each reference is paired with the resolver in force
+    where it appears, so a nested ``$id`` rebases it by the validator's own
+    rule (``Resolver.in_subresource``).
 
     Not modelled, and therefore left to the runtime backstop in
-    :func:`_apply_gate`:
+    :func:`_apply_gate`: ``$dynamicRef``/``$recursiveRef`` (target chosen from
+    the dynamic scope, not the document); a subschema that re-dialects itself
+    with its own ``$schema`` (re-dialecting would mean walking by the very
+    tables :data:`_WALKED_SPECIFICATIONS` refuses to trust); the deprecated,
+    never-evaluated ``dependencies``; anything the table does not call a
+    subschema; and a non-string ``$ref``. The per-case behaviour is pinned by
+    the walk tests in ``test_edge_gate.py``.
 
-    * ``$dynamicRef`` and ``$recursiveRef`` — their target is chosen from the
-      dynamic scope of a particular validation, not from the document.
-    * A subschema that declares its own ``$schema``. The walk descends under
-      the *root* dialect's table from top to bottom and never re-dialects an
-      embedded resource, so a ``$ref`` only the embedded dialect's table would
-      reach — draft-03 ``extends``, draft-07 ``dependencies`` — is invisible to
-      it, even though ``jsonschema`` honours that ``$schema`` and does reach
-      the reference. Re-dialecting would mean walking by the very tables
-      :data:`_WALKED_SPECIFICATIONS` refuses to trust.
-    * ``dependencies``. It survives in the 2020-12 and 2019-09 metaschemas as a
-      deprecated keyword and may hold schemas, but neither dialect's table
-      lists it and neither validator evaluates it, so a ``$ref`` there is never
-      resolved at either end.
-    * Anything at a location the dialect's table does not call a subschema: an
-      unlisted keyword's value, or a literal that some ``$ref`` elsewhere
-      points into. The walk walks the document; it never follows a reference
-      to its target.
-    * A ``$ref`` whose value is not a string; it is skipped rather than
-      guessed at.
+    Recursion here is bounded by the ``_exceeds_depth`` pre-check in
+    :func:`load_gate_schema`: every step descends at least one container
+    level, so the walk can never out-recurse a document that check accepted.
 
     Args:
         spec: The specification returned by :func:`_gate_specification`.
@@ -276,13 +239,7 @@ def _collect_refs(
     """
     found: list[tuple[str, Any]] = []
 
-    def walk(node: Any, scope: Any, depth: int = 0) -> None:
-        # Depth-bounded: the document comes from a file this module already
-        # treats as attacker-influenceable, and an unbounded recursion would
-        # escape the declared taxonomy as a bare RecursionError. 100 levels is
-        # far past any real gate and far short of the interpreter limit.
-        if depth > 100:
-            raise _WalkDepthError()
+    def walk(node: Any, scope: Any) -> None:
         if not isinstance(node, dict):
             return
         ref = node.get("$ref")
@@ -294,7 +251,7 @@ def _collect_refs(
             # nothing to collect and nothing to rebase against.
             if not isinstance(child, dict):
                 continue
-            walk(child, scope.in_subresource(spec.create_resource(child)), depth + 1)
+            walk(child, scope.in_subresource(spec.create_resource(child)))
 
     walk(schema, resolver)
     return found
@@ -340,6 +297,55 @@ class GatedOutput(BaseModel):
         return copy.deepcopy(value)
 
 
+def _escapes(candidate: Path, root: Path) -> bool:
+    """Report whether a resolved path lands outside ``root``.
+
+    The module treats the workflow file as attacker-influenceable (that is why
+    remote ``$ref`` retrieval is refused); letting a path field name
+    ``/etc/passwd`` or ``../../x`` would be the same hole through the front
+    door. An absolute path replaces ``root`` entirely under ``/``, so
+    resolve-then-check is the only shape that catches both forms.
+
+    Args:
+        candidate: The already-``resolve()``-d path to judge.
+        root: The directory the path must stay inside.
+
+    Returns:
+        ``True`` when ``candidate`` is not inside ``root``.
+    """
+    return not candidate.is_relative_to(root.resolve())
+
+
+def resolve_agent_path(node: EdgeNode, workflow_dir: Path) -> Path:
+    """Resolve an edge node's agent path, confined to the workflow directory.
+
+    The confinement seam for ``EdgeRef.agent`` — the same control
+    :func:`load_gate_schema` applies to ``gate.schema``. The 036 loader that
+    resolved this path was removed with the overlay engine; whatever consumes
+    an :class:`EdgeNode` next (the Temporal activity wrapper, SPEC.md D1) must
+    resolve the reference through here rather than joining the path itself.
+
+    Args:
+        node: The edge node whose ``edge.agent`` is being resolved.
+        workflow_dir: Directory containing the workflow file; the agent path
+            is relative to it.
+
+    Returns:
+        The resolved path to the agent's ``agent.yaml``.
+
+    Raises:
+        ConfigError: If the path escapes the workflow directory.
+    """
+    path = (workflow_dir / node.edge.agent).resolve()
+    if _escapes(path, workflow_dir):
+        raise ConfigError(
+            f"nodes.{node.id}.edge.agent",
+            f"agent path '{node.edge.agent}' escapes the workflow directory "
+            f"'{workflow_dir}'",
+        )
+    return path
+
+
 def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
     """Read and parse an edge node's gate schema.
 
@@ -364,22 +370,16 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
             docstring.
     """
     path = (workflow_dir / node.gate.schema_path).resolve()
-    # Confine the gate to the workflow directory. The module already treats a
-    # workflow file as attacker-influenceable enough to refuse remote $ref
-    # retrieval; letting `gate.schema` itself name `/etc/passwd` or `../../x`
-    # would be the same hole through the front door. An absolute schema_path
-    # replaces workflow_dir entirely under `/`, so resolve-then-check is the
-    # only shape that catches both forms.
-    if not path.is_relative_to(workflow_dir.resolve()):
+    if _escapes(path, workflow_dir):
         raise GateSchemaError(
             node.id,
             f"gate schema '{node.gate.schema_path}' escapes the workflow "
             f"directory '{workflow_dir}'",
         )
     try:
-        # Size-capped for the same reason the walk below is depth-bounded: the
-        # file is attacker-influenceable, and 5 MB is far past any real gate.
-        if path.stat().st_size > 5 * 1024 * 1024:
+        # Size-capped for the same reason the depth is bounded below: the file
+        # is attacker-influenceable (see _MAX_GATE_BYTES).
+        if path.stat().st_size > _MAX_GATE_BYTES:
             raise GateSchemaError(
                 node.id, f"gate schema '{path}' exceeds 5 MB; refusing to load it"
             )
@@ -402,12 +402,13 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
         )
     # Checked before check_schema and the $ref walk, both of which recurse:
     # without this, an overdeep document escapes as a bare RecursionError
-    # instead of the authoring error it is.
-    if _exceeds_depth(schema, 100):
+    # instead of the authoring error it is. This is the only depth guard —
+    # container depth bounds the walk's recursion (see _exceeds_depth).
+    if _exceeds_depth(schema, _MAX_GATE_DEPTH):
         raise GateSchemaError(
             node.id,
-            f"gate schema '{path}' nests deeper than 100 levels; refusing "
-            f"to walk it",
+            f"gate schema '{path}' nests deeper than {_MAX_GATE_DEPTH} levels; "
+            f"refusing to walk it",
         )
 
     # Whether the document is a *schema* is judged here, not at validate time:
@@ -423,42 +424,18 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
         ) from exc
 
     # References are settled here too — but only for the dialects
-    # `_WALKED_SPECIFICATIONS` names. jsonschema resolves them lazily, at
-    # validate time; that is its default, not a constraint. Resolving them
-    # against the registry, the specification and the scope the validator would
-    # itself have used decides a remote ref, a sibling-file ref, and a mistyped
-    # local pointer with no network access at all. Left to validate time, each
-    # of those costs an agent call to discover a defect in a file the author
-    # already wrote. For any other dialect the walk does not run and every
-    # reference is left exactly where jsonschema puts it: validate time.
-    #
-    # Where it does run, *reference resolution* is stricter here than at
-    # validate time, deliberately: a reference is refused even where no
-    # instance would reach it — an unreferenced `$defs` entry, or the losing
-    # branch of an `if`/`then`. `validator.validate()` resolves lazily and so
-    # accepts such a gate for every instance that misses the branch. A
-    # reference that cannot resolve at all is an authoring defect whether or
-    # not this run's output touches it; refusing it costs nothing but a message
-    # naming the ref, whereas accepting it ships a gate that stops constraining
-    # anything the first time an instance does reach that branch. The reverse
-    # direction — refusing a reference `validate()` would resolve for *every*
-    # instance — is what `_collect_refs` is built to avoid. (Reference
-    # resolution is not the only way load is stricter than validate time:
-    # `check_schema` above refuses documents `validate()` raises no schema
-    # error on at all — `{"required": "name"}` runs, as a demand for the
-    # properties `n`, `a`, `m` and `e`.)
+    # `_WALKED_SPECIFICATIONS` names; every other dialect keeps jsonschema's
+    # lazy validate-time resolution. Deliberately stricter than validate time:
+    # a reference is refused even in a branch no instance reaches (an unused
+    # `$defs` entry, the losing arm of an `if`/`then`), because an unresolvable
+    # ref is an authoring defect whether or not this run's output touches it —
+    # accepted, it ships a gate that stops constraining anything the first time
+    # an instance does reach that branch. The reverse error — refusing a ref
+    # `validate()` would resolve — is what `_collect_refs` is built to avoid.
     spec = _gate_specification(validator_cls)
     if spec in _WALKED_SPECIFICATIONS:
         resolver = _GATE_REF_REGISTRY.resolver_with_root(spec.create_resource(schema))
-        try:
-            collected = _collect_refs(spec, schema, resolver)
-        except _WalkDepthError:
-            raise GateSchemaError(
-                node.id,
-                f"gate schema '{path}' nests deeper than 100 levels; refusing "
-                f"to walk it",
-            ) from None
-        for ref, scope in collected:
+        for ref, scope in _collect_refs(spec, schema, resolver):
             try:
                 scope.lookup(ref)
             except Unresolvable as exc:

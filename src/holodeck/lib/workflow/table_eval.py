@@ -266,7 +266,7 @@ def _verdict(table: DecisionTable, index: int, rule: Rule) -> Verdict:
     return Verdict(
         table_id=table.id,
         table_version=table.version,
-        outputs=dict(rule.then),
+        outputs=rule.then,
         matched_rule_index=index,
         matched_rule_annotation=rule.annotation,
     )
@@ -282,7 +282,7 @@ def _no_match(table: DecisionTable) -> Verdict:
     return Verdict(
         table_id=table.id,
         table_version=table.version,
-        outputs=dict(table.default),
+        outputs=table.default,
         matched_rule_index=None,
         is_default=True,
     )

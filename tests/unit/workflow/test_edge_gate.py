@@ -28,6 +28,7 @@ from holodeck.lib.backends.base import ExecutionResult
 from holodeck.lib.backends.claude_backend import ClaudeBackend
 from holodeck.lib.backends.openai_agents_backend import OpenAIAgentsBackend
 from holodeck.lib.errors import (
+    ConfigError,
     ExecutionError,
     GateSchemaError,
     GateValidationError,
@@ -1971,6 +1972,37 @@ class TestGatePathConfinement:
 
 
 @pytest.mark.unit
+class TestAgentPathConfinement:
+    """``edge.agent`` gets the same confinement control as ``gate.schema``."""
+
+    @pytest.mark.parametrize(
+        "agent_path",
+        [
+            "../outside/agent.yaml",
+            "agents/../../outside/agent.yaml",
+            "/etc/agent.yaml",
+        ],
+    )
+    def test_escaping_agent_path_is_rejected(
+        self, workflow_dir: Path, agent_path: str
+    ) -> None:
+        node = EdgeNode(
+            id="evidence",
+            edge={"agent": agent_path},  # type: ignore[arg-type]
+            gate={"schema": "gates/evidence.schema.json"},  # type: ignore[arg-type]
+        )
+
+        with pytest.raises(ConfigError) as exc:
+            edge.resolve_agent_path(node, workflow_dir)
+        assert "escapes the workflow directory" in str(exc.value)
+
+    def test_inside_path_resolves(self, workflow_dir: Path, node: EdgeNode) -> None:
+        resolved = edge.resolve_agent_path(node, workflow_dir)
+
+        assert resolved == (workflow_dir / "agents" / "evidence.yaml").resolve()
+
+
+@pytest.mark.unit
 class TestGateSchemaLoadGuards:
     """Load-time guards over the gate document itself."""
 
@@ -1991,8 +2023,8 @@ class TestGateSchemaLoadGuards:
     def test_overdeep_gate_is_rejected_as_schema_error(
         self, workflow_dir: Path, node: EdgeNode
     ) -> None:
-        # Arrange — 150 nested levels: past the walk's 100-level bound, far
-        # short of the interpreter's recursion limit.
+        # Arrange — 150 nested levels: past the 100-level bound, far short of
+        # the interpreter's recursion limit.
         schema: dict = {"type": "object"}
         for _ in range(150):
             schema = {"type": "object", "properties": {"a": schema}}
@@ -2005,13 +2037,39 @@ class TestGateSchemaLoadGuards:
             edge.load_gate_schema(node, workflow_dir)
         assert "deeper than 100 levels" in str(exc.value)
 
-    def test_oversized_gate_is_rejected(
+    def test_deep_but_legal_gate_still_loads(
         self, workflow_dir: Path, node: EdgeNode
     ) -> None:
-        # Arrange — just past the 5 MB cap.
-        big = '{"type": "object", "description": "' + "x" * (5 * 1024 * 1024) + '"}'
+        # Arrange — 48 schema-nesting levels. Each level costs two container
+        # levels ({"properties": {"a": ...}}), so this sits just under the
+        # 100-container bound. The property worth pinning: the bound exists to
+        # keep check_schema and the $ref walk inside the interpreter's
+        # recursion limit, so a legal deep gate must load cleanly — neither
+        # rejected by the guard nor felled by a RecursionError.
+        schema: dict = {"type": "object", "$ref": "#/$defs/leaf"}
+        for _ in range(48):
+            schema = {"type": "object", "properties": {"a": schema}}
+        schema["$defs"] = {"leaf": {"type": "object"}}
         (workflow_dir / "gates" / "evidence.schema.json").write_text(
-            big, encoding="utf-8"
+            json.dumps(schema), encoding="utf-8"
+        )
+
+        # Act
+        loaded = edge.load_gate_schema(node, workflow_dir)
+
+        # Assert
+        assert loaded == schema
+
+    def test_oversized_gate_is_rejected(
+        self, workflow_dir: Path, node: EdgeNode, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Arrange — shrink the cap instead of writing a real 5 MB file: the
+        # assurance wanted is that the stat() guard is wired ahead of the
+        # read, not that 5 MB of x's is big.
+        monkeypatch.setattr(edge, "_MAX_GATE_BYTES", 16)
+        (workflow_dir / "gates" / "evidence.schema.json").write_text(
+            '{"type": "object", "description": "over the tiny cap"}',
+            encoding="utf-8",
         )
 
         # Act / Assert
