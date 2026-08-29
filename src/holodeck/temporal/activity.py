@@ -18,10 +18,27 @@ Timeouts and retries are absent by design — in Temporal they ride the caller's
 ``execute_activity`` command, which is what
 :class:`~holodeck.temporal.models.ActivityParameters` builds (decision 10).
 
-Error classification (typed retryable/non-retryable ``ApplicationError``) is
-spec 040 T4. This module lets ``ConfigError``, ``GateSchemaError``,
-``GateValidationError`` and ``ExecutionError`` propagate as raised; T4 wraps
-them at the single seam :func:`_run_gated_turn` provides.
+Error classification (T4) happens at the activity boundary, translating
+SC-003's model-fault vs authoring-fault split into Temporal retry semantics:
+
+* **Retryable — evidence about the model or the transport.** A gate rejection
+  (``GateValidationError``) and a broken invocation (``ExecutionError``)
+  propagate as plain exceptions. Temporal converts a plain exception into a
+  retryable ``ApplicationError`` whose ``type`` is the exception class name,
+  so a workflow can still opt out per class with
+  ``RetryPolicy(non_retryable_error_types=["GateValidationError"])`` — the
+  match is by that class-name string, which is therefore part of the public
+  contract of this module.
+* **Non-retryable — authoring faults.** ``ConfigError``, ``GateSchemaError``
+  and :class:`holodeck.lib.errors.FileNotFoundError` are re-raised as
+  ``ApplicationError(non_retryable=True)`` typed by the original class name:
+  no number of retries fixes a broken worker configuration, and retrying
+  would bill a model call per attempt. Most authoring faults already fail at
+  factory time, before the worker starts; this classification covers the ones
+  only reachable per call.
+
+The two channels never mix: a gate rejection is never non-retryable, and an
+authoring fault is never allowed to surface as a plain (retryable) exception.
 """
 
 from __future__ import annotations
@@ -33,10 +50,12 @@ from pathlib import Path
 from typing import Any, cast
 
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from holodeck.config.context import agent_base_dir
 from holodeck.config.loader import ConfigLoader
-from holodeck.lib.errors import ConfigError, ExecutionError
+from holodeck.lib.errors import ConfigError, ExecutionError, GateSchemaError
+from holodeck.lib.errors import FileNotFoundError as HoloDeckFileNotFoundError
 from holodeck.lib.workflow.edge import (
     _apply_gate,
     _teardown,
@@ -50,6 +69,11 @@ from holodeck.temporal.models import AgentActivityInput, AgentActivityResult
 logger = logging.getLogger(__name__)
 
 _CONTEXT_HEADER = "Context (JSON):"
+
+# Authoring faults: defects in the worker's configuration, not evidence about
+# the model (SC-003). Retrying cannot fix them, so they cross the activity
+# boundary as ApplicationError(non_retryable=True) typed by class name.
+_AUTHORING_FAULTS = (ConfigError, GateSchemaError, HoloDeckFileNotFoundError)
 
 
 def _compose_message(activity_input: AgentActivityInput) -> str:
@@ -211,9 +235,14 @@ def agent_activity(
             The envelope carrying the gate-validated object.
         """
         logger.debug("activity '%s': starting agent turn", node.id)
-        return await _run_gated_turn(
-            node, agent, agent_path, gate_schema, _compose_message(activity_input)
-        )
+        try:
+            return await _run_gated_turn(
+                node, agent, agent_path, gate_schema, _compose_message(activity_input)
+            )
+        except _AUTHORING_FAULTS as exc:
+            raise ApplicationError(
+                str(exc), type=type(exc).__name__, non_retryable=True
+            ) from exc
 
     # activity.defn's overloads erase the callable's type for mypy under the
     # pre-commit configuration; the decorator wraps without changing it.

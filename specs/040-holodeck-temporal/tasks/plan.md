@@ -56,7 +56,7 @@ history), and the timeout/retry parameters object.
 - [x] T1: `holodeck[temporal]` extra, exact pin, package skeleton
 - [x] T2: Payload and parameter models
 - [x] T3: Activity factory
-- [ ] T4: Error taxonomy and retry classification
+- [x] T4: Error taxonomy and retry classification
 
 ### Checkpoint 1: Foundation
 - [ ] Factory output is a valid Temporal activity definition (mocked backend)
