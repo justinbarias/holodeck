@@ -29,8 +29,10 @@ SC-003's model-fault vs authoring-fault split into Temporal retry semantics:
   ``RetryPolicy(non_retryable_error_types=["GateValidationError"])`` — the
   match is by that class-name string, which is therefore part of the public
   contract of this module.
-* **Non-retryable — authoring faults.** ``ConfigError``, ``GateSchemaError``
-  and :class:`holodeck.lib.errors.FileNotFoundError` are re-raised as
+* **Non-retryable — authoring faults.** ``ConfigError``, ``GateSchemaError``,
+  :class:`holodeck.lib.errors.FileNotFoundError` and ``BackendInitError``
+  (initialization normalizes configuration failures — missing credentials,
+  absent Node.js — to it) are re-raised as
   ``ApplicationError(non_retryable=True)`` typed by the original class name:
   no number of retries fixes a broken worker configuration, and retrying
   would bill a model call per attempt. Most authoring faults already fail at
@@ -54,6 +56,7 @@ from temporalio.exceptions import ApplicationError
 
 from holodeck.config.context import agent_base_dir
 from holodeck.config.loader import ConfigLoader
+from holodeck.lib.backends.base import BackendInitError
 from holodeck.lib.errors import ConfigError, ExecutionError, GateSchemaError
 from holodeck.lib.errors import FileNotFoundError as HoloDeckFileNotFoundError
 from holodeck.lib.workflow.edge import (
@@ -73,7 +76,12 @@ _CONTEXT_HEADER = "Context (JSON):"
 # Authoring faults: defects in the worker's configuration, not evidence about
 # the model (SC-003). Retrying cannot fix them, so they cross the activity
 # boundary as ApplicationError(non_retryable=True) typed by class name.
-_AUTHORING_FAULTS = (ConfigError, GateSchemaError, HoloDeckFileNotFoundError)
+_AUTHORING_FAULTS = (
+    ConfigError,
+    GateSchemaError,
+    HoloDeckFileNotFoundError,
+    BackendInitError,
+)
 
 
 def _compose_message(activity_input: AgentActivityInput) -> str:
@@ -145,15 +153,20 @@ async def _run_gated_turn(
     token = agent_base_dir.set(str(agent_path.parent))
     try:
         backend = await BackendSelector.select(agent, mode="test")
+        # Teardown rides a finally so cancellation cannot leak the backend:
+        # Temporal cancellation surfaces as asyncio.CancelledError (a
+        # BaseException), which an `except Exception` never sees, and the SDK
+        # subprocess, MCP servers, and tool resources must be released on
+        # every exit path.
         try:
             result = await backend.invoke_once(message)
         except Exception as exc:
-            await _teardown(backend, node.id)
             raise ExecutionError(
                 f"activity '{node.id}': agent invocation raised "
                 f"{type(exc).__name__}: {exc}"
             ) from exc
-        await _teardown(backend, node.id)
+        finally:
+            await _teardown(backend, node.id)
 
         # is_error with structured output still went to the gate: the model
         # produced something, and what it produced is evidence about the model

@@ -17,6 +17,7 @@ authoring fault never surfaces as a plain exception.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,7 @@ import pytest
 from temporalio.exceptions import ApplicationError
 
 import holodeck.temporal.activity as activity_module
+from holodeck.lib.backends.base import BackendInitError
 from holodeck.lib.errors import (
     ConfigError,
     ExecutionError,
@@ -176,6 +178,52 @@ class TestNonRetryableChannel:
             await fn(AgentActivityInput(message="extract the evidence"))
         assert excinfo.value.non_retryable is True
         assert excinfo.value.type == "ConfigError"
+
+    @pytest.mark.asyncio
+    async def test_backend_init_failure_is_non_retryable(
+        self, monkeypatch: pytest.MonkeyPatch, base_dir: Path, node: EdgeNode
+    ) -> None:
+        """Initialization normalizes config failures to BackendInitError —
+        retrying cannot fix missing credentials and would bill per attempt."""
+        # Arrange
+        _install_backend(monkeypatch, _result(structured_output=VALID_OUTPUT))
+        fn = agent_activity(node, base_dir)
+
+        async def _broken_select(*args: Any, **kwargs: Any) -> Any:
+            raise BackendInitError("claude", "CLAUDE_CODE_OAUTH_TOKEN not set")
+
+        monkeypatch.setattr(
+            "holodeck.lib.backends.selector.BackendSelector.select", _broken_select
+        )
+
+        # Act / Assert
+        with pytest.raises(ApplicationError) as excinfo:
+            await fn(AgentActivityInput(message="extract the evidence"))
+        assert excinfo.value.non_retryable is True
+        assert excinfo.value.type == "BackendInitError"
+
+
+class TestCancellation:
+    """Temporal cancellation must not leak the backend."""
+
+    @pytest.mark.asyncio
+    async def test_cancellation_tears_down_backend_and_propagates(
+        self, monkeypatch: pytest.MonkeyPatch, base_dir: Path, node: EdgeNode
+    ) -> None:
+        """CancelledError (a BaseException) still releases the backend and
+        propagates — it must never be swallowed into ExecutionError."""
+        # Arrange
+        selector = _install_backend(
+            monkeypatch,
+            _result(structured_output=VALID_OUTPUT),
+            invoke_error=asyncio.CancelledError(),
+        )
+        fn = agent_activity(node, base_dir)
+
+        # Act / Assert
+        with pytest.raises(asyncio.CancelledError):
+            await fn(AgentActivityInput(message="extract the evidence"))
+        assert selector.backend.torn_down is True
 
 
 class TestChannelsNeverMix:
