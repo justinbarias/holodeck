@@ -32,7 +32,7 @@ span nesting).
 | 7 | Decision tables load at workflow-module import time (policy-as-code, versioned with workflow code). Not loaded in activities, not passed through history. |
 | 8 | D4 config is `worker.yaml` (Pydantic model) + env-var overrides + `--config`/`--task-queue` flags. |
 | 9 | Edge-node entries are declared inline in `worker.yaml` under `nodes:`; paths resolve relative to the worker.yaml directory through `resolve_agent_path`. `nodes:` is registration only — zero control flow. |
-| 10 | Per-activity timeout/retry defaults live in an `ActivityParameters`-style Pydantic model, settable per node in `worker.yaml` and as a factory kwarg. Temporal defaults as fallback. |
+| 10 | *(amended 2026-08-29 after Codex review of PR #366)* Timeout/retry options are caller-side in Temporal: they ride the workflow's `execute_activity` command, and the caller must set `start_to_close_timeout` or `schedule_to_close_timeout` — no server default exists. `ActivityParameters` is therefore a **workflow-side, sandbox-safe helper** (ships with the D3 surface) that expands into `execute_activity` kwargs; `worker.yaml` carries no execution timeouts (registration only). `heartbeat_timeout` is unsupported in v1 — the activity does not heartbeat, and exposing the knob without heartbeats invites concurrent duplicate LLM calls. |
 | 11 | Activity name = edge-node `id` (replay-load-bearing; rename-safe against file moves). |
 | 12 | `temporalio` ships only in the `holodeck[temporal]` extra. Import guard gives a clear install message. |
 | 13 | Exact pin `temporalio==1.32.0` — the sandbox-safety unit test leans on APIs marked "not yet stable". Same policy precedent as `bkflow-feel`. Loosen when the sandbox surface stabilizes. |
@@ -120,14 +120,18 @@ holodeck[temporal]") on import when `temporalio` is missing.
 **Description:** Pydantic models in `src/holodeck/temporal/models.py`:
 `AgentActivityInput` (message, optional context dict), `AgentActivityResult`
 (output, token_usage, num_turns, agent_id — all JSON-serializable),
-`ActivityParameters` (start_to_close, schedule_to_close, heartbeat timeouts,
-retry policy fields). All fields round-trip through
-`pydantic_data_converter`.
+`ActivityParameters` (start_to_close / schedule_to_close / schedule_to_start
+timeouts, retry policy fields; no heartbeat — decision 10). Payload models
+round-trip through `pydantic_data_converter`. `ActivityParameters` is a
+workflow-side helper: `to_activity_kwargs()` expands it into
+`execute_activity` keyword arguments, and validation requires at least one of
+`start_to_close`/`schedule_to_close` (Temporal has no server default). The
+module must stay sandbox-safe (it ships to workflow code with the D3 surface).
 
 **Acceptance criteria:**
-- [ ] Models serialize/deserialize through `temporalio.contrib.pydantic` converter
+- [ ] Payload models serialize/deserialize through `temporalio.contrib.pydantic` converter
 - [ ] `AgentActivityResult.output` holds a plain dict (the gate-validated object), never model text
-- [ ] `ActivityParameters` converts to Temporal `RetryPolicy`/timedelta values
+- [ ] `ActivityParameters.to_activity_kwargs()` yields valid `RetryPolicy`/timedelta kwargs; a parameters object with neither closing timeout is refused at validation
 
 **Verification:**
 - [ ] `pytest tests/unit/temporal/test_models.py -n auto`
@@ -140,7 +144,8 @@ retry policy fields). All fields round-trip through
 ### Task 3: Activity factory
 
 **Description:** `src/holodeck/temporal/activity.py`:
-`agent_activity(node: EdgeNode, base_dir: Path, params: ActivityParameters | None) -> Callable`.
+`agent_activity(node: EdgeNode, base_dir: Path) -> Callable`. (No timeout/retry
+kwargs — those are caller-side, decision 10.)
 Resolves the agent through `edge.resolve_agent_path`, loads the gate through
 `load_gate_schema`, invokes through `BackendSelector` (`invoke_once`,
 stateless), validates `structured_output` against the gate, returns the
@@ -188,7 +193,8 @@ retryable `ApplicationError` typed by class name). Authoring faults
 
 **Description:** `src/holodeck/temporal/deterministic.py` re-exports the
 workflow-safe surface: `evaluate` (table_eval), a standalone
-`check_gate(obj, schema)` function, and `load_decision_table` documented as
+`check_gate(obj, schema)` function, `ActivityParameters` (the workflow-side
+scheduling helper from T2), and `load_decision_table` documented as
 import-time-only. Unit test builds a tiny workflow that imports the D3
 helpers (not passed through) and calls
 `SandboxedWorkflowRunner().prepare_workflow(...)`; a restricted call must
@@ -230,9 +236,10 @@ plugins auto-propagate to workers.
 ### Task 7: `WorkerConfig` model and loader
 
 **Description:** `src/holodeck/temporal/worker_config.py`: Pydantic model for
-`worker.yaml` — `temporal:` (address, namespace, task_queue, TLS),
-`defaults:` (ActivityParameters), `nodes:` (inline EdgeNode entries +
-optional per-node ActivityParameters). Env-var overrides
+`worker.yaml` — `temporal:` (address, namespace, task_queue, TLS) and
+`nodes:` (inline EdgeNode entries). No execution timeouts or retry policy in
+this file — those are caller-side (decision 10); worker.yaml is registration
+only. Env-var overrides
 (`TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, …) follow the existing
 ConfigLoader precedence. Node paths resolve relative to the worker.yaml
 directory through `resolve_agent_path`.
@@ -280,7 +287,10 @@ without the extra.
 (evidence extractor, letter writer) with response_format, two gate schemas,
 one `.dmn.yaml` decision table (reusing the 036 test-suite table so AC-3 can
 compare Verdicts), a `worker.yaml`, and the sample workflow
-(`workflow.py`: extract → table verdict → letter).
+(`workflow.py`: extract → table verdict → letter). The workflow schedules
+each activity with `ActivityParameters.to_activity_kwargs()` — the sample is
+the proof that timeout/retry configuration is caller-side and functional
+(feeds AC-2).
 
 **Acceptance criteria:**
 - [ ] Fixture agents load through the existing `Agent` model

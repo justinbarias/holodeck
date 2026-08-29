@@ -6,7 +6,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 ## Phase 1 — Foundation (D1 core)
 
 - [ ] **T1** `holodeck[temporal]` extra, exact pin `temporalio==1.32.0`, package skeleton with import guard (S)
-- [ ] **T2** Payload models: `AgentActivityInput`, `AgentActivityResult`, `ActivityParameters` (S)
+- [ ] **T2** Payload models: `AgentActivityInput`, `AgentActivityResult`; `ActivityParameters` as workflow-side scheduling helper (`to_activity_kwargs()`, no heartbeat) (S)
 - [ ] **T3** Activity factory: `EdgeNode` → named async activity; gate mandatory; `BackendSelector.invoke_once`; envelope return (M)
 - [ ] **T4** Error taxonomy: gate failure retryable, authoring faults `non_retryable=True`, transport retryable (S)
 
@@ -23,7 +23,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 
 ## Phase 3 — Worker CLI (D4)
 
-- [ ] **T7** `WorkerConfig` model + loader: worker.yaml (temporal, defaults, inline nodes), env overrides, path confinement (M)
+- [ ] **T7** `WorkerConfig` model + loader: worker.yaml (temporal connection + inline nodes, registration only — no timeouts), env overrides, path confinement (M)
 - [ ] **T8** `holodeck worker` command: activities-only Worker, `TracingInterceptor`, graceful shutdown, guarded import (M)
 
 ### Checkpoint 3
