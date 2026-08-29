@@ -434,3 +434,8 @@ codegen is developer-ergonomics only.
 ## Open Questions
 
 None. The spec §12 open questions were resolved: extra name = `holodeck[temporal]` (D12), worker config = `worker.yaml` + env + flags (D8–D10), and the `contrib.openai_agents` seam study concluded (granularity note above).
+
+T3 open questions, resolved 2026-08-30 with the user:
+
+- **Backend mode in the activity: `mode="test"` stands.** With `permission_mode: manual` that maps to the SDK's strict `default` — no silent permission escalation in a durable, retried, headless context. A dedicated `"worker"` mode would re-open the legacy test-mode escalation footgun the backend already removed; revisit only if the T13 live smoke shows real friction. Agents needing tools declare them explicitly in agent.yaml.
+- **`AgentActivityInput.context` rendering** (dict as sorted-keys JSON appended under a `Context (JSON):` header) is implemented in T3; still open for confirmation before D4/sample work depends on the prompt shape.
