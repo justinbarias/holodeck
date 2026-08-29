@@ -3,11 +3,13 @@
 > Status: idea (pre-spec) · Author: FDE · Date: 2026-05-30
 > Companion concept doc: *The Deterministic Spine* (FDE-01/A)
 >
-> **Superseded by `specs/036-deterministic-spine/spec.md` (2026-05-30).** The spec
-> updates naming: the artifact is `workflow.yaml` (not `determination.yaml`), the
-> CLI is `holodeck workflow run|replay`, and "gate" means the schema boundary on
-> an edge node (the DMN nodes are "determination nodes"). This doc is retained as
-> the original ideation record; the spec is authoritative.
+> **Superseded twice.** First by `specs/036-deterministic-spine/spec.md`
+> (2026-05-30), which is itself **archived after the 2026-08-29 pivot** — the
+> overlay engine and the `holodeck workflow run|replay` CLI described below were
+> removed, and only the schema gate and DMN/FEEL table evaluation survive as
+> primitives. The authoritative spec is now `specs/040-holodeck-temporal/spec.md`
+> (HoloDeck agents on Temporal). This doc is retained as the original ideation
+> record only.
 
 ## Problem Statement
 

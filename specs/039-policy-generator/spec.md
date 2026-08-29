@@ -1,5 +1,13 @@
 # Feature Specification: Policy Generator — AI-drafted decision tables and DRDs
 
+> **BLOCKED ON THE PIVOT (2026-08).** This spec depends on 036, which was
+> archived when HoloDeck pivoted to Temporal-first orchestration (see
+> `specs/040-holodeck-temporal/spec.md`). The `workflow.schema.json`, `holodeck
+> workflow run`, and DRD surfaces referenced below were removed with the 036
+> overlay engine and no longer exist. The decision-table format and its
+> loader survive; if this feature is revived it re-targets the D3 table-step
+> design.
+
 **Feature Branch**: `039-policy-generator`
 **Created**: 2026-07-25
 **Status**: Draft — **spec only, not scheduled for build**

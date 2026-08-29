@@ -1,5 +1,9 @@
 # DMN ↔ HoloDeck YAML Mapping
 
+> **ARCHIVED (2026-08-29).** Part of the archived 036 spec — see the
+> banner in `spec.md` and the successor `specs/040-holodeck-temporal/spec.md`.
+
+
 > Companion artifact to `spec.md` / `refinements.md` / `tasks/plan.md`.
 > Status: **design input** for T2 (workflow models) and T3 (table model) —
 > illustrative, not normative until those tasks land. Produced 2026-06-10
@@ -72,19 +76,23 @@ outputs:
     type: string
     values: [affordable, marginal, unaffordable]
 
-# DMN: <rule> — each `when` cell is a FEEL unary test against the input in
-# the same position; "-" is the irrelevant cell, exactly as in DMN.
+# DMN: <rule> — each `when` cell is a FEEL unary test, keyed by input name.
+# An input omitted from `when` is the irrelevant cell (always matches), which
+# is DMN's "-"; an explicit "-" is accepted and means the same thing.
+# CORRECTED 2026-07-25 — this example was positional (`when: [">= 0.25", ...]`)
+# until T3 landed. Open design point 1 below resolved to keyed cells, so the
+# positional form no longer parses. See `models/decision_table.py::Rule`.
 rules:
-  - when: [">= 0.25",      "<= 90", '"verified"']
+  - when: { surplus_ratio: ">= 0.25", statement_age: "<= 90", residency_status: '"verified"' }
     then: { affordability: affordable }
     annotation: Comfortable surplus, fresh statements, verified residency
-  - when: ["[0.10..0.25)", "<= 90", '"verified"']
+  - when: { surplus_ratio: "[0.10..0.25)", statement_age: "<= 90", residency_status: '"verified"' }
     then: { affordability: marginal }
     annotation: Thin surplus — refer for officer review
-  - when: ["< 0.10",       "-",     "-"]
+  - when: { surplus_ratio: "< 0.10" }
     then: { affordability: unaffordable }
     annotation: No realistic repayment capacity
-  - when: ["-",            "> 90",  "-"]
+  - when: { statement_age: "> 90" }
     then: { affordability: unaffordable }
     annotation: Statements too stale to assess
 
@@ -101,7 +109,7 @@ Element-by-element:
 | `hit_policy` | `hitPolicy` | UNIQUE multi-match errors per FR-012; PRIORITY resolves by `values` order (DMN's output-values-as-priority rule) |
 | `inputs[].expression` | `<inputExpression>` (FEEL) | Full FEEL allowed here only |
 | `inputs[].type` | `typeRef` | |
-| `rules[].when[i]` | `<inputEntry>` (FEEL unary test) | `>= 0.25`, `[0.10..0.25)`, `"verified"`, `-` |
+| `rules[].when[<input name>]` | `<inputEntry>` (FEEL unary test) | `>= 0.25`, `[0.10..0.25)`, `"verified"`; an omitted key (or `-`) is the irrelevant cell |
 | `rules[].then` | `<outputEntry>` | |
 | `rules[].annotation` | rule annotation | |
 | `outputs[].values` | `outputValues` | Doubles as PRIORITY ordering, highest first |
@@ -109,11 +117,13 @@ Element-by-element:
 
 ### Open design points for T3
 
-1. **Positional vs keyed `when` cells.** Positional mirrors DMN's column
-   layout (and is what a transpiler would emit); keyed
-   (`when: {surplus_ratio: ">= 0.25", ...}`) is diff-friendlier and immune to
-   column-reorder bugs. Lean: **keyed for hand-authored YAML**, accept
-   positional from a future transpiler. T3 decides.
+1. ~~**Positional vs keyed `when` cells.**~~ **RESOLVED in T3 — keyed only.**
+   Positional mirrors DMN's column layout, but keyed cells are diff-friendlier
+   and immune to column-reorder bugs, and a reordered column silently changing
+   every rule's meaning is exactly the class of error this spec exists to
+   prevent. `Rule.when` is a `dict[str, str]` keyed by input name; a cell
+   naming an undeclared input is rejected at load. Positional entries do not
+   parse. A future transpiler (spec 039) emits keyed cells.
 2. **Expression placement rule.** Full FEEL (arithmetic, date math) is valid
    only in `inputs[].expression`; rule cells are restricted to unary tests.
    Faithful to DMN and matches what the FEEL-library research verified best
@@ -141,19 +151,20 @@ nodes:
     gate: { schema: schemas/fraud-flag.json }
 
   # DMN <decision> — `inputs:` is the <informationRequirement> list.
+  # CORRECTED 2026-07-25 — `hit_policy:` was shown on each node until the T3
+  # refactor moved it onto the referenced table, where DMN puts it (one table,
+  # one hit policy, one source of truth). `PolicyNode` has no such field and
+  # forbids extras, so the earlier form no longer parses.
   - id: affordability
-    decision: tables/affordability.dmn.yaml
+    decision: tables/affordability.dmn.yaml   # the table declares UNIQUE
     inputs: [income, residency]          # requiredInput ×2
-    hit_policy: UNIQUE
   - id: risk_tier
-    decision: tables/risk.dmn.yaml
+    decision: tables/risk.dmn.yaml            # the table declares FIRST
     inputs: [doc_fraud_flag, income]
-    hit_policy: FIRST
 
   - id: final_determination
-    decision: tables/determination.dmn.yaml
+    decision: tables/determination.dmn.yaml   # the table declares PRIORITY
     inputs: [affordability, risk_tier]   # requiredDecision ×2
-    hit_policy: PRIORITY
     requires_human: true
     decided_by: "Hardship Officer"
     draft: { agent: agents/reasons-drafter/agent.yaml }

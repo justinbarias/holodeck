@@ -1,5 +1,9 @@
 # Implementation Plan: Deterministic Spine (036)
 
+> **ARCHIVED (2026-08-29).** Part of the archived 036 spec — see the
+> banner in `spec.md` and the successor `specs/040-holodeck-temporal/spec.md`.
+
+
 > Sources: `specs/036-deterministic-spine/spec.md` + `refinements.md` (binding
 > decisions: Claude-only edges; human-node table computes a recommendation;
 > new `WorkflowTestExecutor`; confidence gating cut; FEEL syntax is the
@@ -65,6 +69,11 @@ T2 workflow models + schema ──► T2a input_data               │
         ═══════════════════════════════════════════════════════ MVP SHIP LINE
                           post-MVP: T9 draft · T12 tests · T13 OTel · T15 docs
 ```
+
+The T6 → T7 edge still holds, but its meaning changed: **T7's implementation
+landed inside T6** (the named-input resolver the runner needed gives multi-level
+composition for free). T7 now depends on T6 as *tests depend on the code they
+cover*, not as unbuilt work waiting on a prerequisite. See T7.
 
 Parallelizable once Phase 1 lands: T12 (needs only T4), T13 (needs T6).
 **T9 is no longer a dependency of T14** — the MVP sample's human node ships with
@@ -135,7 +144,7 @@ rejects out-of-subset expressions at table load with a precise locator
 
 **Dependencies:** T1 · **Files:** `src/holodeck/models/decision_table.py`, `src/holodeck/lib/workflow/feel.py`, tests · **Scope:** M
 
-#### Task 2a: Workflow-level `input_data:` *(amends landed T2)*
+#### Task 2a: Workflow-level `input_data:` *(amends landed T2)* — **DONE** (`1d9d2eb`)
 
 **Description:** Add an optional workflow-level `input_data:` block to
 `src/holodeck/models/workflow.py`: a mapping of name → `{schema: <path>}`
@@ -152,16 +161,16 @@ every task after T4 — this is the cheap moment (same reasoning that put `sourc
 into T2 early).
 
 **Acceptance criteria:**
-- [ ] Declared facts validate pre-execution; missing/invalid fails with a typed error naming the fact (FR-025).
-- [ ] `input_data` referenceable from `inputs:` and from table expressions (FR-026).
-- [ ] SC-010: schema-validation test proves no agent can produce an `input_data` value (FR-027).
-- [ ] Schema sync test passes.
+- [x] Declared facts validate pre-execution; missing/invalid fails with a typed error naming the fact (FR-025).
+- [x] `input_data` referenceable from `inputs:` and from table expressions (FR-026). Fact names resolve in `inputs:` but are **excluded from the executed topological order** — they are data, not nodes.
+- [x] SC-010: schema-validation test proves no agent can produce an `input_data` value (FR-027) — asserted against the **published** `workflow.schema.json`, not only the Pydantic model.
+- [x] Schema sync test passes.
 
 **Verification:** `pytest tests/unit/models/test_workflow.py tests/unit/test_workflow_schema_sync.py -n auto` · `make type-check`
 
 **Dependencies:** T2 · **Files:** `src/holodeck/models/workflow.py`, `scripts/generate_workflow_schema.py`, `schemas/workflow.schema.json`, tests · **Scope:** M
 
-#### Task 3a: `provenance:` on decision tables *(amends landed T3)*
+#### Task 3a: `provenance:` on decision tables *(amends landed T3)* — **DONE** (`1d9d2eb`)
 
 **Description:** Add an optional non-executable `provenance:` block to
 `DecisionTable` — `generated_by`, `source`, `source_doc`, `source_sha256`,
@@ -174,14 +183,14 @@ cannot distinguish an LLM-written table from a hand-written one, and the review
 gate (FR-030) has nothing to check.
 
 **Acceptance criteria:**
-- [ ] Table with full `provenance` loads; table without it loads unchanged.
-- [ ] A FEEL expression referencing `provenance.*` is rejected at load with a locator.
+- [x] Table with full `provenance` loads; table without it loads unchanged.
+- [x] A FEEL expression referencing `provenance.*` is rejected at load with a locator. Unreachable by **two independent routes**: a reserved-root check at load, and `provenance` is never placed in the evaluation context. FR-032 survived 16 evasion attempts in audit.
 
 **Verification:** `pytest tests/unit/workflow/test_decision_table.py -n auto`
 
 **Dependencies:** T3 · **Files:** `src/holodeck/models/decision_table.py`, tests · **Scope:** S
 
-#### Task 4: Hit-policy evaluation + conformance suite
+#### Task 4: Hit-policy evaluation + conformance suite — **DONE** (`1d9d2eb`)
 
 **Description:** `src/holodeck/lib/workflow/table_eval.py`:
 `evaluate(table, named_inputs) -> Verdict` (value, matched rule index/id,
@@ -190,14 +199,14 @@ semantics; loud `TableEvalError` on no-match (absent declared default) and on
 UNIQUE multi-match (FR-011, FR-012).
 
 **Acceptance criteria:**
-- [ ] SC-004 conformance suite passes: each hit policy, no-match (with and without default), UNIQUE multi-match.
-- [ ] `Verdict` carries matched-rule identity + table version (needed by record/replay and OTel).
+- [x] SC-004 conformance suite passes: each hit policy, no-match (with and without default), UNIQUE multi-match.
+- [x] `Verdict` carries matched-rule identity + table version (needed by record/replay and OTel).
 
 **Verification:** `pytest tests/unit/workflow/test_table_eval.py -n auto`
 
 **Dependencies:** T3 · **Files:** `src/holodeck/lib/workflow/table_eval.py`, tests · **Scope:** M
 
-#### Task 5: Edge-node executor + schema gate
+#### Task 5: Edge-node executor + schema gate — **DONE** (`1d9d2eb`)
 
 **Description:** `src/holodeck/lib/workflow/edge.py`: load the node's agent
 YAML (`ConfigLoader.load_agent_yaml`), invoke via `BackendSelector.select()` /
@@ -208,15 +217,15 @@ output raises `GateValidationError` (FR-006/007/008). Claude-only per
 refinements §1 — no SK structured-output work.
 
 **Acceptance criteria:**
-- [ ] Valid structured output crosses; the gated object (not raw text) is the canonical value.
-- [ ] Free-text and schema-invalid outputs are rejected with a typed error naming node id + validation failure (US1 scenario 2, SC-003).
-- [ ] Tests use a mocked `AgentBackend` — zero live LLM calls.
+- [x] Valid structured output crosses; the gated object (not raw text) is the canonical value. The gate schema is snapshotted **by content**.
+- [x] Free-text and schema-invalid outputs are rejected with a typed error naming node id + validation failure (US1 scenario 2, SC-003) — three distinct failure channels: output rejected / gate unusable / nothing produced to judge.
+- [x] Tests use a mocked `AgentBackend` — zero live LLM calls; gate validation never touches the network.
 
 **Verification:** `pytest tests/unit/workflow/test_edge_gate.py -n auto`
 
 **Dependencies:** T2 · **Files:** `src/holodeck/lib/workflow/edge.py`, errors additions in `holodeck/lib/errors`, tests · **Scope:** M
 
-#### Task 6: Workflow runner + `holodeck workflow run` (single level)
+#### Task 6: Workflow runner + `holodeck workflow run` (single level) — **DONE** (`1d9d2eb`), with one recorded gap
 
 **Description:** `src/holodeck/lib/workflow/runner.py`: topo-order via
 `graphlib`, execute edge nodes then policy nodes, hold per-node results,
@@ -226,37 +235,71 @@ config). `src/holodeck/cli/commands/workflow.py`: `workflow` group +
 mapping per the `deploy.py` context-manager pattern, `click.echo` output.
 
 **Acceptance criteria:**
-- [ ] US1 scenarios 1–3 pass as an integration-style test (mocked backend, CliRunner): valid edge output → table verdict echoed; invalid → exit non-zero with gate error; spans exist for edge + policy node (in-memory exporter).
-- [ ] Load-time validation failures occur before any agent invocation (FR-003).
+- [x] US1 scenarios 1–2 pass as an integration-style test (mocked backend, CliRunner): valid edge output → table verdict echoed; invalid → exit non-zero with gate error. Exit codes separate misauthored / could-not-decide / gate-rejected / invocation-failed.
+- [x] Load-time validation failures occur before any agent invocation (FR-003) — `prepare_workflow` performs **all** validation and **constructs no backend**, so FR-003 is structural rather than merely ordered. `execute_workflow` is the separate execution half.
+- [x] **Delivered T7's implementation as a side effect** — `_named_inputs` gives multi-level composition at arbitrary depth. T7 is retitled to proof-and-cover work accordingly.
+- [ ] ⚠ **US1 scenario 3 / FR-018 NOT met.** `Workflow` has no `observability:` block and is `extra="forbid"`, so `holodeck workflow run` has nowhere to obtain an `ObservabilityConfig` and emits **zero spans**. `execute_workflow` accepts one and is unit-tested with an in-memory exporter, but the CLI path is unreachable end to end. **To be closed by T13.**
 
 **Verification:** `pytest tests/unit/cli/test_workflow_command.py tests/unit/workflow/test_runner.py -n auto` · `holodeck workflow run --help`
 
 **Dependencies:** T4, T5 · **Files:** `src/holodeck/lib/workflow/runner.py`, `src/holodeck/cli/commands/workflow.py`, `src/holodeck/cli/main.py`, tests · **Scope:** M
 
-### Checkpoint 1 — US1 complete
-- [ ] `make format && make lint && make type-check` clean; `pytest tests/unit -n auto` green.
-- [ ] A single edge→policy workflow runs via CLI with a mocked agent.
-- [ ] **Human review before Phase 2.**
+### Checkpoint 1 — US1 complete — **PASSED 2026-07-25**
+- [x] `make format && make lint && make type-check` clean; `pytest tests/unit -n auto` green — **5298 passing, 4 skipped; security and pre-commit also clean**. Full `make ci` re-run green at checkpoint.
+- [x] A single edge→policy workflow runs via CLI with a mocked agent — **and live**, via `sample/pbas-points/`: free text classified by Claude, gate-validated, then `tables/points.dmn.yaml` rule 10 awarded 20 points `per_week`. The determination came from the table, not the model (SC-003, FR-005 demonstrated rather than asserted).
+- [x] **Human review before Phase 2** — done by the maintainer, who ran the live workflow.
+
+**Phase 2 is unblocked.** Carried forward as known-incomplete, not silently: FR-018
+unreachable from the CLI (see T6, closed by T13); `format: date` → `datetime.date`
+conversion absent (T13a prerequisite); no adversarial pass has yet audited the
+*seams between* tasks — each was audited in isolation, and both of the worst
+findings so far (the `!=` silent verdict, remote `$ref` fetching) lived at
+boundaries.
 
 ---
 
 ### Phase 2 — US2: composed determination levels (P1)
 
-#### Task 7: Multi-level composition
+#### Task 7: Multi-level composition — **prove and cover**
 
-**Description:** Named-input resolution: node `a`'s verdict (or gated object)
-is available as variable `a` in dependent tables' FEEL context (FR-009,
-FR-016). Integration test of the 3-edge → 2-policy → 1-policy DAG with mocked
-edges; assert evaluation order is a valid topological sort and the final
-verdict reflects composed sub-verdicts.
+> **The implementation landed inside T6. Do not re-implement it.** Building the
+> runner required `runner._named_inputs`, which resolves each declared input name
+> to a fact of record, an upstream edge node's gated object, or an upstream policy
+> node's `Verdict.outputs`. Once that exists, arbitrary depth follows from
+> `graphlib`. T7's original deliverable — "node `a`'s verdict (or gated object) is
+> available as variable `a` in dependent tables' FEEL context (FR-009, FR-016)" —
+> is therefore **already satisfied**. Verified empirically against the committed
+> code, unmodified: a 3-edge → 2-policy → 1-policy DAG executes in order
+> `('a','b','c','mid1','mid2','top')` and composes correctly, with node `b`
+> feeding **both** mid-level nodes (a diamond, not a tree) and the top table
+> dot-pathing into upstream verdicts (`mid1.band`).
+
+**Description:** What remains is **proof, not build**. Nothing currently defends
+multi-level composition: there is no `test_composition.py`, and `test_runner.py`
+covers only single-level DAGs. That is a live risk, not a theoretical one — the
+recent audit found that flipping `all()` to `any()` in the hit-policy matcher
+survived mutation testing entirely, because correct code with no test defending
+it is indistinguishable from broken code. Composition is in exactly that state
+today. Write the 3→2→1 integration test (mocked edges, diamond shape, dot-paths
+into upstream verdicts), close the CLI-level gap on US2 scenario 3, and add the
+sample's second level.
 
 **Acceptance criteria:**
-- [ ] US2 scenario 1 passes (inputs evaluated first, passed by name).
-- [ ] US2 scenarios 2–3 re-asserted through the CLI (cycle / unresolved ref → clean error, exit code 2, no agent invoked).
+- [ ] US2 scenario 1 covered by a 3-edge → 2-policy → 1-policy integration test with mocked edges: evaluation order is a valid topological sort, each higher node receives lower nodes' verdicts as named inputs, and the final verdict reflects the composed sub-verdicts. Use the diamond shape (one edge feeding two mid-level nodes) and at least one dot-path into an upstream verdict — a tree with scalar inputs under-tests the resolver.
+- [ ] US2 scenario 3 re-asserted **through the CLI**: an unresolved `inputs` reference → clean error, exit code 2, no agent invoked. *(Scenario 2, the cycle, is already covered end to end by `tests/unit/cli/test_workflow_command.py::test_cycle_exits_two_without_invoking_an_agent`; unresolved references are covered only at model and `prepare_workflow` level.)*
+- [ ] **Sample-proof (blocking):** `sample/pbas-points/` demonstrates a genuine two-level DRD it cannot demonstrate today. Footnote (1) of the pinned source — *"These tasks and activities are available to Workforce Australia Services participants only"* — is an **eligibility precondition attached to rows**, not a points rule, and is currently encoded inline as rules 5/6 of `tables/points.dmn.yaml`. Extract it into `tables/eligibility.dmn.yaml`, keyed on `activity.activity_type` + the existing `participant.stream` fact, whose verdict becomes a named input to `points_award`. This is a **refactor plus a level**: the verdict for every existing case — in particular `drivers_licence_attainment` + `workforce_australia_online` → 0 points / `not_available` — must be unchanged. README's "What is modelled" table updated to name the new decision.
 
-**Verification:** `pytest tests/unit/workflow/test_composition.py -n auto`
+> **Source note (verified against the PDF, p.2).** Footnote (1) covers exactly
+> **one** of the eleven modelled activities (driver's licence attainment), so the
+> eligibility table restricts in one direction only. Footnote **(2)** is the
+> mirror case — *"available to Workforce Australia Online participants only"*
+> (online learning modules; Career coaching – Youth Advisory Sessions), neither
+> currently in the taxonomy. Adding one is optional scope; without it the level
+> is real but thin, which is honest rather than wrong.
 
-**Dependencies:** T6 · **Files:** `runner.py` (input-context wiring), tests + fixture YAMLs · **Scope:** S
+**Verification:** `pytest tests/unit/workflow/test_composition.py tests/unit/cli/test_workflow_command.py -n auto` · `holodeck workflow run sample/pbas-points/workflow.yaml --input sample/pbas-points/case.json`
+
+**Dependencies:** T6 · **Files:** `tests/unit/workflow/test_composition.py` + fixture YAMLs, `tests/unit/cli/test_workflow_command.py`, `sample/pbas-points/**`. **No `runner.py` change is expected** — if one turns out to be needed, that is a defect the new test found, which is the point. · **Scope:** S
 
 ### Checkpoint 2 — composition proven
 - [ ] Full DAG executes bottom-up with named inputs; CI targets clean.
@@ -279,10 +322,65 @@ explicit "no determination" status, nothing recorded as final (edge case).
 - [ ] US3 scenarios 1 & 3 pass via `CliRunner(input=...)`: pause + presentation; verdict = human choice, attributed to confirmed `decided_by` name with timestamp.
 - [ ] Recommendation and override flag are captured in the node result (feeds T10).
 - [ ] Abort path terminates with "no determination" and non-zero exit.
+- [ ] **Sample-proof (blocking):** `sample/pbas-points/` gains a `requires_human` node modelling the source's **activity-bonus Note** (PDF p.2): *"Providers and the Digital Services Contact Centre (DSCC) may increase the values of certain tasks or activities through an activity bonus to reflect the individual circumstances of the participant and the task or activity they are doing."* `corpus-manifest.md` names this the corpus's **canonical unmappable clause** — pure discretion, where a table must refuse to decide. The node takes `points_award` as its recommendation and a named `decided_by` delegate confirms it or records that a bonus applies. README item 2 of "What is deliberately NOT modelled" moves from *excluded* to *routed to a human*, and the run is scripted end to end with `CliRunner(input=...)`.
 
-**Verification:** `pytest tests/unit/workflow/test_human_node.py -n auto`
+> **This is the sample's most important framing point: the human node exists
+> because the source says a rule cannot.** Two constraints come from the document,
+> not from design taste:
+> 1. The Note authorises an **increase only** — never a reduction. "Confirm or
+>    adjust" would overstate it.
+> 2. It states **no amount and no criteria**. No table may compute a bonus value,
+>    so the delegate's act is a **categorical selection among the table's declared
+>    outputs** (per FR-014), not free numeric entry. A sample that let the operator
+>    type an arbitrary points figure would be inventing a mechanism the source
+>    does not contain.
 
-**Dependencies:** T7 · **Files:** `src/holodeck/lib/workflow/human.py`, `runner.py`, `cli/commands/workflow.py`, tests · **Scope:** M
+> ### Transport: build the CLI only, but do not foreclose serve
+>
+> `holodeck serve` integration and a task-inbox HITL UI are both **Out of Scope**
+> (`spec.md`). Build the CLI prompt and nothing else. Two constraints exist only
+> to stop that choice becoming a dead end.
+>
+> **1. Keep `click` out of the runner.** One narrow seam: the runner asks
+> *something* for a decision and records what came back. It must return the
+> selected output, `decided_by`, a timestamp, and be able to say **aborted / no
+> determination**. CLI is the only implementation built now.
+>
+> *Stated tension:* a Protocol with a single implementation is speculative under
+> CLAUDE.md §2 ("no abstractions for single-use code"). It is justified here only
+> because the alternative — a runner importing `click` — is a **known** dead end
+> rather than a hypothetical one, and the seam is a few lines. If it grows past
+> that, it has become the thing the rule warns about. Do not add a registry, a
+> plugin point, or a second implementation.
+>
+> **2. If serve is ever wired: the runner emits the AG-UI events, never a model.**
+> AG-UI can carry this as a frontend `prompt_user` tool call — the mechanism at
+> `serve/protocols/agui.py:782`, where a run resumes from a `tool` message. But in
+> the *normal* AG-UI flow the **model** emits the tool call and the result returns
+> **to the model's context**. Routing a human node that way would put Claude
+> between the delegate and the verdict, free to paraphrase, drop, or re-interpret
+> the determination. That is precisely the invariant this spec exists to hold.
+>
+> Nothing in AG-UI requires a tool call to originate from an LLM — they are events
+> on a stream. So the runner emits `ToolCallStart/Args/End` for `prompt_user`
+> itself, awaits the `tool` message, and writes the decision straight into the
+> verdict. AG-UI stays pure transport and no model is in the loop. **The obvious
+> implementation is the wrong one; record this before anyone reaches for it.**
+>
+> **3. Durability is T10's problem, and it is nearly free.** A frontend tool
+> round-trip only works while someone is watching the stream; a delegate deciding
+> tomorrow needs the run to *suspend*, which an SSE connection cannot hold. The
+> **run record is already the resume token** — T11 replay reconstructs every
+> verdict up to the human node from snapshots with zero LLM calls, which is
+> exactly what resume requires. The only addition is a record whose status is
+> `awaiting_human` with the decision absent. So suspend/resume is **additive over
+> T10+T11, not a redesign** — a reason to keep them ahead of T14. Build none of it
+> in T8; just do not design a decision seam that cannot later be satisfied by a
+> value arriving from somewhere other than a terminal.
+
+**Verification:** `pytest tests/unit/workflow/test_human_node.py -n auto` · scripted `holodeck workflow run sample/pbas-points/workflow.yaml --input sample/pbas-points/case.json`
+
+**Dependencies:** T7 · **Files:** `src/holodeck/lib/workflow/human.py`, `runner.py`, `cli/commands/workflow.py`, tests, `sample/pbas-points/**` · **Scope:** M
 
 #### Task 9: Draft agent advisory path (`ai_may_draft: reasons`) — **POST-MVP**
 
@@ -299,6 +397,7 @@ output reaching the verdict (T2); add an explicit test.
 **Acceptance criteria:**
 - [ ] US3 scenario 2: reasons draft displayed as advisory; no AI field can populate the verdict (schema-validation test, SC-008).
 - [ ] Human node without `draft` presents inputs only.
+- [ ] **Sample-proof (blocking):** `sample/pbas-points/`'s human node gains a `draft:` block with `ai_may_draft: [reasons]`, producing advisory reasons bearing on whether an activity bonus is warranted — **never the points value and never a bonus amount**. The source states no amount, so a drafted figure would be invented policy; the README says so explicitly.
 
 **Verification:** `pytest tests/unit/workflow/test_draft_agent.py -n auto`
 
@@ -324,8 +423,9 @@ advisory drafts, timestamps (FR-013, FR-019).
 **Acceptance criteria:**
 - [ ] A completed run writes a record sufficient for replay with the `tables/` and `schemas/` dirs deleted.
 - [ ] Record round-trips through the Pydantic model; snapshot hashes verify.
+- [ ] **Sample-proof (blocking):** a `sample/pbas-points/` run writes `.holodeck/runs/<id>.json` carrying the validated `input_data` facts (`participant`, `claim`), the gated activity classification, the matched rule of **each** policy node (eligibility and points award), the delegate's decision and override flag, and content snapshots of both tables and the gate schema **with their `provenance` blocks** (`source`, `source_doc`, `source_sha256`) and sha256 integrity.
 
-**Verification:** `pytest tests/unit/workflow/test_run_record.py -n auto`
+**Verification:** `pytest tests/unit/workflow/test_run_record.py -n auto` · inspect `.holodeck/runs/` after a PBAS run
 
 **Dependencies:** T8 · **Files:** `src/holodeck/models/run_record.py`, `src/holodeck/lib/workflow/record.py`, `runner.py`, tests · **Scope:** M
 
@@ -338,8 +438,9 @@ no fallback to on-disk tables.
 
 **Acceptance criteria:**
 - [ ] US4 scenarios 1–3: identical verdict + matched rules (byte-identical canonical JSON comparison, SC-002); zero LLM calls (assert `BackendSelector` never invoked); edited/missing on-disk tables don't affect replay; corrupt record → loud failure.
+- [ ] **Sample-proof (blocking):** the `sample/pbas-points/` run record replays to an **identical** verdict with `sample/pbas-points/tables/` and `sample/pbas-points/schemas/` **deleted from disk** and **zero** LLM calls. Demonstrated as a copy-pasteable sequence in the sample README.
 
-**Verification:** `pytest tests/unit/workflow/test_replay.py -n auto`
+**Verification:** `pytest tests/unit/workflow/test_replay.py -n auto` · `holodeck workflow replay .holodeck/runs/<id>.json` with the PBAS `tables/` + `schemas/` dirs moved aside
 
 **Dependencies:** T10 · **Files:** `src/holodeck/lib/workflow/replay.py`, `cli/commands/workflow.py`, tests · **Scope:** M
 
@@ -362,10 +463,11 @@ output on failure (FR-023, SC-006).
 **Acceptance criteria:**
 - [ ] US5 scenarios: pass iff table yields expected verdict; rule edit → failing test with expected-vs-actual diff.
 - [ ] No `TestExecutor` refactor; existing test framework untouched.
+- [ ] **Sample-proof (blocking):** `sample/pbas-points/` carries a **committed** policy-test file over `tables/points.dmn.yaml`, covering at minimum (a) the threshold tier boundary at **exactly 15** contact hours — *"contact hours up to 15 hours per week"* is inclusive, so 15 must yield **15** points, not 20 — and (b) an `activity_type` the table does not cover, asserting the loud no-match (`TableEvalError`, no silent zero). Case (b) is **only** reachable through the policy tester: the gate's closed `enum` and the table's rules cover the same eleven activities, so no *run* can produce it. That is the point of SC-006.
 
-**Verification:** `pytest tests/unit/workflow/test_policy_executor.py -n auto`
+**Verification:** `pytest tests/unit/workflow/test_policy_executor.py -n auto` · `holodeck workflow test sample/pbas-points/<policy-tests>.yaml`
 
-**Dependencies:** T4 · **Files:** `src/holodeck/lib/workflow/policy_test.py`, `cli/commands/workflow.py`, models for policy test cases, tests · **Scope:** M
+**Dependencies:** T4 · **Files:** `src/holodeck/lib/workflow/policy_test.py`, `cli/commands/workflow.py`, models for policy test cases, tests, `sample/pbas-points/**` · **Scope:** M
 
 ---
 
@@ -382,6 +484,8 @@ pipeline.
 **Acceptance criteria:**
 - [ ] FR-018: in-memory-exporter test asserts span names + attributes for edge, policy, human nodes.
 - [ ] Observability disabled → zero spans, zero overhead path.
+- [ ] **Closes T6's recorded gap:** `holodeck workflow run` must be able to obtain an `ObservabilityConfig` at all. Today `Workflow` is `extra="forbid"` with no `observability:` block, so the CLI path emits zero spans however well the runner is instrumented. Whatever shape this takes (a `workflow.yaml` block, a CLI flag, or project config) it re-publishes `workflow.schema.json` and its sync test.
+- [ ] **Sample-proof (blocking):** a `sample/pbas-points/` run emits spans through the **CLI** carrying node id and kind, table version, matched rule, and each table's provenance — captured against an in-memory exporter, not asserted by hand.
 
 **Verification:** `pytest tests/unit/workflow/test_otel_spans.py -n auto`
 
@@ -402,9 +506,17 @@ Recall `research.md` caveat 6: `date(variable)` does not parse; date-typed
 fields cross the gate as `datetime.date` and subtract bare, yielding a
 `timedelta` that caveat 1 requires converting to days.
 
+> **Prerequisite the spike must record.** `research.md` caveat 6's
+> `format: date` → `datetime.date` conversion **does not exist**. `input_data`
+> stores the raw JSON value, so a `date`-typed table column receives a **string**
+> and bare subtraction raises. T13a and T14 both depend on date arithmetic, so
+> the spike's verdict must say who converts and where.
+
 **Acceptance criteria:**
 - [ ] A written verdict in `research.md`: expressible, or pre-computed into `input_data` with the shape specified.
 - [ ] If the FEEL subset must narrow further, it is documented and SC-005 is amended (refinements §5: the sample bends to the subset, never the reverse).
+- [ ] The date-conversion gap above is either closed or explicitly assigned to T14.
+- [ ] **Sample-proof: none, deliberately.** This task is a written verdict, not code, and `sample/pbas-points/` has no date arithmetic to extend. Do not invent a sample change for it.
 
 **Dependencies:** T3 · **Files:** `research.md`, a conformance test · **Scope:** S
 
@@ -429,8 +541,19 @@ in `corpus-manifest.md`; each table's `provenance.source` cites its authority.
 - [ ] US6 scenario 3: no agent produces any `input_data` fact (SC-010).
 - [ ] An integration test (marked `@pytest.mark.integration`) or documented quickstart demonstrates SC-007; unit-level path uses mocked edges.
 - [ ] README states the framing up front.
+- [ ] **Sample-proof (blocking):** `sample/pbas-points/` still **runs and replays** after T14 lands, with every feature T7–T11 added to it intact. TCF is a second sample, not a replacement — the demonstrator must not rot while attention is on the anchor.
 
-**Verification:** `holodeck workflow run sample/tcf-compliance/workflow.yaml --input case.json` (scripted input) · `pytest tests/integration/test_tcf_sample.py -n auto -m integration`
+> **T14 must be rescoped before it starts — `sample/` is deliberately untracked.**
+> Decided 2026-07-25: `.gitignore:45` keeps `/sample` ignored repo-wide and
+> samples stay local-only (Open Question 4). So
+> `tests/integration/test_tcf_sample.py` **cannot exist as written** — it would
+> reference untracked paths and fail on a fresh clone. Pick one before starting:
+> move the assertions onto committed fixtures under `tests/fixtures/workflow/`,
+> or make the sample proof a documented quickstart run by hand. SC-007 permits
+> the latter ("demonstrated in CI **or a documented quickstart**"), so the
+> criterion is still satisfiable — just not automatically verifiable.
+
+**Verification:** `holodeck workflow run sample/tcf-compliance/workflow.yaml --input case.json` (scripted input) · sample proof per the rescoping note above — **not** `tests/integration/test_tcf_sample.py` as originally specified
 
 **Dependencies:** T11, T13a · **Files:** `sample/tcf-compliance/**` (YAML/JSON/MD), one integration test · **Scope:** M (mostly YAML)
 
@@ -441,6 +564,17 @@ in `corpus-manifest.md`; each table's `provenance.source` cites its authority.
 **MVP = T4, T5, T6, T7, T8, T10, T11, T14** plus amendments **T2a**, **T3a** and
 spike **T13a**. Delivers SC-001…SC-005 and SC-007…SC-010; only **SC-006**
 (a table tested in isolation, needs T12) falls past the line.
+
+### Two samples, two jobs
+
+`sample/pbas-points/` is the **running demonstrator**: it exists from T6 onward
+and grows one feature per task, so every task above T6 carries a *blocking*
+sample-proof criterion naming what PBAS must newly demonstrate. A task is not
+done while the demonstrator cannot show its feature. `sample/tcf-compliance/`
+(T14) is the **anchor MVP proof** — real statute, prior-state transition, human
+delegate, a gate derived from an enumerated legal list — and lands once,
+complete. It is not retargeted onto PBAS and its scope is not weakened by
+anything PBAS proves. Full statement of the convention: `todo.md`.
 
 ---
 
@@ -457,6 +591,7 @@ conventions require.
 **Acceptance criteria:**
 - [ ] Quickstart reproduces the sample run + replay verbatim.
 - [ ] The "LLM is never the spine" invariant and POC scope-of-claim are stated.
+- [ ] **Sample-proof (blocking):** the quickstart reproduces the `sample/pbas-points/` **run and replay verbatim** — the commands copy-paste unmodified and the printed verdict matches what the page claims. Executed once as part of verification, not assumed.
 
 **Verification:** Manual doc review; quickstart commands executed once.
 
@@ -493,9 +628,18 @@ generation. The golden corpus is already pinned:
 
 ## Open Questions (need human input before/at execution)
 
-1. **GPLv3 tolerance** if bkflow-feel fails the spike — is pySFeel acceptable for HoloDeck's distribution model? (Decision needed only if T1 fails.)
+1. ~~**GPLv3 tolerance** if bkflow-feel fails the spike~~ — moot; T1 chose bkflow-feel (MIT).
 2. **Policy-test verb**: plan assumes `holodeck workflow test <file>`. Confirm vs e.g. `holodeck test --policy`.
-3. **Sample model choice** for the three edge agents (any Claude model; affects sample cost only).
+3. ~~**Sample model choice** for the edge agents~~ — **settled**: `anthropic` / `claude-opus-5`, `temperature: 0.0` (`sample/pbas-points/agents/activity-classifier.yaml`), run end to end successfully.
+4. ~~**`sample/` is not tracked by git**~~ — **DECIDED 2026-07-25: leave ignored,
+   defer.** `.gitignore:45` keeps `/sample` ignored repo-wide; samples remain
+   local-only and `.gitignore` is not to be changed. Revisit only with a concrete
+   reason. Binding consequences: **every sample-proof criterion in this plan is a
+   manual check, never a CI gate** — report them as such rather than implying a
+   pipeline confirmed them; **T14 needs rescoping before it starts** (see the note
+   under T14 — `tests/integration/test_tcf_sample.py` cannot reference untracked
+   paths); and **SC-007 keeps only its documented-quickstart limb**, remaining
+   satisfiable but not automatically verifiable.
 
 ## Execution Notes
 

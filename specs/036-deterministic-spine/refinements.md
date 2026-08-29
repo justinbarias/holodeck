@@ -1,5 +1,9 @@
 # Refinement Memo — Deterministic Spine (036)
 
+> **ARCHIVED (2026-08-29).** Part of the archived 036 spec — see the
+> banner in `spec.md` and the successor `specs/040-holodeck-temporal/spec.md`.
+
+
 > Date: 2026-06-10 · Produced by an idea-refine interview run against
 > `spec.md` (Draft for review). The spec is **not** edited by this memo;
 > fold these resolutions in manually (suggested deltas below are precise

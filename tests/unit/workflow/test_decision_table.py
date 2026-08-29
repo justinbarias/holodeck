@@ -6,6 +6,7 @@ FeelValidationError with a table/rule/cell locator, and field-shape problems
 raise pydantic ValidationError. Also covers the YAML loader's read/parse guards.
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from holodeck.models.decision_table import (
     DecisionTable,
     FeelType,
     HitPolicy,
+    Provenance,
     load_decision_table,
 )
 
@@ -65,6 +67,16 @@ def _table(**overrides: object) -> dict:
     }
     table.update(overrides)
     return table
+
+
+_PROVENANCE = {
+    "generated_by": "claude-opus-5",
+    "source": "Social Security Guide 3.11.13.50",
+    "source_doc": "corpus/wa-guidelines-part-b-v1.24.pdf",
+    "source_sha256": "35cfdef9",
+    "reviewed_by": "J. Smith, Delegate",
+    "reviewed_at": "2026-07-20T10:00:00Z",
+}
 
 
 @pytest.mark.unit
@@ -235,6 +247,15 @@ class TestLoader:
             load_decision_table(tmp_path / "nope.dmn.yaml")
         assert "could not read" in str(exc.value)
 
+    def test_malformed_yaml_raises_decision_table_error(self, tmp_path: Path) -> None:
+        # A scanner error must leave through the module's declared channel,
+        # not as a bare yaml.YAMLError a WorkflowError catcher would miss.
+        path = tmp_path / "broken.dmn.yaml"
+        path.write_text("id: [unclosed\n  bracket: {", encoding="utf-8")
+        with pytest.raises(DecisionTableError) as exc:
+            load_decision_table(path)
+        assert "is not valid YAML" in str(exc.value)
+
     def test_non_mapping_yaml_raises_decision_table_error(self, tmp_path: Path) -> None:
         path = tmp_path / "list.dmn.yaml"
         path.write_text("- just\n- a\n- list\n", encoding="utf-8")
@@ -280,3 +301,130 @@ class TestPriorityRequiresValues:
         table["outputs"] = [{"name": "affordability", "type": "string"}]
 
         assert DecisionTable.model_validate(table)
+
+
+@pytest.mark.unit
+class TestProvenance:
+    """The optional non-executable ``provenance`` block (FR-029)."""
+
+    def test_full_block_loads(self) -> None:
+        """Every provenance field parses, with reviewed_at as a datetime."""
+        table = DecisionTable.model_validate(_table(provenance=_PROVENANCE))
+
+        assert table.provenance is not None
+        assert table.provenance.generated_by == "claude-opus-5"
+        assert table.provenance.source == "Social Security Guide 3.11.13.50"
+        assert table.provenance.source_doc == "corpus/wa-guidelines-part-b-v1.24.pdf"
+        assert table.provenance.source_sha256 == "35cfdef9"
+        assert table.provenance.reviewed_by == "J. Smith, Delegate"
+        assert table.provenance.reviewed_at == datetime(
+            2026, 7, 20, 10, 0, tzinfo=timezone.utc
+        )
+
+    def test_hand_authored_table_has_no_provenance(self) -> None:
+        """A table omitting the block loads with provenance None."""
+        assert DecisionTable.model_validate(_table()).provenance is None
+
+    def test_partial_block_loads(self) -> None:
+        """Every field is optional — a generated-but-unreviewed table loads."""
+        table = DecisionTable.model_validate(
+            _table(provenance={"generated_by": "claude-opus-5"})
+        )
+
+        assert table.provenance is not None
+        assert table.provenance.reviewed_by is None
+
+    def test_unknown_key_rejected(self) -> None:
+        """extra='forbid' keeps the block from silently absorbing typos."""
+        with pytest.raises(ValidationError):
+            DecisionTable.model_validate(
+                _table(provenance={**_PROVENANCE, "approved_by": "nobody"})
+            )
+
+    def test_loads_from_yaml_file(self, tmp_path: Path) -> None:
+        """The block survives a round-trip through the YAML loader."""
+        path = tmp_path / "affordability.dmn.yaml"
+        path.write_text(
+            yaml.safe_dump(_table(provenance=_PROVENANCE)), encoding="utf-8"
+        )
+
+        table = load_decision_table(path)
+
+        assert table.provenance is not None
+        assert table.provenance.generated_by == "claude-opus-5"
+
+
+@pytest.mark.unit
+class TestAwaitingReview:
+    """The FR-030 review-state predicate (enforcement itself lands in T6)."""
+
+    @pytest.mark.parametrize(
+        ("generated_by", "reviewed_by", "expected"),
+        [
+            ("claude-opus-5", None, True),
+            ("claude-opus-5", "J. Smith", False),
+            (None, None, False),
+            (None, "J. Smith", False),
+        ],
+    )
+    def test_predicate(
+        self, generated_by: str | None, reviewed_by: str | None, expected: bool
+    ) -> None:
+        provenance = Provenance(generated_by=generated_by, reviewed_by=reviewed_by)
+
+        assert provenance.awaiting_review is expected
+
+
+@pytest.mark.unit
+class TestProvenanceNotFeelReferenceable:
+    """FR-032: provenance is metadata; FEEL must not be able to read it."""
+
+    @pytest.mark.parametrize(
+        "expression",
+        ["provenance.reviewed_by", "provenance", "provenance.source_sha256 != null"],
+    )
+    def test_input_expression_referencing_provenance_rejected(
+        self, expression: str
+    ) -> None:
+        inputs = [
+            {"name": "surplus_ratio", "expression": expression, "type": "string"},
+        ]
+        rules = [{"when": {}, "then": {"affordability": "affordable"}}]
+
+        with pytest.raises(FeelValidationError) as exc:
+            DecisionTable.model_validate(
+                _table(inputs=inputs, rules=rules, provenance=_PROVENANCE)
+            )
+
+        assert exc.value.locator == "table 'affordability' input 'surplus_ratio'"
+        assert "non-executable metadata" in str(exc.value)
+
+    @pytest.mark.parametrize("cell", ["provenance.reviewed_by", "= provenance"])
+    def test_rule_cell_referencing_provenance_rejected(self, cell: str) -> None:
+        rules = [
+            {
+                "when": {"residency_status": cell},
+                "then": {"affordability": "affordable"},
+            }
+        ]
+
+        with pytest.raises(FeelValidationError) as exc:
+            DecisionTable.model_validate(_table(rules=rules))
+
+        assert exc.value.locator == (
+            "table 'affordability' rule 1 cell 'residency_status'"
+        )
+        assert "non-executable metadata" in str(exc.value)
+
+    def test_similarly_named_variable_still_allowed(self) -> None:
+        """Only the exact root name is reserved, not names containing it."""
+        inputs = [
+            {
+                "name": "surplus_ratio",
+                "expression": "provenance_score.value",
+                "type": "number",
+            },
+        ]
+        rules = [{"when": {}, "then": {"affordability": "affordable"}}]
+
+        assert DecisionTable.model_validate(_table(inputs=inputs, rules=rules))

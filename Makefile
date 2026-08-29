@@ -166,21 +166,23 @@ security: ## Run security checks
 	# CVE-2026-45829 (chromadb) — pre-auth code injection in ChromaDB server API when a
 	#                             malicious model repo is accepted with trust_remote_code=true.
 	#                             No fixed chromadb release exists yet; documented in
-	#                             docs/guides/vector-stores.md. This is the only remaining
-	#                             ignore — every other prior advisory is now fixed upstream
-	#                             (pins in pyproject constraint-dependencies) or no longer
-	#                             flagged by pip-audit (advisory withdrawn / range corrected).
-	# PYSEC-2026-597 (nltk)     — aka CVE-2026-12243. The PYSEC ID is the one passed to
-	#                             --ignore-vuln below; pip-audit reports it under that ID.
-	#                             Path traversal in nltk.data.load()/find() via percent-encoded
-	#                             `..%2f` sequences. 3.9.4 is the latest release and is still
-	#                             affected; no fixed release exists. Transitive only (via
-	#                             azure-ai-evaluation, rouge-score) — HoloDeck never imports
-	#                             nltk and never calls the vulnerable loaders, so there is no
-	#                             reachable path. Drop this ignore when nltk ships a fix.
+	#                             docs/guides/vector-stores.md.
+	# CVE-2026-45830/45831/45833 (chromadb) — same HiddenLayer 2026-06 advisory batch as
+	#                             45829, all in the ChromaDB *server*: cross-tenant
+	#                             authorization bypass (45830), SimpleRBACAuthorizationProvider
+	#                             ignoring tenant/database scope (45831), and authenticated
+	#                             code injection via trust_remote_code (45833). No fixed
+	#                             release exists (1.5.9 still affected). HoloDeck embeds the
+	#                             chromadb *client* only — it never runs the ChromaDB server
+	#                             process or its auth providers, so no vulnerable path is
+	#                             reachable from this codebase. Drop these when chromadb
+	#                             ships a fix and the pin can move. Re-check by 2026-12:
+	#                             four indefinite ignores accumulate quietly.
 	uv run pip-audit --progress-spinner=off \
 		--ignore-vuln CVE-2026-45829 \
-		--ignore-vuln PYSEC-2026-597
+		--ignore-vuln CVE-2026-45830 \
+		--ignore-vuln CVE-2026-45831 \
+		--ignore-vuln CVE-2026-45833
 	@echo "Scanning for security issues with Ruff..."
 	uv run ruff check $(SRC_DIR) --select S
 	@echo "Scanning for security issues with Bandit..."

@@ -1,5 +1,11 @@
 # Research: FEEL Evaluator Spike (T1, Phase 0)
 
+> **ARCHIVED as a spec, RETAINED as rationale (2026-08-29).** 036 is
+> archived (see `spec.md`), but the FEEL evaluator and decision-table
+> caveats recorded here still govern the kept primitives in
+> `holodeck.lib.workflow` and are cited from their docstrings.
+
+
 > Resolves the FR-010 NEEDS CLARIFICATION and refinements §5 ("FEEL syntax is
 > the contract"). Produced 2026-06-11 from a hands-on spike on branch
 > `036-deterministic-spine`. Behavior pinned by
@@ -67,10 +73,52 @@ All verified against bkflow-feel **1.2.0** (the spike initially probed
    int) — there is no dedicated unknown-variable diagnostic. → T3's wrapper
    must verify required inputs are present **before** evaluation so failures
    carry the table/rule/cell locator (FR-012 loud failures).
+   **Partly resolved (T3), completed later:** the first fix extracted the
+   referenced *root* names from the parse tree and raised
+   `FeelEvaluationError(locator, ..)` for any root absent from the context.
+   That covered a typo'd root but not a missing **attribute** under a bound
+   root, which `ContextItem.evaluate` also resolves to `None` — and because
+   `NotEqual` has no operand validator (it is a bare Python `!=`), a `!=` rule
+   cell then matched *unconditionally* and the table emitted a real-looking
+   verdict. `feel.evaluate_expression` now resolves every full dot-path
+   against the bindings before evaluating, and rejects three distinct cases:
+   an unbound root, an attribute absent from a bound mapping, and an attribute
+   read through a value that is not a `dict` (which can never resolve). A leaf
+   explicitly bound to `None` is still a bound fact, as before — presence, not
+   truthiness, is the test.
+
+   One route could still defeat the guard: a fact named `true`, `false` or
+   `null` parses as a FEEL *literal*, never as a variable, so the binding was
+   invisible to both the expression and the check. Those three names are now
+   rejected as fact names when a context is evaluated. That check is at
+   evaluation time, not load time, because the workflow model — not the FEEL
+   wrapper — owns node/fact names.
 5. **Error taxonomy for the wrapper:** syntax errors surface as
    `lark.exceptions.UnexpectedInput` (parse time); type/value errors as
    `bkflow_feel.exceptions.ValidationError` (eval time). Both must be caught
    and re-raised through `holodeck.lib.errors` with locators.
+   **Resolved, and wider than stated:** those are not the only two channels.
+   `bkflow_feel.api.parse_expression` re-raises *any* other exception
+   unchanged, and two are reachable from schema-valid data — a
+   `ZeroDivisionError` from a ratio expression with a zero denominator, and a
+   bare `TypeError` from range cells (`In`/`RangeGroup` bypass the operand
+   validator and compare with raw Python). The wrapper therefore catches
+   broadly and re-raises everything as `FeelEvaluationError` with the locator,
+   preserving the cause.
+
+7. **Numeric comparison is exact-typed and asymmetric.**
+   `BinaryOperationValidator` is `isinstance(left, type(right))`, so a `float`
+   column value refuses an `int` cell literal and vice versa — a monetary
+   column with cents against a whole-number threshold (`<= 2000`) loads fine
+   and fails at runtime on the first fractional value. Ranges bypass the
+   validator entirely, so `[0..90]` and `<= 90` disagreed on the same input.
+   → Unary tests are evaluated with both sides widened to `float`: the column
+   value in `feel.evaluate_unary_test`, and every numeric literal via a
+   `FEELTransformer` subclass. `bool` is deliberately not widened (it must
+   still compare against `true`/`false`) and is rejected outright in `number`
+   and `days` columns, where it would otherwise compare silently as 1/0.
+   Full expressions keep stock literal typing — widening there would break
+   arithmetic over `int`-typed facts for no gain.
 6. **`date(..)` accepts only a quoted literal, not a variable.** `date(income.
    statement_date)` does **not** parse — the `date_func` production wants a
    string literal (`date("2026-01-01")`), so the `dmn-yaml-mapping.md` example

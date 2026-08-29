@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import sys
 from collections import Counter
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,12 @@ if sys.version_info >= (3, 11):
     from typing import Self
 else:
     from typing_extensions import Self
+
+
+# ``provenance`` records how a table was authored, never what it decides.
+# Reserving the root name keeps it out of every input expression and rule cell,
+# so it can never influence a match (FR-032).
+_RESERVED_FEEL_ROOTS: frozenset[str] = frozenset({"provenance"})
 
 
 class HitPolicy(str, Enum):
@@ -60,6 +67,14 @@ class FeelType(str, Enum):
     ``days`` is a HoloDeck convenience for a date difference coerced to a
     number of days (research.md caveat 1); ``date`` columns are supplied as
     ``datetime.date`` objects at the workflow boundary (caveat 6).
+
+    Enforcement today is partial: only ``number`` and ``days`` are coerced
+    and checked at the column boundary during evaluation. ``string``,
+    ``boolean`` and ``date`` are declarative — a mistyped value surfaces
+    through a rule cell's evaluation (data-dependent under ``FIRST``), not at
+    the column, and output columns are not checked against their type at all.
+    Closing that gap belongs to the table-step design (spec 040 D3,
+    specs/040-holodeck-temporal/).
     """
 
     NUMBER = "number"
@@ -92,6 +107,12 @@ class TableOutput(BaseModel):
     When ``values`` is declared, every rule (and the default) must emit one of
     them; under ``PRIORITY`` the list also fixes the resolution order, highest
     first.
+
+    ``values`` is ``list[str]``, and ``PRIORITY`` requires ``values`` on every
+    output — so a ``PRIORITY`` table is limited to string outputs today. A
+    ``number``/``boolean`` output under ``PRIORITY`` fails at load (the
+    membership check compares against strings). Widening ``values`` is a D3
+    table-step question (specs/040-holodeck-temporal/spec.md).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -102,6 +123,57 @@ class TableOutput(BaseModel):
         default=None,
         description="Allowed output values; doubles as PRIORITY ordering.",
     )
+
+
+class Provenance(BaseModel):
+    """How a decision table came to exist.
+
+    Non-executable metadata: never visible to FEEL, never affects rule
+    matching. A hand-authored table omits the block entirely. Its 036
+    consumers (the run record and the FR-030 review gate) were removed with
+    the overlay engine; the block is kept because a table's origin is part of
+    the authored artifact, and the Temporal-era record of a decision
+    (spec 040) is expected to snapshot it again. ``awaiting_review`` currently has no
+    production caller.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    generated_by: str | None = Field(
+        default=None,
+        description="Model identifier that drafted the table; absent when "
+        "hand-authored.",
+    )
+    source: str | None = Field(
+        default=None,
+        description="The policy authority, e.g. 'Social Security Guide 3.11.13.50'.",
+    )
+    source_doc: str | None = Field(
+        default=None,
+        description="Path or reference to the source document.",
+    )
+    source_sha256: str | None = Field(
+        default=None,
+        description="SHA-256 digest of the source document.",
+    )
+    reviewed_by: str | None = Field(
+        default=None,
+        description="Human reviewer who signed the table off.",
+    )
+    reviewed_at: datetime | None = Field(
+        default=None,
+        description="When the review was recorded (ISO 8601).",
+    )
+
+    @property
+    def awaiting_review(self) -> bool:
+        """Whether generated policy still lacks a recorded human reviewer.
+
+        Returns:
+            ``True`` when ``generated_by`` is set and ``reviewed_by`` is not —
+            the state the FR-030 review gate refuses to run.
+        """
+        return self.generated_by is not None and self.reviewed_by is None
 
 
 class Rule(BaseModel):
@@ -135,7 +207,8 @@ class DecisionTable(BaseModel):
     Validation at load enforces unique input/output names, that every rule
     cell and output entry references a declared column, output-value
     membership, ``then`` completeness, and the FEEL subset on every expression
-    and cell — all before any evaluation (FR-010/FR-012).
+    and cell — all before any evaluation (FR-010/FR-012). It also rejects any
+    FEEL reference to the non-executable ``provenance`` block (FR-032).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -167,6 +240,11 @@ class DecisionTable(BaseModel):
     source: str | None = Field(
         default=None,
         description="Optional authority annotation (knowledgeSource-lite).",
+    )
+    provenance: Provenance | None = Field(
+        default=None,
+        description="Optional non-executable record of how the table was "
+        "authored and reviewed (FR-029).",
     )
 
     @model_validator(mode="after")
@@ -207,13 +285,16 @@ class DecisionTable(BaseModel):
         # Static FEEL subset enforcement (raises FeelValidationError w/ locator).
         for inp in self.inputs:
             feel.validate_expression(
-                inp.expression, locator=f"table '{self.id}' input '{inp.name}'"
+                inp.expression,
+                locator=f"table '{self.id}' input '{inp.name}'",
+                reserved_roots=_RESERVED_FEEL_ROOTS,
             )
         for idx, rule in enumerate(self.rules, start=1):
             for cell_name, cell in rule.when.items():
                 feel.validate_unary_test(
                     cell,
                     locator=f"table '{self.id}' rule {idx} cell '{cell_name}'",
+                    reserved_roots=_RESERVED_FEEL_ROOTS,
                 )
         return self
 
@@ -261,6 +342,13 @@ class DecisionTable(BaseModel):
 def load_decision_table(path: str | Path) -> DecisionTable:
     """Load and validate a decision table from a ``*.dmn.yaml`` file.
 
+    Trust posture: a table is read with ``yaml.safe_load`` but gets none of
+    the size/depth caps the gate-schema loader applies — it is held to the
+    lower trust of a file the author runs locally, not the
+    attacker-influenceable posture ``edge.load_gate_schema`` assumes.
+    Revisiting that (with the loader itself) belongs to the D3 table-step
+    design (specs/040-holodeck-temporal/spec.md).
+
     Args:
         path: Path to the decision-table YAML file.
 
@@ -268,8 +356,8 @@ def load_decision_table(path: str | Path) -> DecisionTable:
         The validated :class:`DecisionTable`.
 
     Raises:
-        DecisionTableError: If the file cannot be read, is not a YAML mapping,
-            or has a structural/cross-field problem.
+        DecisionTableError: If the file cannot be read, is not valid YAML, is
+            not a YAML mapping, or has a structural/cross-field problem.
         FeelValidationError: If any FEEL expression is malformed or out-of-subset.
         pydantic.ValidationError: On a field-shape problem (e.g. missing
             ``version``).
@@ -281,7 +369,12 @@ def load_decision_table(path: str | Path) -> DecisionTable:
         raise DecisionTableError(
             f"could not read decision table '{file_path}': {exc}"
         ) from exc
-    data = yaml.safe_load(raw)
+    try:
+        data = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        raise DecisionTableError(
+            f"decision table '{file_path}' is not valid YAML: {exc}"
+        ) from exc
     if not isinstance(data, dict):
         raise DecisionTableError(
             f"decision table '{file_path}' must be a YAML mapping, got "
