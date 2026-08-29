@@ -1,107 +1,105 @@
 # CLAUDE.md
 
-Guidance for Claude Code (claude.ai/code) working in this repository.
+Guidance for Claude Code working in this repository.
 
-## Project Pointers
+HoloDeck is an open-source, no-code platform for building, testing, and deploying AI agents via YAML. Stack: Python 3.10+, UV, Pydantic v2, Click, Semantic Kernel, Claude Agent SDK (`claude-agent-sdk==0.2.82`), OpenAI Agents SDK (optional extra), pytest.
 
-- **Constitution (authoritative principles):** `.specify/memory/constitution.md`
-- **Product & user documentation:** `docs/`
-- **Feature specs, plans, tasks, status:** `specs/` (spec-kit artifacts per feature)
-- **Agent YAML schema:** `schemas/agent.schema.json`
+## Authoritative References
+
+- **Constitution (project principles):** `.specify/memory/constitution.md`
 - **Vision & roadmap:** `VISION.md`
 - **Comprehensive agent docs:** `AGENTS.md`
+- **Product & user documentation:** `docs/`
+- **Feature specs and status:** `specs/<feature>/` — read the whole feature directory before working on one
+- **YAML schemas:** `schemas/agent.schema.json`, `schemas/workflow.schema.json`, `schemas/optimize-progress.schema.json`
 
-HoloDeck is an open-source, no-code platform for building, testing, and deploying AI agents via YAML. Stack: Python 3.10+, UV, Pydantic v2, Click, Semantic Kernel, Claude Agent SDK, pytest.
+## Codebase Index
 
-## Behavioral Guidelines
-
-Bias toward caution over speed. For trivial tasks, use judgment.
-
-### 1. Think Before Coding
-Don't assume. Don't hide confusion. Surface tradeoffs.
-- State assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them — don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-### 2. Simplicity First
-Minimum code that solves the problem. Nothing speculative.
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-### 3. Surgical Changes
-Touch only what you must. Clean up only your own mess.
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it — don't delete it.
-- Remove imports/variables/functions *your* changes made unused. Don't remove pre-existing dead code unless asked.
-
-Test: every changed line should trace directly to the user's request.
-
-### 4. Goal-Driven Execution
-Define success criteria. Loop until verified.
-- "Add validation" → write tests for invalid inputs, then make them pass.
-- "Fix the bug" → write a test that reproduces it, then make it pass.
-- "Refactor X" → ensure tests pass before and after.
-
-For multi-step tasks, state a brief plan with per-step verification.
-
-## High-Level System Design
+The map below is the fastest way to locate code. Every path is relative to `src/holodeck/` unless noted.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    CLI Layer (holodeck)                      │
-│  init · test · chat · config                                 │
-└─────────────────────────────────────────────────────────────┘
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Configuration Management                        │
-│  ConfigLoader · Validator · Merge · EnvLoader                │
-└─────────────────────────────────────────────────────────────┘
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Pydantic Models (Schema)                     │
-│  Agent · LLMProvider · ClaudeConfig · ToolUnion ·            │
-│  EvaluationConfig · TestCaseModel                            │
-└─────────────────────────────────────────────────────────────┘
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│           Backend Abstraction Layer (auto-routed)            │
-│  BackendSelector · AgentBackend · AgentSession ·             │
-│  ExecutionResult · ContextGenerator                          │
-├─────────────────────────────┬───────────────────────────────┤
-│   OpenAI Agents Backend     │   Claude Backend              │
-│   (OpenAI, Azure OpenAI)    │   (Anthropic, Ollama)         │
-└─────────────────────────────┴───────────────────────────────┘
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│              Evaluation Framework                            │
-│  NLP · Azure AI · DeepEval · Test Runner                     │
-└─────────────────────────────────────────────────────────────┘
+src/holodeck/
+├── cli/                    Click entry point (holodeck)
+│   └── commands/           One module per subcommand:
+│                           init, test, chat, serve, deploy, workflow,
+│                           optimize, mcp, config, test_view
+├── config/                 ConfigLoader, validation, env/YAML merge
+├── models/                 Pydantic v2 schema layer (no I/O, no business logic)
+│   ├── agent.py            Agent — root model for agent.yaml
+│   ├── workflow.py         Workflow — root model for workflow.yaml (036)
+│   ├── decision_table.py   DecisionTable + loader (DMN-style tables)
+│   ├── llm.py              LLMProvider union
+│   ├── claude_config.py    Claude backend options
+│   ├── openai_config.py    OpenAI backend options
+│   ├── tool.py             ToolUnion — 6 tool types
+│   ├── evaluation.py       EvaluationConfig, metrics
+│   ├── test_case.py        TestCaseModel
+│   ├── observability.py    ObservabilityConfig (OTel)
+│   └── deployment.py       Deploy target config
+├── lib/                    Business logic
+│   ├── backends/           Backend abstraction layer
+│   │   ├── base.py         AgentBackend / AgentSession / ExecutionResult protocols
+│   │   ├── selector.py     BackendSelector — routes by model.provider
+│   │   ├── claude_backend.py         Claude Agent SDK backend
+│   │   ├── tool_adapters.py          HoloDeck tools → SDK MCP tools
+│   │   ├── mcp_bridge.py             HoloDeck MCP configs → Claude SDK format
+│   │   ├── otel_bridge.py            Observability config → subprocess env vars
+│   │   ├── validators.py             Pre-flight checks (Node.js, credentials)
+│   │   └── openai_agents_*.py        OpenAI Agents SDK backend + adapters
+│   ├── workflow/           Deterministic spine (feature 036)
+│   │   ├── runner.py       prepare_workflow (all validation, zero LLM) /
+│   │   │                   execute_workflow (topological execution)
+│   │   ├── edge.py         Edge-node executor + gate schema validation
+│   │   ├── table_eval.py   Hit-policy evaluation (UNIQUE/FIRST/PRIORITY) → Verdict
+│   │   ├── feel.py         FEEL expression subset (bkflow-feel) + static rejection
+│   │   └── input_data.py   Fact-of-record validation against JSON Schema
+│   ├── evaluators/         NLP, Azure AI, DeepEval metric implementations
+│   ├── test_runner/        Test execution engine
+│   ├── eval_run/           Evaluation run orchestration
+│   ├── observability/      OTel setup, GenAI semantic conventions, exporters
+│   ├── vector_store.py     Vector store integration (qdrant etc.)
+│   ├── hybrid_search.py    Hybrid retrieval
+│   ├── errors.py           Error hierarchy — always use these
+│   └── runtime.py          Shared runtime helpers
+├── tools/                  Tool implementations
+│   ├── vectorstore_tool.py
+│   ├── hierarchical_document_tool.py
+│   └── mcp/                MCP tool integration
+├── serve/                  HTTP server (AG-UI protocol, sessions, middleware)
+├── deploy/                 Docker build (builder.py, dockerfile.py) +
+│   └── deployers/          per-target deployers (Azure Container Apps, …)
+├── optimizer/              Prompt/agent optimization loop (proposers, scorer)
+├── chat/                   Interactive chat session logic
+├── dashboard/              Test-results dashboard (views, components)
+├── services/               Shared service layer
+└── templates/              `holodeck init` project templates
+                            (conversational, customer-support, research)
+
+tests/
+├── unit/                   Mirrors src/ layout (e.g. tests/unit/workflow/)
+├── integration/            Cross-component, may need credentials
+├── contract/               Schema/contract tests
+└── fixtures/               Committed test fixtures
+
+schemas/                    Published JSON Schemas — keep in sync with models/
+                            (sync enforced by tests/unit/test_workflow_schema_sync.py)
+docs/                       Docsite content (https://docs.useholodeck.ai/)
+sample/                     Local-only sample agents (git-ignored, see .gitignore)
+specs/                      Feature specs, plans, task lists per feature
 ```
 
-## Key Architectural Decisions
+Keep this index current: when you add, move, or remove a top-level module or package, update the tree above in the same change.
 
-1. **Configuration-Driven**: All agent behavior defined via YAML with Pydantic validation. See `schemas/agent.schema.json`.
-2. **Multi-Backend**: Protocol-driven, provider-agnostic. Consumers use `AgentBackend`/`AgentSession`/`ExecutionResult` only. `BackendSelector` auto-routes by `model.provider`.
-3. **Plugin Tools**: 6 types — vectorstore, function, MCP, prompt, plugin, hierarchical_document. Claude adapter bridge wraps HoloDeck tools as SDK-compatible MCP tools.
-4. **MCP for APIs**: External integrations must use MCP servers, not custom API tool types.
-5. **Claude First-Class**: Native backend via Claude Agent SDK; prioritize Claude-native capabilities (hooks, tools, subagents).
-6. **OpenTelemetry Native**: Observability follows GenAI semantic conventions.
-7. **Evaluation Flexibility**: Model configuration at global, run, and metric levels.
-8. **Multimodal Testing**: First-class images, PDFs, Office docs.
-9. **Streaming**: async/await throughout.
+## Architecture Essentials
 
-### Backend Routing
-
-- OpenAI / Azure OpenAI → `OpenAIAgentsBackend`
-- Anthropic / Ollama → `ClaudeBackend`
+1. **Configuration-driven**: all agent behavior defined via YAML, validated by Pydantic models in `models/`. JSON Schemas in `schemas/` are the published contract.
+2. **Multi-backend, protocol-driven**: consumers depend only on `AgentBackend` / `AgentSession` / `ExecutionResult`. Never construct a backend directly — go through `BackendSelector`.
+   - OpenAI / Azure OpenAI → `OpenAIAgentsBackend`
+   - Anthropic / Ollama → `ClaudeBackend`
+3. **Plugin tools**: 6 types — vectorstore, function, MCP, prompt, plugin, hierarchical_document. External API integrations must be MCP servers, never custom API tool types.
+4. **Claude first-class**: native backend via Claude Agent SDK; prefer Claude-native capabilities (hooks, tools, subagents).
+5. **OpenTelemetry native**: observability follows GenAI semantic conventions.
+6. **Streaming**: async/await throughout; no sync I/O in async functions.
 
 | Protocol           | Methods                                                           |
 | ------------------ | ----------------------------------------------------------------- |
@@ -111,101 +109,59 @@ For multi-step tasks, state a brief plan with per-step verification.
 
 `ExecutionResult` fields: `response`, `tool_calls`, `tool_results`, `token_usage`, `structured_output`, `num_turns`, `is_error`, `error_reason`.
 
-## Development Setup
+## Working Norms
+
+- Surgical changes: touch only what the task requires; match existing style; don't refactor or "improve" adjacent code. Remove only imports/variables *your* change made unused.
+- No speculative features, abstractions, or configurability beyond what was asked.
+- Surface assumptions and tradeoffs; if multiple interpretations exist, say so instead of picking silently.
+- Define success criteria up front (usually a test), then verify against them before claiming done.
+- After each task run: `make format`, `make lint`, `make type-check`, `make security`.
+
+## Development Commands
 
 ```bash
-# Install UV
-curl -LsSf https://astral.sh/uv/install.sh | sh   # or: brew install uv
-
 make init                     # venv + deps + pre-commit
-source .venv/bin/activate
+source .venv/bin/activate     # always, before any Python command
 holodeck --version
 ```
 
-### Dependency Management
-
-```bash
-make install-dev              # All deps including dev
-make install-prod             # Production only
-uv add <package>              # Add dependency
-uv add --dev <package>        # Add dev dependency
-uv remove <package>           # Remove dependency
-make update-deps              # Update all
-```
-
-### Environment Variables
-
-Priority: shell env > `.env` (project) > `~/.holodeck/.env` (user).
+Dependencies: `uv add <pkg>`, `uv add --dev <pkg>`, `uv remove <pkg>`, `make update-deps`. Env var priority: shell env > `.env` (project) > `~/.holodeck/.env` (user).
 
 ### Testing
 
-Always run pytest with `-n auto` (parallel).
+Always run pytest with `-n auto` (parallel). AAA (Arrange/Act/Assert). Markers: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.slow`.
 
 ```bash
 make test                     # All tests (parallel)
 make test-unit                # Unit only
 make test-integration         # Integration only
-make test-coverage            # With coverage report
+make test-coverage            # Coverage report
 make test-failed              # Re-run failed
-
-pytest tests/unit/ -n auto -v
+pytest tests/unit/workflow/ -n auto -v   # Targeted
 ```
-
-Markers: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.slow`. Use AAA (Arrange/Act/Assert).
 
 ### Code Quality
 
 ```bash
 make format                   # Black + Ruff
-make format-check             # CI-safe check
 make lint                     # Ruff + Bandit
-make lint-fix                 # Auto-fix
 make type-check               # MyPy (strict)
 make security                 # pip-audit + Bandit + detect-secrets
 make ci                       # Full CI locally
 ```
 
-Pre-commit: `make install-hooks`, `make pre-commit`.
-
-Always `source .venv/bin/activate` before Python commands.
-
 ## Code Standards
 
-- **Style:** Google Python Style Guide. Black (88 cols), Ruff, MyPy strict, Bandit. Target Python 3.10+.
-- **Type hints:** everywhere, for parameters and return values.
-- **Docstrings (PEP 257):** required on public functions — Args, Returns, Raises.
-- **Errors:** use `holodeck.lib.errors` hierarchy (`HoloDeckError`, `ConfigError`, `ValidationError`, `ToolError`, `EvaluationError`). Never catch broad exceptions without re-raising.
-- **Async:** async/await for all I/O. No sync I/O in async functions.
-- **Config:** Pydantic models only. No hardcoded configuration — use env vars + YAML.
-- **CLI output:** Click's `echo()` in CLI, `logging` elsewhere. Never `print()`.
-- **Mutable defaults:** use `None` sentinel, never `[]`/`{}` as defaults.
-- **Backend usage:** always via `BackendSelector`; use protocol types in signatures.
-- **External APIs:** MCP servers.
+- Google Python Style Guide. Black (88 cols), Ruff, MyPy strict, Bandit. Target Python 3.10+.
+- Type hints everywhere; PEP 257 docstrings on public functions (Args, Returns, Raises).
+- Errors: use the `holodeck.lib.errors` hierarchy (`HoloDeckError`, `ConfigError`, `ValidationError`, `ToolError`, `EvaluationError`). Never catch broad exceptions without re-raising.
+- CLI output via Click's `echo()`; `logging` everywhere else. Never `print()`.
+- Mutable defaults: use `None` sentinel, never `[]`/`{}`.
+- Config through Pydantic models + env vars + YAML only — no hardcoded configuration.
 
 ## Code Navigation: LSP vs Grep
 
-**LSP** for semantic questions — references, types, definitions, symbol hierarchy, call graphs, implementations of protocols.
-
-**Grep** for textual questions — non-Python files (YAML, markdown, `.env`), regex/partial patterns, strings, TODOs, config keys, unparseable files.
-
-## Claude-Specific Infrastructure
-
-| Module             | Purpose                                                      |
-| ------------------ | ------------------------------------------------------------ |
-| `tool_adapters.py` | Wraps VectorStore/HierarchicalDoc tools as SDK MCP tools     |
-| `mcp_bridge.py`    | Translates HoloDeck MCP configs to Claude SDK format         |
-| `otel_bridge.py`   | Translates observability config to subprocess env vars       |
-| `validators.py`    | Pre-flight checks (Node.js, credentials, embedding provider) |
-
-## Workflow (spec-kit)
-
-1. `/speckit.specify` — create spec
-2. `/speckit.clarify` — resolve ambiguity
-3. `/speckit.plan` — design artifacts
-4. `/speckit.tasks` — dependency-ordered tasks
-5. Read all files in `specs/<feature>/` before planning; always surface the plan path for review.
-6. Implement with Claude tasks.
-7. Run `make format`, `make lint`, `make type-check`, `make security` after each task.
+**LSP** for semantic questions — references, definitions, call graphs, protocol implementations. **Grep** for textual questions — YAML/markdown/`.env`, regex patterns, strings, config keys.
 
 ## End-to-End Deploy Validation Loop
 
@@ -270,12 +226,5 @@ curl -sS -X POST "$URL/awp" -H 'content-type: application/json' \
 
 ## Git Commits
 
+- Conventional commits, focused on the change.
 - Do NOT attribute Claude Code or include "Generated with Claude Code".
-- Conventional, focused on the change.
-
-## Active Technologies
-- Python 3.10+ + `claude-agent-sdk==0.1.44` (provides `AgentDefinition`, `ClaudeAgentOptions.agents`), Pydantic v2, PyYAML, Click (029-subagent-orchestration)
-- N/A (config-only feature; no persistent state) (029-subagent-orchestration)
-
-## Recent Changes
-- 029-subagent-orchestration: Added Python 3.10+ + `claude-agent-sdk==0.1.44` (provides `AgentDefinition`, `ClaudeAgentOptions.agents`), Pydantic v2, PyYAML, Click
