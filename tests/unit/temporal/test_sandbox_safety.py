@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from temporalio import workflow
@@ -28,6 +29,8 @@ from temporalio.worker.workflow_sandbox._restrictions import (
     RestrictedWorkflowAccessError,
 )
 
+from holodeck.lib.errors import ConfigError
+from holodeck.temporal import deterministic
 from tests.unit.temporal import sandbox_workflows, sandbox_workflows_nondeterministic
 
 pytestmark = pytest.mark.unit
@@ -177,3 +180,29 @@ class TestImportPurity:
             "evaluate",
             "load_decision_table",
         }
+
+
+class TestLoadDecisionTableGuard:
+    """The loader is import-time only — enforced, not just documented."""
+
+    def test_refuses_inside_a_workflow_run(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Calling the loader during workflow execution is an authoring fault."""
+        # Arrange
+        monkeypatch.setattr("temporalio.workflow.in_workflow", lambda: True)
+
+        # Act / Assert
+        with pytest.raises(ConfigError, match="import time"):
+            deterministic.load_decision_table(tmp_path / "table.yaml")
+
+    def test_refuses_inside_the_sandbox(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A sandbox re-import calling the loader at runtime is refused."""
+        # Arrange
+        monkeypatch.setattr("temporalio.workflow.unsafe.in_sandbox", lambda: True)
+
+        # Act / Assert
+        with pytest.raises(ConfigError, match="import time"):
+            deterministic.load_decision_table(tmp_path / "table.yaml")

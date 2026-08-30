@@ -222,6 +222,15 @@ def agent_activity(
             unusable as a gate.
         FileNotFoundError: If the node's ``agent.yaml`` does not exist.
     """
+    # An empty or blank id would make activity.defn fall back to the wrapped
+    # function's name ("run_agent"), silently breaking the replay-load-bearing
+    # name contract (decision 11) and colliding across nodes.
+    if not node.id.strip():
+        raise ConfigError(
+            "nodes.id",
+            "edge node id must be a non-empty string: it is the activity name "
+            "workflows call and replay depends on",
+        )
     agent_path = resolve_agent_path(node, base_dir)
     gate_schema = load_gate_schema(node, base_dir)
     agent = ConfigLoader().load_agent_yaml(str(agent_path))

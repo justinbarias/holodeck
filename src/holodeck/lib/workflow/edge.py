@@ -564,6 +564,15 @@ def check_gate(
         )
 
     validator_cls = jsonschema.validators.validator_for(schema)
+    # D3 callers hand check_gate raw dicts that never went through
+    # load_gate_schema, so the schema itself must be checked here: a malformed
+    # gate must be an authoring fault, never a gate that silently passes.
+    try:
+        validator_cls.check_schema(schema)
+    except jsonschema.SchemaError as exc:
+        raise GateSchemaError(
+            node_id, f"gate schema is not a valid JSON Schema: {exc.message}"
+        ) from exc
     validator = validator_cls(
         schema,
         registry=_NO_RETRIEVAL_REGISTRY,
@@ -619,7 +628,11 @@ def check_gate(
             f"gate output must be a JSON object the spine can name fields on, "
             f"got {type(value).__name__}",
         )
-    return value
+    # Detach from the caller's object: 036's GatedOutput deep-copies for the
+    # same reason. Without this a caller could validate, mutate the source (or
+    # a nested container), and pass downstream content that never crossed the
+    # gate.
+    return copy.deepcopy(value)
 
 
 def _apply_gate(

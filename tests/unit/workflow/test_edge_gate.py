@@ -35,6 +35,7 @@ from holodeck.lib.errors import (
 )
 from holodeck.lib.errors import FileNotFoundError as HoloDeckFileNotFoundError
 from holodeck.lib.workflow import edge
+from holodeck.lib.workflow.edge import check_gate
 from holodeck.models.workflow import EdgeNode
 
 AGENT_YAML = """\
@@ -2175,3 +2176,30 @@ class TestFormatCheckerRegistration:
             f"format {format_name!r} has no registered checker — is the "
             "jsonschema[format-nongpl] extra installed?"
         )
+
+
+class TestCheckGateAdversarial:
+    """Regressions from the phase-2 adversarial review."""
+
+    def test_malformed_schema_is_an_authoring_fault(self) -> None:
+        """A schema that is not valid JSON Schema must refuse, never pass."""
+        # Arrange — invalid: `required` must be an array
+        malformed = {"type": "object", "required": ""}
+
+        # Act / Assert
+        with pytest.raises(GateSchemaError, match="not a valid JSON Schema"):
+            check_gate({}, malformed, node_id="n")
+
+    def test_returned_object_is_detached_from_the_source(self) -> None:
+        """Mutating the source after the gate must not mutate the gated value."""
+        # Arrange
+        schema = {"type": "object", "properties": {"tags": {"type": "array"}}}
+        source = {"tags": ["a"]}
+
+        # Act
+        gated = check_gate(source, schema, node_id="n")
+        source["tags"].append("injected-after-validation")
+        source["extra"] = True
+
+        # Assert
+        assert gated == {"tags": ["a"]}

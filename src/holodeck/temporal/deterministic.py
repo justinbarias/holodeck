@@ -38,10 +38,47 @@ that is not callable from inside a workflow run.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from temporalio import workflow
+
+from holodeck.lib.errors import ConfigError
 from holodeck.lib.workflow.edge import check_gate
 from holodeck.lib.workflow.table_eval import Verdict, evaluate
-from holodeck.models.decision_table import DecisionTable, load_decision_table
+from holodeck.models.decision_table import DecisionTable
+from holodeck.models.decision_table import load_decision_table as _load_decision_table
 from holodeck.temporal.models import ActivityParameters
+
+
+def load_decision_table(path: Path | str) -> DecisionTable:
+    """Load a decision table — at workflow-module import time only.
+
+    A table is policy-as-code, versioned with the workflow that reads it, so it
+    must be the same table on every replay. This wrapper enforces what the
+    module docstring documents: calling it from inside a workflow run (or from
+    code re-imported inside the workflow sandbox) is refused, because file I/O
+    there would make replay depend on the worker's filesystem at that moment.
+
+    Args:
+        path: The decision-table YAML file.
+
+    Returns:
+        The loaded :class:`DecisionTable`.
+
+    Raises:
+        ConfigError: If called during workflow execution or inside the
+            workflow sandbox instead of at module import time.
+        DecisionTableError: If the file is missing or not a valid table.
+    """
+    if workflow.unsafe.in_sandbox() or workflow.in_workflow():
+        raise ConfigError(
+            "load_decision_table",
+            "decision tables load at workflow-module import time, outside the "
+            "sandbox; move this call to module scope in a module marked "
+            "imports_passed_through (decision 7)",
+        )
+    return _load_decision_table(path)
+
 
 __all__ = [
     "ActivityParameters",
