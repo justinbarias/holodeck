@@ -86,7 +86,7 @@ history), and the timeout/retry parameters object.
 
 - [x] T9: Hardship fixtures
 - [x] T10: Integration tests AC-1/AC-2/AC-3
-- [ ] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
+- [x] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
 - [ ] T12: OTel test AC-6
 - [ ] T13: Live smoke test, `sample/` copy, index row
 - [ ] T14: Gate-schema codegen (`holodeck generate models`)
@@ -445,12 +445,12 @@ constructing the real Worker with the sample workflow validates it through
 public API.
 
 **Acceptance criteria:**
-- [ ] AC-4 and AC-5 each demonstrated by a named test
-- [ ] Replay executes `table_eval` deterministically without any activity re-execution
+- [x] AC-4 and AC-5 each demonstrated by a named test
+- [x] Replay executes `table_eval` deterministically without any activity re-execution
 
 **Verification:**
-- [ ] `pytest tests/integration/temporal/ -n auto -m integration`
-- [ ] Quality gates
+- [x] `pytest tests/integration/temporal/ -n auto -m integration`
+- [x] Quality gates
 
 **Dependencies:** T8, T10
 **Files likely touched:** `tests/integration/temporal/test_worker_e2e.py`, `tests/integration/temporal/test_replay.py`
