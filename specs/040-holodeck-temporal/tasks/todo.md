@@ -25,7 +25,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 ## Phase 3 — Worker CLI (D4)
 
 - [x] **T7** `WorkerConfig` model + loader: worker.yaml (temporal connection + inline nodes, registration only — no timeouts), env overrides, path confinement (M)
-- [ ] **T8** `holodeck worker` command: activities-only Worker, `TracingInterceptor`, graceful shutdown, guarded import (M)
+- [x] **T8** `holodeck worker` command: activities-only Worker, `TracingInterceptor`, graceful shutdown, guarded import (M)
 - [ ] **T16** Live worker-command integration test: real `holodeck worker` subprocess against `WorkflowEnvironment.start_local` (real dev server, no mocks), workflow executes end to end, SIGINT shuts down gracefully (M)
 
 ### Checkpoint 3

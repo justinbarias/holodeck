@@ -74,6 +74,7 @@ def main(ctx: click.Context) -> None:
         chat    Interactive chat session with an agent
         serve   Start an HTTP server exposing an agent
         deploy  Build and deploy agent containers
+        worker  Run a Temporal worker serving agents as activities
 
     Initialize and manage AI agent projects with YAML configuration.
     """
@@ -90,6 +91,7 @@ from holodeck.cli.commands.init import init  # noqa: E402, F401
 from holodeck.cli.commands.mcp import mcp  # noqa: E402, F401
 from holodeck.cli.commands.serve import serve  # noqa: E402, F401
 from holodeck.cli.commands.test import test  # noqa: E402, F401
+from holodeck.cli.commands.worker import worker  # noqa: E402, F401
 
 # Register commands
 main.add_command(init)
@@ -99,6 +101,7 @@ main.add_command(config)
 main.add_command(deploy)
 main.add_command(mcp)
 main.add_command(serve)
+main.add_command(worker)
 
 
 if __name__ == "__main__":

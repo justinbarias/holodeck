@@ -76,7 +76,7 @@ history), and the timeout/retry parameters object.
 
 - [x] T7: `WorkerConfig` model and loader
 - [ ] T16: live `holodeck worker` integration test (real dev server, no mocks)
-- [ ] T8: `holodeck worker` command
+- [x] T8: `holodeck worker` command
 
 ### Checkpoint 3: Worker
 - [ ] `holodeck worker --help` works without temporalio installed (guarded import)
@@ -295,13 +295,13 @@ Import of temporalio stays inside the command so `holodeck --help` works
 without the extra.
 
 **Acceptance criteria:**
-- [ ] `holodeck worker --help` works with and without the extra installed
-- [ ] Startup registers one activity per configured node (mocked client test)
-- [ ] Missing extra yields the T1 guard message, not a traceback
+- [x] `holodeck worker --help` works with and without the extra installed
+- [x] Startup registers one activity per configured node (mocked client test)
+- [x] Missing extra yields the T1 guard message, not a traceback
 
 **Verification:**
-- [ ] `pytest tests/unit/temporal/test_worker_command.py -n auto`
-- [ ] Quality gates
+- [x] `pytest tests/unit/temporal/test_worker_command.py -n auto`
+- [x] Quality gates
 
 **Dependencies:** T6, T7
 **Files likely touched:** `src/holodeck/cli/commands/worker.py`, `src/holodeck/cli/main.py` (register verb), `tests/unit/temporal/test_worker_command.py`
