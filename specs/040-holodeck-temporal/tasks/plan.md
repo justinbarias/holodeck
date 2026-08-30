@@ -80,7 +80,7 @@ history), and the timeout/retry parameters object.
 
 ### Checkpoint 3: Worker
 - [ ] `holodeck worker --help` works without temporalio installed (guarded import)
-- [ ] Worker starts (mocked client) from a fixture worker.yaml
+- [x] Worker starts (mocked client) from a fixture worker.yaml
 
 ### Phase 4: Integration, sample, acceptance criteria
 
