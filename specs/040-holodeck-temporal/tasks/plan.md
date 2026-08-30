@@ -79,7 +79,7 @@ history), and the timeout/retry parameters object.
 - [x] T8: `holodeck worker` command
 
 ### Checkpoint 3: Worker
-- [ ] `holodeck worker --help` works without temporalio installed (guarded import)
+- [x] `holodeck worker --help` works without temporalio installed (guarded import)
 - [x] Worker starts (mocked client) from a fixture worker.yaml
 
 ### Phase 4: Integration, sample, acceptance criteria
@@ -88,8 +88,9 @@ history), and the timeout/retry parameters object.
 - [ ] T10: Integration tests AC-1/AC-2/AC-3
 - [ ] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
 - [ ] T12: OTel test AC-6
-- [ ] T13: Live smoke test, `sample/` copy, docs, index row
+- [ ] T13: Live smoke test, `sample/` copy, index row
 - [ ] T14: Gate-schema codegen (`holodeck generate models`)
+- [ ] T17: docsite update — temporal guide + worker.yaml reference (`docs/`)
 
 ### Checkpoint: Complete
 - [ ] AC-1 through AC-6 demonstrated by tests
@@ -347,6 +348,41 @@ Live-test conventions of T15: `tests/integration/.env`, skip unless
 **Files likely touched:** `tests/integration/temporal/test_live_worker_command.py`
 **Estimated scope:** M
 
+### Task 17: Docsite update (holodeck-docs, `docs/`)
+
+**Description:** Documentation for the Temporal integration on the docsite
+(https://docs.useholodeck.ai/). A guide under `docs/guides/` covering both
+personas:
+
+* **Python developer** — activity factory (`agent_activity`), typed payloads
+  (`AgentActivityInput`/`AgentActivityResult`, `output_as()`), the D3
+  workflow-safe surface (`check_gate`, `evaluate`, `ActivityParameters`),
+  sandbox rules learned in this spec: workflows live in their own module,
+  decision tables load at workflow-module import time (decision 7),
+  `imports_passed_through()` for the D3 imports, error taxonomy (model faults
+  retryable, authoring faults `non_retryable=True`), and the workflow-owned
+  business-rule feedback-retry pattern (bounded loop, `context` re-invoke,
+  Context (JSON) rendering).
+* **worker.yaml host** — `worker.yaml` reference (temporal block, nodes,
+  `TEMPORAL_*` env overrides fail-closed, path confinement), `holodeck worker`
+  CLI (activities-only, graceful shutdown, `--task-queue`), install via
+  `holodeck-ai[temporal]`.
+
+Wire the page into docs nav/index as the docsite convention requires.
+
+**Acceptance criteria:**
+- [ ] Guide covers both personas with runnable snippets consistent with the shipped API
+- [ ] worker.yaml reference documents every field and the env-override semantics
+- [ ] Docs build/nav intact (docsite conventions followed)
+
+**Verification:**
+- [ ] Snippets cross-checked against `src/holodeck/temporal/` signatures
+- [ ] Quality gates (docs-affecting checks)
+
+**Dependencies:** T8, T16 (API surface final for phases 1–3); revisit after T9–T12 land
+**Files likely touched:** `docs/guides/…`, `docs/index.md` (nav)
+**Estimated scope:** M
+
 ### Task 9: Hardship fixtures
 
 **Description:** Committed fixtures under
@@ -435,18 +471,15 @@ activity span.
 **Files likely touched:** `tests/integration/temporal/test_otel.py`
 **Estimated scope:** M
 
-### Task 13: Live smoke, `sample/` copy, docs, index row
+### Task 13: Live smoke, `sample/` copy, index row
 
 **Description:** One `@pytest.mark.slow` test running a real Claude call
 through the sample workflow (manual execution). Thin runnable demo under
-`sample/temporal-hardship/` (git-ignored). Docs page for the temporal
-integration (activity factory, plugin, worker.yaml, D3 pattern with the
-import-time table-load rationale). Update `specs/index.md` row 040 and the
-spec status line.
+`sample/temporal-hardship/` (git-ignored). Update `specs/index.md` row 040
+and the spec status line. Docsite content moved to T17.
 
 **Acceptance criteria:**
 - [ ] Smoke test passes manually with credentials
-- [ ] Docs cover both personas (Python developer; worker.yaml host)
 - [ ] `specs/index.md` row reflects final task count and status
 
 **Verification:**
