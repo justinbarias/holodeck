@@ -93,8 +93,8 @@ history), and the timeout/retry parameters object.
 - [x] T17: docsite update — temporal guide + worker.yaml reference (`docs/`)
 
 ### Checkpoint: Complete
-- [ ] AC-1 through AC-6 demonstrated by tests
-- [ ] `make ci` clean; spec status updated in `specs/index.md`
+- [x] AC-1 through AC-6 demonstrated by tests
+- [x] `make ci` clean; spec status updated in `specs/index.md` — merged to main 2026-08-30 (stack #369)
 
 ## Tasks
 

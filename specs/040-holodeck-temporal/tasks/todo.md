@@ -42,4 +42,4 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 - [x] **T14** ~~Gate-schema codegen~~ — moved to spec 041 (2026-08-30): pairs naturally with the file-input work and 040 is otherwise complete
 
 ### Checkpoint: Complete
-- [ ] AC-1 … AC-6 demonstrated by named tests; `make ci` clean; spec status updated
+- [x] AC-1 … AC-6 demonstrated by named tests; `make ci` clean; spec status updated — merged to main 2026-08-30 (stack #369)
