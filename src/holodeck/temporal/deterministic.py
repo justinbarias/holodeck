@@ -24,16 +24,31 @@ run and never inside an activity: a table is policy-as-code, versioned and
 deployed with the workflow that reads it, so it must be the same table on
 every replay. Reading it during a run would put file I/O in the sandbox and
 make replay depend on the worker's filesystem at that moment; passing it
-through an activity would put the whole table in the workflow history. Load it
-at module scope::
+through an activity would put the whole table in the workflow history.
 
-    with workflow.unsafe.imports_passed_through():
-        from holodeck.temporal.deterministic import evaluate, load_decision_table
+Load it at module scope of a **sibling module** — not the workflow's own
+module. The sandbox re-imports the workflow's defining module to validate it,
+so a load there is re-executed inside the sandbox and refused; an import
+served through ``imports_passed_through()`` is not re-executed::
 
+    # policy.py — loaded once, in the worker process
     _TABLE = load_decision_table(Path(__file__).parent / "hardship.dmn.yaml")
+
+    # workflow.py
+    with workflow.unsafe.imports_passed_through():
+        from holodeck.temporal.deterministic import evaluate
+        from myproject.policy import _TABLE
 
 ``load_decision_table`` reads a file, so it is the one member of this surface
 that is not callable from inside a workflow run.
+
+Replay compatibility: a table evaluated in workflow code is **part of the
+workflow definition**. Changing the YAML between deployments changes replay
+behavior for open workflows exactly as editing workflow code would — the
+sibling-module placement solves only the sandbox re-import problem, not
+cross-deployment versioning. Apply the same discipline as for any workflow
+code change: ``workflow.patched()`` branches or Temporal Worker Versioning,
+and keep the table's ``version`` field updated so histories are auditable.
 """
 
 from __future__ import annotations
@@ -73,8 +88,9 @@ def load_decision_table(path: Path | str) -> DecisionTable:
     if workflow.unsafe.in_sandbox() or workflow.in_workflow():
         raise ConfigError(
             "load_decision_table",
-            "decision tables load at workflow-module import time, outside the "
-            "sandbox; move this call to module scope in a module marked "
+            "decision tables load at import time, outside the sandbox; move "
+            "this call to module scope of a sibling module (not the workflow's "
+            "own module — the sandbox re-imports that) and import it under "
             "imports_passed_through (decision 7)",
         )
     return _load_decision_table(path)

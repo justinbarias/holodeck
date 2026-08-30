@@ -79,17 +79,18 @@ history), and the timeout/retry parameters object.
 - [x] T8: `holodeck worker` command
 
 ### Checkpoint 3: Worker
-- [ ] `holodeck worker --help` works without temporalio installed (guarded import)
+- [x] `holodeck worker --help` works without temporalio installed (guarded import)
 - [x] Worker starts (mocked client) from a fixture worker.yaml
 
 ### Phase 4: Integration, sample, acceptance criteria
 
-- [ ] T9: Hardship fixtures
-- [ ] T10: Integration tests AC-1/AC-2/AC-3
-- [ ] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
-- [ ] T12: OTel test AC-6
-- [ ] T13: Live smoke test, `sample/` copy, docs, index row
-- [ ] T14: Gate-schema codegen (`holodeck generate models`)
+- [x] T9: Hardship fixtures
+- [x] T10: Integration tests AC-1/AC-2/AC-3
+- [x] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
+- [x] T12: OTel test AC-6
+- [x] T13: Live smoke test, `sample/` copy, index row
+- [x] T14: moved to spec 041 (2026-08-30)
+- [x] T17: docsite update — temporal guide + worker.yaml reference (`docs/`)
 
 ### Checkpoint: Complete
 - [ ] AC-1 through AC-6 demonstrated by tests
@@ -347,6 +348,44 @@ Live-test conventions of T15: `tests/integration/.env`, skip unless
 **Files likely touched:** `tests/integration/temporal/test_live_worker_command.py`
 **Estimated scope:** M
 
+### Task 17: Docsite update (holodeck-docs, `docs/`)
+
+**Description:** Documentation for the Temporal integration on the docsite
+(https://docs.useholodeck.ai/). A guide under `docs/guides/` covering both
+personas:
+
+* **Python developer** — activity factory (`agent_activity`), typed payloads
+  (`AgentActivityInput`/`AgentActivityResult`, `output_as()`), the D3
+  workflow-safe surface (`check_gate`, `evaluate`, `ActivityParameters`),
+  sandbox rules learned in this spec: workflows live in their own module,
+  decision tables load at workflow-module import time (decision 7),
+  `imports_passed_through()` for the D3 imports, error taxonomy (model faults
+  retryable, authoring faults `non_retryable=True`), and the workflow-owned
+  business-rule feedback-retry pattern (bounded loop, `context` re-invoke,
+  Context (JSON) rendering), and the human-in-the-loop approval pattern —
+  `@workflow.signal` + `workflow.wait_condition` with a timer race for SLA
+  escalation (nothing shipped in code; Temporal natives suffice, decided
+  2026-08-30, recorded in specs/041-temporal-file-inputs/spec.md §4).
+* **worker.yaml host** — `worker.yaml` reference (temporal block, nodes,
+  `TEMPORAL_*` env overrides fail-closed, path confinement), `holodeck worker`
+  CLI (activities-only, graceful shutdown, `--task-queue`), install via
+  `holodeck-ai[temporal]`.
+
+Wire the page into docs nav/index as the docsite convention requires.
+
+**Acceptance criteria:**
+- [x] Guide covers both personas with runnable snippets consistent with the shipped API
+- [x] worker.yaml reference documents every field and the env-override semantics
+- [x] Docs build/nav intact (docsite conventions followed)
+
+**Verification:**
+- [x] Snippets cross-checked against `src/holodeck/temporal/` signatures
+- [x] Quality gates (docs-affecting checks)
+
+**Dependencies:** T8, T16 (API surface final for phases 1–3); revisit after T9–T12 land
+**Files likely touched:** `docs/guides/…`, `docs/index.md` (nav)
+**Estimated scope:** M
+
 ### Task 9: Hardship fixtures
 
 **Description:** Committed fixtures under
@@ -360,13 +399,13 @@ the proof that timeout/retry configuration is caller-side and functional
 (feeds AC-2).
 
 **Acceptance criteria:**
-- [ ] Fixture agents load through the existing `Agent` model
-- [ ] Table is the same one the 036 test suite evaluates (AC-3 comparability)
-- [ ] Workflow module passes the T5 sandbox harness
+- [x] Fixture agents load through the existing `Agent` model
+- [x] Table is the same one the 036 test suite evaluates (AC-3 comparability)
+- [x] Workflow module passes the T5 sandbox harness
 
 **Verification:**
-- [ ] `pytest tests/unit/temporal/test_fixtures_load.py -n auto`
-- [ ] Quality gates
+- [x] `pytest tests/unit/temporal/test_fixtures_load.py -n auto`
+- [x] Quality gates
 
 **Dependencies:** T5 (sandbox harness), T7 (worker.yaml shape)
 **Files likely touched:** `tests/integration/temporal/fixtures/hardship/*`
@@ -374,21 +413,23 @@ the proof that timeout/retry configuration is caller-side and functional
 
 ### Task 10: Integration tests AC-1/AC-2/AC-3
 
-**Description:** Against `temporal server start-dev` with a mocked backend
-(deterministic canned `structured_output`). AC-1: workflow receives a
-gate-validated envelope. AC-2: backend rigged to emit a gate-failing object
-first, passing object second — activity fails once, retry succeeds, history
-shows both attempts. AC-3: table helper in workflow code returns the same
-`Verdict` as the 036 suite for the same inputs. Skip cleanly when the
-`temporal` CLI binary is absent.
+**Description:** Mocked backend (deterministic canned `structured_output`),
+against `WorkflowEnvironment.start_local` (amended 2026-08-30: no
+`temporal server start-dev` / CLI-absent skip — start_local downloads its own
+dev server). Runs unconditionally in CI; the live-LLM counterpart is T13's
+smoke. AC-1: workflow receives a gate-validated envelope. AC-2: backend
+rigged to emit a gate-failing object first, passing object second — activity
+fails once, retry succeeds, history shows both attempts. AC-3: table helper
+in workflow code returns the same `Verdict` as the 036 suite for the same
+inputs.
 
 **Acceptance criteria:**
-- [ ] AC-1, AC-2, AC-3 each demonstrated by a named test
-- [ ] History assertion: no unvalidated payload in any completed activity result
+- [x] AC-1, AC-2, AC-3 each demonstrated by a named test
+- [x] History assertion: no unvalidated payload in any completed activity result
 
 **Verification:**
-- [ ] `pytest tests/integration/temporal/ -n auto -m integration`
-- [ ] Quality gates
+- [x] `pytest tests/integration/temporal/ -n auto -m integration`
+- [x] Quality gates
 
 **Dependencies:** T4, T9
 **Files likely touched:** `tests/integration/temporal/test_activity_acceptance.py`, `tests/integration/temporal/conftest.py`
@@ -404,12 +445,12 @@ constructing the real Worker with the sample workflow validates it through
 public API.
 
 **Acceptance criteria:**
-- [ ] AC-4 and AC-5 each demonstrated by a named test
-- [ ] Replay executes `table_eval` deterministically without any activity re-execution
+- [x] AC-4 and AC-5 each demonstrated by a named test
+- [x] Replay executes `table_eval` deterministically without any activity re-execution
 
 **Verification:**
-- [ ] `pytest tests/integration/temporal/ -n auto -m integration`
-- [ ] Quality gates
+- [x] `pytest tests/integration/temporal/ -n auto -m integration`
+- [x] Quality gates
 
 **Dependencies:** T8, T10
 **Files likely touched:** `tests/integration/temporal/test_worker_e2e.py`, `tests/integration/temporal/test_replay.py`
@@ -424,40 +465,41 @@ assert the GenAI span set (names + GenAI semconv attributes) matches. With
 activity span.
 
 **Acceptance criteria:**
-- [ ] Span parity between `holodeck test` and activity execution (AC-6)
-- [ ] GenAI spans nest under the interceptor's activity span
+- [x] Span parity between `holodeck test` and activity execution (AC-6)
+- [x] GenAI spans nest under the interceptor's activity span
 
 **Verification:**
-- [ ] `pytest tests/integration/temporal/test_otel.py -n auto -m integration`
-- [ ] Quality gates
+- [x] `pytest tests/integration/temporal/test_otel.py -n auto -m integration`
+- [x] Quality gates
 
 **Dependencies:** T10
 **Files likely touched:** `tests/integration/temporal/test_otel.py`
 **Estimated scope:** M
 
-### Task 13: Live smoke, `sample/` copy, docs, index row
+### Task 13: Live smoke, `sample/` copy, index row
 
 **Description:** One `@pytest.mark.slow` test running a real Claude call
 through the sample workflow (manual execution). Thin runnable demo under
-`sample/temporal-hardship/` (git-ignored). Docs page for the temporal
-integration (activity factory, plugin, worker.yaml, D3 pattern with the
-import-time table-load rationale). Update `specs/index.md` row 040 and the
-spec status line.
+`sample/temporal-hardship/` (git-ignored). Update `specs/index.md` row 040
+and the spec status line. Docsite content moved to T17.
 
 **Acceptance criteria:**
-- [ ] Smoke test passes manually with credentials
-- [ ] Docs cover both personas (Python developer; worker.yaml host)
-- [ ] `specs/index.md` row reflects final task count and status
+- [x] Smoke test passes manually with credentials
+- [x] `specs/index.md` row reflects final task count and status
 
 **Verification:**
-- [ ] `pytest -m slow tests/integration/temporal/ -n auto` (manual)
-- [ ] `make ci`
+- [x] `pytest -m slow tests/integration/temporal/ -n auto` (manual)
+- [x] `make ci`
 
 **Dependencies:** T11, T12
 **Files likely touched:** `tests/integration/temporal/test_smoke_live.py`, `docs/…`, `specs/index.md`, `specs/040-holodeck-temporal/spec.md`
 **Estimated scope:** S
 
 ### Task 14: Gate-schema codegen (`holodeck generate models`)
+
+**Moved to spec 041 (2026-08-30):** codegen pairs with the file-input
+work and 040 is otherwise complete. The task text below is retained for
+history; implementation tracking lives in `specs/041-temporal-file-inputs/`.
 
 **Description:** *(added 2026-08-30, user-requested scope addition)* CLI verb
 that generates typed Pydantic models from gate JSON Schemas, so workflow code

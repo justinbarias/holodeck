@@ -93,11 +93,15 @@ class TemporalConnection(BaseModel):
     @field_validator("address", "namespace", "task_queue")
     @classmethod
     def _non_blank(cls, value: str, info: ValidationInfo) -> str:
-        """Refuse a blank connection string.
+        """Refuse a blank or whitespace-padded connection string.
 
         A blank value can only mean a broken secret, template, or environment
         override; every one of these fields silently misroutes the worker if
-        it defaults or falls back, so all three fail closed.
+        it defaults or falls back, so all three fail closed. Padding is
+        refused for the same reason: ``TEMPORAL_TASK_QUEUE="hardship "``
+        would poll a different queue than ``"hardship"``, and a worker that
+        quietly polls the wrong queue is indistinguishable from one that is
+        down.
 
         Args:
             value: The configured value.
@@ -107,12 +111,17 @@ class TemporalConnection(BaseModel):
             The value unchanged.
 
         Raises:
-            ValueError: If the value is empty or only whitespace. Pydantic
-                wraps this into the ``ValidationError`` the loader converts to
-                a :class:`~holodeck.lib.errors.ConfigError`.
+            ValueError: If the value is empty, only whitespace, or carries
+                leading/trailing whitespace. Pydantic wraps this into the
+                ``ValidationError`` the loader converts to a
+                :class:`~holodeck.lib.errors.ConfigError`.
         """
         if not value.strip():
             raise ValueError(f"{info.field_name} must not be blank")
+        if value != value.strip():
+            raise ValueError(
+                f"{info.field_name} must not have leading or trailing " "whitespace"
+            )
         return value
 
 

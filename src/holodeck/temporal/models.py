@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 from temporalio.common import RetryPolicy
 
 from holodeck.models.token_usage import TokenUsage
@@ -37,13 +37,17 @@ class AgentActivityInput(BaseModel):
         message: The user-facing message handed to the agent for this turn.
         context: Optional caller-supplied context object, passed through to
             the agent. ``None`` when the caller supplies nothing — never an
-            empty dict sentinel.
+            empty dict sentinel. Values are validated as JSON — a non-JSON
+            value (an arbitrary object, a set, a non-string key) is refused
+            at construction, as a typed authoring error, instead of failing
+            later inside the data converter while the workflow schedules the
+            activity.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     message: str
-    context: dict[str, Any] | None = None
+    context: dict[str, JsonValue] | None = None
 
 
 class AgentActivityResult(BaseModel):

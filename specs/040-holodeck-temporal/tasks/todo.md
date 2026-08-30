@@ -33,12 +33,13 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 
 ## Phase 4 — Integration, sample, acceptance criteria
 
-- [ ] **T9** Hardship fixtures: 2 agents, 2 gates, 036 table, worker.yaml, sample workflow (S)
-- [ ] **T10** Integration AC-1/AC-2/AC-3 against `temporal server start-dev`, mocked backend (M)
-- [ ] **T11** Integration AC-4 (worker subprocess e2e) + AC-5 (replay, zero LLM calls) + Worker-init sandbox backstop (M)
-- [ ] **T12** OTel AC-6: span parity with `holodeck test`; GenAI spans nest under activity span (M)
-- [ ] **T13** Live smoke `@slow`, `sample/temporal-hardship/` demo, docs, `specs/index.md` row (S)
-- [ ] **T14** Gate-schema codegen: `holodeck generate models` — typed Pydantic models from gate schemas, pairs with `output_as()` (M)
+- [x] **T9** Hardship fixtures: 2 agents, 2 gates, 036 table, worker.yaml, sample workflow (S)
+- [x] **T10** Integration AC-1/AC-2/AC-3 against `start_local`, mocked backend (CI-runnable; live counterpart = T13 smoke) (M)
+- [x] **T11** Integration AC-4 (worker subprocess e2e) + AC-5 (replay, zero LLM calls) + Worker-init sandbox backstop (M)
+- [x] **T12** OTel AC-6: span parity with `holodeck test`; GenAI spans nest under activity span (M)
+- [x] **T13** Live smoke `@slow`, `sample/temporal-hardship/` demo, `specs/index.md` row (S)
+- [x] **T17** Docsite update (`docs/`): temporal guide (both personas) + worker.yaml reference + HITL approval pattern (signal + wait_condition + timer race), wired into nav (M)
+- [x] **T14** ~~Gate-schema codegen~~ — moved to spec 041 (2026-08-30): pairs naturally with the file-input work and 040 is otherwise complete
 
 ### Checkpoint: Complete
 - [ ] AC-1 … AC-6 demonstrated by named tests; `make ci` clean; spec status updated

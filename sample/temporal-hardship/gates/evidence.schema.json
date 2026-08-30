@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hardship evidence",
+  "description": "The gate the evidence agent's structured output must cross. Its shape is also the decision table's named-input shape, so the workflow can hand the gated object straight to evaluate().",
+  "type": "object",
+  "properties": {
+    "income": {
+      "type": "object",
+      "properties": {
+        "net": { "type": "number" },
+        "expenses": { "type": "number" }
+      },
+      "required": ["net", "expenses"],
+      "additionalProperties": false
+    },
+    "residency": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["verified", "unverified"] }
+      },
+      "required": ["status"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["income", "residency"],
+  "additionalProperties": false
+}

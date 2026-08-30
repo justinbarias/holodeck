@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hardship decision letter",
+  "description": "The gate the letter agent's structured output must cross.",
+  "type": "object",
+  "properties": {
+    "letter": { "type": "string", "minLength": 1 },
+    "tone": { "type": "string", "enum": ["supportive", "neutral"] }
+  },
+  "required": ["letter", "tone"],
+  "additionalProperties": false
+}

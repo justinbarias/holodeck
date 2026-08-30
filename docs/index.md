@@ -29,6 +29,7 @@ uv tool install holodeck-ai@latest --prerelease allow --python 3.10
 - **[Evaluations](guides/evaluations.md)** - Testing and evaluation framework
 - **[Global Configuration](guides/global-config.md)** - System-wide settings and precedence rules
 - **[Agent Server](guides/serve.md)** - Deploy agents as REST and AG-UI endpoints
+- **[Temporal Integration](guides/temporal.md)** - Build workflows and host schema-gated agents on Temporal
 - **[Observability](guides/observability.md)** - OpenTelemetry integration and tracing
 - **[API Reference](api/models.md)** - Python API documentation
 
