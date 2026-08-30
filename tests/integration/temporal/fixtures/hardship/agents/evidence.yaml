@@ -1,0 +1,47 @@
+name: hardship-evidence-extractor
+description: >-
+  Extracts the income and residency evidence a hardship decision needs from an
+  applicant's free-text statement.
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+  auth_provider: oauth_token
+  temperature: 0.0
+  max_tokens: 1024
+instructions:
+  inline: |
+    You read an applicant's hardship statement and extract the evidence a
+    caseworker needs, nothing more.
+
+    Report the applicant's monthly net income and monthly expenses in whole
+    dollars, and whether their residency has been verified by a case officer.
+    Use "verified" only when the statement says the residency was verified;
+    otherwise use "unverified".
+
+    Do not infer, estimate, or editorialise. Respond only with the structured
+    output.
+response_format:
+  type: object
+  properties:
+    income:
+      type: object
+      properties:
+        net:
+          type: number
+          description: Monthly net income in dollars.
+        expenses:
+          type: number
+          description: Monthly expenses in dollars.
+      required: [net, expenses]
+      additionalProperties: false
+    residency:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [verified, unverified]
+          description: Whether a case officer verified the applicant's residency.
+      required: [status]
+      additionalProperties: false
+  required: [income, residency]
+  additionalProperties: false

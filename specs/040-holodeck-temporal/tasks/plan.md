@@ -84,7 +84,7 @@ history), and the timeout/retry parameters object.
 
 ### Phase 4: Integration, sample, acceptance criteria
 
-- [ ] T9: Hardship fixtures
+- [x] T9: Hardship fixtures
 - [ ] T10: Integration tests AC-1/AC-2/AC-3
 - [ ] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
 - [ ] T12: OTel test AC-6
@@ -396,13 +396,13 @@ the proof that timeout/retry configuration is caller-side and functional
 (feeds AC-2).
 
 **Acceptance criteria:**
-- [ ] Fixture agents load through the existing `Agent` model
-- [ ] Table is the same one the 036 test suite evaluates (AC-3 comparability)
-- [ ] Workflow module passes the T5 sandbox harness
+- [x] Fixture agents load through the existing `Agent` model
+- [x] Table is the same one the 036 test suite evaluates (AC-3 comparability)
+- [x] Workflow module passes the T5 sandbox harness
 
 **Verification:**
-- [ ] `pytest tests/unit/temporal/test_fixtures_load.py -n auto`
-- [ ] Quality gates
+- [x] `pytest tests/unit/temporal/test_fixtures_load.py -n auto`
+- [x] Quality gates
 
 **Dependencies:** T5 (sandbox harness), T7 (worker.yaml shape)
 **Files likely touched:** `tests/integration/temporal/fixtures/hardship/*`

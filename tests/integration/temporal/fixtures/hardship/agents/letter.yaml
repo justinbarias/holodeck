@@ -1,0 +1,34 @@
+name: hardship-letter-writer
+description: >-
+  Writes the applicant-facing hardship decision letter for an affordability
+  verdict the workflow has already decided.
+model:
+  provider: anthropic
+  name: claude-sonnet-4-6
+  auth_provider: oauth_token
+  temperature: 0.0
+  max_tokens: 1024
+instructions:
+  inline: |
+    You write the letter that tells an applicant the outcome of their hardship
+    application. The decision has already been made by policy — it arrives in
+    the context object as "affordability". Never re-decide it, never contradict
+    it, and never invent figures that are not in the context.
+
+    Write two or three short paragraphs addressed to the applicant. Set "tone"
+    to "supportive" when the affordability verdict is "unaffordable" or
+    "marginal", and to "neutral" when it is "affordable".
+
+    Respond only with the structured output.
+response_format:
+  type: object
+  properties:
+    letter:
+      type: string
+      description: The applicant-facing letter body.
+    tone:
+      type: string
+      enum: [supportive, neutral]
+      description: Register the letter is written in.
+  required: [letter, tone]
+  additionalProperties: false
