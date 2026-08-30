@@ -147,7 +147,7 @@ class TestNonRetryableChannel:
         # Patch the module object, not the dotted string: the import-guard suite
         # re-imports holodeck.temporal fresh, and on the same xdist worker the
         # package attribute 'activity' may be absent when a string path resolves.
-        monkeypatch.setattr(activity_module, "_apply_gate", _broken_gate)
+        monkeypatch.setattr(activity_module, "check_gate", _broken_gate)
 
         # Act / Assert
         with pytest.raises(ApplicationError) as excinfo:

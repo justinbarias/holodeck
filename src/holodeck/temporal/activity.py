@@ -8,7 +8,8 @@ payload or the workflow history (decision 14).
 
 Two seams from the 036 spine are reused, never rewritten:
 ``resolve_agent_path``/``load_gate_schema`` (the only path and schema seams,
-decision 1) and ``edge``'s gate application. The invocation half of
+decision 1) and ``edge.check_gate`` (the same gate the D3 surface exposes to
+workflow code). The invocation half of
 ``execute_edge_node`` is deliberately *not* reused: as that function's own
 docstring anticipates, the activity invokes the backend against Temporal's
 retry and cancellation seams and needs the token usage and turn count the
@@ -60,8 +61,8 @@ from holodeck.lib.backends.base import BackendInitError
 from holodeck.lib.errors import ConfigError, ExecutionError, GateSchemaError
 from holodeck.lib.errors import FileNotFoundError as HoloDeckFileNotFoundError
 from holodeck.lib.workflow.edge import (
-    _apply_gate,
     _teardown,
+    check_gate,
     load_gate_schema,
     resolve_agent_path,
 )
@@ -177,12 +178,12 @@ async def _run_gated_turn(
                 f"{result.error_reason}"
             )
 
-        gated = _apply_gate(node.id, result, gate_schema)
+        output = check_gate(result.structured_output, gate_schema, node_id=node.id)
     finally:
         agent_base_dir.reset(token)
 
     return AgentActivityResult(
-        output=gated.value,
+        output=output,
         token_usage=result.token_usage,
         num_turns=result.num_turns,
         agent_id=node.id,
