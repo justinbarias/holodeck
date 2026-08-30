@@ -16,11 +16,11 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 
 ## Phase 2 — Deterministic helpers + plugin (D3)
 
-- [ ] **T5** `holodeck.temporal.deterministic` surface + sandbox-safety unit test (`prepare_workflow`, with positive control) (M)
-- [ ] **T6** `HoloDeckPlugin` (`SimplePlugin`): pydantic data converter + activity registration over the T3 factory (S)
+- [x] **T5** `holodeck.temporal.deterministic` surface + sandbox-safety unit test (`prepare_workflow`, with positive control) (M)
+- [x] **T6** `HoloDeckPlugin` (`SimplePlugin`): pydantic data converter + activity registration over the T3 factory (S)
 
 ### Checkpoint 2
-- [ ] D3 modules pass sandbox validation; plugin and manual wiring produce identical definitions
+- [x] D3 modules pass sandbox validation; plugin and manual wiring produce identical definitions
 
 ## Phase 3 — Worker CLI (D4)
 

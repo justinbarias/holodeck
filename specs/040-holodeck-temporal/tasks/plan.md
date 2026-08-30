@@ -65,8 +65,8 @@ history), and the timeout/retry parameters object.
 
 ### Phase 2: Deterministic helpers + plugin (D3, D1 sugar)
 
-- [ ] T5: D3 helper surface + sandbox-safety unit test
-- [ ] T6: `HoloDeckPlugin`
+- [x] T5: D3 helper surface + sandbox-safety unit test
+- [x] T6: `HoloDeckPlugin`
 
 ### Checkpoint 2: Helpers
 - [ ] D3 modules pass `prepare_workflow` sandbox validation
