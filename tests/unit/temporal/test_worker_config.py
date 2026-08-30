@@ -303,31 +303,26 @@ class TestEnvOverrides:
         # Assert
         assert config.temporal.task_queue == "env-queue"
 
-    @pytest.mark.parametrize(
-        ("env_name", "attribute", "expected"),
-        [
-            (ENV_ADDRESS, "address", "temporal.internal:7233"),
-            (ENV_NAMESPACE, "namespace", "hardship-ns"),
-            (ENV_TASK_QUEUE, "task_queue", "hardship"),
-        ],
-    )
-    def test_empty_env_value_is_ignored(
+    @pytest.mark.parametrize("env_name", [ENV_ADDRESS, ENV_NAMESPACE, ENV_TASK_QUEUE])
+    def test_empty_env_value_fails_closed(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         env_name: str,
-        attribute: str,
-        expected: str,
     ) -> None:
+        """A present-but-empty override is a broken secret or template.
+
+        It must refuse to start, never silently fall back to the file value —
+        for the task queue that fallback would route the worker to unintended
+        workloads.
+        """
         # Arrange
         path = write_config(tmp_path, FULL_YAML)
         monkeypatch.setenv(env_name, "")
 
-        # Act
-        config = load_worker_config(path)
-
-        # Assert
-        assert getattr(config.temporal, attribute) == expected
+        # Act / Assert
+        with pytest.raises(ConfigError, match="must not be blank"):
+            load_worker_config(path)
 
     def test_tls_has_no_env_override(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

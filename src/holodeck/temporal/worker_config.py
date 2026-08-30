@@ -44,7 +44,14 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from pydantic import ValidationError as PydanticValidationError
 
 from holodeck.config.validator import flatten_pydantic_errors
@@ -83,13 +90,18 @@ class TemporalConnection(BaseModel):
     task_queue: str
     tls: bool = Field(default=False)
 
-    @field_validator("task_queue")
+    @field_validator("address", "namespace", "task_queue")
     @classmethod
-    def _non_blank_task_queue(cls, value: str) -> str:
-        """Refuse a blank task queue.
+    def _non_blank(cls, value: str, info: ValidationInfo) -> str:
+        """Refuse a blank connection string.
+
+        A blank value can only mean a broken secret, template, or environment
+        override; every one of these fields silently misroutes the worker if
+        it defaults or falls back, so all three fail closed.
 
         Args:
-            value: The configured task queue name.
+            value: The configured value.
+            info: Field context (names the offending field).
 
         Returns:
             The value unchanged.
@@ -100,7 +112,7 @@ class TemporalConnection(BaseModel):
                 a :class:`~holodeck.lib.errors.ConfigError`.
         """
         if not value.strip():
-            raise ValueError("task_queue must not be blank")
+            raise ValueError(f"{info.field_name} must not be blank")
         return value
 
 
@@ -159,8 +171,9 @@ def _apply_env_overrides(temporal: dict[str, Any]) -> None:
     Applied before validation so an env-supplied ``task_queue`` satisfies the
     required field, and so the value is subject to the same checks a file
     value is. Shell environment wins over the file, matching ConfigLoader's
-    precedence. An empty-string value is treated as unset: an exported-but-
-    blank variable is a shell accident, not an instruction to connect nowhere.
+    precedence. A present-but-empty variable overrides too — and then fails
+    the non-blank validators. A broken secret or template must fail loud at
+    load, not silently fall back to whatever the file says (fail closed).
 
     Args:
         temporal: The mutable ``temporal:`` mapping from the parsed YAML.
@@ -171,7 +184,7 @@ def _apply_env_overrides(temporal: dict[str, Any]) -> None:
         ("task_queue", ENV_TASK_QUEUE),
     ):
         value = os.environ.get(env_name)
-        if value:
+        if value is not None:
             temporal[key] = value
 
 

@@ -121,6 +121,29 @@ def _diagnose(proc: subprocess.Popen[bytes], out: Path, err: Path) -> str:
     )
 
 
+def _kill_process_group(proc: subprocess.Popen[bytes]) -> None:
+    """Terminate the worker's whole process tree, escalating if needed.
+
+    The worker runs in its own session (``start_new_session=True``), so its
+    Claude CLI children share its process group. SIGTERM first gives the SDK's
+    own cleanup a chance; SIGKILL after a bounded wait guarantees no
+    credential-bearing child survives a failed test.
+
+    Args:
+        proc: The worker subprocess (group leader).
+    """
+    for sig, timeout in ((signal.SIGTERM, 10), (signal.SIGKILL, 10)):
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            return
+        try:
+            proc.wait(timeout=timeout)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
 class TestLiveWorkerCommand:
     """The CLI process serves a real workflow execution and stops cleanly."""
 
@@ -158,6 +181,16 @@ class TestLiveWorkerCommand:
 
             child_env: dict[str, Any] = dict(os.environ)
             child_env.pop("CLAUDECODE", None)
+            # The loader gives TEMPORAL_* env vars precedence over the file.
+            # Inherited overrides would point the worker at a real Temporal
+            # environment instead of the dev server — strip them so the
+            # generated worker.yaml is the only source of truth.
+            for var in (
+                "TEMPORAL_ADDRESS",
+                "TEMPORAL_NAMESPACE",
+                "TEMPORAL_TASK_QUEUE",
+            ):
+                child_env.pop(var, None)
             assert child_env.get("CLAUDE_CODE_OAUTH_TOKEN"), (
                 "the worker subprocess needs CLAUDE_CODE_OAUTH_TOKEN in its "
                 "environment to reach Claude"
@@ -167,6 +200,9 @@ class TestLiveWorkerCommand:
             stderr_file = stderr_path.open("wb")
             # Same interpreter, therefore the same virtualenv: the subprocess
             # inherits no shell activation of its own.
+            # Own session/process group: an in-flight activity spawns a
+            # Claude CLI child, and failure cleanup must be able to kill the
+            # whole tree, not just the worker PID.
             proc = subprocess.Popen(  # noqa: S603
                 [
                     sys.executable,
@@ -179,6 +215,7 @@ class TestLiveWorkerCommand:
                 stdout=stdout_file,
                 stderr=stderr_file,
                 env=child_env,
+                start_new_session=True,
             )
 
             deadline = time.monotonic() + STARTUP_GRACE_SECONDS
@@ -219,8 +256,7 @@ class TestLiveWorkerCommand:
             assert returncode == 0, _diagnose(proc, stdout_path, stderr_path)
         finally:
             if proc is not None and proc.poll() is None:
-                proc.kill()
-                proc.wait(timeout=30)
+                _kill_process_group(proc)
             for handle in (stdout_file, stderr_file):
                 if handle is not None:
                     handle.close()
