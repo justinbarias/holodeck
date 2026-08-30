@@ -324,6 +324,29 @@ class TestEnvOverrides:
         with pytest.raises(ConfigError, match="must not be blank"):
             load_worker_config(path)
 
+    @pytest.mark.parametrize("env_name", [ENV_ADDRESS, ENV_NAMESPACE, ENV_TASK_QUEUE])
+    @pytest.mark.parametrize("padded", ["hardship ", " hardship", "\thardship\n"])
+    def test_padded_env_value_fails_closed(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        env_name: str,
+        padded: str,
+    ) -> None:
+        """Leading/trailing whitespace is refused, never silently kept.
+
+        A padded task queue polls a *different* queue than the intended one —
+        a worker that quietly polls the wrong queue looks identical to one
+        that is down. Same fail-closed rule as the blank case.
+        """
+        # Arrange
+        path = write_config(tmp_path, FULL_YAML)
+        monkeypatch.setenv(env_name, padded)
+
+        # Act / Assert
+        with pytest.raises(ConfigError, match="leading or trailing whitespace"):
+            load_worker_config(path)
+
     def test_tls_has_no_env_override(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

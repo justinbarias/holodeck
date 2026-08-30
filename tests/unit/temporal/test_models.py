@@ -58,6 +58,34 @@ class TestAgentActivityInput:
         assert decoded == payload
         assert decoded.context == {"ticker": "ALXN", "year": 2007}
 
+    def test_non_json_context_value_is_refused_at_construction(self):
+        """A non-JSON context value is a typed authoring error, refused here.
+
+        Without this, the arbitrary object validates and then blows up inside
+        the data converter while the workflow schedules the activity — a
+        workflow-task failure instead of an error at the call site.
+        """
+        # Act / Assert
+        with pytest.raises(ValidationError):
+            AgentActivityInput(message="hi", context={"bad": object()})
+
+    def test_set_context_value_is_refused_at_construction(self):
+        """Sets are not JSON; refused at construction, not in the converter."""
+        # Act / Assert
+        with pytest.raises(ValidationError):
+            AgentActivityInput(message="hi", context={"bad": {1, 2}})
+
+    def test_nested_json_context_survives(self):
+        """Nested JSON values (lists, dicts, null) validate and round-trip."""
+        # Act
+        payload = AgentActivityInput(
+            message="hi",
+            context={"a": [1, 2.5, "x", None, {"b": True}]},
+        )
+
+        # Assert
+        assert payload.context == {"a": [1, 2.5, "x", None, {"b": True}]}
+
     def test_unknown_field_is_refused(self):
         """Extra payload fields are a contract break, not a silent pass."""
         # Act / Assert
