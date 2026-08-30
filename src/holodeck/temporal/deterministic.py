@@ -41,6 +41,14 @@ served through ``imports_passed_through()`` is not re-executed::
 
 ``load_decision_table`` reads a file, so it is the one member of this surface
 that is not callable from inside a workflow run.
+
+Replay compatibility: a table evaluated in workflow code is **part of the
+workflow definition**. Changing the YAML between deployments changes replay
+behavior for open workflows exactly as editing workflow code would — the
+sibling-module placement solves only the sandbox re-import problem, not
+cross-deployment versioning. Apply the same discipline as for any workflow
+code change: ``workflow.patched()`` branches or Temporal Worker Versioning,
+and keep the table's ``version`` field updated so histories are auditable.
 """
 
 from __future__ import annotations

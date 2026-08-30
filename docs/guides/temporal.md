@@ -278,6 +278,17 @@ def decide(
     passed-through sibling module is already loaded, so its file read does not
     run again.
 
+!!! warning "A table is workflow code for versioning purposes"
+    Sibling placement solves the sandbox problem only — it does not make
+    table changes replay-safe. `evaluate(TABLE, ...)` runs in workflow code,
+    so editing the YAML between deployments changes replay behavior for open
+    workflows exactly as editing an `if` statement would. Apply the same
+    discipline as for any workflow-definition change: gate the new policy
+    behind `workflow.patched()` or deploy it with
+    [Temporal Worker Versioning](https://docs.temporal.io/workers#worker-versioning),
+    and bump the table's `version` field so completed histories stay
+    auditable.
+
 The hardship sample uses the
 [gate-shape-equals-table-input-shape](decision-tables.md#use-a-table-with-an-agent-workflow)
 pattern. As a result, `evaluate(TABLE, evidence.output)` needs no mapping

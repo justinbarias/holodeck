@@ -1,0 +1,45 @@
+# The hardship affordability table.
+#
+# Byte-for-byte the same decision the 036 conformance suite evaluates: this
+# file was generated from `tests/unit/workflow/test_table_eval.py::_table()`,
+# which remains the source of truth. AC-3 compares the Verdict this table
+# produces against that suite's, so the id, version, hit policy, inputs,
+# outputs and rules must stay identical — `tests/unit/temporal/
+# test_fixtures_load.py` asserts the two are the same model, and will fail if
+# either side drifts.
+#
+# The input expressions read `income.net`, `income.expenses` and
+# `residency.status`, which is exactly the shape of the evidence gate: the
+# workflow hands the gated object to `evaluate()` with no mapping in between.
+id: affordability
+version: 2026-06-01.1
+hit_policy: UNIQUE
+inputs:
+- name: surplus_ratio
+  expression: (income.net - income.expenses) / income.net
+  type: number
+- name: residency_status
+  expression: residency.status
+  type: string
+outputs:
+- name: affordability
+  type: string
+  values:
+  - affordable
+  - marginal
+  - unaffordable
+rules:
+- when:
+    surplus_ratio: '>= 0.25'
+    residency_status: '"verified"'
+  then:
+    affordability: affordable
+  annotation: Comfortable surplus
+- when:
+    surplus_ratio: '[0.10..0.25)'
+  then:
+    affordability: marginal
+- when:
+    surplus_ratio: < 0.10
+  then:
+    affordability: unaffordable

@@ -1,0 +1,18 @@
+# Registration only (decisions 8 and 9): no timeouts and no retry policy live
+# here — the workflow sets those on each execute_activity call.
+temporal:
+  address: localhost:7233
+  namespace: default
+  task_queue: hardship
+nodes:
+  - id: evidence
+    edge:
+      agent: agents/evidence.yaml
+    gate:
+      schema: gates/evidence.schema.json
+    source: Hardship Policy v4.2 §72
+  - id: letter
+    edge:
+      agent: agents/letter.yaml
+    gate:
+      schema: gates/letter.schema.json

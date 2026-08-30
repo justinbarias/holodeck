@@ -41,8 +41,9 @@ metrics/*
 /docs/schemas/
 .holodeck/cache
 
-# samples folder
-/sample
+# samples folder (temporal-hardship ships with the docs quickstart)
+/sample/*
+!/sample/temporal-hardship/
 report.md
 
 # Git worktrees
