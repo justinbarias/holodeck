@@ -362,7 +362,10 @@ personas:
   `imports_passed_through()` for the D3 imports, error taxonomy (model faults
   retryable, authoring faults `non_retryable=True`), and the workflow-owned
   business-rule feedback-retry pattern (bounded loop, `context` re-invoke,
-  Context (JSON) rendering).
+  Context (JSON) rendering), and the human-in-the-loop approval pattern —
+  `@workflow.signal` + `workflow.wait_condition` with a timer race for SLA
+  escalation (nothing shipped in code; Temporal natives suffice, decided
+  2026-08-30, recorded in specs/041-temporal-file-inputs/spec.md §4).
 * **worker.yaml host** — `worker.yaml` reference (temporal block, nodes,
   `TEMPORAL_*` env overrides fail-closed, path confinement), `holodeck worker`
   CLI (activities-only, graceful shutdown, `--task-queue`), install via
