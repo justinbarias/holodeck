@@ -39,7 +39,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 - [x] **T12** OTel AC-6: span parity with `holodeck test`; GenAI spans nest under activity span (M)
 - [x] **T13** Live smoke `@slow`, `sample/temporal-hardship/` demo, `specs/index.md` row (S)
 - [x] **T17** Docsite update (`docs/`): temporal guide (both personas) + worker.yaml reference + HITL approval pattern (signal + wait_condition + timer race), wired into nav (M)
-- [ ] **T14** Gate-schema codegen: `holodeck generate models` — typed Pydantic models from gate schemas, pairs with `output_as()` (M)
+- [x] **T14** ~~Gate-schema codegen~~ — moved to spec 041 (2026-08-30): pairs naturally with the file-input work and 040 is otherwise complete
 
 ### Checkpoint: Complete
 - [ ] AC-1 … AC-6 demonstrated by named tests; `make ci` clean; spec status updated

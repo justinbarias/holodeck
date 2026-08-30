@@ -58,7 +58,15 @@ activity. Each file type has exactly one route:
 | image | `AgentActivityInput.files` → backend multimodal input |
 | pdf, text, excel, word, powerpoint, csv | `parse_document` activity → markdown → workflow embeds in `message`/`context` |
 
-### D3 — Serve/AG-UI bridge documentation
+### D3 — Gate-schema codegen (moved from 040's T14)
+
+`holodeck generate models --config worker.yaml`: emit a module with one typed
+Pydantic model per edge-node gate schema (datamodel-code-generator), pairing
+with `AgentActivityResult.output_as()` for typed workflow code. Deterministic
+output (stable ordering, no timestamps). Moved here 2026-08-30 — it pairs with
+the file-input work and 040 shipped without it.
+
+### D4 — Serve/AG-UI bridge documentation
 
 The existing bytes → temp file → `FileInput` bridge in
 `holodeck.serve.file_utils` (`create_temp_file_from_bytes`,
@@ -92,6 +100,7 @@ rebuild it.
 | 5 | `parse_document` is auto-registered by worker CLI and plugin under a fixed name. Opt-in config rejected: configuration for something with no knobs. |
 | 6 | One file per `parse_document` call. Batch rejected: one bad file would fail/retry the whole batch and compound the payload cap. |
 | 7 | HITL ships nothing in code. 040's T17 documents the pattern: `@workflow.signal` + `workflow.wait_condition` + timer race for SLA escalation. |
+| 8 | Gate-schema codegen (040 T14) lands in this spec — `holodeck generate models`, deterministic output. |
 
 ## 5. Acceptance criteria
 

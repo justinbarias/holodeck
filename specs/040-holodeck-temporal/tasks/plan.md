@@ -89,7 +89,7 @@ history), and the timeout/retry parameters object.
 - [x] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
 - [x] T12: OTel test AC-6
 - [x] T13: Live smoke test, `sample/` copy, index row
-- [ ] T14: Gate-schema codegen (`holodeck generate models`)
+- [x] T14: moved to spec 041 (2026-08-30)
 - [x] T17: docsite update — temporal guide + worker.yaml reference (`docs/`)
 
 ### Checkpoint: Complete
@@ -496,6 +496,10 @@ and the spec status line. Docsite content moved to T17.
 **Estimated scope:** S
 
 ### Task 14: Gate-schema codegen (`holodeck generate models`)
+
+**Moved to spec 041 (2026-08-30):** codegen pairs with the file-input
+work and 040 is otherwise complete. The task text below is retained for
+history; implementation tracking lives in `specs/041-temporal-file-inputs/`.
 
 **Description:** *(added 2026-08-30, user-requested scope addition)* CLI verb
 that generates typed Pydantic models from gate JSON Schemas, so workflow code
