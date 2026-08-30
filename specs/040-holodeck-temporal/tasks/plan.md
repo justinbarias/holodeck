@@ -74,7 +74,7 @@ history), and the timeout/retry parameters object.
 
 ### Phase 3: Worker CLI (D4)
 
-- [ ] T7: `WorkerConfig` model and loader
+- [x] T7: `WorkerConfig` model and loader
 - [ ] T8: `holodeck worker` command
 
 ### Checkpoint 3: Worker
@@ -271,13 +271,13 @@ ConfigLoader precedence. Node paths resolve relative to the worker.yaml
 directory through `resolve_agent_path`.
 
 **Acceptance criteria:**
-- [ ] Valid worker.yaml parses; unknown keys refuse (`extra="forbid"`)
-- [ ] Env vars override file values
-- [ ] A node whose agent path escapes the config directory is refused at load
+- [x] Valid worker.yaml parses; unknown keys refuse (`extra="forbid"`)
+- [x] Env vars override file values
+- [x] A node whose agent path escapes the config directory is refused at load
 
 **Verification:**
-- [ ] `pytest tests/unit/temporal/test_worker_config.py -n auto`
-- [ ] Quality gates
+- [x] `pytest tests/unit/temporal/test_worker_config.py -n auto`
+- [x] Quality gates
 
 **Dependencies:** T2
 **Files likely touched:** `src/holodeck/temporal/worker_config.py`, `tests/unit/temporal/test_worker_config.py`

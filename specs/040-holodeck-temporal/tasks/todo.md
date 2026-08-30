@@ -24,7 +24,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 
 ## Phase 3 — Worker CLI (D4)
 
-- [ ] **T7** `WorkerConfig` model + loader: worker.yaml (temporal connection + inline nodes, registration only — no timeouts), env overrides, path confinement (M)
+- [x] **T7** `WorkerConfig` model + loader: worker.yaml (temporal connection + inline nodes, registration only — no timeouts), env overrides, path confinement (M)
 - [ ] **T8** `holodeck worker` command: activities-only Worker, `TracingInterceptor`, graceful shutdown, guarded import (M)
 
 ### Checkpoint 3
