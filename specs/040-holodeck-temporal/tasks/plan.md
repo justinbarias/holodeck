@@ -75,7 +75,7 @@ history), and the timeout/retry parameters object.
 ### Phase 3: Worker CLI (D4)
 
 - [x] T7: `WorkerConfig` model and loader
-- [ ] T16: live `holodeck worker` integration test (real dev server, no mocks)
+- [x] T16: live `holodeck worker` integration test (real dev server, no mocks)
 - [x] T8: `holodeck worker` command
 
 ### Checkpoint 3: Worker
@@ -334,14 +334,14 @@ Live-test conventions of T15: `tests/integration/.env`, skip unless
 `@pytest.mark.integration @pytest.mark.slow`.
 
 **Acceptance criteria:**
-- [ ] Worker subprocess registers activities from worker.yaml and serves a real workflow execution (LLM call included, no mocks anywhere)
-- [ ] Gated output crosses the wire typed (pydantic converter) and matches the gate schema exactly
-- [ ] SIGINT produces graceful shutdown: exit code 0, no orphan processes
+- [x] Worker subprocess registers activities from worker.yaml and serves a real workflow execution (LLM call included, no mocks anywhere)
+- [x] Gated output crosses the wire typed (pydantic converter) and matches the gate schema exactly
+- [x] SIGINT produces graceful shutdown: exit code 0, no orphan processes
 
 **Verification:**
-- [ ] `SKIP_LLM_INTEGRATION_TESTS=false pytest tests/integration/temporal/test_live_worker_command.py -v`
-- [ ] Skip path: collected-but-skipped without env override
-- [ ] Quality gates
+- [x] `SKIP_LLM_INTEGRATION_TESTS=false pytest tests/integration/temporal/test_live_worker_command.py -v`
+- [x] Skip path: collected-but-skipped without env override
+- [x] Quality gates
 
 **Dependencies:** T7, T8
 **Files likely touched:** `tests/integration/temporal/test_live_worker_command.py`
