@@ -413,13 +413,16 @@ the proof that timeout/retry configuration is caller-side and functional
 
 ### Task 10: Integration tests AC-1/AC-2/AC-3
 
-**Description:** Against `temporal server start-dev` with a mocked backend
-(deterministic canned `structured_output`). AC-1: workflow receives a
-gate-validated envelope. AC-2: backend rigged to emit a gate-failing object
-first, passing object second — activity fails once, retry succeeds, history
-shows both attempts. AC-3: table helper in workflow code returns the same
-`Verdict` as the 036 suite for the same inputs. Skip cleanly when the
-`temporal` CLI binary is absent.
+**Description:** Live LLM (amended 2026-08-30: no mocked backend), against
+`WorkflowEnvironment.start_local` like the other live suites. AC-1: workflow
+receives a gate-validated envelope from a real agent turn. AC-2: live model
+calls with the gate seam instrumented — attempt 1's gate rejects
+unconditionally, attempt 2 validates normally — activity fails once, retry
+succeeds, history shows both attempts (a real model cannot be ordered to fail
+then pass on identical input, so the seam, not the LLM, is rigged). AC-3:
+table helper in workflow code returns the same `Verdict` as the 036 suite for
+the same inputs. Live-test conventions: `tests/integration/.env` token +
+`SKIP_LLM_INTEGRATION_TESTS=false`, skipped otherwise.
 
 **Acceptance criteria:**
 - [ ] AC-1, AC-2, AC-3 each demonstrated by a named test

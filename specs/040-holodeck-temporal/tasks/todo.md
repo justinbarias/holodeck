@@ -34,7 +34,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 ## Phase 4 — Integration, sample, acceptance criteria
 
 - [x] **T9** Hardship fixtures: 2 agents, 2 gates, 036 table, worker.yaml, sample workflow (S)
-- [ ] **T10** Integration AC-1/AC-2/AC-3 against `temporal server start-dev`, mocked backend (M)
+- [ ] **T10** Integration AC-1/AC-2/AC-3, live LLM against `start_local`; AC-2 rigs the gate seam, not the model (M)
 - [ ] **T11** Integration AC-4 (worker subprocess e2e) + AC-5 (replay, zero LLM calls) + Worker-init sandbox backstop (M)
 - [ ] **T12** OTel AC-6: span parity with `holodeck test`; GenAI spans nest under activity span (M)
 - [ ] **T13** Live smoke `@slow`, `sample/temporal-hardship/` demo, `specs/index.md` row (S)
