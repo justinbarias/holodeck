@@ -519,19 +519,27 @@ def load_gate_schema(node: EdgeNode, workflow_dir: Path) -> dict[str, Any]:
     return schema
 
 
-def _apply_gate(
-    node_id: str, result: ExecutionResult, gate_schema: dict[str, Any]
-) -> GatedOutput:
-    """Validate an agent result against the gate schema.
+def check_gate(
+    obj: Any, schema: dict[str, Any], *, node_id: str = "gate"
+) -> dict[str, Any]:
+    """Validate a plain object against a gate schema.
+
+    The gate-check half of this module, on plain values: no
+    ``ExecutionResult``, no backend import, nothing but ``jsonschema``. That is
+    what lets Temporal workflow code call it (spec 040 D3) as well as the
+    activity that produced the object in the first place.
 
     Args:
-        node_id: Id of the edge node, used to locate any failure.
-        result: The agent's execution result.
-        gate_schema: The gate JSON Schema, already checked by
+        obj: The candidate object. ``None`` means the agent produced free text
+            and there is nothing to present to the gate — a rejection, not a
+            crash.
+        schema: The gate JSON Schema, already checked by
             :func:`load_gate_schema`.
+        node_id: Id of the edge node the object came from, used to locate any
+            failure in the message.
 
     Returns:
-        The :class:`GatedOutput` carrying the validated object.
+        The validated object, unchanged.
 
     Raises:
         GateSchemaError: If a reference cannot be resolved here. For a gate in
@@ -547,7 +555,7 @@ def _apply_gate(
         GateValidationError: If the agent produced free text, or the structured
             output does not satisfy the gate schema.
     """
-    value = result.structured_output
+    value = obj
     if value is None:
         raise GateValidationError(
             node_id,
@@ -555,9 +563,18 @@ def _apply_gate(
             "presented to the gate",
         )
 
-    validator_cls = jsonschema.validators.validator_for(gate_schema)
+    validator_cls = jsonschema.validators.validator_for(schema)
+    # D3 callers hand check_gate raw dicts that never went through
+    # load_gate_schema, so the schema itself must be checked here: a malformed
+    # gate must be an authoring fault, never a gate that silently passes.
+    try:
+        validator_cls.check_schema(schema)
+    except jsonschema.SchemaError as exc:
+        raise GateSchemaError(
+            node_id, f"gate schema is not a valid JSON Schema: {exc.message}"
+        ) from exc
     validator = validator_cls(
-        gate_schema,
+        schema,
         registry=_NO_RETRIEVAL_REGISTRY,
         format_checker=validator_cls.FORMAT_CHECKER,
     )
@@ -611,7 +628,40 @@ def _apply_gate(
             f"gate output must be a JSON object the spine can name fields on, "
             f"got {type(value).__name__}",
         )
-    return GatedOutput(node_id=node_id, value=value, gate_schema=gate_schema)
+    # Detach from the caller's object: 036's GatedOutput deep-copies for the
+    # same reason. Without this a caller could validate, mutate the source (or
+    # a nested container), and pass downstream content that never crossed the
+    # gate.
+    return copy.deepcopy(value)
+
+
+def _apply_gate(
+    node_id: str, result: ExecutionResult, gate_schema: dict[str, Any]
+) -> GatedOutput:
+    """Validate an agent result against the gate schema.
+
+    The ``ExecutionResult``-shaped wrapper over :func:`check_gate`, for the
+    in-process executor. Callers holding a plain object — the Temporal
+    activity, workflow code — call :func:`check_gate` directly.
+
+    Args:
+        node_id: Id of the edge node, used to locate any failure.
+        result: The agent's execution result.
+        gate_schema: The gate JSON Schema, already checked by
+            :func:`load_gate_schema`.
+
+    Returns:
+        The :class:`GatedOutput` carrying the validated object.
+
+    Raises:
+        GateSchemaError: As described in :func:`check_gate`.
+        GateValidationError: As described in :func:`check_gate`.
+    """
+    return GatedOutput(
+        node_id=node_id,
+        value=check_gate(result.structured_output, gate_schema, node_id=node_id),
+        gate_schema=gate_schema,
+    )
 
 
 async def _teardown(backend: AgentBackend, node_id: str) -> None:

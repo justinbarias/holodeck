@@ -472,3 +472,23 @@ class TestFailureChannels:
         with pytest.raises(ExecutionError) as excinfo:
             await fn(AgentActivityInput(message="Extract."))
         assert "429 throttled" in str(excinfo.value)
+
+
+class TestNodeIdContract:
+    """The node id is the replay-load-bearing activity name (decision 11)."""
+
+    @pytest.mark.parametrize("bad_id", ["", "   "])
+    def test_blank_node_id_is_refused_at_factory_time(
+        self, base_dir: Path, bad_id: str
+    ) -> None:
+        """An empty id would fall back to the wrapped function's name."""
+        # Arrange
+        node = EdgeNode(
+            id=bad_id,
+            edge={"agent": "agents/evidence.yaml"},  # type: ignore[arg-type]
+            gate={"schema": "gates/evidence.schema.json"},  # type: ignore[arg-type]
+        )
+
+        # Act / Assert
+        with pytest.raises(ConfigError, match="non-empty"):
+            agent_activity(node, base_dir)

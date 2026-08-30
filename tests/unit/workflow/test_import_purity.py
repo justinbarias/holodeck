@@ -4,7 +4,7 @@ Spec 040 section 7 (specs/040-holodeck-temporal/spec.md): helpers destined
 for Temporal workflow code must not import I/O modules. ``edge.py``
 therefore imports ``BackendSelector`` lazily inside
 ``execute_edge_node`` — a module-scope import would pull the Claude Agent SDK
-into any importer of the pure gate half (``load_gate_schema``/``_apply_gate``).
+into any importer of the pure gate half (``load_gate_schema``/``check_gate``).
 These tests run in a subprocess so a previously imported SDK in the test
 runner cannot mask a regression.
 """
@@ -31,6 +31,9 @@ import holodeck.lib.workflow.table_eval
 import holodeck.lib.workflow.feel
 import holodeck.models.workflow
 import holodeck.models.decision_table
+# The D3 surface a Temporal workflow author imports (spec 040 T5) rests on the
+# same modules and must stay just as free of the backend stack.
+import holodeck.temporal.deterministic
 leaked = [name for name in {forbidden!r} if name in sys.modules]
 print("LEAKED:", ", ".join(leaked) if leaked else "none")
 sys.exit(1 if leaked else 0)

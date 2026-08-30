@@ -65,8 +65,8 @@ history), and the timeout/retry parameters object.
 
 ### Phase 2: Deterministic helpers + plugin (D3, D1 sugar)
 
-- [ ] T5: D3 helper surface + sandbox-safety unit test
-- [ ] T6: `HoloDeckPlugin`
+- [x] T5: D3 helper surface + sandbox-safety unit test
+- [x] T6: `HoloDeckPlugin`
 
 ### Checkpoint 2: Helpers
 - [ ] D3 modules pass `prepare_workflow` sandbox validation
@@ -462,4 +462,4 @@ None. The spec §12 open questions were resolved: extra name = `holodeck[tempora
 T3 open questions, resolved 2026-08-30 with the user:
 
 - **Backend mode in the activity: `mode="test"` stands.** With `permission_mode: manual` that maps to the SDK's strict `default` — no silent permission escalation in a durable, retried, headless context. A dedicated `"worker"` mode would re-open the legacy test-mode escalation footgun the backend already removed; revisit only if the T13 live smoke shows real friction. Agents needing tools declare them explicitly in agent.yaml.
-- **`AgentActivityInput.context` rendering** (dict as sorted-keys JSON appended under a `Context (JSON):` header) is implemented in T3; still open for confirmation before D4/sample work depends on the prompt shape.
+- **`AgentActivityInput.context` rendering: resolved 2026-08-30 with the user — the JSON block stands.** Dict rendered as sorted-keys JSON appended under a `Context (JSON):` header. Deterministic, structured, keys carry semantics, and prose steering fits inside values (e.g. `{"instruction": ...}`). Alternatives (prompt templates, conversation-turn injection, message-only) rejected as scope creep or loss of structure. This is the feedback channel for workflow-owned validation loops: re-invoke the activity with `context={"business_rules_validation_outcome": ...}`.
