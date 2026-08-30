@@ -75,6 +75,7 @@ history), and the timeout/retry parameters object.
 ### Phase 3: Worker CLI (D4)
 
 - [x] T7: `WorkerConfig` model and loader
+- [ ] T16: live `holodeck worker` integration test (real dev server, no mocks)
 - [ ] T8: `holodeck worker` command
 
 ### Checkpoint 3: Worker
@@ -304,6 +305,46 @@ without the extra.
 
 **Dependencies:** T6, T7
 **Files likely touched:** `src/holodeck/cli/commands/worker.py`, `src/holodeck/cli/main.py` (register verb), `tests/unit/temporal/test_worker_command.py`
+**Estimated scope:** M
+
+### Task 16: Live `holodeck worker` integration test
+
+**Description:** `tests/integration/temporal/test_live_worker_command.py`:
+end-to-end test of the T8 CLI with **no mocks**. Uses
+`WorkflowEnvironment.start_local` — the real Temporal dev server binary
+(auto-downloaded, sqlite-backed), chosen over a docker compose stack because
+it gives identical server fidelity with zero docker dependency and works in
+CI unchanged. The test:
+
+1. starts the dev server and reads its `host:port`,
+2. writes a fixture `worker.yaml` (tmp_path) whose `temporal.address` points
+   at it, with one evidence node (reuse T15's AGENT_YAML/GATE_SCHEMA),
+3. spawns `holodeck worker --config worker.yaml` as a real subprocess
+   (same interpreter/venv, `CLAUDECODE` unset),
+4. waits for the worker to poll (readiness by executing the workflow with a
+   generous start-to-close, or by polling task-queue pollers via the client),
+5. runs the sample workflow through a client + local `Worker` hosting only
+   the workflow (activities come from the CLI subprocess), asserts the gated
+   output dict,
+6. sends SIGINT to the subprocess and asserts exit code 0 within the
+   graceful-shutdown window.
+
+Live-test conventions of T15: `tests/integration/.env`, skip unless
+`SKIP_LLM_INTEGRATION_TESTS=false` and `CLAUDE_CODE_OAUTH_TOKEN` set,
+`@pytest.mark.integration @pytest.mark.slow`.
+
+**Acceptance criteria:**
+- [ ] Worker subprocess registers activities from worker.yaml and serves a real workflow execution (LLM call included, no mocks anywhere)
+- [ ] Gated output crosses the wire typed (pydantic converter) and matches the gate schema exactly
+- [ ] SIGINT produces graceful shutdown: exit code 0, no orphan processes
+
+**Verification:**
+- [ ] `SKIP_LLM_INTEGRATION_TESTS=false pytest tests/integration/temporal/test_live_worker_command.py -v`
+- [ ] Skip path: collected-but-skipped without env override
+- [ ] Quality gates
+
+**Dependencies:** T7, T8
+**Files likely touched:** `tests/integration/temporal/test_live_worker_command.py`
 **Estimated scope:** M
 
 ### Task 9: Hardship fixtures

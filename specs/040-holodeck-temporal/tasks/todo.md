@@ -26,9 +26,10 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 
 - [x] **T7** `WorkerConfig` model + loader: worker.yaml (temporal connection + inline nodes, registration only — no timeouts), env overrides, path confinement (M)
 - [ ] **T8** `holodeck worker` command: activities-only Worker, `TracingInterceptor`, graceful shutdown, guarded import (M)
+- [ ] **T16** Live worker-command integration test: real `holodeck worker` subprocess against `WorkflowEnvironment.start_local` (real dev server, no mocks), workflow executes end to end, SIGINT shuts down gracefully (M)
 
 ### Checkpoint 3
-- [ ] `holodeck worker --help` works without the extra; worker starts from fixture config (mocked client)
+- [ ] `holodeck worker --help` works without the extra; worker starts from fixture config (mocked client); live worker e2e green
 
 ## Phase 4 — Integration, sample, acceptance criteria
 
