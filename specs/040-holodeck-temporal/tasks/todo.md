@@ -38,7 +38,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 - [x] **T11** Integration AC-4 (worker subprocess e2e) + AC-5 (replay, zero LLM calls) + Worker-init sandbox backstop (M)
 - [x] **T12** OTel AC-6: span parity with `holodeck test`; GenAI spans nest under activity span (M)
 - [x] **T13** Live smoke `@slow`, `sample/temporal-hardship/` demo, `specs/index.md` row (S)
-- [ ] **T17** Docsite update (`docs/`): temporal guide (both personas) + worker.yaml reference + HITL approval pattern (signal + wait_condition + timer race), wired into nav (M)
+- [x] **T17** Docsite update (`docs/`): temporal guide (both personas) + worker.yaml reference + HITL approval pattern (signal + wait_condition + timer race), wired into nav (M)
 - [ ] **T14** Gate-schema codegen: `holodeck generate models` — typed Pydantic models from gate schemas, pairs with `output_as()` (M)
 
 ### Checkpoint: Complete

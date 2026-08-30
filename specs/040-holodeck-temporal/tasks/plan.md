@@ -90,7 +90,7 @@ history), and the timeout/retry parameters object.
 - [x] T12: OTel test AC-6
 - [x] T13: Live smoke test, `sample/` copy, index row
 - [ ] T14: Gate-schema codegen (`holodeck generate models`)
-- [ ] T17: docsite update — temporal guide + worker.yaml reference (`docs/`)
+- [x] T17: docsite update — temporal guide + worker.yaml reference (`docs/`)
 
 ### Checkpoint: Complete
 - [ ] AC-1 through AC-6 demonstrated by tests
@@ -374,13 +374,13 @@ personas:
 Wire the page into docs nav/index as the docsite convention requires.
 
 **Acceptance criteria:**
-- [ ] Guide covers both personas with runnable snippets consistent with the shipped API
-- [ ] worker.yaml reference documents every field and the env-override semantics
-- [ ] Docs build/nav intact (docsite conventions followed)
+- [x] Guide covers both personas with runnable snippets consistent with the shipped API
+- [x] worker.yaml reference documents every field and the env-override semantics
+- [x] Docs build/nav intact (docsite conventions followed)
 
 **Verification:**
-- [ ] Snippets cross-checked against `src/holodeck/temporal/` signatures
-- [ ] Quality gates (docs-affecting checks)
+- [x] Snippets cross-checked against `src/holodeck/temporal/` signatures
+- [x] Quality gates (docs-affecting checks)
 
 **Dependencies:** T8, T16 (API surface final for phases 1–3); revisit after T9–T12 land
 **Files likely touched:** `docs/guides/…`, `docs/index.md` (nav)

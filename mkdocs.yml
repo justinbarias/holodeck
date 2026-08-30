@@ -48,6 +48,9 @@ nav:
     - File References: guides/file-references.md
     - Agent Server: guides/serve.md
     - Deployment: guides/deployment.md
+    - Decision Tables: guides/decision-tables.md
+    - Temporal Integration: guides/temporal.md
+    - Temporal Worker: guides/temporal-worker.md
     - Observability: guides/observability.md
   - Examples:
     - Examples: examples/README.md
@@ -116,6 +119,9 @@ plugins:
           - guides/file-references.md
           - guides/serve.md
           - guides/deployment.md
+          - guides/decision-tables.md
+          - guides/temporal.md
+          - guides/temporal-worker.md
           - guides/observability.md
         API Reference:
           - api/*.md
