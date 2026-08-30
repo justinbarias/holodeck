@@ -53,10 +53,11 @@ history), and the timeout/retry parameters object.
 
 ### Phase 1: Foundation (D1 core)
 
-- [ ] T1: `holodeck[temporal]` extra, exact pin, package skeleton
-- [ ] T2: Payload and parameter models
-- [ ] T3: Activity factory
-- [ ] T4: Error taxonomy and retry classification
+- [x] T1: `holodeck[temporal]` extra, exact pin, package skeleton
+- [x] T2: Payload and parameter models
+- [x] T3: Activity factory
+- [x] T4: Error taxonomy and retry classification
+- [x] T15: Live phase-1 e2e (real workflow, live Claude)
 
 ### Checkpoint 1: Foundation
 - [ ] Factory output is a valid Temporal activity definition (mocked backend)
@@ -87,6 +88,7 @@ history), and the timeout/retry parameters object.
 - [ ] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
 - [ ] T12: OTel test AC-6
 - [ ] T13: Live smoke test, `sample/` copy, docs, index row
+- [ ] T14: Gate-schema codegen (`holodeck generate models`)
 
 ### Checkpoint: Complete
 - [ ] AC-1 through AC-6 demonstrated by tests
@@ -103,13 +105,13 @@ naming the sandbox-test dependency as the reason for the exact pin.
 holodeck[temporal]") on import when `temporalio` is missing.
 
 **Acceptance criteria:**
-- [ ] `uv sync --extra temporal` installs `temporalio==1.32.0` on Python 3.10
-- [ ] Importing `holodeck.temporal` without the extra raises the guarded error, not `ModuleNotFoundError`
-- [ ] Core install (`uv sync`) does not pull `temporalio`
+- [x] `uv sync --extra temporal` installs `temporalio==1.32.0` on Python 3.10
+- [x] Importing `holodeck.temporal` without the extra raises the guarded error, not `ModuleNotFoundError`
+- [x] Core install (`uv sync`) does not pull `temporalio`
 
 **Verification:**
-- [ ] `pytest tests/unit/temporal/test_import_guard.py -n auto`
-- [ ] `make lint && make type-check && make security`
+- [x] `pytest tests/unit/temporal/test_import_guard.py -n auto`
+- [x] `make lint && make type-check && make security`
 
 **Dependencies:** None
 **Files likely touched:** `pyproject.toml`, `uv.lock`, `src/holodeck/temporal/__init__.py`, `tests/unit/temporal/test_import_guard.py`
@@ -129,12 +131,13 @@ workflow-side helper: `to_activity_kwargs()` expands it into
 module must stay sandbox-safe (it ships to workflow code with the D3 surface).
 
 **Acceptance criteria:**
-- [ ] Payload models serialize/deserialize through `temporalio.contrib.pydantic` converter
-- [ ] `AgentActivityResult.output` holds a plain dict (the gate-validated object), never model text
-- [ ] `ActivityParameters.to_activity_kwargs()` yields valid `RetryPolicy`/timedelta kwargs; a parameters object with neither closing timeout is refused at validation
+- [x] Payload models serialize/deserialize through `temporalio.contrib.pydantic` converter
+- [x] `AgentActivityResult.output` holds a plain dict (the gate-validated object), never model text
+- [x] `ActivityParameters.to_activity_kwargs()` yields valid `RetryPolicy`/timedelta kwargs; a parameters object with neither closing timeout is refused at validation
+- [x] *(follow-up, 2026-08-30)* `AgentActivityResult.output_as(Model)` validates the output dict into a caller-supplied Pydantic model (workflow-side sugar; wire stays a dict)
 
 **Verification:**
-- [ ] `pytest tests/unit/temporal/test_models.py -n auto`
+- [x] `pytest tests/unit/temporal/test_models.py -n auto`
 - [ ] Quality gates as in T1
 
 **Dependencies:** T1
@@ -187,6 +190,29 @@ retryable `ApplicationError` typed by class name). Authoring faults
 
 **Dependencies:** T3
 **Files likely touched:** `src/holodeck/temporal/activity.py` (or `errors.py`), `tests/unit/temporal/test_retry_classification.py`
+**Estimated scope:** S
+
+### Task 15: Live phase-1 end-to-end (real workflow, live Claude)
+
+**Description:** *(added 2026-08-30, user-requested Phase 1 addition)* One live
+integration test proving the whole phase-1 stack with zero mocks: a
+user-authored Temporal workflow (`EvidenceWorkflow`) schedules the T3
+activity by name with `ActivityParameters`, on a `WorkflowEnvironment.start_local`
+dev server with the pydantic data converter, against a real `ClaudeBackend`
+call (oauth). Asserts the workflow receives exactly the gate-validated dict.
+Skip conventions match the other live suites: requires
+`CLAUDE_CODE_OAUTH_TOKEN` in `tests/integration/.env` and
+`SKIP_LLM_INTEGRATION_TESTS=false` in the shell env.
+
+**Acceptance criteria:**
+- [x] Workflow completes against live Claude; output dict passes the gate schema exactly
+- [x] Skips cleanly without credentials or with `SKIP_LLM_INTEGRATION_TESTS=true`
+
+**Verification:**
+- [x] `SKIP_LLM_INTEGRATION_TESTS=false pytest tests/integration/temporal/ -m slow`
+
+**Dependencies:** T3, T4
+**Files likely touched:** `tests/integration/temporal/test_live_agent_workflow.py`
 **Estimated scope:** S
 
 ### Task 5: D3 helper surface + sandbox-safety unit test
@@ -390,6 +416,34 @@ spec status line.
 **Files likely touched:** `tests/integration/temporal/test_smoke_live.py`, `docs/…`, `specs/index.md`, `specs/040-holodeck-temporal/spec.md`
 **Estimated scope:** S
 
+### Task 14: Gate-schema codegen (`holodeck generate models`)
+
+**Description:** *(added 2026-08-30, user-requested scope addition)* CLI verb
+that generates typed Pydantic models from gate JSON Schemas, so workflow code
+gets static typing over `AgentActivityResult.output` instead of a bare dict.
+Reads edge-node declarations (a `worker.yaml` `nodes:` list or explicit
+`agent.yaml` paths), resolves each gate schema through the existing
+`load_gate_schema` seam, and emits a generated module (e.g. `models_gen.py`)
+via `datamodel-code-generator`. Pairs with `AgentActivityResult.output_as()`
+(added in T2 follow-up): `result.output_as(EvidenceOutput)`. Generated code
+must be pure Pydantic — sandbox-safe, importable from workflow code. The wire
+envelope is untouched: `output` stays a plain dict in history (FR-008);
+codegen is developer-ergonomics only.
+
+**Acceptance criteria:**
+- [ ] `holodeck generate models --config worker.yaml` emits a module with one model per edge node gate schema, deterministic output (stable ordering, no timestamps)
+- [ ] Generated module imports cleanly inside the workflow sandbox (reuse the T5 harness)
+- [ ] `result.output_as(GeneratedModel)` round-trips the hardship fixtures
+- [ ] Staleness detectable: regenerating over an unchanged schema is a no-op diff (CI-checkable)
+
+**Verification:**
+- [ ] `pytest tests/unit/temporal/test_codegen.py -n auto`
+- [ ] Quality gates as in T1
+
+**Dependencies:** T5 (sandbox harness), T7 (`WorkerConfig`/worker.yaml loader), T9 (fixtures)
+**Files likely touched:** `src/holodeck/cli/commands/generate.py`, `src/holodeck/temporal/codegen.py`, `tests/unit/temporal/test_codegen.py`, `pyproject.toml` (dev/extra dep `datamodel-code-generator`)
+**Estimated scope:** M
+
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
@@ -404,3 +458,8 @@ spec status line.
 ## Open Questions
 
 None. The spec §12 open questions were resolved: extra name = `holodeck[temporal]` (D12), worker config = `worker.yaml` + env + flags (D8–D10), and the `contrib.openai_agents` seam study concluded (granularity note above).
+
+T3 open questions, resolved 2026-08-30 with the user:
+
+- **Backend mode in the activity: `mode="test"` stands.** With `permission_mode: manual` that maps to the SDK's strict `default` — no silent permission escalation in a durable, retried, headless context. A dedicated `"worker"` mode would re-open the legacy test-mode escalation footgun the backend already removed; revisit only if the T13 live smoke shows real friction. Agents needing tools declare them explicitly in agent.yaml.
+- **`AgentActivityInput.context` rendering** (dict as sorted-keys JSON appended under a `Context (JSON):` header) is implemented in T3; still open for confirmation before D4/sample work depends on the prompt shape.

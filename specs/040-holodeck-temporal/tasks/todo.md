@@ -5,13 +5,14 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 
 ## Phase 1 — Foundation (D1 core)
 
-- [ ] **T1** `holodeck[temporal]` extra, exact pin `temporalio==1.32.0`, package skeleton with import guard (S)
-- [ ] **T2** Payload models: `AgentActivityInput`, `AgentActivityResult`; `ActivityParameters` as workflow-side scheduling helper (`to_activity_kwargs()`, no heartbeat) (S)
-- [ ] **T3** Activity factory: `EdgeNode` → named async activity; gate mandatory; `BackendSelector.invoke_once`; envelope return (M)
-- [ ] **T4** Error taxonomy: gate failure retryable, authoring faults `non_retryable=True`, transport retryable (S)
+- [x] **T1** `holodeck[temporal]` extra, exact pin `temporalio==1.32.0`, package skeleton with import guard (S)
+- [x] **T2** Payload models: `AgentActivityInput`, `AgentActivityResult`; `ActivityParameters` as workflow-side scheduling helper (`to_activity_kwargs()`, no heartbeat); `output_as()` typed accessor (S)
+- [x] **T3** Activity factory: `EdgeNode` → named async activity; gate mandatory; `BackendSelector.invoke_once`; envelope return (M)
+- [x] **T4** Error taxonomy: gate failure retryable, authoring faults `non_retryable=True`, transport retryable (S)
+- [x] **T15** Live phase-1 e2e: real Temporal workflow + agent activity against live Claude (`start_local` dev server, oauth, `SKIP_LLM_INTEGRATION_TESTS=false`) (S)
 
 ### Checkpoint 1
-- [ ] Factory output is a valid activity definition (mocked backend); unit suite + quality gates clean
+- [x] Factory output is a valid activity definition (mocked backend); unit suite + quality gates clean
 
 ## Phase 2 — Deterministic helpers + plugin (D3)
 
@@ -36,6 +37,7 @@ Run `make format`, `make lint`, `make type-check`, `make security` after each ta
 - [ ] **T11** Integration AC-4 (worker subprocess e2e) + AC-5 (replay, zero LLM calls) + Worker-init sandbox backstop (M)
 - [ ] **T12** OTel AC-6: span parity with `holodeck test`; GenAI spans nest under activity span (M)
 - [ ] **T13** Live smoke `@slow`, `sample/temporal-hardship/` demo, docs, `specs/index.md` row (S)
+- [ ] **T14** Gate-schema codegen: `holodeck generate models` — typed Pydantic models from gate schemas, pairs with `output_as()` (M)
 
 ### Checkpoint: Complete
 - [ ] AC-1 … AC-6 demonstrated by named tests; `make ci` clean; spec status updated

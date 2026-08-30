@@ -177,6 +177,14 @@ deploy-all = [
     "azure-mgmt-appcontainers>=4.0.0",
     "azure-identity>=1.15.0",
 ]
+# Temporal integration (spec 040): agents as durable activities, plus the
+# `holodeck worker` verb. Exact pin, same policy as bkflow-feel: the
+# sandbox-safety test drives `temporalio.worker.workflow_sandbox`
+# (SandboxedWorkflowRunner.prepare_workflow), an API the SDK marks "not yet
+# stable". Loosen to a range once that surface stabilizes.
+temporal = [
+    "temporalio==1.32.0",
+]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
