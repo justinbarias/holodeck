@@ -87,7 +87,7 @@ history), and the timeout/retry parameters object.
 - [x] T9: Hardship fixtures
 - [x] T10: Integration tests AC-1/AC-2/AC-3
 - [x] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
-- [ ] T12: OTel test AC-6
+- [x] T12: OTel test AC-6
 - [ ] T13: Live smoke test, `sample/` copy, index row
 - [ ] T14: Gate-schema codegen (`holodeck generate models`)
 - [ ] T17: docsite update — temporal guide + worker.yaml reference (`docs/`)
@@ -465,12 +465,12 @@ assert the GenAI span set (names + GenAI semconv attributes) matches. With
 activity span.
 
 **Acceptance criteria:**
-- [ ] Span parity between `holodeck test` and activity execution (AC-6)
-- [ ] GenAI spans nest under the interceptor's activity span
+- [x] Span parity between `holodeck test` and activity execution (AC-6)
+- [x] GenAI spans nest under the interceptor's activity span
 
 **Verification:**
-- [ ] `pytest tests/integration/temporal/test_otel.py -n auto -m integration`
-- [ ] Quality gates
+- [x] `pytest tests/integration/temporal/test_otel.py -n auto -m integration`
+- [x] Quality gates
 
 **Dependencies:** T10
 **Files likely touched:** `tests/integration/temporal/test_otel.py`
