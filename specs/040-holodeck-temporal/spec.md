@@ -1,7 +1,7 @@
 # SPEC: HoloDeck Agents on Temporal
 
-**Status:** Draft for review
-**Date:** 2026-08-29
+**Status:** In progress
+**Date:** 2026-08-30
 **Supersedes:** `specs/036-deterministic-spine/` (archived)
 **Method note:** This spec replaces the speckit workflow. Future specs live in this format.
 

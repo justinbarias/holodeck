@@ -43,7 +43,7 @@ Maintenance: update the row when a spec's status or task list changes. Generated
 | [037](037-gepa-optimizer/) | GEPA Optimizer Backend | draft | no task list | Builds on 033 |
 | [038](038-optimizer-progress-stream/) | Optimizer Progress Stream | shipped † | 4/35 | Merged as PR #345; checkboxes stale |
 | [039](039-policy-generator/) | Policy Generator | draft | no task list | Blocked on the pivot; depended on archived 036 |
-| [040](040-holodeck-temporal/) | HoloDeck Agents on Temporal | pending | 0/13 | Active successor to 036; first post-speckit spec; plan in `tasks/plan.md`; deferred items in issues #364/#365 |
+| [040](040-holodeck-temporal/) | HoloDeck Agents on Temporal | pending | 15/17 | Phase 4 in progress; T1-T12 and live T15-T16 complete; T13 awaits live verification; T14 and T17 remain |
 | [041](041-temporal-file-inputs/) | File and Bytestream Inputs for Temporal Agents | draft | 0/0 | Depends on 040; parse_document activity + pass-through attachments; decisions settled 2026-08-30 |
 | [—](graph-rag-integration/) | GraphRAG Integration Plan (legacy) | archived | no task list | Pre-speckit dir, no `NNN-` prefix; superseded by 016 |
 

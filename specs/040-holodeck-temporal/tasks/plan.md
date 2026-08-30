@@ -88,7 +88,7 @@ history), and the timeout/retry parameters object.
 - [x] T10: Integration tests AC-1/AC-2/AC-3
 - [x] T11: Integration tests AC-4/AC-5 + sandbox Worker-init backstop
 - [x] T12: OTel test AC-6
-- [ ] T13: Live smoke test, `sample/` copy, index row
+- [x] T13: Live smoke test, `sample/` copy, index row
 - [ ] T14: Gate-schema codegen (`holodeck generate models`)
 - [ ] T17: docsite update — temporal guide + worker.yaml reference (`docs/`)
 
@@ -484,12 +484,12 @@ through the sample workflow (manual execution). Thin runnable demo under
 and the spec status line. Docsite content moved to T17.
 
 **Acceptance criteria:**
-- [ ] Smoke test passes manually with credentials
-- [ ] `specs/index.md` row reflects final task count and status
+- [x] Smoke test passes manually with credentials
+- [x] `specs/index.md` row reflects final task count and status
 
 **Verification:**
-- [ ] `pytest -m slow tests/integration/temporal/ -n auto` (manual)
-- [ ] `make ci`
+- [x] `pytest -m slow tests/integration/temporal/ -n auto` (manual)
+- [x] `make ci`
 
 **Dependencies:** T11, T12
 **Files likely touched:** `tests/integration/temporal/test_smoke_live.py`, `docs/…`, `specs/index.md`, `specs/040-holodeck-temporal/spec.md`

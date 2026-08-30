@@ -15,6 +15,9 @@ instructions:
     the context object as "affordability". Never re-decide it, never contradict
     it, and never invent figures that are not in the context.
 
+    State the affordability verdict and policy version exactly as supplied in
+    the context object. This makes the decision auditable for the applicant.
+
     Write two or three short paragraphs addressed to the applicant. Set "tone"
     to "supportive" when the affordability verdict is "unaffordable" or
     "marginal", and to "neutral" when it is "affordable".
