@@ -2,10 +2,19 @@
 
 Feature: `035-openai-agents-backend`. Status and task evidence: [feature inventory](../../../product-specs/inventory.md).
 
-**Active work.** The recorded inventory contains pending scope or unfinished task lists.
-A shipped feature can still have active follow-up work. Original completion marks remain unchanged.
+**Next execution:** Follow the [completion execution plan](2026-09-06-complete-035.md). Its twelve tasks own the remaining implementation and acceptance work.
+
+**Reconciled 2026-09-06.** The MVP shipped in PR #338. Full parity and acceptance work remain open.
+Start with the [reconciliation report](reconciliation.md) for dispositions, evidence, and remaining SK dependencies.
+The full-parity TODO has 9 checked items out of 43, including checkpoints and deferred scope.
+This count is not a feature-completion percentage.
 
 ## Documents
+
+- [acceptance-matrix.md](acceptance-matrix.md) — all FR/SC dispositions, acceptance and deferral destinations
+- [2026-09-06-complete-035.md](2026-09-06-complete-035.md) — active execution checklist
+
+- [reconciliation.md](reconciliation.md)
 
 - [plan-docs.md](plan-docs.md)
 - [plan-full.md](plan-full.md)

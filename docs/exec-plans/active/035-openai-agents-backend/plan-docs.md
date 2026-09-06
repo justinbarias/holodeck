@@ -1,11 +1,95 @@
 # Docs Overhaul Plan — Ship the OpenAI Native Backend
 
+**Execution handoff:** Use the [completion execution plan](2026-09-06-complete-035.md) for current task order, acceptance gates, and progress.
+This record retains the reconciled design and historical task evidence.
+
 **Goal:** Make the docsite ship-ready for spec 035: (1) remove Semantic Kernel as a
 user-facing concept, (2) document the new OpenAI Agents native backend, (3) restructure
 every guide to lead with a light "quick start" section, (4) update the CHANGELOG.
 This plan absorbs and extends task **K3** from `plan-full.md`.
 
-## Ground truth (verified 2026-06-13)
+## Reconciliation — 2026-09-06
+
+**Status: substantially implemented; documentation and validation follow-ups remain.**
+The phase tables below preserve the original scope. This checklist records current
+completion, based on tracked files at `b585e80` and implementation commit `3805e80`
+(PR #338). Presence of documentation does not establish runtime support or prove
+that its examples have passed validation.
+
+### Completed or superseded
+
+- [x] Phase 1: `docs/guides/openai-backend.md` covers the configuration reference,
+  effort, budget/fallback, structured output, thinking, MCP, RAG, tracing,
+  backend comparison, and deferred surfaces.
+- [x] Phase 1: the SK guide is absent; `docs/guides/llm-providers.md` documents
+  current routing, Ollama setup, and provider environment variables. The MkDocs
+  navigation places OpenAI Backend after Claude Backend.
+- [x] Phase 1: `docs/api/backends.md` documents the current selector and
+  `ExecutionResult.structured_output` / `thinking`. The landing, installation,
+  and quickstart pages contain no SK references.
+- [x] Phase 1: `AGENTS.md` states current routing; `CLAUDE.md` imports it.
+- [x] Phase 2: all 13 named guides have `Quick start` as their first H2.
+  `tools.md` is 507 lines and `evaluations.md` is 464 lines, below the suggested
+  targets. The observability guide includes the OpenAI trace-mirror subsection.
+  Full template compliance and snippet runnability remain separate checks below.
+- [x] Phase 3: `docs/api/models.md` includes `OpenAIConfig`. The surveyed API pages
+  no longer refer to an SK backend. The remaining `enable_semantic_kernel_telemetry`
+  references in `docs/api/observability.md` document an existing internal symbol
+  and fit Decision 1's API carve-out.
+- [x] Phase 3: `docs/security/aca-limitations.md` explicitly identifies P3,
+  sandbox mode, and computer-use as deferred.
+- [x] Phase 3 examples approach superseded: `docs/examples/README.md` links to the
+  external `holodeck-samples` repository, lists Financial Assistant, and supplies
+  clone/run instructions for its OpenAI variant. Inline financial-assistant YAML
+  was not added; the tracked implementation uses the sample repository instead.
+- [x] Phase 4: the Unreleased changelog records the backend, routing change,
+  removed SK agent path, and documentation overhaul. Accuracy issues remain below.
+
+### Remaining work
+
+- [ ] Add the planned provider-tabbed OpenAI/Azure/Anthropic example to
+  `docs/getting-started/quickstart.md`; its current agent example is Azure-only.
+- [ ] Make the OpenAI backend quick start self-contained. It references
+  `tools/warehouse.py` without supplying the implementation, describes three
+  function tools but declares one, and exceeds the proposed 30-line section limit.
+  Validate both backend examples after fixing prerequisites and dependencies.
+- [ ] Reconcile the remaining Phase 2 template deviations: `dashboard.md` lacks
+  `How it works`; 12 of the 13 guides place next steps/resources after
+  troubleshooting; the Claude guide links to the OpenAI guide but does not link
+  directly to its comparison matrix. Either complete the original template or
+  explicitly relax those requirements in a follow-up decision.
+- [ ] Remove or explicitly approve the SK connector branding in
+  `docs/guides/vector-stores.md` under Decision 1. It accurately describes an
+  internal dependency, but the original carve-out only covers internal API docs.
+- [ ] Correct the Unreleased changelog's residual SK scope: its Removed entry
+  still assigns embeddings and context generation to SK, although those paths
+  now use LiteLLM. Its blanket claim that every quick start is runnable is also
+  unsupported by the warehouse example above.
+- [ ] Reconcile the guide/changelog deferred feature lists with
+  [the full implementation plan](plan-full.md), especially broad statements that
+  OpenAI `serve` / `deploy` are entirely unavailable versus unfinished capacity
+  enforcement and sizing. Do not infer availability from accepted config fields.
+
+### Verification evidence and outstanding gates
+
+- [x] Read the changed documentation and inspected relevant Git history.
+- [x] Mechanically checked the first H2 and line counts of the 13 Phase 2 guides.
+- [x] Searched current guides, API docs, getting-started pages, and `docs/index.md`
+  for SK references; the hits are the vector-store paragraph and telemetry API
+  symbol described above.
+- [ ] Run schema validation on both backend quick-start YAML snippets.
+- [x] `uv run mkdocs build --strict` passed during the parent audit; see [verification](reconciliation.md#verification-in-this-audit).
+- [ ] Render the OpenAI backend and provider guides and inspect navigation;
+  not rerun in this audit.
+
+The original whole-`docs/` grep gate predates the migration of historical specs
+and execution plans into `docs/`. Use the current user-facing pages for this gate;
+historical specs, execution plans, ideas, and changelog entries are evidence, not
+current backend instructions. This scope change does not waive the outstanding
+vector-store wording issue. Repository harness/build results for this
+reconciliation are recorded in the parent reconciliation plan.
+
+## Historical ground truth (verified 2026-06-13)
 
 - **Routing** (`lib/backends/selector.py`): `openai`/`azure_openai` → `OpenAIAgentsBackend`;
   `anthropic`/`ollama` → `ClaudeBackend`. **`SKBackend` no longer exists.**

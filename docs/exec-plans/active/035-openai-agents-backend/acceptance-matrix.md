@@ -1,0 +1,137 @@
+# Feature 035 acceptance matrix
+
+**Established:** 2026-09-06 during completion-plan T0.
+**Baseline:** `b585e80` plus the session reconciliation. No runtime changes or new runtime acceptance tests occurred during T0.
+**Requirements:** [035 specification](../../../product-specs/035-openai-agents-backend/spec.md).
+**Execution:** [completion plan](2026-09-06-complete-035.md).
+
+## Reading the matrix
+
+There are 56 functional requirements and 13 success criteria: one row for each identifier actually declared in the spec.
+`Retained` preserves the requirement. `Revised` replaces a superseded assumption with the cited decision; the replacement still requires verification.
+`Deferred` preserves a requirement outside retained 035 scope, with a durable debt destination and future acceptance.
+No runtime row is certified complete by this documentation task. Update evidence only from named tests or recorded observations.
+Task owners are defined in the completion plan; deferred owners and exit criteria are defined in the linked debt entries.
+T10 supplies candidate/live acceptance. T11 checks coverage and final status across all retained rows.
+
+## Evidence catalog
+
+- **E1:** The [reconciliation](reconciliation.md#verification-in-this-audit) records 128 focused backend/adapter/selector tests passing on the audited baseline. Files: `tests/unit/lib/backends/test_openai_agents_backend.py`, `test_openai_agents_tool_adapters.py`, and `test_selector.py`.
+- **E2:** The same report records 196 tests covering LiteLLM, tool initialization, context generation, tracing, output, cost, fallback, MCP, permissions, and OTel redaction. These are focused baseline tests, not full/live acceptance.
+- **E3:** `src/holodeck/models/openai_config.py`, `models/agent.py`, `lib/backends/validators.py`, and their model/validator tests were inspected. Configuration presence does not prove serve enforcement.
+- **E4:** `src/holodeck/serve/server.py`, `serve/tool_init_manager.py`, `deploy/deployers/azure_containerapps.py`, `models/deployment.py`, and existing serve/deploy tests were inspected. Current `/ready` only proves lifecycle state and always returns 200. ACA probes already use `/ready`.
+
+Paths in this catalog are repository-relative. Proposed additional tests belong to the corresponding T1–T10 tasks, not fictitious existing files.
+
+## Functional requirements and success criteria
+
+| ID | Scope | Owning task / destination | Required test or observable result | Decision | Evidence status |
+| --- | --- | --- | --- | --- | --- |
+| FR-001 | Revised | T10 | Selector routes by provider without inventing a Backend enum or backend override. | [D01](../../../product-specs/035-openai-agents-backend/spec.md#d01) | Baseline backend coverage (E1); final acceptance pending |
+| FR-002 | Retained | T10 | Protocol tests cover initialize, invoke_once, create_session, teardown and failure cleanup. | [D01](../../../product-specs/035-openai-agents-backend/spec.md#d01) | Baseline backend coverage (E1); final acceptance pending |
+| FR-003 | Retained | T10 | Session tests cover prepare/send/stream/close, multi-turn history and cancellation. | [D01](../../../product-specs/035-openai-agents-backend/spec.md#d01) | Baseline backend coverage (E1); final acceptance pending |
+| FR-004 | Retained | T10 | Assert every ExecutionResult field, structured output, reasoning summaries, usage and error payloads. | [D04](../../../product-specs/035-openai-agents-backend/spec.md#d04) | Baseline backend coverage (E1); final acceptance pending |
+| FR-005 | Retained | T7 / T10 | Streaming deltas and final accounting survive the AG-UI/REST path and cancellation. | [D01](../../../product-specs/035-openai-agents-backend/spec.md#d01) | Baseline backend coverage (E1); final acceptance pending; HTTP integration pending |
+| FR-006 | Retained | T3 / T7 / T10 | Ordinary start/end/error/thinking and handoff parent-link/subagent events reach AG-UI in order. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Pending implementation and acceptance |
+| FR-007 | Revised | T10 | OpenAI/Azure route to native OpenAI; Anthropic/Ollama route to Claude; absent AF/ADK/SK options are not promised. | [D01](../../../product-specs/035-openai-agents-backend/spec.md#d01) | Baseline backend coverage (E1); final acceptance pending |
+| FR-010 | Retained | T7 | Both provider credential errors occur at startup before accepting requests. | [D03](../../../product-specs/035-openai-agents-backend/spec.md#d03) | Pending implementation and acceptance |
+| FR-011 | Retained | T8 | Build and inspect OpenAI images with/without Node-requiring MCP; default has no Node layer. | [D01](../../../product-specs/035-openai-agents-backend/spec.md#d01) | Shared Docker code exists (E4); image acceptance pending |
+| FR-012 | Retained | T8 | Container entrypoint exits non-zero with actionable missing-credential errors. | [D03](../../../product-specs/035-openai-agents-backend/spec.md#d03) | Pending implementation and acceptance |
+| FR-013 | Revised | T7 | /health is liveness; /ready is 503 until prerequisites and required init tools are ready, then 200; cover empty/failed/shutdown states. | [D10](../../../product-specs/035-openai-agents-backend/spec.md#d10) | Lifecycle-only /ready exists (E4); required gating pending |
+| FR-014 | Retained | T7 | Only active turns use slots; overflow rejects; every termination path releases a slot. | [D11](../../../product-specs/035-openai-agents-backend/spec.md#d11) | Pending implementation and acceptance |
+| FR-020 | Retained | T7 / T10 | Exercise POST/GET init and GET tools for vector/hier-doc; non-init tools return 400. | [D10](../../../product-specs/035-openai-agents-backend/spec.md#d10) | Shared routes exist (E4); OpenAI acceptance pending |
+| FR-030 | Retained | T10 | ModelSettings receives configured low/medium/high reasoning effort. | [D04](../../../product-specs/035-openai-agents-backend/spec.md#d04) | Baseline backend coverage (E1); final acceptance pending |
+| FR-031 | Revised | T10 | max maps to xhigh without the obsolete high-clamp behavior. | [D04](../../../product-specs/035-openai-agents-backend/spec.md#d04) | Baseline backend coverage (E1); final acceptance pending |
+| FR-032 | Retained | T10 | Budget exhaustion aborts with partial output, accumulated cost and correct error classification. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Baseline helper coverage (E2); final acceptance pending |
+| FR-033 | Retained | T1 / T10 | Runner-level retry/fallback order, permitted errors, no restart after the first emitted event (including non-text events), and both-attempt traces are demonstrated. | [D03](../../../product-specs/035-openai-agents-backend/spec.md#d03) | Direct wrapper tests passed (E2); Runner/trace acceptance pending |
+| FR-034 | Retained | T4 / T10 | Permission filtering excludes tools; overlapping allow/deny fails; include newly introduced tool types. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Baseline helper coverage (E2); final acceptance pending; hosted integration pending |
+| FR-040 | Retained | T10 | stdio constructor receives command/args/substituted env and cleans up resources. | [D05](../../../product-specs/035-openai-agents-backend/spec.md#d05) | Baseline helper coverage (E2); final acceptance pending |
+| FR-041 | Retained | T10 | SSE receives substituted URL/headers and preserves lifecycle/error behavior. | [D05](../../../product-specs/035-openai-agents-backend/spec.md#d05) | Baseline helper coverage (E2); final acceptance pending |
+| FR-042 | Retained | T10 | Streamable HTTP receives substituted URL/headers and preserves lifecycle/error behavior. | [D05](../../../product-specs/035-openai-agents-backend/spec.md#d05) | Baseline helper coverage (E2); final acceptance pending |
+| FR-043 | Retained | T10 | WebSocket is skipped with the documented warning, not silently ignored. | [D05](../../../product-specs/035-openai-agents-backend/spec.md#d05) | Baseline helper coverage (E2); final acceptance pending |
+| FR-044 | Retained | T10 | Static MCP filtering exposes only allowed names. | [D05](../../../product-specs/035-openai-agents-backend/spec.md#d05) | Baseline helper coverage (E2); final acceptance pending |
+| FR-050 | Revised | T6 | Event/action matrix proves observation, failure wrappers, input abort, tool reject-and-continue, hosted-MCP rejection, unsupported MCP errors and inert modify warning. | [D05](../../../product-specs/035-openai-agents-backend/spec.md#d05) | Pending implementation and acceptance |
+| FR-051 | Retained | T5 / T6 | Tracking/redaction precedes user hooks; declaration order and first terminal action are honored. | [D05](../../../product-specs/035-openai-agents-backend/spec.md#d05) | Pending implementation and acceptance |
+| FR-060 | Revised | T3 | openai.agents creates named handoff targets with declared prompts/descriptions/tools/models. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Pending implementation and acceptance |
+| FR-061 | Retained | T3 | Omitted subagent tools inherit parent tools; explicit restrictions remain enforced. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Pending implementation and acceptance |
+| FR-062 | Retained | T3 | inherit uses parent model; Claude literals fail; supported provider model IDs pass. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Pending implementation and acceptance |
+| FR-063 | Revised | T3 | Recommended handoff prefix and openai.agents skip flag work exactly once. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Pending implementation and acceptance |
+| FR-070 | Retained | T3 / T10 | Both inline and SKILL.md forms create restricted skill handoff targets; malformed sources fail clearly. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Pending implementation and acceptance |
+| FR-071 | Revised | T3 | Declared setting_sources compatibility field is accepted with a Claude-only warning and no ambient loading. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Pending implementation and acceptance; ambient loading remains H-020 |
+| FR-080 | Revised | T7 / T8 | ACA uses supported 1CPU/2Gi; cap=20 at 2048MiB/100; local1024MiB gives10; overrides, no-cgroup fallback and below-one errors match D11. | [D11](../../../product-specs/035-openai-agents-backend/spec.md#d11) | Configuration fields exist (E3); resolver/echo acceptance pending |
+| FR-081 | Retained | T7 / T10 | At the resolved active-turn limit, reject excess work with 429, Retry-After and the exact problem type. | [D11](../../../product-specs/035-openai-agents-backend/spec.md#d11) | Pending implementation and acceptance |
+| FR-082 | Retained | T10 | Default max_turns20 reaches Runner in all invocation paths and overrides work. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Baseline backend coverage (E1); final acceptance pending |
+| FR-083 | Revised | T4 | CodeInterpreter requires opt-in; ComputerTool fails load even with opt-in because its harness is deferred. | [D06](../../../product-specs/035-openai-agents-backend/spec.md#d06) | Pending implementation and acceptance |
+| FR-084 | Revised | T4 / T6 | Existing approval gates are never bypassed; unsupported interactive approval fails closed; automatic rejection follows D05. | [D05](../../../product-specs/035-openai-agents-backend/spec.md#d05) | Pending implementation and acceptance; interactive resume is H-013 |
+| FR-085 | Retained | T8 | Local image tests verify conditional Node, corpus ownership/read-only access and scratch volumes, not only rendered strings. | [D11](../../../product-specs/035-openai-agents-backend/spec.md#d11) | Shared hardening exists (E4); image acceptance pending |
+| FR-086 | Retained | T8 / T10 | Deployment defaults to internal ingress; explicit external ingress produces the documented warning. | [D11](../../../product-specs/035-openai-agents-backend/spec.md#d11) | Shared defaults exist (E4); candidate acceptance pending |
+| FR-087 | Revised | T5 | Synthetic tool output is sanitized before model consumption for HoloDeck-built tools; opt-out warns; unsupported coverage is explicit. | [D05](../../../product-specs/035-openai-agents-backend/spec.md#d05) | Pending implementation and acceptance |
+| FR-088 | Retained | T1 / T5 / T10 | Exporter observes sanitized tool/message attributes with content capture both on and off. | [D07](../../../product-specs/035-openai-agents-backend/spec.md#d07) | Baseline helper coverage (E2); final acceptance pending; integrated/live coverage pending |
+| FR-089 | Revised | T5 | Managed MCP/function/hook child environments omit provider secrets by default; opt-out and concurrent isolation are tested without global-env mutation. | [D09](../../../product-specs/035-openai-agents-backend/spec.md#d09) | Pending implementation and acceptance; arbitrary Python containment is H-021 |
+| FR-090 | Deferred | [H-010](../../tech-debt-tracker.md#h-010) | Credential-free agent container with Envoy-owned credentials; required by the future hardened-profile acceptance. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not implemented/verified |
+| FR-091 | Deferred | [H-010](../../tech-debt-tracker.md#h-010) | Provider, embedding and MCP allowlists; required by the future hardened-profile acceptance. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not implemented/verified |
+| FR-092 | Deferred | [H-010](../../tech-debt-tracker.md#h-010) | Provider-specific local proxy routing; required by the future hardened-profile acceptance. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not implemented/verified |
+| FR-093 | Deferred | [H-010](../../tech-debt-tracker.md#h-010) | Reject credential-bearing hardened agent environment; required by the future hardened-profile acceptance. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not implemented/verified |
+| FR-094 | Deferred | [H-011](../../tech-debt-tracker.md#h-011) | Validated sandbox-mode configuration; required by the future sandbox acceptance. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not implemented/verified |
+| FR-095 | Deferred | [H-011](../../tech-debt-tracker.md#h-011) | SandboxAgent construction with equivalent agent fields; required by the future sandbox acceptance. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not implemented/verified |
+| FR-096 | Deferred | [H-011](../../tech-debt-tracker.md#h-011) | Sandbox safety opt-in; required by the future sandbox acceptance. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not implemented/verified |
+| FR-097 | Deferred | [H-011](../../tech-debt-tracker.md#h-011) | Local workspace lifecycle and cleanup; required by the future sandbox acceptance. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not implemented/verified |
+| FR-098 | Deferred | [H-011](../../tech-debt-tracker.md#h-011) | Remote client, isolated workspace and credential ownership; required by the future sandbox acceptance. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not implemented/verified |
+| FR-099 | Deferred | [H-011](../../tech-debt-tracker.md#h-011) | Reject redundant sandbox/hosted execution configuration; required by the future sandbox acceptance. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not implemented/verified |
+| FR-100 | Revised | T1 / T10 | OpenAI upload remains when permitted; configured OTel mirror receives spans; content capture policy holds. | [D07](../../../product-specs/035-openai-agents-backend/spec.md#d07) | Mirror tests exist (E2); policy matrix/live acceptance pending |
+| FR-101 | Revised | T1 / T10 | Azure never uploads to OpenAI dashboard, including when OTel is disabled; enabled OTel still receives spans. | [D07](../../../product-specs/035-openai-agents-backend/spec.md#d07) | Partial processor selection (E2); disabled/mixed-provider acceptance pending |
+| FR-102 | Retained | T1 / T10 | disable_provider_tracing suppresses upload for either provider without disabling enabled OTel; mixed initialization cannot override it. Verify workflow/run identity, session/group ID, and explicit per-run capture policy overriding SDK environment defaults. | [D07](../../../product-specs/035-openai-agents-backend/spec.md#d07) | Field/partial wiring exists (E2/E3); policy acceptance pending |
+| FR-110 | Retained | T3 / T4 / T6 / T7 | One side-effect-free validation pass reports all applicable errors, including new tools/hooks/handoffs. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) | Base validator exists (E3); new surfaces pending |
+| FR-111 | Revised | T7 / T8 | Serve/deploy validate and echo resolved limits, hooks/tools and trace destinations before listening/deploying; no secret values. | [D02](../../../product-specs/035-openai-agents-backend/spec.md#d02) / [D11](../../../product-specs/035-openai-agents-backend/spec.md#d11) | Pending implementation and acceptance |
+| SC-001 | Revised | T3 / T4 / T10 | Provider selection executes all five retained HoloDeck types plus five hosted types without a backend override. | [D01](../../../product-specs/035-openai-agents-backend/spec.md#d01) / [D06](../../../product-specs/035-openai-agents-backend/spec.md#d06) | Function/RAG/MCP baseline (E1/E2); skills/hosted/live pending |
+| SC-002 | Revised | T11 | Candidate full suite and compatibility tests pass; preserve Claude/RAG contracts without restoring removed SK or nonexistent AF/ADK runtimes. | [D01](../../../product-specs/035-openai-agents-backend/spec.md#d01) / [D12](../../../product-specs/035-openai-agents-backend/spec.md#d12) | Baseline focused tests only; candidate full suite pending |
+| SC-003 | Revised | T10 | Provider-neutral single/multi-turn, streaming, tools/errors and multimodal contracts match retained Claude behavior. | [D01](../../../product-specs/035-openai-agents-backend/spec.md#d01) | Baseline core coverage (E1); candidate parity acceptance pending |
+| SC-004 | Revised | T10 | Time validation below1s on stated fixture/environment; invalid credentials/tool policies/safety gates return collected actionable errors; Azure capability errors stay runtime-gated. | [D03](../../../product-specs/035-openai-agents-backend/spec.md#d03) | Timing and complete validation acceptance pending |
+| SC-005 | Retained | T10 | Clean environment without OpenAI extra imports selector and runs non-OpenAI setup without SDK leakage. | [D01](../../../product-specs/035-openai-agents-backend/spec.md#d01) | Source lazy gate exists; isolated-install proof pending |
+| SC-006 | Retained | T10 | NLP, G-Eval and RAG consume results without shape regressions; evaluation-model overrides remain effective. | [D12](../../../product-specs/035-openai-agents-backend/spec.md#d12) | Evaluator integration acceptance pending |
+| SC-007 | Revised | T3 / T4 / T10 | Per-tool tests and supported-provider runs cover five retained HoloDeck and five hosted types; ComputerTool is rejected. | [D06](../../../product-specs/035-openai-agents-backend/spec.md#d06) | Partial adapter baseline (E1/E2); skill/hosted coverage pending |
+| SC-008 | Revised | T7 / T8 / T10 | Local1CPU/1Gi admits10 without OOM/rejects11th; supported ACA1CPU/2Gi admits20 without OOM/rejects21st; test overrides and slot recovery. | [D11](../../../product-specs/035-openai-agents-backend/spec.md#d11) | Capacity and local/cloud load evidence pending |
+| SC-009 | Revised | T5 / T10 | A synthetic credential result is redacted in model context and exported spans; no actual credentials used. | [D05](../../../product-specs/035-openai-agents-backend/spec.md#d05) / [D07](../../../product-specs/035-openai-agents-backend/spec.md#d07) | Span unit coverage (E2); model-visible/end-to-end acceptance pending |
+| SC-010 | Deferred | [H-010](../../tech-debt-tracker.md#h-010) | Authorized hardened deployment proves separate secret ownership and rejected non-allowlisted egress. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not verified |
+| SC-011 | Revised | T1 / T10 | Real OpenAI request reaches allowed dashboard+collector; Azure reaches collector only; opt-out/disabled/mixed cases prove non-upload. | [D07](../../../product-specs/035-openai-agents-backend/spec.md#d07) | Live destinations and isolation acceptance pending |
+| SC-012 | Deferred | [H-011](../../tech-debt-tracker.md#h-011) | Sandbox command executes in its confined workspace on both providers with required opt-in. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not verified |
+| SC-013 | Deferred | [H-011](../../tech-debt-tracker.md#h-011) | Hardened remote sandbox workspace stays off agent filesystem; inspect deployment and remote handle. | [D08](../../../product-specs/035-openai-agents-backend/spec.md#d08) | Excluded from 035 completion; not verified |
+
+## Acceptance work without a separate original FR identifier
+
+These tasks are mandatory for the completion plan. Their absence from the original numbered FR list does not defer them.
+
+| Task | Required evidence | Current status |
+| --- | --- | --- |
+| T2 / H-009 | Factory-to-provider dimensions, error boundary, collector-visible LiteLLM embedding/chat spans, content capture/redaction, OpenAI/Azure/Ollama grounded and contextual ingest, Claude context-generator regression | Open; focused baseline tests do not cover every gate |
+| T9 | Tracked agent/tool fixtures, clean-directory quick starts, provider tabs, hook/guardrail matrix, guide-template decisions, corrected current SK/serve/deploy claims, rendered inspection | Open; documentation corrections listed in [docs plan](plan-docs.md) |
+| T10 | Multimodal input, evaluation overrides, candidate-specific evidence, provider capability restrictions and complete acceptance results | Open |
+| T11 | Full checks, evidence-backed historical gate closure, schema/architecture/quality updates, debt status, archival links and migration ledger | Open |
+
+## Deferred scope destinations
+
+The [debt tracker](../../tech-debt-tracker.md#deferred-035-scope) owns the rationale, owners, and exit criteria.
+These links also cover exclusions that do not have their own original FR number.
+
+| Deferred scope | Destination |
+| --- | --- |
+| Final Semantic Kernel removal | [H-008](../../tech-debt-tracker.md#h-008) |
+| Hardened Envoy profile | [H-010](../../tech-debt-tracker.md#h-010) |
+| Sandbox mode, remote clients, and Modal | [H-011](../../tech-debt-tracker.md#h-011) |
+| Computer-use | [H-012](../../tech-debt-tracker.md#h-012) |
+| Interactive human approval | [H-013](../../tech-debt-tracker.md#h-013) |
+| MCP-server guardrails | [H-014](../../tech-debt-tracker.md#h-014) |
+| Executable modify hooks | [H-015](../../tech-debt-tracker.md#h-015) |
+| Prompt-tool execution | [H-016](../../tech-debt-tracker.md#h-016) |
+| Namespace unification | [H-017](../../tech-debt-tracker.md#h-017) |
+| VoicePipeline | [H-018](../../tech-debt-tracker.md#h-018) |
+| RealtimeAgent | [H-019](../../tech-debt-tracker.md#h-019) |
+| Ambient skill discovery | [H-020](../../tech-debt-tracker.md#h-020) |
+| Per-session ephemeral containers and arbitrary Python containment | [H-021](../../tech-debt-tracker.md#h-021) |
+
+New deployment targets and nonexistent AF/ADK runtime preservation are not implicit implementation work. D01 preserves the actual routing contract.
+
+## T0 verification
+
+Verified 2026-09-06: the original 56 FR + 13 SC identifiers match the spec and 69 complete matrix rows exactly. All 181 local fragment links across the spec and active records resolve to rendered Markdown anchors. `make harness-check`, `git diff --check`, and `uv run mkdocs build --strict` pass. Independent review found no missing mandatory scope or unowned deferrals after correcting FR-033 and FR-102 acceptance details.
+T0 completion establishes this contract and its traceability, not runtime conformance.

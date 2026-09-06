@@ -1,8 +1,44 @@
 # Implementation Plan: OpenAI Agents SDK Backend — MVP Slice
 
+**Execution handoff:** Use the [completion execution plan](2026-09-06-complete-035.md) for current task order, acceptance gates, and progress.
+This record retains the reconciled design and historical task evidence.
+
 **Spec:** `docs/product-specs/035-openai-agents-backend/spec.md`
 **Scope of this plan:** A single vertical slice — *chat with one OpenAI/Azure-OpenAI agent that runs the SDK agent loop and calls custom Python (function) tools* — plus the routing flip and the surgical removal of the SK **agent-execution** path.
-**Status:** Complete — all tasks done; live-verified against Azure (`gpt-5.4`) via `holodeck chat`
+**Status:** MVP shipped in PR #338 (`3805e80`). Historical Azure validation is recorded below. Full parity remains open.
+
+## Reconciliation — 2026-09-06
+
+Audit baseline: `b585e80`. PR #338 (`3805e80`) merged the MVP and later extensions.
+The original task list records the MVP acceptance history. Its checked gates are not fresh test results.
+No live provider calls, isolated-extra installation, or coverage comparison were performed for this audit.
+
+| Task | Current disposition | Source or test evidence |
+| --- | --- | --- |
+| 1 — dependency and import gate | Implemented. Isolated installation acceptance not rerun. | `pyproject.toml` pins the `openai-agents` extra. `selector.py` imports the backend lazily. SDK type imports use `TYPE_CHECKING`. |
+| 2 — model and credentials | Implemented. The tracing-disable decision was superseded by full-plan H1. | `_preflight_credentials`, `_build_model`, `TestBuildModelOpenAI`, `TestBuildModelAzure` |
+| 3 — backend and sessions | Implemented | `OpenAIAgentsBackend`, `OpenAIAgentsSession`, `TestBackendProtocol`, `TestBackendInvokeOnce` |
+| 4 — result mapping | Implemented and extended. Reasoning summaries now populate `thinking`. | `_to_execution_result`, `TestToExecutionResult`, `TestThinkingExtraction`, `TestStructuredOutput` |
+| 5 — function tools | Implemented. The blanket non-function rejection rule is superseded. | `test_openai_agents_tool_adapters.py` covers functions, retrieval adapters, MCP delegation, and prompt-tool warnings. Skills remain unsupported. |
+| 6 — streaming | Implemented. Historical Azure smoke retained. | `send_streaming` and streaming tests in `test_openai_agents_backend.py` |
+| 7 — selector | Implemented | `selector.py` routes OpenAI/Azure to OpenAI Agents and Anthropic/Ollama to Claude. `test_selector.py` covers routing. |
+| 8 — SK agent removal | Implemented. Later work replaced the retained inference factories with LiteLLM. | `sk_backend.py` and `test_runner/agent_factory.py` are absent. `tool_initializer.py` uses `LiteLLMEmbeddingService`. |
+| 9 — tests | Test cases exist. Comparative coverage acceptance remains unverified by this audit. | `test_openai_agents_backend.py`, `test_openai_agents_tool_adapters.py` |
+| 10 — Azure smoke | Tests exist. Live execution is historical evidence only. | `tests/integration/test_openai_agents_chat_e2e.py` covers tool calls and streaming with a credential/skip gate. |
+
+Source paths in this table are under `src/holodeck/lib/backends/`, unless qualified.
+Backend test paths are under `tests/unit/lib/backends/`.
+Current verification results are recorded in the [reconciliation report](reconciliation.md).
+
+### Superseded MVP assumptions
+
+- H1 replaces unconditional `set_tracing_disabled(True)` with the tracing-mirror configuration.
+- F4 can wrap the OpenAI model for fallback. F5 extracts reasoning summaries and structured output.
+- B1 and C1 add retrieval adapters and MCP transports. Prompt tools now produce a warning and are skipped.
+- The [LiteLLM plan](plan-litellm-embeddings-contextgen.md) replaces SK embedding and context-generation services.
+- The [full-parity TODO](todo-full.md) owns remaining parity work. The final SK removal remains a separate follow-up.
+
+The original decisions and acceptance marks below describe the shipped MVP stage, not the current feature inventory.
 
 ## Overview
 
@@ -236,7 +272,7 @@ deltas, unsupported-tool errors.
 **Acceptance criteria:**
 - [x] New tests cover both providers and the streaming path (all mocked — no network/key).
 - [x] Coverage for the new modules is comparable to the Claude/SK backend tests.
-**Verification:** `make test-unit -n auto`; `make test-coverage` shows the new modules covered.
+**Verification:** `uv run pytest tests/unit/lib/backends/test_openai_agents_backend.py tests/unit/lib/backends/test_openai_agents_tool_adapters.py -n auto`; comparative coverage requires a separate coverage run.
 **Dependencies:** Tasks 6, 8
 **Files:** `tests/unit/lib/backends/test_openai_agents_backend.py`,
 `tests/unit/lib/backends/test_openai_agents_tool_adapters.py`
