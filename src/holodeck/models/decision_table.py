@@ -18,7 +18,7 @@ Two failure channels, matching ``holodeck.lib.errors``:
 Plain field-shape errors (missing ``version``, wrong type) surface as pydantic
 ``ValidationError`` as usual.
 
-Design input: ``specs/036-deterministic-spine/dmn-yaml-mapping.md``.
+Design input: ``docs/design-docs/036-deterministic-spine/dmn-yaml-mapping.md``.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ class FeelType(str, Enum):
     through a rule cell's evaluation (data-dependent under ``FIRST``), not at
     the column, and output columns are not checked against their type at all.
     Closing that gap belongs to the table-step design (spec 040 D3,
-    specs/040-holodeck-temporal/).
+    docs/product-specs/040-holodeck-temporal/).
     """
 
     NUMBER = "number"
@@ -112,7 +112,7 @@ class TableOutput(BaseModel):
     output — so a ``PRIORITY`` table is limited to string outputs today. A
     ``number``/``boolean`` output under ``PRIORITY`` fails at load (the
     membership check compares against strings). Widening ``values`` is a D3
-    table-step question (specs/040-holodeck-temporal/spec.md).
+    table-step question (docs/product-specs/040-holodeck-temporal/spec.md).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -347,7 +347,7 @@ def load_decision_table(path: str | Path) -> DecisionTable:
     lower trust of a file the author runs locally, not the
     attacker-influenceable posture ``edge.load_gate_schema`` assumes.
     Revisiting that (with the loader itself) belongs to the D3 table-step
-    design (specs/040-holodeck-temporal/spec.md).
+    design (docs/product-specs/040-holodeck-temporal/spec.md).
 
     Args:
         path: Path to the decision-table YAML file.

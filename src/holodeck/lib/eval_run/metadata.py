@@ -27,7 +27,7 @@ This module also captures run provenance (holodeck version, ``sys.argv``, and
 best-effort git commit) inside side-effecting helpers so that unit tests can
 mock them trivially.
 
-See ``specs/031-eval-runs-dashboard/data-model.md`` §"Snapshot semantics" and
+See ``docs/design-docs/031-eval-runs-dashboard/data-model.md`` §"Snapshot semantics" and
 ``spec.md`` User Story 3 AC1/AC5/AC6 for the authoritative contract.
 """
 

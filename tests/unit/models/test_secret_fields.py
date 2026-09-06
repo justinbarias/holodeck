@@ -4,7 +4,7 @@ These tests assert that every secret-bearing field in the HoloDeck model tree
 is declared as `SecretStr | None` (or `SecretStr`), enabling the eval-run
 redactor's type-driven rule to cover them automatically.
 
-Scope (per `specs/031-eval-runs-dashboard/tasks-us1.md` T003-T004):
+Scope (per `docs/exec-plans/active/031-eval-runs-dashboard/tasks-us1.md` T003-T004):
 - Fields that EXIST in the current codebase at feature-start.
 - Anthropic `auth_token`, AWS creds, and similar do NOT exist as fields yet
   and are out-of-scope for this migration — any future provider secret must

@@ -4,8 +4,10 @@ Implements the REST protocol with:
 - Synchronous chat endpoint: POST /agent/{name}/chat → ChatResponse JSON
 - Streaming chat endpoint: POST /agent/{name}/chat/stream → SSE events
 
-See: specs/017-agent-local-server/contracts/openapi.yaml for API specification.
-See: specs/017-agent-local-server/contracts/sse-events.md for SSE event format.
+See: docs/product-specs/017-agent-local-server/contracts/openapi.yaml for API
+specification.
+See: docs/product-specs/017-agent-local-server/contracts/sse-events.md for SSE event
+format.
 """
 
 from __future__ import annotations

@@ -1,6 +1,7 @@
 """Slugifier for the eval-run results directory.
 
-Per `specs/031-eval-runs-dashboard/research.md` R4: lowercase + alphanumerics +
+Per `docs/design-docs/031-eval-runs-dashboard/research.md` R4: lowercase + alphanumerics
++
 `-`; consecutive `-` collapsed; leading/trailing `-` stripped. Empty result
 raises `ValueError` (in practice this is unreachable because `Agent.name`
 already rejects empty strings — but the writer treats it as a hard invariant).

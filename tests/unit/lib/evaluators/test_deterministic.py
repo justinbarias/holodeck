@@ -1,6 +1,6 @@
 """Unit tests for deterministic evaluators (equality, numeric) — US4.
 
-Covers T003–T013 in ``specs/032-multi-turn-test-cases/tasks-us4.md``:
+Covers T003–T013 in ``docs/exec-plans/active/032-multi-turn-test-cases/tasks-us4.md``:
 
 - Equality: strict default, case-insensitive, whitespace/punctuation flags.
 - Numeric: default tolerance (1e-6, boundary inclusive), absolute/relative,

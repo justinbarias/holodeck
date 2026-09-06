@@ -135,7 +135,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `SourceResolver` for unified local/S3/Azure Blob/HTTP source resolution with temp directory cleanup
   - `initialize_single_tool()` async function with source override and progress callback support
   - OTel spans for full init job lifecycle (start, progress, complete, failed)
-  - OpenAPI 3.1 contract specification (`specs/025-tool-init-endpoints/contracts/openapi.yaml`)
+  - OpenAPI 3.1 contract specification (`docs/product-specs/025-tool-init-endpoints/contracts/openapi.yaml`)
 
 ### Changed
 
@@ -157,7 +157,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- Complete spec-kit artifacts for Feature #025 (spec, plan, data-model, research, quickstart, OpenAPI contract, task breakdowns)
+- Complete feature planning artifacts for Feature #025 (spec, plan, data-model, research, quickstart, OpenAPI contract, task breakdowns)
 
 ### Testing
 
@@ -382,7 +382,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `spinner.py`: `SpinnerMixin` for progress animation
   - `colors.py`: `ANSIColors` and `colorize()` function
   - Chat history extraction utilities shared between chat and test_runner
-- **HierarchicalDocumentTool Specification** (#242) --Full spec-kit artifacts:
+- **HierarchicalDocumentTool Specification** (#242) --Full feature planning artifacts:
   - spec.md with 8 user stories (P1-P3 priorities)
   - Implementation plan, data model documentation, quickstart guide
   - 110+ implementation tasks organized by priority
@@ -487,10 +487,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Published to `ghcr.io/justinbarias/holodeck-base:latest`
   - Non-root user for security
   - Health check configuration
-- **OpenCode Speckit Support**: Spec-kit slash commands for OpenCode editor
-  - `/speckit.specify`, `/speckit.clarify`, `/speckit.plan`, `/speckit.tasks`
-  - `/speckit.analyze`, `/speckit.checklist`, `/speckit.implement`
-  - `/speckit.constitution`, `/speckit.taskstoissues`
 
 ### Documentation
 

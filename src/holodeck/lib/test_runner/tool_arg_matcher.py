@@ -1,6 +1,7 @@
 """Tool-call argument matching primitives (US3, SC-006 acceptance matrix).
 
-Authoritative contract: specs/032-multi-turn-test-cases/contracts/tool-arg-matchers.md.
+Authoritative contract:
+docs/product-specs/032-multi-turn-test-cases/contracts/tool-arg-matchers.md.
 
 This module is intentionally stateless and side-effect-free. It exposes:
 

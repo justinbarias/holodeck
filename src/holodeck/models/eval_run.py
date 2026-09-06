@@ -6,7 +6,7 @@ configuration plus run provenance (prompt version, holodeck version, sanitized
 CLI args, git commit). One ``EvalRun`` is persisted per ``holodeck test``
 invocation.
 
-See ``specs/031-eval-runs-dashboard/data-model.md`` for the full field
+See ``docs/design-docs/031-eval-runs-dashboard/data-model.md`` for the full field
 inventory.
 """
 
@@ -36,7 +36,7 @@ class PromptVersion(BaseModel):
     which parses optional YAML frontmatter from ``instructions.file`` via
     ``python-frontmatter`` (or short-circuits for ``instructions.inline``) and
     partitions recognised keys from the free-form ``extra`` dict. See
-    ``specs/031-eval-runs-dashboard/data-model.md`` §PromptVersion for the
+    ``docs/design-docs/031-eval-runs-dashboard/data-model.md`` §PromptVersion for the
     authoritative schema.
     """
 

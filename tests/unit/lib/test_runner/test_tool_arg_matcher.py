@@ -1,6 +1,7 @@
 """Tests for tool_arg_matcher — SC-006 23-row acceptance matrix (US3 T015–T020).
 
-Authoritative source: specs/032-multi-turn-test-cases/contracts/tool-arg-matchers.md §7.
+Authoritative source:
+docs/product-specs/032-multi-turn-test-cases/contracts/tool-arg-matchers.md §7.
 """
 
 from __future__ import annotations

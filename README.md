@@ -726,7 +726,6 @@ Built with:
 
 Development tools:
 
-- [spec-kit](https://github.com/spec-kit/spec-kit) - Spec-driven development
 - [Claude Code](https://claude.ai/code) - AI-assisted development
 
 Inspired by:

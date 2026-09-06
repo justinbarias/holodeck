@@ -12,7 +12,7 @@ Supported Metrics:
 - F1: Text similarity for classification tasks
 
 References:
-- Research: specs/006-agent-test-execution/research/
+- Research: docs/design-docs/006-agent-test-execution/research/
   test-execution-integration-research.md (Section 4: NLP Metrics Libraries)
 - Hugging Face evaluate: https://huggingface.co/docs/evaluate/
 - SacreBLEU: https://github.com/mjpost/sacrebleu

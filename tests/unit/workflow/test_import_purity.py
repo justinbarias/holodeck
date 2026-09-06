@@ -1,6 +1,6 @@
 """The workflow-safe modules must not drag the backend stack in.
 
-Spec 040 section 7 (specs/040-holodeck-temporal/spec.md): helpers destined
+Spec 040 section 7 (docs/product-specs/040-holodeck-temporal/spec.md): helpers destined
 for Temporal workflow code must not import I/O modules. ``edge.py``
 therefore imports ``BackendSelector`` lazily inside
 ``execute_edge_node`` — a module-scope import would pull the Claude Agent SDK

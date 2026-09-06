@@ -1,0 +1,2500 @@
+{
+  "migration_date": "2026-09-06",
+  "description": "One destination for each original file. Original status and checkboxes are preserved.",
+  "features": {
+    "001-cli-core-engine": {
+      "title": "CLI & Core Agent Engine",
+      "status": "pending",
+      "tasks": "75/127",
+      "notes": "The v0.1 foundation; only dir with its own README",
+      "bucket": "active"
+    },
+    "004-init-agent-project": {
+      "title": "Init Agent Project",
+      "status": "pending",
+      "tasks": "137/152",
+      "notes": "",
+      "bucket": "active"
+    },
+    "005-global-settings-response-format": {
+      "title": "Global Settings & Response Format",
+      "status": "pending",
+      "tasks": "25/32",
+      "notes": "",
+      "bucket": "active"
+    },
+    "006-agent-test-execution": {
+      "title": "Agent Test Execution",
+      "status": "pending",
+      "tasks": "144/183",
+      "notes": "Side plans: logging, spinner",
+      "bucket": "active"
+    },
+    "007-interactive-chat": {
+      "title": "Interactive Chat",
+      "status": "pending",
+      "tasks": "28/37",
+      "notes": "",
+      "bucket": "active"
+    },
+    "008-unstructured-vector-ingestion-search": {
+      "title": "Unstructured Vector Ingestion & Search",
+      "status": "pending",
+      "tasks": "68/94",
+      "notes": "",
+      "bucket": "active"
+    },
+    "009-ollama-endpoint-support": {
+      "title": "Ollama Endpoint Support",
+      "status": "pending",
+      "tasks": "26/47",
+      "notes": "",
+      "bucket": "active"
+    },
+    "010-mcp-tool-operations": {
+      "title": "MCP Tool Operations",
+      "status": "pending",
+      "tasks": "7/33",
+      "notes": "Barely started",
+      "bucket": "active"
+    },
+    "011-interactive-init-wizard": {
+      "title": "Interactive Init Wizard",
+      "status": "pending",
+      "tasks": "47/78",
+      "notes": "",
+      "bucket": "active"
+    },
+    "012-deepeval-metrics": {
+      "title": "DeepEval Metrics",
+      "status": "pending",
+      "tasks": "30/69",
+      "notes": "",
+      "bucket": "active"
+    },
+    "013-mcp-cli": {
+      "title": "MCP CLI Command Group",
+      "status": "pending",
+      "tasks": "63/73",
+      "notes": "",
+      "bucket": "active"
+    },
+    "014-structured-data-ingestion": {
+      "title": "Structured Data Ingestion",
+      "status": "pending",
+      "tasks": "38/74",
+      "notes": "",
+      "bucket": "active"
+    },
+    "015-vectorstore-reranking": {
+      "title": "Vectorstore Reranking",
+      "status": "pending",
+      "tasks": "no task list",
+      "notes": "Plan/research artifacts only",
+      "bucket": "active"
+    },
+    "016-graphrag-integration": {
+      "title": "GraphRAG Integration",
+      "status": "pending",
+      "tasks": "no task list",
+      "notes": "Supersedes legacy `graph-rag-integration/`",
+      "bucket": "active"
+    },
+    "017-agent-local-server": {
+      "title": "Agent Local Server",
+      "status": "pending",
+      "tasks": "54/98",
+      "notes": "AG-UI + REST serve",
+      "bucket": "active"
+    },
+    "018-otel-observability": {
+      "title": "OTel Observability",
+      "status": "pending",
+      "tasks": "65/134",
+      "notes": "",
+      "bucket": "active"
+    },
+    "019-deploy-command": {
+      "title": "Deploy Command",
+      "status": "pending",
+      "tasks": "24/52",
+      "notes": "",
+      "bucket": "active"
+    },
+    "020-structured-document-tool": {
+      "title": "HierarchicalDocumentTool",
+      "status": "pending",
+      "tasks": "84/130",
+      "notes": "",
+      "bucket": "active"
+    },
+    "021-claude-agent-sdk": {
+      "title": "Native Claude Agent SDK",
+      "status": "shipped",
+      "tasks": "154/163",
+      "notes": "Phase 5 (0/8) is the only unstarted phase",
+      "bucket": "active"
+    },
+    "022-otel-genai-semconv": {
+      "title": "OTel GenAI Semconv in Claude Backend",
+      "status": "shipped",
+      "tasks": "28/28",
+      "notes": "",
+      "bucket": "completed"
+    },
+    "023-choose-your-backend": {
+      "title": "Choose Your Backend (ADK + MAF)",
+      "status": "pending",
+      "tasks": "0/212",
+      "notes": "Not started; US7 blocked on US1/US2",
+      "bucket": "active"
+    },
+    "024-claude-serve-deploy": {
+      "title": "Claude Serve & Deploy Parity",
+      "status": "pending",
+      "tasks": "46/139",
+      "notes": "US1\u2013US2 done; US3\u2013US5 not started",
+      "bucket": "active"
+    },
+    "025-tool-init-endpoints": {
+      "title": "Async Tool Init Endpoints",
+      "status": "shipped",
+      "tasks": "53/53",
+      "notes": "",
+      "bucket": "completed"
+    },
+    "026-sdk-config-additions": {
+      "title": "Simple SDK Config Additions",
+      "status": "shipped \u2020",
+      "tasks": "no task list",
+      "notes": "Landed as feat(026); doc still says Draft",
+      "bucket": "completed"
+    },
+    "027-mcp-http-sse-transport": {
+      "title": "MCP HTTP/SSE Transport",
+      "status": "pending",
+      "tasks": "no task list",
+      "notes": "Related transports landed via 035",
+      "bucket": "active"
+    },
+    "028-yaml-hooks-system": {
+      "title": "YAML Hooks System",
+      "status": "pending",
+      "tasks": "no task list",
+      "notes": "",
+      "bucket": "active"
+    },
+    "029-subagent-orchestration": {
+      "title": "Subagent Orchestration",
+      "status": "shipped \u2020",
+      "tasks": "0/63",
+      "notes": "Merged as PR #309; checkboxes never ticked",
+      "bucket": "active"
+    },
+    "030-skills-support": {
+      "title": "Skills Support",
+      "status": "pending",
+      "tasks": "no task list",
+      "notes": "",
+      "bucket": "active"
+    },
+    "031-eval-runs-dashboard": {
+      "title": "Eval Runs & Test View Dashboard",
+      "status": "pending",
+      "tasks": "103/252",
+      "notes": "US4 done; dashboard moved Streamlit \u2192 Dash",
+      "bucket": "active"
+    },
+    "032-multi-turn-test-cases": {
+      "title": "Multi-Turn Test Cases & Evaluators",
+      "status": "shipped",
+      "tasks": "224/226",
+      "notes": "PR #308",
+      "bucket": "active"
+    },
+    "033-holodeck-test-optimizer": {
+      "title": "Test Optimizer",
+      "status": "pending",
+      "tasks": "9/12 T + 0/30",
+      "notes": "MVP shipped in PR #335; post-MVP + text proposer open; mixed task conventions",
+      "bucket": "active"
+    },
+    "034-production-hardening": {
+      "title": "Production Hardening",
+      "status": "pending",
+      "tasks": "4/226",
+      "notes": "Checkboxes live inside phase plan docs",
+      "bucket": "active"
+    },
+    "035-openai-agents-backend": {
+      "title": "OpenAI Agents SDK Backend",
+      "status": "pending",
+      "tasks": "14/43",
+      "notes": "MVP shipped in PR #338; full-parity plan open",
+      "bucket": "active"
+    },
+    "036-deterministic-spine": {
+      "title": "Deterministic Spine",
+      "status": "archived",
+      "tasks": "13/30",
+      "notes": "Frozen after Phase 1 (2026-08-29); superseded by 040",
+      "bucket": "completed"
+    },
+    "037-gepa-optimizer": {
+      "title": "GEPA Optimizer Backend",
+      "status": "draft",
+      "tasks": "no task list",
+      "notes": "Builds on 033",
+      "bucket": "active"
+    },
+    "038-optimizer-progress-stream": {
+      "title": "Optimizer Progress Stream",
+      "status": "shipped \u2020",
+      "tasks": "4/35",
+      "notes": "Merged as PR #345; checkboxes stale",
+      "bucket": "active"
+    },
+    "039-policy-generator": {
+      "title": "Policy Generator",
+      "status": "draft",
+      "tasks": "no task list",
+      "notes": "Blocked on the pivot; depended on archived 036",
+      "bucket": "active"
+    },
+    "040-holodeck-temporal": {
+      "title": "HoloDeck Agents on Temporal",
+      "status": "complete",
+      "tasks": "16/16",
+      "notes": "Merged to main 2026-08-30 (stack #369: PRs #367, #368, #371, #372); AC-1..AC-6 demonstrated by named tests; T14 moved to 041; budget-retry follow-up in #373",
+      "bucket": "completed"
+    },
+    "041-temporal-file-inputs": {
+      "title": "File and Bytestream Inputs for Temporal Agents",
+      "status": "draft",
+      "tasks": "0/0",
+      "notes": "Depends on 040; parse_document activity + pass-through attachments + gate-schema codegen (moved from 040 T14); decisions settled 2026-08-30",
+      "bucket": "active"
+    },
+    "graph-rag-integration": {
+      "title": "GraphRAG Integration Plan (legacy)",
+      "status": "archived",
+      "tasks": "no task list",
+      "notes": "Legacy directory, no `NNN-` prefix; superseded by 016",
+      "bucket": "completed"
+    }
+  },
+  "files": [
+    {
+      "source": "specs/001-cli-core-engine/README.md",
+      "destination": "docs/product-specs/001-cli-core-engine/overview.md",
+      "kind": "product",
+      "source_sha256": "2d6e83ed50309478dadb87aae1a9a60293cf24320e7371712fc5fbaeb51a75cc",
+      "binary": false
+    },
+    {
+      "source": "specs/001-cli-core-engine/checklists/requirements.md",
+      "destination": "docs/product-specs/001-cli-core-engine/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "eaca26c7bd088f00797f119bc2197c408f878f8c3254d85649403acf3f593728",
+      "binary": false
+    },
+    {
+      "source": "specs/001-cli-core-engine/contracts/config_loader_interface.md",
+      "destination": "docs/product-specs/001-cli-core-engine/contracts/config_loader_interface.md",
+      "kind": "product",
+      "source_sha256": "9c5c6a15c4d8f5ed2dc9310186d30c1a1672fbb72094d2efc9d347c7d24be5d2",
+      "binary": false
+    },
+    {
+      "source": "specs/001-cli-core-engine/data-model.md",
+      "destination": "docs/design-docs/001-cli-core-engine/data-model.md",
+      "kind": "design",
+      "source_sha256": "fdfb00430061b3c4599d3f370993f2aa81270d55839a7779d6dfd01b52c05949",
+      "binary": false
+    },
+    {
+      "source": "specs/001-cli-core-engine/plan.md",
+      "destination": "docs/exec-plans/active/001-cli-core-engine/plan.md",
+      "kind": "execution",
+      "source_sha256": "e95b5c6ccdb062f7c10943334ab7fdfe6f9696f09aba62839853a23045d40305",
+      "binary": false
+    },
+    {
+      "source": "specs/001-cli-core-engine/quickstart.md",
+      "destination": "docs/product-specs/001-cli-core-engine/quickstart.md",
+      "kind": "product",
+      "source_sha256": "08f716fcfcc009a68d3deb93d5cd9b338c554cec5f42bfc12ae0b2ebc3489ec6",
+      "binary": false
+    },
+    {
+      "source": "specs/001-cli-core-engine/spec.md",
+      "destination": "docs/product-specs/001-cli-core-engine/spec.md",
+      "kind": "product",
+      "source_sha256": "b3323212d93a36e6ea3beca0a00f4feddf74d1eb24b1be1d5711a994050014f9",
+      "binary": false
+    },
+    {
+      "source": "specs/001-cli-core-engine/tasks.md",
+      "destination": "docs/exec-plans/active/001-cli-core-engine/tasks.md",
+      "kind": "execution",
+      "source_sha256": "3f07cf7bc196b5f52c89f63c33afa08f356ba4952aebf9d4c3e7aa42f4206c3b",
+      "binary": false
+    },
+    {
+      "source": "specs/004-init-agent-project/checklists/requirements.md",
+      "destination": "docs/product-specs/004-init-agent-project/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "80a05ec87b44e6cac1423784a86f5bf1c6de69515dd43ce9cf70e61bf5856af0",
+      "binary": false
+    },
+    {
+      "source": "specs/004-init-agent-project/contracts/cli-init-command.md",
+      "destination": "docs/product-specs/004-init-agent-project/contracts/cli-init-command.md",
+      "kind": "product",
+      "source_sha256": "6babf1555f6a326cb6e9402e151f58c79b4dd21c8cca7140b63b7ac8b994cda5",
+      "binary": false
+    },
+    {
+      "source": "specs/004-init-agent-project/data-model.md",
+      "destination": "docs/design-docs/004-init-agent-project/data-model.md",
+      "kind": "design",
+      "source_sha256": "3ce0a904a01f74704c5a61a2ffe976daa1148653a06b276ad524150b1295a282",
+      "binary": false
+    },
+    {
+      "source": "specs/004-init-agent-project/plan.md",
+      "destination": "docs/exec-plans/active/004-init-agent-project/plan.md",
+      "kind": "execution",
+      "source_sha256": "682915e73e254d366e6992dddd64d36bf48a40d20f3985803b09f8474c5de7f7",
+      "binary": false
+    },
+    {
+      "source": "specs/004-init-agent-project/quickstart.md",
+      "destination": "docs/product-specs/004-init-agent-project/quickstart.md",
+      "kind": "product",
+      "source_sha256": "21265d8297335b4cb1ec43d4d401b65d25e3d20a3141092629b64e443a50267b",
+      "binary": false
+    },
+    {
+      "source": "specs/004-init-agent-project/research.md",
+      "destination": "docs/design-docs/004-init-agent-project/research.md",
+      "kind": "design",
+      "source_sha256": "ad077decbecec809ac0cebc6b2bfe8dbbc4e6b98265edbbbcdebc6b13f857e52",
+      "binary": false
+    },
+    {
+      "source": "specs/004-init-agent-project/spec.md",
+      "destination": "docs/product-specs/004-init-agent-project/spec.md",
+      "kind": "product",
+      "source_sha256": "fb284d40cc3a38ed5ac834a0e3f2267002f4feac5298486ee36b7fb1aa9f7808",
+      "binary": false
+    },
+    {
+      "source": "specs/004-init-agent-project/tasks.md",
+      "destination": "docs/exec-plans/active/004-init-agent-project/tasks.md",
+      "kind": "execution",
+      "source_sha256": "752e64fa66741ade131ce7a1cfdc062a015372669946e7c11dd97b80222c1465",
+      "binary": false
+    },
+    {
+      "source": "specs/005-global-settings-response-format/checklists/requirements.md",
+      "destination": "docs/product-specs/005-global-settings-response-format/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "e825f6acd1451aa7860abd538457034c7722181e74ae2043db42690fc1fae8d9",
+      "binary": false
+    },
+    {
+      "source": "specs/005-global-settings-response-format/contracts/config-schema.md",
+      "destination": "docs/product-specs/005-global-settings-response-format/contracts/config-schema.md",
+      "kind": "product",
+      "source_sha256": "2dffc51714d5ec8fee05345dd1f11508f3d4bfc14ced786181dfdfcacb63692f",
+      "binary": false
+    },
+    {
+      "source": "specs/005-global-settings-response-format/data-model.md",
+      "destination": "docs/design-docs/005-global-settings-response-format/data-model.md",
+      "kind": "design",
+      "source_sha256": "d271a1eb7817a731a2c8766b5b9516a49f3abd29ed886ed67bd85e98326a609a",
+      "binary": false
+    },
+    {
+      "source": "specs/005-global-settings-response-format/plan.md",
+      "destination": "docs/exec-plans/active/005-global-settings-response-format/plan.md",
+      "kind": "execution",
+      "source_sha256": "373e406ddc12247a38641b9873496bbe8f0efe9334c2440f7a87f893e8b52e25",
+      "binary": false
+    },
+    {
+      "source": "specs/005-global-settings-response-format/quickstart.md",
+      "destination": "docs/product-specs/005-global-settings-response-format/quickstart.md",
+      "kind": "product",
+      "source_sha256": "108a3c3a40dc5e9073cd29bb67bbbb74a066734dfe667dc48de19a26f6e4aec9",
+      "binary": false
+    },
+    {
+      "source": "specs/005-global-settings-response-format/spec.md",
+      "destination": "docs/product-specs/005-global-settings-response-format/spec.md",
+      "kind": "product",
+      "source_sha256": "e6f0fd610fdc9b495dd188a9951e7dbd0705e065311eb29cc304c77ee27858a5",
+      "binary": false
+    },
+    {
+      "source": "specs/005-global-settings-response-format/tasks.md",
+      "destination": "docs/exec-plans/active/005-global-settings-response-format/tasks.md",
+      "kind": "execution",
+      "source_sha256": "0e565fa5a54bf742ed03b077a2f0311ce54e1a0dba7b255aba47049061309ccd",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/checklists/requirements.md",
+      "destination": "docs/product-specs/006-agent-test-execution/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "f74ab6b8aeade9038c0451ee50ede13a4c97f22786948a920741e6505962ee32",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/contracts/cli-api.md",
+      "destination": "docs/product-specs/006-agent-test-execution/contracts/cli-api.md",
+      "kind": "product",
+      "source_sha256": "7b848f8909cee6bbb0ffe743e808c7c039b1800d06a6e042a781b3331a1b3a30",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/data-model.md",
+      "destination": "docs/design-docs/006-agent-test-execution/data-model.md",
+      "kind": "design",
+      "source_sha256": "da406c462920b4e2442ec2315aa7d3c99cf6ed781a43866346617d5282a37098",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/logging-plan.md",
+      "destination": "docs/exec-plans/active/006-agent-test-execution/logging-plan.md",
+      "kind": "execution",
+      "source_sha256": "8e3837d68a297f8258afafa9c7798e48a965ad626575f7a8f8a5f4fc419207e7",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/plan.md",
+      "destination": "docs/exec-plans/active/006-agent-test-execution/plan.md",
+      "kind": "execution",
+      "source_sha256": "b3d5a72116892d754e8b4304f073d5cdded98dbfeb037b64d9a2b916e73e03ff",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/quickstart.md",
+      "destination": "docs/product-specs/006-agent-test-execution/quickstart.md",
+      "kind": "product",
+      "source_sha256": "ca043fb43eaece86ee72888a13a90f7728e15262534a0e5bb6506772f0dff633",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/research/README.md",
+      "destination": "docs/design-docs/006-agent-test-execution/research/README.md",
+      "kind": "design",
+      "source_sha256": "52e693f59b94e13da1843c02e5cc0eee1d560b95af3534f4414b51fa8bcaa90f",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/research/test-execution-integration-research.md",
+      "destination": "docs/design-docs/006-agent-test-execution/research/test-execution-integration-research.md",
+      "kind": "design",
+      "source_sha256": "ad7ff541e5367b507618abcdbc196db67cf45ec316f9030035f3d91e0d61bf5a",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/research.md",
+      "destination": "docs/design-docs/006-agent-test-execution/research.md",
+      "kind": "design",
+      "source_sha256": "589dc4160b23af4f96dc27ee69bafc9e1ee59845e82124644af69b332a73985b",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/spec.md",
+      "destination": "docs/product-specs/006-agent-test-execution/spec.md",
+      "kind": "product",
+      "source_sha256": "3dd04fc1c82dadf1363efb5126f172d15c2f74e0425983a06a6479568ff0292e",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/spinner-enhancement-plan.md",
+      "destination": "docs/exec-plans/active/006-agent-test-execution/spinner-enhancement-plan.md",
+      "kind": "execution",
+      "source_sha256": "202a91505ed66398f4aac1c5d6a3414e668fbc0789e54406aa308fb34fe77ddb",
+      "binary": false
+    },
+    {
+      "source": "specs/006-agent-test-execution/tasks.md",
+      "destination": "docs/exec-plans/active/006-agent-test-execution/tasks.md",
+      "kind": "execution",
+      "source_sha256": "4cdfd0fddcbc7752f2846ad6c1d4bc75b69e780f973bd937b14e17b91a4ffe28",
+      "binary": false
+    },
+    {
+      "source": "specs/007-interactive-chat/chat-ux-enhancements.plan.md",
+      "destination": "docs/exec-plans/active/007-interactive-chat/chat-ux-enhancements.plan.md",
+      "kind": "execution",
+      "source_sha256": "68a279ee6b29827ff3c3b91285b1231521c3c04ec0c43d03458894a217869b97",
+      "binary": false
+    },
+    {
+      "source": "specs/007-interactive-chat/checklists/requirements.md",
+      "destination": "docs/product-specs/007-interactive-chat/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "dbbe6bda5c72df7c9c5db902188c46a6867c325dbe23e52eaf7e705318e65126",
+      "binary": false
+    },
+    {
+      "source": "specs/007-interactive-chat/contracts/agent-execution-api.md",
+      "destination": "docs/product-specs/007-interactive-chat/contracts/agent-execution-api.md",
+      "kind": "product",
+      "source_sha256": "bd4aa3eaafbb8e52f09cbdcd3a2fb5e6bacd67c3f06475d0da374de996b8627b",
+      "binary": false
+    },
+    {
+      "source": "specs/007-interactive-chat/contracts/cli-interface.md",
+      "destination": "docs/product-specs/007-interactive-chat/contracts/cli-interface.md",
+      "kind": "product",
+      "source_sha256": "c632fb5786b293b7e1db03900c8ba4d3c1d2b1a004f7c54cc8e2f75a295042e6",
+      "binary": false
+    },
+    {
+      "source": "specs/007-interactive-chat/data-model.md",
+      "destination": "docs/design-docs/007-interactive-chat/data-model.md",
+      "kind": "design",
+      "source_sha256": "73a93c49cf196e7c9caaf30b3a0e7ef7c5aa59b3f0a943ab024754a71b257f24",
+      "binary": false
+    },
+    {
+      "source": "specs/007-interactive-chat/plan.md",
+      "destination": "docs/exec-plans/active/007-interactive-chat/plan.md",
+      "kind": "execution",
+      "source_sha256": "acfcb587b4dc0a393cccd01208906d2db9058fc582aebd927245e82c053541f8",
+      "binary": false
+    },
+    {
+      "source": "specs/007-interactive-chat/quickstart.md",
+      "destination": "docs/product-specs/007-interactive-chat/quickstart.md",
+      "kind": "product",
+      "source_sha256": "52922e31ec7c8433ae056d1bce0241a9c66c285c2690e7abab51d919478a4e6a",
+      "binary": false
+    },
+    {
+      "source": "specs/007-interactive-chat/research.md",
+      "destination": "docs/design-docs/007-interactive-chat/research.md",
+      "kind": "design",
+      "source_sha256": "894ec1e1626562e687ea5b5d19c8335af97cec946a1a688553c9cb887212c735",
+      "binary": false
+    },
+    {
+      "source": "specs/007-interactive-chat/spec.md",
+      "destination": "docs/product-specs/007-interactive-chat/spec.md",
+      "kind": "product",
+      "source_sha256": "db2c4cddd671fd1749633f7e9c754c86097f40e4fb5970100d8ce42d7e6f904b",
+      "binary": false
+    },
+    {
+      "source": "specs/007-interactive-chat/tasks.md",
+      "destination": "docs/exec-plans/active/007-interactive-chat/tasks.md",
+      "kind": "execution",
+      "source_sha256": "e243632449b0ea32f80e094f0c5d8c05c9af2f1de60f218319687067ed7d1a7b",
+      "binary": false
+    },
+    {
+      "source": "specs/008-unstructured-vector-ingestion-search/checklists/requirements.md",
+      "destination": "docs/product-specs/008-unstructured-vector-ingestion-search/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "79be5f2cd94f3f75ad1dfbbe51f17a3fc601615805583c55fa3b0e8ee09c55d7",
+      "binary": false
+    },
+    {
+      "source": "specs/008-unstructured-vector-ingestion-search/contracts/vectorstore-tool-interface.md",
+      "destination": "docs/product-specs/008-unstructured-vector-ingestion-search/contracts/vectorstore-tool-interface.md",
+      "kind": "product",
+      "source_sha256": "bf9ab6b1c7f885e530763d06245bf6d8f5875e933fa18ce1b8bf66c039bdf443",
+      "binary": false
+    },
+    {
+      "source": "specs/008-unstructured-vector-ingestion-search/data-model.md",
+      "destination": "docs/design-docs/008-unstructured-vector-ingestion-search/data-model.md",
+      "kind": "design",
+      "source_sha256": "6be3cbf3702fdc7ba075b79f0429c8da6ca324c75fd5a8fe8a26c3b20631919c",
+      "binary": false
+    },
+    {
+      "source": "specs/008-unstructured-vector-ingestion-search/plan.md",
+      "destination": "docs/exec-plans/active/008-unstructured-vector-ingestion-search/plan.md",
+      "kind": "execution",
+      "source_sha256": "bd1defc1cd8ed7e25e9cabacf4a100bbd9dbac20bbae22d19db345f11d841ca8",
+      "binary": false
+    },
+    {
+      "source": "specs/008-unstructured-vector-ingestion-search/quickstart.md",
+      "destination": "docs/product-specs/008-unstructured-vector-ingestion-search/quickstart.md",
+      "kind": "product",
+      "source_sha256": "99891d79fe119d3d6fa09d756edc0d19c48f7193bc3d845efe1b0ac76f5bfe30",
+      "binary": false
+    },
+    {
+      "source": "specs/008-unstructured-vector-ingestion-search/research.md",
+      "destination": "docs/design-docs/008-unstructured-vector-ingestion-search/research.md",
+      "kind": "design",
+      "source_sha256": "8102ab6128bdf8514ff9f3842b65c5edc0336e844caab7023cb06a1bbaf2e17a",
+      "binary": false
+    },
+    {
+      "source": "specs/008-unstructured-vector-ingestion-search/spec.md",
+      "destination": "docs/product-specs/008-unstructured-vector-ingestion-search/spec.md",
+      "kind": "product",
+      "source_sha256": "d698d1c2f176750741734dca61ce064966295be747755be74eecf3bef68d5907",
+      "binary": false
+    },
+    {
+      "source": "specs/008-unstructured-vector-ingestion-search/tasks.md",
+      "destination": "docs/exec-plans/active/008-unstructured-vector-ingestion-search/tasks.md",
+      "kind": "execution",
+      "source_sha256": "ce3f412d5e271eb28aa96be6b38be027dbc85b23cb2ec339d6d2bce36216454e",
+      "binary": false
+    },
+    {
+      "source": "specs/009-ollama-endpoint-support/checklists/requirements.md",
+      "destination": "docs/product-specs/009-ollama-endpoint-support/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "0e5a3fd16585283c207550660852aafd923f0b94b964cd9de49be460fc0bf6b7",
+      "binary": false
+    },
+    {
+      "source": "specs/009-ollama-endpoint-support/contracts/ollama-config-schema.md",
+      "destination": "docs/product-specs/009-ollama-endpoint-support/contracts/ollama-config-schema.md",
+      "kind": "product",
+      "source_sha256": "5bf2586fa55c8a13ace71fc1201fa0d2be0471f28dfa21fbe2a34916b6907748",
+      "binary": false
+    },
+    {
+      "source": "specs/009-ollama-endpoint-support/data-model.md",
+      "destination": "docs/design-docs/009-ollama-endpoint-support/data-model.md",
+      "kind": "design",
+      "source_sha256": "46c00d6ac80023a6064d9b501b353e6888a61faeed91c944d37812df8355c034",
+      "binary": false
+    },
+    {
+      "source": "specs/009-ollama-endpoint-support/plan.md",
+      "destination": "docs/exec-plans/active/009-ollama-endpoint-support/plan.md",
+      "kind": "execution",
+      "source_sha256": "6735b5f95b1d06d847f4c5ff15f0942e502c4d86435edfaf64bd1b9c4f60caf0",
+      "binary": false
+    },
+    {
+      "source": "specs/009-ollama-endpoint-support/quickstart.md",
+      "destination": "docs/product-specs/009-ollama-endpoint-support/quickstart.md",
+      "kind": "product",
+      "source_sha256": "d02f0b648c40dbaff1728cc6bacc22e2bc4fc746f02959e0e368e8a994d27447",
+      "binary": false
+    },
+    {
+      "source": "specs/009-ollama-endpoint-support/research.md",
+      "destination": "docs/design-docs/009-ollama-endpoint-support/research.md",
+      "kind": "design",
+      "source_sha256": "ecb9257e2db3f54e9d6d87d57289e0d43851b820344d4811f4c11c096c900c5b",
+      "binary": false
+    },
+    {
+      "source": "specs/009-ollama-endpoint-support/spec.md",
+      "destination": "docs/product-specs/009-ollama-endpoint-support/spec.md",
+      "kind": "product",
+      "source_sha256": "e101daac45a232629d7a34fcd4fee3496157eba59fdbd988f55a0cbba04833a9",
+      "binary": false
+    },
+    {
+      "source": "specs/009-ollama-endpoint-support/tasks.md",
+      "destination": "docs/exec-plans/active/009-ollama-endpoint-support/tasks.md",
+      "kind": "execution",
+      "source_sha256": "943cdb9d5e6bbcedf8cf4b486b575ff18bfb3ac2d4c153d0195770ecbf32ad57",
+      "binary": false
+    },
+    {
+      "source": "specs/010-mcp-tool-operations/checklists/requirements.md",
+      "destination": "docs/product-specs/010-mcp-tool-operations/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "f84c5f726eee0a87f6ebfdce51888efbfd5ec779f78ea581b29979e3278a930b",
+      "binary": false
+    },
+    {
+      "source": "specs/010-mcp-tool-operations/contracts/mcp-config.md",
+      "destination": "docs/product-specs/010-mcp-tool-operations/contracts/mcp-config.md",
+      "kind": "product",
+      "source_sha256": "f5e6596460c6f21e8d00c3baa1ff189c2036a77674e03322f882416f266d927c",
+      "binary": false
+    },
+    {
+      "source": "specs/010-mcp-tool-operations/data-model.md",
+      "destination": "docs/design-docs/010-mcp-tool-operations/data-model.md",
+      "kind": "design",
+      "source_sha256": "0fa857843456f4ab0bc658bff1da57fe005d831fc146c82dae89708f1fa9347c",
+      "binary": false
+    },
+    {
+      "source": "specs/010-mcp-tool-operations/plan.md",
+      "destination": "docs/exec-plans/active/010-mcp-tool-operations/plan.md",
+      "kind": "execution",
+      "source_sha256": "b0b855d2b0ebf534367dde2193bd59d9774c6cddd70cc9ca007c6651a0a7c117",
+      "binary": false
+    },
+    {
+      "source": "specs/010-mcp-tool-operations/quickstart.md",
+      "destination": "docs/product-specs/010-mcp-tool-operations/quickstart.md",
+      "kind": "product",
+      "source_sha256": "04d21b610334682b75b2304a2e9c0c31daedde0df59c787e104b5014c70beb27",
+      "binary": false
+    },
+    {
+      "source": "specs/010-mcp-tool-operations/research.md",
+      "destination": "docs/design-docs/010-mcp-tool-operations/research.md",
+      "kind": "design",
+      "source_sha256": "8854b94ba72cb0d0269176964eacc0ae8ab9a5c025a4db7b8d4d57f3b1e4c2a7",
+      "binary": false
+    },
+    {
+      "source": "specs/010-mcp-tool-operations/spec.md",
+      "destination": "docs/product-specs/010-mcp-tool-operations/spec.md",
+      "kind": "product",
+      "source_sha256": "5fa9950b97fc9154866396f0cd746af773959bb91bb6082683bfbf84d0cc50e6",
+      "binary": false
+    },
+    {
+      "source": "specs/010-mcp-tool-operations/tasks.md",
+      "destination": "docs/exec-plans/active/010-mcp-tool-operations/tasks.md",
+      "kind": "execution",
+      "source_sha256": "73f8109ad98296b63c13874f77e5098989c32b5cbca48c024fee4099910d757c",
+      "binary": false
+    },
+    {
+      "source": "specs/011-interactive-init-wizard/checklists/requirements.md",
+      "destination": "docs/product-specs/011-interactive-init-wizard/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "e27a5a091bd75ecdb98af44eed4ee7997d16d87614afd824c35d8f60629a70c8",
+      "binary": false
+    },
+    {
+      "source": "specs/011-interactive-init-wizard/contracts/cli-contract.md",
+      "destination": "docs/product-specs/011-interactive-init-wizard/contracts/cli-contract.md",
+      "kind": "product",
+      "source_sha256": "7eabb037b79058920a475f9f129e482865d6cc618a45197758f93c1fe611b030",
+      "binary": false
+    },
+    {
+      "source": "specs/011-interactive-init-wizard/contracts/wizard-module.md",
+      "destination": "docs/product-specs/011-interactive-init-wizard/contracts/wizard-module.md",
+      "kind": "product",
+      "source_sha256": "5ef9fb2dc75b6cfe66e1d6cf47bf4140d08d7be4dacf680e6e5f8ac4cc408261",
+      "binary": false
+    },
+    {
+      "source": "specs/011-interactive-init-wizard/data-model.md",
+      "destination": "docs/design-docs/011-interactive-init-wizard/data-model.md",
+      "kind": "design",
+      "source_sha256": "979bcaa5017e9f33fcd5235b8390c92783b3ddb709f63b9d1b0b6839fb99f763",
+      "binary": false
+    },
+    {
+      "source": "specs/011-interactive-init-wizard/plan.md",
+      "destination": "docs/exec-plans/active/011-interactive-init-wizard/plan.md",
+      "kind": "execution",
+      "source_sha256": "486ba276f73ec350ea8e5ad4d408101e2dbb652d94133beb7d4ff104da157eee",
+      "binary": false
+    },
+    {
+      "source": "specs/011-interactive-init-wizard/quickstart.md",
+      "destination": "docs/product-specs/011-interactive-init-wizard/quickstart.md",
+      "kind": "product",
+      "source_sha256": "b8c162ee3b7b20ee52d72574e69322ade0e795928d2036f0fadc51ecf6e9edd2",
+      "binary": false
+    },
+    {
+      "source": "specs/011-interactive-init-wizard/research.md",
+      "destination": "docs/design-docs/011-interactive-init-wizard/research.md",
+      "kind": "design",
+      "source_sha256": "f3dfa5e3f9c536fa791c3a602f57f42eb1534dbf17ee120652eb5267c585b4ee",
+      "binary": false
+    },
+    {
+      "source": "specs/011-interactive-init-wizard/spec.md",
+      "destination": "docs/product-specs/011-interactive-init-wizard/spec.md",
+      "kind": "product",
+      "source_sha256": "736df343cc4855f48bfb45884bd4d557072fe75119c85e269372047fe642c728",
+      "binary": false
+    },
+    {
+      "source": "specs/011-interactive-init-wizard/tasks.md",
+      "destination": "docs/exec-plans/active/011-interactive-init-wizard/tasks.md",
+      "kind": "execution",
+      "source_sha256": "24cd62aa3f29dc7b9732a6fba2543b0793f1c64bdd11ed2174b383b25e14ea6a",
+      "binary": false
+    },
+    {
+      "source": "specs/012-deepeval-metrics/checklists/requirements.md",
+      "destination": "docs/product-specs/012-deepeval-metrics/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "2187d70d4d994fdca3c5b1be1a731bd5c6b0cf6f284f7c61b43db8c10560f35c",
+      "binary": false
+    },
+    {
+      "source": "specs/012-deepeval-metrics/contracts/evaluator_interfaces.md",
+      "destination": "docs/product-specs/012-deepeval-metrics/contracts/evaluator_interfaces.md",
+      "kind": "product",
+      "source_sha256": "f1ace289079058a81fdb43d56e2aecd6f12a0cf2c150733739b10ec0cef0bf94",
+      "binary": false
+    },
+    {
+      "source": "specs/012-deepeval-metrics/data-model.md",
+      "destination": "docs/design-docs/012-deepeval-metrics/data-model.md",
+      "kind": "design",
+      "source_sha256": "3417d681f068492eb3fe104707596b7b2f6721959d1131f75c1938670b8ca157",
+      "binary": false
+    },
+    {
+      "source": "specs/012-deepeval-metrics/plan.md",
+      "destination": "docs/exec-plans/active/012-deepeval-metrics/plan.md",
+      "kind": "execution",
+      "source_sha256": "703b4e492cebcb73ecbf01f1134f92e12ff34e3130f1f50d69a99e9f770ab542",
+      "binary": false
+    },
+    {
+      "source": "specs/012-deepeval-metrics/quickstart.md",
+      "destination": "docs/product-specs/012-deepeval-metrics/quickstart.md",
+      "kind": "product",
+      "source_sha256": "ff8239c5838cbed4c2845a96eb0faf6c2d102db8392c9d200854a31367e53435",
+      "binary": false
+    },
+    {
+      "source": "specs/012-deepeval-metrics/research.md",
+      "destination": "docs/design-docs/012-deepeval-metrics/research.md",
+      "kind": "design",
+      "source_sha256": "0f4f3d54d6b58c11c495c5fdb02af39a95630c55d17dc186f0c5865fe5a7b4a4",
+      "binary": false
+    },
+    {
+      "source": "specs/012-deepeval-metrics/spec.md",
+      "destination": "docs/product-specs/012-deepeval-metrics/spec.md",
+      "kind": "product",
+      "source_sha256": "6351445eaee003d4ff3099ad66e0bc0ae6cc68e6e8eca5f409d61ac7fd7c6a11",
+      "binary": false
+    },
+    {
+      "source": "specs/012-deepeval-metrics/tasks.md",
+      "destination": "docs/exec-plans/active/012-deepeval-metrics/tasks.md",
+      "kind": "execution",
+      "source_sha256": "5b6c2e73df912cb2a15ff83089a918de682edeb0e812058e4633b0bacc2c37f6",
+      "binary": false
+    },
+    {
+      "source": "specs/013-mcp-cli/contracts/cli-commands.md",
+      "destination": "docs/product-specs/013-mcp-cli/contracts/cli-commands.md",
+      "kind": "product",
+      "source_sha256": "a22904e223bcaa79e5f8b0fa6c70b2f3d06258b75095feff3911dffcf6df36cb",
+      "binary": false
+    },
+    {
+      "source": "specs/013-mcp-cli/contracts/config-loader-extensions.md",
+      "destination": "docs/product-specs/013-mcp-cli/contracts/config-loader-extensions.md",
+      "kind": "product",
+      "source_sha256": "8c9b4bdb4e6b064f0ff326f4f62b7cf6ff837248a08a60b76333d1738fabc04b",
+      "binary": false
+    },
+    {
+      "source": "specs/013-mcp-cli/contracts/mcp-registry-client.md",
+      "destination": "docs/product-specs/013-mcp-cli/contracts/mcp-registry-client.md",
+      "kind": "product",
+      "source_sha256": "46898b6310c57be680d91d326dfed72628605040e889739a58a14ff86397a544",
+      "binary": false
+    },
+    {
+      "source": "specs/013-mcp-cli/data-model.md",
+      "destination": "docs/design-docs/013-mcp-cli/data-model.md",
+      "kind": "design",
+      "source_sha256": "ed23c00657be875092d684bbd2b1836660b9474a784b1e94f80d86aaaf8dc7bb",
+      "binary": false
+    },
+    {
+      "source": "specs/013-mcp-cli/plan.md",
+      "destination": "docs/exec-plans/active/013-mcp-cli/plan.md",
+      "kind": "execution",
+      "source_sha256": "52a74b4104877e0680b952658ebbb46ad6d4e71b5e2d31e48da7f6bf478d8653",
+      "binary": false
+    },
+    {
+      "source": "specs/013-mcp-cli/quickstart.md",
+      "destination": "docs/product-specs/013-mcp-cli/quickstart.md",
+      "kind": "product",
+      "source_sha256": "dd40642c8ce251dec69d1e56f37632cf6bedbba46c8e2b950d6354fccceb2070",
+      "binary": false
+    },
+    {
+      "source": "specs/013-mcp-cli/research.md",
+      "destination": "docs/design-docs/013-mcp-cli/research.md",
+      "kind": "design",
+      "source_sha256": "ef5635b99e5f2958c239fd464108e83fb7a765230d2aba61689b3513315e8d4e",
+      "binary": false
+    },
+    {
+      "source": "specs/013-mcp-cli/spec.md",
+      "destination": "docs/product-specs/013-mcp-cli/spec.md",
+      "kind": "product",
+      "source_sha256": "7df3d54fee5d11283e8bb36dbcc8543523e6d691d384b82f85bc3fd9e3a5d16d",
+      "binary": false
+    },
+    {
+      "source": "specs/013-mcp-cli/tasks.md",
+      "destination": "docs/exec-plans/active/013-mcp-cli/tasks.md",
+      "kind": "execution",
+      "source_sha256": "28f51d412d83c906998c051255f20e88fd16a695bce0a7edd69dc924959621a4",
+      "binary": false
+    },
+    {
+      "source": "specs/014-structured-data-ingestion/checklists/requirements.md",
+      "destination": "docs/product-specs/014-structured-data-ingestion/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "cff02df50baa4eaf3b27ed6465054ef6acc7959e3ff9fd7ada1b019d262339eb",
+      "binary": false
+    },
+    {
+      "source": "specs/014-structured-data-ingestion/data-model.md",
+      "destination": "docs/design-docs/014-structured-data-ingestion/data-model.md",
+      "kind": "design",
+      "source_sha256": "91d2659b48a3be92a3ab84d9349e279413c2177f9149736bbc213dbbb0aeed19",
+      "binary": false
+    },
+    {
+      "source": "specs/014-structured-data-ingestion/plan.md",
+      "destination": "docs/exec-plans/active/014-structured-data-ingestion/plan.md",
+      "kind": "execution",
+      "source_sha256": "26702d03b4cb7f5175668437f62461aa25cda7d54a129056fcf377a1a64719db",
+      "binary": false
+    },
+    {
+      "source": "specs/014-structured-data-ingestion/quickstart.md",
+      "destination": "docs/product-specs/014-structured-data-ingestion/quickstart.md",
+      "kind": "product",
+      "source_sha256": "1cd40c03357bb8bc752502b19a1785e84e9b7283bded79c1e6fd4ed3411b2db0",
+      "binary": false
+    },
+    {
+      "source": "specs/014-structured-data-ingestion/research.md",
+      "destination": "docs/design-docs/014-structured-data-ingestion/research.md",
+      "kind": "design",
+      "source_sha256": "4e44ee86d88c4403de4baeb674296d088071a1c322f111b182e04c0c4b7cda91",
+      "binary": false
+    },
+    {
+      "source": "specs/014-structured-data-ingestion/spec.md",
+      "destination": "docs/product-specs/014-structured-data-ingestion/spec.md",
+      "kind": "product",
+      "source_sha256": "e7af699db949faeaa52782b427e0ab91b1a5a34ab504677a7c445b549f72ee1a",
+      "binary": false
+    },
+    {
+      "source": "specs/014-structured-data-ingestion/tasks.md",
+      "destination": "docs/exec-plans/active/014-structured-data-ingestion/tasks.md",
+      "kind": "execution",
+      "source_sha256": "a1ebf5ddfdea6fe20d6cba33d26b1a66b4aef7b385bd1800355969bffe5c6044",
+      "binary": false
+    },
+    {
+      "source": "specs/015-vectorstore-reranking/checklists/requirements.md",
+      "destination": "docs/product-specs/015-vectorstore-reranking/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "ac88fa0a5e9fe7693588a1471f4131f473482981230a4c56ff0aa3fc8507ab3d",
+      "binary": false
+    },
+    {
+      "source": "specs/015-vectorstore-reranking/contracts/reranker-interface.md",
+      "destination": "docs/product-specs/015-vectorstore-reranking/contracts/reranker-interface.md",
+      "kind": "product",
+      "source_sha256": "911e00d43f601aab7641869b160f248d756bfb88e6c3a53fd8f71e3341fb49de",
+      "binary": false
+    },
+    {
+      "source": "specs/015-vectorstore-reranking/data-model.md",
+      "destination": "docs/design-docs/015-vectorstore-reranking/data-model.md",
+      "kind": "design",
+      "source_sha256": "53cfcc1b2091c9b5907599916fc5d2791d3391880ce3c07f41d47033af6eb54a",
+      "binary": false
+    },
+    {
+      "source": "specs/015-vectorstore-reranking/plan.md",
+      "destination": "docs/exec-plans/active/015-vectorstore-reranking/plan.md",
+      "kind": "execution",
+      "source_sha256": "7d4091e38d2159187aa215b41155235d06d807afc68098d2961725f384446059",
+      "binary": false
+    },
+    {
+      "source": "specs/015-vectorstore-reranking/quickstart.md",
+      "destination": "docs/product-specs/015-vectorstore-reranking/quickstart.md",
+      "kind": "product",
+      "source_sha256": "c7fb72ce4976f6876c26198de70294acafd743f09edc0ccc42c0e23c021c7d80",
+      "binary": false
+    },
+    {
+      "source": "specs/015-vectorstore-reranking/research.md",
+      "destination": "docs/design-docs/015-vectorstore-reranking/research.md",
+      "kind": "design",
+      "source_sha256": "4805d0015e905b4f52b4f32792bcbf1aae0936ee19377f3a8a5326799e5bda89",
+      "binary": false
+    },
+    {
+      "source": "specs/015-vectorstore-reranking/spec.md",
+      "destination": "docs/product-specs/015-vectorstore-reranking/spec.md",
+      "kind": "product",
+      "source_sha256": "9ba3943245e0e723957d6ae41eee9db7de22055c878d031242d346dce6d0e9bb",
+      "binary": false
+    },
+    {
+      "source": "specs/016-graphrag-integration/checklists/requirements.md",
+      "destination": "docs/product-specs/016-graphrag-integration/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "aabefa559d050744e1c74a8b1e0d9742a05f9a02918cff26d91e430e16e0d104",
+      "binary": false
+    },
+    {
+      "source": "specs/016-graphrag-integration/contracts/graphrag-engine.md",
+      "destination": "docs/product-specs/016-graphrag-integration/contracts/graphrag-engine.md",
+      "kind": "product",
+      "source_sha256": "eb60ebe173ab1bf8398dd6bb9c790448a78868475d71ca3f5f18b7f2ba3bd803",
+      "binary": false
+    },
+    {
+      "source": "specs/016-graphrag-integration/data-model.md",
+      "destination": "docs/design-docs/016-graphrag-integration/data-model.md",
+      "kind": "design",
+      "source_sha256": "1c99b9341ecf4416baacb53c986a3282a2af938f98166392f05f6059faa5639f",
+      "binary": false
+    },
+    {
+      "source": "specs/016-graphrag-integration/plan.md",
+      "destination": "docs/exec-plans/active/016-graphrag-integration/plan.md",
+      "kind": "execution",
+      "source_sha256": "29b9e3dd59395b31fcec1d586690622e8b6d3ee49fd4f3503cb2736512ad988b",
+      "binary": false
+    },
+    {
+      "source": "specs/016-graphrag-integration/quickstart.md",
+      "destination": "docs/product-specs/016-graphrag-integration/quickstart.md",
+      "kind": "product",
+      "source_sha256": "b642a65d3657cba16fe34ef7d6ecd386bd8690392a39b67aa9e874fddaa55689",
+      "binary": false
+    },
+    {
+      "source": "specs/016-graphrag-integration/research.md",
+      "destination": "docs/design-docs/016-graphrag-integration/research.md",
+      "kind": "design",
+      "source_sha256": "7df56421be709d418f4a577521c8ec1ab833f770244a84c2118849de2752623f",
+      "binary": false
+    },
+    {
+      "source": "specs/016-graphrag-integration/spec.md",
+      "destination": "docs/product-specs/016-graphrag-integration/spec.md",
+      "kind": "product",
+      "source_sha256": "d2c54f8bd112154b904642a9635986624df34fc2fa313256b9dd6715c88f6f14",
+      "binary": false
+    },
+    {
+      "source": "specs/017-agent-local-server/checklists/requirements.md",
+      "destination": "docs/product-specs/017-agent-local-server/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "9115b11f657c0c44e0b15fda7747d1b0e8a15829a2922055b788c958060b67f5",
+      "binary": false
+    },
+    {
+      "source": "specs/017-agent-local-server/contracts/openapi.yaml",
+      "destination": "docs/product-specs/017-agent-local-server/contracts/openapi.yaml",
+      "kind": "product",
+      "source_sha256": "db8363f178f9cd63aa428250058d63445997f2a89775ec1cd09ea88647a5a0d5",
+      "binary": false
+    },
+    {
+      "source": "specs/017-agent-local-server/contracts/sse-events.md",
+      "destination": "docs/product-specs/017-agent-local-server/contracts/sse-events.md",
+      "kind": "product",
+      "source_sha256": "02fb72b24496e3b58fc9518f3815874e88f35618dbf8fc90069715717a235853",
+      "binary": false
+    },
+    {
+      "source": "specs/017-agent-local-server/data-model.md",
+      "destination": "docs/design-docs/017-agent-local-server/data-model.md",
+      "kind": "design",
+      "source_sha256": "1c6af91a30cc28fb658dd355c70051fd892c87971d7cda01ad50da189b875f77",
+      "binary": false
+    },
+    {
+      "source": "specs/017-agent-local-server/plan.md",
+      "destination": "docs/exec-plans/active/017-agent-local-server/plan.md",
+      "kind": "execution",
+      "source_sha256": "be1ee64c0144dc1c353c5ffa63be709c44ea34469c95d232e5666f2176de2e87",
+      "binary": false
+    },
+    {
+      "source": "specs/017-agent-local-server/quickstart.md",
+      "destination": "docs/product-specs/017-agent-local-server/quickstart.md",
+      "kind": "product",
+      "source_sha256": "336e5df6b6f17cf51d17164218724f54ae134a367fa8b30d4ab0a6f003da2b24",
+      "binary": false
+    },
+    {
+      "source": "specs/017-agent-local-server/research.md",
+      "destination": "docs/design-docs/017-agent-local-server/research.md",
+      "kind": "design",
+      "source_sha256": "511dedba29395e601c4e9c3b038f18b6c1bfd311c4377ba13c67315d7ba941b0",
+      "binary": false
+    },
+    {
+      "source": "specs/017-agent-local-server/spec.md",
+      "destination": "docs/product-specs/017-agent-local-server/spec.md",
+      "kind": "product",
+      "source_sha256": "86d89d472a9a8d21e00013769c9772d6236529ca2dd5c2cf47c230834c210fbb",
+      "binary": false
+    },
+    {
+      "source": "specs/017-agent-local-server/tasks.md",
+      "destination": "docs/exec-plans/active/017-agent-local-server/tasks.md",
+      "kind": "execution",
+      "source_sha256": "5471dc416cf875e6ca993087e9a1896510bcdb815bea56defc10732c8bcaf2dc",
+      "binary": false
+    },
+    {
+      "source": "specs/018-otel-observability/checklists/requirements.md",
+      "destination": "docs/product-specs/018-otel-observability/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "59f125bda30dd17143e7d4baa6b0d3c4cf3fe8fe5a950dc5c7d291e5158b3b69",
+      "binary": false
+    },
+    {
+      "source": "specs/018-otel-observability/contracts/observability-api.md",
+      "destination": "docs/product-specs/018-otel-observability/contracts/observability-api.md",
+      "kind": "product",
+      "source_sha256": "a2d39ca7e70c07247757785f81e097546d728d181810374e1b6320785871e1ef",
+      "binary": false
+    },
+    {
+      "source": "specs/018-otel-observability/contracts/observability-config.schema.json",
+      "destination": "docs/product-specs/018-otel-observability/contracts/observability-config.schema.json",
+      "kind": "product",
+      "source_sha256": "7cbb67303709b370f40e0a01e5f5688d70ebe09ea91f8fd905451aaf6ad48c5d",
+      "binary": false
+    },
+    {
+      "source": "specs/018-otel-observability/data-model.md",
+      "destination": "docs/design-docs/018-otel-observability/data-model.md",
+      "kind": "design",
+      "source_sha256": "b254a9b3c223f8be1c469c302958689d8dd41229491cca1489bff655dcd3a3d5",
+      "binary": false
+    },
+    {
+      "source": "specs/018-otel-observability/plan.md",
+      "destination": "docs/exec-plans/active/018-otel-observability/plan.md",
+      "kind": "execution",
+      "source_sha256": "7863155ca3e2a0f01dd285a4ed7a04303c2676f2889e38353e1ef5ff8186fb73",
+      "binary": false
+    },
+    {
+      "source": "specs/018-otel-observability/quickstart.md",
+      "destination": "docs/product-specs/018-otel-observability/quickstart.md",
+      "kind": "product",
+      "source_sha256": "17cda0204189ff593b434b4dcb3b4dd60d0e3dd414d0734568352085a95f7dce",
+      "binary": false
+    },
+    {
+      "source": "specs/018-otel-observability/research.md",
+      "destination": "docs/design-docs/018-otel-observability/research.md",
+      "kind": "design",
+      "source_sha256": "022d377f3f42d5e7e220ae38f0b45669fef69fed1e2cde8327e5a040856cc080",
+      "binary": false
+    },
+    {
+      "source": "specs/018-otel-observability/spec.md",
+      "destination": "docs/product-specs/018-otel-observability/spec.md",
+      "kind": "product",
+      "source_sha256": "ed004e5018ea1327489de17c033b4eefc12f35208dda4d1c0002e257b237d891",
+      "binary": false
+    },
+    {
+      "source": "specs/018-otel-observability/tasks.md",
+      "destination": "docs/exec-plans/active/018-otel-observability/tasks.md",
+      "kind": "execution",
+      "source_sha256": "3ffbdc1925a17aa4ebb03857d22e4b0bae24ae69c795381c0dc2eff9085905ab",
+      "binary": false
+    },
+    {
+      "source": "specs/019-deploy-command/checklists/requirements.md",
+      "destination": "docs/product-specs/019-deploy-command/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "41f764b22d1ab54a9dd627c5b4a1aeaac6477df6fb80d66b8b236eb9e70ec030",
+      "binary": false
+    },
+    {
+      "source": "specs/019-deploy-command/contracts/deployment-config-schema.yaml",
+      "destination": "docs/product-specs/019-deploy-command/contracts/deployment-config-schema.yaml",
+      "kind": "product",
+      "source_sha256": "053290bce7b09e0e071ddc9a3023d2e7e3602eb24dabcacd44a5c4c98043d5d5",
+      "binary": false
+    },
+    {
+      "source": "specs/019-deploy-command/data-model.md",
+      "destination": "docs/design-docs/019-deploy-command/data-model.md",
+      "kind": "design",
+      "source_sha256": "258a7bc8423cc73ebba09f795102676e47a7814982d011f485e490e2f2410d71",
+      "binary": false
+    },
+    {
+      "source": "specs/019-deploy-command/plan.md",
+      "destination": "docs/exec-plans/active/019-deploy-command/plan.md",
+      "kind": "execution",
+      "source_sha256": "28cf1f4cb44c25b4ae6a5f90765fd3902ac97b645c2aac48b9c47cc2092db2a1",
+      "binary": false
+    },
+    {
+      "source": "specs/019-deploy-command/quickstart.md",
+      "destination": "docs/product-specs/019-deploy-command/quickstart.md",
+      "kind": "product",
+      "source_sha256": "394029213303cc4598132b7b0d7e93127ef68c6f64dc66e427e125a2db44932b",
+      "binary": false
+    },
+    {
+      "source": "specs/019-deploy-command/research.md",
+      "destination": "docs/design-docs/019-deploy-command/research.md",
+      "kind": "design",
+      "source_sha256": "ff7545dd25d5ca417c397424e690ac82d116f0350f8dffad18d621bbcbc562f8",
+      "binary": false
+    },
+    {
+      "source": "specs/019-deploy-command/spec.md",
+      "destination": "docs/product-specs/019-deploy-command/spec.md",
+      "kind": "product",
+      "source_sha256": "56a000ceb2da8d0ac089a1cc66fcb0000b5d6fa28c2d3ea746478e10fc921f43",
+      "binary": false
+    },
+    {
+      "source": "specs/019-deploy-command/tasks.md",
+      "destination": "docs/exec-plans/active/019-deploy-command/tasks.md",
+      "kind": "execution",
+      "source_sha256": "a044b312f10d345462c1d523db8b343fad75e5bad1db05a1fa041536a6f9f9b7",
+      "binary": false
+    },
+    {
+      "source": "specs/020-structured-document-tool/checklists/requirements.md",
+      "destination": "docs/product-specs/020-structured-document-tool/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "bdc0ab5f6cc8d50bba9d7f01fc443079409b35fb578c1a218eaf4c6ceabc0885",
+      "binary": false
+    },
+    {
+      "source": "specs/020-structured-document-tool/contracts/hierarchical_document_tool_config.yaml",
+      "destination": "docs/product-specs/020-structured-document-tool/contracts/hierarchical_document_tool_config.yaml",
+      "kind": "product",
+      "source_sha256": "f8b1e3dd906bdaca1cc0fb9a42acbb7fe8b56ba5f26125192d163c3360480848",
+      "binary": false
+    },
+    {
+      "source": "specs/020-structured-document-tool/data-model.md",
+      "destination": "docs/design-docs/020-structured-document-tool/data-model.md",
+      "kind": "design",
+      "source_sha256": "0de74f77cb071814f8c23e268347addd695df47424428d7a0cffef4ca82b97f8",
+      "binary": false
+    },
+    {
+      "source": "specs/020-structured-document-tool/plan.md",
+      "destination": "docs/exec-plans/active/020-structured-document-tool/plan.md",
+      "kind": "execution",
+      "source_sha256": "660c8e0b12e33c72e51256ec1b07bc126fedf4ff5257e4b428ecdcafe771a180",
+      "binary": false
+    },
+    {
+      "source": "specs/020-structured-document-tool/quickstart.md",
+      "destination": "docs/product-specs/020-structured-document-tool/quickstart.md",
+      "kind": "product",
+      "source_sha256": "a0310252509a641889671ae30ce0b18e91fc0e73aa668faf32c623b415097724",
+      "binary": false
+    },
+    {
+      "source": "specs/020-structured-document-tool/research.md",
+      "destination": "docs/design-docs/020-structured-document-tool/research.md",
+      "kind": "design",
+      "source_sha256": "28dda6c43a3b74fd95b70df181755fc4985dc41230bb80bb46d6ddc26ae78713",
+      "binary": false
+    },
+    {
+      "source": "specs/020-structured-document-tool/spec.md",
+      "destination": "docs/product-specs/020-structured-document-tool/spec.md",
+      "kind": "product",
+      "source_sha256": "dc77bd017c571ceb7d5a62d71a885ca562923adc3a7e7a25a565b2e57d8b9cd5",
+      "binary": false
+    },
+    {
+      "source": "specs/020-structured-document-tool/tasks.md",
+      "destination": "docs/exec-plans/active/020-structured-document-tool/tasks.md",
+      "kind": "execution",
+      "source_sha256": "3773b75a78a6266d9301d5e0c44a40914d5b5a2102ac5596f5de60c656395917",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/analysis.md",
+      "destination": "docs/design-docs/021-claude-agent-sdk/analysis.md",
+      "kind": "design",
+      "source_sha256": "5e16f361fe8d111949107d383aa17a8200c1e23a541d10e8f561c0ba4db5f170",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/checklists/requirements.md",
+      "destination": "docs/product-specs/021-claude-agent-sdk/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "3f20e2e7f21f8cef1b2fff97ec3daa0c9bbf352b6121d9a6395afc6532b292f6",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/contracts/agent-yaml-schema.md",
+      "destination": "docs/product-specs/021-claude-agent-sdk/contracts/agent-yaml-schema.md",
+      "kind": "product",
+      "source_sha256": "80c79ec2c2b01ec95a541afa3a5719860aecd766c01904157ecab16324b9ea7c",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/contracts/execution-result.md",
+      "destination": "docs/product-specs/021-claude-agent-sdk/contracts/execution-result.md",
+      "kind": "product",
+      "source_sha256": "bcc99b80849b9d20f85a59f75a98fc3f2ff5a7dd1870b5f1cb5bbd700fe3a7a0",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/data-model.md",
+      "destination": "docs/design-docs/021-claude-agent-sdk/data-model.md",
+      "kind": "design",
+      "source_sha256": "58e0927137cc87ba93ab7da7d5b5231a76f10b27cdc1feb2854455818d3ef704",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/llm-context-generator-extension.md",
+      "destination": "docs/exec-plans/active/021-claude-agent-sdk/llm-context-generator-extension.md",
+      "kind": "execution",
+      "source_sha256": "8919a3055b1388eaf5afa4cd12c514755550bc2b67d4fe73fd3b1dbf5d25d4b5",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/otel-extension-plan.md",
+      "destination": "docs/exec-plans/active/021-claude-agent-sdk/otel-extension-plan.md",
+      "kind": "execution",
+      "source_sha256": "083b49509a415ec685abef74a5c4789f34e7f36048d4a64f9cb60c815521b2f3",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/plan.md",
+      "destination": "docs/exec-plans/active/021-claude-agent-sdk/plan.md",
+      "kind": "execution",
+      "source_sha256": "a64e36f0d47df01642024b3a7c7985099cc68bc739954db936c592c41fd8d285",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/quickstart.md",
+      "destination": "docs/product-specs/021-claude-agent-sdk/quickstart.md",
+      "kind": "product",
+      "source_sha256": "63713cf146a48694320ccacbc79b30052451153234406b2b8d46fd61961ebd81",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/research.md",
+      "destination": "docs/design-docs/021-claude-agent-sdk/research.md",
+      "kind": "design",
+      "source_sha256": "e0f25d3bc5727aaa4e2b1642706473a8cbd7267cd37da1e14bb2412da5cd2053",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/spec.md",
+      "destination": "docs/product-specs/021-claude-agent-sdk/spec.md",
+      "kind": "product",
+      "source_sha256": "121df110c4cb6f6cff18cf78e7d189797299fa11f4218b98d18500bbe601f727",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/tasks-foundations.md",
+      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-foundations.md",
+      "kind": "execution",
+      "source_sha256": "6f531b55c455f342cd58279154bd32256c9b33f888ffaa1d9db813348f2fc3ae",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/tasks-phase10.md",
+      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase10.md",
+      "kind": "execution",
+      "source_sha256": "4439ee3f5d594ed0a525c278cea2a91c5d08ea1ceca2fff0fc4b5e6ecaa1922f",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/tasks-phase4.md",
+      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase4.md",
+      "kind": "execution",
+      "source_sha256": "497c7530992e67014ca75423d128edb8301465394a466aabca3ed48c0167d25d",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/tasks-phase5.md",
+      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase5.md",
+      "kind": "execution",
+      "source_sha256": "9210b89dfb6203915f837ec18d64edcb77e7600e1f82468dadc7e661ba6b9539",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/tasks-phase6-7.md",
+      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase6-7.md",
+      "kind": "execution",
+      "source_sha256": "2eca0eaf9631ff4df304fdce3ace1c91d52668799fbfddae58d9ca6eda7a7b94",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/tasks-phase8.md",
+      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase8.md",
+      "kind": "execution",
+      "source_sha256": "32087c74e96ce469932bbe9bfb5539918a0a337dc97ff76f3f4845344c5450eb",
+      "binary": false
+    },
+    {
+      "source": "specs/021-claude-agent-sdk/tasks-phase9.md",
+      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase9.md",
+      "kind": "execution",
+      "source_sha256": "6e4bbefb70141da1ad210ec17d69098810069c72cab967bfa04d93ce600653c4",
+      "binary": false
+    },
+    {
+      "source": "specs/022-otel-genai-semconv/checklists/requirements.md",
+      "destination": "docs/product-specs/022-otel-genai-semconv/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "883c111aba15601ffee4b4d47f902124bb2156ed22a35463750fd45a86d68f5a",
+      "binary": false
+    },
+    {
+      "source": "specs/022-otel-genai-semconv/data-model.md",
+      "destination": "docs/design-docs/022-otel-genai-semconv/data-model.md",
+      "kind": "design",
+      "source_sha256": "5ca54bcd3080a881f7cf56323c08f901110f248e22dc47aa426491e45cc7a7eb",
+      "binary": false
+    },
+    {
+      "source": "specs/022-otel-genai-semconv/plan.md",
+      "destination": "docs/exec-plans/completed/022-otel-genai-semconv/plan.md",
+      "kind": "execution",
+      "source_sha256": "8b593456ae2f21636bf247a1379fbd2ddb1d3cd88f103a289cd4fa410ac81a54",
+      "binary": false
+    },
+    {
+      "source": "specs/022-otel-genai-semconv/quickstart.md",
+      "destination": "docs/product-specs/022-otel-genai-semconv/quickstart.md",
+      "kind": "product",
+      "source_sha256": "27c2addc4e6ea6a3edf11dd62e342bc8374094aed26dae9ad26ce556d6ebd611",
+      "binary": false
+    },
+    {
+      "source": "specs/022-otel-genai-semconv/research.md",
+      "destination": "docs/design-docs/022-otel-genai-semconv/research.md",
+      "kind": "design",
+      "source_sha256": "38652aa486b8ee4fb540f62ee2aa5f246f0c216d699de34921c097cf4cac95d9",
+      "binary": false
+    },
+    {
+      "source": "specs/022-otel-genai-semconv/spec.md",
+      "destination": "docs/product-specs/022-otel-genai-semconv/spec.md",
+      "kind": "product",
+      "source_sha256": "f3c825e599246e6fb95fc409634f327e0bf7ee9d43f37df6549bb979b4133810",
+      "binary": false
+    },
+    {
+      "source": "specs/022-otel-genai-semconv/tasks.md",
+      "destination": "docs/exec-plans/completed/022-otel-genai-semconv/tasks.md",
+      "kind": "execution",
+      "source_sha256": "baa8ce2992d35c2c5fade96f33745f8e7d252e9de0d16736d3deb1f81e4d5a0d",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/checklists/requirements.md",
+      "destination": "docs/product-specs/023-choose-your-backend/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "1e6b00fa04e7ec2fccd858d8fbb965674581b9149b169a96351d2bc3acca333c",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/data-model.md",
+      "destination": "docs/design-docs/023-choose-your-backend/data-model.md",
+      "kind": "design",
+      "source_sha256": "ca6326d3dae1ddadb724eda86e5bc889c65da54cdf89fe529867699698a2e22d",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/plan.md",
+      "destination": "docs/exec-plans/active/023-choose-your-backend/plan.md",
+      "kind": "execution",
+      "source_sha256": "5562d63d895ce86b517c308974559b768b7ca0954bd6a164c21cbbd45b9a0dd5",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/quickstart.md",
+      "destination": "docs/product-specs/023-choose-your-backend/quickstart.md",
+      "kind": "product",
+      "source_sha256": "0feb25b129a9f4b0351156a8774238996f8a586012b28ac8c0967bc719d6662c",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/research.md",
+      "destination": "docs/design-docs/023-choose-your-backend/research.md",
+      "kind": "design",
+      "source_sha256": "9308c705215085431cc8447b8077c2e945b496c1cf36e8e6728eecfffbb775fd",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/spec.md",
+      "destination": "docs/product-specs/023-choose-your-backend/spec.md",
+      "kind": "product",
+      "source_sha256": "4574129be1500ed52aee60da2376ebe9c012286bb7db98cd87d1fb41aa56842c",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/tasks-us1.md",
+      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us1.md",
+      "kind": "execution",
+      "source_sha256": "ef4e4cbdea237a5a8d3ac623337bdcedfd8eb99db011d6229266fa8b23b56e6e",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/tasks-us2.md",
+      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us2.md",
+      "kind": "execution",
+      "source_sha256": "9fa618ea8d3304ed025fd7d2c7ad8949aae0ed00cc0e9545079ba93faf5ee247",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/tasks-us3.md",
+      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us3.md",
+      "kind": "execution",
+      "source_sha256": "762dbddd291a8cc79609306c678b28a444b76dd1ddc1017821c677dc1c45d950",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/tasks-us4.md",
+      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us4.md",
+      "kind": "execution",
+      "source_sha256": "c079d37efc4bbafad895e4b8a8fc23b86e841cb036d13ab4cc5aca03112b0f1c",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/tasks-us5.md",
+      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us5.md",
+      "kind": "execution",
+      "source_sha256": "6be746c19b3fd2898d2fbbc5c78e94bc584a141eb4950ada1408c9455f84ed52",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/tasks-us6.md",
+      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us6.md",
+      "kind": "execution",
+      "source_sha256": "43b2a3b83db7d19cb373ebd78a43e84d724d958d196bcd261d69eca277910369",
+      "binary": false
+    },
+    {
+      "source": "specs/023-choose-your-backend/tasks-us7.md",
+      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us7.md",
+      "kind": "execution",
+      "source_sha256": "0882cf9f5509d8a75a23f1119b7b91be062a04ab27ebc9f14397ef1351092c49",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/checklists/requirements.md",
+      "destination": "docs/product-specs/024-claude-serve-deploy/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "53c5832056afe7a01e80202ab37c3b6c5910e3125c883bc4f3833e1773fa8e13",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/contracts/health-endpoint.md",
+      "destination": "docs/product-specs/024-claude-serve-deploy/contracts/health-endpoint.md",
+      "kind": "product",
+      "source_sha256": "598e53cf40f5df2bbecff6566a1d18b3d3c1e33ea1a2af45d906be67c584bbb8",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/contracts/session-cap.md",
+      "destination": "docs/product-specs/024-claude-serve-deploy/contracts/session-cap.md",
+      "kind": "product",
+      "source_sha256": "be830a15d094caf72017f84ca44ad6b7995dd4d3955859c991c711ff8316b87c",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/data-model.md",
+      "destination": "docs/design-docs/024-claude-serve-deploy/data-model.md",
+      "kind": "design",
+      "source_sha256": "fb8ab8115df9f81b669f488030c084e432191a8953f5b0813dfaf9325af22ad5",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/plan.md",
+      "destination": "docs/exec-plans/active/024-claude-serve-deploy/plan.md",
+      "kind": "execution",
+      "source_sha256": "53c73891b4900ff3ebb678856da2f9c2faab43ed41ff15b98fab96e925d26b87",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/quickstart.md",
+      "destination": "docs/product-specs/024-claude-serve-deploy/quickstart.md",
+      "kind": "product",
+      "source_sha256": "cb8492adbf055f45f736d85695f3c81cfc17ebfb525eff40346ce2a40ce8d559",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/research.md",
+      "destination": "docs/design-docs/024-claude-serve-deploy/research.md",
+      "kind": "design",
+      "source_sha256": "8898fc04de097d5053189d06a53000087006a362dd7249f90d6002a16147d39b",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/spec.md",
+      "destination": "docs/product-specs/024-claude-serve-deploy/spec.md",
+      "kind": "product",
+      "source_sha256": "94513d83767efe9025ce6b0bb9c27a7666be7da309a2ed9c664b847e4e52f8c2",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/tasks-us1.md",
+      "destination": "docs/exec-plans/active/024-claude-serve-deploy/tasks-us1.md",
+      "kind": "execution",
+      "source_sha256": "1c65e800488ad91b90db743b7f0cf8899b6f14df5ba8a48c4a8f9e04d2789743",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/tasks-us2.md",
+      "destination": "docs/exec-plans/active/024-claude-serve-deploy/tasks-us2.md",
+      "kind": "execution",
+      "source_sha256": "7f4a71fdaf5486c7ab400c2dcad7c0fe4370cb589bd5300a3163205619e62b84",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/tasks-us3.md",
+      "destination": "docs/exec-plans/active/024-claude-serve-deploy/tasks-us3.md",
+      "kind": "execution",
+      "source_sha256": "3a09d2d6b8ec63548bb84e8752d5de6d4e6b7b66030a1bf402c1bd9cfb7596fd",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/tasks-us4.md",
+      "destination": "docs/exec-plans/active/024-claude-serve-deploy/tasks-us4.md",
+      "kind": "execution",
+      "source_sha256": "4e6fe0b70fa3eea08b30911898a336b16504ae440c8bb05bd18eb6e615f429d3",
+      "binary": false
+    },
+    {
+      "source": "specs/024-claude-serve-deploy/tasks-us5.md",
+      "destination": "docs/exec-plans/active/024-claude-serve-deploy/tasks-us5.md",
+      "kind": "execution",
+      "source_sha256": "ed580a815c03e078baa6e69d2ebc5f9d7a16ac0d7fcec126c68726df1cd61b51",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/checklists/requirements.md",
+      "destination": "docs/product-specs/025-tool-init-endpoints/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "99758c8af1982d4b68645219ba2bcfebe468b4f19b3f8751424c471fa2b53489",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/contracts/openapi.yaml",
+      "destination": "docs/product-specs/025-tool-init-endpoints/contracts/openapi.yaml",
+      "kind": "product",
+      "source_sha256": "a42d4d1b5c272dda729fe8863bbf2cd0c48679046a795ee22f9f509f23eaeb07",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/data-model.md",
+      "destination": "docs/design-docs/025-tool-init-endpoints/data-model.md",
+      "kind": "design",
+      "source_sha256": "5c6d29f7cc476dd98f29980ac02a4b8001e7912f99ece284317b2bdf1bf65427",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/design-remote-sources.md",
+      "destination": "docs/design-docs/025-tool-init-endpoints/design-remote-sources.md",
+      "kind": "design",
+      "source_sha256": "57343360a443870912bc6ee72f711ad228c4283a07d654b1df8858f494620294",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/plan.md",
+      "destination": "docs/exec-plans/completed/025-tool-init-endpoints/plan.md",
+      "kind": "execution",
+      "source_sha256": "1b6c58c92c911d38f84c6f64f79610f2cd0db85eca3441d6b7d1cc9684a67f7b",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/quickstart.md",
+      "destination": "docs/product-specs/025-tool-init-endpoints/quickstart.md",
+      "kind": "product",
+      "source_sha256": "87950d7a0a12b0cbe3c0db0f632adcade8865b8b44ebb98f4543d70039b8ec7e",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/research.md",
+      "destination": "docs/design-docs/025-tool-init-endpoints/research.md",
+      "kind": "design",
+      "source_sha256": "71c752340619e32e78236488f7e92d08da58db7a8027b2a25daf4bf29e077f10",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/spec.md",
+      "destination": "docs/product-specs/025-tool-init-endpoints/spec.md",
+      "kind": "product",
+      "source_sha256": "456681c8537a17428b8766f76b8bdd23cfb570d9a74f38eed240d07e29e892d6",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/tasks-us1.md",
+      "destination": "docs/exec-plans/completed/025-tool-init-endpoints/tasks-us1.md",
+      "kind": "execution",
+      "source_sha256": "c1ab1b3b7f27b2cdd76451078c482577297eed1afae422e3b50393247868f2d1",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/tasks-us2.md",
+      "destination": "docs/exec-plans/completed/025-tool-init-endpoints/tasks-us2.md",
+      "kind": "execution",
+      "source_sha256": "ae6a1bbe502a481fbd529a8f5ca49d5fb7ced60c5ef08cd1b3655cff168c50fe",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/tasks-us3.md",
+      "destination": "docs/exec-plans/completed/025-tool-init-endpoints/tasks-us3.md",
+      "kind": "execution",
+      "source_sha256": "71c98f9ae145d4c0aee50c40af77f532f01578627289ce09d0767f2eda4f8858",
+      "binary": false
+    },
+    {
+      "source": "specs/025-tool-init-endpoints/tasks-us4.md",
+      "destination": "docs/exec-plans/completed/025-tool-init-endpoints/tasks-us4.md",
+      "kind": "execution",
+      "source_sha256": "f4814077ca119e957647a415f040eb87fe42f3b596ef3fc4dd3866fb31ca799b",
+      "binary": false
+    },
+    {
+      "source": "specs/026-sdk-config-additions/checklists/requirements.md",
+      "destination": "docs/product-specs/026-sdk-config-additions/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "a736b1da9d993748b3d79938230c16bae1ea8aa54312f528747a626bd264f33c",
+      "binary": false
+    },
+    {
+      "source": "specs/026-sdk-config-additions/spec.md",
+      "destination": "docs/product-specs/026-sdk-config-additions/spec.md",
+      "kind": "product",
+      "source_sha256": "88598bbd202a940ed9f02b7c13a795cbc0316ca968afcb1111a4721f6bdc126f",
+      "binary": false
+    },
+    {
+      "source": "specs/027-mcp-http-sse-transport/checklists/requirements.md",
+      "destination": "docs/product-specs/027-mcp-http-sse-transport/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "47140fc89d215375dc78a6b2f49a535a1f7eeedab50b55d5e100ef91f6aab8c6",
+      "binary": false
+    },
+    {
+      "source": "specs/027-mcp-http-sse-transport/spec.md",
+      "destination": "docs/product-specs/027-mcp-http-sse-transport/spec.md",
+      "kind": "product",
+      "source_sha256": "e44d29f4a8f62e5a4b1f0ddf493f99adb5ec8ba643a017e1f0539bc8f53c0593",
+      "binary": false
+    },
+    {
+      "source": "specs/028-yaml-hooks-system/checklists/requirements.md",
+      "destination": "docs/product-specs/028-yaml-hooks-system/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "9fa8271e3a6a5e4d696aa40c3c2ffe877750f23ba40f1ce9f87b4968e7ff16fa",
+      "binary": false
+    },
+    {
+      "source": "specs/028-yaml-hooks-system/spec.md",
+      "destination": "docs/product-specs/028-yaml-hooks-system/spec.md",
+      "kind": "product",
+      "source_sha256": "d7713d64d4610652dad1b8dbcf297f8dcfca67dde998c48cc2deb22b56f65611",
+      "binary": false
+    },
+    {
+      "source": "specs/029-subagent-orchestration/checklists/requirements.md",
+      "destination": "docs/product-specs/029-subagent-orchestration/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "67f2e0762d2ee5040195a558d08fbbf19949aa0a39e9c6905cc3cfa36b718483",
+      "binary": false
+    },
+    {
+      "source": "specs/029-subagent-orchestration/contracts/subagent-spec.schema.json",
+      "destination": "docs/product-specs/029-subagent-orchestration/contracts/subagent-spec.schema.json",
+      "kind": "product",
+      "source_sha256": "b52cd9c7f39d170f362f0d6fa24f4a0f196f4a5221f4e0fc05da693a83e7571f",
+      "binary": false
+    },
+    {
+      "source": "specs/029-subagent-orchestration/data-model.md",
+      "destination": "docs/design-docs/029-subagent-orchestration/data-model.md",
+      "kind": "design",
+      "source_sha256": "f5d90bb3b8a30be0e5003534cb08fcf41a825ebf042d717dff557904e0fa65fc",
+      "binary": false
+    },
+    {
+      "source": "specs/029-subagent-orchestration/plan.md",
+      "destination": "docs/exec-plans/active/029-subagent-orchestration/plan.md",
+      "kind": "execution",
+      "source_sha256": "ffc4c69d42ba100b3cad9a4aca2133a424eeddf74a0e7e728e6124b8ccefd20b",
+      "binary": false
+    },
+    {
+      "source": "specs/029-subagent-orchestration/quickstart.md",
+      "destination": "docs/product-specs/029-subagent-orchestration/quickstart.md",
+      "kind": "product",
+      "source_sha256": "d8d62dcb250dabf26c96ecfb9d1ad22e4592c8e76283ebcdbb17cbb5e33725cc",
+      "binary": false
+    },
+    {
+      "source": "specs/029-subagent-orchestration/research.md",
+      "destination": "docs/design-docs/029-subagent-orchestration/research.md",
+      "kind": "design",
+      "source_sha256": "168308c41bf61e47203ca43c29b45ef466f4594b1520b6025f58bf7ba5995861",
+      "binary": false
+    },
+    {
+      "source": "specs/029-subagent-orchestration/spec.md",
+      "destination": "docs/product-specs/029-subagent-orchestration/spec.md",
+      "kind": "product",
+      "source_sha256": "b50681003e7c47e4d76aa02353e4012723217fc9a57a50bdde741687414da0d7",
+      "binary": false
+    },
+    {
+      "source": "specs/029-subagent-orchestration/tasks-us1.md",
+      "destination": "docs/exec-plans/active/029-subagent-orchestration/tasks-us1.md",
+      "kind": "execution",
+      "source_sha256": "ec779a7587aab9cf70178b3cc1880821c1568a0dee28818cf931ba66f44a236e",
+      "binary": false
+    },
+    {
+      "source": "specs/029-subagent-orchestration/tasks-us2.md",
+      "destination": "docs/exec-plans/active/029-subagent-orchestration/tasks-us2.md",
+      "kind": "execution",
+      "source_sha256": "24ea69b7b52759f4367dd92124b2f6bde97dddb9f7db707dc70345f2e0984c69",
+      "binary": false
+    },
+    {
+      "source": "specs/029-subagent-orchestration/tasks-us3.md",
+      "destination": "docs/exec-plans/active/029-subagent-orchestration/tasks-us3.md",
+      "kind": "execution",
+      "source_sha256": "5b18321df5b047a358b08666b5cdccc5498ac96a1c904943ba73d83df8861bcb",
+      "binary": false
+    },
+    {
+      "source": "specs/030-skills-support/checklists/requirements.md",
+      "destination": "docs/product-specs/030-skills-support/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "7ddf384c2bd785b5d751d78d11e213b432e7178b3a6d83f3773f99d2ce7833db",
+      "binary": false
+    },
+    {
+      "source": "specs/030-skills-support/spec.md",
+      "destination": "docs/product-specs/030-skills-support/spec.md",
+      "kind": "product",
+      "source_sha256": "2e982f5781f03930b72d6fa16094f480c4bcf3a9628ef8e0065e4bd08903c942",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/checklists/requirements.md",
+      "destination": "docs/product-specs/031-eval-runs-dashboard/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "cb79f019c2f6e4654e45077cc91ddaa117f9d254a89dfccfe1d0c36bfc8b63dc",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/contracts/cli.md",
+      "destination": "docs/product-specs/031-eval-runs-dashboard/contracts/cli.md",
+      "kind": "product",
+      "source_sha256": "4a02238053258a4c6c3d3c2229e25291fa01a8c2f723e9b32f73eb760995860d",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/contracts/eval_run.schema.json",
+      "destination": "docs/product-specs/031-eval-runs-dashboard/contracts/eval_run.schema.json",
+      "kind": "product",
+      "source_sha256": "24f494b493a84c3debed207fb7fdcfeca459115742f16179319565bfd716df9c",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/contracts/prompt_version.schema.json",
+      "destination": "docs/product-specs/031-eval-runs-dashboard/contracts/prompt_version.schema.json",
+      "kind": "product",
+      "source_sha256": "c7e75f7433720f517ed175ac64a6e79974da9d769d08cd6797aadadfc75ea5b2",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/data-model.md",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/data-model.md",
+      "kind": "design",
+      "source_sha256": "ea32ead65184b84f9918a990764ac67226bdc7c01076fb5129ff92ef8a37cef2",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/Evaluation Dashboard.html",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/Evaluation Dashboard.html",
+      "kind": "design",
+      "source_sha256": "c5c99c8a949684ef704976149a8af04c1506d761d2d58c02d3bd4aa0338ceeaa",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/README.md",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/README.md",
+      "kind": "design",
+      "source_sha256": "cbc41d8e23b261aa7dac577cd6c8ea87fd26df7d2200bbae5957e7261911afbc",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/app.jsx",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/app.jsx",
+      "kind": "design",
+      "source_sha256": "18f2e955801a9ef338fb527c86c2c28087afcc71fdfe52865054e03572c27ef0",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/compare.js",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/compare.js",
+      "kind": "design",
+      "source_sha256": "5881acf0b3ae23914e57a323dda4e09201ed24473521bf0af3922a4f084a4453",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/data.js",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/data.js",
+      "kind": "design",
+      "source_sha256": "3391a083997072db6401e5eef6d34eb8f8adf535bc126827a190a2b01f9e0237",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/explorer.js",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/explorer.js",
+      "kind": "design",
+      "source_sha256": "a7769e6803391098a9b8360aeccb182cb5d22e9085e04d5336928490c363a4d1",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/styles.js",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/styles.js",
+      "kind": "design",
+      "source_sha256": "dfd0fe52b9f7a235a0b49719b370e7942e1ecd99503035d33b1768ed185e0a12",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/summary.js",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/design_handoff_holodeck_eval_dashboard/summary.js",
+      "kind": "design",
+      "source_sha256": "a6e3d25b6bb1f8edd9c20a048a98575cd0d30c97af57247b2e83fafc5f5d4aa7",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/plan.md",
+      "destination": "docs/exec-plans/active/031-eval-runs-dashboard/plan.md",
+      "kind": "execution",
+      "source_sha256": "6cc6e7ee3461094432e19bad677455debeb3392000c2360b2a7b36075ade277b",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/quickstart.md",
+      "destination": "docs/product-specs/031-eval-runs-dashboard/quickstart.md",
+      "kind": "product",
+      "source_sha256": "d44dcb74b112178ce0ada77791823361a072d220e0c64a1095c0bc9290dcb697",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/research.md",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/research.md",
+      "kind": "design",
+      "source_sha256": "018ed7405b233d92060a8a8f96fd2c795b018b4882a8ad137858b28295210572",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/spec.md",
+      "destination": "docs/product-specs/031-eval-runs-dashboard/spec.md",
+      "kind": "product",
+      "source_sha256": "b7e50c338e1f21af9bba807d50e4580b73ffd405bb787f28643ca83340165556",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/tasks-us1.md",
+      "destination": "docs/exec-plans/active/031-eval-runs-dashboard/tasks-us1.md",
+      "kind": "execution",
+      "source_sha256": "45241965c686a84a0d1ceab238921141e5fef7f942431c79054f95eca1a49096",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/tasks-us2.md",
+      "destination": "docs/exec-plans/active/031-eval-runs-dashboard/tasks-us2.md",
+      "kind": "execution",
+      "source_sha256": "2c04484226425a0249dde1739e7865be4eb8935376f10db2b6d7c1a607e5dc47",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/tasks-us3.md",
+      "destination": "docs/exec-plans/active/031-eval-runs-dashboard/tasks-us3.md",
+      "kind": "execution",
+      "source_sha256": "828c6410475eabfb07a102b0b53b353c10ac28170bfef6b9961ced5b4114e309",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/tasks-us4.md",
+      "destination": "docs/exec-plans/active/031-eval-runs-dashboard/tasks-us4.md",
+      "kind": "execution",
+      "source_sha256": "393c24972caffd572d5dd2b3f0767202352595ebabda5b08281c0a42ae8e85d2",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/tasks-us5.md",
+      "destination": "docs/exec-plans/active/031-eval-runs-dashboard/tasks-us5.md",
+      "kind": "execution",
+      "source_sha256": "7a41750fd21868dc5994e122fd47d833a61842fe9f3464caaee1305993c8e818",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/tasks.md",
+      "destination": "docs/exec-plans/active/031-eval-runs-dashboard/tasks.md",
+      "kind": "execution",
+      "source_sha256": "44b86e9a68fb58086a0f758dc523bc028ee5d8339e790cee70a399e2fb455a54",
+      "binary": false
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/visual-baselines/dash-summary-v1.png",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/visual-baselines/dash-summary-v1.png",
+      "kind": "design",
+      "source_sha256": "12a1bf03b9a5aa8bd4e22bffe83291fd5d0a64c1e058fe2416df7e110a3d0ab3",
+      "binary": true
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/visual-baselines/dash-summary-v2.png",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/visual-baselines/dash-summary-v2.png",
+      "kind": "design",
+      "source_sha256": "5bc53249725a1f47f4c7d6979550d48129bf617737f0f72e07e46c9a2d0af412",
+      "binary": true
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/visual-baselines/dash-summary-v3.png",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/visual-baselines/dash-summary-v3.png",
+      "kind": "design",
+      "source_sha256": "4b85b4a13d905046344c16e4663f12c88071b611c77dfe2dbeec965f004fb61b",
+      "binary": true
+    },
+    {
+      "source": "specs/031-eval-runs-dashboard/visual-baselines/prototype-summary.png",
+      "destination": "docs/design-docs/031-eval-runs-dashboard/visual-baselines/prototype-summary.png",
+      "kind": "design",
+      "source_sha256": "94ebd2a9ed7fdc9c2baa4cdec21e256da518061ad7f7198b246b7959493b03bf",
+      "binary": true
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/checklists/requirements.md",
+      "destination": "docs/product-specs/032-multi-turn-test-cases/checklists/requirements.md",
+      "kind": "product",
+      "source_sha256": "e2d7a5b6509b5aafa363336ddcf3ff4af74ec33fcf185b1f5f38c7c4a3495a65",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/contracts/code-grader-contract.md",
+      "destination": "docs/product-specs/032-multi-turn-test-cases/contracts/code-grader-contract.md",
+      "kind": "product",
+      "source_sha256": "d30a1aaa5f603187ee5cbb3945d01501e271dbbad904ae60dbfe2240db5233d3",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/contracts/test-case-schema.md",
+      "destination": "docs/product-specs/032-multi-turn-test-cases/contracts/test-case-schema.md",
+      "kind": "product",
+      "source_sha256": "b52b28caebe246e9c535d64a09a059b7ce6f059bdb54b8bef0b451ea95babd9c",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/contracts/tool-arg-matchers.md",
+      "destination": "docs/product-specs/032-multi-turn-test-cases/contracts/tool-arg-matchers.md",
+      "kind": "product",
+      "source_sha256": "c0124574e97ae8b4c50f2c4d684a717bef1a66f025430d2f187aa093402c45d7",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/contracts/turn-result-schema.md",
+      "destination": "docs/product-specs/032-multi-turn-test-cases/contracts/turn-result-schema.md",
+      "kind": "product",
+      "source_sha256": "e46eedd7712a31287527e7a0211a06997f9cabd4dc5500327f084eff481cdb49",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/data-model.md",
+      "destination": "docs/design-docs/032-multi-turn-test-cases/data-model.md",
+      "kind": "design",
+      "source_sha256": "46fb755959be748639b45040f49c7f34f7ba3e6c5dcb5c56b7c30def0347bf10",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/plan.md",
+      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/plan.md",
+      "kind": "execution",
+      "source_sha256": "4c7b12cd3e6a9d4b7ccddec5c1fdabd8a318d7871a561dc60949ddca1f027246",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/quickstart.md",
+      "destination": "docs/product-specs/032-multi-turn-test-cases/quickstart.md",
+      "kind": "product",
+      "source_sha256": "ebba04b49e0458365360343f468ecd8dc8cf4d95c81cdd42f4b5e83cc5ccb0c8",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/research.md",
+      "destination": "docs/design-docs/032-multi-turn-test-cases/research.md",
+      "kind": "design",
+      "source_sha256": "2ba46d79252226c3d7b3f30465b642eda0648f1d153e3de04f23d20cdfd873da",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/spec.md",
+      "destination": "docs/product-specs/032-multi-turn-test-cases/spec.md",
+      "kind": "product",
+      "source_sha256": "4a9b53264f4a63d56bcea730ca2f6f5a721855c53140d3a07e51ed6738582ae4",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/tasks-us1.md",
+      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us1.md",
+      "kind": "execution",
+      "source_sha256": "2aa50d0d26d90807ca2d02a26e57bd7f80c16680e74611abbcf09cad45dac02c",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/tasks-us2.md",
+      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us2.md",
+      "kind": "execution",
+      "source_sha256": "2d3f2a207ce91fe3a0d6f74e791f51f6d5e06958afe545aaa23bd7373276c27d",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/tasks-us3.md",
+      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us3.md",
+      "kind": "execution",
+      "source_sha256": "bd56ade534caf3ec0007b389285b64888f7c54bcaf7dbe052a8748a09f623d65",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/tasks-us4.md",
+      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us4.md",
+      "kind": "execution",
+      "source_sha256": "edc983898c01984bc76aef0787d3f2f9049588597916dfba42020ff5a07650be",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/tasks-us5.md",
+      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us5.md",
+      "kind": "execution",
+      "source_sha256": "b7c56a6ec18b6ab76b8cc192b3801122610b8c28ca34b0772991ea3c92569ba3",
+      "binary": false
+    },
+    {
+      "source": "specs/032-multi-turn-test-cases/tasks-us6.md",
+      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us6.md",
+      "kind": "execution",
+      "source_sha256": "48de6273b24adf4e34160785cc70b432403fd1f70aad496c84f4cbe1332f3f24",
+      "binary": false
+    },
+    {
+      "source": "specs/033-holodeck-test-optimizer/2026-05-16-optimizer-for-holodeck-test-design.html",
+      "destination": "docs/design-docs/033-holodeck-test-optimizer/2026-05-16-optimizer-for-holodeck-test-design.html",
+      "kind": "design",
+      "source_sha256": "a3991e304996895219d128ee5980184e047e41bf419dabcbe469f0c10dd334e7",
+      "binary": false
+    },
+    {
+      "source": "specs/033-holodeck-test-optimizer/2026-05-16-optimizer-for-holodeck-test-design.md",
+      "destination": "docs/design-docs/033-holodeck-test-optimizer/2026-05-16-optimizer-for-holodeck-test-design.md",
+      "kind": "design",
+      "source_sha256": "0d491f1692f0a4bea2c510a34542d7fd32fbfc8f76a594433bf7d9edcf73a03d",
+      "binary": false
+    },
+    {
+      "source": "specs/033-holodeck-test-optimizer/optimizer.md",
+      "destination": "docs/product-specs/033-holodeck-test-optimizer/optimizer.md",
+      "kind": "product",
+      "source_sha256": "30aa047636b5e1be7801c6a2620ac938e78caf02246310c19577a7dc0f7332b0",
+      "binary": false
+    },
+    {
+      "source": "specs/033-holodeck-test-optimizer/plan-optimize-otel.md",
+      "destination": "docs/exec-plans/active/033-holodeck-test-optimizer/plan-optimize-otel.md",
+      "kind": "execution",
+      "source_sha256": "6af0ba1f6398ff182f608ad8dfab4a7e0ab91059a0ffd3d4b60121b0db41d136",
+      "binary": false
+    },
+    {
+      "source": "specs/033-holodeck-test-optimizer/plan-optimizer-post-mvp.md",
+      "destination": "docs/exec-plans/active/033-holodeck-test-optimizer/plan-optimizer-post-mvp.md",
+      "kind": "execution",
+      "source_sha256": "5732c0064c3247abdee3acbe3c251b0417b896c284256093c566aec29f060ba2",
+      "binary": false
+    },
+    {
+      "source": "specs/033-holodeck-test-optimizer/plan-text-proposer.md",
+      "destination": "docs/exec-plans/active/033-holodeck-test-optimizer/plan-text-proposer.md",
+      "kind": "execution",
+      "source_sha256": "f812ab1f73c1d1b14b5c1e1ebd5cfb05878cf62d3786455ecb39f94467531a54",
+      "binary": false
+    },
+    {
+      "source": "specs/033-holodeck-test-optimizer/plan.md",
+      "destination": "docs/exec-plans/active/033-holodeck-test-optimizer/plan.md",
+      "kind": "execution",
+      "source_sha256": "cd687369028e453715541a02696130fb7b16548aa73a702ecd13e8aa2fcf4810",
+      "binary": false
+    },
+    {
+      "source": "specs/033-holodeck-test-optimizer/tasks-text-proposer.md",
+      "destination": "docs/exec-plans/active/033-holodeck-test-optimizer/tasks-text-proposer.md",
+      "kind": "execution",
+      "source_sha256": "89481143f6f7e0c200d8094dc3b88fcb937b43ab30815f08a2e89f26e8126ec8",
+      "binary": false
+    },
+    {
+      "source": "specs/033-holodeck-test-optimizer/tasks.md",
+      "destination": "docs/exec-plans/active/033-holodeck-test-optimizer/tasks.md",
+      "kind": "execution",
+      "source_sha256": "960909ce147b22073650e00c97abb01db77c922b4599b7238ff8a47a52bad2e5",
+      "binary": false
+    },
+    {
+      "source": "specs/033-holodeck-test-optimizer/textual-iterative-refinement.md",
+      "destination": "docs/product-specs/033-holodeck-test-optimizer/textual-iterative-refinement.md",
+      "kind": "product",
+      "source_sha256": "72be8dc9fd87afe474a789d48618f22907cf6e228e69680576083d33dbb87b2e",
+      "binary": false
+    },
+    {
+      "source": "specs/034-production-hardening/2026-05-18-production-hardening-for-claude-agents.md",
+      "destination": "docs/product-specs/034-production-hardening/2026-05-18-production-hardening-for-claude-agents.md",
+      "kind": "product",
+      "source_sha256": "c8b79ea76ebe6a6ec828cae3e70e2d368015c9314544a831095c1ad4c8cf990a",
+      "binary": false
+    },
+    {
+      "source": "specs/034-production-hardening/2026-05-19-spec-034-p4-hybrid-sessions-plan.md",
+      "destination": "docs/exec-plans/active/034-production-hardening/2026-05-19-spec-034-p4-hybrid-sessions-plan.md",
+      "kind": "execution",
+      "source_sha256": "779507cf79532a24bb29cad635456b3901944c7f59ec7319f1487b0b2032bf9a",
+      "binary": false
+    },
+    {
+      "source": "specs/034-production-hardening/2026-05-23-034-p2-container-runtime.md",
+      "destination": "docs/exec-plans/active/034-production-hardening/2026-05-23-034-p2-container-runtime.md",
+      "kind": "execution",
+      "source_sha256": "7fd9f2cdde5cf7d4184c5c4c5c00118a96d0acbdf821853c6dccc92014eaafad",
+      "binary": false
+    },
+    {
+      "source": "specs/034-production-hardening/2026-05-24-spec-034-p3-credential-boundary-plan.md",
+      "destination": "docs/exec-plans/active/034-production-hardening/2026-05-24-spec-034-p3-credential-boundary-plan.md",
+      "kind": "execution",
+      "source_sha256": "de68e05421854fd4d970f232bdc782e7a2e99ba3027fffeed4839a2f06902ef2",
+      "binary": false
+    },
+    {
+      "source": "specs/035-openai-agents-backend/plan-docs.md",
+      "destination": "docs/exec-plans/active/035-openai-agents-backend/plan-docs.md",
+      "kind": "execution",
+      "source_sha256": "4e737b866f5a9244f3b28420b4ffef33f3c7bb9c0fe4a1986f8b678e74c63a7b",
+      "binary": false
+    },
+    {
+      "source": "specs/035-openai-agents-backend/plan-full.md",
+      "destination": "docs/exec-plans/active/035-openai-agents-backend/plan-full.md",
+      "kind": "execution",
+      "source_sha256": "a7785862d424dd7d2c47a9fb81fa2518c98c0a9eb6b4fe1f31a218999bc5918d",
+      "binary": false
+    },
+    {
+      "source": "specs/035-openai-agents-backend/plan-litellm-embeddings-contextgen.md",
+      "destination": "docs/exec-plans/active/035-openai-agents-backend/plan-litellm-embeddings-contextgen.md",
+      "kind": "execution",
+      "source_sha256": "8b5fb1f98869aee55d4d429b21df1a6e060917e707bd2712d4086fcade455c29",
+      "binary": false
+    },
+    {
+      "source": "specs/035-openai-agents-backend/plan-mvp.md",
+      "destination": "docs/exec-plans/active/035-openai-agents-backend/plan-mvp.md",
+      "kind": "execution",
+      "source_sha256": "ad15409bb770840da64aa60f42578c85605d29bac409462738bc9a5461d55b51",
+      "binary": false
+    },
+    {
+      "source": "specs/035-openai-agents-backend/plan-sk-decouple.md",
+      "destination": "docs/exec-plans/active/035-openai-agents-backend/plan-sk-decouple.md",
+      "kind": "execution",
+      "source_sha256": "654a05f570a77bb8bdf2a071d9c46a72859931dc9b94aaddada7815e5a51ef2e",
+      "binary": false
+    },
+    {
+      "source": "specs/035-openai-agents-backend/spec.md",
+      "destination": "docs/product-specs/035-openai-agents-backend/spec.md",
+      "kind": "product",
+      "source_sha256": "87eb8639a7b6cefec949b283b5137c46c23774e1302d2b723e4a6f45d6d157ec",
+      "binary": false
+    },
+    {
+      "source": "specs/035-openai-agents-backend/todo-full.md",
+      "destination": "docs/exec-plans/active/035-openai-agents-backend/todo-full.md",
+      "kind": "execution",
+      "source_sha256": "2ebed1504e735db1aa0f697529e2fec26b1909c3ab5ecc4a782207423983b5f9",
+      "binary": false
+    },
+    {
+      "source": "specs/036-deterministic-spine/dmn-yaml-mapping.md",
+      "destination": "docs/design-docs/036-deterministic-spine/dmn-yaml-mapping.md",
+      "kind": "design",
+      "source_sha256": "839e4a6e2da58b120e11090dd9fcac6d34c49e2aa2acb6a33c614ab1fa10e120",
+      "binary": false
+    },
+    {
+      "source": "specs/036-deterministic-spine/refinements.md",
+      "destination": "docs/design-docs/036-deterministic-spine/refinements.md",
+      "kind": "design",
+      "source_sha256": "1cb04799e5008560be225d56053f012c46e8ed8f85dc0672cb68cc2f8cf3568a",
+      "binary": false
+    },
+    {
+      "source": "specs/036-deterministic-spine/research.md",
+      "destination": "docs/design-docs/036-deterministic-spine/research.md",
+      "kind": "design",
+      "source_sha256": "8c3b048e833da376db2fb65d5e50757c494f056879c8afb8ee1a6803700fede0",
+      "binary": false
+    },
+    {
+      "source": "specs/036-deterministic-spine/spec.md",
+      "destination": "docs/product-specs/036-deterministic-spine/spec.md",
+      "kind": "product",
+      "source_sha256": "fa9b3b4ba9dd9c98427de7e535c3e6786d167d357612e8e02b7a6b36d52046cd",
+      "binary": false
+    },
+    {
+      "source": "specs/036-deterministic-spine/tasks/plan.md",
+      "destination": "docs/exec-plans/completed/036-deterministic-spine/tasks/plan.md",
+      "kind": "execution",
+      "source_sha256": "e65125099fdbde0b1dc02ab31b5426a3979df3c2f1326efe0f9d8374fe091f0d",
+      "binary": false
+    },
+    {
+      "source": "specs/036-deterministic-spine/tasks/todo.md",
+      "destination": "docs/exec-plans/completed/036-deterministic-spine/tasks/todo.md",
+      "kind": "execution",
+      "source_sha256": "ea573dac03e55a249760194b98506b80095efcbf3795fbda708117878752a264",
+      "binary": false
+    },
+    {
+      "source": "specs/037-gepa-optimizer/spec.md",
+      "destination": "docs/product-specs/037-gepa-optimizer/spec.md",
+      "kind": "product",
+      "source_sha256": "a5f8430faf4c28c65c477af5317b548fef060d81321ae8396201290729ca17ed",
+      "binary": false
+    },
+    {
+      "source": "specs/038-optimizer-progress-stream/plan.md",
+      "destination": "docs/exec-plans/active/038-optimizer-progress-stream/plan.md",
+      "kind": "execution",
+      "source_sha256": "ab9096d18653cf67e035aabe9670affe1ac967155fa865308cf00cad0937cc2f",
+      "binary": false
+    },
+    {
+      "source": "specs/038-optimizer-progress-stream/spec.md",
+      "destination": "docs/product-specs/038-optimizer-progress-stream/spec.md",
+      "kind": "product",
+      "source_sha256": "0db9b8a8dcd79f996a40925c6b6529998cd47a662eb677e118aa84adadb87e5b",
+      "binary": false
+    },
+    {
+      "source": "specs/038-optimizer-progress-stream/tasks.md",
+      "destination": "docs/exec-plans/active/038-optimizer-progress-stream/tasks.md",
+      "kind": "execution",
+      "source_sha256": "b67879fc86631c87716d743d73a01a685543eb128e04ac18e729bc355a1a67a3",
+      "binary": false
+    },
+    {
+      "source": "specs/039-policy-generator/corpus/pbas-points-values.pdf",
+      "destination": "docs/product-specs/039-policy-generator/corpus/pbas-points-values.pdf",
+      "kind": "product",
+      "source_sha256": "d5d23499883972e4795ca5cf23ba45346cde6ddd5a91f5073b5e8e154b7da8c9",
+      "binary": true
+    },
+    {
+      "source": "specs/039-policy-generator/corpus/reasonable-excuse-determination-2018.pdf",
+      "destination": "docs/product-specs/039-policy-generator/corpus/reasonable-excuse-determination-2018.pdf",
+      "kind": "product",
+      "source_sha256": "a8144e0a6cd46554fcff49464d9f22be39061d1b7dbf8264102cf9c1568068d4",
+      "binary": true
+    },
+    {
+      "source": "specs/039-policy-generator/corpus/wa-guidelines-part-b-v1.24.pdf",
+      "destination": "docs/product-specs/039-policy-generator/corpus/wa-guidelines-part-b-v1.24.pdf",
+      "kind": "product",
+      "source_sha256": "35cfdef97f7504e6fb0dd03ed3b578e3fbf8b1954b4781742d60f1461f7cdf93",
+      "binary": true
+    },
+    {
+      "source": "specs/039-policy-generator/corpus-manifest.md",
+      "destination": "docs/product-specs/039-policy-generator/corpus-manifest.md",
+      "kind": "product",
+      "source_sha256": "02e9df1a7b4f06ebfe46a3def3f596aa33b9f1f0b41e2ab719817b3d52a088ce",
+      "binary": false
+    },
+    {
+      "source": "specs/039-policy-generator/spec.md",
+      "destination": "docs/product-specs/039-policy-generator/spec.md",
+      "kind": "product",
+      "source_sha256": "d052c9b3788821ba1bccc8b157be7e58872ade9246dd8302414ed064db7b4e6d",
+      "binary": false
+    },
+    {
+      "source": "specs/040-holodeck-temporal/spec.md",
+      "destination": "docs/product-specs/040-holodeck-temporal/spec.md",
+      "kind": "product",
+      "source_sha256": "546df4518942f4c64ec5a526c4a900b5227e2a7a1d5322875f05c5687737a9c9",
+      "binary": false
+    },
+    {
+      "source": "specs/040-holodeck-temporal/tasks/plan.md",
+      "destination": "docs/exec-plans/completed/040-holodeck-temporal/tasks/plan.md",
+      "kind": "execution",
+      "source_sha256": "93208b326e80d84d919869a33f6372be521d2c7c03703c7e9625a702db29cc02",
+      "binary": false
+    },
+    {
+      "source": "specs/040-holodeck-temporal/tasks/todo.md",
+      "destination": "docs/exec-plans/completed/040-holodeck-temporal/tasks/todo.md",
+      "kind": "execution",
+      "source_sha256": "94a16d5a6d2359e3ba50076db86176e9e7064649eca81d57b53bca9d1192c530",
+      "binary": false
+    },
+    {
+      "source": "specs/041-temporal-file-inputs/spec.md",
+      "destination": "docs/product-specs/041-temporal-file-inputs/spec.md",
+      "kind": "product",
+      "source_sha256": "32a6ed6aea7bbbe5f39d27b551c86ac560327411d95cd3a7c4fbabcac1cb2e6d",
+      "binary": false
+    },
+    {
+      "source": "specs/graph-rag-integration/claude-plan.md",
+      "destination": "docs/exec-plans/completed/graph-rag-integration/claude-plan.md",
+      "kind": "execution",
+      "source_sha256": "e5544c0d6107940574d959329661516278d3a2b15a967ec16d36a265870c1a03",
+      "binary": false
+    },
+    {
+      "source": "specs/index.md",
+      "destination": "docs/product-specs/inventory.md",
+      "kind": "inventory",
+      "source_sha256": "3c8cc9827b25058b6043b3a91da9c08815fb55332089eaf30c33b918dc0aad70",
+      "binary": false
+    }
+  ]
+}

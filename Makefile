@@ -15,7 +15,7 @@ NC := $(shell tput sgr0 2>/dev/null)
 .DEFAULT_GOAL := help
 
 # Phony targets
-.PHONY: help install install-dev install-prod test test-unit test-integration \
+.PHONY: harness-check harness-generate help install install-dev install-prod test test-unit test-integration \
         test-coverage test-parallel test-integration-parallel test-unit-parallel \
         lint format type-check security clean clean-all \
         pre-commit ci ci-github build docs run docker-build docker-run \
@@ -178,11 +178,18 @@ security: ## Run security checks
 	#                             reachable from this codebase. Drop these when chromadb
 	#                             ships a fix and the pin can move. Re-check by 2026-12:
 	#                             four indefinite ignores accumulate quietly.
+	# PYSEC-2026-3740 (nltk; CVE-2026-81726) — model-artifact pathsec bypass.
+	#                             No patched release as of 2026-09-06. Built-in
+	#                             evaluators use scoring/tokenization, not the
+	#                             affected model import/export APIs. Scope, owner,
+	#                             and removal conditions: docs/SECURITY.md.
+	#                             Re-review by 2026-10-06 or on evaluator changes.
 	uv run pip-audit --progress-spinner=off \
 		--ignore-vuln CVE-2026-45829 \
 		--ignore-vuln CVE-2026-45830 \
 		--ignore-vuln CVE-2026-45831 \
-		--ignore-vuln CVE-2026-45833
+		--ignore-vuln CVE-2026-45833 \
+		--ignore-vuln PYSEC-2026-3740
 	@echo "Scanning for security issues with Ruff..."
 	uv run ruff check $(SRC_DIR) --select S
 	@echo "Scanning for security issues with Bandit..."
@@ -437,6 +444,12 @@ schema: ## Regenerate schemas/agent.schema.json from the Agent model
 
 schema-check: ## Verify the committed agent.schema.json matches the model
 	uv run python scripts/generate_agent_schema.py --check
+
+harness-check: ## Validate the repository knowledge map without installing dependencies
+	python3 scripts/check_harness.py
+
+harness-generate: ## Refresh the generated schema inventory and validate the harness
+	python3 scripts/check_harness.py --write
 
 #############################
 # Git Helpers               #

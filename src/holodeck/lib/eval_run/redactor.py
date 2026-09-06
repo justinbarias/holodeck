@@ -1,7 +1,7 @@
 """Redactor for the eval-run agent-config snapshot.
 
 Implements the two-rule policy from
-``specs/031-eval-runs-dashboard/research.md`` R5:
+``docs/design-docs/031-eval-runs-dashboard/research.md`` R5:
 
 1. **Name allowlist**: any leaf field whose name is in
    :data:`REDACTED_FIELD_NAMES` is replaced with :data:`REDACTED_PLACEHOLDER`.

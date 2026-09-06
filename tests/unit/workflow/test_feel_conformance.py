@@ -6,7 +6,8 @@ list membership, and date literals/comparison/difference. Each test encodes
 behavior verified during the Phase 0 spike — if an upgrade of bkflow-feel
 breaks one of these, the spine's table-evaluation contract is at risk.
 
-Library decision and full verdict table: specs/036-deterministic-spine/research.md
+Library decision and full verdict table:
+docs/design-docs/036-deterministic-spine/research.md
 """
 
 import datetime

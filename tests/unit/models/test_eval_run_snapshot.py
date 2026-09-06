@@ -1,7 +1,7 @@
 """US3: Snapshot fidelity tests for ``EvalRunMetadata.agent_config``.
 
 These tests enforce the full round-trip contract described in
-``specs/031-eval-runs-dashboard/data-model.md`` — every nested field in the
+``docs/design-docs/031-eval-runs-dashboard/data-model.md`` — every nested field in the
 ``Agent`` tree (model, embedding provider, tools of every type, claude block,
 evaluations of every metric type, test_cases with multimodal files,
 instructions) must survive ``model_dump_json()`` → ``model_validate_json()``

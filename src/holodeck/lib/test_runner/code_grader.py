@@ -5,7 +5,8 @@ user-land graders consume, plus ``invoke_grader`` — the runner-side helper
 that normalizes shortcut returns (``bool``, ``float``), catches exceptions,
 and produces a ``MetricResult`` envelope.
 
-Contract: ``specs/032-multi-turn-test-cases/contracts/code-grader-contract.md``.
+Contract:
+``docs/product-specs/032-multi-turn-test-cases/contracts/code-grader-contract.md``.
 
 Principle I (No-Code-First) exception: this file and ``CodeMetric`` in
 ``holodeck.models.evaluation`` are the only places that dispatch user-supplied

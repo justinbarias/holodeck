@@ -1,9 +1,10 @@
 """Unit tests for code-grader invocation harness (US4 Phase 5).
 
-Covers T032–T041 in ``specs/032-multi-turn-test-cases/tasks-us4.md`` — the
+Covers T032–T041 in ``docs/exec-plans/active/032-multi-turn-test-cases/tasks-us4.md`` —
+the
 ``GraderContext`` / ``GraderResult`` immutability and the ``invoke_grader``
 normalization + exception policy described in
-``specs/032-multi-turn-test-cases/contracts/code-grader-contract.md``.
+``docs/product-specs/032-multi-turn-test-cases/contracts/code-grader-contract.md``.
 """
 
 from __future__ import annotations

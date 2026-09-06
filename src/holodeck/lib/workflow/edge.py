@@ -88,7 +88,8 @@ if TYPE_CHECKING:
 # SDK) at module scope, so a module-level import would drag the whole backend
 # stack into any importer of the pure gate half — load_gate_schema and
 # _apply_gate must stay importable from Temporal workflow code, which
-# forbids I/O imports (spec 040 section 7, specs/040-holodeck-temporal/spec.md).
+# forbids I/O imports (spec 040 section 7,
+# docs/product-specs/040-holodeck-temporal/spec.md).
 # test_import_purity.py pins this.
 from holodeck.lib.errors import (
     ConfigError,
