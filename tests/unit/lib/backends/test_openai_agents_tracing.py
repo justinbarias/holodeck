@@ -553,6 +553,36 @@ class TestTraceRouterRouting:
         router_env["upload"].on_span_end.assert_not_called()
         mirror.on_span_end.assert_called_once_with(span)
 
+    def test_late_span_on_evicted_restricted_trace_is_dropped(
+        self, router_env: dict[str, Any]
+    ) -> None:
+        # Codex finding (stack review): a span that *starts* after its trace
+        # identity was evicted must not fall back to the SDK default upload.
+        mirror = _mirror()
+        register_tracing_policy("az", TracingPolicy(upload=False, mirror=mirror))
+        router = tracing_module._router
+        trace = _trace("t-evicted", "az")
+        router.on_trace_start(trace)
+        for index in range(router._MAX_TRACES + 10):
+            _drive(router, _trace(f"churn{index}", "az"))
+        assert "t-evicted" not in router._by_trace
+        late = _span("t-evicted", "late")
+        router.on_span_start(late)
+        router.on_span_end(late)
+        router.on_trace_end(trace)
+
+        assert router_env["upload"].method_calls == []
+        assert late not in [c.args[0] for c in mirror.on_span_end.call_args_list]
+
+    def test_span_of_never_seen_trace_is_dropped(
+        self, router_env: dict[str, Any]
+    ) -> None:
+        register_tracing_policy("az", TracingPolicy(upload=False))
+        span = _span("never-started")
+        tracing_module._router.on_span_start(span)
+        tracing_module._router.on_span_end(span)
+        assert router_env["upload"].method_calls == []
+
     def test_trace_map_is_bounded(self, router_env: dict[str, Any]) -> None:
         register_tracing_policy("oa", TracingPolicy(upload=True))
         router = tracing_module._router

@@ -224,6 +224,8 @@ def _build_router() -> Any:
         """
 
         _UNTAGGED = object()
+
+        _UNKNOWN = object()  # trace never seen or evicted: drop
         _MAX_TRACES = 4096
 
         def __init__(self) -> None:
@@ -248,9 +250,12 @@ def _build_router() -> Any:
         def _targets(self, identity: Any) -> list[TracingProcessor]:
             """Return the processors receiving events for *identity*.
 
-            *identity* is a policy id, or the untagged marker. A policy id that
-            is no longer registered yields no targets (fail closed).
+            *identity* is a policy id, the untagged marker, or the unknown
+            marker. A policy id that is no longer registered yields no
+            targets, and so does the unknown marker (fail closed).
             """
+            if identity is self._UNKNOWN:
+                return []
             if identity is self._UNTAGGED:
                 return [self._upload_processor()]
             with _registry_lock:
@@ -275,15 +280,22 @@ def _build_router() -> Any:
             return self._UNTAGGED if policy_id is None else policy_id
 
         def _span_identity(self, span: Span[Any]) -> Any:
-            """Identity for a span: active scope, else its trace, else untagged."""
+            """Identity for a span: active scope, else its trace, else unknown.
+
+            A span whose trace the router never saw, or whose trace identity
+            was evicted, resolves to the unknown marker and is dropped. Falling
+            back to the SDK default upload here would let a restricted
+            (Azure or ``disable_provider_tracing``) span reach the platform
+            exporter after cache churn.
+            """
             policy_id = _active_policy_id.get()
             if policy_id is not None:
                 return policy_id
             trace_id = getattr(span, "trace_id", None)
             if not isinstance(trace_id, str):
-                return self._UNTAGGED
+                return self._UNKNOWN
             with self._lock:
-                return self._by_trace.get(trace_id, self._UNTAGGED)
+                return self._by_trace.get(trace_id, self._UNKNOWN)
 
         def _remember(self, trace_id: str, identity: Any) -> None:
             with self._lock:
@@ -317,7 +329,7 @@ def _build_router() -> Any:
 
         def on_trace_end(self, trace: Trace) -> None:
             with self._lock:
-                identity = self._by_trace.get(trace.trace_id, self._UNTAGGED)
+                identity = self._by_trace.get(trace.trace_id, self._UNKNOWN)
             self._forward(self._targets(identity), "on_trace_end", trace)
 
         def on_span_start(self, span: Span[Any]) -> None:
