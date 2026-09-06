@@ -132,13 +132,13 @@ When `capture_content` is enabled, spans also carry `gen_ai.content.prompt` and 
 
 ### OpenAI Agents backend tracing
 
-On the OpenAI Agents backend the SDK runs its own tracing pipeline; HoloDeck installs a `TracingProcessor` that **mirrors** each finished SDK span into an OTel span on HoloDeck's tracer (carrying your redaction and exporters). The mirror is active only when both `observability.enabled` and `observability.traces.enabled` are true.
+On the OpenAI Agents backend the SDK runs its own tracing pipeline; HoloDeck installs one process-wide trace router and registers a per-backend policy with it: whether the backend's traces may upload to platform.openai.com, and — only when both `observability.enabled` and `observability.traces.enabled` are true — a `TracingProcessor` that **mirrors** each finished SDK span into an OTel span on HoloDeck's tracer (carrying your redaction and exporters). Policies are applied per trace, so mixed OpenAI and Azure agents in one process keep their own upload behaviour regardless of initialization order.
 
-| Configuration                                       | platform.openai.com upload | OTel mirror |
-| --------------------------------------------------- | -------------------------- | ----------- |
-| `provider: openai`                                  | ✓                          | ✓           |
-| `provider: azure_openai`                            | none (mirror only)         | ✓           |
-| `observability.disable_provider_tracing: true`      | none (mirror only)         | ✓           |
+| Configuration                                       | platform.openai.com upload                | OTel mirror |
+| --------------------------------------------------- | ----------------------------------------- | ----------- |
+| `provider: openai`                                  | ✓                                         | ✓           |
+| `provider: azure_openai`                            | never (also with observability disabled)  | ✓           |
+| `observability.disable_provider_tracing: true`      | never                                     | ✓           |
 
 `capture_content` (default `false`) controls whether sensitive tool input/output is included in uploaded spans. See the [OpenAI Backend guide](openai-backend.md#tracing) for full detail.
 

@@ -43,14 +43,9 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
     from openai.types.shared.reasoning_effort import ReasoningEffort
     from pydantic import SecretStr
 
-logger = logging.getLogger(__name__)
+    from holodeck.lib.backends.openai_agents_tracing import TracingPolicy
 
-# Module-level idempotency guard for the OTel-mirroring TracingProcessor (H1).
-# The SDK keeps a single process-global trace-processor list, so the mirror is
-# installed at most once per process even when multiple backend instances are
-# initialized (e.g. several agents served in one worker). Set to ``True`` after
-# the first successful install.
-_tracing_mirror_installed = False
+logger = logging.getLogger(__name__)
 
 
 def _tracing_enabled(agent: Agent) -> bool:
@@ -58,56 +53,63 @@ def _tracing_enabled(agent: Agent) -> bool:
 
     Mirrors how the CLI gates observability (``serve`` / ``chat``): tracing is
     on only when ``observability.enabled`` and ``observability.traces.enabled``
-    are both true. When tracing is off the SDK mirror is not installed, so a run
-    incurs no mirroring overhead and emits no spans.
+    are both true. When tracing is off no OTel mirror is built for the agent, so
+    a run incurs no mirroring overhead and emits no OTel spans.
 
     Args:
         agent: The agent configuration.
 
     Returns:
-        ``True`` when the OTel mirror should be installed for this agent.
+        ``True`` when an OTel mirror should receive this agent's SDK spans.
     """
     obs = agent.observability
     return obs is not None and obs.enabled and obs.traces.enabled
 
 
-def _install_tracing_mirror(agent: Agent) -> None:
-    """Install the OTel-mirroring SDK ``TracingProcessor`` once per process (H1).
+def _provider_upload_permitted(agent: Agent) -> bool:
+    """Return whether *agent*'s SDK traces may upload to platform.openai.com.
 
-    Routing (only when :func:`_tracing_enabled`):
-
-    * ``observability.disable_provider_tracing: true`` → ``set_trace_processors``
-      (replaces the default exporter for either provider — no upload).
-    * ``provider: openai`` → ``add_trace_processor`` (the default
-      platform.openai.com exporter is retained alongside the mirror).
-    * ``provider: azure_openai`` → ``set_trace_processors`` (replaces the default
-      exporter; no OpenAI-platform upload, spans still flow to the mirror).
-
-    Installation is guarded by a module-level flag so multiple backend
-    instances / re-initializations do not stack mirrors on the SDK's
-    process-global processor list. When tracing is disabled for the agent the
-    mirror is not installed at all.
+    Upload is permitted only for ``provider: openai`` without
+    ``observability.disable_provider_tracing: true`` (FR-100 / FR-102). Azure
+    never uploads (FR-101), independent of whether observability is enabled.
 
     Args:
-        agent: The agent configuration (selects provider + tracing gate).
+        agent: The agent configuration.
+
+    Returns:
+        ``True`` when the provider exporter should receive the agent's traces.
     """
-    global _tracing_mirror_installed
-    if _tracing_mirror_installed or not _tracing_enabled(agent):
-        return
+    if agent.model.provider != ProviderEnum.OPENAI:
+        return False
+    obs = agent.observability
+    return obs is None or not obs.disable_provider_tracing
 
-    import agents
 
-    from holodeck.lib.backends.openai_agents_tracing import build_tracing_mirror
+def _tracing_policy_for(agent: Agent) -> TracingPolicy:
+    """Build the per-backend :class:`TracingPolicy` for *agent* (D13).
 
-    mirror = build_tracing_mirror(agent.name)
-    disable_provider = (
-        agent.observability is not None and agent.observability.disable_provider_tracing
+    The policy is registered with the process-global HoloDeck trace router at
+    backend ``initialize()``, before any run emits spans, and is evaluated per
+    trace — so several backends with different providers or overrides coexist
+    in one process without one silently inheriting another's upload behaviour.
+
+    * ``upload``: :func:`_provider_upload_permitted`.
+    * ``mirror``: an OTel-mirroring ``TracingProcessor`` when
+      :func:`_tracing_enabled`, else ``None``.
+
+    Args:
+        agent: The agent configuration (selects provider, override, and gate).
+
+    Returns:
+        The routing policy for this backend's SDK traces.
+    """
+    from holodeck.lib.backends.openai_agents_tracing import (
+        TracingPolicy,
+        build_tracing_mirror,
     )
-    if disable_provider or agent.model.provider == ProviderEnum.AZURE_OPENAI:
-        agents.set_trace_processors([mirror])
-    else:
-        agents.add_trace_processor(mirror)
-    _tracing_mirror_installed = True
+
+    mirror = build_tracing_mirror(agent.name) if _tracing_enabled(agent) else None
+    return TracingPolicy(upload=_provider_upload_permitted(agent), mirror=mirror)
 
 
 def _resolve_secret(value: SecretStr | None) -> str | None:
@@ -239,9 +241,9 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel | Model:
 
     For ``provider: azure_openai`` a plain ``AsyncOpenAI`` client pointed at the
     Azure ``/openai/v1`` surface is wrapped as an ``OpenAIResponsesModel``. The
-    SDK trace upload is suppressed not here but at backend ``initialize()`` (H1),
-    which installs an OTel-mirroring ``TracingProcessor`` via
-    ``set_trace_processors`` — replacing the platform exporter while keeping
+    SDK trace upload is suppressed not here but by the tracing policy the
+    backend registers at ``initialize()`` (FR-101 / D13): the HoloDeck trace
+    router withholds Azure traces from the platform exporter while keeping
     spans flowing to OTel.
 
     When ``openai.fallback_model`` is set, the primary model is wrapped in a
@@ -303,11 +305,12 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel | Model:
     from agents import OpenAIResponsesModel
 
     # The SDK's default trace upload is suppressed without disabling the trace
-    # provider: the Azure path installs an OTel-mirroring TracingProcessor via
-    # ``set_trace_processors`` at backend initialize() (H1), which both replaces
-    # the platform.openai.com exporter and keeps spans flowing to the mirror.
-    # Calling ``set_tracing_disabled(True)`` here would make the provider return
-    # NoOp traces and starve that mirror, so it is intentionally NOT called.
+    # provider: the backend registers an ``upload=False`` tracing policy at
+    # initialize() (FR-101 / D13), so the HoloDeck router withholds this
+    # backend's traces from the platform.openai.com exporter while spans still
+    # reach the OTel mirror. Calling ``set_tracing_disabled(True)`` here would
+    # make the provider return NoOp traces and starve that mirror, so it is
+    # intentionally NOT called.
     client = _build_azure_client(api_key, endpoint, model_cfg.api_version)
     # For Azure, ``model`` is the deployment name (model_cfg.name).
     primary = OpenAIResponsesModel(model=model_cfg.name, openai_client=client)
@@ -362,34 +365,50 @@ def _disallowed_tool_names(agent: Agent) -> set[str]:
     return blocked
 
 
-def _build_run_config(agent: Agent, *, group_id: str | None = None) -> RunConfig:
+def _build_run_config(
+    agent: Agent,
+    *,
+    group_id: str | None = None,
+    tracing_policy_id: str | None = None,
+) -> RunConfig:
     """Build an SDK ``RunConfig`` carrying trace identity and sensitivity.
 
     Every ``Runner.run`` call carries ``workflow_name`` (the agent name); session
     runs additionally carry ``group_id`` to correlate the session's turns in the
     trace. ``trace_include_sensitive_data`` is bound to
     ``observability.traces.capture_content`` — the SDK default is **True** (via
-    env), which would upload raw tool inputs/outputs to platform.openai.com, so
-    HoloDeck sets it explicitly to keep traces clean unless content capture is
-    opted in.
+    the ``OPENAI_AGENTS_TRACE_INCLUDE_SENSITIVE_DATA`` env default), which
+    would upload raw tool inputs/outputs to platform.openai.com, so HoloDeck
+    sets it explicitly on every run (FR-102); the environment never overrides
+    a capture-disabled agent.
 
     Args:
         agent: The agent configuration.
         group_id: The session id for session runs; ``None`` for ``invoke_once``.
+        tracing_policy_id: The backend's registered tracing-policy id, tagged
+            onto the trace metadata so the HoloDeck trace router applies that
+            backend's upload/mirror policy to this run (D13). ``None`` leaves
+            the trace untagged.
 
     Returns:
         A populated ``RunConfig``.
     """
     from agents import RunConfig
 
+    from holodeck.lib.backends.openai_agents_tracing import TRACE_POLICY_METADATA_KEY
+
     capture_content = False
     if agent.observability is not None:
         capture_content = agent.observability.traces.capture_content
 
+    metadata: dict[str, Any] = {"holodeck.agent": agent.name}
+    if tracing_policy_id is not None:
+        metadata[TRACE_POLICY_METADATA_KEY] = tracing_policy_id
+
     return RunConfig(
         workflow_name=agent.name,
         group_id=group_id,
-        trace_metadata={"holodeck.agent": agent.name},
+        trace_metadata=metadata,
         trace_include_sensitive_data=capture_content,
     )
 
@@ -665,6 +684,7 @@ class OpenAIAgentsSession:
         max_turns: int = 20,
         budget_usd: float | None = None,
         structured_output: bool = False,
+        tracing_policy_id: str | None = None,
     ) -> None:
         """Bind the session to an SDK agent and its SQLite-backed history.
 
@@ -681,11 +701,15 @@ class OpenAIAgentsSession:
                 the whole session; when ``None`` no cost hooks are attached.
             structured_output: Whether the agent has an output schema, so each
                 turn's ``final_output`` is parsed into ``structured_output``.
+            tracing_policy_id: The owning backend's registered tracing-policy
+                id, tagged onto every turn's trace (D13); ``None`` when the
+                backend registered no policy.
         """
         self._sdk_agent = sdk_agent
         self._session = sqlite_session
         self._agent_config = agent_config
         self._group_id = group_id
+        self._tracing_policy_id = tracing_policy_id
         self._max_turns = max_turns
         self._budget_usd = budget_usd
         self._structured_output = structured_output
@@ -696,7 +720,11 @@ class OpenAIAgentsSession:
         """Build the session ``RunConfig`` (carrying ``group_id``), or ``None``."""
         if self._agent_config is None:
             return None
-        return _build_run_config(self._agent_config, group_id=self._group_id)
+        return _build_run_config(
+            self._agent_config,
+            group_id=self._group_id,
+            tracing_policy_id=self._tracing_policy_id,
+        )
 
     def _hooks(self) -> Any | None:
         """Build budget hooks bound to this session's shared accountant, or None.
@@ -733,15 +761,18 @@ class OpenAIAgentsSession:
         """
         from agents import Runner
 
+        from holodeck.lib.backends.openai_agents_tracing import active_tracing_policy
+
         try:
-            result = await Runner.run(
-                self._sdk_agent,
-                message,
-                session=self._session,
-                max_turns=self._max_turns,
-                run_config=self._run_config(),
-                hooks=self._hooks(),
-            )
+            with active_tracing_policy(self._tracing_policy_id):
+                result = await Runner.run(
+                    self._sdk_agent,
+                    message,
+                    session=self._session,
+                    max_turns=self._max_turns,
+                    run_config=self._run_config(),
+                    hooks=self._hooks(),
+                )
         except BackendBudgetExceededError as exc:
             return _budget_error_result(exc)
         except Exception as exc:  # noqa: BLE001 - surfaced via ExecutionResult
@@ -769,14 +800,19 @@ class OpenAIAgentsSession:
         from agents import Runner
         from openai.types.responses import ResponseTextDeltaEvent
 
-        result = Runner.run_streamed(
-            self._sdk_agent,
-            message,
-            session=self._session,
-            max_turns=self._max_turns,
-            run_config=self._run_config(),
-            hooks=self._hooks(),
-        )
+        from holodeck.lib.backends.openai_agents_tracing import active_tracing_policy
+
+        # The streamed run executes on a task created inside this scope, so it
+        # inherits the policy id for spans opened outside HoloDeck's RunConfig.
+        with active_tracing_policy(self._tracing_policy_id):
+            result = Runner.run_streamed(
+                self._sdk_agent,
+                message,
+                session=self._session,
+                max_turns=self._max_turns,
+                run_config=self._run_config(),
+                hooks=self._hooks(),
+            )
         try:
             async for event in result.stream_events():
                 if event.type != "raw_response_event":
@@ -817,6 +853,9 @@ class OpenAIAgentsBackend:
         self._agent_config = agent
         self._base_dir = base_dir
         self._sdk_agent: Any | None = None
+        # Unique per backend instance: keys this backend's tracing policy in the
+        # process-global router and tags every run's trace metadata (D13).
+        self._tracing_policy_id = f"holodeck-backend-{uuid.uuid4().hex}"
         self._has_structured_output = False
         self._tool_instances: dict[str, Any] = {}
         self._owned_tools: list[Any] = []
@@ -853,9 +892,15 @@ class OpenAIAgentsBackend:
         # conflicts (all problems surfaced together) before any SDK side effects.
         validate_openai_agents(self._agent_config)
 
-        # Install the OTel-mirroring TracingProcessor once, before any run emits
-        # spans (H1). Gated on the agent's observability/tracing being enabled.
-        _install_tracing_mirror(self._agent_config)
+        # Register this backend's tracing policy (provider upload + OTel mirror)
+        # with the process-global router before any run emits spans
+        # (FR-100–FR-102, D13). Always registered — Azure upload suppression
+        # must hold even with observability disabled.
+        from holodeck.lib.backends.openai_agents_tracing import register_tracing_policy
+
+        register_tracing_policy(
+            self._tracing_policy_id, _tracing_policy_for(self._agent_config)
+        )
 
         base_dir = self._resolve_base_dir()
         disallowed = _disallowed_tool_names(self._agent_config)
@@ -1012,14 +1057,20 @@ class OpenAIAgentsBackend:
         sdk_agent = self._require_agent()
         from agents import Runner
 
+        from holodeck.lib.backends.openai_agents_tracing import active_tracing_policy
+
         try:
-            result = await Runner.run(
-                sdk_agent,
-                message,
-                max_turns=_max_turns(self._agent_config),
-                run_config=_build_run_config(self._agent_config),
-                hooks=self._invoke_hooks(),
-            )
+            with active_tracing_policy(self._tracing_policy_id):
+                result = await Runner.run(
+                    sdk_agent,
+                    message,
+                    max_turns=_max_turns(self._agent_config),
+                    run_config=_build_run_config(
+                        self._agent_config,
+                        tracing_policy_id=self._tracing_policy_id,
+                    ),
+                    hooks=self._invoke_hooks(),
+                )
         except BackendBudgetExceededError as exc:
             # Surface the budget abort as an error result so the partial response
             # and accumulated cost are preserved (FR-032), not lost to a raise.
@@ -1071,10 +1122,21 @@ class OpenAIAgentsBackend:
             max_turns=_max_turns(self._agent_config),
             budget_usd=_max_budget_usd(self._agent_config),
             structured_output=self._has_structured_output,
+            tracing_policy_id=self._tracing_policy_id,
         )
 
     async def teardown(self) -> None:
-        """Release backend resources, cleaning up RAG tools and MCP servers."""
+        """Release backend resources, cleaning up RAG tools and MCP servers.
+
+        Also withdraws this backend's tracing policy from the process-global
+        router, so a late trace tagged with its id is dropped rather than
+        routed under a stale policy (D13).
+        """
+        from holodeck.lib.backends.openai_agents_tracing import (
+            unregister_tracing_policy,
+        )
+
+        unregister_tracing_policy(self._tracing_policy_id)
         for tool_inst in self._owned_tools:
             cleanup = getattr(tool_inst, "cleanup", None)
             if callable(cleanup):

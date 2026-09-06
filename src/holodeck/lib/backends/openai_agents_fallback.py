@@ -9,20 +9,39 @@ set is fixed in v1 (not user-tunable): HTTP 429 (rate limit) and 5xx
 and any non-OpenAI exception) is non-retryable and propagates unchanged; the
 fallback is never consulted.
 
-Retry / fallback ordering
--------------------------
-HoloDeck does not set ``ModelSettings.retry`` by default, so the wrapper sees
-the first failure directly and engages its single fallback attempt immediately.
-When a user *does* enable the SDK's runner-managed retry
-(``ModelSettings.retry`` / ``ModelRetrySettings``), the contract is:
+Retry / fallback ordering (D14)
+-------------------------------
+One bounded order applies to every model turn:
 
-    primary retries exhaust first  ->  one fallback attempt.
+1. **Primary attempt.** One ``get_response`` / ``stream_response`` call on the
+   primary ``Model``. The OpenAI client's own *provider-managed* retries run
+   inside this call (``AsyncOpenAI(max_retries=...)``, default 2, on 429 / 5xx /
+   connection errors, honouring ``retry-after``), so the primary's retry budget
+   is exhausted before this wrapper sees the failure.
+2. **One fallback attempt.** When the final primary error is retryable
+   (:func:`is_retryable_error`), one ``get_response`` / ``stream_response``
+   call on the fallback ``Model`` (with the same client retry budget). Its
+   result — or its error — is returned unchanged. The wrapper never retries the
+   fallback and never returns to the primary.
 
-The runner drives ``ModelSettings.retry`` *around* a single ``get_response`` /
-``stream_response`` call, retrying the primary model until its budget is spent;
-only the final failure reaches this wrapper, which then makes exactly one
-fallback attempt. There is no double-fallback and no fallback mid-retry: the
-wrapper itself never retries the fallback.
+The SDK's *runner-managed* retries (``ModelSettings.retry`` with a policy)
+sit **outside** this wrapper: the Runner would re-run the whole
+primary-then-fallback pair per runner attempt. HoloDeck therefore never
+configures ``ModelSettings.retry`` (``_build_model_settings`` leaves it
+``None``; without a policy the Runner schedules no policy retries), which
+keeps the order above deterministic: at most ``(1 + client_max_retries)``
+primary requests followed by at most ``(1 + client_max_retries)`` fallback
+requests per pair, and the Runner surfaces the fallback's error without a
+further pair.
+
+One SDK compatibility path is outside HoloDeck's control and is documented
+rather than suppressed: when the *fallback* fails with HTTP 400
+``conversation_locked``, the Runner (openai-agents 0.17.4
+``run_internal/model_retry.py``) rewinds and re-runs the pair up to three more
+times with 1 s / 2 s / 4 s backoff before raising — a bound of four pairs. The
+only opt-out (``ModelRetrySettings(max_retries=0)``) would also disable the
+client retries in step 1, so it is not taken. Runner-level tests in
+``test_openai_agents_fallback_runner.py`` pin both bounds.
 
 Streaming semantics
 -------------------
@@ -35,9 +54,10 @@ Tracing
 -------
 Each underlying ``Model`` opens its own ``response_span`` per call
 (``OpenAIResponsesModel.get_response`` / ``stream_response`` wrap their body in
-``response_span``), so the primary attempt and the fallback attempt each get
-their own generation span automatically — both attempts are visible in the
-trace with no extra instrumentation here (FR-033).
+``response_span``), so the primary attempt (ending with the error set) and the
+fallback attempt each get their own response span under the same trace — both
+attempts are visible in permitted traces and in the OTel mirror with no extra
+instrumentation here (FR-033).
 
 Every ``import agents`` is performed lazily inside the factory so importing this
 module never pulls the SDK (SC-005). The wrapping ``Model`` subclass is defined
