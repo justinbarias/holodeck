@@ -1,17 +1,53 @@
 # Implementation Plan: OpenAI Agents SDK Backend — Full Parity (post-MVP)
 
+**Current contract:** The [reconciled specification](../../../product-specs/035-openai-agents-backend/spec.md#decision-register) and [acceptance matrix](acceptance-matrix.md) supersede conflicting historical assumptions below.
+
+**Execution handoff:** Use the [completion execution plan](2026-09-06-complete-035.md) for current task order, acceptance gates, and progress.
+This record retains the reconciled design and historical task evidence.
+
 **Spec:** `docs/product-specs/035-openai-agents-backend/spec.md`
 **Builds on:** `plan-mvp.md` (shipped — function tools, real streaming, routing flip, SK agent-path carve)
 **Scope of this plan:** Everything in spec 035 that the MVP deliberately left out, **except** surfaces
 deferred to their own specs by decision below: the P3 hardened/Envoy profile, US8 sandbox mode, and
 computer-use (`ComputerTool`).
-**Status:** Revised through two adversarial review cycles against the installed SDK source
-(`openai-agents==0.17.4`, 2026-06-10). Cycle 1 re-based Claude-by-analogy mappings onto the SDK's
-native idioms (tool guardrails, trace processors, `RunConfig`). Cycle 2 fixed coverage and
-feasibility gaps the rewrite introduced or inherited (MCP tools are SDK-built `FunctionTool`s with
-no guardrail attachment point; the MVP already calls `set_tracing_disabled`; `SkillTool` does not
-exist in the codebase despite the spec presuming it; run-level input guardrails are tripwire-only).
-All SDK claims below were verified against `.venv/.../site-packages/agents` source.
+**Status:** Partially implemented. Reconciled on 2026-09-06 against `main` at `b585e80`.
+Implementation landed in `3805e80` (#338). The task register below supersedes the original
+2026-06-10 planning status and the earlier blanket completion claims in `todo-full.md`.
+SDK feasibility notes retain their original 2026-06-10 / 0.17.4 context; this reconciliation
+inspected repository source, test definitions, and Git history, not current upstream SDK behavior.
+This document audit did not execute tests, live provider calls, samples, or deployments.
+Fresh checks run for the wider reconciliation are recorded in [reconciliation.md](reconciliation.md).
+
+## Reconciled task register (2026-09-06)
+
+Checked acceptance items below mean implementation is supported by inspected source and test
+coverage, not that tests were rerun. Unchecked checkpoints retain live, build, or broader suite
+acceptance. Proposed behavior in pending tasks is a requirement, not a shipped capability.
+Repository paths in this register are relative to the repository root.
+
+| Tasks | Current state | Evidence and remaining work |
+| --- | --- | --- |
+| A1–A3 | Implemented | `models/openai_config.py`, `models/agent.py`, `schemas/agent.schema.json`, backend `_max_turns` / `_build_run_config`, and `validators.validate_openai_agents`; covered in `test_openai_config.py`, `test_openai_agents_backend.py`, `test_validators.py`. Serve sizing remains I1. |
+| B1 | Implemented; live acceptance open | `openai_agents_tool_adapters.py` and backend RAG initialization; adapter/backend unit tests cover searches, prompt warning, and embedding validation. Grounded live RAG and tool-init endpoint acceptance remain open. |
+| C1 | Implemented | `openai_agents_mcp.py` and `test_openai_agents_mcp.py` cover transport construction, substitution, WebSocket warning, and static filtering; backend tests cover connection/cleanup. |
+| D1–D3 | Pending | `OpenAIConfig` has no `agents`; no OpenAI subagent adapter or `SkillTool` model exists. Handoff and AG-UI acceptance remain open. |
+| E1–E2 | Pending | `OpenAIConfig` has no `hooks`; no OpenAI YAML hook or guardrail module exists. Budget hooks are implemented, but are not YAML hooks. |
+| F1–F3 | Implemented | Model settings, permission filtering, `openai_agents_cost.py`, and their unit tests exist. Backend catches budget exceptions into error results with partial output. Hosted filtering remains dependent on G1. |
+| F4 | Partial; acceptance reopened | `openai_agents_fallback.py` and its unit tests cover one fallback on 429/5xx and no stream restart after the first event. Tests call the wrapper directly: SDK Runner retry exhaustion and both-attempt trace acceptance are not demonstrated. The wrapper catches primary errors internally, so the claimed Runner-retries-first ordering requires validation and potentially a fix. |
+| F5 | Implemented for configured reasoning effort | `openai_agents_output.py` and backend result extraction have unit coverage. `summary="auto"` is requested only when `openai.effort` is set; no-effort reasoning requests do not request a summary. Live structured/thinking acceptance remains K2. |
+| G1–G2 | Pending | `ToolUnion` has no `HostedTool`; the unsafe opt-in field is defined ahead of runtime enforcement. |
+| H1 | Partial; acceptance reopened | `openai_agents_tracing.py`, `_install_tracing_mirror`, and tracing tests exist; the Azure tracing-disable call is removed. Processor selection runs only when observability tracing is enabled and is guarded by a process-global installed flag. Validate disabled-observability and mixed-provider/config initialization before claiming unconditional Azure/override upload suppression. |
+| I1 | Pending; shared readiness exists | `serve/server.py` still restricts active-turn caps and startup credential preflight to Anthropic. OpenAI sizing fields have no serve enforcement. |
+| I2 | Shared implementation exists; acceptance open | Deploy CLI calls `agent_needs_nodejs`; Docker template conditionally includes Node and protects corpus/scratch paths. `test_dockerfile_hardening.py` covers these generic branches. Add OpenAI-configured coverage and verify generated image behavior; the proposed dedicated test file does not exist. |
+| I3 | Pending | `models/deployment.py` retains 1 CPU / 2 GiB defaults; ACA resolved-cap echo still uses `floor(cpu * 2)`. |
+| J1 | Pending | No default OpenAI tool-output guardrail exists. The opt-out configuration alone provides no model-visible redaction. |
+| J2 | Partial | `test_openai_agents_tracing.py::test_credential_tool_output_is_redacted` covers OTel redaction. `openai_agents_mcp.py` substitutes configured env values but does not implement the proposed credential scrub; function-child coverage and opt-out enforcement also remain open. |
+| K1 | Unverified / pending | `/sample` is ignored; no tracked financial-assistant sample or reproducible acceptance record establishes completion. |
+| K2 | Partial | `tests/integration/test_openai_agents_chat_e2e.py` provides credential-gated Azure function-call and text-stream smokes. RAG/tool-init, hosted, handoff, structured-output, and redaction acceptance are not covered by that file. |
+| K3 | Partial | `docs/guides/openai-backend.md`, `docs/api/backends.md`, and `docs/guides/observability.md` describe shipped configuration, reasoning, and tracing. The final hooks/guardrails coverage matrix and full-parity documentation depend on pending features. |
+
+These remaining parity tasks are separate from final Semantic Kernel removal: see
+[SK decoupling](plan-sk-decouple.md) and [LiteLLM migration](plan-litellm-embeddings-contextgen.md).
 
 ---
 
@@ -174,7 +210,7 @@ These differ from the spec text and/or earlier drafts; the plan follows reality:
   functions/methods of the `openai_agents_*` modules (SC-005). Pydantic models in
   `models/openai_config.py` never import the SDK.
 - **Tool adapters extend the existing `build_sdk_tools`** in
-  `openai_agents_tool_adapters.py`. Today it raises `ConfigError` for every non-function type; each
+  `openai_agents_tool_adapters.py`. At the MVP baseline it raised `ConfigError` for every non-function type; each
   phase below removes one type from that error path and returns the right SDK object. Returns become
   a tuple `(tools, mcp_servers, handoffs)` so MCP servers and skill/subagent handoffs flow into
   `Agent(...)`.
@@ -199,6 +235,7 @@ These differ from the spec text and/or earlier drafts; the plan follows reality:
 ### Phase A — `openai:` config block foundation
 
 #### Task A1: `OpenAIConfig` model + `openai:` block on `Agent`
+**Reconciled status:** Implemented (source/test evidence; verification not rerun).
 **Description:** New `src/holodeck/models/openai_config.py` with `OpenAIConfig` and
 `OpenAIPermissionsConfig`. Add `openai: OpenAIConfig | None` to the `Agent` model (sibling to
 `claude`). Fields: `max_concurrent_sessions`, `session_memory_estimate_mib` (default `100`),
@@ -207,9 +244,9 @@ These differ from the spec text and/or earlier drafts; the plan follows reality:
 `disallowed_tools`), `effort` (`low|medium|high|max`), `max_budget_usd`, `fallback_model`,
 `disallowed_tools`. (`hooks` and `agents` sub-blocks are added in Phases E and D.)
 **Acceptance criteria:**
-- [ ] `agent.yaml` with an `openai:` block validates; unknown keys rejected (`extra="forbid"`).
-- [ ] Defaults match the spec (`session_memory_estimate_mib=100`, `max_turns=20`).
-- [ ] `schemas/agent.schema.json` regenerated to include the `openai` block; schema still validates.
+- [x] `agent.yaml` with an `openai:` block validates; unknown keys rejected (`extra="forbid"`).
+- [x] Defaults match the spec (`session_memory_estimate_mib=100`, `max_turns=20`).
+- [x] `schemas/agent.schema.json` regenerated to include the `openai` block; schema still validates.
 **Verification:** `tests/unit/models/test_openai_config.py` (field defaults, validation);
 `make type-check`; sample loads.
 **Dependencies:** None
@@ -218,6 +255,7 @@ These differ from the spec text and/or earlier drafts; the plan follows reality:
 **Scope:** M
 
 #### Task A2: Backend consumes `OpenAIConfig`; side-effect-free validation entrypoint
+**Reconciled status:** Implemented (source/test evidence; verification not rerun).
 **Description:** Thread `agent.openai` into `OpenAIAgentsBackend`. Pass `max_turns` to
 `Runner.run(..., max_turns=...)`. Add `validate_openai_agents(agent)` to
 `lib/backends/validators.py` that runs credential preflight + config consistency
@@ -226,10 +264,10 @@ together (FR-110). The preflight **extracts** `_build_model`'s credential checks
 side-effect-free helper — validation must not trigger `_build_model`'s global mutations
 (`set_tracing_disabled`, `set_default_openai_key`).
 **Acceptance criteria:**
-- [ ] `max_turns` from `openai.max_turns` reaches `Runner.run`; default `20` when unset.
-- [ ] Missing-credential and conflicting-tool errors are collected and raised together.
-- [ ] Running validation leaves SDK global state untouched (no tracing/key side effects).
-- [ ] No SDK import occurs at module import time (SC-005 preserved).
+- [x] `max_turns` from `openai.max_turns` reaches `Runner.run`; default `20` when unset.
+- [x] Missing-credential and conflicting-tool errors are collected and raised together.
+- [x] Running validation leaves SDK global state untouched (no tracing/key side effects).
+- [x] No SDK import occurs at module import time (SC-005 preserved).
 **Verification:** `tests/unit/lib/backends/test_openai_agents_backend.py` (max_turns wiring);
 `test_validators.py` (collect-all-errors, no-side-effect). `make test-unit`.
 **Dependencies:** A1
@@ -238,6 +276,7 @@ side-effect-free helper — validation must not trigger `_build_model`'s global 
 **Scope:** S
 
 #### Task A3: `RunConfig` plumbing (trace sensitivity, workflow identity)
+**Reconciled status:** Implemented (source/test evidence; verification not rerun).
 **Description:** Build a `RunConfig` for every `Runner.run(...)` call:
 `workflow_name=agent.name`, `group_id=<session id>` for session-based runs (`invoke_once` has no
 session and carries `workflow_name` only), `trace_metadata` carrying the HoloDeck run context,
@@ -247,9 +286,9 @@ platform.openai.com even while J1 redacts what the model sees). `handoff_input_f
 `nest_handoff_history` are left at SDK defaults and explicitly documented as unmapped in v1 (see
 Out of scope).
 **Acceptance criteria:**
-- [ ] Every run carries `workflow_name`; session runs additionally carry `group_id`.
-- [ ] `capture_content: false` (default) → `trace_include_sensitive_data=False` regardless of env.
-- [ ] `capture_content: true` → sensitive payloads included.
+- [x] Every run carries `workflow_name`; session runs additionally carry `group_id`.
+- [x] `capture_content: false` (default) → `trace_include_sensitive_data=False` regardless of env.
+- [x] `capture_content: true` → sensitive payloads included.
 **Verification:** `tests/unit/lib/backends/test_openai_agents_backend.py` (RunConfig build).
 **Dependencies:** A1
 **Files:** `src/holodeck/lib/backends/openai_agents_backend.py`
@@ -264,6 +303,7 @@ Out of scope).
 ### Phase B — Native tool adapters (vectorstore + hierarchical_document)
 
 #### Task B1: Vectorstore + hierarchical_document adapters; `prompt` downgraded to warning
+**Reconciled status:** Partial; see reconciled register for remaining acceptance.
 **Description:** In `openai_agents_tool_adapters.py`, translate `VectorstoreTool` and
 `HierarchicalDocumentToolConfig` into SDK `FunctionTool`s that wrap the same `.search()` callables
 the Claude adapter uses (`lib/backends/tool_adapters.py`), reusing
@@ -293,6 +333,7 @@ mocked search; prompt warning). RAG init path unaffected.
 ### Phase C — MCP transports (spec 027)
 
 #### Task C1: MCP adapter (stdio / sse / http) → `agents.mcp.*`
+**Reconciled status:** Implemented (source/test evidence; verification not rerun).
 **Description:** Translate `MCPTool` configs into `agents.mcp.MCPServerStdio` /
 `MCPServerSse(params={url, headers})` / `MCPServerStreamableHttp(params={url, headers})`. Reuse the
 env/header `${VAR}` substitution + relative-arg resolution from `mcp_bridge.py`. `transport:
@@ -303,10 +344,10 @@ exists (`validators.agent_needs_nodejs`); no change. Note: the SDK converts MCP 
 `FunctionTool`s internally per run — HoloDeck cannot attach guardrails or failure wrappers to them
 (reconciliations; affects E1/E2/J1 coverage).
 **Acceptance criteria:**
-- [ ] stdio/sse/http each produce the right SDK class with substituted url/headers/env (mocked).
-- [ ] `transport: websocket` is skipped with a warning; load does not fail.
-- [ ] An `allowed_tools` subset yields a static tool filter.
-**Verification:** `tests/unit/lib/backends/test_openai_agents_tool_adapters.py` (per-transport).
+- [x] stdio/sse/http each produce the right SDK class with substituted url/headers/env (mocked).
+- [x] `transport: websocket` is skipped with a warning; load does not fail.
+- [x] An `allowed_tools` subset yields a static tool filter.
+**Verification:** `tests/unit/lib/backends/test_openai_agents_mcp.py` (per-transport).
 `make type-check`.
 **Dependencies:** A1
 **Files:** `src/holodeck/lib/backends/openai_agents_tool_adapters.py` (may extract
@@ -318,6 +359,7 @@ exists (`validators.agent_needs_nodejs`); no change. Note: the SDK converts MCP 
 ### Phase D — Subagents (handoffs) + skill tools
 
 #### Task D1: `openai.agents` → SDK sub-Agents + parent `handoffs`
+**Reconciled status:** Pending / acceptance not established.
 **Description:** Add `agents: dict[str, OpenAISubagentSpec] | None` to `OpenAIConfig`
 (`OpenAISubagentSpec`: `description`, `prompt`/`prompt_file`, `tools`, `model`). Build each as an
 SDK `Agent(name, instructions, handoff_description, tools, model)` and set the parent's
@@ -338,6 +380,7 @@ v1 (documented).
 **Scope:** M
 
 #### Task D2: `SkillTool` model (net-new) + skill → handoff target
+**Reconciled status:** Pending / acceptance not established.
 **Description:** The spec (FR-070, SC-001) presumes an existing `SkillTool`; **none exists** (see
 reconciliations). First add `SkillTool` to `models/tool.py` + `ToolUnion` (+ schema regen):
 `type: skill`, inline form (`instructions`, `description`, `allowed_tools`) or file-based form
@@ -357,6 +400,7 @@ D1). `allowed_tools` restricts the skill agent's tool scope.
 **Scope:** M
 
 #### Task D3: Handoff `ToolEvent`s for AG-UI (FR-006)
+**Reconciled status:** Pending / acceptance not established.
 **Description:** During streaming, map `AgentUpdatedStreamEvent` to `subagent_message` /
 `parent_link` `ToolEvent`s so the AG-UI panel renders handoffs identically to Claude. Push events
 onto the serve `tool_event_queue` when present (real-time path); fall back to post-hoc otherwise.
@@ -376,6 +420,7 @@ onto the serve `tool_event_queue` when present (real-time path); fall back to po
 ### Phase E — YAML hooks (spec 028)
 
 #### Task E1: `openai.hooks` model + observation actions + failure path
+**Reconciled status:** Pending / acceptance not established.
 **Description:** Add `hooks` to `OpenAIConfig` (event + matcher + action shape mirroring spec 028).
 New `openai_agents_hooks.py` builds `AgentHooks`/`RunHooks` from the config: `PreToolUse` /
 `PostToolUse` with `log|notify|script` → `on_tool_start`/`on_tool_end` (observation-only — **local
@@ -403,6 +448,7 @@ builds their invokers) — load warning when a failure matcher targets MCP tool 
 **Scope:** M
 
 #### Task E2: `reject` (→ tool guardrails) + `modify` (inert)
+**Reconciled status:** Pending / acceptance not established.
 **Description:** New `openai_agents_guardrails.py`. Reject mapping by target:
 - **HoloDeck-built function/local tool** (function, vectorstore, hier-doc, skill) → attach a
   `tool_input_guardrail` returning `ToolGuardrailFunctionOutput.reject_content(<configured
@@ -449,25 +495,27 @@ hosted-tool paths require G1 and are verified at Checkpoint G.
 ### Phase F — Spec-026 config mappings (US4) + parity gaps
 
 #### Task F1: `effort` → `ModelSettings(reasoning=...)`
+**Reconciled status:** Implemented (source/test evidence; verification not rerun).
 **Description:** Map `openai.effort` to `ModelSettings(reasoning=Reasoning(effort=<value>))` for
 reasoning models. `max` → `"xhigh"` (supported by the installed client's `ReasoningEffort`
 literal; documented deviation from FR-030/031's stale clamp-to-`high` wording). Fold into
 `_build_model_settings`.
 **Acceptance criteria:**
-- [ ] `effort: high` + `gpt-5` → `reasoning.effort="high"`.
-- [ ] `effort: max` → `reasoning.effort="xhigh"` (no warning needed; documented mapping).
+- [x] `effort: high` + `gpt-5` → `reasoning.effort="high"`.
+- [x] `effort: max` → `reasoning.effort="xhigh"` (no warning needed; documented mapping).
 **Verification:** `tests/unit/lib/backends/test_openai_agents_backend.py` (settings build).
 **Dependencies:** A1
 **Files:** `src/holodeck/lib/backends/openai_agents_backend.py`
 **Scope:** S
 
 #### Task F2: `disallowed_tools` config-time filter
+**Reconciled status:** Implemented (source/test evidence; verification not rerun).
 **Description:** Remove named tools from the resolved `Agent.tools` + `mcp_servers` at build time;
 `allowed ∩ disallowed` non-empty → load fail (FR-034). For hosted tools, refuse to construct a
 disallowed one.
 **Acceptance criteria:**
-- [ ] A disallowed tool is absent from the built agent.
-- [ ] A name in both allow + disallow fails load with the spec message.
+- [x] A disallowed tool is absent from the built agent.
+- [x] A name in both allow + disallow fails load with the spec message.
 **Verification:** `tests/unit/lib/backends/test_openai_agents_permissions.py`.
 **Dependencies:** A1, B1, C1
 **Files:** `src/holodeck/lib/backends/openai_agents_tool_adapters.py`,
@@ -475,13 +523,15 @@ disallowed one.
 **Scope:** S
 
 #### Task F3: `max_budget_usd` → cost-accountant `RunHooks`
+**Reconciled status:** Implemented (source/test evidence; verification not rerun).
 **Description:** New `openai_agents_cost.py`: a `RunHooks` that accumulates spend from run usage ×
 bundled per-model price table on each LLM end (`Usage.request_usage_entries` supports per-request
 math); on exhaustion raise `BackendBudgetExceededError` (new error) carrying partial response +
 accumulated cost (FR-032). Unknown model → warning + no-op (degrade, don't crash).
 **Acceptance criteria:**
-- [ ] A query exceeding the budget aborts with `BackendBudgetExceededError` + partial response.
-- [ ] An unknown model logs a warning and does not enforce.
+- [x] Cost hooks raise `BackendBudgetExceededError` with partial response; the backend converts
+      this into an error `ExecutionResult` (streaming surfaces the error after emitted deltas).
+- [x] An unknown model logs a warning and does not enforce.
 **Verification:** `tests/unit/lib/backends/test_openai_agents_cost.py`.
 **Dependencies:** A1
 **Files:** `src/holodeck/lib/backends/openai_agents_cost.py`,
@@ -489,6 +539,7 @@ accumulated cost (FR-032). Unknown model → warning + no-op (degrade, don't cra
 **Scope:** M
 
 #### Task F4: `fallback_model` → wrapping `Model` provider
+**Reconciled status:** Partial; see reconciled register for remaining acceptance.
 **Description:** New wrapping `Model` (or `ModelProvider`) that catches the retryable set (429,
 5xx) and re-issues against `fallback_model`; both attempts visible in the trace (FR-033). Define
 the ordering against the SDK's runner-managed retry: `ModelSettings.retry`
@@ -501,25 +552,27 @@ fallback.
       non-retryable error propagates.
 - [ ] Both attempts appear in the trace.
 - [ ] Retry/fallback ordering is unit-tested (retry exhaust → one fallback attempt).
-**Verification:** `tests/unit/lib/backends/test_openai_agents_backend.py` (fallback path, mocked).
+**Verification:** `tests/unit/lib/backends/test_openai_agents_fallback.py` (wrapper behavior) and
+`test_openai_agents_backend.py` (wiring); Runner retry-order and trace-attempt acceptance remain open.
 **Dependencies:** A1, F1 (shares model-build)
 **Files:** `src/holodeck/lib/backends/openai_agents_backend.py` (or `openai_agents_fallback.py`)
 **Scope:** M
 
 #### Task F5: Structured output + `thinking` parity (FR-004)
+**Reconciled status:** Implemented (source/test evidence; verification not rerun).
 **Description:** Wire the existing `Agent.response_format` (dict JSON schema | str path | None,
 `models/agent.py`) to SDK `Agent(output_type=...)`. `AgentOutputSchemaBase` is abstract and the
 SDK's concrete `AgentOutputSchema` requires a Python type, so write a small HoloDeck subclass
 (`JSONSchemaOutputSchema(AgentOutputSchemaBase)`: name, json_schema, strict flag, `validate_json`
 via `jsonschema`). Populate `ExecutionResult.structured_output` from `result.final_output` when an
 output type is set. Populate `ExecutionResult.thinking` from `ReasoningItem`s in the run output
-(the backend currently hardcodes `thinking=""` — `openai_agents_backend.py:257`) — and set
+(the MVP backend hardcoded `thinking=""`; extraction now exists) — and set
 `Reasoning(summary="auto")` for reasoning models (coupled with F1's effort mapping), since
 summaries are only emitted when requested. Cover both `invoke_once` and streaming.
 **Acceptance criteria:**
-- [ ] A `response_format` JSON schema yields `structured_output` as a parsed dict; absent →
+- [x] A `response_format` JSON schema yields `structured_output` as a parsed dict; absent →
       `None` (current behavior).
-- [ ] A reasoning-model run (with summary requested) populates `thinking`; non-reasoning models
+- [x] A reasoning-model run (with summary requested) populates `thinking`; non-reasoning models
       leave it empty.
 **Verification:** `tests/unit/lib/backends/test_openai_agents_backend.py` (output schema +
 thinking extraction, mocked run); creds-gated live check in K2.
@@ -536,6 +589,7 @@ thinking extraction, mocked run); creds-gated live check in K2.
 ### Phase G — Hosted tools (US5)
 
 #### Task G1: `HostedTool` model + 5 tool factories
+**Reconciled status:** Pending / acceptance not established.
 **Description:** Add `HostedTool` (`type: hosted`, `name` selecting the SDK class, `params`) to
 `ToolUnion` in `models/tool.py`. Factory builds `WebSearchTool` / `FileSearchTool` /
 `CodeInterpreterTool` / `ImageGenerationTool` / `HostedMCPTool`. `CodeInterpreterTool`,
@@ -560,6 +614,7 @@ config-load block). Unblocks E2's hosted-tool reject paths.
 **Scope:** M
 
 #### Task G2: Safety gate for `CodeInterpreterTool` (P1b)
+**Reconciled status:** Pending / acceptance not established.
 **Description:** Auto-disallow `CodeInterpreterTool` unless
 `openai.i_understand_this_is_unsafe: true`; loading without the opt-in emits the canonical
 migration error (FR-083). (`ComputerTool` is unconditionally rejected by G1, so the gate no longer
@@ -584,6 +639,7 @@ config (FR-084 as reinterpreted — see reconciliations).
 ### Phase H — Tracing (US7)
 
 #### Task H1: OTel-mirroring `TracingProcessor` + processor-list management
+**Reconciled status:** Partial; see reconciled register for remaining acceptance.
 **Description:** New `openai_agents_tracing.py`: a `TracingProcessor` that mirrors SDK trace events
 into the OTel pipeline. **Remove the MVP's `set_tracing_disabled(True)` call** in
 `_build_model` (Azure path) — it makes the provider return `NoOpTrace`/`NoOpSpan` and starves
@@ -616,10 +672,11 @@ the mirrored spans (FR-088 — expected no code).
 ### Phase I — Serve / deploy parity + P1a / P2a hardening (US2 / US6)
 
 #### Task I1: Serve active-turn cap, 429, readiness, config echo
+**Reconciled status:** Pending / acceptance not established.
 **Description:** In `serve/server.py`, derive an active-turn semaphore for `openai_agents` from
 `openai.max_concurrent_sessions` (explicit) or `floor(memory_mib / session_memory_estimate_mib)`
 (default 100). Overflow → 429 + `Retry-After` + problem+json `type:
-…/session-cap-exceeded` (FR-081). `/ready` gates on tool-init completion (already wired); add the
+…/session-cap-exceeded` (FR-081). `/ready` exists but currently returns lifecycle-only HTTP 200. Require HTTP 503 until backend prerequisites and required tool initialization succeed, then HTTP 200; include shutdown and verified existing tool data (spec D10). Add
 backend credential preflight to serve startup; add an "OpenAI Agents" resolved-config echo section.
 **Acceptance criteria:**
 - [ ] Concurrent in-flight turns are capped at the resolved value; overflow → 429 + Retry-After.
@@ -631,6 +688,7 @@ backend credential preflight to serve startup; add an "OpenAI Agents" resolved-c
 **Scope:** M
 
 #### Task I2: Dockerfile pure-Python branch (P2a)
+**Reconciled status:** Partial; see reconciled register for remaining acceptance.
 **Description:** `deploy/dockerfile.py` + the deploy CLI already gate Node.js on
 `agent_needs_nodejs` (stdio MCP only). Confirm the `openai_agents` path emits a **pure-Python**
 image by default and only installs Node when an MCP stdio server needs it (FR-011/085). Corpus
@@ -645,13 +703,14 @@ image by default and only installs Node when an MCP stdio server needs it (FR-01
 `src/holodeck/cli/commands/deploy.py`
 **Scope:** S
 
-#### Task I3: ACA default sizing 1 CPU / 1 GiB + provider-aware session-cap echo (P1a)
-**Description:** In `deploy/deployers/azure_containerapps.py`, default `cpu=1.0` / `memory=1Gi`
-when `model.provider ∈ {openai, azure_openai}` (vs Claude's 2 GiB), and make the resolved
+#### Task I3: ACA default sizing 1 CPU / 2 GiB + provider-aware session-cap echo (P1a)
+**Reconciled status:** Pending / acceptance not established.
+**Description:** In `deploy/deployers/azure_containerapps.py`, retain supported `cpu=1.0` / `memory=2Gi`
+when `model.provider ∈ {openai, azure_openai}` (spec D11), and make the resolved
 session-cap echo provider-aware (`floor(memory_mib / 100)` for openai_agents) instead of the
 Claude `cpu*2` formula (FR-080).
 **Acceptance criteria:**
-- [ ] An openai_agents deploy defaults to 1 CPU / 1 GiB; echo reports "10 (derived from 1024 MiB @
+- [ ] An openai_agents deploy defaults to 1 CPU / 2 GiB; echo reports "20 (derived from 2048 MiB @
       100 MiB/session)".
 - [ ] Claude sizing is unchanged.
 **Verification:** `tests/unit/deploy/test_aca_template_openai_agents.py`.
@@ -669,6 +728,7 @@ Claude `cpu*2` formula (FR-080).
 ### Phase J — P2b credential redaction + subprocess scrub (US6)
 
 #### Task J1: Default credential-redaction output guardrail
+**Reconciled status:** Pending / acceptance not established.
 **Description:** In `openai_agents_guardrails.py` (shared with E2), attach a default-on
 `tool_output_guardrail` to every **HoloDeck-built** `FunctionTool` (function, vectorstore,
 hier-doc, skill) that scrubs the 5 credential patterns (anthropic key, AWS access key, GitHub
@@ -692,6 +752,7 @@ covers MCP/hosted span attributes).
 **Scope:** M
 
 #### Task J2: Subprocess env scrub + OTel-redaction verification
+**Reconciled status:** Partial; see reconciled register for remaining acceptance.
 **Description:** When the agent has MCP stdio servers or function tools that shell out, default-on a
 subprocess env scrub stripping OpenAI/Azure/Anthropic credential vars from children; opt-out
 `openai.disable_subprocess_env_scrub: true` (FR-089). Verify `RedactingSpanProcessor` already
@@ -715,6 +776,7 @@ covers openai_agents spans (FR-088 — expected no code beyond a test).
 ### Phase K — Sample, integration smokes, docs
 
 #### Task K1: `sample/financial-assistant/openai`
+**Reconciled status:** Pending / acceptance not established.
 **Description:** Create the sample fresh — there is no in-tree financial-assistant sample to copy
 (`sample/` currently holds research-agent / test-openai-sdk-agent / test-vec, and `/sample` is
 **gitignored**, so nothing under it is exercised by CI). Model it on the historical
@@ -728,6 +790,7 @@ financial-assistant layout (vectorstore + function tools) with `model.provider: 
 **Scope:** S
 
 #### Task K2: Creds-gated integration smokes
+**Reconciled status:** Partial; see reconciled register for remaining acceptance.
 **Description:** Add integration tests (skip without creds): tool-init endpoints, a hosted-tool
 turn, a handoff scenario, a structured-output turn (F5), and the redaction e2e. Mirrors the spec's
 test list (minus P3/sandbox/computer-use).
@@ -739,6 +802,7 @@ test list (minus P3/sandbox/computer-use).
 **Scope:** M
 
 #### Task K3: Docs + per-backend semantics matrix
+**Reconciled status:** Partial; see reconciled register for remaining acceptance.
 **Description:** Backend docs for `openai_agents` (`openai:` block reference); hooks per-backend
 semantics matrix: `reject` via tool input guardrails (synchronous, run continues) vs Claude's
 PreToolUse deny; input-matched `reject` **aborts the turn** (tripwire) vs tool-matched (run

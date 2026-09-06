@@ -20,6 +20,7 @@ Move deferred gaps into [technical debt](exec-plans/tech-debt-tracker.md) with a
 
 ## Active plans
 
+
 Imported feature plans keep their original filenames and task lists. Feature IDs group related execution records.
 An earlier release does not close unfinished work. The inventory remains the source of status evidence.
 
@@ -51,10 +52,12 @@ An earlier release does not close unfinished work. The inventory remains the sou
 | Multi-Turn Test Cases & Evaluators | [032-multi-turn-test-cases](exec-plans/active/032-multi-turn-test-cases/index.md) |
 | Test Optimizer | [033-holodeck-test-optimizer](exec-plans/active/033-holodeck-test-optimizer/index.md) |
 | Production Hardening | [034-production-hardening](exec-plans/active/034-production-hardening/index.md) |
-| OpenAI Agents SDK Backend | [035-openai-agents-backend](exec-plans/active/035-openai-agents-backend/index.md) |
+| OpenAI Agents SDK Backend | [Completion execution plan](exec-plans/active/035-openai-agents-backend/2026-09-06-complete-035.md); [historical records](exec-plans/active/035-openai-agents-backend/index.md) |
 | Optimizer Progress Stream | [038-optimizer-progress-stream](exec-plans/active/038-optimizer-progress-stream/index.md) |
 
 ## Completed and archived plans
+
+- [2026-09-06: Feature 035 plan reconciliation](exec-plans/completed/2026-09-06-035-plan-reconciliation.md)
 
 - [2026-09-06: Remove retired command workflow](exec-plans/completed/2026-09-06-workflow-cleanup.md)
 - [2026-09-06: Specification migration and custom command removal](exec-plans/completed/2026-09-06-spec-migration.md)

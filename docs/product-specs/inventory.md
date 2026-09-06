@@ -43,7 +43,7 @@ The original CLI feature README is now `001-cli-core-engine/overview.md`.
 | [032](032-multi-turn-test-cases/index.md) | Multi-Turn Test Cases & Evaluators | shipped | 224/226 | PR #308 |
 | [033](033-holodeck-test-optimizer/index.md) | Test Optimizer | pending | 9/12 T + 0/30 | MVP shipped in PR #335; post-MVP + text proposer open; mixed task conventions |
 | [034](034-production-hardening/index.md) | Production Hardening | pending | 4/226 | Checkboxes live inside phase plan docs |
-| [035](035-openai-agents-backend/index.md) | OpenAI Agents SDK Backend | pending | 14/43 | MVP shipped in PR #338; full-parity plan open |
+| [035](035-openai-agents-backend/index.md) | OpenAI Agents SDK Backend | pending | 1/12 | T0 contract complete. [Completion plan](../exec-plans/active/035-openai-agents-backend/2026-09-06-complete-035.md) is the active checklist. MVP shipped in #338; audited legacy TODO remains 9/43. |
 | [036](036-deterministic-spine/index.md) | Deterministic Spine | archived | 13/30 | Frozen after Phase 1 (2026-08-29); superseded by 040 |
 | [037](037-gepa-optimizer/index.md) | GEPA Optimizer Backend | draft | no task list | Builds on 033 |
 | [038](038-optimizer-progress-stream/index.md) | Optimizer Progress Stream | shipped † | 4/35 | Merged as PR #345; checkboxes stale |
