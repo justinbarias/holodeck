@@ -74,7 +74,7 @@ openai:
 | `max_concurrent_sessions` | int | – (derived) | 1–500 | Hard cap on concurrent active turns per serve instance. When unset, derived from the replica's memory limit ÷ `session_memory_estimate_mib`. *Config accepted; serve enforcement lands in a later release.* |
 | `permissions.allowed_tools` | list[str] | `null` (all) | – | Explicit tool allowlist. *Config accepted; full enforcement nuance lands in a later release — prefer `disallowed_tools` today.* |
 | `permissions.disallowed_tools` | list[str] | – | – | Deny list; takes precedence over `allowed_tools`. *Config accepted; prefer the top-level `disallowed_tools` today.* |
-| `i_understand_this_is_unsafe` | bool | `false` | – | Acknowledges that hosted tools (e.g. code interpreter) permit server-side code execution. *Config accepted; hosted tools are not yet shipped — see [Coming soon](#coming-soon).* |
+| `i_understand_this_is_unsafe` | bool | `false` | – | Acknowledges that `CodeInterpreterTool` runs model-written code in an OpenAI-hosted container. Required to load that hosted tool (see [Hosted tools](#hosted-tools)). **Shipped.** |
 | `disable_default_hooks` | bool | `false` | – | Disables HoloDeck's default credential-redaction output guardrail. *Config accepted; default redaction guardrails are not yet shipped, so this is currently a no-op. OTel attribute redaction runs independently and is unaffected.* |
 | `disable_subprocess_env_scrub` | bool | `false` | – | Disables env scrubbing for stdio MCP servers / shelling-out function tools. *Config accepted; full enforcement lands in a later release.* |
 
@@ -166,8 +166,70 @@ The `thinking` field is populated from a reasoning model's **summaries**, which 
 | `vectorstore` | Wraps the tool's `.search()`; surfaced to the model as `{name}_search`. Requires an `embedding_provider`. |
 | `hierarchical_document` | Same wrapping pattern; surfaced as `{name}_search`. Requires an `embedding_provider`. |
 | `skill` | Becomes a handoff-target sub-agent scoped to its `allowed_tools`; see [Skills](#skills). |
+| `hosted` | OpenAI-platform tools (web search, file search, code interpreter, image generation, hosted MCP); see [Hosted tools](#hosted-tools). |
 
 The `{name}_search` naming keeps `disallowed_tools` portable across backends. For RAG configuration depth (chunking, hybrid search, databases), see [Tools](tools.md) and [Vector Stores](vector-stores.md) rather than duplicating it here.
+
+## Hosted tools
+
+`type: hosted` entries select one of the SDK's server-side tools. They run on the OpenAI platform through the Responses API, so HoloDeck never executes them locally: no subprocess, no MCP connection, no local guardrail. `name` is the config name you use in `disallowed_tools` and subagent `tools` lists; `tool` picks the SDK class; `params` are that class's constructor parameters.
+
+```yaml
+tools:
+  - name: web
+    type: hosted
+    tool: WebSearchTool
+    params:
+      search_context_size: low
+      allowed_domains: [example.com]
+      user_location: {city: Austin, country: US}
+  - name: policies
+    type: hosted
+    tool: FileSearchTool
+    params:
+      vector_store_ids: [vs_123]
+      max_num_results: 5
+  - name: sandbox
+    type: hosted
+    tool: CodeInterpreterTool          # needs openai.i_understand_this_is_unsafe: true
+    params:
+      container: {type: auto, memory_limit: 4g}
+  - name: art
+    type: hosted
+    tool: ImageGenerationTool
+    params: {quality: low, size: 1024x1024}
+  - name: docs
+    type: hosted
+    tool: HostedMCPTool
+    params:
+      server_label: docs
+      server_url: https://mcp.example.com
+      authorization: ${DOCS_TOKEN}     # ${VAR} substitution, like local MCP headers
+      allowed_tools: [search, read]
+```
+
+| `tool` | SDK tool name | Required params | Notable params |
+|--------|---------------|-----------------|----------------|
+| `WebSearchTool` | `web_search` | – | `search_context_size`, `allowed_domains`, `user_location.{city,country,region,timezone}`, `external_web_access` |
+| `FileSearchTool` | `file_search` | `vector_store_ids` | `max_num_results` (1–50), `include_search_results`, `ranking_options.{ranker,score_threshold}`, `filters` (OpenAI attribute filter, passed through) |
+| `CodeInterpreterTool` | `code_interpreter` | `container` (id or `{type: auto, file_ids, memory_limit, network_policy}`) | Gated by `openai.i_understand_this_is_unsafe` |
+| `ImageGenerationTool` | `image_generation` | – | `model`, `quality`, `size`, `output_format`, `output_compression`, `background`, `action`, `moderation`, `partial_images`, `input_fidelity` |
+| `HostedMCPTool` | `hosted_mcp` | `server_label` and exactly one of `server_url` / `connector_id` | `authorization`, `headers`, `allowed_tools`, `server_description`; `require_approval` must stay `never` |
+| `ComputerTool` | – | – | **Always rejected** at config load; it needs a computer harness HoloDeck does not provide yet (H-012) |
+
+Rules that fail config load: an unknown `tool` value, a missing required param, an unknown param (`extra: forbid`), two hosted entries of the same class (they would share one SDK tool name), a `CodeInterpreterTool` without the opt-in, and `HostedMCPTool` with `require_approval` other than `never` (interactive approval is deferred; an unsupported gate fails closed rather than running the tool). Every problem is reported in the same validation pass as credential and permission errors. A `disallowed_tools` entry naming a hosted tool drops it before construction, so a disallowed code interpreter needs no opt-in. Hosted tools load on the Claude backend only as an error: they are OpenAI Responses features.
+
+Hosted calls appear on the tool-event stream and in `ExecutionResult.tool_calls` / `tool_results` under the SDK tool name (`web_search`, `file_search`, `code_interpreter`, `image_generation`; hosted MCP calls use the remote tool's name with the `server_label` in the arguments), so `expected_tools: [web_search]` works in test cases. Because they run server-side, a hosted call emits `start` and `end` together, its result is a status or summary rather than raw output, and image bytes are omitted.
+
+### Hosted tools on Azure
+
+Hosted entries load on `provider: azure_openai` too; there is no blanket configuration ban. Whether a call succeeds depends on the Azure resource, region, and API surface, and that is only known at run time. When a run fails on Azure and the agent declares hosted tools, the SDK error is preserved verbatim and HoloDeck appends a hint naming the declared hosted classes. If you see it, check the resource's Responses API tool support or remove the entry.
+
+### Limits
+
+- Hosted tools are outside HoloDeck's model-visible guardrails: no output redaction, hooks, or rejection rules apply to what the OpenAI platform executes (OTel attribute redaction still applies to exported spans).
+- `openai.fallback_model` falls back to a model on the same provider; a fallback that lacks Responses hosted-tool support fails with the provider's error rather than silently dropping the tools.
+- Hosted MCP approval loops and `ComputerTool` are deferred ([H-012, H-013](../exec-plans/tech-debt-tracker.md)).
 
 ## MCP
 
@@ -266,6 +328,7 @@ Shipped surface only, OpenAI vs Claude:
 | MCP stdio / sse / http | ✓ | ✓ |
 | Subagents / handoffs | ✓ (`openai.agents`) | ✓ (`claude.agents`) |
 | Skills (`type: skill`) | ✓ (handoff target) | ✗ (not yet adapted) |
+| Hosted tools (`type: hosted`) | ✓ (five classes; `ComputerTool` deferred) | ✗ (fails load) |
 | Structured output | ✓ (use `anyOf`, not `oneOf`) | ✓ |
 | Reasoning / `thinking` | ✓ | ✓ |
 | `effort` / `max_budget_usd` / `fallback_model` | ✓ (via `openai:`) | — |
@@ -281,7 +344,6 @@ use `holodeck chat` and `holodeck test` for now.
 The following are **not yet available** on this backend — they are roadmap, not shipped:
 
 - **YAML hooks** — user-defined `openai.hooks`.
-- **Hosted tools** — web search, code interpreter, file search, image generation, hosted MCP (this is what `i_understand_this_is_unsafe` gates).
 - **`holodeck serve` & `holodeck deploy`** — running this backend as a REST/AG-UI server or deploying it to a container platform is not yet wired. (Both are fully supported on the [Claude backend](claude-backend.md).) The `max_concurrent_sessions` / `session_memory_estimate_mib` knobs are accepted in config ahead of that work but are not yet enforced.
 - **Default credential-redaction guardrails** — the output guardrail that `disable_default_hooks` would turn off.
 
@@ -300,6 +362,10 @@ The following are **not yet available** on this backend — they are roadmap, no
 **Symptom**: the provider rejects your `response_format` schema.
 
 **Fix**: replace `oneOf` with `anyOf` — OpenAI structured outputs do not accept `oneOf`. The `anyOf` form also works on the Claude backend.
+
+### Hosted tool rejected at load
+
+`ComputerTool` is always rejected (H-012). `CodeInterpreterTool` needs `openai.i_understand_this_is_unsafe: true`. `HostedMCPTool` needs `server_label` plus exactly one of `server_url` / `connector_id`, and `require_approval` must be `never`. Two entries of one hosted class collide on the SDK tool name; keep one per class.
 
 ### Reasoning-model sampling params ignored or erroring
 

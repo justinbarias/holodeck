@@ -10,6 +10,9 @@ Mapping (one HoloDeck event list per SDK item, in SDK order):
 * ``ToolCallItem`` → ``start`` (``tool_name``, ``tool_use_id=call_id``,
   ``tool_input``). While a handoff is active, a ``parent_link`` follows so the
   panel nests the call under the handoff.
+* Hosted (server-side) call items — web search, file search, code
+  interpreter, image generation, hosted MCP — never get an output item, so
+  they emit ``start`` and ``end`` together (see :func:`hosted_call_for`).
 * ``ToolCallOutputItem`` → ``end`` with ``tool_response``. A local tool that
   raised inside the SDK loop surfaces here with the SDK's error text as the
   output (the SDK's default failure handler converts the exception to a
@@ -152,6 +155,104 @@ def _arguments(raw: Any) -> dict[str, Any]:
     return {}
 
 
+_HOSTED_CALL_NAMES: dict[str, str] = {
+    "web_search_call": "web_search",
+    "file_search_call": "file_search",
+    "code_interpreter_call": "code_interpreter",
+    "image_generation_call": "image_generation",
+    "mcp_call": "hosted_mcp",
+}
+"""Responses output-item ``type`` → tool name for server-side (hosted) calls."""
+
+
+@dataclass
+class HostedCall:
+    """A hosted (server-side) tool call reconstructed from its output item.
+
+    Hosted tools execute on the OpenAI platform, so the SDK never produces a
+    ``ToolCallOutputItem`` for them: the call item already carries the
+    outcome. ``response`` summarises that outcome for the ``end`` event and
+    the ``ExecutionResult`` tool results.
+    """
+
+    name: str
+    call_id: str
+    arguments: dict[str, Any]
+    response: str
+
+
+def _field(raw: Any, key: str) -> Any:
+    """Read *key* from a dict or attribute-style raw item."""
+    if isinstance(raw, dict):
+        return raw.get(key)
+    return getattr(raw, key, None)
+
+
+def _dump(value: Any) -> Any:
+    """JSON-friendly view of a nested SDK value (pydantic model, list, scalar)."""
+    if hasattr(value, "model_dump"):
+        return value.model_dump(exclude_none=True)
+    if isinstance(value, list):
+        return [_dump(v) for v in value]
+    return value
+
+
+def hosted_call_for(raw: Any) -> HostedCall | None:
+    """Return the :class:`HostedCall` view of a hosted tool-call item.
+
+    Args:
+        raw: A ``ToolCallItem.raw_item`` (SDK model or dict).
+
+    Returns:
+        The reconstructed call, or ``None`` when *raw* is an ordinary
+        function call (or any item type that is not a hosted call).
+    """
+    item_type = str(_field(raw, "type") or "")
+    name = _HOSTED_CALL_NAMES.get(item_type)
+    if name is None:
+        return None
+    call_id = _call_id(raw)
+    status = str(_field(raw, "status") or "")
+    arguments: dict[str, Any] = {}
+    response = status
+    if item_type == "web_search_call":
+        action = _dump(_field(raw, "action"))
+        if action:
+            arguments = {"action": action}
+    elif item_type == "file_search_call":
+        queries = _field(raw, "queries") or []
+        arguments = {"queries": list(queries)}
+        results = _field(raw, "results")
+        if results:
+            response = json.dumps(_dump(results))
+    elif item_type == "code_interpreter_call":
+        code = _field(raw, "code")
+        if code:
+            arguments = {"code": code}
+        outputs = _field(raw, "outputs")
+        if outputs:
+            response = json.dumps(_dump(outputs))
+    elif item_type == "image_generation_call":
+        if _field(raw, "result"):
+            response = f"{status or 'completed'} (image data omitted)"
+    elif item_type == "mcp_call":
+        # A remote MCP call names the remote tool; keep the server label so
+        # graders can tell hosted MCP calls from local MCP tools.
+        name = str(_field(raw, "name") or name)
+        arguments = _arguments(_field(raw, "arguments"))
+        server = _field(raw, "server_label")
+        if server:
+            # The SDK's ``server_label`` is authoritative; it must win over a
+            # same-named key inside the remote tool's arguments.
+            arguments = {**arguments, "server_label": server}
+        error = _field(raw, "error")
+        output = _field(raw, "output")
+        response = str(error) if error else str(output or status)
+    return HostedCall(
+        name=name, call_id=call_id, arguments=arguments, response=response
+    )
+
+
 def _call_id(raw: Any) -> str:
     """Return the ``call_id`` (or ``id``) of a raw call / output item."""
     if isinstance(raw, dict):
@@ -231,6 +332,22 @@ def tool_events_for_item(
 
     if isinstance(item, HandoffCallItem | ToolCallItem):
         raw = item.raw_item
+        hosted = hosted_call_for(raw)
+        if hosted is not None:
+            # Server-side call: no output item follows, so close it here.
+            events = _start_events(
+                tracker, hosted.name, hosted.call_id, hosted.arguments
+            )
+            tracker.settle(hosted.call_id)
+            events.append(
+                ToolEvent(
+                    kind="end",
+                    tool_name=hosted.name,
+                    tool_use_id=hosted.call_id,
+                    tool_response=hosted.response,
+                )
+            )
+            return events
         if isinstance(raw, dict):
             name = str(raw.get("name", "") or "")
             arguments = raw.get("arguments")
