@@ -8,9 +8,9 @@ Implements per-metric model configuration for cost optimization:
 - General metrics (relevance, coherence, fluency): GPT-4o-mini (cheaper)
 
 References:
-- Research: specs/006-agent-test-execution/research/
+- Research: docs/design-docs/006-agent-test-execution/research/
   test-execution-integration-research.md Lines 809-1384
-- Research: specs/006-agent-test-execution/research.md Lines 107-165
+- Research: docs/design-docs/006-agent-test-execution/research.md Lines 107-165
 - Azure AI Evaluation SDK:
   https://learn.microsoft.com/azure/ai-foundry/how-to/develop/evaluate-sdk
 """

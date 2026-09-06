@@ -1,7 +1,7 @@
 """Atomic writer for :class:`EvalRun` JSON artifacts.
 
 Implements the ``mkstemp`` + ``fsync`` + ``os.replace`` pattern from
-``specs/031-eval-runs-dashboard/research.md`` R3 so readers see either the
+``docs/design-docs/031-eval-runs-dashboard/research.md`` R3 so readers see either the
 old file or the new file, never a partial one. A 4-hex collision suffix
 is appended when the target path already exists (FR-008).
 """

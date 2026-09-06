@@ -71,6 +71,18 @@ nav:
     - Utilities: api/utilities.md
   - Developer:
     - Contributing: contributing.md
+    - Design: DESIGN.md
+    - Design Documents: design-docs/index.md
+    - Product Specs: product-specs/index.md
+    - Product Sense: PRODUCT_SENSE.md
+    - Frontend: FRONTEND.md
+    - Execution Plans: PLANS.md
+    - Technical Debt: exec-plans/tech-debt-tracker.md
+    - Quality Score: QUALITY_SCORE.md
+    - Reliability: RELIABILITY.md
+    - Security: SECURITY.md
+    - Schema Inventory: generated/db-schema.md
+    - References: references/index.md
     - Changelog: CHANGELOG.md
 
 hooks:

@@ -11,7 +11,7 @@
 
 # Documentation and specifications
 /docs/                    @justinbarias
-/specs/                   @justinbarias
+/docs/product-specs/       @justinbarias
 
 # CI/CD and GitHub configuration
 /.github/                 @justinbarias

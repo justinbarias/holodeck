@@ -5,7 +5,7 @@ pairs by `tool_use_id` (surfaced on the dict as `"call_id"`); Semantic Kernel
 exposes parallel `tool_calls` / `tool_results` lists with no stable id, so
 pairing is positional.
 
-Design reference: `specs/031-eval-runs-dashboard/research.md` R8.
+Design reference: `docs/design-docs/031-eval-runs-dashboard/research.md` R8.
 """
 
 from __future__ import annotations

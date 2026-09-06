@@ -1,8 +1,9 @@
 """Edge-node models: the schema-gated agent boundary.
 
-What survives of the 036 deterministic spine (see ``specs/036-deterministic-spine/``,
+What survives of the 036 deterministic spine (see
+``docs/product-specs/036-deterministic-spine/``,
 archived) after the pivot to Temporal (spec 040,
-``specs/040-holodeck-temporal/spec.md``): an :class:`EdgeNode` names
+``docs/product-specs/040-holodeck-temporal/spec.md``): an :class:`EdgeNode` names
 an agent and the JSON Schema gate its structured output must cross. The DAG,
 policy/human nodes, and the ``workflow.yaml`` artifact were removed with the
 overlay engine; the gate executor in ``holodeck.lib.workflow.edge`` consumes

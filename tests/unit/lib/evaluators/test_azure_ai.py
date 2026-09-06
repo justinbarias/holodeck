@@ -9,9 +9,10 @@ Tests cover:
 - Query as optional parameter for GroundednessEvaluator
 
 References:
-- specs/006-agent-test-execution/research/test-execution-integration-research.md
+-
+docs/design-docs/006-agent-test-execution/research/test-execution-integration-research.md
   Lines 809-1384 (Azure AI Evaluation SDK section)
-- specs/006-agent-test-execution/research.md
+- docs/design-docs/006-agent-test-execution/research.md
   Lines 107-165 (Azure AI Evaluation decision and integration pattern)
 """
 

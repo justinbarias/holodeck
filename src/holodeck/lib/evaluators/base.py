@@ -5,8 +5,8 @@ HoloDeck test execution framework. Evaluators implement retry logic with
 exponential backoff and timeout handling.
 
 References:
-- Research: specs/006-agent-test-execution/research.md
-- Integration: specs/006-agent-test-execution/research/
+- Research: docs/design-docs/006-agent-test-execution/research.md
+- Integration: docs/design-docs/006-agent-test-execution/research/
   test-execution-integration-research.md
 """
 

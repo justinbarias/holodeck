@@ -1,7 +1,8 @@
-"""Fixture graders for US4 tests (specs/032-multi-turn-test-cases/tasks-us4.md T002).
+"""Fixture graders for US4 tests
+(docs/exec-plans/active/032-multi-turn-test-cases/tasks-us4.md T002).
 
 These graders exercise the contract surface described in
-`specs/032-multi-turn-test-cases/contracts/code-grader-contract.md`:
+`docs/product-specs/032-multi-turn-test-cases/contracts/code-grader-contract.md`:
 
 - ``numeric_equal`` — returns bool; covers spec Independent Test for `type: code`.
 - ``raises_value_error`` — always raises; covers T037 / T038 exception policy.

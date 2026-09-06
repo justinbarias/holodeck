@@ -15,7 +15,7 @@ NC := $(shell tput sgr0 2>/dev/null)
 .DEFAULT_GOAL := help
 
 # Phony targets
-.PHONY: help install install-dev install-prod test test-unit test-integration \
+.PHONY: harness-check harness-generate help install install-dev install-prod test test-unit test-integration \
         test-coverage test-parallel test-integration-parallel test-unit-parallel \
         lint format type-check security clean clean-all \
         pre-commit ci ci-github build docs run docker-build docker-run \
@@ -437,6 +437,12 @@ schema: ## Regenerate schemas/agent.schema.json from the Agent model
 
 schema-check: ## Verify the committed agent.schema.json matches the model
 	uv run python scripts/generate_agent_schema.py --check
+
+harness-check: ## Validate the repository knowledge map without installing dependencies
+	python3 scripts/check_harness.py
+
+harness-generate: ## Refresh the generated schema inventory and validate the harness
+	python3 scripts/check_harness.py --write
 
 #############################
 # Git Helpers               #

@@ -1,0 +1,11 @@
+HoloDeck UV reference
+
+Source of truth: pyproject.toml, uv.lock, and Makefile.
+Setup: uv sync --all-extras
+Project command: uv run holodeck --version
+Focused tests: uv run pytest <test-path> -n auto
+Dependencies: uv add <package>, uv add --dev <package>, uv remove <package>
+
+Use the existing lockfile. Change dependencies only within the requested scope.
+The package supports Python 3.10+. Current CI and make init use Python 3.10.
+See docs/contributing.md for verification and known Makefile limitations.

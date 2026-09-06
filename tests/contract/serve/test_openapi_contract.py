@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 @pytest.fixture
 def openapi_spec() -> dict:
     """Load the OpenAPI specification from contracts/openapi.yaml."""
-    spec_path = "specs/017-agent-local-server/contracts/openapi.yaml"
+    spec_path = "docs/product-specs/017-agent-local-server/contracts/openapi.yaml"
     with open(spec_path) as f:
         return yaml.safe_load(f)
 

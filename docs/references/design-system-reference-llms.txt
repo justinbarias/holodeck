@@ -1,0 +1,9 @@
+HoloDeck design-system reference
+
+Source of truth: src/holodeck/dashboard/assets/01-tokens.css and 02-holodeck.css.
+Components: src/holodeck/dashboard/components/.
+Views: src/holodeck/dashboard/views/.
+Guidance: docs/FRONTEND.md and docs/guides/dashboard.md.
+
+Reuse existing tokens, components, and state patterns. Inspect rendered changes.
+This file is a navigation reference, not a duplicate of the CSS values.

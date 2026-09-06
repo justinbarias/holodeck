@@ -7,8 +7,10 @@ it does NOT alter :func:`holodeck.lib.instruction_resolver.resolve_instructions`
 whose contract (return the raw instruction text) is kept byte-equivalent so
 that the prompt body reaching the LLM is unchanged (FR-015).
 
-See ``specs/031-eval-runs-dashboard/research.md`` R1 for the parser choice and
-``specs/031-eval-runs-dashboard/data-model.md`` §PromptVersion for field rules.
+See ``docs/design-docs/031-eval-runs-dashboard/research.md`` R1 for the parser choice
+and
+``docs/design-docs/031-eval-runs-dashboard/data-model.md`` §PromptVersion for field
+rules.
 """
 
 from __future__ import annotations

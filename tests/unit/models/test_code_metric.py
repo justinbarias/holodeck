@@ -1,6 +1,6 @@
 """Unit tests for ``CodeMetric`` load-time grader resolution (US4 Phase 4).
 
-Covers T021–T027 in ``specs/032-multi-turn-test-cases/tasks-us4.md``.
+Covers T021–T027 in ``docs/exec-plans/active/032-multi-turn-test-cases/tasks-us4.md``.
 
 ``CodeMetric`` resolves ``grader: module:callable`` at config-load time via
 ``importlib.import_module`` + ``getattr``; failures surface as ``ConfigError``

@@ -17,7 +17,8 @@ class TestServeQuickstart:
 
     def test_quickstart_yaml_parses_through_agent_model(self) -> None:
         """T023: Quickstart YAML validates through Agent Pydantic model."""
-        # The quickstart YAML from specs/024-claude-serve-deploy/quickstart.md
+        # The quickstart YAML from
+        # docs/product-specs/024-claude-serve-deploy/quickstart.md
         quickstart_yaml = """
 name: claude-assistant
 model:

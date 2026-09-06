@@ -6,7 +6,7 @@ frameworks, anchored on [Microsoft Agent Framework's declarative workflows](http
 and the `workflows` module of `microsoft/agent-framework` — and a validation pass on
 the thesis of [*Agent Workflows: A Solved Problem, Reinvented*](https://justinbarias.io/blog/agent-workflows-solved-problem-reinvented/)
 (justinbarias.io, 2026-04-30).
-**Related:** `deterministic-spine.md`, `specs/036-deterministic-spine/`
+**Related:** `deterministic-spine.md`, `docs/product-specs/036-deterministic-spine/`
 
 ---
 

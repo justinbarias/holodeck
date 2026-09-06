@@ -4,7 +4,7 @@ Spawns `python -m holodeck.dashboard` as a subprocess and forwards Ctrl+C.
 The dashboard package is an optional extra; if it's not installed we print
 an install hint and exit 2 (FR-022, SC-007) — no Python traceback.
 
-See specs/031-eval-runs-dashboard/contracts/cli.md §`holodeck test view`.
+See docs/product-specs/031-eval-runs-dashboard/contracts/cli.md §`holodeck test view`.
 """
 
 from __future__ import annotations

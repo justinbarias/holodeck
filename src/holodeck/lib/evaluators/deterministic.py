@@ -1,7 +1,7 @@
 """Deterministic evaluators (equality, numeric) — feature 032 US4.
 
 Implements the two built-in zero-LLM metrics described in
-``specs/032-multi-turn-test-cases/data-model.md`` §5:
+``docs/design-docs/032-multi-turn-test-cases/data-model.md`` §5:
 
 - ``EqualityEvaluator`` — case/whitespace/punctuation-aware string compare.
 - ``NumericEvaluator`` — abs/rel tolerance + percent / thousands-separator parse.
