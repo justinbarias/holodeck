@@ -157,7 +157,7 @@ There is no new deployment target or session/conversation-control YAML surface. 
 - **FR-030**: `effort: low | medium | high` MUST translate to `ModelSettings(reasoning=Reasoning(effort=<value>))`.
 - **FR-031**: `openai.effort: max` MUST map to reasoning effort `xhigh`, without a clamping warning. [D04](#d04).
 - **FR-032**: `max_budget_usd: <float>` MUST be enforced by a HoloDeck-managed `RunHooks` cost accountant; budget exhaustion raises `BackendBudgetExceededError` and aborts the run. Backend MUST surface the partial response and accumulated cost in the error payload.
-- **FR-033**: `openai.fallback_model` MUST wrap the primary model with a bounded fallback policy for 429/5xx errors. Exhaust configured primary retries before one fallback attempt; do not fallback on non-retryable errors or restart a stream after its first emitted event. Both attempts MUST be visible in permitted traces. The retryable set is fixed in v1. Function/MCP support is required; document hosted-tool limitations when the fallback lacks Responses capabilities. Runner-level acceptance remains T1.
+- **FR-033**: `openai.fallback_model` MUST wrap the primary model with a bounded fallback policy for 429/5xx errors. Exhaust configured primary retries before one fallback attempt; do not fallback on non-retryable errors or restart a stream after its first emitted event. Both attempts MUST be visible in permitted traces. The retryable set is fixed in v1. Function/MCP support is required; document hosted-tool limitations when the fallback lacks Responses capabilities. The bounded order is [D14](#d14); Runner-level acceptance is recorded in the matrix.
 - **FR-034**: `disallowed_tools: [<str>, ...]` MUST be applied at config-time tool-resolution: named tools are removed from `Agent.tools` and `mcp_servers`. If a tool name appears in both `allowed_tools` and `disallowed_tools`, config load MUST fail.
 
 **MCP transports (spec 027):**
@@ -222,7 +222,7 @@ There is no new deployment target or session/conversation-control YAML surface. 
 **Tracing:**
 
 - **FR-100**: For `provider: openai`, permitted SDK spans MUST reach the OTel mirror when enabled and the provider exporter unless provider upload is disabled. Select processors before runs emit spans. Do not call `set_tracing_disabled(True)` to suppress only provider upload: it also starves the mirror. [D07](#d07).
-- **FR-101**: For `provider: azure_openai`, SDK processor selection MUST exclude the OpenAI dashboard exporter while preserving enabled OTel emission. Suppression MUST hold with observability disabled, repeated initialization, and mixed-provider agents in either initialization order. Never use `set_tracing_disabled(True)` as the Azure upload-suppression mechanism. T1 must resolve safe process-global processor ownership. [D07](#d07).
+- **FR-101**: For `provider: azure_openai`, SDK processor selection MUST exclude the OpenAI dashboard exporter while preserving enabled OTel emission. Suppression MUST hold with observability disabled, repeated initialization, and mixed-provider agents in either initialization order. Never use `set_tracing_disabled(True)` as the Azure upload-suppression mechanism. Process-global processor ownership is [D13](#d13). [D07](#d07).
 - **FR-102**: `observability.disable_provider_tracing: bool` (default `false`) MUST suppress provider upload for either provider without disabling otherwise-enabled OTel emission. Every run MUST explicitly derive `trace_include_sensitive_data` from `observability.traces.capture_content` (default false), carry the agent workflow name and run context, and include a group/session ID for session runs. SDK environment defaults MUST NOT override capture-disabled behavior. [D07](#d07).
 
 **Validation at startup:**
@@ -295,7 +295,7 @@ They supersede old narrative, examples, duplicate ship phases, implementation-fi
 
 ### D07
 
-**Select exporters without suppressing SDK span generation.** `set_tracing_disabled(True)` creates no-op traces and would starve OTel; FR-101 and US7's old sequence are superseded. FR-100–102 require provider-aware routing independently of OTel enablement and explicit capture-content policy. T1 must replace any unsafe process-global first-initialization behavior with tested ownership and isolation; no particular unverified implementation is prescribed here.
+**Select exporters without suppressing SDK span generation.** `set_tracing_disabled(True)` creates no-op traces and would starve OTel; FR-101 and US7's old sequence are superseded. FR-100–102 require provider-aware routing independently of OTel enablement and explicit capture-content policy. The unsafe process-global first-initialization behavior was replaced by the per-backend policy router in [D13](#d13).
 
 <a id="d08"></a>
 
@@ -328,6 +328,18 @@ Explicit capacity overrides take precedence. Without a finite cgroup limit, use 
 ### D12
 
 **Close migration acceptance without claiming final SK removal.** H-008 owns connectors, text splitting, and the SK dependency. LiteLLM dimension/error/span acceptance remains in T2/T10 and H-009. Tracked fixtures, real provider/collector/container evidence, multimodal behavior, evaluation overrides, and clean optional-extra installation remain mandatory completion gates. Prior live-provider deferral in the historical full plan is superseded by T10: missing access is an unresolved blocker, not passing acceptance.
+
+<a id="d13"></a>
+
+### D13
+
+**HoloDeck owns the SDK's process-global trace-processor list through one router.** The SDK exposes a single processor list per process, so a first-initialization flag cannot express an OpenAI agent that uploads next to an Azure agent that must not. At `initialize()` each backend registers a per-instance `TracingPolicy` (`upload`: OpenAI without `disable_provider_tracing`; `mirror`: an OTel mirror when observability tracing is enabled) with `register_tracing_policy`; the first registration installs one HoloDeck router via `set_trace_processors`, replacing the SDK default exporter. Every run tags its trace with the backend's policy id in `RunConfig.trace_metadata` (`holodeck.tracing_policy`) and executes inside an `active_tracing_policy` scope. Trace events resolve by the tag, then the scope. Span identity is resolved once at span start (the scope of the run starting it, then its trace) and pinned to the span id until the span ends, so a run nested in a caller-owned or differently tagged outer `trace()` follows its own backend, and a span finished outside its scope, after its trace ended, or after the bounded trace map evicted its trace never falls back to upload. Policies are resolved from the registry per event, so `teardown()`'s `unregister_tracing_policy` drops further events of that backend immediately (fail closed). Registration is always performed, so Azure suppression holds with observability disabled, across repeated initialization, and for mixed providers in either order. Only traces and spans with no HoloDeck identity at all (non-HoloDeck SDK usage in the same process) keep SDK default behavior; the trace-level record of a caller-owned untagged outer trace also keeps that default. Implemented in `lib/backends/openai_agents_tracing.py` and covered by `test_openai_agents_tracing.py` and `test_openai_agents_backend.py`.
+
+<a id="d14"></a>
+
+### D14
+
+**Fallback order is primary client retries, then one fallback attempt, with no Runner-level policy repeat.** The wrapper in `lib/backends/openai_agents_fallback.py` is the Runner's model, so the SDK's runner-managed retries (`ModelSettings.retry` with a policy) would re-run the whole primary-then-fallback pair per attempt. HoloDeck never sets `ModelSettings.retry`; the primary's retry budget is the OpenAI client's provider-managed retries (`max_retries`, default 2, on 429/5xx/connection errors with `retry-after`), which exhaust inside the primary call before the wrapper makes exactly one fallback attempt and then surfaces the fallback's error unchanged. One SDK compatibility path remains and is documented, not suppressed: on a fallback HTTP 400 `conversation_locked`, openai-agents 0.17.4 rewinds and re-runs the pair up to three more times (bound: four pairs) before raising; the only opt-out (`max_retries=0`) would also disable the client retries, so it is not taken. Streams fall back only before the first event, including non-text events such as `response.created`. Both attempts open their own `response` span under one trace. Runner-level tests over real `OpenAIResponsesModel` instances and an in-process HTTP transport are in `tests/unit/lib/backends/test_openai_agents_fallback_runner.py`; live provider evidence remains T10.
 
 ## Implementation and validation ownership
 

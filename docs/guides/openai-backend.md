@@ -127,9 +127,9 @@ openai:
 ```
 
 - **Retryable set (fixed):** HTTP 429 (rate limit) and 5xx (server-side). Everything else — 400/401/403/404/422, connection/timeout errors, non-OpenAI exceptions — propagates unchanged; the fallback is never consulted.
-- **Ordering:** if you enable the SDK runner's own retries, the primary retries exhaust **first**, then exactly one fallback attempt. No double-fallback, no fallback mid-retry — the wrapper itself never retries the fallback.
-- **Streaming:** the wrapper falls back only if the primary stream fails **before its first event**. Once any event has been emitted, a later failure propagates unchanged (restarting on the fallback would replay already-delivered deltas).
-- **Tracing:** both the primary and the fallback attempt open their own generation span, so both are visible in the trace.
+- **Ordering (bounded):** the primary call carries the OpenAI client's own retries (`max_retries`, default 2, honouring `retry-after`); when those exhaust with a retryable error, exactly **one** fallback attempt follows, and its result or error is returned unchanged. HoloDeck never enables the SDK runner's `ModelSettings.retry`, so the Runner schedules no policy retries of the primary-then-fallback pair: at most `1 + max_retries` primary requests, then at most `1 + max_retries` fallback requests per pair. One SDK compatibility path remains: if the fallback answers HTTP 400 `conversation_locked`, the SDK re-runs the pair up to three more times (1 s / 2 s / 4 s backoff) before raising.
+- **Streaming:** the wrapper falls back only if the primary stream fails **before its first event**, including non-text events such as `response.created`. Once any event has been emitted, a later failure propagates unchanged (restarting on the fallback would replay already-delivered deltas).
+- **Tracing:** both the primary attempt (recorded with its error) and the fallback attempt open their own `response` span under the same trace, so both are visible on the provider dashboard when upload is permitted and in the OTel mirror.
 
 For Azure, build the fallback as another deployment on the same endpoint/credentials.
 
@@ -183,13 +183,17 @@ A per-server `allowed_tools` list becomes a static SDK tool filter (only the lis
 
 ## Tracing
 
-The SDK runs its own tracing pipeline. HoloDeck installs an OTel-mirroring `TracingProcessor` that reconstructs each finished SDK span as an OTel span on HoloDeck's global tracer (carrying the redacting span processor and your configured exporters). The mirror is installed only when `observability.enabled` **and** `observability.traces.enabled` are both true.
+The SDK runs its own tracing pipeline, with a single process-global processor list. HoloDeck owns that list: the first OpenAI-backend `initialize()` in a process installs one HoloDeck trace router (replacing the SDK's default exporter), and every backend instance registers its own **tracing policy** with the router — an upload decision plus, when `observability.enabled` **and** `observability.traces.enabled` are both true, an OTel-mirroring `TracingProcessor` that reconstructs each finished SDK span as an OTel span on HoloDeck's global tracer (carrying the redacting span processor and your configured exporters).
 
-| Configuration | platform.openai.com upload | OTel mirror |
-|---------------|----------------------------|-------------|
-| `provider: openai` | retained (default exporter kept) | ✓ |
-| `provider: azure_openai` | none (mirror only) | ✓ |
-| `observability.disable_provider_tracing: true` (either provider) | none (mirror only) | ✓ |
+Each run tags its trace with the backend's policy id, and the router applies that policy per trace. The upload decision therefore never depends on which agent initialized first, on repeated initialization, or on whether observability is enabled: an Azure agent served next to an OpenAI agent never uploads, and the OpenAI agent still does.
+
+| Configuration | platform.openai.com upload | OTel mirror (when tracing enabled) |
+|---------------|----------------------------|------------------------------------|
+| `provider: openai` | ✓ | ✓ |
+| `provider: azure_openai` | never (also with observability disabled) | ✓ |
+| `observability.disable_provider_tracing: true` (either provider) | never | ✓ |
+
+With observability disabled, an OpenAI agent keeps the SDK default upload and an Azure agent emits nothing. Spans produced by a HoloDeck run follow that run's backend even inside a trace you opened yourself with the SDK's `trace()` (the outer trace's own record keeps SDK default behaviour); each span's policy is fixed when it starts, so a span that finishes later, elsewhere, or after its trace ended keeps it. Traces from non-HoloDeck SDK usage in the same process keep the SDK default behaviour. A backend's policy is withdrawn at `teardown()`; from then on its events are dropped rather than uploaded.
 
 !!! note "Sensitive data is not uploaded by default"
     The SDK's `trace_include_sensitive_data` is bound to `observability.traces.capture_content` (default **false**). With the default, tool input/output is **not** included in uploaded spans. Set `capture_content: true` only when the data is safe to capture. See [Observability](observability.md).
