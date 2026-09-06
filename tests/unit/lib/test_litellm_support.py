@@ -1,10 +1,11 @@
 """Tests for litellm_support: provider mapping + LiteLLM embedding service."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from holodeck.lib.litellm_support import (
+    EmbeddingServiceError,
     LiteLLMEmbeddingService,
     LiteLLMModelSpec,
     resolve_litellm_model,
@@ -185,6 +186,40 @@ class TestLiteLLMEmbeddingService:
         assert mock_embed.await_args.kwargs["dimensions"] == 256
 
     @pytest.mark.asyncio
+    async def test_azure_alias_allow_lists_dimensions(self) -> None:
+        """An Azure deployment alias needs LiteLLM's guard bypassed."""
+        mock_response = type("R", (), {"data": [{"index": 0, "embedding": [0.1]}]})()
+        service = LiteLLMEmbeddingService(
+            LiteLLMModelSpec(
+                model="openai/embedding-prod",
+                api_key="k",
+                api_base="https://r.openai.azure.com/openai/v1",
+            ),
+            dimensions=512,
+        )
+        with patch(
+            "litellm.aembedding", new=AsyncMock(return_value=mock_response)
+        ) as mock_embed:
+            await service.generate_embeddings(["a"])
+
+        kwargs = mock_embed.await_args.kwargs
+        assert kwargs["dimensions"] == 512
+        assert kwargs["allowed_openai_params"] == ["dimensions"]
+
+    @pytest.mark.asyncio
+    async def test_openai_bare_model_has_no_allow_list(self) -> None:
+        mock_response = type("R", (), {"data": [{"index": 0, "embedding": [0.1]}]})()
+        service = LiteLLMEmbeddingService(
+            LiteLLMModelSpec(model="text-embedding-3-small"), dimensions=256
+        )
+        with patch(
+            "litellm.aembedding", new=AsyncMock(return_value=mock_response)
+        ) as mock_embed:
+            await service.generate_embeddings(["a"])
+
+        assert "allowed_openai_params" not in mock_embed.await_args.kwargs
+
+    @pytest.mark.asyncio
     async def test_dimensions_absent_when_none(self) -> None:
         mock_response = type("R", (), {"data": [{"index": 0, "embedding": [0.1]}]})()
         service = LiteLLMEmbeddingService(LiteLLMModelSpec(model="m"))
@@ -203,3 +238,57 @@ class TestLiteLLMEmbeddingService:
 
         assert result == []
         mock_embed.assert_not_awaited()
+
+
+class TestEmbeddingServiceErrorBoundary:
+    """Provider failures are wrapped without losing the cause."""
+
+    @pytest.mark.asyncio
+    async def test_provider_exception_wrapped_with_cause(self) -> None:
+        from openai import RateLimitError
+
+        service = LiteLLMEmbeddingService(
+            LiteLLMModelSpec(model="text-embedding-3-small", api_key="k")
+        )
+        upstream = RateLimitError(
+            "rate limited",
+            response=MagicMock(status_code=429, headers={}),
+            body=None,
+        )
+        with (
+            patch("litellm.aembedding", new=AsyncMock(side_effect=upstream)),
+            pytest.raises(EmbeddingServiceError) as excinfo,
+        ):
+            await service.generate_embeddings(["a"])
+
+        assert excinfo.value.__cause__ is upstream
+        message = str(excinfo.value)
+        assert "text-embedding-3-small" in message
+        assert "RateLimitError" in message
+        assert "rate limited" in message
+
+    @pytest.mark.asyncio
+    async def test_malformed_response_wrapped(self) -> None:
+        bad = type("R", (), {"data": [{"index": 0}]})()
+        service = LiteLLMEmbeddingService(LiteLLMModelSpec(model="m"))
+        with (
+            patch("litellm.aembedding", new=AsyncMock(return_value=bad)),
+            pytest.raises(EmbeddingServiceError) as excinfo,
+        ):
+            await service.generate_embeddings(["a"])
+
+        assert isinstance(excinfo.value.__cause__, KeyError)
+
+    @pytest.mark.asyncio
+    async def test_vector_count_mismatch_raises(self) -> None:
+        short = type("R", (), {"data": [{"index": 0, "embedding": [0.1]}]})()
+        service = LiteLLMEmbeddingService(LiteLLMModelSpec(model="m"))
+        with (
+            patch("litellm.aembedding", new=AsyncMock(return_value=short)),
+            pytest.raises(EmbeddingServiceError, match="1 vectors for 2 inputs"),
+        ):
+            await service.generate_embeddings(["a", "b"])
+
+    def test_error_is_plain_exception_subclass(self) -> None:
+        assert issubclass(EmbeddingServiceError, Exception)
+        assert not issubclass(EmbeddingServiceError, ValueError)

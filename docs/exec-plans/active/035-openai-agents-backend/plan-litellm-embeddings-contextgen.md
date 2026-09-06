@@ -5,9 +5,10 @@ This record retains the reconciled design and historical task evidence.
 
 **Spec:** `docs/product-specs/035-openai-agents-backend/spec.md`
 **Predecessor:** [SK decoupling](plan-sk-decouple.md).
-**Status:** Core migration implemented; acceptance gaps remain in dimensions, errors, telemetry,
-provider validation, and documentation.
-**Reconciled:** 2026-09-06 against `b585e80`; implementation landed in `3805e80` (#338).
+**Status:** Core migration implemented; focused contracts for dimensions, errors, telemetry, and
+documentation closed by 035 T2 on 2026-09-06 ([D15](../../../product-specs/035-openai-agents-backend/spec.md#d15)).
+Live provider validation remains with 035 T10.
+**Reconciled:** 2026-09-06 against `b585e80`; implementation landed in `3805e80` (#338); T2 follow-up on branch `feat/035-t2-litellm-acceptance`.
 **Scope:** Replace SK embedding/contextual-chat inference, retaining vector-store abstractions and chunking.
 
 ## Evidence and status convention
@@ -42,9 +43,21 @@ Task IDs below retain the original work breakdown while replacing superseded dra
    one-release fallback and later flag-deletion phase are superseded. Rollback requires a code change.
 5. `litellm>=1.80.0,<1.89.0` is a core dependency. SK remains for connectors/chunking.
 6. LiteLLM telemetry uses the configured tracer-provider chain with `SPAN_ONLY` content capture
-   or `NO_CONTENT`. Redaction covers new and legacy message attributes. The draft semconv pin
-   remains an unmet requirement; configuring capture mode is not equivalent to pinning semconv.
+   or `NO_CONTENT`. Redaction covers new and legacy message attributes, LiteLLM's
+   `llm.openai.stringified_raw_response`, `error.*` failure attributes, and span-event attributes. **Semconv (T2):** HoloDeck does not pin
+   `OTEL_SEMCONV_STABILITY_OPT_IN`; the default LiteLLM 1.88 shape (`litellm_request`, operation on
+   `llm.request.type`, provider on `gen_ai.system`) is the documented contract and the
+   `gen_ai_latest_experimental` opt-in is documented for operators. Both shapes are tested at the
+   exporter in `tests/unit/lib/observability/test_litellm_spans.py`.
 7. Ollama live smoke coverage was left manual in the earlier decision; this audit does not claim it ran.
+8. **Error boundary (T2):** `LiteLLMEmbeddingService.generate_embeddings` re-raises every provider or
+   decoding failure as `EmbeddingServiceError` with the cause chained. Tools propagate it (no placeholder
+   fallback when a service is injected); the initializer wraps ingest failures as `ToolInitializerError`.
+9. **Dimensions (T2):** `create_embedding_service(agent, dimensions=...)` forwards an override; the
+   initializer keeps one shared service per agent and builds a dedicated service per tool that sets
+   `embedding_dimensions`, so different tools may request different sizes of the same model. Azure
+   deployment aliases (`openai/<deployment>`) allow-list the parameter via `allowed_openai_params`
+   because LiteLLM's client-side guard keys on the `text-embedding-3` model marker.
 
 ## Task reconciliation
 
@@ -63,9 +76,10 @@ Isolated installation and type-check acceptance remain open. The original “no 
 
 - [x] Shim returns floats in response-index order; empty-input and mocked output tests exist.
 - [x] Direct shim use forwards `dimensions` when provided and omits it when `None`; unit tests exist.
-- [ ] **Unmet draft acceptance:** the planned `ToolInitializerError`/embedding-error translation is absent
-  from the shim; provider exceptions propagate. Decide whether to implement the promised boundary or
-  explicitly accept/document existing caller handling, then test that contract.
+- [x] **Boundary implemented (T2, 2026-09-06):** the shim raises `EmbeddingServiceError` with the
+  provider exception chained (Decision 8); `tests/unit/lib/test_litellm_support.py::TestEmbeddingServiceErrorBoundary`
+  and the initializer/tool propagation tests cover it. The earlier silent placeholder fallback in both
+  tools was removed.
 - [x] Focused embedding tests passed in the parent audit; see the [verification record](reconciliation.md#verification-in-this-audit).
 
 ### Task 3 — Route embedding factory through LiteLLM
@@ -74,14 +88,16 @@ Isolated installation and type-check acceptance remain open. The original “no 
 - [x] The draft flag and SK fallback criteria are superseded by hard cutover (Decision 4).
 - [x] Existing tools retain embedding-dimension mismatch checks; downstream collection APIs still
   consume precomputed vectors.
-- [ ] **Unmet draft acceptance:** `create_embedding_service` constructs `LiteLLMEmbeddingService(spec)`
-  without dimensions. Adapter-only forwarding tests do not establish the promised configured
-  dimension override. Reconcile the shared service with per-tool dimensions and test factory-to-provider behavior.
+- [x] **Dimension wiring (T2, 2026-09-06):** per-tool `embedding_dimensions` reaches `litellm.aembedding`
+  as `dimensions` through a dedicated service (Decision 9);
+  `tests/unit/lib/test_tool_initializer.py::TestEmbeddingDimensionsForwarding` covers factory forwarding,
+  distinct services for different overrides, the shared default, single-tool init, provider size
+  mismatch, and provider failure with the cause preserved.
 - [ ] Re-establish grounded ingest/query acceptance for OpenAI, Azure, and Ollama. Earlier Azure
   seam smoke evidence does not prove the full three-provider criterion.
 
-**Checkpoint A:** Embedding cutover present; dimension wiring and provider validation remain open.
-There is no fallback branch to test.
+**Checkpoint A:** Embedding cutover, error boundary, and dimension wiring present; three-provider
+live validation remains open (035 T10). There is no fallback branch to test.
 
 ### Task 4 — Rewire contextual retrieval
 
@@ -109,11 +125,14 @@ There is no fallback branch to test.
   in `tests/unit/lib/backends/test_otel_redaction.py`.
 - [x] Callback configuration uses `SPAN_ONLY` when `traces.capture_content` is enabled and
   `NO_CONTENT` otherwise; configuration tests exist in observability instrumentation tests.
-- [ ] **Implementation gap:** no `OTEL_SEMCONV_STABILITY_OPT_IN` pin exists in source. Resolve the
-  original stability requirement against the installed LiteLLM integration and document/test the decision.
-- [ ] **Validation gap:** exporter-level embedding/chat span emission, operation names, input/output/total
-  token attributes, and actual no-content behavior are not proven by callback-configuration tests.
-  Add focused emission tests and perform the originally requested collector smoke when authorized.
+- [x] **Semconv resolved (T2, 2026-09-06):** no pin; the default shape is the contract and the opt-in is
+  documented and tested (Decision 6).
+- [x] **Emission proven at the exporter (T2, 2026-09-06):** `tests/unit/lib/observability/test_litellm_spans.py`
+  (9 tests) drives real `litellm.aembedding` / `LLMContextGenerator` → `litellm.acompletion` with
+  `mock_response` through `enable_litellm_telemetry` and `RedactingSpanProcessor`: span names, request
+  type, token attributes, content absent and no raw span under `NO_CONTENT`, redacted prompt/completion/raw
+  payload under `SPAN_ONLY`, the opt-in shape with and without capture, and a redacted failure span.
+- [ ] Collector smoke against a live exporter when authorized (035 T10).
 
 ### Task 7 — Confirm the hard cutover
 
@@ -132,18 +151,19 @@ hooks remain. Original full-suite acceptance is not re-established by this recon
 - [x] This plan documents the implemented mapping and retained SK dependency.
 - [x] `docs/guides/vector-stores.md` describes the retained SK connector layer.
 - [x] Chunker replacement is recorded as a follow-up below.
-- [ ] **Documentation gap:** user-facing RAG/API guides do not yet describe the LiteLLM inference
-  implementation and Azure mapping promised by the original task. Update the appropriate technical
-  guide/API reference; this plan alone does not satisfy that delivery criterion.
-- [ ] Validate affected documentation links/build when that documentation work is completed.
+- [x] **Documentation (T2, 2026-09-06):** `docs/guides/tools.md` gained an "Embedding inference" section
+  (provider mapping, error boundary, dimensions) and the `embedding_dimensions` field row;
+  `docs/guides/observability.md` gained "RAG inference spans (LiteLLM)"; changelog updated.
+- [x] `make harness-check` and `uv run mkdocs build --strict` run with the T2 documentation.
 
-**Checkpoint Complete:** Not met. Core migration is present, but open implementation/documentation
-items and unverified acceptance gates above prevent an all-criteria-complete claim. User review
+**Checkpoint Complete:** Not met. Core migration, focused contracts, and documentation are present;
+the live three-provider ingest/query, contextual-ingest, and collector gates above remain with 035 T10. User review
 recorded by an earlier session must not be inferred from the implemented status.
 
 ## Remaining work and full SK decommission
 
-The open Task 2/3/6/8 items above belong to this migration's acceptance reconciliation.
+The remaining open items above (live provider, contextual-ingest, collector smoke, and full-suite
+gates) belong to 035 T10/T11; the Task 2/3/6/8 contract items were closed by 035 T2.
 The following work is separate from this inference swap:
 
 - [ ] Replace SK vector-store record definitions, collection contracts, 11 provider mappings,

@@ -5,6 +5,30 @@ the embedding service consumed through ``EmbeddingServiceMixin``. This module
 replaces the Semantic Kernel ``*TextEmbedding`` / ``*ChatCompletion`` services
 in the RAG inference path; the SK vector-store abstractions (connectors,
 ``@vectorstoremodel``, ``VectorStoreField``) are unaffected.
+
+Provider-error boundary
+-----------------------
+``LiteLLMEmbeddingService.generate_embeddings`` is the boundary between the
+provider SDK and HoloDeck's tools. Every failure raised while calling the
+provider or decoding its response is re-raised as :class:`EmbeddingServiceError`
+with the original exception chained as ``__cause__`` and named in the message,
+so callers (``VectorStoreTool``, ``HierarchicalDocumentTool``, the tool
+initializer's ``ToolInitializerError``) surface one stable type without losing
+the provider's status code or message. Tools never substitute placeholder
+vectors for a failed provider call: a failure during ingest aborts tool
+initialization, and a failure at query time surfaces as the tool error.
+Placeholder embeddings are used only when no embedding service is injected.
+
+Output dimensions
+-----------------
+The service forwards an explicit ``dimensions`` value to the provider on every
+request and omits the parameter when ``None``. The tool initializer builds one
+shared service per agent (no ``dimensions``) and a dedicated service for each
+tool that sets ``embedding_dimensions``, so a configured override reaches the
+provider instead of only being checked against the returned vector length.
+For Azure (``openai/<deployment>``) the parameter is allow-listed through
+``allowed_openai_params`` because the deployment alias does not carry the
+``text-embedding-3`` marker LiteLLM's client-side guard looks for.
 """
 
 from __future__ import annotations
@@ -136,6 +160,14 @@ def resolve_litellm_model(
     )
 
 
+class EmbeddingServiceError(Exception):
+    """Raised when the embedding provider call fails or returns unusable data.
+
+    The original provider exception is chained as ``__cause__`` and its type
+    and message are included in this error's message.
+    """
+
+
 class LiteLLMEmbeddingService:
     """Embedding service backed by ``litellm.aembedding``.
 
@@ -168,6 +200,10 @@ class LiteLLMEmbeddingService:
 
         Returns:
             List of embedding vectors, in input order.
+
+        Raises:
+            EmbeddingServiceError: If the provider call fails or the response
+                cannot be decoded; the provider exception is chained.
         """
         if not texts:
             return []
@@ -177,7 +213,27 @@ class LiteLLMEmbeddingService:
         kwargs = self._spec.call_kwargs()
         if self._dimensions is not None:
             kwargs["dimensions"] = self._dimensions
+            if self._spec.model.startswith("openai/"):
+                # Azure deployments run through LiteLLM's generic ``openai/``
+                # provider under an arbitrary deployment alias. LiteLLM's
+                # client-side guard only permits ``dimensions`` when the model
+                # name contains ``text-embedding-3``, so the alias must be
+                # allow-listed explicitly; the provider then validates it.
+                kwargs["allowed_openai_params"] = ["dimensions"]
 
-        response = await litellm.aembedding(input=texts, **kwargs)
-        items = sorted(response.data, key=lambda item: item["index"])
-        return [[float(value) for value in item["embedding"]] for item in items]
+        try:
+            response = await litellm.aembedding(input=texts, **kwargs)
+            items = sorted(response.data, key=lambda item: item["index"])
+            vectors = [[float(value) for value in item["embedding"]] for item in items]
+        except Exception as exc:
+            raise EmbeddingServiceError(
+                f"Embedding request failed for model '{self._spec.model}': "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
+
+        if len(vectors) != len(texts):
+            raise EmbeddingServiceError(
+                f"Embedding response for model '{self._spec.model}' returned "
+                f"{len(vectors)} vectors for {len(texts)} inputs"
+            )
+        return vectors

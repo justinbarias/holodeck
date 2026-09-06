@@ -61,6 +61,7 @@ def _make_agent(
 def _make_vectorstore_tool(
     name: str = "knowledge_base",
     embedding_model: str | None = None,
+    embedding_dimensions: int | None = None,
 ) -> Any:
     """Create a VectorstoreTool config fixture."""
     from holodeck.models.tool import VectorstoreTool
@@ -70,6 +71,7 @@ def _make_vectorstore_tool(
         description=f"Search {name}",
         source="./data/docs",
         embedding_model=embedding_model,
+        embedding_dimensions=embedding_dimensions,
     )
 
 
@@ -458,6 +460,182 @@ class TestInitializeAllTools:
             pytest.raises(ToolInitializerError, match="embedding service"),
         ):
             await initialize_tools(agent)
+
+
+# ===================================================================
+# T2 (035): per-tool embedding dimensions reach the provider
+# ===================================================================
+
+
+def _service_dimensions(service: Any) -> int | None:
+    """Read the dimensions a LiteLLMEmbeddingService will forward."""
+    assert isinstance(service, LiteLLMEmbeddingService)
+    return service._dimensions
+
+
+class TestEmbeddingDimensionsForwarding:
+    """Factory-to-provider dimension forwarding and mismatch handling."""
+
+    def test_factory_forwards_explicit_dimensions(self) -> None:
+        agent = _make_agent(tools=[_make_vectorstore_tool()])
+        assert _service_dimensions(create_embedding_service(agent)) is None
+        assert (
+            _service_dimensions(create_embedding_service(agent, dimensions=256)) == 256
+        )
+
+    @pytest.mark.asyncio
+    async def test_tool_override_reaches_provider_request(self) -> None:
+        """A tool's embedding_dimensions is sent to litellm as ``dimensions``."""
+        tool = _make_vectorstore_tool(name="small", embedding_dimensions=256)
+        agent = _make_agent(tools=[tool])
+        captured: dict[str, Any] = {}
+
+        async def fake_aembedding(**kwargs: Any) -> Any:
+            captured.update(kwargs)
+            return type("R", (), {"data": [{"index": 0, "embedding": [0.1] * 256}]})()
+
+        mock_vs_instance = MagicMock()
+        mock_vs_instance.initialize = AsyncMock()
+
+        with (
+            patch("litellm.aembedding", new=fake_aembedding),
+            patch(
+                "holodeck.tools.vectorstore_tool.VectorStoreTool",
+                MagicMock(return_value=mock_vs_instance),
+            ),
+        ):
+            await initialize_tools(agent)
+            service = mock_vs_instance.set_embedding_service.call_args.args[0]
+            vectors = await service.generate_embeddings(["x"])
+
+        assert captured["dimensions"] == 256
+        assert captured["model"] == "text-embedding-3-small"
+        assert len(vectors[0]) == 256
+
+    @pytest.mark.asyncio
+    async def test_tools_with_different_dimensions_get_distinct_services(
+        self,
+    ) -> None:
+        """Two overrides and one default → three services, one model."""
+        tools = [
+            _make_vectorstore_tool(name="a", embedding_dimensions=256),
+            _make_vectorstore_tool(name="b", embedding_dimensions=512),
+            _make_vectorstore_tool(name="c"),
+        ]
+        agent = _make_agent(tools=tools)
+        services: dict[str, Any] = {}
+
+        def make_instance(config: Any, **_: Any) -> MagicMock:
+            instance = MagicMock()
+            instance.initialize = AsyncMock()
+            instance.set_embedding_service = MagicMock(
+                side_effect=lambda svc: services.__setitem__(config.name, svc)
+            )
+            return instance
+
+        with patch(
+            "holodeck.tools.vectorstore_tool.VectorStoreTool",
+            side_effect=make_instance,
+        ):
+            await initialize_tools(agent)
+
+        assert _service_dimensions(services["a"]) == 256
+        assert _service_dimensions(services["b"]) == 512
+        assert _service_dimensions(services["c"]) is None
+        assert services["a"] is not services["b"]
+        assert {svc._spec.model for svc in services.values()} == {
+            "text-embedding-3-small"
+        }
+
+    @pytest.mark.asyncio
+    async def test_tools_without_override_share_one_service(self) -> None:
+        tools = [_make_vectorstore_tool(name="a"), _make_vectorstore_tool(name="b")]
+        agent = _make_agent(tools=tools)
+        services: list[Any] = []
+
+        def make_instance(config: Any, **_: Any) -> MagicMock:
+            instance = MagicMock()
+            instance.initialize = AsyncMock()
+            instance.set_embedding_service = MagicMock(side_effect=services.append)
+            return instance
+
+        with patch(
+            "holodeck.tools.vectorstore_tool.VectorStoreTool",
+            side_effect=make_instance,
+        ):
+            await initialize_tools(agent)
+
+        assert len(services) == 2
+        assert services[0] is services[1]
+
+    @pytest.mark.asyncio
+    async def test_single_tool_init_forwards_override(self) -> None:
+        tool = _make_vectorstore_tool(name="vs_single", embedding_dimensions=1024)
+        agent = _make_agent(tools=[tool])
+        mock_vs_instance = MagicMock()
+        mock_vs_instance.initialize = AsyncMock()
+
+        with patch(
+            "holodeck.tools.vectorstore_tool.VectorStoreTool",
+            MagicMock(return_value=mock_vs_instance),
+        ):
+            await initialize_single_tool(agent, "vs_single")
+
+        service = mock_vs_instance.set_embedding_service.call_args.args[0]
+        assert _service_dimensions(service) == 1024
+
+    @pytest.mark.asyncio
+    async def test_provider_size_mismatch_aborts_initialization(self) -> None:
+        """A provider that ignores the override fails init with the cause kept."""
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = _make_vectorstore_tool(name="strict", embedding_dimensions=256)
+        agent = _make_agent(tools=[tool])
+
+        async def wrong_size(**_: Any) -> Any:
+            return type("R", (), {"data": [{"index": 0, "embedding": [0.1] * 1536}]})()
+
+        async def fake_initialize(self: VectorStoreTool, **_: Any) -> None:
+            self._embedding_dimensions = 256
+            await self._embed_chunks(["chunk"])
+
+        with (
+            patch("litellm.aembedding", new=wrong_size),
+            patch.object(VectorStoreTool, "initialize", fake_initialize),
+            pytest.raises(ToolInitializerError, match="strict") as excinfo,
+        ):
+            await initialize_tools(agent)
+
+        cause = excinfo.value.__cause__
+        assert isinstance(cause, ValueError)
+        assert "expected 256, got 1536" in str(cause)
+
+    @pytest.mark.asyncio
+    async def test_provider_error_aborts_initialization_with_cause(self) -> None:
+        """A provider failure during ingest is an init error, not placeholders."""
+        from holodeck.lib.litellm_support import EmbeddingServiceError
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = _make_vectorstore_tool(name="broken")
+        agent = _make_agent(tools=[tool])
+
+        async def boom(**_: Any) -> Any:
+            raise RuntimeError("provider down")
+
+        async def fake_initialize(self: VectorStoreTool, **_: Any) -> None:
+            await self._embed_chunks(["chunk"])
+
+        with (
+            patch("litellm.aembedding", new=boom),
+            patch.object(VectorStoreTool, "initialize", fake_initialize),
+            pytest.raises(ToolInitializerError, match="broken") as excinfo,
+        ):
+            await initialize_tools(agent)
+
+        cause = excinfo.value.__cause__
+        assert isinstance(cause, EmbeddingServiceError)
+        assert isinstance(cause.__cause__, RuntimeError)
+        assert "provider down" in str(excinfo.value)
 
 
 # ===================================================================

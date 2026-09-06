@@ -130,6 +130,23 @@ Every LLM invocation captures:
 
 When `capture_content` is enabled, spans also carry `gen_ai.content.prompt` and `gen_ai.content.completion` events.
 
+### RAG inference spans (LiteLLM)
+
+Vectorstore and hierarchical-document embeddings and contextual-retrieval chat calls run through LiteLLM, whose OpenTelemetry callback is registered on HoloDeck's tracer provider (so the spans pass through redaction and your exporters). Each provider call is one span:
+
+| Attribute | Embedding call | Chat call |
+| --- | --- | --- |
+| span name | `litellm_request` | `litellm_request` |
+| `llm.request.type` | `aembedding` | `acompletion` |
+| `gen_ai.request.model` / `gen_ai.response.model` | embedding model | chat model |
+| `gen_ai.system` | provider (empty for some embedding routes) | provider |
+| `gen_ai.usage.input_tokens` / `output_tokens` / `total_tokens` | as reported by the provider (OpenAI reports input only; Ollama reports a total) | all three |
+| `gen_ai.input.messages` / `gen_ai.output.messages`, `gen_ai.operation.name`, `gen_ai.response.finish_reasons` | only with `capture_content: true` | only with `capture_content: true` |
+
+With `capture_content: true` LiteLLM also emits a `raw_gen_ai_request` child span carrying the provider payload under `llm.openai.stringified_raw_response`; that attribute and the message attributes are scrubbed by the credential redactor before export. With `capture_content: false` (default) neither the content attributes nor the raw-response span are emitted. Failed calls carry `error.type`, `error.message`, `error.stack_trace`, and an OTel `exception` event regardless of `capture_content`; the redactor scrubs those too.
+
+HoloDeck does not set `OTEL_SEMCONV_STABILITY_OPT_IN`. Exporting `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental` before starting HoloDeck (LiteLLM reads it when the callback is created, so a later change has no effect) switches LiteLLM to the current GenAI conventions: span names become `embeddings <model>` / `chat <model>` (span kind `CLIENT`), the provider moves to `gen_ai.provider.name`, and the `raw_gen_ai_request` span is not emitted even with content capture on. Model, token, and content attribute names are the same in both shapes.
+
 ### OpenAI Agents backend tracing
 
 On the OpenAI Agents backend the SDK runs its own tracing pipeline; HoloDeck installs one process-wide trace router and registers a per-backend policy with it: whether the backend's traces may upload to platform.openai.com, and — only when both `observability.enabled` and `observability.traces.enabled` are true — a `TracingProcessor` that **mirrors** each finished SDK span into an OTel span on HoloDeck's tracer (carrying your redaction and exporters). Policies are applied per trace, so mixed OpenAI and Azure agents in one process keep their own upload behaviour regardless of initialization order.

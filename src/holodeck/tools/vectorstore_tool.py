@@ -403,8 +403,11 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
     async def _embed_chunks(self, chunks: list[str]) -> list[list[float]]:
         """Generate embeddings for a list of text chunks.
 
-        Uses injected embedding service if available, otherwise returns
-        placeholder embeddings (for testing without LLM).
+        Uses the injected embedding service when one is set. Provider
+        failures propagate unchanged (``EmbeddingServiceError`` from the
+        LiteLLM shim) so a broken provider never silently stores or queries
+        placeholder vectors. Without a service, placeholder embeddings are
+        returned (for testing without an LLM).
 
         Validates that embedding dimensions match configuration.
 
@@ -416,39 +419,34 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         Raises:
             ValueError: If embedding dimensions don't match configuration.
+            Exception: Any error raised by the embedding service.
         """
         if self._embedding_service is not None:
-            # Use real embedding service
-            try:
-                embeddings = await self._embedding_service.generate_embeddings(chunks)
-                # Convert to list of lists (service may return different types)
-                result = [list(emb) for emb in embeddings]
+            embeddings = await self._embedding_service.generate_embeddings(chunks)
+            # Convert to list of lists (service may return different types)
+            result = [list(emb) for emb in embeddings]
 
-                # Validate dimensions match configuration
-                if result and self._embedding_dimensions is not None:
-                    actual_dim = len(result[0])
-                    if actual_dim != self._embedding_dimensions:
-                        raise ValueError(
-                            f"Embedding dimension mismatch: expected "
-                            f"{self._embedding_dimensions}, got {actual_dim}. "
-                            f"This usually means:\n"
-                            f"1. Your embedding_model produces different dimensions\n"
-                            f"2. The embedding_dimensions setting is incorrect\n"
-                            f"Fix: Set 'embedding_dimensions: {actual_dim}' "
-                            f"in tool config"
-                        )
+            # Validate dimensions match configuration
+            if result and self._embedding_dimensions is not None:
+                actual_dim = len(result[0])
+                if actual_dim != self._embedding_dimensions:
+                    raise ValueError(
+                        f"Embedding dimension mismatch: expected "
+                        f"{self._embedding_dimensions}, got {actual_dim}. "
+                        f"This usually means:\n"
+                        f"1. Your embedding_model produces different dimensions\n"
+                        f"2. The embedding_dimensions setting is incorrect\n"
+                        f"Fix: Set 'embedding_dimensions: {actual_dim}' "
+                        f"in tool config"
+                    )
 
+            if result:
                 logger.debug(
                     f"Generated {len(result)} embeddings, dim={len(result[0])}"
                 )
-                return result
+            return result
 
-            except Exception as e:
-                logger.warning(
-                    f"Embedding service failed, falling back to placeholder: {e}"
-                )
-
-        # Fallback: placeholder embeddings using configured dimensions
+        # No service injected: placeholder embeddings using configured dimensions
         if self._embedding_dimensions is None:
             self._embedding_dimensions = 1536
 

@@ -26,8 +26,10 @@ def _is_remote_source(source: str) -> bool:
 
 
 if TYPE_CHECKING:
+    from holodeck.lib.litellm_support import LiteLLMEmbeddingService
     from holodeck.models.agent import Agent
     from holodeck.models.config import ExecutionConfig
+    from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +96,9 @@ def resolve_embedding_model(agent: Agent) -> str:
     return "text-embedding-3-small"
 
 
-def create_embedding_service(agent: Agent) -> Any:
+def create_embedding_service(
+    agent: Agent, *, dimensions: int | None = None
+) -> LiteLLMEmbeddingService:
     """Create a LiteLLM-backed embedding service from agent config.
 
     For Anthropic provider: uses ``agent.embedding_provider`` config.
@@ -102,6 +106,9 @@ def create_embedding_service(agent: Agent) -> Any:
 
     Args:
         agent: Agent configuration.
+        dimensions: Explicit output dimensions forwarded to the provider on
+            every request. ``None`` (the shared per-agent service) omits the
+            parameter so the model's native size is returned.
 
     Returns:
         An initialized LiteLLMEmbeddingService instance.
@@ -119,15 +126,44 @@ def create_embedding_service(agent: Agent) -> Any:
     embedding_model = resolve_embedding_model(agent)
 
     logger.debug(
-        "Creating embedding service: model=%s, provider=%s",
+        "Creating embedding service: model=%s, provider=%s, dimensions=%s",
         embedding_model,
         provider,
+        dimensions,
     )
 
     spec = resolve_litellm_model(
         model_config, kind="embedding", model_name=embedding_model
     )
-    return LiteLLMEmbeddingService(spec)
+    return LiteLLMEmbeddingService(spec, dimensions=dimensions)
+
+
+def _embedding_service_for_tool(
+    agent: Agent,
+    tool_config: VectorstoreToolConfig,
+    shared_service: LiteLLMEmbeddingService,
+) -> LiteLLMEmbeddingService:
+    """Return the embedding service a vectorstore tool should use.
+
+    Tools share one service per agent (one embedding model, provider-native
+    dimensions). A tool that sets ``embedding_dimensions`` gets its own
+    service so the override is forwarded to the provider; two tools with
+    different overrides therefore call the provider with different sizes.
+    Hierarchical-document tools have no dimensions override and always use
+    the shared service.
+
+    Args:
+        agent: Agent configuration.
+        tool_config: The vectorstore tool's configuration model.
+        shared_service: The per-agent service built without dimensions.
+
+    Returns:
+        ``shared_service`` when the tool sets no override, otherwise a new
+        service carrying the tool's ``embedding_dimensions``.
+    """
+    if tool_config.embedding_dimensions is None:
+        return shared_service
+    return create_embedding_service(agent, dimensions=tool_config.embedding_dimensions)
 
 
 async def initialize_tools(
@@ -331,7 +367,9 @@ async def _initialize_vectorstore_tools(
                         source_root=resolved_local_path,
                         is_remote=True,
                     )
-                tool.set_embedding_service(embedding_service)
+                tool.set_embedding_service(
+                    _embedding_service_for_tool(agent, tool_config, embedding_service)
+                )
                 await tool.initialize(
                     force_ingest=force_ingest, provider_type=provider_type
                 )
@@ -622,13 +660,13 @@ async def initialize_single_tool(
     provider_type = _resolve_embedding_provider(agent).value
 
     if is_vectorstore:
-        vs_tool = VectorStoreTool(
-            cast(VectorstoreToolConfig, tool_config),
-            execution_config=execution_config,
-        )
+        vs_config = cast(VectorstoreToolConfig, tool_config)
+        vs_tool = VectorStoreTool(vs_config, execution_config=execution_config)
         if is_remote and source_override is not None:
             vs_tool.set_source_context(source_root=source_override, is_remote=True)
-        vs_tool.set_embedding_service(embedding_service)
+        vs_tool.set_embedding_service(
+            _embedding_service_for_tool(agent, vs_config, embedding_service)
+        )
         await vs_tool.initialize(
             force_ingest=force_ingest,
             provider_type=provider_type,

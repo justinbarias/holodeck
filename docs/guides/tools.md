@@ -141,6 +141,7 @@ Semantic search over unstructured or structured data — knowledge bases, FAQs, 
 | --- | --- | --- | --- |
 | `source` | path | — | **Required.** File, directory, or remote URL to index |
 | `embedding_model` | string | provider default | e.g. `text-embedding-3-small`, `nomic-embed-text:latest` |
+| `embedding_dimensions` | int | auto-detect | Output size sent to the provider as `dimensions` (OpenAI `text-embedding-3-*`, Azure deployments of them, Ollama); also the size the tool verifies every returned vector against |
 | `vector_field` | string \| list | auto-detect | Field(s) to vectorize (JSON/CSV). XOR with `vector_fields` |
 | `meta_fields` | list | all fields | Metadata fields to include in results |
 | `chunk_size` | int | `512` | Characters per chunk (> 0) |
@@ -170,7 +171,24 @@ Semantic search over unstructured or structured data — knowledge bases, FAQs, 
     If an agent defines both **vectorstore** and **hierarchical_document** tools with
     **different** `embedding_model` values, HoloDeck raises a validation error at startup.
     All embedding-based tools in an agent must share one embedding model (they share a
-    single embedding provider instance).
+    single embedding provider instance). `embedding_dimensions` is per tool: a tool that
+    sets it gets its own service that sends that size to the provider, so two vectorstore
+    tools may use different sizes of the same model.
+
+### Embedding inference
+
+Embeddings and contextual-retrieval chat calls go through [LiteLLM](https://docs.litellm.ai/) using the agent's provider credentials; the vector store connectors are unchanged.
+
+| Provider | LiteLLM model | Connection |
+| --- | --- | --- |
+| OpenAI | bare model name | API key, default endpoint |
+| Azure OpenAI | `openai/<deployment>` | `endpoint` normalized to `/openai/v1`; the key is sent as a bearer token; no API version |
+| Ollama | `ollama/<model>` | `endpoint` when set |
+| Anthropic | not supported for embeddings; `anthropic/<model>` for `context_model` chat | API key |
+
+**Provider errors are never hidden.** A failed embedding call raises `EmbeddingServiceError` with the provider's error type and message (the original exception is chained). During ingest the tool fails to initialize with that cause; at query time the search fails with it. HoloDeck never stores or searches placeholder vectors for a real provider failure. Placeholder (zero) vectors are used only when a tool has no embedding service, which happens in unit tests, not in a running agent.
+
+**Dimensions.** Without `embedding_dimensions` the provider returns the model's native size and the tool resolves the expected size from the model name (for example 1536 for `text-embedding-3-small`, 768 for `nomic-embed-text`). With `embedding_dimensions` set, the value is sent to the provider on every request and the returned vectors are checked against it; a provider that ignores the parameter fails the tool with `Embedding dimension mismatch: expected <configured>, got <returned>`. Azure deployment names carry no model marker, so HoloDeck allow-lists the parameter for them and the deployment's model decides whether it is accepted (`text-embedding-ada-002` rejects it).
 
 ### Database providers
 
