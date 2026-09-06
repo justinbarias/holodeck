@@ -18,7 +18,7 @@ install, to see handoffs and skills in the chat tools panel, or as a template.
 | Fallback model | `openai.fallback_model` |
 | Tracing (OTel mirror) | `observability` block (disabled by default) |
 | Structured output | `schemas/answer.schema.json` (commented `response_format`) |
-| Test cases: tool assertions, ground truth, LLM-graded metric | `test_cases`, `evaluations` |
+| Test cases: tool assertions, ground truth, G-Eval + RAG faithfulness metrics | `test_cases`, `evaluations` |
 
 ## Run
 
@@ -74,4 +74,4 @@ The loader only expands plain `${VAR}` references, so there are no
 6. `skill route` — the inline skill is a handoff target (`transfer_to_summarise`).
 7. `disallowed tool never offered` — `purge_inventory` was filtered before build, so the model cannot call it.
 
-The `direct-answer` G-Eval metric runs on every case using the agent's model; it judges only input and output, so tool usage is asserted by `expected_tools`, not by the judge.
+The `direct-answer` G-Eval metric runs on every case and compares the reply with `ground_truth`; tool usage is asserted by `expected_tools`. The `faithfulness` RAG metric scores every case that called `knowledge_base_search` or `handbook_search` (their output is forwarded as `retrieval_context`, also from inside handoffs) and is skipped on the others.

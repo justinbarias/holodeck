@@ -156,6 +156,13 @@ evaluations:
         expected output shows was available.
       evaluation_params: [input, actual_output, expected_output]
       threshold: 0.6
+    # Retrieval-tool output (knowledge_base_search / handbook_search) is
+    # forwarded as retrieval_context; cases without a retrieval call skip
+    # this metric rather than fail it.
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.7
+      include_reason: true
 
 test_cases:
   - name: function tool lookup
