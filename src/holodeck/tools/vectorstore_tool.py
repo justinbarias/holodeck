@@ -45,6 +45,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _is_qdrant_native_id(record_id: str) -> bool:
+    """Return True when Qdrant accepts *record_id* as a point ID as-is.
+
+    Qdrant point IDs are either UUIDs or unsigned 64-bit integers.
+    """
+    if record_id.isdigit():
+        return int(record_id) < 2**64
+    import uuid
+
+    try:
+        uuid.UUID(record_id)
+    except ValueError:
+        return False
+    return True
+
+
 class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
     """Vectorstore tool for semantic search over unstructured data.
 
@@ -130,6 +146,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         # Persistent collection instance for vector store operations
         self._collection: Any = None
         self._provider: str = "in-memory"
+        self._warned_id_coercion: bool = False
 
         # Source context for stable record keys (remote sources)
         self._source_root: Path | None = None
@@ -528,8 +545,15 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         return self._coerce_record_id(readable)
 
     def _coerce_record_id(self, record_id: str) -> str:
-        """Map a readable record ID to a Qdrant-safe UUIDv5 when needed."""
-        if self._provider != "qdrant":
+        """Map a record ID to a Qdrant-safe value when needed.
+
+        IDs that Qdrant already accepts (a UUID string or an unsigned integer)
+        are returned unchanged, so structured sources keyed by UUID keep their
+        existing points. Anything else is mapped to a deterministic UUIDv5;
+        for structured data the original business key is then only visible
+        through ``meta_fields``, which is logged once per tool.
+        """
+        if self._provider != "qdrant" or _is_qdrant_native_id(record_id):
             return record_id
         import uuid
 
@@ -716,8 +740,17 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             # Create records
             records: list[Any] = []
             for record_data, embedding in zip(batch, embeddings, strict=False):
+                record_id = self._coerce_record_id(record_data["id"])
+                if record_id != record_data["id"] and not self._warned_id_coercion:
+                    self._warned_id_coercion = True
+                    logger.warning(
+                        f"Vectorstore tool '{self.config.name}': structured record "
+                        f"IDs are not valid Qdrant point IDs and are stored as "
+                        f"UUIDv5 hashes; search results carry the hash. Add the "
+                        f"id column to meta_fields to keep the original key."
+                    )
                 record = record_class(
-                    id=self._coerce_record_id(record_data["id"]),
+                    id=record_id,
                     content=record_data["content"],
                     embedding=embedding,
                     source_file=source_path,

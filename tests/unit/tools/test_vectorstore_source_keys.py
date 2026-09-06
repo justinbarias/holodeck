@@ -272,3 +272,17 @@ class TestQdrantRecordIds:
         assert self._tool("qdrant")._record_id("k", 0) != self._tool(
             "qdrant", name="other"
         )._record_id("k", 0)
+
+    @pytest.mark.parametrize(
+        "native", ["550e8400-e29b-41d4-a716-446655440000", "42", "0"]
+    )
+    def test_qdrant_native_ids_are_preserved(self, native: str) -> None:
+        assert self._tool("qdrant")._coerce_record_id(native) == native
+
+    @pytest.mark.parametrize("business", ["SKU-123", "P001", "-1", str(2**64)])
+    def test_qdrant_non_native_ids_are_hashed(self, business: str) -> None:
+        import uuid
+
+        coerced = self._tool("qdrant")._coerce_record_id(business)
+        assert coerced != business
+        assert uuid.UUID(coerced).version == 5
