@@ -293,18 +293,28 @@ def build_handoff_agents(
         )
         owners.append(owner)
 
-    _reject_handoff_name_collisions(handoffs, owners)
+    _reject_handoff_name_collisions(
+        handoffs, owners, parent_tool_names={tool.name for tool in surface.tools}
+    )
     return handoffs
 
 
 def _reject_handoff_name_collisions(
-    handoffs: list[SDKAgent], owners: list[str]
+    handoffs: list[SDKAgent],
+    owners: list[str],
+    parent_tool_names: set[str] | None = None,
 ) -> None:
-    """Fail when two targets normalise to the same SDK handoff tool name.
+    """Fail when a handoff tool name collides with another tool name.
+
+    Two targets that normalise to the same SDK handoff tool name collide, and
+    so does a handoff whose ``transfer_to_<name>`` shadows a tool the parent
+    already exposes (a function tool literally named ``transfer_to_researcher``
+    would otherwise be silently replaced by the handoff).
 
     Args:
         handoffs: The built targets.
         owners: Config path of each target, parallel to *handoffs*.
+        parent_tool_names: SDK names of the parent's own tools.
 
     Raises:
         ConfigError: Naming both config entries and the shared tool name.
@@ -314,6 +324,13 @@ def _reject_handoff_name_collisions(
     seen: dict[str, str] = {}
     for target, owner in zip(handoffs, owners, strict=True):
         tool_name = str(Handoff.default_tool_name(target))
+        if parent_tool_names and tool_name in parent_tool_names:
+            raise ConfigError(
+                owner,
+                f"handoff target '{target.name}' surfaces as SDK tool "
+                f"'{tool_name}', which the parent agent already declares as a "
+                "tool; rename the tool or the handoff target.",
+            )
         if tool_name in seen:
             raise ConfigError(
                 owner,

@@ -471,3 +471,16 @@ class TestBuildSkills:
             agents={"r": {"description": "d", "prompt": "p"}},
         )
         assert [h.name for h in _build(agent)] == ["r", "s"]
+
+
+@pytest.mark.unit
+class TestHandoffShadowsParentTool:
+    def test_handoff_name_colliding_with_parent_tool_fails_load(self) -> None:
+        from holodeck.lib.errors import ConfigError
+
+        agent = _agent(
+            tools=[_function_cfg("transfer_to_researcher")],
+            agents={"researcher": {"description": "d", "prompt": "p"}},
+        )
+        with pytest.raises(ConfigError, match="already declares as a tool"):
+            _build(agent)

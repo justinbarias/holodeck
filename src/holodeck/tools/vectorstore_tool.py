@@ -48,10 +48,11 @@ logger = logging.getLogger(__name__)
 def _is_qdrant_native_id(record_id: str) -> bool:
     """Return True when Qdrant accepts *record_id* as a point ID as-is.
 
-    Qdrant point IDs are either UUIDs or unsigned 64-bit integers.
+    Qdrant point IDs are UUIDs or unsigned 64-bit integers. Record IDs are
+    strings on the HoloDeck side, and Qdrant rejects a numeric *string*
+    (``"42"``) where it would accept the integer ``42``, so only UUID strings
+    count as native here; numeric keys are hashed like any other business key.
     """
-    if record_id.isdigit():
-        return int(record_id) < 2**64
     import uuid
 
     try:
@@ -547,11 +548,11 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
     def _coerce_record_id(self, record_id: str) -> str:
         """Map a record ID to a Qdrant-safe value when needed.
 
-        IDs that Qdrant already accepts (a UUID string or an unsigned integer)
-        are returned unchanged, so structured sources keyed by UUID keep their
-        existing points. Anything else is mapped to a deterministic UUIDv5;
-        for structured data the original business key is then only visible
-        through ``meta_fields``, which is logged once per tool.
+        UUID IDs, which Qdrant already accepts, are returned unchanged, so
+        structured sources keyed by UUID keep their existing points. Anything
+        else is mapped to a deterministic UUIDv5; for structured data the
+        original business key is then only visible through ``meta_fields``,
+        which is logged once per tool.
         """
         if self._provider != "qdrant" or _is_qdrant_native_id(record_id):
             return record_id

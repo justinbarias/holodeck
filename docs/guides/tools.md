@@ -463,7 +463,7 @@ Scoped sub-agents following the [Agent Skills specification](https://agentskills
 | `instructions` | string | One of `instructions` / `path` | Inline skill body |
 | `path` | path | One of `instructions` / `path` | Directory containing `SKILL.md`, resolved relative to `agent.yaml` |
 | `allowed_tools` | list | No | Parent tool names the skill may use. Omitted or empty = no tools. Must name non-skill tools declared on the agent; unknown names fail load |
-| `defer_loading` | bool | No (`true`) | Same semantics as other tool types |
+| `defer_loading` | bool | No (`true`) | Accepted for schema parity with the other tool types; the OpenAI Agents backend registers every skill regardless of this value |
 
 ### Inline form
 

@@ -274,12 +274,17 @@ class TestQdrantRecordIds:
         )._record_id("k", 0)
 
     @pytest.mark.parametrize(
-        "native", ["550e8400-e29b-41d4-a716-446655440000", "42", "0"]
+        "native",
+        ["550e8400-e29b-41d4-a716-446655440000", "550E8400E29B41D4A716446655440000"],
     )
     def test_qdrant_native_ids_are_preserved(self, native: str) -> None:
         assert self._tool("qdrant")._coerce_record_id(native) == native
 
-    @pytest.mark.parametrize("business", ["SKU-123", "P001", "-1", str(2**64)])
+    # "42" is a string on our side; Qdrant only accepts the *integer* 42, so
+    # numeric business keys are hashed too (stack review finding).
+    @pytest.mark.parametrize(
+        "business", ["SKU-123", "P001", "-1", "42", "0", str(2**64)]
+    )
     def test_qdrant_non_native_ids_are_hashed(self, business: str) -> None:
         import uuid
 

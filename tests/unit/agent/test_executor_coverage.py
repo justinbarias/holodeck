@@ -791,3 +791,159 @@ class TestExecuteTurnErrorResults:
         executor = AgentExecutor(make_agent(), backend=mock_backend)
         response = await executor.execute_turn("Hello")
         assert response.content == "partial"
+
+
+@pytest.mark.unit
+class TestTaskBoundSessionFailureAndCancellation:
+    """Stack-review findings: cleanup after a failed start, abandoned close."""
+
+    @staticmethod
+    def _inner(
+        record: dict[str, object],
+        *,
+        prepare_error: Exception | None = None,
+        block: asyncio.Event | None = None,
+    ) -> AgentSession:
+        class Inner:
+            async def prepare(self) -> None:
+                record["prepare_task"] = asyncio.current_task()
+                if prepare_error is not None:
+                    raise prepare_error
+
+            async def send(self, message: str) -> ExecutionResult:
+                if block is not None:
+                    await block.wait()
+                return ExecutionResult(response="ok")
+
+            async def send_streaming(self, message: str):
+                yield "ok"
+
+            async def close(self) -> None:
+                record["close_task"] = asyncio.current_task()
+                record.setdefault("closes", 0)
+                record["closes"] = int(record["closes"]) + 1  # type: ignore[arg-type]
+
+        return Inner()  # type: ignore[return-value]
+
+    @pytest.mark.asyncio
+    async def test_prepare_failure_closes_and_tears_down_in_actor(self) -> None:
+        record: dict[str, object] = {}
+        teardowns: list[asyncio.Task[None] | None] = []
+
+        async def factory() -> AgentSession:
+            return self._inner(record, prepare_error=BackendInitError("mcp down"))
+
+        async def teardown() -> None:
+            teardowns.append(asyncio.current_task())
+
+        actor = _TaskBoundSession(session_factory=factory, teardown=teardown)
+        with pytest.raises(BackendInitError, match="mcp down"):
+            await actor.start()
+
+        assert record["closes"] == 1
+        assert teardowns and teardowns[0] is record["prepare_task"]
+        assert record["close_task"] is record["prepare_task"]
+        await actor.close()  # idempotent after a failed start
+        assert record["closes"] == 1 and len(teardowns) == 1
+
+    @pytest.mark.asyncio
+    async def test_abandoned_close_cancels_actor_and_fails_inflight_turn(
+        self,
+    ) -> None:
+        record: dict[str, object] = {}
+        teardowns: list[str] = []
+        block = asyncio.Event()
+
+        async def teardown() -> None:
+            teardowns.append("teardown")
+
+        actor = _TaskBoundSession(
+            session=self._inner(record, block=block), teardown=teardown
+        )
+        await actor.start()
+        inflight = asyncio.create_task(actor.send("stuck"))
+        await asyncio.sleep(0)  # let the actor dequeue and block in send()
+
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(actor.close(), timeout=0.05)
+        with pytest.raises(BackendSessionError, match="closed while a turn"):
+            await inflight
+        assert actor._task is not None
+        with pytest.raises(asyncio.CancelledError):
+            await actor._task
+
+        assert record["closes"] == 1
+        assert teardowns == ["teardown"]
+
+    @pytest.mark.asyncio
+    async def test_close_from_inside_actor_does_not_deadlock(self) -> None:
+        record: dict[str, object] = {}
+        teardowns: list[str] = []
+        holder: dict[str, _TaskBoundSession] = {}
+
+        class Inner:
+            async def prepare(self) -> None:
+                return None
+
+            async def send(self, message: str) -> ExecutionResult:
+                await holder["actor"].close()  # a tool/hook ending the session
+                return ExecutionResult(response="bye")
+
+            async def send_streaming(self, message: str):
+                yield "bye"
+
+            async def close(self) -> None:
+                record["closes"] = int(record.get("closes", 0)) + 1  # type: ignore[arg-type]
+
+        async def teardown() -> None:
+            teardowns.append("teardown")
+
+        actor = _TaskBoundSession(session=Inner(), teardown=teardown)  # type: ignore[arg-type]
+        holder["actor"] = actor
+        await actor.start()
+        result = await asyncio.wait_for(actor.send("end"), timeout=1)
+        assert result.response == "bye"
+        await asyncio.wait_for(actor.close(), timeout=1)
+        assert record["closes"] == 1
+        assert teardowns == ["teardown"]
+
+    @pytest.mark.asyncio
+    async def test_concurrent_first_turns_share_one_backend(
+        self, make_agent, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from holodeck.chat import executor as executor_module
+
+        selects: list[int] = []
+        backend = MagicMock()
+
+        class Inner:
+            async def prepare(self) -> None:
+                return None
+
+            async def send(self, message: str) -> ExecutionResult:
+                await asyncio.sleep(0)
+                return ExecutionResult(response=message)
+
+            async def send_streaming(self, message: str):
+                yield message
+
+            async def close(self) -> None:
+                return None
+
+        backend.create_session = AsyncMock(side_effect=lambda **_: Inner())
+        backend.teardown = AsyncMock()
+
+        async def select(*args, **kwargs):
+            selects.append(1)
+            await asyncio.sleep(0)
+            return backend
+
+        monkeypatch.setattr(executor_module.BackendSelector, "select", select)
+        executor = AgentExecutor(make_agent(), release_transport_after_turn=True)
+        a, b = await asyncio.gather(
+            executor.execute_turn("a"), executor.execute_turn("b")
+        )
+        assert {a.content, b.content} == {"a", "b"}
+        assert len(selects) == 1
+        await executor.shutdown()
+        backend.teardown.assert_awaited_once()
