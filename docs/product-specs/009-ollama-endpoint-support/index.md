@@ -12,5 +12,5 @@ Feature: `009-ollama-endpoint-support`. Status and task evidence: [feature inven
 ## Related records
 
 - [Design records](../../design-docs/009-ollama-endpoint-support/index.md)
-- [Execution plans](../../exec-plans/active/009-ollama-endpoint-support/index.md)
+- [Execution plans](../../exec-plans/completed/009-ollama-endpoint-support/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

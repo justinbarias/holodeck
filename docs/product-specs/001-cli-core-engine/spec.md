@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-cli-core-engine`
 **Created**: 2025-10-19
-**Status**: Draft
+**Status**: Shipped (v0.1 foundation; see inventory)
 **Input**: Inferred from VISION.md v0.1 roadmap - CLI commands and core agent execution engine
 
 ## User Scenarios & Testing _(mandatory)_

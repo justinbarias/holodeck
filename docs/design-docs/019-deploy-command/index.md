@@ -10,5 +10,5 @@ Feature: `019-deploy-command`. Status and task evidence: [feature inventory](../
 ## Related records
 
 - [Product specification](../../product-specs/019-deploy-command/index.md)
-- [Execution plans](../../exec-plans/active/019-deploy-command/index.md)
+- [Execution plans](../../exec-plans/completed/019-deploy-command/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

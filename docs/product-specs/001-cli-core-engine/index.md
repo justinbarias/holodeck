@@ -13,5 +13,5 @@ Feature: `001-cli-core-engine`. Status and task evidence: [feature inventory](..
 ## Related records
 
 - [Design records](../../design-docs/001-cli-core-engine/index.md)
-- [Execution plans](../../exec-plans/active/001-cli-core-engine/index.md)
+- [Execution plans](../../exec-plans/completed/001-cli-core-engine/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

@@ -12,5 +12,5 @@ Feature: `005-global-settings-response-format`. Status and task evidence: [featu
 ## Related records
 
 - [Design records](../../design-docs/005-global-settings-response-format/index.md)
-- [Execution plans](../../exec-plans/active/005-global-settings-response-format/index.md)
+- [Execution plans](../../exec-plans/completed/005-global-settings-response-format/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

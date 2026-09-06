@@ -1,139 +1,139 @@
 {
   "migration_date": "2026-09-06",
-  "description": "One destination for each original file. Original status and checkboxes are preserved.",
+  "description": "One destination for each original file. Original status and checkboxes are preserved. Reconciled 2026-09-06: shipped and superseded feature plans moved to completed/.",
   "features": {
     "001-cli-core-engine": {
       "title": "CLI & Core Agent Engine",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "75/127",
       "notes": "The v0.1 foundation; only dir with its own README",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "004-init-agent-project": {
       "title": "Init Agent Project",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "137/152",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "005-global-settings-response-format": {
       "title": "Global Settings & Response Format",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "25/32",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "006-agent-test-execution": {
       "title": "Agent Test Execution",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "144/183",
       "notes": "Side plans: logging, spinner",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "007-interactive-chat": {
       "title": "Interactive Chat",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "28/37",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "008-unstructured-vector-ingestion-search": {
       "title": "Unstructured Vector Ingestion & Search",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "68/94",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "009-ollama-endpoint-support": {
       "title": "Ollama Endpoint Support",
-      "status": "pending",
+      "status": "archived",
       "tasks": "26/47",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "010-mcp-tool-operations": {
       "title": "MCP Tool Operations",
-      "status": "pending",
+      "status": "archived",
       "tasks": "7/33",
       "notes": "Barely started",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "011-interactive-init-wizard": {
       "title": "Interactive Init Wizard",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "47/78",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "012-deepeval-metrics": {
       "title": "DeepEval Metrics",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "30/69",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "013-mcp-cli": {
       "title": "MCP CLI Command Group",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "63/73",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "014-structured-data-ingestion": {
       "title": "Structured Data Ingestion",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "38/74",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "015-vectorstore-reranking": {
       "title": "Vectorstore Reranking",
-      "status": "pending",
+      "status": "archived",
       "tasks": "no task list",
       "notes": "Plan/research artifacts only",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "016-graphrag-integration": {
       "title": "GraphRAG Integration",
-      "status": "pending",
+      "status": "archived",
       "tasks": "no task list",
       "notes": "Supersedes legacy `graph-rag-integration/`",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "017-agent-local-server": {
       "title": "Agent Local Server",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "54/98",
       "notes": "AG-UI + REST serve",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "018-otel-observability": {
       "title": "OTel Observability",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "65/134",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "019-deploy-command": {
       "title": "Deploy Command",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "24/52",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "020-structured-document-tool": {
       "title": "HierarchicalDocumentTool",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "84/130",
       "notes": "",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "021-claude-agent-sdk": {
       "title": "Native Claude Agent SDK",
       "status": "shipped",
       "tasks": "154/163",
       "notes": "Phase 5 (0/8) is the only unstarted phase",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "022-otel-genai-semconv": {
       "title": "OTel GenAI Semconv in Claude Backend",
@@ -144,10 +144,10 @@
     },
     "023-choose-your-backend": {
       "title": "Choose Your Backend (ADK + MAF)",
-      "status": "pending",
+      "status": "archived",
       "tasks": "0/212",
       "notes": "Not started; US7 blocked on US1/US2",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "024-claude-serve-deploy": {
       "title": "Claude Serve & Deploy Parity",
@@ -165,35 +165,35 @@
     },
     "026-sdk-config-additions": {
       "title": "Simple SDK Config Additions",
-      "status": "shipped \u2020",
+      "status": "shipped",
       "tasks": "no task list",
       "notes": "Landed as feat(026); doc still says Draft",
       "bucket": "completed"
     },
     "027-mcp-http-sse-transport": {
       "title": "MCP HTTP/SSE Transport",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "no task list",
       "notes": "Related transports landed via 035",
       "bucket": "active"
     },
     "028-yaml-hooks-system": {
       "title": "YAML Hooks System",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "no task list",
       "notes": "",
       "bucket": "active"
     },
     "029-subagent-orchestration": {
       "title": "Subagent Orchestration",
-      "status": "shipped \u2020",
+      "status": "shipped",
       "tasks": "0/63",
       "notes": "Merged as PR #309; checkboxes never ticked",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "030-skills-support": {
       "title": "Skills Support",
-      "status": "pending",
+      "status": "shipped",
       "tasks": "no task list",
       "notes": "",
       "bucket": "active"
@@ -210,7 +210,7 @@
       "status": "shipped",
       "tasks": "224/226",
       "notes": "PR #308",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "033-holodeck-test-optimizer": {
       "title": "Test Optimizer",
@@ -249,21 +249,21 @@
     },
     "038-optimizer-progress-stream": {
       "title": "Optimizer Progress Stream",
-      "status": "shipped \u2020",
+      "status": "shipped",
       "tasks": "4/35",
       "notes": "Merged as PR #345; checkboxes stale",
-      "bucket": "active"
+      "bucket": "completed"
     },
     "039-policy-generator": {
       "title": "Policy Generator",
-      "status": "draft",
+      "status": "archived",
       "tasks": "no task list",
       "notes": "Blocked on the pivot; depended on archived 036",
       "bucket": "active"
     },
     "040-holodeck-temporal": {
       "title": "HoloDeck Agents on Temporal",
-      "status": "complete",
+      "status": "shipped",
       "tasks": "16/16",
       "notes": "Merged to main 2026-08-30 (stack #369: PRs #367, #368, #371, #372); AC-1..AC-6 demonstrated by named tests; T14 moved to 041; budget-retry follow-up in #373",
       "bucket": "completed"
@@ -314,7 +314,7 @@
     },
     {
       "source": "specs/001-cli-core-engine/plan.md",
-      "destination": "docs/exec-plans/active/001-cli-core-engine/plan.md",
+      "destination": "docs/exec-plans/completed/001-cli-core-engine/plan.md",
       "kind": "execution",
       "source_sha256": "e95b5c6ccdb062f7c10943334ab7fdfe6f9696f09aba62839853a23045d40305",
       "binary": false
@@ -335,7 +335,7 @@
     },
     {
       "source": "specs/001-cli-core-engine/tasks.md",
-      "destination": "docs/exec-plans/active/001-cli-core-engine/tasks.md",
+      "destination": "docs/exec-plans/completed/001-cli-core-engine/tasks.md",
       "kind": "execution",
       "source_sha256": "3f07cf7bc196b5f52c89f63c33afa08f356ba4952aebf9d4c3e7aa42f4206c3b",
       "binary": false
@@ -363,7 +363,7 @@
     },
     {
       "source": "specs/004-init-agent-project/plan.md",
-      "destination": "docs/exec-plans/active/004-init-agent-project/plan.md",
+      "destination": "docs/exec-plans/completed/004-init-agent-project/plan.md",
       "kind": "execution",
       "source_sha256": "682915e73e254d366e6992dddd64d36bf48a40d20f3985803b09f8474c5de7f7",
       "binary": false
@@ -391,7 +391,7 @@
     },
     {
       "source": "specs/004-init-agent-project/tasks.md",
-      "destination": "docs/exec-plans/active/004-init-agent-project/tasks.md",
+      "destination": "docs/exec-plans/completed/004-init-agent-project/tasks.md",
       "kind": "execution",
       "source_sha256": "752e64fa66741ade131ce7a1cfdc062a015372669946e7c11dd97b80222c1465",
       "binary": false
@@ -419,7 +419,7 @@
     },
     {
       "source": "specs/005-global-settings-response-format/plan.md",
-      "destination": "docs/exec-plans/active/005-global-settings-response-format/plan.md",
+      "destination": "docs/exec-plans/completed/005-global-settings-response-format/plan.md",
       "kind": "execution",
       "source_sha256": "373e406ddc12247a38641b9873496bbe8f0efe9334c2440f7a87f893e8b52e25",
       "binary": false
@@ -440,7 +440,7 @@
     },
     {
       "source": "specs/005-global-settings-response-format/tasks.md",
-      "destination": "docs/exec-plans/active/005-global-settings-response-format/tasks.md",
+      "destination": "docs/exec-plans/completed/005-global-settings-response-format/tasks.md",
       "kind": "execution",
       "source_sha256": "0e565fa5a54bf742ed03b077a2f0311ce54e1a0dba7b255aba47049061309ccd",
       "binary": false
@@ -468,14 +468,14 @@
     },
     {
       "source": "specs/006-agent-test-execution/logging-plan.md",
-      "destination": "docs/exec-plans/active/006-agent-test-execution/logging-plan.md",
+      "destination": "docs/exec-plans/completed/006-agent-test-execution/logging-plan.md",
       "kind": "execution",
       "source_sha256": "8e3837d68a297f8258afafa9c7798e48a965ad626575f7a8f8a5f4fc419207e7",
       "binary": false
     },
     {
       "source": "specs/006-agent-test-execution/plan.md",
-      "destination": "docs/exec-plans/active/006-agent-test-execution/plan.md",
+      "destination": "docs/exec-plans/completed/006-agent-test-execution/plan.md",
       "kind": "execution",
       "source_sha256": "b3d5a72116892d754e8b4304f073d5cdded98dbfeb037b64d9a2b916e73e03ff",
       "binary": false
@@ -517,21 +517,21 @@
     },
     {
       "source": "specs/006-agent-test-execution/spinner-enhancement-plan.md",
-      "destination": "docs/exec-plans/active/006-agent-test-execution/spinner-enhancement-plan.md",
+      "destination": "docs/exec-plans/completed/006-agent-test-execution/spinner-enhancement-plan.md",
       "kind": "execution",
       "source_sha256": "202a91505ed66398f4aac1c5d6a3414e668fbc0789e54406aa308fb34fe77ddb",
       "binary": false
     },
     {
       "source": "specs/006-agent-test-execution/tasks.md",
-      "destination": "docs/exec-plans/active/006-agent-test-execution/tasks.md",
+      "destination": "docs/exec-plans/completed/006-agent-test-execution/tasks.md",
       "kind": "execution",
       "source_sha256": "4cdfd0fddcbc7752f2846ad6c1d4bc75b69e780f973bd937b14e17b91a4ffe28",
       "binary": false
     },
     {
       "source": "specs/007-interactive-chat/chat-ux-enhancements.plan.md",
-      "destination": "docs/exec-plans/active/007-interactive-chat/chat-ux-enhancements.plan.md",
+      "destination": "docs/exec-plans/completed/007-interactive-chat/chat-ux-enhancements.plan.md",
       "kind": "execution",
       "source_sha256": "68a279ee6b29827ff3c3b91285b1231521c3c04ec0c43d03458894a217869b97",
       "binary": false
@@ -566,7 +566,7 @@
     },
     {
       "source": "specs/007-interactive-chat/plan.md",
-      "destination": "docs/exec-plans/active/007-interactive-chat/plan.md",
+      "destination": "docs/exec-plans/completed/007-interactive-chat/plan.md",
       "kind": "execution",
       "source_sha256": "acfcb587b4dc0a393cccd01208906d2db9058fc582aebd927245e82c053541f8",
       "binary": false
@@ -594,7 +594,7 @@
     },
     {
       "source": "specs/007-interactive-chat/tasks.md",
-      "destination": "docs/exec-plans/active/007-interactive-chat/tasks.md",
+      "destination": "docs/exec-plans/completed/007-interactive-chat/tasks.md",
       "kind": "execution",
       "source_sha256": "e243632449b0ea32f80e094f0c5d8c05c9af2f1de60f218319687067ed7d1a7b",
       "binary": false
@@ -622,7 +622,7 @@
     },
     {
       "source": "specs/008-unstructured-vector-ingestion-search/plan.md",
-      "destination": "docs/exec-plans/active/008-unstructured-vector-ingestion-search/plan.md",
+      "destination": "docs/exec-plans/completed/008-unstructured-vector-ingestion-search/plan.md",
       "kind": "execution",
       "source_sha256": "bd1defc1cd8ed7e25e9cabacf4a100bbd9dbac20bbae22d19db345f11d841ca8",
       "binary": false
@@ -650,7 +650,7 @@
     },
     {
       "source": "specs/008-unstructured-vector-ingestion-search/tasks.md",
-      "destination": "docs/exec-plans/active/008-unstructured-vector-ingestion-search/tasks.md",
+      "destination": "docs/exec-plans/completed/008-unstructured-vector-ingestion-search/tasks.md",
       "kind": "execution",
       "source_sha256": "ce3f412d5e271eb28aa96be6b38be027dbc85b23cb2ec339d6d2bce36216454e",
       "binary": false
@@ -678,7 +678,7 @@
     },
     {
       "source": "specs/009-ollama-endpoint-support/plan.md",
-      "destination": "docs/exec-plans/active/009-ollama-endpoint-support/plan.md",
+      "destination": "docs/exec-plans/completed/009-ollama-endpoint-support/plan.md",
       "kind": "execution",
       "source_sha256": "6735b5f95b1d06d847f4c5ff15f0942e502c4d86435edfaf64bd1b9c4f60caf0",
       "binary": false
@@ -706,7 +706,7 @@
     },
     {
       "source": "specs/009-ollama-endpoint-support/tasks.md",
-      "destination": "docs/exec-plans/active/009-ollama-endpoint-support/tasks.md",
+      "destination": "docs/exec-plans/completed/009-ollama-endpoint-support/tasks.md",
       "kind": "execution",
       "source_sha256": "943cdb9d5e6bbcedf8cf4b486b575ff18bfb3ac2d4c153d0195770ecbf32ad57",
       "binary": false
@@ -734,7 +734,7 @@
     },
     {
       "source": "specs/010-mcp-tool-operations/plan.md",
-      "destination": "docs/exec-plans/active/010-mcp-tool-operations/plan.md",
+      "destination": "docs/exec-plans/completed/010-mcp-tool-operations/plan.md",
       "kind": "execution",
       "source_sha256": "b0b855d2b0ebf534367dde2193bd59d9774c6cddd70cc9ca007c6651a0a7c117",
       "binary": false
@@ -762,7 +762,7 @@
     },
     {
       "source": "specs/010-mcp-tool-operations/tasks.md",
-      "destination": "docs/exec-plans/active/010-mcp-tool-operations/tasks.md",
+      "destination": "docs/exec-plans/completed/010-mcp-tool-operations/tasks.md",
       "kind": "execution",
       "source_sha256": "73f8109ad98296b63c13874f77e5098989c32b5cbca48c024fee4099910d757c",
       "binary": false
@@ -797,7 +797,7 @@
     },
     {
       "source": "specs/011-interactive-init-wizard/plan.md",
-      "destination": "docs/exec-plans/active/011-interactive-init-wizard/plan.md",
+      "destination": "docs/exec-plans/completed/011-interactive-init-wizard/plan.md",
       "kind": "execution",
       "source_sha256": "486ba276f73ec350ea8e5ad4d408101e2dbb652d94133beb7d4ff104da157eee",
       "binary": false
@@ -825,7 +825,7 @@
     },
     {
       "source": "specs/011-interactive-init-wizard/tasks.md",
-      "destination": "docs/exec-plans/active/011-interactive-init-wizard/tasks.md",
+      "destination": "docs/exec-plans/completed/011-interactive-init-wizard/tasks.md",
       "kind": "execution",
       "source_sha256": "24cd62aa3f29dc7b9732a6fba2543b0793f1c64bdd11ed2174b383b25e14ea6a",
       "binary": false
@@ -853,7 +853,7 @@
     },
     {
       "source": "specs/012-deepeval-metrics/plan.md",
-      "destination": "docs/exec-plans/active/012-deepeval-metrics/plan.md",
+      "destination": "docs/exec-plans/completed/012-deepeval-metrics/plan.md",
       "kind": "execution",
       "source_sha256": "703b4e492cebcb73ecbf01f1134f92e12ff34e3130f1f50d69a99e9f770ab542",
       "binary": false
@@ -881,7 +881,7 @@
     },
     {
       "source": "specs/012-deepeval-metrics/tasks.md",
-      "destination": "docs/exec-plans/active/012-deepeval-metrics/tasks.md",
+      "destination": "docs/exec-plans/completed/012-deepeval-metrics/tasks.md",
       "kind": "execution",
       "source_sha256": "5b6c2e73df912cb2a15ff83089a918de682edeb0e812058e4633b0bacc2c37f6",
       "binary": false
@@ -916,7 +916,7 @@
     },
     {
       "source": "specs/013-mcp-cli/plan.md",
-      "destination": "docs/exec-plans/active/013-mcp-cli/plan.md",
+      "destination": "docs/exec-plans/completed/013-mcp-cli/plan.md",
       "kind": "execution",
       "source_sha256": "52a74b4104877e0680b952658ebbb46ad6d4e71b5e2d31e48da7f6bf478d8653",
       "binary": false
@@ -944,7 +944,7 @@
     },
     {
       "source": "specs/013-mcp-cli/tasks.md",
-      "destination": "docs/exec-plans/active/013-mcp-cli/tasks.md",
+      "destination": "docs/exec-plans/completed/013-mcp-cli/tasks.md",
       "kind": "execution",
       "source_sha256": "28f51d412d83c906998c051255f20e88fd16a695bce0a7edd69dc924959621a4",
       "binary": false
@@ -965,7 +965,7 @@
     },
     {
       "source": "specs/014-structured-data-ingestion/plan.md",
-      "destination": "docs/exec-plans/active/014-structured-data-ingestion/plan.md",
+      "destination": "docs/exec-plans/completed/014-structured-data-ingestion/plan.md",
       "kind": "execution",
       "source_sha256": "26702d03b4cb7f5175668437f62461aa25cda7d54a129056fcf377a1a64719db",
       "binary": false
@@ -993,7 +993,7 @@
     },
     {
       "source": "specs/014-structured-data-ingestion/tasks.md",
-      "destination": "docs/exec-plans/active/014-structured-data-ingestion/tasks.md",
+      "destination": "docs/exec-plans/completed/014-structured-data-ingestion/tasks.md",
       "kind": "execution",
       "source_sha256": "a1ebf5ddfdea6fe20d6cba33d26b1a66b4aef7b385bd1800355969bffe5c6044",
       "binary": false
@@ -1021,7 +1021,7 @@
     },
     {
       "source": "specs/015-vectorstore-reranking/plan.md",
-      "destination": "docs/exec-plans/active/015-vectorstore-reranking/plan.md",
+      "destination": "docs/exec-plans/completed/015-vectorstore-reranking/plan.md",
       "kind": "execution",
       "source_sha256": "7d4091e38d2159187aa215b41155235d06d807afc68098d2961725f384446059",
       "binary": false
@@ -1070,7 +1070,7 @@
     },
     {
       "source": "specs/016-graphrag-integration/plan.md",
-      "destination": "docs/exec-plans/active/016-graphrag-integration/plan.md",
+      "destination": "docs/exec-plans/completed/016-graphrag-integration/plan.md",
       "kind": "execution",
       "source_sha256": "29b9e3dd59395b31fcec1d586690622e8b6d3ee49fd4f3503cb2736512ad988b",
       "binary": false
@@ -1126,7 +1126,7 @@
     },
     {
       "source": "specs/017-agent-local-server/plan.md",
-      "destination": "docs/exec-plans/active/017-agent-local-server/plan.md",
+      "destination": "docs/exec-plans/completed/017-agent-local-server/plan.md",
       "kind": "execution",
       "source_sha256": "be1ee64c0144dc1c353c5ffa63be709c44ea34469c95d232e5666f2176de2e87",
       "binary": false
@@ -1154,7 +1154,7 @@
     },
     {
       "source": "specs/017-agent-local-server/tasks.md",
-      "destination": "docs/exec-plans/active/017-agent-local-server/tasks.md",
+      "destination": "docs/exec-plans/completed/017-agent-local-server/tasks.md",
       "kind": "execution",
       "source_sha256": "5471dc416cf875e6ca993087e9a1896510bcdb815bea56defc10732c8bcaf2dc",
       "binary": false
@@ -1189,7 +1189,7 @@
     },
     {
       "source": "specs/018-otel-observability/plan.md",
-      "destination": "docs/exec-plans/active/018-otel-observability/plan.md",
+      "destination": "docs/exec-plans/completed/018-otel-observability/plan.md",
       "kind": "execution",
       "source_sha256": "7863155ca3e2a0f01dd285a4ed7a04303c2676f2889e38353e1ef5ff8186fb73",
       "binary": false
@@ -1217,7 +1217,7 @@
     },
     {
       "source": "specs/018-otel-observability/tasks.md",
-      "destination": "docs/exec-plans/active/018-otel-observability/tasks.md",
+      "destination": "docs/exec-plans/completed/018-otel-observability/tasks.md",
       "kind": "execution",
       "source_sha256": "3ffbdc1925a17aa4ebb03857d22e4b0bae24ae69c795381c0dc2eff9085905ab",
       "binary": false
@@ -1245,7 +1245,7 @@
     },
     {
       "source": "specs/019-deploy-command/plan.md",
-      "destination": "docs/exec-plans/active/019-deploy-command/plan.md",
+      "destination": "docs/exec-plans/completed/019-deploy-command/plan.md",
       "kind": "execution",
       "source_sha256": "28cf1f4cb44c25b4ae6a5f90765fd3902ac97b645c2aac48b9c47cc2092db2a1",
       "binary": false
@@ -1273,7 +1273,7 @@
     },
     {
       "source": "specs/019-deploy-command/tasks.md",
-      "destination": "docs/exec-plans/active/019-deploy-command/tasks.md",
+      "destination": "docs/exec-plans/completed/019-deploy-command/tasks.md",
       "kind": "execution",
       "source_sha256": "a044b312f10d345462c1d523db8b343fad75e5bad1db05a1fa041536a6f9f9b7",
       "binary": false
@@ -1301,7 +1301,7 @@
     },
     {
       "source": "specs/020-structured-document-tool/plan.md",
-      "destination": "docs/exec-plans/active/020-structured-document-tool/plan.md",
+      "destination": "docs/exec-plans/completed/020-structured-document-tool/plan.md",
       "kind": "execution",
       "source_sha256": "660c8e0b12e33c72e51256ec1b07bc126fedf4ff5257e4b428ecdcafe771a180",
       "binary": false
@@ -1329,7 +1329,7 @@
     },
     {
       "source": "specs/020-structured-document-tool/tasks.md",
-      "destination": "docs/exec-plans/active/020-structured-document-tool/tasks.md",
+      "destination": "docs/exec-plans/completed/020-structured-document-tool/tasks.md",
       "kind": "execution",
       "source_sha256": "3773b75a78a6266d9301d5e0c44a40914d5b5a2102ac5596f5de60c656395917",
       "binary": false
@@ -1371,21 +1371,21 @@
     },
     {
       "source": "specs/021-claude-agent-sdk/llm-context-generator-extension.md",
-      "destination": "docs/exec-plans/active/021-claude-agent-sdk/llm-context-generator-extension.md",
+      "destination": "docs/exec-plans/completed/021-claude-agent-sdk/llm-context-generator-extension.md",
       "kind": "execution",
       "source_sha256": "8919a3055b1388eaf5afa4cd12c514755550bc2b67d4fe73fd3b1dbf5d25d4b5",
       "binary": false
     },
     {
       "source": "specs/021-claude-agent-sdk/otel-extension-plan.md",
-      "destination": "docs/exec-plans/active/021-claude-agent-sdk/otel-extension-plan.md",
+      "destination": "docs/exec-plans/completed/021-claude-agent-sdk/otel-extension-plan.md",
       "kind": "execution",
       "source_sha256": "083b49509a415ec685abef74a5c4789f34e7f36048d4a64f9cb60c815521b2f3",
       "binary": false
     },
     {
       "source": "specs/021-claude-agent-sdk/plan.md",
-      "destination": "docs/exec-plans/active/021-claude-agent-sdk/plan.md",
+      "destination": "docs/exec-plans/completed/021-claude-agent-sdk/plan.md",
       "kind": "execution",
       "source_sha256": "a64e36f0d47df01642024b3a7c7985099cc68bc739954db936c592c41fd8d285",
       "binary": false
@@ -1413,49 +1413,49 @@
     },
     {
       "source": "specs/021-claude-agent-sdk/tasks-foundations.md",
-      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-foundations.md",
+      "destination": "docs/exec-plans/completed/021-claude-agent-sdk/tasks-foundations.md",
       "kind": "execution",
       "source_sha256": "6f531b55c455f342cd58279154bd32256c9b33f888ffaa1d9db813348f2fc3ae",
       "binary": false
     },
     {
       "source": "specs/021-claude-agent-sdk/tasks-phase10.md",
-      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase10.md",
+      "destination": "docs/exec-plans/completed/021-claude-agent-sdk/tasks-phase10.md",
       "kind": "execution",
       "source_sha256": "4439ee3f5d594ed0a525c278cea2a91c5d08ea1ceca2fff0fc4b5e6ecaa1922f",
       "binary": false
     },
     {
       "source": "specs/021-claude-agent-sdk/tasks-phase4.md",
-      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase4.md",
+      "destination": "docs/exec-plans/completed/021-claude-agent-sdk/tasks-phase4.md",
       "kind": "execution",
       "source_sha256": "497c7530992e67014ca75423d128edb8301465394a466aabca3ed48c0167d25d",
       "binary": false
     },
     {
       "source": "specs/021-claude-agent-sdk/tasks-phase5.md",
-      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase5.md",
+      "destination": "docs/exec-plans/completed/021-claude-agent-sdk/tasks-phase5.md",
       "kind": "execution",
       "source_sha256": "9210b89dfb6203915f837ec18d64edcb77e7600e1f82468dadc7e661ba6b9539",
       "binary": false
     },
     {
       "source": "specs/021-claude-agent-sdk/tasks-phase6-7.md",
-      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase6-7.md",
+      "destination": "docs/exec-plans/completed/021-claude-agent-sdk/tasks-phase6-7.md",
       "kind": "execution",
       "source_sha256": "2eca0eaf9631ff4df304fdce3ace1c91d52668799fbfddae58d9ca6eda7a7b94",
       "binary": false
     },
     {
       "source": "specs/021-claude-agent-sdk/tasks-phase8.md",
-      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase8.md",
+      "destination": "docs/exec-plans/completed/021-claude-agent-sdk/tasks-phase8.md",
       "kind": "execution",
       "source_sha256": "32087c74e96ce469932bbe9bfb5539918a0a337dc97ff76f3f4845344c5450eb",
       "binary": false
     },
     {
       "source": "specs/021-claude-agent-sdk/tasks-phase9.md",
-      "destination": "docs/exec-plans/active/021-claude-agent-sdk/tasks-phase9.md",
+      "destination": "docs/exec-plans/completed/021-claude-agent-sdk/tasks-phase9.md",
       "kind": "execution",
       "source_sha256": "6e4bbefb70141da1ad210ec17d69098810069c72cab967bfa04d93ce600653c4",
       "binary": false
@@ -1525,7 +1525,7 @@
     },
     {
       "source": "specs/023-choose-your-backend/plan.md",
-      "destination": "docs/exec-plans/active/023-choose-your-backend/plan.md",
+      "destination": "docs/exec-plans/completed/023-choose-your-backend/plan.md",
       "kind": "execution",
       "source_sha256": "5562d63d895ce86b517c308974559b768b7ca0954bd6a164c21cbbd45b9a0dd5",
       "binary": false
@@ -1553,49 +1553,49 @@
     },
     {
       "source": "specs/023-choose-your-backend/tasks-us1.md",
-      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us1.md",
+      "destination": "docs/exec-plans/completed/023-choose-your-backend/tasks-us1.md",
       "kind": "execution",
       "source_sha256": "ef4e4cbdea237a5a8d3ac623337bdcedfd8eb99db011d6229266fa8b23b56e6e",
       "binary": false
     },
     {
       "source": "specs/023-choose-your-backend/tasks-us2.md",
-      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us2.md",
+      "destination": "docs/exec-plans/completed/023-choose-your-backend/tasks-us2.md",
       "kind": "execution",
       "source_sha256": "9fa618ea8d3304ed025fd7d2c7ad8949aae0ed00cc0e9545079ba93faf5ee247",
       "binary": false
     },
     {
       "source": "specs/023-choose-your-backend/tasks-us3.md",
-      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us3.md",
+      "destination": "docs/exec-plans/completed/023-choose-your-backend/tasks-us3.md",
       "kind": "execution",
       "source_sha256": "762dbddd291a8cc79609306c678b28a444b76dd1ddc1017821c677dc1c45d950",
       "binary": false
     },
     {
       "source": "specs/023-choose-your-backend/tasks-us4.md",
-      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us4.md",
+      "destination": "docs/exec-plans/completed/023-choose-your-backend/tasks-us4.md",
       "kind": "execution",
       "source_sha256": "c079d37efc4bbafad895e4b8a8fc23b86e841cb036d13ab4cc5aca03112b0f1c",
       "binary": false
     },
     {
       "source": "specs/023-choose-your-backend/tasks-us5.md",
-      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us5.md",
+      "destination": "docs/exec-plans/completed/023-choose-your-backend/tasks-us5.md",
       "kind": "execution",
       "source_sha256": "6be746c19b3fd2898d2fbbc5c78e94bc584a141eb4950ada1408c9455f84ed52",
       "binary": false
     },
     {
       "source": "specs/023-choose-your-backend/tasks-us6.md",
-      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us6.md",
+      "destination": "docs/exec-plans/completed/023-choose-your-backend/tasks-us6.md",
       "kind": "execution",
       "source_sha256": "43b2a3b83db7d19cb373ebd78a43e84d724d958d196bcd261d69eca277910369",
       "binary": false
     },
     {
       "source": "specs/023-choose-your-backend/tasks-us7.md",
-      "destination": "docs/exec-plans/active/023-choose-your-backend/tasks-us7.md",
+      "destination": "docs/exec-plans/completed/023-choose-your-backend/tasks-us7.md",
       "kind": "execution",
       "source_sha256": "0882cf9f5509d8a75a23f1119b7b91be062a04ab27ebc9f14397ef1351092c49",
       "binary": false
@@ -1840,7 +1840,7 @@
     },
     {
       "source": "specs/029-subagent-orchestration/plan.md",
-      "destination": "docs/exec-plans/active/029-subagent-orchestration/plan.md",
+      "destination": "docs/exec-plans/completed/029-subagent-orchestration/plan.md",
       "kind": "execution",
       "source_sha256": "ffc4c69d42ba100b3cad9a4aca2133a424eeddf74a0e7e728e6124b8ccefd20b",
       "binary": false
@@ -1868,21 +1868,21 @@
     },
     {
       "source": "specs/029-subagent-orchestration/tasks-us1.md",
-      "destination": "docs/exec-plans/active/029-subagent-orchestration/tasks-us1.md",
+      "destination": "docs/exec-plans/completed/029-subagent-orchestration/tasks-us1.md",
       "kind": "execution",
       "source_sha256": "ec779a7587aab9cf70178b3cc1880821c1568a0dee28818cf931ba66f44a236e",
       "binary": false
     },
     {
       "source": "specs/029-subagent-orchestration/tasks-us2.md",
-      "destination": "docs/exec-plans/active/029-subagent-orchestration/tasks-us2.md",
+      "destination": "docs/exec-plans/completed/029-subagent-orchestration/tasks-us2.md",
       "kind": "execution",
       "source_sha256": "24ea69b7b52759f4367dd92124b2f6bde97dddb9f7db707dc70345f2e0984c69",
       "binary": false
     },
     {
       "source": "specs/029-subagent-orchestration/tasks-us3.md",
-      "destination": "docs/exec-plans/active/029-subagent-orchestration/tasks-us3.md",
+      "destination": "docs/exec-plans/completed/029-subagent-orchestration/tasks-us3.md",
       "kind": "execution",
       "source_sha256": "5b18321df5b047a358b08666b5cdccc5498ac96a1c904943ba73d83df8861bcb",
       "binary": false
@@ -2134,7 +2134,7 @@
     },
     {
       "source": "specs/032-multi-turn-test-cases/plan.md",
-      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/plan.md",
+      "destination": "docs/exec-plans/completed/032-multi-turn-test-cases/plan.md",
       "kind": "execution",
       "source_sha256": "4c7b12cd3e6a9d4b7ccddec5c1fdabd8a318d7871a561dc60949ddca1f027246",
       "binary": false
@@ -2162,42 +2162,42 @@
     },
     {
       "source": "specs/032-multi-turn-test-cases/tasks-us1.md",
-      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us1.md",
+      "destination": "docs/exec-plans/completed/032-multi-turn-test-cases/tasks-us1.md",
       "kind": "execution",
       "source_sha256": "2aa50d0d26d90807ca2d02a26e57bd7f80c16680e74611abbcf09cad45dac02c",
       "binary": false
     },
     {
       "source": "specs/032-multi-turn-test-cases/tasks-us2.md",
-      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us2.md",
+      "destination": "docs/exec-plans/completed/032-multi-turn-test-cases/tasks-us2.md",
       "kind": "execution",
       "source_sha256": "2d3f2a207ce91fe3a0d6f74e791f51f6d5e06958afe545aaa23bd7373276c27d",
       "binary": false
     },
     {
       "source": "specs/032-multi-turn-test-cases/tasks-us3.md",
-      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us3.md",
+      "destination": "docs/exec-plans/completed/032-multi-turn-test-cases/tasks-us3.md",
       "kind": "execution",
       "source_sha256": "bd56ade534caf3ec0007b389285b64888f7c54bcaf7dbe052a8748a09f623d65",
       "binary": false
     },
     {
       "source": "specs/032-multi-turn-test-cases/tasks-us4.md",
-      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us4.md",
+      "destination": "docs/exec-plans/completed/032-multi-turn-test-cases/tasks-us4.md",
       "kind": "execution",
       "source_sha256": "edc983898c01984bc76aef0787d3f2f9049588597916dfba42020ff5a07650be",
       "binary": false
     },
     {
       "source": "specs/032-multi-turn-test-cases/tasks-us5.md",
-      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us5.md",
+      "destination": "docs/exec-plans/completed/032-multi-turn-test-cases/tasks-us5.md",
       "kind": "execution",
       "source_sha256": "b7c56a6ec18b6ab76b8cc192b3801122610b8c28ca34b0772991ea3c92569ba3",
       "binary": false
     },
     {
       "source": "specs/032-multi-turn-test-cases/tasks-us6.md",
-      "destination": "docs/exec-plans/active/032-multi-turn-test-cases/tasks-us6.md",
+      "destination": "docs/exec-plans/completed/032-multi-turn-test-cases/tasks-us6.md",
       "kind": "execution",
       "source_sha256": "48de6273b24adf4e34160785cc70b432403fd1f70aad496c84f4cbe1332f3f24",
       "binary": false
@@ -2400,7 +2400,7 @@
     },
     {
       "source": "specs/038-optimizer-progress-stream/plan.md",
-      "destination": "docs/exec-plans/active/038-optimizer-progress-stream/plan.md",
+      "destination": "docs/exec-plans/completed/038-optimizer-progress-stream/plan.md",
       "kind": "execution",
       "source_sha256": "ab9096d18653cf67e035aabe9670affe1ac967155fa865308cf00cad0937cc2f",
       "binary": false
@@ -2414,7 +2414,7 @@
     },
     {
       "source": "specs/038-optimizer-progress-stream/tasks.md",
-      "destination": "docs/exec-plans/active/038-optimizer-progress-stream/tasks.md",
+      "destination": "docs/exec-plans/completed/038-optimizer-progress-stream/tasks.md",
       "kind": "execution",
       "source_sha256": "b67879fc86631c87716d743d73a01a685543eb128e04ac18e729bc355a1a67a3",
       "binary": false

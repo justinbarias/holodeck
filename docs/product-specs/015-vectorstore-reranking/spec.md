@@ -2,7 +2,7 @@
 
 **Feature Branch**: `015-vectorstore-reranking`
 **Created**: 2025-12-23
-**Status**: Draft
+**Status**: Archived — folded into 020 (optional reranking, issue #252)
 **Input**: User description: "Create a spec for a new extension for vectorstore-type tools to support reranking in vectorsearch. Ensure support for cohere API and vllm-based reranking models. Reranking must be opt-in and should be a flag for vectorstore-type tools."
 
 ## User Scenarios & Testing *(mandatory)*

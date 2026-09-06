@@ -12,5 +12,5 @@ Feature: `004-init-agent-project`. Status and task evidence: [feature inventory]
 ## Related records
 
 - [Design records](../../design-docs/004-init-agent-project/index.md)
-- [Execution plans](../../exec-plans/active/004-init-agent-project/index.md)
+- [Execution plans](../../exec-plans/completed/004-init-agent-project/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `023-choose-your-backend`
 **Created**: 2026-03-15
-**Status**: Draft
+**Status**: Archived — superseded by the two-native-SDK stance (035, 042); Google ADK and Microsoft Agent Framework backends will not be built
 **Input**: User description: "Add multi-backend support for Google ADK and Microsoft Agent Framework alongside existing Semantic Kernel and Claude Agent SDK backends"
 
 ## User Scenarios & Testing *(mandatory)*

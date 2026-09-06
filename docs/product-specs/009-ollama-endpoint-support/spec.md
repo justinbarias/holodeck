@@ -2,7 +2,7 @@
 
 **Feature Branch**: `009-ollama-endpoint-support`
 **Created**: 2025-11-26
-**Status**: Draft
+**Status**: Archived — superseded; Ollama routes to the Claude backend (021/035), the Semantic Kernel `_create_kernel` tasks are dead
 **Input**: User description: "Create a spec to allow holodeck users to use an Ollama endpoint for chat and test"
 
 ## Clarifications

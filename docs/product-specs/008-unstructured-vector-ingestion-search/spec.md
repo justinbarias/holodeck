@@ -2,7 +2,7 @@
 
 **Feature Branch**: `008-unstructured-vector-ingestion-search`
 **Created**: 2025-11-23
-**Status**: Draft
+**Status**: Shipped
 **Input**: User description: "Create a spec for US 6.1.1 - which is part of the parent feature 6.1 - Vector Search Tool operations, and is a parent of US6 - Agent Tools. The vectorstore tool supports unstructured text data in multiple formats and creates searchable embeddings from full content."
 
 ## User Scenarios & Testing *(mandatory)*

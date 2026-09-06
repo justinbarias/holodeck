@@ -2,7 +2,7 @@
 
 **Feature Branch**: `017-agent-local-server`
 **Created**: 2025-12-29
-**Status**: Draft
+**Status**: Shipped
 **Input**: User description: "Options to publish agent capabilities via ag-ui (default) or FastAPI REST using /agent/<agent-name>/chat endpoint"
 
 ## User Scenarios & Testing *(mandatory)*

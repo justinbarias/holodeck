@@ -10,5 +10,5 @@ Feature: `013-mcp-cli`. Status and task evidence: [feature inventory](../../prod
 ## Related records
 
 - [Product specification](../../product-specs/013-mcp-cli/index.md)
-- [Execution plans](../../exec-plans/active/013-mcp-cli/index.md)
+- [Execution plans](../../exec-plans/completed/013-mcp-cli/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

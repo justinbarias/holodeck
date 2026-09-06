@@ -2,7 +2,7 @@
 
 **Feature Branch**: `010-mcp-tool-operations`
 **Created**: 2025-11-28
-**Status**: Draft
+**Status**: Archived — superseded; MCP tools run through the Claude MCP bridge (021) and OpenAI Agents MCP servers (035), the Semantic Kernel plugin tasks are dead
 **Input**: User Story US 6.3 - MCP Tool Operations (Priority: P1)
 
 ## Clarifications

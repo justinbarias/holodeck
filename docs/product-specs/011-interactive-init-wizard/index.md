@@ -13,5 +13,5 @@ Feature: `011-interactive-init-wizard`. Status and task evidence: [feature inven
 ## Related records
 
 - [Design records](../../design-docs/011-interactive-init-wizard/index.md)
-- [Execution plans](../../exec-plans/active/011-interactive-init-wizard/index.md)
+- [Execution plans](../../exec-plans/completed/011-interactive-init-wizard/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

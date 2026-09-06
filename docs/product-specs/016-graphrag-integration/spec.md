@@ -2,7 +2,7 @@
 
 **Feature Branch**: `016-graphrag-integration`
 **Created**: 2025-12-27
-**Status**: Draft
+**Status**: Archived — research only, not scheduled
 **Input**: User description: "Integrate GraphRAG as an engine option for HoloDeck vectorstore tools, enabling knowledge graph-based retrieval with entity extraction, community detection, and hierarchical summarization."
 
 ## User Scenarios & Testing *(mandatory)*

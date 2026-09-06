@@ -3,7 +3,7 @@
 **Feature Branch**: `feature/007-claude-agent-features`
 **Spec ID**: 028-yaml-hooks-system
 **Created**: 2026-03-28
-**Status**: Draft
+**Status**: Shipped on the Claude backend via 021; OpenAI parity is 035 T6
 **Input**: Expose the Claude Agent SDK's full hook system to YAML users, allowing declarative hook definitions for all SDK event types with no-code actions (log, reject, modify, notify, script).
 
 ## User Scenarios & Testing *(mandatory)*

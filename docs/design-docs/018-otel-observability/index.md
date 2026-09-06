@@ -10,5 +10,5 @@ Feature: `018-otel-observability`. Status and task evidence: [feature inventory]
 ## Related records
 
 - [Product specification](../../product-specs/018-otel-observability/index.md)
-- [Execution plans](../../exec-plans/active/018-otel-observability/index.md)
+- [Execution plans](../../exec-plans/completed/018-otel-observability/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

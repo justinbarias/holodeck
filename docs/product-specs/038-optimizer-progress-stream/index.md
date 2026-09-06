@@ -8,5 +8,5 @@ Feature: `038-optimizer-progress-stream`. Status and task evidence: [feature inv
 
 ## Related records
 
-- [Execution plans](../../exec-plans/active/038-optimizer-progress-stream/index.md)
+- [Execution plans](../../exec-plans/completed/038-optimizer-progress-stream/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

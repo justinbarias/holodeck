@@ -2,7 +2,7 @@
 
 **Feature Branch**: `011-interactive-init-wizard`
 **Created**: 2025-11-29
-**Status**: Draft
+**Status**: Shipped
 **Input**: User description: "Plan a spec for an improvement to the config init command. Make it into an interactive experience where a user will: get prompted for agent name, which llm provider to use, which vectorstore to use, which evals to enable, and which mcp servers they want."
 
 ## Clarifications

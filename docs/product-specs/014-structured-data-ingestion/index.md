@@ -11,5 +11,5 @@ Feature: `014-structured-data-ingestion`. Status and task evidence: [feature inv
 ## Related records
 
 - [Design records](../../design-docs/014-structured-data-ingestion/index.md)
-- [Execution plans](../../exec-plans/active/014-structured-data-ingestion/index.md)
+- [Execution plans](../../exec-plans/completed/014-structured-data-ingestion/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

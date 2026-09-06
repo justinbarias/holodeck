@@ -10,5 +10,5 @@ Feature: `015-vectorstore-reranking`. Status and task evidence: [feature invento
 ## Related records
 
 - [Product specification](../../product-specs/015-vectorstore-reranking/index.md)
-- [Execution plans](../../exec-plans/active/015-vectorstore-reranking/index.md)
+- [Execution plans](../../exec-plans/completed/015-vectorstore-reranking/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)
