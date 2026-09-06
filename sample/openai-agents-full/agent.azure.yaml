@@ -13,9 +13,10 @@ name: warehouse-concierge
 description: Warehouse assistant that exercises every OpenAI Agents backend capability.
 
 model:
-  provider: openai              # or azure_openai (see README for the switch)
-  name: gpt-5-mini              # reasoning model so `effort` and `thinking` apply
-  api_key: ${OPENAI_API_KEY}
+  provider: azure_openai
+  name: ${AZURE_OPENAI_DEPLOYMENT_NAME}          # deployment name (a gpt-5-mini deployment)
+  endpoint: ${AZURE_OPENAI_ENDPOINT}
+  api_key: ${AZURE_OPENAI_API_KEY}
   max_tokens: 1500
 
 instructions:
@@ -23,9 +24,10 @@ instructions:
 
 # Embeddings for both RAG tools (one embedding model per agent).
 embedding_provider:
-  provider: openai
-  name: text-embedding-3-small
-  api_key: ${OPENAI_API_KEY}
+  provider: azure_openai
+  name: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME}
+  endpoint: ${AZURE_OPENAI_ENDPOINT}
+  api_key: ${AZURE_OPENAI_API_KEY}
 
 tools:
   # ---- function tools (tools/warehouse.py) ----
@@ -53,11 +55,10 @@ tools:
     source: data/kb
     embedding_dimensions: 512
     top_k: 3
-    # Default is the in-memory store. To persist vectors in Qdrant instead
-    # (docker run -p 6333:6333 qdrant/qdrant), enable:
-    # database:
-    #   provider: qdrant
-    #   connection_string: ${QDRANT_URL}   # e.g. http://localhost:6333
+    # Persist vectors in Qdrant (docker run -p 6333:6333 qdrant/qdrant).
+    database:
+      provider: qdrant
+      connection_string: ${QDRANT_URL}   # e.g. http://localhost:6333
 
   # ---- RAG: structure-aware hybrid search over the operations handbook ----
   - name: handbook
@@ -97,7 +98,7 @@ openai:
   max_turns: 12
   effort: low                    # reasoning effort; summaries populate `thinking`
   max_budget_usd: 0.50           # session cost cap (bundled price table)
-  fallback_model: gpt-5-nano     # one retry on 429/5xx after client retries
+  # fallback_model: <second-deployment-name>   # needs a second Azure deployment
   disallowed_tools: [purge_inventory]   # never built; cannot be granted to subagents
   agents:
     researcher:

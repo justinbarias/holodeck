@@ -24,11 +24,13 @@ install, to see handoffs and skills in the chat tools panel, or as a template.
 
 ```bash
 cd sample/openai-agents-full
-cp .env.example .env            # OPENAI_API_KEY
+cp .env.example .env            # OPENAI_API_KEY (or the Azure variables below)
 holodeck test run agent.yaml -n 1   # smoke: one function-tool case
 holodeck test run agent.yaml        # all seven cases (RAG ingest runs first)
 holodeck chat agent.yaml            # watch handoffs nest in the tools panel
 ```
+
+Each run writes an EvalRun JSON under `results/` (gitignored).
 
 Requirements: the `openai-agents` extra, and Node.js for the MCP server
 (remove the `filesystem` tool if `npx` is unavailable). The first run ingests
@@ -37,11 +39,30 @@ the two RAG sources with `text-embedding-3-small`; later runs reuse the cache
 
 ## Azure OpenAI
 
-Set `model.provider: azure_openai`, make `model.name` (and `fallback_model`,
-and every subagent `model`) deployment names, add
-`endpoint: ${AZURE_OPENAI_ENDPOINT}`, and use `AZURE_OPENAI_API_KEY`. Do the
-same for `embedding_provider`. Trace upload to platform.openai.com is
-suppressed automatically for Azure.
+`agent.azure.yaml` is the same agent pointed at Azure OpenAI deployments. It
+reads `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`,
+`AZURE_OPENAI_DEPLOYMENT_NAME` (a `gpt-5-mini` deployment) and
+`AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME` from `.env`; `fallback_model` is
+commented out because it needs a second deployment. Trace upload to
+platform.openai.com is suppressed automatically for Azure.
+
+```bash
+holodeck test run agent.azure.yaml
+```
+
+## Qdrant instead of the in-memory vector store
+
+`agent.azure.yaml` persists the `knowledge_base` vectors in Qdrant; `agent.yaml`
+has the same block commented out. Start a server and set `QDRANT_URL`:
+
+```bash
+docker run -d --name qdrant -p 6333:6333 qdrant/qdrant
+echo 'QDRANT_URL=http://localhost:6333' >> .env
+```
+
+Re-runs skip unchanged files (record IDs are deterministic UUIDs on Qdrant).
+The loader only expands plain `${VAR}` references, so there are no
+`${VAR:-default}` fallbacks in either file.
 
 ## What each test case proves
 
@@ -53,4 +74,4 @@ suppressed automatically for Azure.
 6. `skill route` — the inline skill is a handoff target (`transfer_to_summarise`).
 7. `disallowed tool never offered` — `purge_inventory` was filtered before build, so the model cannot call it.
 
-The `grounded-answer` G-Eval metric runs on every case using the agent's model.
+The `direct-answer` G-Eval metric runs on every case using the agent's model; it judges only input and output, so tool usage is asserted by `expected_tools`, not by the judge.

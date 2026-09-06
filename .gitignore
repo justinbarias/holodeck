@@ -49,3 +49,5 @@ report.md
 
 # Git worktrees
 .worktrees/
+/sample/openai-agents-full/results/
+/sample/openai-agents-full/.env
