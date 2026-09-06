@@ -68,6 +68,7 @@ tools:
 | `vectorstore`           | Semantic search over data               | ✅ Implemented |
 | `hierarchical_document` | Structure-aware hybrid document search  | ✅ Implemented |
 | `mcp`                   | Model Context Protocol servers (stdio)  | ✅ Implemented |
+| `skill`                 | Scoped sub-agent (inline or SKILL.md)   | ✅ OpenAI backend |
 | `prompt`                | LLM-powered semantic functions          | 🚧 Planned     |
 
 ---
@@ -445,6 +446,56 @@ MCP tools require the runtime for your `command`: `npx`/`node` → Node.js 18+ (
 ### Lifecycle
 
 MCP plugins are managed automatically: connected on agent startup, tools discovered and registered, and properly closed when the session ends. Always terminate chat sessions cleanly (`exit`/`quit`) so servers shut down.
+
+---
+
+## Skill tools ✅
+
+Scoped sub-agents following the [Agent Skills specification](https://agentskills.io/specification). A skill runs on the parent's backend and model and may use a declared subset of the parent's tools. Today the **OpenAI Agents backend** translates skills into handoff-target sub-agents (see the [OpenAI backend guide](openai-backend.md#skills)); the Claude backend does not yet adapt them.
+
+### Fields
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `name` | string | Yes | Lowercase alphanumeric segments joined by single hyphens, ≤64 chars (`research-assistant`) |
+| `type` | `"skill"` | Yes | Discriminator |
+| `description` | string | Inline: yes; file-based: no | ≤1024 chars. For `path` skills it falls back to the SKILL.md frontmatter `description` |
+| `instructions` | string | One of `instructions` / `path` | Inline skill body |
+| `path` | path | One of `instructions` / `path` | Directory containing `SKILL.md`, resolved relative to `agent.yaml` |
+| `allowed_tools` | list | No | Parent tool names the skill may use. Omitted or empty = no tools. Must name non-skill tools declared on the agent; unknown names fail load |
+| `defer_loading` | bool | No (`true`) | Accepted for schema parity with the other tool types; the OpenAI Agents backend registers every skill regardless of this value |
+
+### Inline form
+
+```yaml
+- name: summarise
+  type: skill
+  description: Summarise a document in three bullets
+  instructions: |
+    Read the provided text and return three concise bullet points.
+  allowed_tools: [search_kb]
+```
+
+### File-based form
+
+```yaml
+- name: research-assistant
+  type: skill
+  path: skills/research-assistant
+  allowed_tools: [search_kb]
+```
+
+`skills/research-assistant/SKILL.md`:
+
+```markdown
+---
+name: research-assistant
+description: Finds and summarises sources for a question.
+---
+Search the knowledge base for the question, then summarise the top results with citations.
+```
+
+The frontmatter must be a `---`-delimited YAML mapping with non-empty `name` and `description`; the body must be non-empty. Validation runs at config load, so a missing directory, missing `SKILL.md`, unterminated frontmatter, or missing field fails before any provider call. The frontmatter `allowed-tools` key is ignored: tool scope comes only from the YAML `allowed_tools`.
 
 ---
 

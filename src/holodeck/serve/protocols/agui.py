@@ -890,9 +890,11 @@ class AGUIProtocol(Protocol):
 
         except BackendSessionError as e:
             logger.error("Backend session error: %s", e, exc_info=True)
+            # Sanitised: the raw reason (which may carry subprocess output)
+            # goes to the server log above, not to the client.
             yield encoder.encode(
                 create_run_error_event(
-                    "Claude Agent SDK subprocess terminated unexpectedly.",
+                    "Backend session terminated unexpectedly.",
                 )
             )
 

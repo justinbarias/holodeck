@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
@@ -83,14 +83,51 @@ class _TaskBoundSession:
     context while allowing callers from any task.
     """
 
-    def __init__(self, session: AgentSession) -> None:
-        self._session = session
+    def __init__(
+        self,
+        session: AgentSession | None = None,
+        *,
+        session_factory: Callable[[], Awaitable[AgentSession]] | None = None,
+        teardown: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        """Wrap an existing session, or build one inside the actor task.
+
+        Args:
+            session: An already-constructed session. Its ``prepare()`` runs
+                in the actor task.
+            session_factory: Alternative to ``session``: an async factory
+                awaited **inside the actor task** before ``prepare()``.
+                Use it when constructing the session (or the backend behind
+                it) binds task-local resources — the OpenAI Agents backend
+                connects stdio MCP servers during ``initialize()``, and the
+                anyio streams die with the task that opened them.
+            teardown: Optional coroutine run inside the actor task after the
+                session closes (for example the backend's ``teardown()``,
+                whose MCP cleanup must exit its cancel scopes in the same
+                task that entered them).
+
+        Raises:
+            ValueError: If neither or both of ``session``/``session_factory``
+                are given.
+        """
+        if (session is None) == (session_factory is None):
+            raise ValueError("pass exactly one of session or session_factory")
+        self._session: AgentSession | None = session
+        self._session_factory = session_factory
+        self._teardown = teardown
         self._queue: asyncio.Queue[
             tuple[str, asyncio.Future[Any], asyncio.Queue[Any] | None] | None
         ] = asyncio.Queue()
         self._task: asyncio.Task[None] | None = None
         self._ready: asyncio.Event = asyncio.Event()
         self._startup_error: BaseException | None = None
+        self._closed: bool = False
+        self._current: asyncio.Future[Any] | None = None
+
+    def _require_session(self) -> AgentSession:
+        if self._session is None:
+            raise RuntimeError("_TaskBoundSession used before start()")
+        return self._session
 
     async def start(self) -> None:
         """Start the actor and block until it has bound the SDK to its task.
@@ -127,86 +164,143 @@ class _TaskBoundSession:
         default protocol stub) skip the connect step cleanly.
         """
         try:
+            if self._session is None and self._session_factory is not None:
+                logger.debug(
+                    "[trace] _TaskBoundSession._loop: building inner session "
+                    "in actor task"
+                )
+                self._session = await self._session_factory()
             logger.debug(
                 "[trace] _TaskBoundSession._loop: preparing inner session "
                 "in actor task"
             )
-            await self._session.prepare()
+            await self._require_session().prepare()
         except BaseException as exc:
+            # The factory may already have allocated a backend (MCP servers,
+            # SDK subprocess) before ``create_session``/``prepare`` failed.
+            # Release it here, in the task that opened it, before reporting.
+            await self._cleanup_failed_start()
             self._startup_error = exc
             self._ready.set()
             return
         self._ready.set()
+        session = self._require_session()
 
         turn_no = 0
         logger.debug("[trace] _TaskBoundSession._loop: started")
-        while True:
-            logger.debug(
-                "[trace] _TaskBoundSession._loop: awaiting next queue item "
-                "(completed=%d)",
-                turn_no,
-            )
-            item = await self._queue.get()
-            if item is None:
-                logger.debug("[trace] _TaskBoundSession._loop: sentinel — exit")
-                break
-            turn_no += 1
-            message, future, chunk_queue = item
-            logger.debug(
-                "[trace] _TaskBoundSession._loop turn=%d: dequeued, "
-                "future_cancelled=%s, streaming=%s",
-                turn_no,
-                future.cancelled(),
-                chunk_queue is not None,
-            )
-
-            # Caller already gave up (e.g. ``wait_for`` timed out) before we
-            # picked this item up — don't burn an SDK turn whose result no
-            # one will read. Otherwise the next request would queue behind
-            # an abandoned turn and inherit its latency.
-            if future.cancelled():
+        try:
+            while True:
                 logger.debug(
-                    "[trace] _TaskBoundSession._loop turn=%d: skipping "
-                    "(future already cancelled)",
+                    "[trace] _TaskBoundSession._loop: awaiting next queue item "
+                    "(completed=%d)",
                     turn_no,
                 )
-                continue
+                item = await self._queue.get()
+                if item is None:
+                    logger.debug("[trace] _TaskBoundSession._loop: sentinel — exit")
+                    break
+                turn_no += 1
+                await self._run_turn(session, turn_no, item)
+        except asyncio.CancelledError:
+            # ``close()`` was abandoned (for example the serve session store's
+            # shutdown timeout) and cancelled us mid-turn. Fail the turn and
+            # anything still queued so no caller waits forever, then still
+            # close in this task via ``finally``.
+            logger.debug("[trace] _TaskBoundSession._loop: cancelled")
+            self._fail_pending(
+                BackendSessionError("Agent session closed while a turn was in flight")
+            )
+            raise
+        finally:
+            await self._close_in_task(session)
 
-            try:
-                if chunk_queue is not None:
-                    # Streaming mode — push chunks to the caller's queue
-                    try:
-                        async for chunk in self._session.send_streaming(message):
-                            await chunk_queue.put(chunk)
-                        await chunk_queue.put(_SENTINEL)
-                    except Exception as e:
-                        await chunk_queue.put(e)
-                    if not future.done():
-                        future.set_result(None)
-                else:
-                    logger.debug(
-                        "[trace] _TaskBoundSession._loop turn=%d: calling "
-                        "inner send",
-                        turn_no,
-                    )
-                    result = await self._session.send(message)
-                    logger.debug(
-                        "[trace] _TaskBoundSession._loop turn=%d: inner send "
-                        "returned (future_done=%s)",
-                        turn_no,
-                        future.done(),
-                    )
-                    if not future.done():
-                        future.set_result(result)
-            except Exception as e:
+    async def _run_turn(
+        self,
+        session: AgentSession,
+        turn_no: int,
+        item: tuple[str, asyncio.Future[Any], asyncio.Queue[Any] | None],
+    ) -> None:
+        """Execute one queued turn inside the actor task."""
+        message, future, chunk_queue = item
+        self._current = future
+        try:
+            await self._execute_item(session, turn_no, message, future, chunk_queue)
+        except asyncio.CancelledError:
+            # The actor was cancelled mid-turn (see ``close``): the caller of
+            # this turn must not wait forever.
+            error = BackendSessionError(
+                "Agent session closed while a turn was in flight"
+            )
+            if not future.done():
+                future.set_exception(error)
+            if chunk_queue is not None:
+                chunk_queue.put_nowait(error)
+            raise
+        finally:
+            self._current = None
+
+    async def _execute_item(
+        self,
+        session: AgentSession,
+        turn_no: int,
+        message: str,
+        future: asyncio.Future[Any],
+        chunk_queue: asyncio.Queue[Any] | None,
+    ) -> None:
+        logger.debug(
+            "[trace] _TaskBoundSession._loop turn=%d: dequeued, "
+            "future_cancelled=%s, streaming=%s",
+            turn_no,
+            future.cancelled(),
+            chunk_queue is not None,
+        )
+
+        # Caller already gave up (e.g. ``wait_for`` timed out) before we
+        # picked this item up — don't burn an SDK turn whose result no
+        # one will read. Otherwise the next request would queue behind
+        # an abandoned turn and inherit its latency.
+        if future.cancelled():
+            logger.debug(
+                "[trace] _TaskBoundSession._loop turn=%d: skipping "
+                "(future already cancelled)",
+                turn_no,
+            )
+            return
+
+        try:
+            if chunk_queue is not None:
+                # Streaming mode — push chunks to the caller's queue
+                try:
+                    async for chunk in session.send_streaming(message):
+                        await chunk_queue.put(chunk)
+                    await chunk_queue.put(_SENTINEL)
+                except Exception as e:
+                    await chunk_queue.put(e)
+                if not future.done():
+                    future.set_result(None)
+            else:
                 logger.debug(
-                    "[trace] _TaskBoundSession._loop turn=%d: exception %s: %s",
+                    "[trace] _TaskBoundSession._loop turn=%d: calling " "inner send",
                     turn_no,
-                    type(e).__name__,
-                    e,
+                )
+                result = await session.send(message)
+                logger.debug(
+                    "[trace] _TaskBoundSession._loop turn=%d: inner send "
+                    "returned (future_done=%s)",
+                    turn_no,
+                    future.done(),
                 )
                 if not future.done():
-                    future.set_exception(e)
+                    future.set_result(result)
+        except Exception as e:
+            logger.debug(
+                "[trace] _TaskBoundSession._loop turn=%d: exception %s: %s",
+                turn_no,
+                type(e).__name__,
+                e,
+            )
+            if not future.done():
+                future.set_exception(e)
 
     async def prepare(self) -> None:
         """No-op. The inner session is prepared during ``start()``."""
@@ -239,7 +333,7 @@ class _TaskBoundSession:
         message_override: str | None = None,
     ) -> AsyncGenerator[BaseEvent, None]:
         """Stream AG-UI events from the wrapped session when supported."""
-        session = _require_agui_session(self._session)
+        session = _require_agui_session(self._require_session())
         async for event in session.send_agui(input_data, message_override):
             yield event
 
@@ -248,12 +342,80 @@ class _TaskBoundSession:
         """Pass through the inner session's tool event queue."""
         return getattr(self._session, "tool_events", None)
 
+    async def _close_in_task(self, session: AgentSession) -> None:
+        """Close the session and run the teardown hook inside the actor task."""
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            await session.close()
+        finally:
+            if self._teardown is not None:
+                await self._teardown()
+
+    async def _cleanup_failed_start(self) -> None:
+        """Release whatever a failed start allocated, inside the actor task."""
+        self._closed = True
+        try:
+            if self._session is not None:
+                await self._session.close()
+        except Exception:  # noqa: BLE001 - best-effort cleanup after failure
+            logger.debug("Session close after failed start raised", exc_info=True)
+        finally:
+            if self._teardown is not None:
+                try:
+                    await self._teardown()
+                except Exception:  # noqa: BLE001 - best-effort cleanup after failure
+                    logger.debug("Teardown after failed start raised", exc_info=True)
+
+    def _fail_pending(self, error: BaseException) -> None:
+        """Fail the in-flight turn and every queued turn with *error*."""
+        current = self._current
+        if current is not None and not current.done():
+            current.set_exception(error)
+        while True:
+            try:
+                item = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if item is None:
+                continue
+            _message, future, chunk_queue = item
+            if not future.done():
+                future.set_exception(error)
+            if chunk_queue is not None:
+                chunk_queue.put_nowait(error)
+
     async def close(self) -> None:
-        """Shut down the actor and close the underlying session."""
-        if self._task is not None and not self._task.done():
+        """Shut down the actor, closing the session and tearing down in-task.
+
+        The close and teardown run inside the actor task (see
+        ``_close_in_task``) so transports whose cancel scopes were entered
+        there are exited there too. If the actor never started or already
+        exited, the close runs in the caller's task as a fallback.
+
+        If the caller stops waiting (``asyncio.wait_for`` timeout, request
+        cancellation), the actor task is cancelled instead of being left
+        with a stranded turn; its cancellation handler fails pending turns
+        and still runs the close and teardown in the actor task.
+        """
+        task = self._task
+        if task is not None and asyncio.current_task() is task:
+            # Called from inside the actor (a hook or tool ending the
+            # session). Close in place and let the loop exit after this turn.
+            await self._close_in_task(self._require_session())
+            self._queue.put_nowait(None)
+            return
+        if task is not None and not task.done():
             await self._queue.put(None)
-            await self._task
-        await self._session.close()
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                task.cancel()
+                raise
+            return
+        if self._session is not None:
+            await self._close_in_task(self._session)
 
 
 class AgentExecutor:
@@ -299,6 +461,7 @@ class AgentExecutor:
         self.on_execution_complete = on_execution_complete
         self._use_task_bound_session = release_transport_after_turn
         self._llm_timeout = float(llm_timeout) if llm_timeout else None
+        self._init_lock = asyncio.Lock()
 
         logger.info(f"AgentExecutor initialized for agent: {agent_config.name}")
 
@@ -322,26 +485,47 @@ class AgentExecutor:
         """
         if self._session is not None:
             return
-        if self._backend is None:
-            self._backend = await BackendSelector.select(
-                self.agent_config,
-                tool_instances=None,
-                mode="chat",
-            )
+        async with self._init_lock:
+            if self._session is None:
+                await self._create_backend_and_session()
+
+    async def _create_backend_and_session(self) -> None:
+        """Create the backend and session; callers hold ``_init_lock``."""
+
+        async def _select_backend() -> AgentBackend:
+            if self._backend is None:
+                self._backend = await BackendSelector.select(
+                    self.agent_config,
+                    tool_instances=None,
+                    mode="chat",
+                )
+            return self._backend
 
         if self._use_task_bound_session:
-            # Ask the backend NOT to eagerly connect — the actor task
-            # must be the one that calls the underlying transport's
-            # ``connect()`` so anyio task-group state binds to it and
-            # survives across HTTP request tasks. The actor invokes
-            # ``session.prepare()`` from inside its own task.
-            session = await self._backend.create_session(eager_connect=False)
-            actor = _TaskBoundSession(session)
+            # Build the backend *and* the session inside the actor task, and
+            # ask the backend NOT to eagerly connect. Anyio task-group state
+            # (the Claude SDK's ``connect()``, the OpenAI Agents backend's
+            # stdio MCP servers opened during ``initialize()``) binds to the
+            # task that opened it and must survive across HTTP request
+            # tasks; the actor invokes ``session.prepare()`` from inside its
+            # own task as well.
+            async def _build_session() -> AgentSession:
+                backend = await _select_backend()
+                return await backend.create_session(eager_connect=False)
+
+            async def _teardown_backend() -> None:
+                if self._backend is not None:
+                    await self._backend.teardown()
+                    self._backend = None
+
+            actor = _TaskBoundSession(
+                session_factory=_build_session, teardown=_teardown_backend
+            )
             await actor.start()
             self._session = actor
         else:
-            session = await self._backend.create_session()
-            self._session = session
+            backend = await _select_backend()
+            self._session = await backend.create_session()
 
     async def execute_turn(self, message: str) -> AgentResponse:
         """Execute a single turn of agent conversation.
@@ -382,6 +566,19 @@ class AgentExecutor:
 
             # Extract content from execution result
             content = result.response
+
+            # Backends report runtime failures as ``is_error`` results rather
+            # than raising (so multi-turn test runs can record them). A turn
+            # with no content is a failed turn for chat/serve callers; a
+            # partial response (budget cap, FR-032) is returned with the
+            # reason logged so the caller still sees what the model produced.
+            if result.is_error:
+                reason = result.error_reason or "unknown backend error"
+                if not content:
+                    raise BackendSessionError(f"Agent turn failed: {reason}")
+                logger.warning(
+                    "Agent turn ended with error after partial response: %s", reason
+                )
 
             # Convert tool calls to ToolExecution models
             tool_executions = self._convert_tool_calls(result.tool_calls)
@@ -532,6 +729,9 @@ class AgentExecutor:
         try:
             logger.debug("AgentExecutor shutting down")
             if self._session is not None:
+                # A task-bound actor tears the backend down inside its own
+                # task (see ``_TaskBoundSession.close``) and clears
+                # ``self._backend``; the plain path tears down here.
                 await self._session.close()
                 self._session = None
             if self._backend is not None:

@@ -2667,6 +2667,47 @@ class TestDynamicRetrievalContext:
 
         # Vectorstore tools use "vectorstore-{name}" format
         assert "vectorstore-knowledge_base" in retrieval_tools
+        # Claude Agent SDK MCP naming
+        assert "mcp__holodeck_tools__knowledge_base_search" in retrieval_tools
+        # OpenAI Agents backend naming (spec 035, sdk_tool_name_for)
+        assert "knowledge_base_search" in retrieval_tools
+
+    def test_get_retrieval_tool_names_hierarchical_openai_naming(self):
+        """Hierarchical tools resolve under every backend naming scheme."""
+        from holodeck.models.agent import Instructions
+        from holodeck.models.llm import LLMProvider, ProviderEnum
+        from holodeck.models.tool import HierarchicalDocumentToolConfig
+
+        tool = HierarchicalDocumentToolConfig(
+            name="handbook",
+            description="Operations handbook",
+            source="docs/handbook.md",
+        )
+        agent_config = Agent(
+            name="test_agent",
+            description="Test agent",
+            model=LLMProvider(
+                provider=ProviderEnum.OPENAI, name="gpt-4", api_key="test-key"
+            ),
+            instructions=Instructions(inline="Test instructions"),
+            test_cases=[],
+            evaluations=None,
+            tools=[tool],
+        )
+        mock_loader = Mock(spec=ConfigLoader)
+        mock_loader.load_agent_yaml.return_value = agent_config
+        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
+        executor = TestExecutor(
+            agent_config_path="test.yaml", config_loader=mock_loader
+        )
+
+        retrieval_tools = executor._get_retrieval_tool_names()
+
+        assert retrieval_tools == {
+            "hierarchical_document-handbook",
+            "mcp__holodeck_tools__handbook_search",
+            "handbook_search",
+        }
 
     def test_get_retrieval_tool_names_with_mcp_retrieval(self):
         """MCP tools with is_retrieval=True are identified as retrieval tools."""

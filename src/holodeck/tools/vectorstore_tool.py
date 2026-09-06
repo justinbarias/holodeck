@@ -45,6 +45,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _is_qdrant_native_id(record_id: str) -> bool:
+    """Return True when Qdrant accepts *record_id* as a point ID as-is.
+
+    Qdrant point IDs are UUIDs or unsigned 64-bit integers. Record IDs are
+    strings on the HoloDeck side, and Qdrant rejects a numeric *string*
+    (``"42"``) where it would accept the integer ``42``, so only UUID strings
+    count as native here; numeric keys are hashed like any other business key.
+    """
+    import uuid
+
+    try:
+        uuid.UUID(record_id)
+    except ValueError:
+        return False
+    return True
+
+
 class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
     """Vectorstore tool for semantic search over unstructured data.
 
@@ -130,6 +147,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         # Persistent collection instance for vector store operations
         self._collection: Any = None
         self._provider: str = "in-memory"
+        self._warned_id_coercion: bool = False
 
         # Source context for stable record keys (remote sources)
         self._source_root: Path | None = None
@@ -494,7 +512,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             zip(source_file.chunks, embeddings, strict=False)
         ):
             record = record_class(
-                id=f"{source_key}_chunk_{idx}",
+                id=self._record_id(source_key, idx),
                 source_path=source_key,
                 chunk_index=idx,
                 content=chunk,
@@ -514,6 +532,36 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         logger.debug(f"Stored {len(records)} chunks from {source_file.path}")
         return len(records)
+
+    def _record_id(self, source_key: str, chunk_index: int) -> str:
+        """Return the vector-store record ID for one chunk of a source file.
+
+        Records are keyed ``{source_key}_chunk_{index}`` so the store can be
+        walked per file. Qdrant only accepts UUID or unsigned-int point IDs, so
+        on that provider the readable key is mapped to a deterministic UUIDv5
+        (namespace derived from the tool name). The mapping is stable across
+        runs, so re-ingestion of unchanged content lands on the same point.
+        """
+        readable = f"{source_key}_chunk_{chunk_index}"
+        return self._coerce_record_id(readable)
+
+    def _coerce_record_id(self, record_id: str) -> str:
+        """Map a record ID to a Qdrant-safe value when needed.
+
+        UUID IDs, which Qdrant already accepts, are returned unchanged, so
+        structured sources keyed by UUID keep their existing points. Anything
+        else is mapped to a deterministic UUIDv5; for structured data the
+        original business key is then only visible through ``meta_fields``,
+        which is logged once per tool.
+        """
+        if self._provider != "qdrant" or _is_qdrant_native_id(record_id):
+            return record_id
+        import uuid
+
+        namespace = uuid.uuid5(
+            uuid.NAMESPACE_URL, f"holodeck/vectorstore/{self.config.name}"
+        )
+        return str(uuid.uuid5(namespace, record_id))
 
     async def _needs_reingest(self, file_path: Path) -> bool:
         """Check if file needs re-ingestion based on modification time.
@@ -537,7 +585,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         async with self._collection as collection:
             try:
                 # Get first chunk to check mtime (all chunks share same mtime)
-                record_id = f"{source_key}_chunk_0"
+                record_id = self._record_id(source_key, 0)
                 record = await collection.get(record_id)
 
                 if record is None:
@@ -578,7 +626,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         async with self._collection as collection:
             chunk_index = 0
             while True:
-                record_id = f"{source_key}_chunk_{chunk_index}"
+                record_id = self._record_id(source_key, chunk_index)
                 try:
                     record = await collection.get(record_id)
                     if record is None:
@@ -693,8 +741,17 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             # Create records
             records: list[Any] = []
             for record_data, embedding in zip(batch, embeddings, strict=False):
+                record_id = self._coerce_record_id(record_data["id"])
+                if record_id != record_data["id"] and not self._warned_id_coercion:
+                    self._warned_id_coercion = True
+                    logger.warning(
+                        f"Vectorstore tool '{self.config.name}': structured record "
+                        f"IDs are not valid Qdrant point IDs and are stored as "
+                        f"UUIDv5 hashes; search results carry the hash. Add the "
+                        f"id column to meta_fields to keep the original key."
+                    )
                 record = record_class(
-                    id=record_data["id"],
+                    id=record_id,
                     content=record_data["content"],
                     embedding=embedding,
                     source_file=source_path,

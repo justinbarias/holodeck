@@ -49,3 +49,4 @@ These records retain their historical claims. Migration does not establish curre
 - [Multi-Turn Test Cases & Evaluators](032-multi-turn-test-cases/index.md)
 - [Test Optimizer](033-holodeck-test-optimizer/index.md)
 - [Deterministic Spine](036-deterministic-spine/index.md)
+- [Dependency Stack Revamp selection evidence](042-dependency-stack-revamp/selection-evidence.md)

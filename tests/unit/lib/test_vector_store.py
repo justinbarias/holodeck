@@ -6,7 +6,8 @@ only during module import to avoid polluting the rest of the test suite.
 """
 
 import sys
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Save original modules before mocking (these will be restored after import)
 _saved_modules: dict[str, object] = {}
@@ -1544,7 +1545,9 @@ class TestGetCollectionFactoryQdrant:
 
         try:
             importlib.import_module = mock_import  # type: ignore[method-assign]
-            with patch("qdrant_client.AsyncQdrantClient", mock_client_class):
+            with patch(
+                "holodeck.lib.vector_store.create_qdrant_client", mock_client_class
+            ):
                 factory = get_collection_factory(
                     "qdrant",
                     dimensions=768,
@@ -1552,9 +1555,9 @@ class TestGetCollectionFactoryQdrant:
                 )
                 factory()
 
-            # AsyncQdrantClient receives the parsed connection params
+            # create_qdrant_client receives the parsed connection params
             mock_client_class.assert_called_once()
-            client_kwargs = mock_client_class.call_args.kwargs
+            client_kwargs = mock_client_class.call_args.args[0]
             assert client_kwargs["host"] == "localhost"
             assert client_kwargs["port"] == 6333
 
@@ -1588,7 +1591,9 @@ class TestGetCollectionFactoryQdrant:
 
         try:
             importlib.import_module = mock_import  # type: ignore[method-assign]
-            with patch("qdrant_client.AsyncQdrantClient", mock_client_class):
+            with patch(
+                "holodeck.lib.vector_store.create_qdrant_client", mock_client_class
+            ):
                 factory = get_collection_factory(
                     "qdrant",
                     dimensions=768,
@@ -1596,7 +1601,7 @@ class TestGetCollectionFactoryQdrant:
                 )
                 factory()
 
-            client_kwargs = mock_client_class.call_args.kwargs
+            client_kwargs = mock_client_class.call_args.args[0]
             assert client_kwargs["host"] == "localhost"
             assert client_kwargs["grpc_port"] == 6334
             assert client_kwargs["prefer_grpc"] is True
@@ -1778,3 +1783,51 @@ class TestContentHashField:
         record = DocumentRecord()
         assert hasattr(record, "content_hash")
         assert record.content_hash == ""
+
+
+class TestCreateQdrantClientSearchCompat:
+    """``search`` is restored on top of ``query_points`` (qdrant-client >= 1.13)."""
+
+    @pytest.fixture
+    def client(self) -> Any:
+        pytest.importorskip("qdrant_client")
+        from holodeck.lib.vector_store import create_qdrant_client
+
+        return create_qdrant_client({"location": ":memory:"})
+
+    @pytest.mark.asyncio
+    async def test_search_delegates_to_query_points(self, client: Any) -> None:
+        response = MagicMock()
+        response.points = ["p1", "p2"]
+        client.query_points = AsyncMock(return_value=response)
+
+        result = await client.search(
+            collection_name="docs",
+            query_vector=[0.1, 0.2],
+            query_filter=None,
+            with_vectors=False,
+            limit=3,
+            offset=0,
+        )
+
+        assert result == ["p1", "p2"]
+        client.query_points.assert_awaited_once_with(
+            collection_name="docs",
+            query=[0.1, 0.2],
+            using=None,
+            query_filter=None,
+            with_vectors=False,
+            limit=3,
+            offset=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_named_vector_tuple_sets_using(self, client: Any) -> None:
+        response = MagicMock()
+        response.points = []
+        client.query_points = AsyncMock(return_value=response)
+
+        await client.search(collection_name="docs", query_vector=("embedding", [0.5]))
+
+        assert client.query_points.await_args.kwargs["using"] == "embedding"
+        assert client.query_points.await_args.kwargs["query"] == [0.5]

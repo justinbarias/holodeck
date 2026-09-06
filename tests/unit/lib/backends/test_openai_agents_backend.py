@@ -1558,3 +1558,112 @@ class TestRunConfigCapturePolicy:
         agent = _make_agent_with_openai()
         settings = _build_model_settings(agent.model, agent.openai)
         assert settings.retry is None
+
+
+# ---------------------------------------------------------------------------
+# T3 — subagents / skills wiring (FR-060, FR-062, FR-070)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestHandoffWiring:
+    """``initialize`` passes handoff targets to the SDK ``Agent``."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_passes_handoffs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from agents import Agent as SDKAgent
+
+        from holodeck.models.openai_config import OpenAIConfig
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        agent = Agent(
+            name="parent",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="route"),
+            tools=[
+                {
+                    "name": "summarise",
+                    "type": "skill",
+                    "description": "d",
+                    "instructions": "Summarise.",
+                }
+            ],
+            openai=OpenAIConfig(
+                agents={"researcher": {"description": "Finds", "prompt": "R"}}
+            ),
+        )
+        backend = OpenAIAgentsBackend(agent)
+        await backend.initialize()
+        sdk_agent = backend._sdk_agent
+        assert isinstance(sdk_agent, SDKAgent)
+        handoffs = sdk_agent.handoffs
+        assert [h.name for h in handoffs] == ["researcher", "summarise"]
+        assert handoffs[0].model == "gpt-4o"
+        assert handoffs[0].handoff_description == "Finds"
+        assert handoffs[1].instructions == "Summarise."
+        assert handoffs[1].tools == []
+        assert sdk_agent.tools == []  # the skill produced no FunctionTool
+
+    @pytest.mark.asyncio
+    async def test_initialize_without_agents_passes_empty_handoffs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        backend = OpenAIAgentsBackend(_make_agent())
+        await backend.initialize()
+        assert backend._sdk_agent is not None
+        assert backend._sdk_agent.handoffs == []
+
+    @pytest.mark.asyncio
+    async def test_unknown_subagent_tool_fails_initialize(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from holodeck.lib.errors import ConfigError
+        from holodeck.models.openai_config import OpenAIConfig
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        agent = Agent(
+            name="parent",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="route"),
+            openai=OpenAIConfig(
+                agents={"r": {"description": "d", "prompt": "p", "tools": ["ghost"]}}
+            ),
+        )
+        with pytest.raises(ConfigError, match="ghost"):
+            await OpenAIAgentsBackend(agent).initialize()
+
+
+@pytest.mark.unit
+class TestResolveSubagentModel:
+    def test_openai_returns_name_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from holodeck.lib.backends.openai_agents_backend import (
+            _resolve_subagent_model,
+        )
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        assert _resolve_subagent_model(_make_agent(), "gpt-4o-mini") == "gpt-4o-mini"
+
+    def test_azure_wraps_deployment_on_same_endpoint(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from agents import OpenAIResponsesModel
+
+        from holodeck.lib.backends.openai_agents_backend import (
+            _resolve_subagent_model,
+        )
+
+        monkeypatch.setenv("AZURE_OPENAI_API_KEY", "azure-key")
+        agent = _make_agent(
+            ProviderEnum.AZURE_OPENAI,
+            "primary-deployment",
+            endpoint="https://example.openai.azure.com",
+        )
+        model = _resolve_subagent_model(agent, "sub-deployment")
+        assert isinstance(model, OpenAIResponsesModel)
+        assert model.model == "sub-deployment"
+        assert str(model._client.base_url).startswith(
+            "https://example.openai.azure.com/openai/v1"
+        )

@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "answer": {"type": "string"},
+    "sources": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+  },
+  "required": ["answer", "sources", "confidence"],
+  "additionalProperties": false
+}

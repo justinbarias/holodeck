@@ -1,8 +1,11 @@
 """Tests for OpenAI Agents SDK configuration models in holodeck.models.openai_config."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
+from holodeck.config.context import agent_base_dir
 from holodeck.models.agent import Agent
 from holodeck.models.openai_config import OpenAIConfig, OpenAIPermissionsConfig
 
@@ -115,3 +118,91 @@ class TestAgentOpenAIBlock:
         """Unknown keys inside `openai:` are rejected."""
         with pytest.raises(ValidationError):
             Agent(**self._agent_kwargs(), openai={"bogus": 1})
+
+
+@pytest.mark.unit
+class TestOpenAISubagentSpec:
+    """``openai.agents`` entries (FR-060, FR-062, FR-063)."""
+
+    def test_minimal_entry(self) -> None:
+        cfg = OpenAIConfig(agents={"researcher": {"description": "d", "prompt": "p"}})
+        assert cfg.agents is not None
+        spec = cfg.agents["researcher"]
+        assert spec.model is None
+        assert spec.tools is None
+        assert spec.skip_recommended_prefix is False
+
+    def test_inherit_and_arbitrary_model_ids_accepted(self) -> None:
+        for model in ("inherit", "gpt-4o-mini", "my-azure-deployment"):
+            cfg = OpenAIConfig(
+                agents={"r": {"description": "d", "prompt": "p", "model": model}}
+            )
+            assert cfg.agents is not None
+            assert cfg.agents["r"].model == model
+
+    @pytest.mark.parametrize("literal", ["sonnet", "opus", "haiku"])
+    def test_claude_model_literals_fail_load(self, literal: str) -> None:
+        with pytest.raises(ValidationError, match="Claude model literal"):
+            OpenAIConfig(
+                agents={"r": {"description": "d", "prompt": "p", "model": literal}}
+            )
+
+    def test_blank_model_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="must be non-empty"):
+            OpenAIConfig(
+                agents={"r": {"description": "d", "prompt": "p", "model": " "}}
+            )
+
+    def test_prompt_and_prompt_file_exclusive(self, tmp_path: Path) -> None:
+        f = tmp_path / "p.md"
+        f.write_text("file prompt")
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            OpenAIConfig(
+                agents={"r": {"description": "d", "prompt": "p", "prompt_file": str(f)}}
+            )
+
+    def test_prompt_required(self) -> None:
+        with pytest.raises(ValidationError, match="either prompt or prompt_file"):
+            OpenAIConfig(agents={"r": {"description": "d"}})
+
+    def test_prompt_file_inlined_relative_to_base_dir(self, tmp_path: Path) -> None:
+        (tmp_path / "prompts").mkdir()
+        (tmp_path / "prompts" / "r.md").write_text("from file")
+        token = agent_base_dir.set(str(tmp_path))
+        try:
+            cfg = OpenAIConfig(
+                agents={"r": {"description": "d", "prompt_file": "prompts/r.md"}}
+            )
+        finally:
+            agent_base_dir.reset(token)
+        assert cfg.agents is not None
+        assert cfg.agents["r"].prompt == "from file"
+        assert cfg.agents["r"].prompt_file is None
+
+    def test_prompt_file_missing_fails(self, tmp_path: Path) -> None:
+        with pytest.raises(ValidationError, match="prompt_file not found"):
+            OpenAIConfig(
+                agents={
+                    "r": {"description": "d", "prompt_file": str(tmp_path / "no.md")}
+                }
+            )
+
+    def test_blank_description_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="requires description"):
+            OpenAIConfig(agents={"r": {"description": " ", "prompt": "p"}})
+
+    def test_skip_prefix_is_strict_bool(self) -> None:
+        with pytest.raises(ValidationError):
+            OpenAIConfig(
+                agents={
+                    "r": {
+                        "description": "d",
+                        "prompt": "p",
+                        "skip_recommended_prefix": "yes",
+                    }
+                }
+            )
+
+    def test_unknown_key_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            OpenAIConfig(agents={"r": {"description": "d", "prompt": "p", "x": 1}})

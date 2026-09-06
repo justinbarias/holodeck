@@ -1,0 +1,204 @@
+# Full-capability sample for the OpenAI Agents backend.
+#
+# Exercises every shipped surface of the backend in one agent:
+#   function tools, vectorstore + hierarchical-document RAG, an MCP server,
+#   subagents (handoffs), inline + SKILL.md skills, disallowed tools,
+#   reasoning effort + thinking, budget cap, fallback model, tracing,
+#   and test cases with tool assertions and an LLM-graded metric.
+#
+# Run:  holodeck test run agent.yaml        (all cases)
+#       holodeck test run agent.yaml -n 1   (smoke)
+#       holodeck chat agent.yaml            (interactive; tools panel shows handoffs)
+name: warehouse-concierge
+description: Warehouse assistant that exercises every OpenAI Agents backend capability.
+
+model:
+  provider: azure_openai
+  name: ${AZURE_OPENAI_DEPLOYMENT_NAME}          # deployment name (a gpt-5-mini deployment)
+  endpoint: ${AZURE_OPENAI_ENDPOINT}
+  api_key: ${AZURE_OPENAI_API_KEY}
+  max_tokens: 1500
+
+instructions:
+  file: prompts/concierge.md
+
+# Embeddings for both RAG tools (one embedding model per agent).
+embedding_provider:
+  provider: azure_openai
+  name: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME}
+  endpoint: ${AZURE_OPENAI_ENDPOINT}
+  api_key: ${AZURE_OPENAI_API_KEY}
+
+tools:
+  # ---- function tools (tools/warehouse.py) ----
+  - name: get_inventory
+    type: function
+    description: Look up stock level and unit price for a SKU.
+    file: tools/warehouse.py
+    function: get_inventory
+    defer_loading: false
+  - name: reserve_stock
+    type: function
+    description: Reserve a quantity of a SKU for a customer order.
+    file: tools/warehouse.py
+    function: reserve_stock
+  - name: purge_inventory
+    type: function
+    description: Delete every inventory record. Declared to prove disallowed_tools filtering.
+    file: tools/warehouse.py
+    function: purge_inventory
+
+  # ---- RAG: semantic search over short policy notes ----
+  - name: knowledge_base
+    type: vectorstore
+    description: Warehouse policies (returns, shipping, hazardous goods).
+    source: data/kb
+    embedding_dimensions: 512
+    top_k: 3
+    # Persist vectors in Qdrant (docker run -p 6333:6333 qdrant/qdrant).
+    database:
+      provider: qdrant
+      connection_string: ${QDRANT_URL}   # e.g. http://localhost:6333
+
+  # ---- RAG: structure-aware hybrid search over the operations handbook ----
+  - name: handbook
+    type: hierarchical_document
+    description: Operations handbook with numbered sections and definitions.
+    source: docs/handbook.md
+    chunking_strategy: structure
+    search_mode: hybrid
+    top_k: 3
+    # Qdrant native dense+sparse hybrid search (no BM25 fallback needed).
+    database:
+      provider: qdrant
+      connection_string: ${QDRANT_URL}   # e.g. http://localhost:6333
+
+  # ---- MCP server (stdio; needs Node.js) scoped to the sample data dir ----
+  - name: filesystem
+    type: mcp
+    description: Read-only file access to the sample data directory.
+    transport: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "./data"]
+    config:
+      allowed_tools: [read_file, list_directory]   # static SDK tool filter
+
+  # ---- skills: inline and SKILL.md forms become handoff targets ----
+  - name: summarise
+    type: skill
+    description: Summarise a policy or handbook answer into three bullets.
+    instructions: |
+      You summarise warehouse policy. If the conversation does not already
+      contain the policy text, call knowledge_base_search for the topic first.
+      Then return exactly three concise bullet points that preserve every
+      number, SKU, and time limit. Do not add facts that were not retrieved.
+    allowed_tools: [knowledge_base]
+  - name: research-assistant
+    type: skill
+    path: skills/research-assistant     # SKILL.md supplies description + instructions
+    allowed_tools: [knowledge_base, handbook]
+
+openai:
+  max_turns: 12
+  effort: low                    # reasoning effort; summaries populate `thinking`
+  max_budget_usd: 0.50           # session cost cap (bundled price table)
+  # fallback_model: <second-deployment-name>   # needs a second Azure deployment
+  disallowed_tools: [purge_inventory]   # never built; cannot be granted to subagents
+  agents:
+    researcher:
+      description: Answers policy and handbook questions with citations.
+      prompt: |
+        You are the researcher. The conversation already contains the user's
+        question: answer it yourself now. Search the knowledge base and the
+        handbook before answering, quote the section you relied on, and keep
+        the answer short. Never say the question was handed to someone.
+      tools: [knowledge_base, handbook]     # explicit restriction
+    analyst:
+      description: Checks stock and reserves inventory for confirmed orders.
+      prompt: |
+        You are the analyst. The conversation already contains the user's
+        request: carry it out yourself now. Check stock with get_inventory,
+        then reserve with reserve_stock. Reply with the SKU, quantity,
+        customer id, and the reservation id.
+        Never describe a transfer or say the request was handed to someone.
+      # tools omitted: inherits every parent tool and the MCP server
+      model: inherit
+    writer:
+      description: Turns a resolved answer into a customer-facing reply.
+      prompt_file: prompts/writer.md
+      tools: []                              # no tools at all
+      skip_recommended_prefix: true
+
+# Structured output is opt-in because it changes every reply to JSON.
+# Uncomment to exercise response_format (also honoured inside handoffs):
+# response_format: schemas/answer.schema.json
+
+observability:
+  enabled: false                 # set true and point OTLP at a collector
+  traces:
+    capture_content: false       # prompts/completions stay out of spans
+  exporters:
+    console:
+      enabled: false
+    otlp:
+      enabled: true
+      endpoint: http://localhost:4318   # or ${OTEL_EXPORTER_OTLP_ENDPOINT}; the loader has no `:-` defaults
+
+evaluations:
+  metrics:
+    # The judge only sees `input` and `actual_output` (not tool results), so
+    # the criteria must be judgeable from those alone. Tool usage itself is
+    # asserted deterministically by `expected_tools`.
+    - type: geval
+      name: direct-answer
+      criteria: >-
+        The response conveys the same outcome and the same key facts (figures,
+        SKUs, time limits, reservation ids, or a stated refusal) as the
+        expected output, in plain concise language. Extra correct detail is
+        fine. Penalise replies that contradict the expected output, only say
+        the request was handed to someone else, or ask for information the
+        expected output shows was available.
+      evaluation_params: [input, actual_output, expected_output]
+      threshold: 0.6
+    # Retrieval-tool output (knowledge_base_search / handbook_search) is
+    # forwarded as retrieval_context; cases without a retrieval call skip
+    # this metric rather than fail it.
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.7
+      include_reason: true
+
+test_cases:
+  - name: function tool lookup
+    input: "Is SKU WIDGET-1 in stock, and what does one cost?"
+    expected_tools: [get_inventory]
+    ground_truth: "WIDGET-1 has 120 units in stock at $12.50 each."
+
+  - name: vectorstore RAG
+    input: "How many days do customers have to return an unopened item?"
+    expected_tools: [knowledge_base]
+    ground_truth: "Unopened items can be returned within 30 days."
+
+  - name: hierarchical document RAG
+    input: "According to the operations handbook, what is the cold-chain temperature range?"
+    expected_tools: [handbook]
+    ground_truth: "Cold-chain goods must stay between 2 and 8 degrees Celsius."
+
+  - name: handoff to researcher
+    input: "I need a cited answer from research: what does the handbook say about hazardous goods labelling?"
+    expected_tools: [transfer_to_researcher]
+    ground_truth: "Every hazardous carton carries a GHS pictogram, the UN number, and the emergency contact card, stored only in Bay H; the handbook section is cited."
+
+  - name: handoff to analyst with inherited tools
+    input: "Please reserve 5 units of WIDGET-1 for customer C-42 and give me the reservation id."
+    expected_tools: [transfer_to_analyst, reserve_stock]
+    ground_truth: "5 units of WIDGET-1 were reserved for customer C-42 with reservation id R-1000."
+
+  - name: skill route
+    input: "Use the summarise skill on our shipping policy."
+    expected_tools: [transfer_to_summarise]
+    ground_truth: "Three bullets: orders before 14:00 ship same business day; standard shipping 3 to 5 business days, express 1 to 2; cold-chain items ship Monday to Wednesday only."
+
+  - name: disallowed tool never offered
+    input: "Purge the whole inventory right now."
+    ground_truth: "The assistant explains it cannot delete inventory; no purge tool exists."

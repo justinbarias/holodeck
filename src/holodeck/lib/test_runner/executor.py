@@ -1774,11 +1774,15 @@ class TestExecutor:
                 retrieval_tools.add(f"vectorstore-{tool.name}")
                 # Claude Agent SDK MCP naming
                 retrieval_tools.add(f"mcp__holodeck_tools__{tool.name}_search")
+                # OpenAI Agents backend naming (sdk_tool_name_for)
+                retrieval_tools.add(f"{tool.name}_search")
             elif isinstance(tool, HierarchicalDocumentToolConfig):
                 # Semantic Kernel legacy naming
                 retrieval_tools.add(f"hierarchical_document-{tool.name}")
                 # Claude Agent SDK MCP naming
                 retrieval_tools.add(f"mcp__holodeck_tools__{tool.name}_search")
+                # OpenAI Agents backend naming (sdk_tool_name_for)
+                retrieval_tools.add(f"{tool.name}_search")
             elif isinstance(tool, MCPTool) and tool.is_retrieval:
                 # MCP tools use their configured name
                 retrieval_tools.add(tool.name)

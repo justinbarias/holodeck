@@ -30,7 +30,7 @@ Repository paths in this register are relative to the repository root.
 | A1–A3 | Implemented | `models/openai_config.py`, `models/agent.py`, `schemas/agent.schema.json`, backend `_max_turns` / `_build_run_config`, and `validators.validate_openai_agents`; covered in `test_openai_config.py`, `test_openai_agents_backend.py`, `test_validators.py`. Serve sizing remains I1. |
 | B1 | Implemented; live acceptance open | `openai_agents_tool_adapters.py` and backend RAG initialization; adapter/backend unit tests cover searches, prompt warning, and embedding validation. Grounded live RAG and tool-init endpoint acceptance remain open. |
 | C1 | Implemented | `openai_agents_mcp.py` and `test_openai_agents_mcp.py` cover transport construction, substitution, WebSocket warning, and static filtering; backend tests cover connection/cleanup. |
-| D1–D3 | Pending | `OpenAIConfig` has no `agents`; no OpenAI subagent adapter or `SkillTool` model exists. Handoff and AG-UI acceptance remain open. |
+| D1–D3 | Implemented (T3, 2026-09-06) | `models/openai_config.py` (`agents`), `models/tool.py` (`SkillTool`), `lib/skills.py`, `openai_agents_subagents.py`, `openai_agents_events.py`, session `tool_events`; schema regenerated. Fixture-level handoff acceptance through the real Runner in `test_openai_agents_events.py`; live handoff remains T10. |
 | E1–E2 | Pending | `OpenAIConfig` has no `hooks`; no OpenAI YAML hook or guardrail module exists. Budget hooks are implemented, but are not YAML hooks. |
 | F1–F3 | Implemented | Model settings, permission filtering, `openai_agents_cost.py`, and their unit tests exist. Backend catches budget exceptions into error results with partial output. Hosted filtering remains dependent on G1. |
 | F4 | Partial; acceptance reopened | `openai_agents_fallback.py` and its unit tests cover one fallback on 429/5xx and no stream restart after the first event. Tests call the wrapper directly: SDK Runner retry exhaustion and both-attempt trace acceptance are not demonstrated. The wrapper catches primary errors internally, so the claimed Runner-retries-first ordering requires validation and potentially a fix. |
@@ -369,9 +369,9 @@ SDK `Agent(name, instructions, handoff_description, tools, model)` and set the p
 Handoff-history shaping (`handoff_input_filter`, `nest_handoff_history`) stays at SDK defaults in
 v1 (documented).
 **Acceptance criteria:**
-- [ ] Three subagents become three `Agent`s on `handoffs`; prefix prepended.
-- [ ] `model: sonnet|opus|haiku` fails load; `inherit` uses the parent model; arbitrary id allowed.
-- [ ] A subagent with no `tools` inherits the parent's resolved tools.
+- [x] Three subagents become three `Agent`s on `handoffs`; prefix prepended.
+- [x] `model: sonnet|opus|haiku` fails load; `inherit` uses the parent model; arbitrary id allowed.
+- [x] A subagent with no `tools` inherits the parent's resolved tools.
 **Verification:** `tests/unit/lib/backends/test_openai_agents_subagents.py`.
 **Dependencies:** A1, B1, C1 (tool resolution must exist to inherit)
 **Files:** `src/holodeck/models/openai_config.py`,
@@ -388,9 +388,9 @@ reconciliations). First add `SkillTool` to `models/tool.py` + `ToolUnion` (+ sch
 restated in spec-035 FR-070. Then translate it into a handoff-target `Agent` (same machinery as
 D1). `allowed_tools` restricts the skill agent's tool scope.
 **Acceptance criteria:**
-- [ ] `SkillTool` validates in YAML (inline + file-based); schema regenerated.
-- [ ] Inline and file-based skills each become a handoff `Agent` with matching instructions.
-- [ ] `allowed_tools` scopes the skill agent's tools.
+- [x] `SkillTool` validates in YAML (inline + file-based); schema regenerated.
+- [x] Inline and file-based skills each become a handoff `Agent` with matching instructions.
+- [x] `allowed_tools` scopes the skill agent's tools.
 **Verification:** `tests/unit/models/test_tool.py` (SkillTool validation);
 `tests/unit/lib/backends/test_openai_agents_tool_adapters.py` (skill happy paths).
 **Dependencies:** D1
@@ -405,15 +405,15 @@ D1). `allowed_tools` restricts the skill agent's tool scope.
 `parent_link` `ToolEvent`s so the AG-UI panel renders handoffs identically to Claude. Push events
 onto the serve `tool_event_queue` when present (real-time path); fall back to post-hoc otherwise.
 **Acceptance criteria:**
-- [ ] A handoff run emits `subagent_message` + `parent_link` events (mocked stream).
-- [ ] `agui.py` consumes them with no protocol change.
+- [x] A handoff run emits `subagent_message` + `parent_link` events (scripted-model Runner stream and post-hoc).
+- [x] `agui.py` consumes them with no protocol change (same `ToolEvent` kinds; HTTP-level check is T7).
 **Verification:** `tests/unit/serve/` or `test_openai_agents_subagents.py` event-shape test.
 **Dependencies:** D1
 **Files:** `src/holodeck/lib/backends/openai_agents_backend.py`
 **Scope:** S
 
 ### Checkpoint D — Handoffs + skills
-- [ ] A multi-agent handoff scenario runs; skill tool routes; AG-UI shows subagent events. Suite green.
+- [x] A multi-agent handoff scenario runs (scripted fixture); skill tool routes; subagent events emitted. Suite green. Live handoff: T10.
 
 ---
 

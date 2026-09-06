@@ -23,7 +23,7 @@ from holodeck.models.llm import LLMProvider
 from holodeck.models.observability import ObservabilityConfig
 from holodeck.models.openai_config import OpenAIConfig
 from holodeck.models.test_case import TestCaseModel
-from holodeck.models.tool import ToolUnion
+from holodeck.models.tool import SkillTool, ToolUnion
 
 
 class Instructions(BaseModel):
@@ -189,5 +189,34 @@ class Agent(BaseModel):
             raise ValueError(
                 f"Duplicate tool names found: {', '.join(duplicates)}. "
                 "Each tool must have a unique name."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_skill_allowed_tools(self) -> Self:
+        """Validate every skill ``allowed_tools`` entry names a parent tool.
+
+        A skill may only be scoped to tools declared on this agent, and never
+        to another skill (spec 023 FR-024). Unknown names fail load with the
+        offending names listed.
+
+        Raises:
+            ValueError: If an ``allowed_tools`` entry is not a non-skill tool
+                name on this agent.
+        """
+        if not self.tools:
+            return self
+        scopable = {t.name for t in self.tools if not isinstance(t, SkillTool)}
+        problems: list[str] = []
+        for tool in self.tools:
+            if not isinstance(tool, SkillTool) or not tool.allowed_tools:
+                continue
+            unknown = sorted(n for n in tool.allowed_tools if n not in scopable)
+            if unknown:
+                problems.append(f"skill '{tool.name}': {', '.join(unknown)}")
+        if problems:
+            raise ValueError(
+                "allowed_tools entries must name non-skill tools declared on this "
+                f"agent; unknown: {'; '.join(problems)}"
             )
         return self

@@ -14,6 +14,8 @@ extra is not installed (SC-005).
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -28,6 +30,7 @@ from holodeck.lib.backends.base import (
     BackendInitError,
     BackendSessionError,
     ExecutionResult,
+    ToolEvent,
 )
 from holodeck.models.agent import Agent
 from holodeck.models.llm import LLMProvider, ProviderEnum
@@ -46,6 +49,9 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
     from holodeck.lib.backends.openai_agents_tracing import TracingPolicy
 
 logger = logging.getLogger(__name__)
+
+# Upper bound on buffered tool events per session (see OpenAIAgentsSession).
+_TOOL_EVENT_QUEUE_MAXSIZE = 1000
 
 
 def _tracing_enabled(agent: Agent) -> bool:
@@ -323,6 +329,37 @@ def _build_model(agent: Agent) -> str | OpenAIResponsesModel | Model:
     return build_fallback_model(primary, fallback)
 
 
+def _resolve_subagent_model(agent: Agent, name: str) -> str | Model:
+    """Return the SDK ``model=`` value for a subagent's explicit model *name*.
+
+    For ``provider: openai`` the identifier string is returned and the SDK's
+    default Responses client (already keyed by ``_build_model``) serves it.
+    For ``provider: azure_openai`` *name* is a deployment on the parent's
+    endpoint, so it is wrapped in an ``OpenAIResponsesModel`` bound to a
+    client built from the same credentials. ``openai.fallback_model`` applies
+    to the entry agent only; subagents with an explicit model get no fallback
+    wrapper (``model: inherit`` reuses the parent's wrapped model as-is).
+
+    Args:
+        agent: The parent agent configuration (selects provider/credentials).
+        name: The subagent's ``model`` value (not ``inherit``).
+
+    Returns:
+        A model-name string (OpenAI) or an ``OpenAIResponsesModel`` (Azure).
+    """
+    if agent.model.provider == ProviderEnum.OPENAI:
+        return name
+    api_key, endpoint = _preflight_credentials(agent)
+    if endpoint is None:  # pragma: no cover - preflight guarantees non-None
+        raise BackendInitError(
+            "AZURE_OPENAI_ENDPOINT is required for provider 'azure_openai'."
+        )
+    from agents import OpenAIResponsesModel
+
+    client = _build_azure_client(api_key, endpoint, agent.model.api_version)
+    return OpenAIResponsesModel(model=name, openai_client=client)
+
+
 def _max_turns(agent: Agent) -> int:
     """Return the configured ``max_turns`` for *agent* (default 20 when unset)."""
     if agent.openai is not None:
@@ -573,7 +610,12 @@ def _to_execution_result(
     Returns:
         A populated ``ExecutionResult``.
     """
-    from agents.items import ToolCallItem, ToolCallOutputItem
+    from agents.items import (
+        HandoffCallItem,
+        HandoffOutputItem,
+        ToolCallItem,
+        ToolCallOutputItem,
+    )
 
     final = result.final_output
     structured_output = _coerce_structured_output(final) if structured else None
@@ -594,7 +636,9 @@ def _to_execution_result(
     call_name_by_id: dict[str, str] = {}
 
     for item in result.new_items:
-        if isinstance(item, ToolCallItem):
+        if isinstance(item, ToolCallItem | HandoffCallItem):
+            # Handoff calls (``transfer_to_<agent>``) are recorded alongside
+            # ordinary tool calls so graders can assert a handoff happened.
             raw = item.raw_item
             name = str(getattr(raw, "name", "") or "")
             call_id = str(getattr(raw, "call_id", "") or "")
@@ -615,6 +659,19 @@ def _to_execution_result(
                 {
                     "name": name,
                     "result": str(item.output),
+                    "call_id": call_id,
+                }
+            )
+        elif isinstance(item, HandoffOutputItem):
+            raw_handoff = item.raw_item
+            call_id = ""
+            if isinstance(raw_handoff, dict):
+                call_id = str(raw_handoff.get("call_id", "") or "")
+            target = str(getattr(item.target_agent, "name", "") or "")
+            tool_results.append(
+                {
+                    "name": call_name_by_id.get(call_id, ""),
+                    "result": f"handoff:{target}",
                     "call_id": call_id,
                 }
             )
@@ -715,6 +772,24 @@ class OpenAIAgentsSession:
         self._structured_output = structured_output
         # One accountant shared across the session's turns (FR-032).
         self._accountant: Any | None = None
+        # Real-time tool / handoff / thinking events (FR-006), drained by the
+        # chat tools panel and the AG-UI bridge via ``tool_events``. Bounded so
+        # a consumer-less session (``holodeck test``) cannot grow it without
+        # limit; on overflow the newest event is dropped (best-effort UI feed).
+        self._tool_event_queue: asyncio.Queue[ToolEvent] = asyncio.Queue(
+            maxsize=_TOOL_EVENT_QUEUE_MAXSIZE
+        )
+
+    @property
+    def tool_events(self) -> asyncio.Queue[ToolEvent]:
+        """Queue of ``ToolEvent`` records emitted during this session's turns."""
+        return self._tool_event_queue
+
+    def _publish(self, events: list[ToolEvent]) -> None:
+        """Push *events* onto the queue; never block on a full queue."""
+        for event in events:
+            with contextlib.suppress(asyncio.QueueFull):
+                self._tool_event_queue.put_nowait(event)
 
     def _run_config(self) -> RunConfig | None:
         """Build the session ``RunConfig`` (carrying ``group_id``), or ``None``."""
@@ -776,11 +851,24 @@ class OpenAIAgentsSession:
         except BackendBudgetExceededError as exc:
             return _budget_error_result(exc)
         except Exception as exc:  # noqa: BLE001 - surfaced via ExecutionResult
+            logger.warning(
+                "OpenAI Agents run failed: %s: %s",
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
             return ExecutionResult(
                 response="",
                 is_error=True,
                 error_reason=f"{type(exc).__name__}: {exc}",
             )
+        # Non-streaming runs have no live stream; reconstruct the ordered
+        # tool / handoff events from the completed run's items (FR-006).
+        from holodeck.lib.backends.openai_agents_events import (
+            tool_events_for_run_items,
+        )
+
+        self._publish(tool_events_for_run_items(list(result.new_items)))
         return _to_execution_result(result, structured=self._structured_output)
 
     async def send_streaming(self, message: str) -> AsyncGenerator[str, None]:
@@ -800,8 +888,13 @@ class OpenAIAgentsSession:
         from agents import Runner
         from openai.types.responses import ResponseTextDeltaEvent
 
+        from holodeck.lib.backends.openai_agents_events import (
+            HandoffTracker,
+            tool_events_for_stream_event,
+        )
         from holodeck.lib.backends.openai_agents_tracing import active_tracing_policy
 
+        tracker = HandoffTracker()
         # The streamed run executes on a task created inside this scope, so it
         # inherits the policy id for spans opened outside HoloDeck's RunConfig.
         with active_tracing_policy(self._tracing_policy_id):
@@ -816,14 +909,26 @@ class OpenAIAgentsSession:
         try:
             async for event in result.stream_events():
                 if event.type != "raw_response_event":
+                    # Tool, handoff, and reasoning items feed the event queue
+                    # in SDK order (FR-006); only text deltas are yielded.
+                    self._publish(tool_events_for_stream_event(event, tracker))
                     continue
                 data = event.data
                 if isinstance(data, ResponseTextDeltaEvent) and data.delta:
                     yield data.delta
-        except BackendBudgetExceededError:
+        except BackendBudgetExceededError as exc:
             # The budget tripped mid-stream; the deltas produced so far have
             # already been yielded, so end the stream gracefully (FR-032).
+            # Open tool / handoff entries are closed as errors so the panel
+            # does not show them running forever.
+            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
             return
+        except BaseException as exc:
+            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
+            raise
+        # Handoffs stay "active" until the run ends (the target agent keeps
+        # the conversation), so their ``end`` events are emitted here.
+        self._publish(tracker.close())
 
     async def close(self) -> None:
         """Release the SQLite session connection, if any."""
@@ -928,12 +1033,36 @@ class OpenAIAgentsBackend:
         output_type = build_output_schema(schema) if schema is not None else None
         self._has_structured_output = output_type is not None
 
+        # FR-060 / FR-070: subagents and skills become handoff targets sharing
+        # the parent's built tool surface (inherit-all or explicit subsets),
+        # output type, and model settings.
+        from holodeck.lib.backends.openai_agents_subagents import (
+            build_handoff_agents,
+            index_parent_tools,
+        )
+
+        agent_cfg = self._agent_config
+        handoffs: list[Any] = build_handoff_agents(
+            agent_cfg,
+            parent_model=model,
+            parent_model_settings=model_settings,
+            surface=index_parent_tools(agent_cfg.tools, tools, mcp_servers),
+            base_dir=base_dir,
+            resolve_model=lambda name: _resolve_subagent_model(agent_cfg, name),
+            resolve_model_settings=lambda name: _build_model_settings(
+                agent_cfg.model.model_copy(update={"name": name}), agent_cfg.openai
+            ),
+            output_type=output_type,
+            disallowed=disallowed,
+        )
+
         self._sdk_agent = SDKAgent(
             name=self._agent_config.name,
             instructions=instructions,
             model=model,
             tools=tools,
             mcp_servers=mcp_servers,
+            handoffs=handoffs,
             model_settings=model_settings,
             output_type=output_type,
         )

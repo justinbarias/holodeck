@@ -165,6 +165,7 @@ The `thinking` field is populated from a reasoning model's **summaries**, which 
 | `function` | Python callables (sync or async) wrapped as SDK function tools. |
 | `vectorstore` | Wraps the tool's `.search()`; surfaced to the model as `{name}_search`. Requires an `embedding_provider`. |
 | `hierarchical_document` | Same wrapping pattern; surfaced as `{name}_search`. Requires an `embedding_provider`. |
+| `skill` | Becomes a handoff-target sub-agent scoped to its `allowed_tools`; see [Skills](#skills). |
 
 The `{name}_search` naming keeps `disallowed_tools` portable across backends. For RAG configuration depth (chunking, hybrid search, databases), see [Tools](tools.md) and [Vector Stores](vector-stores.md) rather than duplicating it here.
 
@@ -180,6 +181,62 @@ MCP tools map onto the SDK's MCP server classes by transport:
 | `websocket` | **Skipped with a warning** — the SDK has no WebSocket transport. The load does **not** fail. |
 
 A per-server `allowed_tools` list becomes a static SDK tool filter (only the listed MCP tools are exposed). See [MCP CLI](mcp-cli.md) for transport configuration.
+
+## Subagents (handoffs)
+
+Declare handoff targets under `openai.agents`. Each entry becomes an SDK `Agent` on the parent's `handoffs`, exposed to the parent model as a `transfer_to_<name>` tool:
+
+```yaml
+openai:
+  agents:
+    researcher:
+      description: Finds and cites sources        # shown to the parent for routing
+      prompt: You research questions thoroughly.  # or prompt_file: prompts/researcher.md
+      tools: [search_kb]                          # parent tool names; omit to inherit all
+      model: inherit                              # default; or any OpenAI model id / Azure deployment
+    writer:
+      description: Drafts the final answer
+      prompt_file: prompts/writer.md
+      skip_recommended_prefix: true
+```
+
+| Field | Behaviour |
+|-------|-----------|
+| `description` | Required. The SDK `handoff_description` the parent model routes on. |
+| `prompt` / `prompt_file` | Exactly one. `prompt_file` is resolved relative to `agent.yaml` and inlined at load. |
+| `tools` | Omitted or `null`: the subagent inherits **every** parent tool and MCP server. A list restricts it to those parent tools, named as written under the parent's `tools:` (so `search_kb`, not `search_kb_search`). A name that matches no parent tool fails load. An empty list grants nothing. |
+| `model` | `inherit` (default) reuses the parent's model object, including any `fallback_model` wrapper. Any other string is passed to the SDK as a model identifier (an Azure deployment on the same endpoint for `azure_openai`) with no fallback wrapper. The Claude aliases `sonnet`, `opus`, and `haiku` fail load. |
+| `skip_recommended_prefix` | By default the SDK's `RECOMMENDED_PROMPT_PREFIX` (from `agents.extensions.handoff_prompt`) is prepended once to the subagent's instructions so it knows it is part of a handoff system. Set `true` to use the prompt verbatim. |
+
+Handoff-history shaping (`handoff_input_filter`, `nest_handoff_history`) stays at SDK defaults. `claude.agents` is Claude-only and is not read by this backend.
+
+**Events.** A handoff surfaces on the same `ToolEvent` stream the Claude backend uses, so `holodeck chat` and the AG-UI tools panel render it without protocol changes: `start` for the `transfer_to_<name>` call, a `subagent_message` announcing the new active agent, `parent_link` for every tool the subagent calls (so the panel nests them), `subagent_message` snapshots of the subagent's text, and finally `end` for the handoff when the run finishes (the target agent owns the conversation until then, like a Claude `Task`). Ordinary tool `start`/`end` and reasoning `thinking` events are emitted on this backend too. Streaming turns emit events live; non-streaming turns emit the same ordered list after the run completes. If the run fails mid-stream, every still-open tool call and handoff is closed with an `error` event carrying the failure. A local tool that raises inside the SDK loop is reported as an `end` event carrying the SDK's error text (the SDK converts the exception into a model-visible string). The per-session event queue is bounded (1000 entries); when nothing drains it, newer events are dropped rather than growing memory.
+
+Subagents also inherit the parent's `response_format` output type and, for `model: inherit`, the parent's model settings; an explicit `model` gets settings rebuilt for that model (reasoning-model rules apply per model). Two parent tools may not share an SDK tool name (a vectorstore `kb` and a function `kb_search` collide) and two handoff targets may not normalise to the same `transfer_to_` tool (`research_assistant` and `research-assistant` collide); both fail load.
+
+A complete, runnable configuration that exercises every surface on this page (function, RAG, MCP, subagents, skills, effort, budget, fallback, tracing, tests) lives in [`sample/openai-agents-full`](https://github.com/justinbarias/holodeck/tree/main/sample/openai-agents-full).
+
+## Skills
+
+`type: skill` tools are scoped sub-agents following the [Agent Skills specification](https://agentskills.io/specification). On this backend a skill becomes a handoff target exactly like a subagent, with two differences: its instructions are used verbatim (no recommended prefix) and it always inherits the parent's model.
+
+```yaml
+tools:
+  - name: summarise            # lowercase, hyphen-separated (Agent Skills naming)
+    type: skill
+    description: Summarise a document in three bullets
+    instructions: |
+      Read the provided text and return three bullet points.
+    allowed_tools: [search_kb]  # parent tool names; omit for no tools
+  - name: research-assistant
+    type: skill
+    path: skills/research-assistant   # directory containing SKILL.md
+    allowed_tools: [search_kb]
+```
+
+A file-based skill's `SKILL.md` must start with a `---` YAML frontmatter block containing `name` and `description`; the Markdown body becomes the instructions. `description` may be omitted in YAML and falls back to the frontmatter. The file is validated when the config loads, so a missing directory, missing `SKILL.md`, or missing frontmatter field fails `holodeck` before any provider call. The SKILL.md `allowed-tools` key is **not** merged: tool scope comes only from the YAML `allowed_tools`, which must name non-skill tools declared on the parent. A skill name that matches an `openai.agents` key fails load (both would produce the same `transfer_to_` tool). See [Tools](tools.md#skill-tools) for the field reference.
+
+`claude.setting_sources` is accepted for portability but has no effect here; loading such an agent on this backend logs `setting_sources is a Claude-only concept; ignored on openai.` No ambient skill discovery happens (tracked as H-020).
 
 ## Tracing
 
@@ -207,6 +264,8 @@ Shipped surface only, OpenAI vs Claude:
 | Function tools | ✓ | ✓ |
 | RAG (vectorstore / hierarchical_document) | ✓ | ✓ |
 | MCP stdio / sse / http | ✓ | ✓ |
+| Subagents / handoffs | ✓ (`openai.agents`) | ✓ (`claude.agents`) |
+| Skills (`type: skill`) | ✓ (handoff target) | ✗ (not yet adapted) |
 | Structured output | ✓ (use `anyOf`, not `oneOf`) | ✓ |
 | Reasoning / `thinking` | ✓ | ✓ |
 | `effort` / `max_budget_usd` / `fallback_model` | ✓ (via `openai:`) | — |
@@ -221,7 +280,6 @@ use `holodeck chat` and `holodeck test` for now.
 
 The following are **not yet available** on this backend — they are roadmap, not shipped:
 
-- **Subagents / handoffs** — a multi-agent `openai.agents` block.
 - **YAML hooks** — user-defined `openai.hooks`.
 - **Hosted tools** — web search, code interpreter, file search, image generation, hosted MCP (this is what `i_understand_this_is_unsafe` gates).
 - **`holodeck serve` & `holodeck deploy`** — running this backend as a REST/AG-UI server or deploying it to a container platform is not yet wired. (Both are fully supported on the [Claude backend](claude-backend.md).) The `max_concurrent_sessions` / `session_memory_estimate_mib` knobs are accepted in config ahead of that work but are not yet enforced.

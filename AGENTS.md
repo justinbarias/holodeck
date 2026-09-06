@@ -76,6 +76,16 @@ Avoid tests that repeat implementation details and repeated broad checks after f
 Broaden verification for shared contracts, failures, or unresolved risks. Preserve required CI and commit checks.
 Report unavailable dependencies or unrelated failures explicitly. Never claim an unrun check passed.
 
+### Live validation loop for backend or serve changes
+
+Unit gates miss backend-binding and protocol defects; run this loop with real credentials before closing a backend task.
+
+1. Run a live sample: `cd sample/<sample> && uv run holodeck test run agent.yaml` (all cases, tool assertions and metrics).
+2. Validate through `holodeck serve` with raw AG-UI requests: `POST /awp` with `curl -N`, two threads, at least two turns per thread, and inspect the SSE events (`RUN_*`, `TOOL_CALL_*`, `TEXT_MESSAGE_*`, `RUN_ERROR`) plus the server log.
+3. Finish with user-driven validation in a CopilotKit browser flow (`sample/copilotkit`, `HOLODECK_BACKEND_URL` at the serve `/awp` endpoint) and share what the UI showed.
+
+Record each step's evidence in the feature's exec plan and acceptance matrix.
+
 ## Keep the harness current
 
 Keep this file at most 100 lines. Put detailed guidance in its mapped document.

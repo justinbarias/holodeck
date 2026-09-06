@@ -1483,7 +1483,7 @@ class TestAGUIProtocolErrorMapping:
         When agent_executor.execute_turn raises BackendSessionError, the
         handle_request generator should catch it and yield an encoded
         RunErrorEvent with the message
-        "Claude Agent SDK subprocess terminated unexpectedly."
+        "Backend session terminated unexpectedly."
         """
         from unittest.mock import AsyncMock, MagicMock
 
@@ -1525,7 +1525,7 @@ class TestAGUIProtocolErrorMapping:
         all_content = b"".join(events).decode("utf-8")
 
         # Must contain the specific error message from the BackendSessionError handler
-        assert "Claude Agent SDK subprocess terminated unexpectedly" in all_content
+        assert "Backend session terminated unexpectedly" in all_content
         # Must be a RUN_ERROR event type
         assert "RUN_ERROR" in all_content or "run_error" in all_content.lower()
 
@@ -1650,7 +1650,7 @@ class TestAGUIProtocolErrorMapping:
         all_content = b"".join(events).decode("utf-8")
 
         # The event stream should contain the sanitised message
-        assert "Claude Agent SDK subprocess terminated unexpectedly." in all_content
+        assert "Backend session terminated unexpectedly." in all_content
 
         # The raw exception message ("subprocess crashed") must NOT leak
         assert "subprocess crashed" not in all_content
