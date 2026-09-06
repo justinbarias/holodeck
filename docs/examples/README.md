@@ -17,6 +17,10 @@ Each sample ships for **OpenAI**, **Azure OpenAI**, and **Anthropic (Claude)**, 
 | [Legal Assistant](https://github.com/justinbarias/holodeck-samples/tree/main/legal-assistant) | Hierarchical document search, hybrid search, structured citations |
 | [Financial Assistant](https://github.com/justinbarias/holodeck-samples/tree/main/financial-assistant) | Hierarchical document search, Qdrant native hybrid search, code graders, multi-turn test cases |
 
+## In-repo sample
+
+[`sample/openai-agents-full`](https://github.com/justinbarias/holodeck/tree/main/sample/openai-agents-full) is a single agent that exercises every shipped OpenAI Agents backend capability: function tools, vectorstore and hierarchical-document RAG, an MCP server, subagents (handoffs), inline and SKILL.md skills, disallowed tools, reasoning effort, budget cap, fallback model, tracing, and tool-asserting test cases. See its README for the run commands.
+
 ## Run one
 
 ```bash

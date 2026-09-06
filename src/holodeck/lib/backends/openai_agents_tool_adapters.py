@@ -11,7 +11,9 @@ Supported types: function, vectorstore, and hierarchical_document tools (the
 last two wrap the same initialized ``.search()`` instances the Claude adapter
 uses, supplied via ``tool_instances``). ``type: mcp`` tools are skipped here —
 they become SDK ``mcp_servers`` built separately by
-:mod:`holodeck.lib.backends.openai_agents_mcp`. ``type: prompt`` tools are
+:mod:`holodeck.lib.backends.openai_agents_mcp`. ``type: skill`` tools are
+likewise skipped — they become handoff-target agents built by
+:mod:`holodeck.lib.backends.openai_agents_subagents`. ``type: prompt`` tools are
 skipped with a warning — no backend has a runtime adapter for them. Any other
 tool type raises :class:`ConfigError` naming the unsupported type, so
 misconfigured agents fail fast rather than silently dropping tools.
@@ -39,6 +41,7 @@ from holodeck.models.tool import (
     HierarchicalDocumentToolConfig,
     MCPTool,
     PromptTool,
+    SkillTool,
     ToolUnion,
     VectorstoreTool,
 )
@@ -254,14 +257,18 @@ def build_sdk_tools(
     Raises:
         BackendInitError: If a vectorstore / hierarchical-document tool has no
             matching initialized instance.
-        ConfigError: If a tool type is unsupported on this backend, or a function
-            tool fails to load.
+        ConfigError: If a tool type is unsupported on this backend, a function
+            tool fails to load, or two configs would surface under the same
+            SDK tool name (for example vectorstore ``kb`` and function
+            ``kb_search``), which would make tool grants and disallow lists
+            ambiguous.
     """
     from agents import FunctionTool as SDKFunctionTool
 
     blocked = disallowed or set()
     instances = tool_instances or {}
     tools: list[SDKTool] = []
+    _reject_sdk_name_collisions(tool_configs)
     for cfg in tool_configs or []:
         if cfg.name in blocked:
             # Filter on the config name, before building, so a disallowed
@@ -307,6 +314,11 @@ def build_sdk_tools(
             # ``openai_agents_mcp.build_mcp_servers``), not ``FunctionTool``s, so
             # they are skipped here rather than wrapped.
             continue
+        elif isinstance(cfg, SkillTool):
+            # Skills become handoff-target Agents (built by
+            # ``openai_agents_subagents.build_handoff_agents``), not
+            # ``FunctionTool``s, so they are skipped here.
+            continue
         elif isinstance(cfg, PromptTool):
             logger.warning(
                 "Tool '%s' (type: prompt) has no runtime adapter on any backend; "
@@ -322,6 +334,51 @@ def build_sdk_tools(
             )
 
     return tools
+
+
+def sdk_tool_name_for(cfg: ToolUnion) -> str | None:
+    """Return the SDK tool name a HoloDeck tool config is surfaced under.
+
+    Function tools keep their config name; vectorstore and
+    hierarchical-document tools are surfaced as ``{name}_search``. MCP,
+    prompt, and skill configs produce no SDK ``FunctionTool`` and return
+    ``None``.
+
+    Args:
+        cfg: A tool config from the parent's ``tools:`` list.
+
+    Returns:
+        The SDK tool name, or ``None`` for types with no function tool.
+    """
+    if isinstance(cfg, FunctionTool):
+        return cfg.name
+    if isinstance(cfg, VectorstoreTool | HierarchicalDocumentToolConfig):
+        return f"{cfg.name}_search"
+    return None
+
+
+def _reject_sdk_name_collisions(tool_configs: list[ToolUnion] | None) -> None:
+    """Fail when two configs map to one SDK tool name (before any filtering).
+
+    Args:
+        tool_configs: The agent's ``tools:`` list.
+
+    Raises:
+        ConfigError: Naming both config entries and the shared SDK name.
+    """
+    owners: dict[str, str] = {}
+    for cfg in tool_configs or []:
+        sdk_name = sdk_tool_name_for(cfg)
+        if sdk_name is None:
+            continue
+        if sdk_name in owners:
+            raise ConfigError(
+                f"tools.{cfg.name}",
+                f"tool '{cfg.name}' ({cfg.type}) and tool '{owners[sdk_name]}' "
+                f"both surface as SDK tool '{sdk_name}' on the openai_agents "
+                "backend; rename one of them.",
+            )
+        owners[sdk_name] = cfg.name
 
 
 def _require_instance(

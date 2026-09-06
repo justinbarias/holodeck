@@ -28,10 +28,10 @@ paths, coverage, and deviations. This register supersedes earlier “suite green
 - [x] C1 — stdio/sse/http → `agents.mcp.*`; websocket skip; `create_static_tool_filter` (note: SDK-built FunctionTools — no guardrail/wrapper attachment)  · M
 
 ## Phase D — Subagents + skills (handoffs)
-- [ ] D1 — `openai.agents` → SDK sub-Agents + `handoffs` + `RECOMMENDED_PROMPT_PREFIX` + model-literal validation  · M
-- [ ] D2 — **net-new `SkillTool` model** (+ ToolUnion + schema regen) → handoff target (inline + SKILL.md)  · M
-- [ ] D3 — handoff `ToolEvent`s (`subagent_message`/`parent_link`) for AG-UI  · S
-- [ ] **Checkpoint D** — handoff scenario + skill route; AG-UI shows subagent events
+- [x] D1 — `openai.agents` → SDK sub-Agents + `handoffs` + `RECOMMENDED_PROMPT_PREFIX` + model-literal validation  · M
+- [x] D2 — **net-new `SkillTool` model** (+ ToolUnion + schema regen) → handoff target (inline + SKILL.md)  · M
+- [x] D3 — handoff `ToolEvent`s (`subagent_message`/`parent_link`) for AG-UI  · S
+- [x] **Checkpoint D** — handoff scenario + skill route; AG-UI shows subagent events
 
 ## Phase E — YAML hooks (spec 028)
 - [ ] E1 — `openai.hooks` model + log/notify/script observation; failure path = adapter wrapper catches + returns error string (no SDK default for directly built tools); unreachable-matcher warnings; chain ordering  · M

@@ -44,6 +44,7 @@ metrics/*
 # samples folder (temporal-hardship ships with the docs quickstart)
 /sample/*
 !/sample/temporal-hardship/
+!/sample/openai-agents-full/
 report.md
 
 # Git worktrees

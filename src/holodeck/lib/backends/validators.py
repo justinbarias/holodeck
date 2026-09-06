@@ -21,6 +21,12 @@ from holodeck.models.tool import HierarchicalDocumentToolConfig, VectorstoreTool
 
 logger = logging.getLogger(__name__)
 
+# FR-071: exact load-time warning text for ``claude.setting_sources`` on the
+# openai_agents backend.
+SETTING_SOURCES_IGNORED_WARNING = (
+    "setting_sources is a Claude-only concept; ignored on openai."
+)
+
 _BEDROCK_REGION_ENV_CANDIDATES = ("AWS_REGION", "AWS_DEFAULT_REGION")
 _VERTEX_PROJECT_ENV_CANDIDATES = (
     "ANTHROPIC_VERTEX_PROJECT_ID",
@@ -352,6 +358,13 @@ def validate_openai_agents(agent: Agent) -> None:
                 f"{', '.join(conflict)}. A tool cannot be both allowed and "
                 "disallowed."
             )
+
+    # FR-071: ``claude.setting_sources`` is accepted for cross-backend
+    # portability but has no effect here — no ambient skill/settings discovery
+    # happens on this backend (H-020). Logged once per backend load (this
+    # validator runs once per ``initialize()``) so the omission is visible.
+    if agent.claude is not None and agent.claude.setting_sources is not None:
+        logger.warning(SETTING_SOURCES_IGNORED_WARNING)
 
     if errors:
         raise ConfigError("openai", " ".join(errors))

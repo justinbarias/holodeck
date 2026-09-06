@@ -40,6 +40,7 @@ from holodeck.models.tool import (
     FunctionTool,
     MCPTool,
     PromptTool,
+    SkillTool,
     Tool,
     ToolUnion,
     VectorstoreTool,
@@ -85,6 +86,7 @@ __all__: list[str] = [
     "FunctionTool",
     "MCPTool",
     "PromptTool",
+    "SkillTool",
     # Tool execution
     "ToolExecution",
     "ToolStatus",

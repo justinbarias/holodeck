@@ -668,3 +668,43 @@ class TestValidateOpenAIAgents:
             validate_openai_agents(self._openai_agent())
         set_key.assert_not_called()
         disable_tracing.assert_not_called()
+
+
+@pytest.mark.unit
+class TestSettingSourcesWarning:
+    """FR-071 — ``claude.setting_sources`` is accepted but warned on openai."""
+
+    def _agent(self, **claude: object) -> Agent:
+        return Agent(
+            name="a",
+            model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o"),
+            instructions=Instructions(inline="hi"),
+            claude=claude or None,
+        )
+
+    def test_warns_when_setting_sources_declared(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from holodeck.lib.backends.validators import SETTING_SOURCES_IGNORED_WARNING
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        with caplog.at_level(
+            logging.WARNING, logger="holodeck.lib.backends.validators"
+        ):
+            validate_openai_agents(self._agent(setting_sources=["project"]))
+        messages = [r.getMessage() for r in caplog.records]
+        assert messages.count(SETTING_SOURCES_IGNORED_WARNING) == 1
+        assert (
+            SETTING_SOURCES_IGNORED_WARNING
+            == "setting_sources is a Claude-only concept; ignored on openai."
+        )
+
+    def test_silent_without_setting_sources(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        with caplog.at_level(
+            logging.WARNING, logger="holodeck.lib.backends.validators"
+        ):
+            validate_openai_agents(self._agent())
+        assert not [r for r in caplog.records if "setting_sources" in r.getMessage()]

@@ -312,3 +312,21 @@ class TestPromptToolSkipped:
             tools = build_sdk_tools([cfg], base_dir=None)
         assert tools == []
         assert any("prompt" in r.message and "p" in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+class TestSdkNameCollision:
+    """Two configs surfacing as one SDK tool name fail load (T3 review)."""
+
+    def test_vectorstore_and_function_sharing_search_name_rejected(self) -> None:
+        from holodeck.lib.errors import ConfigError
+        from holodeck.models.tool import FunctionTool, VectorstoreTool
+
+        configs = [
+            VectorstoreTool(name="kb", description="d", source="data/"),
+            FunctionTool(
+                name="kb_search", description="d", file="tools.py", function="f"
+            ),
+        ]
+        with pytest.raises(ConfigError, match="both surface as SDK tool 'kb_search'"):
+            build_sdk_tools(configs, base_dir=None, tool_instances={"kb": object()})

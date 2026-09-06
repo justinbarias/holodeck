@@ -8,10 +8,12 @@ Tool types:
 - FunctionTool: Call Python functions
 - MCPTool: Model Context Protocol integrations
 - PromptTool: AI-powered semantic functions
+- SkillTool: Scoped sub-agent skills (inline or SKILL.md directory)
 """
 
 import math
 from enum import Enum
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -25,6 +27,8 @@ from pydantic import (
     model_validator,
 )
 
+from holodeck.config.context import agent_base_dir
+from holodeck.lib.skills import SkillLoadError, load_skill_definition, resolve_skill_dir
 from holodeck.models.llm import LLMProvider
 
 _SUPPORTED_SOURCE_SCHEMES = {"s3", "az", "https", "http", "file"}
@@ -895,6 +899,106 @@ class HierarchicalDocumentToolConfig(BaseModel):
         return self
 
 
+class SkillTool(BaseModel):
+    """Scoped sub-agent skill following the Agent Skills specification.
+
+    A skill becomes a handoff-target sub-agent on the parent's backend (spec
+    023 FR-022 to FR-026, spec 035 FR-070). Two forms are supported:
+
+    * **Inline** — ``instructions`` and ``description`` in agent.yaml.
+    * **File-based** — ``path`` to a directory containing ``SKILL.md`` whose
+      frontmatter supplies ``name`` / ``description`` and whose body supplies
+      the instructions. ``description`` may be omitted in YAML and falls back
+      to the frontmatter value. The file is validated at config-load time.
+
+    ``allowed_tools`` names parent-agent tools the skill may use; ``None``
+    (or an empty list) grants no tool access. It is YAML-only — the SKILL.md
+    ``allowed-tools`` frontmatter key is never merged.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        ...,
+        pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$",
+        max_length=64,
+        description=(
+            "Skill identifier: lowercase alphanumeric segments separated by "
+            "single hyphens (Agent Skills naming), at most 64 characters."
+        ),
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=1024,
+        description=(
+            "What the skill does and when to use it. Required for inline "
+            "skills; for file-based skills it falls back to the SKILL.md "
+            "frontmatter description."
+        ),
+    )
+    type: Literal["skill"] = Field(default="skill", description="Tool type")
+    defer_loading: bool = Field(
+        default=True,
+        description=(
+            "If True, tool is excluded from initial context and loaded on-demand "
+            "via semantic search. Set to False for critical tools."
+        ),
+    )
+    instructions: str | None = Field(
+        default=None,
+        description="Inline skill instructions. Mutually exclusive with path.",
+    )
+    path: str | None = Field(
+        default=None,
+        description=(
+            "Path to a skill directory containing SKILL.md, resolved relative "
+            "to the agent.yaml directory. Mutually exclusive with instructions."
+        ),
+    )
+    allowed_tools: list[str] | None = Field(
+        default=None,
+        description=(
+            "Names of parent-agent tools this skill may use. None or empty "
+            "grants no tool access. Validated against the parent's tools."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_form(self) -> "SkillTool":
+        """Enforce the inline / file-based contract.
+
+        Exactly one of ``instructions`` or ``path`` must be set. Inline skills
+        require a non-empty ``description``. File-based skills must resolve to
+        a directory with a valid ``SKILL.md``; a missing ``description`` is
+        filled from its frontmatter.
+        """
+        has_inline = self.instructions is not None
+        has_path = self.path is not None
+        if has_inline and has_path:
+            raise ValueError("skill 'instructions' and 'path' are mutually exclusive")
+        if not has_inline and not has_path:
+            raise ValueError("skill requires either 'instructions' or 'path'")
+
+        if has_inline:
+            if self.instructions is None or not self.instructions.strip():
+                raise ValueError("skill instructions must be non-empty")
+            if self.description is None or not self.description.strip():
+                raise ValueError("inline skill requires a non-empty description")
+            return self
+
+        base_dir_value = agent_base_dir.get()
+        base_dir = None if base_dir_value is None else Path(base_dir_value)
+        try:
+            definition = load_skill_definition(
+                resolve_skill_dir(self.path or "", base_dir)
+            )
+        except SkillLoadError as exc:
+            raise ValueError(str(exc)) from exc
+        if self.description is None or not self.description.strip():
+            self.description = definition.description
+        return self
+
+
 def _get_tool_type(v: Any) -> str:
     """Extract tool type from dict or model for discrimination.
 
@@ -918,6 +1022,7 @@ ToolUnion = Annotated[
     | Annotated[FunctionTool, Tag("function")]
     | Annotated[MCPTool, Tag("mcp")]
     | Annotated[PromptTool, Tag("prompt")]
-    | Annotated[HierarchicalDocumentToolConfig, Tag("hierarchical_document")],
+    | Annotated[HierarchicalDocumentToolConfig, Tag("hierarchical_document")]
+    | Annotated[SkillTool, Tag("skill")],
     Discriminator(_get_tool_type),
 ]
