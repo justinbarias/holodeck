@@ -494,7 +494,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             zip(source_file.chunks, embeddings, strict=False)
         ):
             record = record_class(
-                id=f"{source_key}_chunk_{idx}",
+                id=self._record_id(source_key, idx),
                 source_path=source_key,
                 chunk_index=idx,
                 content=chunk,
@@ -514,6 +514,29 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         logger.debug(f"Stored {len(records)} chunks from {source_file.path}")
         return len(records)
+
+    def _record_id(self, source_key: str, chunk_index: int) -> str:
+        """Return the vector-store record ID for one chunk of a source file.
+
+        Records are keyed ``{source_key}_chunk_{index}`` so the store can be
+        walked per file. Qdrant only accepts UUID or unsigned-int point IDs, so
+        on that provider the readable key is mapped to a deterministic UUIDv5
+        (namespace derived from the tool name). The mapping is stable across
+        runs, so re-ingestion of unchanged content lands on the same point.
+        """
+        readable = f"{source_key}_chunk_{chunk_index}"
+        return self._coerce_record_id(readable)
+
+    def _coerce_record_id(self, record_id: str) -> str:
+        """Map a readable record ID to a Qdrant-safe UUIDv5 when needed."""
+        if self._provider != "qdrant":
+            return record_id
+        import uuid
+
+        namespace = uuid.uuid5(
+            uuid.NAMESPACE_URL, f"holodeck/vectorstore/{self.config.name}"
+        )
+        return str(uuid.uuid5(namespace, record_id))
 
     async def _needs_reingest(self, file_path: Path) -> bool:
         """Check if file needs re-ingestion based on modification time.
@@ -537,7 +560,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         async with self._collection as collection:
             try:
                 # Get first chunk to check mtime (all chunks share same mtime)
-                record_id = f"{source_key}_chunk_0"
+                record_id = self._record_id(source_key, 0)
                 record = await collection.get(record_id)
 
                 if record is None:
@@ -578,7 +601,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         async with self._collection as collection:
             chunk_index = 0
             while True:
-                record_id = f"{source_key}_chunk_{chunk_index}"
+                record_id = self._record_id(source_key, chunk_index)
                 try:
                     record = await collection.get(record_id)
                     if record is None:
@@ -694,7 +717,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             records: list[Any] = []
             for record_data, embedding in zip(batch, embeddings, strict=False):
                 record = record_class(
-                    id=record_data["id"],
+                    id=self._coerce_record_id(record_data["id"]),
                     content=record_data["content"],
                     embedding=embedding,
                     source_file=source_path,

@@ -237,3 +237,38 @@ class TestNeedsReingestLocal:
 
         result = await tool._needs_reingest(test_file)
         assert result is True
+
+
+class TestQdrantRecordIds:
+    """Qdrant only accepts UUID/uint64 point IDs (see hierarchical tool)."""
+
+    @staticmethod
+    def _tool(provider: str, name: str = "test_tool") -> VectorStoreTool:
+        config = MagicMock()
+        config.name = name
+        config.source = "./data"
+        config.chunk_size = None
+        config.chunk_overlap = None
+        tool = VectorStoreTool(config)
+        tool._provider = provider
+        return tool
+
+    def test_non_qdrant_keeps_readable_ids(self) -> None:
+        tool = self._tool("in-memory")
+        assert tool._record_id("data/file.txt", 3) == "data/file.txt_chunk_3"
+        assert tool._coerce_record_id("row-7") == "row-7"
+
+    def test_qdrant_ids_are_stable_uuids(self) -> None:
+        import uuid
+
+        tool = self._tool("qdrant")
+        first = tool._record_id("data/file.txt", 0)
+        assert uuid.UUID(first).version == 5
+        assert first == tool._record_id("data/file.txt", 0)
+        assert first != tool._record_id("data/file.txt", 1)
+        assert tool._coerce_record_id("data/file.txt_chunk_0") == first
+
+    def test_qdrant_namespace_is_per_tool_name(self) -> None:
+        assert self._tool("qdrant")._record_id("k", 0) != self._tool(
+            "qdrant", name="other"
+        )._record_id("k", 0)

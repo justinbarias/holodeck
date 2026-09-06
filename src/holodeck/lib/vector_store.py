@@ -22,7 +22,7 @@ Supported Providers:
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import field
 from typing import Annotated, Any, TypedDict, cast
 from urllib.parse import urlparse
@@ -176,6 +176,57 @@ def parse_chromadb_connection_string(connection_string: str) -> ChromaConnection
     }
 
     return params
+
+
+def create_qdrant_client(params: QdrantConnectionParams) -> Any:
+    """Build the ``AsyncQdrantClient`` handed to SK's ``QdrantCollection``.
+
+    qdrant-client 1.13 removed ``AsyncQdrantClient.search`` in favour of the
+    universal ``query_points`` endpoint, but semantic-kernel's Qdrant
+    connector still calls ``search`` for plain vector similarity (its hybrid
+    path already uses ``query_points``). Until SK catches up, the returned
+    client is a thin subclass that restores ``search`` on top of
+    ``query_points`` so ``collection.search(vector=...)`` keeps working.
+
+    Args:
+        params: Parsed connection parameters from
+            :func:`parse_qdrant_connection_string`.
+
+    Returns:
+        An ``AsyncQdrantClient`` instance (typed ``Any`` because qdrant-client
+        is an optional dependency).
+    """
+    from qdrant_client import AsyncQdrantClient
+
+    class _SearchCompatAsyncQdrantClient(AsyncQdrantClient):
+        async def search(
+            self,
+            collection_name: str,
+            query_vector: Sequence[float] | tuple[str, Sequence[float]],
+            query_filter: Any | None = None,
+            with_vectors: bool | Sequence[str] = False,
+            limit: int = 10,
+            offset: int | None = None,
+            **kwargs: Any,
+        ) -> list[Any]:
+            using: str | None = None
+            if isinstance(query_vector, tuple):
+                using, values = query_vector
+            else:
+                values = query_vector
+            response = await self.query_points(
+                collection_name=collection_name,
+                query=[float(v) for v in values],
+                using=using,
+                query_filter=query_filter,
+                with_vectors=with_vectors,
+                limit=limit,
+                offset=offset,
+                **kwargs,
+            )
+            return list(response.points)
+
+    return _SearchCompatAsyncQdrantClient(**params)  # type: ignore[arg-type]
 
 
 def parse_qdrant_connection_string(connection_string: str) -> QdrantConnectionParams:
@@ -1135,9 +1186,7 @@ def get_collection_factory(
         # store → search), so we keep client lifetime tied to the tool, not
         # to the context manager.
         if provider == "qdrant":
-            from qdrant_client import AsyncQdrantClient
-
-            qdrant_client = AsyncQdrantClient(**qdrant_params)  # type: ignore[arg-type]
+            qdrant_client = create_qdrant_client(qdrant_params)
             return collection_class[str, record_class](
                 client=qdrant_client,
                 **base_kwargs,
