@@ -52,7 +52,7 @@ holodeck test run agent.azure.yaml
 
 ## Qdrant instead of the in-memory vector store
 
-`agent.azure.yaml` persists the `knowledge_base` vectors in Qdrant; `agent.yaml`
+`agent.azure.yaml` persists both RAG tools (`knowledge_base` and the `handbook` hierarchical index, which uses Qdrant native hybrid search) in Qdrant; `agent.yaml`
 has the same block commented out. Start a server and set `QDRANT_URL`:
 
 ```bash

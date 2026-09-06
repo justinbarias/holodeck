@@ -67,6 +67,7 @@ tools:
     chunking_strategy: structure
     search_mode: hybrid
     top_k: 3
+    # database: { provider: qdrant, connection_string: ${QDRANT_URL} }  # see agent.azure.yaml
 
   # ---- MCP server (stdio; needs Node.js) scoped to the sample data dir ----
   - name: filesystem
