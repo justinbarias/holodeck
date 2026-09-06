@@ -28,6 +28,12 @@ embedding_provider:
   api_key: ${OPENAI_API_KEY}
 
 tools:
+  # Hosted (OpenAI-platform) web search — runs server-side; surfaces as `web_search`.
+  - name: web
+    type: hosted
+    tool: WebSearchTool
+    params:
+      search_context_size: low
   # ---- function tools (tools/warehouse.py) ----
   - name: get_inventory
     type: function
@@ -165,6 +171,11 @@ evaluations:
       include_reason: true
 
 test_cases:
+  - name: hosted web search
+    input: "Search the web: what is the latest stable release version of the Qdrant vector database? Cite the source URL."
+    expected_tools: [web_search]
+    ground_truth: "A current Qdrant release version with a source URL."
+
   - name: function tool lookup
     input: "Is SKU WIDGET-1 in stock, and what does one cost?"
     expected_tools: [get_inventory]
@@ -181,7 +192,7 @@ test_cases:
     ground_truth: "Cold-chain goods must stay between 2 and 8 degrees Celsius."
 
   - name: handoff to researcher
-    input: "I need a cited answer from research: what does the handbook say about hazardous goods labelling?"
+    input: "I need a cited answer from research: what does the handbook say about hazardous goods labelling and where they must be stored?"
     expected_tools: [transfer_to_researcher]
     ground_truth: "Every hazardous carton carries a GHS pictogram, the UN number, and the emergency contact card, stored only in Bay H; the handbook section is cited."
 
