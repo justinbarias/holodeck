@@ -10,5 +10,5 @@ Feature: `012-deepeval-metrics`. Status and task evidence: [feature inventory](.
 ## Related records
 
 - [Product specification](../../product-specs/012-deepeval-metrics/index.md)
-- [Execution plans](../../exec-plans/active/012-deepeval-metrics/index.md)
+- [Execution plans](../../exec-plans/completed/012-deepeval-metrics/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

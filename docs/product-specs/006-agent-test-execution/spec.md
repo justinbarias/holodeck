@@ -2,7 +2,7 @@
 
 **Feature Branch**: `006-agent-test-execution`
 **Created**: 2025-11-01
-**Status**: Draft
+**Status**: Shipped
 **Input**: User description: "Execute Agent Against Test Cases"
 
 ## Clarifications

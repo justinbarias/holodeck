@@ -10,5 +10,5 @@ Feature: `007-interactive-chat`. Status and task evidence: [feature inventory](.
 ## Related records
 
 - [Product specification](../../product-specs/007-interactive-chat/index.md)
-- [Execution plans](../../exec-plans/active/007-interactive-chat/index.md)
+- [Execution plans](../../exec-plans/completed/007-interactive-chat/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

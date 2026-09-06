@@ -10,5 +10,5 @@ Feature: `010-mcp-tool-operations`. Status and task evidence: [feature inventory
 ## Related records
 
 - [Product specification](../../product-specs/010-mcp-tool-operations/index.md)
-- [Execution plans](../../exec-plans/active/010-mcp-tool-operations/index.md)
+- [Execution plans](../../exec-plans/completed/010-mcp-tool-operations/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

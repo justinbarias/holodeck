@@ -12,5 +12,5 @@ Feature: `020-structured-document-tool`. Status and task evidence: [feature inve
 ## Related records
 
 - [Design records](../../design-docs/020-structured-document-tool/index.md)
-- [Execution plans](../../exec-plans/active/020-structured-document-tool/index.md)
+- [Execution plans](../../exec-plans/completed/020-structured-document-tool/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

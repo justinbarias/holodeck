@@ -2,7 +2,7 @@
 
 **Feature Branch**: `005-global-settings-response-format`
 **Created**: 2025-10-25
-**Status**: Draft
+**Status**: Shipped
 **Input**: User description: "Create a spec for User Story 2.5 - implementing Global Settings. Also, add into the spec the ability to specify a field called response_format in the Agent Config. This is optional. The field can either be a raw yaml-converted JSON schema definition (strict). Or a file path like schemas/format.json in JSON format."
 
 ## User Scenarios & Testing _(mandatory)_

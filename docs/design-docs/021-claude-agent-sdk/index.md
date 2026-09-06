@@ -11,5 +11,5 @@ Feature: `021-claude-agent-sdk`. Status and task evidence: [feature inventory](.
 ## Related records
 
 - [Product specification](../../product-specs/021-claude-agent-sdk/index.md)
-- [Execution plans](../../exec-plans/active/021-claude-agent-sdk/index.md)
+- [Execution plans](../../exec-plans/completed/021-claude-agent-sdk/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

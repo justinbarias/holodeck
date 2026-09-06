@@ -10,5 +10,5 @@ Feature: `029-subagent-orchestration`. Status and task evidence: [feature invent
 ## Related records
 
 - [Product specification](../../product-specs/029-subagent-orchestration/index.md)
-- [Execution plans](../../exec-plans/active/029-subagent-orchestration/index.md)
+- [Execution plans](../../exec-plans/completed/029-subagent-orchestration/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `014-structured-data-ingestion`
 **Created**: 2025-12-18
-**Status**: Draft
+**Status**: Shipped core (US2 multi-field and US3 database sources not built; issues #178, #180)
 **Input**: User description: "Create a spec for US 6.1.2 (Structured Data Field Mapping) and ingestion - enabling vectorstore tools to handle structured data sources with explicit field mapping"
 **Parent Feature**: US 6.1 - Vector Search Tool Operations
 **Sibling Feature**: US 6.1.1 - Unstructured Vector Ingestion and Search (008)

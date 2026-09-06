@@ -2,7 +2,7 @@
 
 **Feature Branch**: `020-structured-document-tool`
 **Created**: 2026-01-29
-**Status**: Draft
+**Status**: Shipped core (optional reranking not built; issue #252)
 **Input**: User description: "Enhancement to HoloDeck's vectorstore tool to implement advanced hybrid vector/keyword/exact match search with structure-aware document parsing, contextual embeddings, and domain-agnostic hierarchical chunking."
 
 ## Clarifications

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `013-mcp-cli`
 **Created**: 2025-12-13
-**Status**: Draft
+**Status**: Shipped
 **Input**: User description: "Create a spec for a new cli command group 'holodeck mcp' with subcommands: search, list, add, remove. Search uses the official MCP registry API. List shows installed MCP servers. Add/Remove work with agent files or global config."
 
 ## User Scenarios & Testing *(mandatory)*

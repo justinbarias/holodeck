@@ -2,7 +2,7 @@ A# Feature Specification: Initialize New Agent Project (v0.1)
 
 **Feature Branch**: `004-init-agent-project`
 **Created**: 2025-10-22
-**Status**: Draft
+**Status**: Shipped
 **Input**: Holodeck-Initialize New Agent Project. Reference: @docs/product-specs/001-cli-core-engine/spec.md
 
 ## User Scenarios & Testing _(mandatory)_

@@ -12,5 +12,5 @@ Feature: `008-unstructured-vector-ingestion-search`. Status and task evidence: [
 ## Related records
 
 - [Design records](../../design-docs/008-unstructured-vector-ingestion-search/index.md)
-- [Execution plans](../../exec-plans/active/008-unstructured-vector-ingestion-search/index.md)
+- [Execution plans](../../exec-plans/completed/008-unstructured-vector-ingestion-search/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

@@ -1,6 +1,6 @@
 # Spec: Structured progress event stream for `holodeck test optimize`
 
-**Status:** Draft (motivated by a real Studio integration finding, 2026-06-18)
+**Status**: Shipped (PR #345)
 **Builds on:** `docs/product-specs/033-holodeck-test-optimizer/` (coordinate-descent optimizer), `docs/product-specs/037-gepa-optimizer/` (textual engine — emits the same `TrialRecord`s)
 **Motivation source:** HoloDeck Studio's live Optimizer tab, which today must regex-scrape `test optimize` stdout to render live progress (real v0.7.0 run captured below).
 

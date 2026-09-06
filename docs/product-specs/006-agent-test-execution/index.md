@@ -12,5 +12,5 @@ Feature: `006-agent-test-execution`. Status and task evidence: [feature inventor
 ## Related records
 
 - [Design records](../../design-docs/006-agent-test-execution/index.md)
-- [Execution plans](../../exec-plans/active/006-agent-test-execution/index.md)
+- [Execution plans](../../exec-plans/completed/006-agent-test-execution/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

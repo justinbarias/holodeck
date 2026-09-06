@@ -5,7 +5,7 @@ Update an entry when its evidence or status changes. Close it only with a linked
 
 | ID | Gap / evidence | Owner | Exit criterion | Status |
 | --- | --- | --- | --- | --- |
-| H-001 | [Spec inventory](../product-specs/inventory.md) has historical task drift and inconsistent status vocabulary, including `complete`. | Feature maintainers | Reconcile each affected row against merge and acceptance evidence. | Open |
+| H-001 | [Spec inventory](../product-specs/inventory.md) had historical task drift and inconsistent status vocabulary, including `complete`. | Feature maintainers | Reconcile each affected row against merge and acceptance evidence. | Resolved 2026-09-06 by the [drift reconciliation](completed/2026-09-06-spec-drift-reconciliation.md): statuses normalised to `shipped`/`pending`/`draft`/`archived`, 23 feature plans moved to `completed/`, remaining scope named per row. Historical checkboxes are intentionally unticked. |
 | H-002 | [Architecture](../../ARCHITECTURE.md) has no global dependency-layer enforcement. Some models import library logic. | Architecture maintainers | Agree actual allowed edges, record exceptions, and add focused structural checks without inventing a new runtime architecture. | Open |
 | H-003 | [Makefile](../../Makefile) includes serial test aliases, placeholder package helpers, and Sphinx-style docs targets despite MkDocs. | Developer tooling | Align affected helpers with current package and documented commands, with command-level verification. | Open |
 | H-004 | No automatically isolated per-worktree logs/metrics/traces environment. | Observability maintainers | Provide a reproducible local setup and a demonstrated query against a representative request. | Open |
@@ -36,7 +36,7 @@ H-013 and H-021 cover the broader interactive-approval and arbitrary-execution b
 
 | ID | Deferred scope | Owner | Exit criterion | Status |
 | --- | --- | --- | --- | --- |
-| <a id="h-010"></a>H-010 | Hardened Envoy profile (FR-090–093, SC-010) | Deployment/security maintainers | Define a cross-backend spec and verify credential-free agent containers, provider/embedding/MCP allowlists, proxy routing, and invalid-environment rejection on an authorized target. | Deferred from 035 |
+| <a id="h-022"></a>H-022 | Hardened Envoy profile (FR-090–093, SC-010) | Deployment/security maintainers | Define a cross-backend spec and verify credential-free agent containers, provider/embedding/MCP allowlists, proxy routing, and invalid-environment rejection on an authorized target. | Deferred from 035 |
 | <a id="h-011"></a>H-011 | Sandbox mode and remote clients (FR-094–099, SC-012–013), including Modal | Backend/deployment maintainers | Specify local/remote boundaries, safety opt-in, manifests, cleanup, redundant-tool validation, and credential handling; demonstrate local and remote workspace isolation for each supported client. | Deferred from 035 |
 | <a id="h-012"></a>H-012 | Computer-use harness | Backend/tool maintainers | Define the Computer/AsyncComputer adapter and safety contract; demonstrate controlled computer actions, failure handling, and lifecycle tests before accepting ComputerTool configuration. | Deferred from 035 |
 | <a id="h-013"></a>H-013 | Interactive human tool approval | Backend/serve maintainers | Specify interruption, persisted RunState, authenticated approve/reject, resume, timeout, and cancellation; prove an unapproved call cannot execute. | Deferred from 035 |

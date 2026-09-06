@@ -2,7 +2,7 @@
 
 **Feature Branch**: `032-multi-turn-test-cases`
 **Created**: 2026-04-19
-**Status**: Draft
+**Status**: Shipped (PR #308)
 **Input**: User description: "Analyze the convfinqa dataset and extend the test executor to support multi-turn test cases, per-turn ground truths, per-turn expected tools, and expected tool call args with fuzzy and/or regex matching."
 
 ## Context

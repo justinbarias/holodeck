@@ -26,37 +26,17 @@ An earlier release does not close unfinished work. The inventory remains the sou
 
 | Feature | Execution records |
 | --- | --- |
-| CLI & Core Agent Engine | [001-cli-core-engine](exec-plans/active/001-cli-core-engine/index.md) |
-| Init Agent Project | [004-init-agent-project](exec-plans/active/004-init-agent-project/index.md) |
-| Global Settings & Response Format | [005-global-settings-response-format](exec-plans/active/005-global-settings-response-format/index.md) |
-| Agent Test Execution | [006-agent-test-execution](exec-plans/active/006-agent-test-execution/index.md) |
-| Interactive Chat | [007-interactive-chat](exec-plans/active/007-interactive-chat/index.md) |
-| Unstructured Vector Ingestion & Search | [008-unstructured-vector-ingestion-search](exec-plans/active/008-unstructured-vector-ingestion-search/index.md) |
-| Ollama Endpoint Support | [009-ollama-endpoint-support](exec-plans/active/009-ollama-endpoint-support/index.md) |
-| MCP Tool Operations | [010-mcp-tool-operations](exec-plans/active/010-mcp-tool-operations/index.md) |
-| Interactive Init Wizard | [011-interactive-init-wizard](exec-plans/active/011-interactive-init-wizard/index.md) |
-| DeepEval Metrics | [012-deepeval-metrics](exec-plans/active/012-deepeval-metrics/index.md) |
-| MCP CLI Command Group | [013-mcp-cli](exec-plans/active/013-mcp-cli/index.md) |
-| Structured Data Ingestion | [014-structured-data-ingestion](exec-plans/active/014-structured-data-ingestion/index.md) |
-| Vectorstore Reranking | [015-vectorstore-reranking](exec-plans/active/015-vectorstore-reranking/index.md) |
-| GraphRAG Integration | [016-graphrag-integration](exec-plans/active/016-graphrag-integration/index.md) |
-| Agent Local Server | [017-agent-local-server](exec-plans/active/017-agent-local-server/index.md) |
-| OTel Observability | [018-otel-observability](exec-plans/active/018-otel-observability/index.md) |
-| Deploy Command | [019-deploy-command](exec-plans/active/019-deploy-command/index.md) |
-| HierarchicalDocumentTool | [020-structured-document-tool](exec-plans/active/020-structured-document-tool/index.md) |
-| Native Claude Agent SDK | [021-claude-agent-sdk](exec-plans/active/021-claude-agent-sdk/index.md) |
-| Choose Your Backend (ADK + MAF) | [023-choose-your-backend](exec-plans/active/023-choose-your-backend/index.md) |
 | Claude Serve & Deploy Parity | [024-claude-serve-deploy](exec-plans/active/024-claude-serve-deploy/index.md) |
-| Subagent Orchestration | [029-subagent-orchestration](exec-plans/active/029-subagent-orchestration/index.md) |
 | Eval Runs & Test View Dashboard | [031-eval-runs-dashboard](exec-plans/active/031-eval-runs-dashboard/index.md) |
-| Multi-Turn Test Cases & Evaluators | [032-multi-turn-test-cases](exec-plans/active/032-multi-turn-test-cases/index.md) |
 | Test Optimizer | [033-holodeck-test-optimizer](exec-plans/active/033-holodeck-test-optimizer/index.md) |
 | Production Hardening | [034-production-hardening](exec-plans/active/034-production-hardening/index.md) |
 | OpenAI Agents SDK Backend | [Completion execution plan](exec-plans/active/035-openai-agents-backend/2026-09-06-complete-035.md); [historical records](exec-plans/active/035-openai-agents-backend/index.md) |
-| Optimizer Progress Stream | [038-optimizer-progress-stream](exec-plans/active/038-optimizer-progress-stream/index.md) |
+
+Drafts without an execution plan yet: [037](product-specs/037-gepa-optimizer/index.md), [041](product-specs/041-temporal-file-inputs/index.md), [042](product-specs/042-dependency-stack-revamp/index.md).
 
 ## Completed and archived plans
 
+- [2026-09-06: Spec and plan drift reconciliation](exec-plans/completed/2026-09-06-spec-drift-reconciliation.md)
 - [2026-09-06: Feature 035 plan reconciliation](exec-plans/completed/2026-09-06-035-plan-reconciliation.md)
 
 - [2026-09-06: Remove retired command workflow](exec-plans/completed/2026-09-06-workflow-cleanup.md)
@@ -67,11 +47,37 @@ Frozen historical plans share `completed/` but are explicitly labeled archived. 
 
 | Feature | Disposition | Execution records |
 | --- | --- | --- |
+| CLI & Core Agent Engine | Completed | [001-cli-core-engine](exec-plans/completed/001-cli-core-engine/index.md) |
+| Init Agent Project | Completed | [004-init-agent-project](exec-plans/completed/004-init-agent-project/index.md) |
+| Global Settings & Response Format | Completed | [005-global-settings-response-format](exec-plans/completed/005-global-settings-response-format/index.md) |
+| Agent Test Execution | Completed | [006-agent-test-execution](exec-plans/completed/006-agent-test-execution/index.md) |
+| Interactive Chat | Completed | [007-interactive-chat](exec-plans/completed/007-interactive-chat/index.md) |
+| Unstructured Vector Ingestion & Search | Completed | [008-unstructured-vector-ingestion-search](exec-plans/completed/008-unstructured-vector-ingestion-search/index.md) |
+| Interactive Init Wizard | Completed | [011-interactive-init-wizard](exec-plans/completed/011-interactive-init-wizard/index.md) |
+| DeepEval Metrics | Completed | [012-deepeval-metrics](exec-plans/completed/012-deepeval-metrics/index.md) |
+| MCP CLI Command Group | Completed | [013-mcp-cli](exec-plans/completed/013-mcp-cli/index.md) |
+| Structured Data Ingestion | Completed | [014-structured-data-ingestion](exec-plans/completed/014-structured-data-ingestion/index.md) |
+| Agent Local Server | Completed | [017-agent-local-server](exec-plans/completed/017-agent-local-server/index.md) |
+| OTel Observability | Completed | [018-otel-observability](exec-plans/completed/018-otel-observability/index.md) |
+| Deploy Command | Completed | [019-deploy-command](exec-plans/completed/019-deploy-command/index.md) |
+| HierarchicalDocumentTool | Completed | [020-structured-document-tool](exec-plans/completed/020-structured-document-tool/index.md) |
+| Native Claude Agent SDK | Completed | [021-claude-agent-sdk](exec-plans/completed/021-claude-agent-sdk/index.md) |
 | OTel GenAI Semconv in Claude Backend | Completed | [022-otel-genai-semconv](exec-plans/completed/022-otel-genai-semconv/index.md) |
 | Async Tool Init Endpoints | Completed | [025-tool-init-endpoints](exec-plans/completed/025-tool-init-endpoints/index.md) |
-| Deterministic Spine | Archived / superseded | [036-deterministic-spine](exec-plans/completed/036-deterministic-spine/index.md) |
+| Subagent Orchestration | Completed | [029-subagent-orchestration](exec-plans/completed/029-subagent-orchestration/index.md) |
+| Multi-Turn Test Cases & Evaluators | Completed | [032-multi-turn-test-cases](exec-plans/completed/032-multi-turn-test-cases/index.md) |
+| Optimizer Progress Stream | Completed | [038-optimizer-progress-stream](exec-plans/completed/038-optimizer-progress-stream/index.md) |
 | HoloDeck Agents on Temporal | Completed | [040-holodeck-temporal](exec-plans/completed/040-holodeck-temporal/index.md) |
-| GraphRAG Integration Plan (legacy) | Archived / superseded | [graph-rag-integration](exec-plans/completed/graph-rag-integration/index.md) |
+| Ollama Endpoint Support | Archived / superseded by Claude-backend routing (021) | [009-ollama-endpoint-support](exec-plans/completed/009-ollama-endpoint-support/index.md) |
+| MCP Tool Operations | Archived / superseded by 021 and 035 MCP paths | [010-mcp-tool-operations](exec-plans/completed/010-mcp-tool-operations/index.md) |
+| Vectorstore Reranking | Archived / folded into 020 | [015-vectorstore-reranking](exec-plans/completed/015-vectorstore-reranking/index.md) |
+| GraphRAG Integration | Archived / not scheduled | [016-graphrag-integration](exec-plans/completed/016-graphrag-integration/index.md) |
+| Choose Your Backend (ADK + MAF) | Archived / superseded by 035 and 042 | [023-choose-your-backend](exec-plans/completed/023-choose-your-backend/index.md) |
+| Deterministic Spine | Archived / superseded by 040 | [036-deterministic-spine](exec-plans/completed/036-deterministic-spine/index.md) |
+| GraphRAG Integration Plan (legacy) | Archived / superseded by 016, itself archived | [graph-rag-integration](exec-plans/completed/graph-rag-integration/index.md) |
+
+Completed rows whose remaining scope lives in GitHub issues (014, 017, 018, 019, 020) name those issues in the [inventory](product-specs/inventory.md).
+Specs 039 (policy generator) and 023 are archived in the inventory; 039 never had an execution plan.
 
 ## Relationship to feature specs
 

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `018-otel-observability`
 **Created**: 2026-01-04
-**Status**: Draft
+**Status**: Shipped core (Prometheus, Azure Monitor, multiple exporters not built; issues #208, #209, #211)
 **Input**: User description: "Create a spec for enabling semantic conventions + OpenTelemetry with OTLP, Prometheus, and Azure Monitor exporters for HoloDeck agents using Semantic Kernel"
 
 ## Clarifications

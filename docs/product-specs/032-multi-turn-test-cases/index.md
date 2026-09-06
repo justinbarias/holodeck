@@ -15,5 +15,5 @@ Feature: `032-multi-turn-test-cases`. Status and task evidence: [feature invento
 ## Related records
 
 - [Design records](../../design-docs/032-multi-turn-test-cases/index.md)
-- [Execution plans](../../exec-plans/active/032-multi-turn-test-cases/index.md)
+- [Execution plans](../../exec-plans/completed/032-multi-turn-test-cases/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

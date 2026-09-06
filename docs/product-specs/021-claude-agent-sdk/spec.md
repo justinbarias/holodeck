@@ -2,7 +2,7 @@
 
 **Feature Branch**: `021-claude-agent-sdk`
 **Created**: 2026-02-19
-**Status**: Draft
+**Status**: Shipped
 **Input**: Native integration of the Claude Agent SDK into HoloDeck, bypassing Semantic Kernel, while preserving compatibility with existing vectorstore, hierarchical document, and MCP tools.
 
 ## Overview

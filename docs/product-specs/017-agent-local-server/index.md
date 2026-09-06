@@ -13,5 +13,5 @@ Feature: `017-agent-local-server`. Status and task evidence: [feature inventory]
 ## Related records
 
 - [Design records](../../design-docs/017-agent-local-server/index.md)
-- [Execution plans](../../exec-plans/active/017-agent-local-server/index.md)
+- [Execution plans](../../exec-plans/completed/017-agent-local-server/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

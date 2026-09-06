@@ -3,7 +3,7 @@
 **Feature Branch**: `feature/007-claude-agent-features`
 **Spec ID**: 027-mcp-http-sse-transport
 **Created**: 2026-03-28
-**Status**: Draft
+**Status**: Shipped via 035 (OpenAI Agents MCP transports) and the Claude MCP bridge
 **Input**: Extend MCP tool bridge to support HTTP and SSE transports in addition to the existing STDIO transport, enabling connection to remote MCP servers.
 
 ## User Scenarios & Testing *(mandatory)*

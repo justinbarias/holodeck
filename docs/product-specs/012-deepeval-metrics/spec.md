@@ -2,7 +2,7 @@
 
 **Feature Branch**: `012-deepeval-metrics`
 **Created**: 2025-01-30
-**Status**: Draft
+**Status**: Shipped
 **Input**: User description: "Add DeepEval as a new set of evaluation metrics. The current azure_ai.py eval metrics only support Azure OpenAI, and nothing else. Also add error handling in azure_ai.py to fail early if another LLM provider aside from Azure OpenAI is used."
 
 ## User Scenarios & Testing *(mandatory)*

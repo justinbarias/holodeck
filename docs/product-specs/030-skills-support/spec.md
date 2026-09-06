@@ -3,7 +3,7 @@
 **Feature Branch**: `feature/007-claude-agent-features`
 **Spec ID**: 030-skills-support
 **Created**: 2026-03-28
-**Status**: Draft
+**Status**: Shipped via 021 (Claude) and 035 T3 (`type: skill`)
 **Input**: Expose the Claude Agent SDK's skills system and setting sources in HoloDeck YAML, enabling users to load custom skills from `.claude/skills/` and control which setting sources the agent uses.
 
 ## User Scenarios & Testing *(mandatory)*

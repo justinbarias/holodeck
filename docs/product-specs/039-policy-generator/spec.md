@@ -10,7 +10,7 @@
 
 **Feature Branch**: `039-policy-generator`
 **Created**: 2026-07-25
-**Status**: Draft — **spec only, not scheduled for build**
+**Status**: Archived — depended on 036, which was replaced by Temporal-first orchestration (040); the workflow-engine surfaces it targeted no longer exist
 **Author**: justinbarias (with Claude)
 **Depends on**: `docs/product-specs/036-deterministic-spine` — **built only after 036's MVP ships**
 **Corpus**: `corpus-manifest.md` (pinned, hashed)

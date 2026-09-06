@@ -3,7 +3,7 @@
 **Feature Branch**: `feature/007-claude-agent-features`
 **Spec ID**: 029-subagent-orchestration
 **Created**: 2026-03-28
-**Status**: Draft
+**Status**: Shipped (PR #309)
 **Input**: Enable users to define full subagent specifications in YAML and wire them into the Claude SDK's agent orchestration system, allowing multi-agent teams to be configured without code.
 **Dependencies**: 027-mcp-http-sse-transport (parent agent may use HTTP/SSE MCP servers; subagents inherit access to those servers via their `tools` allowlist)
 

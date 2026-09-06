@@ -11,5 +11,5 @@ Feature: `023-choose-your-backend`. Status and task evidence: [feature inventory
 ## Related records
 
 - [Design records](../../design-docs/023-choose-your-backend/index.md)
-- [Execution plans](../../exec-plans/active/023-choose-your-backend/index.md)
+- [Execution plans](../../exec-plans/completed/023-choose-your-backend/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)

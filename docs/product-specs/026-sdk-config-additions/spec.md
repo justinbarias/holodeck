@@ -3,7 +3,7 @@
 **Feature Branch**: `feature/007-claude-agent-features`
 **Spec ID**: 026-sdk-config-additions
 **Created**: 2026-03-28
-**Status**: Draft
+**Status**: Shipped (landed as feat(026))
 **Input**: Expose four missing Claude Agent SDK configuration parameters in HoloDeck YAML: fallback_model, effort, disallowed_tools, and max_budget_usd.
 
 ## User Scenarios & Testing *(mandatory)*

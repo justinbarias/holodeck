@@ -10,5 +10,5 @@ Feature: `016-graphrag-integration`. Status and task evidence: [feature inventor
 ## Related records
 
 - [Product specification](../../product-specs/016-graphrag-integration/index.md)
-- [Execution plans](../../exec-plans/active/016-graphrag-integration/index.md)
+- [Execution plans](../../exec-plans/completed/016-graphrag-integration/index.md)
 - [Execution-plan lifecycle](../../PLANS.md)
