@@ -851,6 +851,12 @@ class OpenAIAgentsSession:
         except BackendBudgetExceededError as exc:
             return _budget_error_result(exc)
         except Exception as exc:  # noqa: BLE001 - surfaced via ExecutionResult
+            logger.warning(
+                "OpenAI Agents run failed: %s: %s",
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
             return ExecutionResult(
                 response="",
                 is_error=True,

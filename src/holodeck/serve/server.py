@@ -124,13 +124,13 @@ class AgentServer:
                 "Use 127.0.0.1 for local-only access."
             )
 
-        # Claude SDK's anyio task group binds to the task that called
-        # connect(). HTTP requests run in different tasks, so the
-        # executor must release transport after each turn and reconnect
-        # on the next request (session_id preserves conversation state).
-        self._release_transport = (
-            self.agent_config.model.provider == ProviderEnum.ANTHROPIC
-        )
+        # Every backend session lives in a dedicated actor task. HTTP
+        # requests run in different tasks, and both backends bind anyio
+        # state to the task that opened it: the Claude SDK's task group on
+        # ``connect()``, and the OpenAI Agents backend's stdio MCP servers on
+        # ``initialize()``. Without the actor, turn 2 on a thread finds the
+        # transport closed (Claude: reader hang; OpenAI: ClosedResourceError).
+        self._release_transport = True
 
         # Spec 034 P4 changed the binding constraint: the SDK subprocess
         # is now spawned per *turn* (not per session), so memory-bounded
