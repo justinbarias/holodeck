@@ -11,6 +11,7 @@ Update an entry when its evidence or status changes. Close it only with a linked
 | H-004 | No automatically isolated per-worktree logs/metrics/traces environment. | Observability maintainers | Provide a reproducible local setup and a demonstrated query against a representative request. | Open |
 | H-005 | Legacy context generation could repopulate root instruction files. | Repository harness | Removed command scaffolding and generators; the harness checker validates both entry points. | Resolved in workflow cleanup |
 | H-006 | Repository-source links broke when published as relative docsite links. | Documentation maintainers | [Publishing hook](../../scripts/mkdocs_hooks.py) resolves existing source links. [Regression tests](../../tests/unit/test_mkdocs_harness.py) and strict MkDocs build passed. | Resolved in harness adoption |
+| H-007 | NLTK 3.10.3 has no patch for PYSEC-2026-3740. The [scoped audit exception](../SECURITY.md#nltk-model-artifact-exception) records inspected evaluator paths and does not cover arbitrary custom tools. | Evaluation and dependency maintainers | Lock a patched release and remove the exception; re-review by 2026-10-06 or before evaluator/model persistence changes. | Open; affected APIs absent from inspected paths |
 
 The harness checker detects layout, link-target, discovery, and generated-inventory drift.
 Semantic freshness still requires code inspection and named test evidence.

@@ -41,3 +41,27 @@ For an accepted exception, record the affected path, reason, owner, and removal 
 The [pre-commit configuration](../.pre-commit-config.yaml) defines enabled hooks.
 Security scans also run explicitly in [CI](../.github/workflows/ci.yml).
 Record unresolved findings in [technical debt](exec-plans/tech-debt-tracker.md) without including secrets.
+
+## NLTK model-artifact exception
+
+Reviewed 2026-09-06. Owner: evaluation and dependency maintainers. Review again by 2026-10-06,
+or before changing evaluator dependencies or adding NLTK model persistence.
+
+[GHSA-8mgp-746c-j5xp](https://github.com/nltk/nltk/security/advisories/GHSA-8mgp-746c-j5xp)
+(PYSEC-2026-3740 / CVE-2026-81726) affects NLTK through 3.10.3.
+The maintainer lists no patched release. Model import/export APIs can bypass NLTK's
+`pathsec` restrictions when callers supply paths outside permitted roots.
+
+The reviewed HoloDeck evaluators do not call the affected APIs: `TransitionParser.train/parse`,
+`AveragedPerceptron.save/load`, `PerceptronTagger.save_to_json`, or `save_maxent_params`.
+HoloDeck's [NLP evaluators](../src/holodeck/lib/evaluators/nlp_metrics.py) use ROUGE scoring
+and the Hugging Face METEOR metric. Installed `rouge-score` 0.1.2, `evaluate` 0.4.6,
+the cached METEOR module, and Azure AI Evaluation 1.13.7 use scoring, tokenization,
+stemming, or fixed corpus downloads. The inspected paths do not pass user-selected
+model filenames to the affected APIs. This assessment does not cover arbitrary custom tools.
+
+The audit excludes only this advisory and its aliases. NLTK remains unpatched;
+this is a scoped exception for the inspected call paths, not a dependency fix.
+Remove the exception when a patched release is available and locked, or before a changed
+call path makes the affected APIs reachable. Track follow-up as H-007 in the
+[debt tracker](exec-plans/tech-debt-tracker.md).
