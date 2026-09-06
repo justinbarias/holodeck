@@ -101,6 +101,7 @@ from holodeck.lib.backends.tool_adapters import (
 from holodeck.lib.backends.validators import (
     validate_credentials,
     validate_embedding_provider,
+    validate_no_hosted_tools,
     validate_nodejs,
     validate_response_format,
     validate_working_directory,
@@ -2028,6 +2029,9 @@ class ClaudeBackend:
 
             # 3. Embedding provider (vectorstore tools)
             validate_embedding_provider(agent)
+
+            # 3b. Hosted (OpenAI Responses) tools cannot run here (spec 035 D17)
+            validate_no_hosted_tools(agent)
 
             # 4. Auto-initialize vectorstore/hierarchical-doc tools if needed
             await self._initialize_tools()

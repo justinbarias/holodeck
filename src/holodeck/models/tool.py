@@ -9,6 +9,8 @@ Tool types:
 - MCPTool: Model Context Protocol integrations
 - PromptTool: AI-powered semantic functions
 - SkillTool: Scoped sub-agent skills (inline or SKILL.md directory)
+- HostedTool: OpenAI-hosted Responses tools (web search, file search, code
+  interpreter, image generation, hosted MCP) — OpenAI Agents backend only
 """
 
 import math
@@ -999,6 +1001,390 @@ class SkillTool(BaseModel):
         return self
 
 
+# ---------------------------------------------------------------------------
+# Hosted tools (spec 035 FR-083 / D06 / D17)
+# ---------------------------------------------------------------------------
+
+HostedToolKind = Literal[
+    "WebSearchTool",
+    "FileSearchTool",
+    "CodeInterpreterTool",
+    "ImageGenerationTool",
+    "HostedMCPTool",
+    "ComputerTool",
+]
+"""SDK class names a ``type: hosted`` entry may select."""
+
+HOSTED_SDK_TOOL_NAMES: dict[str, str] = {
+    "WebSearchTool": "web_search",
+    "FileSearchTool": "file_search",
+    "CodeInterpreterTool": "code_interpreter",
+    "ImageGenerationTool": "image_generation",
+    "HostedMCPTool": "hosted_mcp",
+}
+"""The fixed SDK tool name each hosted class surfaces under."""
+
+
+class WebSearchUserLocation(BaseModel):
+    """Approximate user location forwarded to ``WebSearchTool``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    city: str | None = Field(default=None, description="Free-text city name.")
+    country: str | None = Field(
+        default=None, description="Two-letter ISO country code (for example US)."
+    )
+    region: str | None = Field(default=None, description="Free-text region.")
+    timezone: str | None = Field(
+        default=None, description="IANA timezone (for example America/Chicago)."
+    )
+
+
+class WebSearchParams(BaseModel):
+    """Constructor parameters for the SDK ``WebSearchTool``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_location: WebSearchUserLocation | None = Field(
+        default=None, description="Bias results toward this approximate location."
+    )
+    allowed_domains: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        description="Restrict results to these domains (SDK ``filters``).",
+    )
+    search_context_size: Literal["low", "medium", "high"] = Field(
+        default="medium", description="How much search context the model receives."
+    )
+    external_web_access: bool | None = Field(
+        default=None,
+        description=(
+            "Whether live internet fetches are allowed. Omit for the API "
+            "default; ``false`` requests cached/indexed-only behaviour."
+        ),
+    )
+
+
+class FileSearchRankingOptions(BaseModel):
+    """``ranking_options`` for the SDK ``FileSearchTool``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ranker: Literal["auto", "default-2024-11-15"] | None = Field(
+        default=None, description="Ranker to use for the file search."
+    )
+    score_threshold: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Minimum relevance score (0-1) a result must reach.",
+    )
+
+
+class FileSearchParams(BaseModel):
+    """Constructor parameters for the SDK ``FileSearchTool``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    vector_store_ids: list[str] = Field(
+        ...,
+        min_length=1,
+        description="OpenAI vector store ids (``vs_...``) to search.",
+    )
+    max_num_results: int | None = Field(
+        default=None, ge=1, le=50, description="Maximum results returned."
+    )
+    include_search_results: bool = Field(
+        default=False,
+        description="Include the raw search results in the model output.",
+    )
+    ranking_options: FileSearchRankingOptions | None = Field(
+        default=None, description="Ranking options for the search."
+    )
+    filters: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "OpenAI attribute filter (comparison or compound), passed through "
+            "verbatim to the SDK."
+        ),
+    )
+
+
+class CodeInterpreterAutoContainer(BaseModel):
+    """An auto-provisioned code-interpreter container."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["auto"] = Field(default="auto", description="Container mode.")
+    file_ids: list[str] | None = Field(
+        default=None, description="Uploaded file ids mounted into the container."
+    )
+    memory_limit: Literal["1g", "4g", "16g", "64g"] | None = Field(
+        default=None, description="Container memory limit."
+    )
+    network_policy: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Container network policy (``{type: disabled}`` or "
+            "``{type: allowlist, allowed_domains: [...]}``), passed through."
+        ),
+    )
+
+
+class CodeInterpreterParams(BaseModel):
+    """Constructor parameters for the SDK ``CodeInterpreterTool``.
+
+    ``container`` is required by the Responses API: either an existing
+    container id or an ``auto`` container spec.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    container: str | CodeInterpreterAutoContainer = Field(
+        ...,
+        description=("Container id (``cntr_...``) or an ``{type: auto, ...}`` spec."),
+    )
+
+    @field_validator("container")
+    @classmethod
+    def _non_empty_container_id(
+        cls, v: str | CodeInterpreterAutoContainer
+    ) -> str | CodeInterpreterAutoContainer:
+        if isinstance(v, str) and not v.strip():
+            raise ValueError("container must be a container id or an {type: auto} spec")
+        return v
+
+
+class ImageGenerationParams(BaseModel):
+    """Constructor parameters for the SDK ``ImageGenerationTool``.
+
+    Every field is optional; only the fields set in YAML are forwarded so the
+    API defaults apply to the rest.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str | None = Field(
+        default=None, description="Image model (for example gpt-image-1)."
+    )
+    action: Literal["generate", "edit", "auto"] | None = Field(
+        default=None, description="Generate a new image or edit an input image."
+    )
+    background: Literal["transparent", "opaque", "auto"] | None = Field(
+        default=None, description="Background transparency."
+    )
+    input_fidelity: Literal["high", "low"] | None = Field(
+        default=None, description="Fidelity to the input image when editing."
+    )
+    moderation: Literal["auto", "low"] | None = Field(
+        default=None, description="Moderation strictness."
+    )
+    output_compression: int | None = Field(
+        default=None, ge=0, le=100, description="Compression level for webp/jpeg."
+    )
+    output_format: Literal["png", "webp", "jpeg"] | None = Field(
+        default=None, description="Output image format."
+    )
+    partial_images: int | None = Field(
+        default=None, ge=0, le=3, description="Partial images streamed."
+    )
+    quality: Literal["low", "medium", "high", "auto"] | None = Field(
+        default=None, description="Output quality."
+    )
+    size: str | None = Field(
+        default=None, description="Output size (for example 1024x1024 or auto)."
+    )
+
+
+class HostedMCPParams(BaseModel):
+    """Constructor parameters for the SDK ``HostedMCPTool``.
+
+    The OpenAI platform calls the remote server; HoloDeck never connects to
+    it. Exactly one of ``server_url`` / ``connector_id`` must be set.
+    Interactive tool approval is not supported yet (spec 035 H-013), so
+    ``require_approval`` must stay ``never``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    server_label: str = Field(
+        ..., min_length=1, description="Label identifying the remote server."
+    )
+    server_url: str | None = Field(
+        default=None, description="Remote MCP server URL (https)."
+    )
+    connector_id: str | None = Field(
+        default=None,
+        description="OpenAI connector id (for example connector_googledrive).",
+    )
+    server_description: str | None = Field(
+        default=None, description="Optional description shown to the model."
+    )
+    authorization: str | None = Field(
+        default=None,
+        description=(
+            "OAuth access token for the remote server; supports ${VAR} "
+            "substitution at load time."
+        ),
+    )
+    headers: dict[str, str] | None = Field(
+        default=None, description="Extra HTTP headers sent to the server."
+    )
+    allowed_tools: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        description="Only expose these remote tool names to the model.",
+    )
+    require_approval: Literal["never"] = Field(
+        default="never",
+        description=(
+            "Only ``never`` is supported: interactive approval is deferred "
+            "(H-013) and an unsupported gate must fail closed rather than run."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _one_endpoint(self) -> "HostedMCPParams":
+        has_url = bool(self.server_url)
+        has_connector = bool(self.connector_id)
+        if has_url == has_connector:
+            raise ValueError(
+                "hosted MCP requires exactly one of server_url or connector_id"
+            )
+        return self
+
+
+class _HostedToolBase(BaseModel):
+    """Fields shared by every ``type: hosted`` entry.
+
+    Hosted tools run on the OpenAI platform through the Responses API; they
+    load only on the OpenAI Agents backend (``provider: openai`` /
+    ``azure_openai``) and are rejected by the Claude backend. ``name`` is the
+    HoloDeck config name (used by ``disallowed_tools`` and subagent ``tools``
+    lists); ``tool`` selects the SDK class.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Config name for this hosted tool (unique per agent).",
+    )
+    type: Literal["hosted"] = Field(default="hosted", description="Tool type")
+    description: str | None = Field(
+        default=None,
+        max_length=1000,
+        description=(
+            "Operator note; hosted tools carry their own model-facing description."
+        ),
+    )
+
+    @property
+    def sdk_tool_name(self) -> str:
+        """The fixed SDK tool name this hosted class surfaces under."""
+        return HOSTED_SDK_TOOL_NAMES[self.tool]
+
+    # Subclasses declare ``tool``; typed here so the property above type-checks.
+    tool: str
+
+
+class WebSearchHostedTool(_HostedToolBase):
+    """``type: hosted`` entry selecting the SDK ``WebSearchTool``."""
+
+    tool: Literal["WebSearchTool"] = Field(description="SDK hosted tool class")
+    params: WebSearchParams = Field(
+        default_factory=WebSearchParams, description="WebSearchTool parameters"
+    )
+
+
+class FileSearchHostedTool(_HostedToolBase):
+    """``type: hosted`` entry selecting the SDK ``FileSearchTool``."""
+
+    tool: Literal["FileSearchTool"] = Field(description="SDK hosted tool class")
+    params: FileSearchParams = Field(..., description="FileSearchTool parameters")
+
+
+class CodeInterpreterHostedTool(_HostedToolBase):
+    """``type: hosted`` entry selecting the SDK ``CodeInterpreterTool``.
+
+    Loading requires ``openai.i_understand_this_is_unsafe: true`` (FR-083);
+    the gate is enforced at backend validation, not here, so the model stays
+    backend-agnostic.
+    """
+
+    tool: Literal["CodeInterpreterTool"] = Field(description="SDK hosted tool class")
+    params: CodeInterpreterParams = Field(
+        ..., description="CodeInterpreterTool parameters"
+    )
+
+
+class ImageGenerationHostedTool(_HostedToolBase):
+    """``type: hosted`` entry selecting the SDK ``ImageGenerationTool``."""
+
+    tool: Literal["ImageGenerationTool"] = Field(description="SDK hosted tool class")
+    params: ImageGenerationParams = Field(
+        default_factory=ImageGenerationParams,
+        description="ImageGenerationTool parameters",
+    )
+
+
+class HostedMCPHostedTool(_HostedToolBase):
+    """``type: hosted`` entry selecting the SDK ``HostedMCPTool``."""
+
+    tool: Literal["HostedMCPTool"] = Field(description="SDK hosted tool class")
+    params: HostedMCPParams = Field(..., description="HostedMCPTool parameters")
+
+
+COMPUTER_TOOL_DEFERRED_MESSAGE = (
+    "ComputerTool requires a computer harness (browser or desktop driver) "
+    "that HoloDeck does not provide yet; it is deferred under spec 035 H-012. "
+    "Remove the entry or choose another hosted tool."
+)
+
+
+class ComputerHostedTool(_HostedToolBase):
+    """``type: hosted`` entry naming ``ComputerTool``; always rejected (D06)."""
+
+    tool: Literal["ComputerTool"] = Field(description="SDK hosted tool class")
+    params: dict[str, Any] | None = Field(default=None, description="Ignored")
+
+    @model_validator(mode="after")
+    def _reject(self) -> "ComputerHostedTool":
+        raise ValueError(COMPUTER_TOOL_DEFERRED_MESSAGE)
+
+
+def _get_hosted_kind(v: Any) -> str:
+    """Discriminate a hosted entry by its ``tool`` field."""
+    if isinstance(v, dict):
+        kind: str = v.get("tool", "")
+        return kind
+    result: str = getattr(v, "tool", "")
+    return result
+
+
+HostedTool = Annotated[
+    Annotated[WebSearchHostedTool, Tag("WebSearchTool")]
+    | Annotated[FileSearchHostedTool, Tag("FileSearchTool")]
+    | Annotated[CodeInterpreterHostedTool, Tag("CodeInterpreterTool")]
+    | Annotated[ImageGenerationHostedTool, Tag("ImageGenerationTool")]
+    | Annotated[HostedMCPHostedTool, Tag("HostedMCPTool")]
+    | Annotated[ComputerHostedTool, Tag("ComputerTool")],
+    Discriminator(_get_hosted_kind),
+]
+"""Discriminated union of the hosted-tool entry classes (by ``tool``)."""
+
+HOSTED_TOOL_CLASSES = (
+    WebSearchHostedTool,
+    FileSearchHostedTool,
+    CodeInterpreterHostedTool,
+    ImageGenerationHostedTool,
+    HostedMCPHostedTool,
+)
+"""Runtime tuple for ``isinstance`` checks against loadable hosted entries."""
+
+
 def _get_tool_type(v: Any) -> str:
     """Extract tool type from dict or model for discrimination.
 
@@ -1023,6 +1409,7 @@ ToolUnion = Annotated[
     | Annotated[MCPTool, Tag("mcp")]
     | Annotated[PromptTool, Tag("prompt")]
     | Annotated[HierarchicalDocumentToolConfig, Tag("hierarchical_document")]
-    | Annotated[SkillTool, Tag("skill")],
+    | Annotated[SkillTool, Tag("skill")]
+    | Annotated[HostedTool, Tag("hosted")],
     Discriminator(_get_tool_type),
 ]

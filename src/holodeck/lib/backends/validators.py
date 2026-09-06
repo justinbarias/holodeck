@@ -17,7 +17,12 @@ from holodeck.lib.errors import ConfigError
 from holodeck.models.agent import Agent
 from holodeck.models.claude_config import AuthProvider
 from holodeck.models.llm import LLMProvider, ProviderEnum
-from holodeck.models.tool import HierarchicalDocumentToolConfig, VectorstoreTool
+from holodeck.models.tool import (
+    HOSTED_TOOL_CLASSES,
+    CodeInterpreterHostedTool,
+    HierarchicalDocumentToolConfig,
+    VectorstoreTool,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -311,6 +316,41 @@ def validate_working_directory(path: str | None) -> None:
         )
 
 
+def _openai_disallowed_names(agent: Agent) -> set[str]:
+    """Union of ``openai.disallowed_tools`` and ``permissions.disallowed_tools``."""
+    openai_cfg = agent.openai
+    if openai_cfg is None:
+        return set()
+    blocked = set(openai_cfg.disallowed_tools or [])
+    if openai_cfg.permissions is not None:
+        blocked |= set(openai_cfg.permissions.disallowed_tools or [])
+    return blocked
+
+
+HOSTED_TOOLS_CLAUDE_MESSAGE = (
+    "hosted tools (type: hosted) run on the OpenAI platform through the "
+    "Responses API and are only available with model.provider openai or "
+    "azure_openai. Remove them or switch the provider."
+)
+
+
+def validate_no_hosted_tools(agent: Agent) -> None:
+    """Reject ``type: hosted`` entries on backends that cannot run them.
+
+    Args:
+        agent: Agent configuration to validate.
+
+    Raises:
+        ConfigError: Naming every hosted entry when at least one is declared.
+    """
+    hosted = [t.name for t in agent.tools or [] if isinstance(t, HOSTED_TOOL_CLASSES)]
+    if hosted:
+        raise ConfigError(
+            "tools",
+            f"{', '.join(hosted)}: {HOSTED_TOOLS_CLAUDE_MESSAGE}",
+        )
+
+
 def validate_openai_agents(agent: Agent) -> None:
     """Validate an ``openai_agents`` agent's config, collecting all errors.
 
@@ -332,6 +372,9 @@ def validate_openai_agents(agent: Agent) -> None:
             message aggregates every problem found.
     """
     from holodeck.lib.backends.openai_agents_backend import _preflight_credentials
+    from holodeck.lib.backends.openai_agents_tool_adapters import (
+        CODE_INTERPRETER_OPT_IN_MESSAGE,
+    )
 
     errors: list[str] = []
 
@@ -358,6 +401,16 @@ def validate_openai_agents(agent: Agent) -> None:
                 f"{', '.join(conflict)}. A tool cannot be both allowed and "
                 "disallowed."
             )
+
+    # FR-083: CodeInterpreterTool needs the explicit unsafe opt-in. Permission
+    # filtering runs first — a disallowed entry is never built, so it needs no
+    # acknowledgement (D17).
+    unsafe_ok = openai_cfg is not None and openai_cfg.i_understand_this_is_unsafe
+    if not unsafe_ok:
+        blocked = _openai_disallowed_names(agent)
+        for tool in agent.tools or []:
+            if isinstance(tool, CodeInterpreterHostedTool) and tool.name not in blocked:
+                errors.append(f"tools.{tool.name}: {CODE_INTERPRETER_OPT_IN_MESSAGE}")
 
     # FR-071: ``claude.setting_sources`` is accepted for cross-backend
     # portability but has no effect here — no ambient skill/settings discovery

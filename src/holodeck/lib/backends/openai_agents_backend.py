@@ -635,11 +635,31 @@ def _to_execution_result(
     tool_results: list[dict[str, Any]] = []
     call_name_by_id: dict[str, str] = {}
 
+    from holodeck.lib.backends.openai_agents_events import hosted_call_for
+
     for item in result.new_items:
         if isinstance(item, ToolCallItem | HandoffCallItem):
             # Handoff calls (``transfer_to_<agent>``) are recorded alongside
             # ordinary tool calls so graders can assert a handoff happened.
             raw = item.raw_item
+            hosted = hosted_call_for(raw)
+            if hosted is not None:
+                # Hosted tools run server-side and carry their outcome on the
+                # call item itself; pair the call and result here.
+                hosted_record: dict[str, Any] = {
+                    "name": hosted.name,
+                    "arguments": hosted.arguments,
+                }
+                hosted_result: dict[str, Any] = {
+                    "name": hosted.name,
+                    "result": hosted.response,
+                }
+                if hosted.call_id:
+                    hosted_record["call_id"] = hosted.call_id
+                    hosted_result["call_id"] = hosted.call_id
+                tool_calls.append(hosted_record)
+                tool_results.append(hosted_result)
+                continue
             name = str(getattr(raw, "name", "") or "")
             call_id = str(getattr(raw, "call_id", "") or "")
             arguments = _parse_tool_arguments(getattr(raw, "arguments", None))
@@ -698,6 +718,38 @@ def _to_execution_result(
         structured_output=structured_output,
         num_turns=num_turns,
         thinking=_extract_thinking(result),
+    )
+
+
+def _hosted_capability_hint(agent: Agent | None, exc: BaseException) -> str:
+    """Return an Azure hosted-tool hint for a run failure, or ``""``.
+
+    Hosted tools load on ``azure_openai`` (no blanket ban, D06/D17); a resource
+    that lacks the capability rejects the request at run time. The SDK error
+    is preserved verbatim and this hint is appended so the operator knows
+    where to look.
+
+    Args:
+        agent: The HoloDeck agent config (``None`` when unavailable).
+        exc: The exception raised by the SDK run.
+
+    Returns:
+        The hint text, or an empty string when it does not apply.
+    """
+    from holodeck.models.tool import HOSTED_TOOL_CLASSES
+
+    if agent is None or agent.model.provider is not ProviderEnum.AZURE_OPENAI:
+        return ""
+    hosted = [t.tool for t in agent.tools or [] if isinstance(t, HOSTED_TOOL_CLASSES)]
+    if not hosted:
+        return ""
+    text = str(exc).lower()
+    if "tool" not in text and "not supported" not in text and "invalid" not in text:
+        return ""
+    return (
+        f" (hosted tools declared: {', '.join(hosted)}; this Azure resource or "
+        "API version may not support them — see the OpenAI backend guide, "
+        '"Hosted tools on Azure")'
     )
 
 
@@ -851,16 +903,18 @@ class OpenAIAgentsSession:
         except BackendBudgetExceededError as exc:
             return _budget_error_result(exc)
         except Exception as exc:  # noqa: BLE001 - surfaced via ExecutionResult
+            hint = _hosted_capability_hint(self._agent_config, exc)
             logger.warning(
-                "OpenAI Agents run failed: %s: %s",
+                "OpenAI Agents run failed: %s: %s%s",
                 type(exc).__name__,
                 exc,
+                hint,
                 exc_info=True,
             )
             return ExecutionResult(
                 response="",
                 is_error=True,
-                error_reason=f"{type(exc).__name__}: {exc}",
+                error_reason=f"{type(exc).__name__}: {exc}{hint}",
             )
         # Non-streaming runs have no live stream; reconstruct the ordered
         # tool / handoff events from the completed run's items (FR-006).
@@ -924,7 +978,10 @@ class OpenAIAgentsSession:
             self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
             return
         except BaseException as exc:
-            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}"))
+            hint = _hosted_capability_hint(self._agent_config, exc)
+            if hint:
+                logger.warning("OpenAI Agents streamed run failed: %s%s", exc, hint)
+            self._publish(tracker.close(error=f"{type(exc).__name__}: {exc}{hint}"))
             raise
         # Handoffs stay "active" until the run ends (the target agent keeps
         # the conversation), so their ``end`` events are emitted here.
@@ -1014,11 +1071,15 @@ class OpenAIAgentsBackend:
             self._agent_config.instructions, base_dir=base_dir
         )
         await self._initialize_tool_instances()
+        openai_cfg = self._agent_config.openai
         tools = build_sdk_tools(
             self._agent_config.tools,
             base_dir,
             tool_instances=self._tool_instances,
             disallowed=disallowed,
+            allow_unsafe_hosted=bool(
+                openai_cfg is not None and openai_cfg.i_understand_this_is_unsafe
+            ),
         )
         mcp_servers = await self._initialize_mcp_servers(base_dir, disallowed)
 
