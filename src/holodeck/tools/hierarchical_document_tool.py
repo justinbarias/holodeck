@@ -798,16 +798,15 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         ]
 
         if self._embedding_service is not None:
-            try:
-                embeddings = await self._embedding_service.generate_embeddings(texts)
-                for chunk, emb in zip(chunks, embeddings, strict=False):
-                    chunk.embedding = list(emb)
-                logger.debug(f"Generated {len(chunks)} embeddings")
-                return
-            except Exception as e:
-                logger.warning(f"Embedding generation failed: {e}")
+            # Provider failures propagate (EmbeddingServiceError from the
+            # LiteLLM shim); never store placeholder vectors for real data.
+            embeddings = await self._embedding_service.generate_embeddings(texts)
+            for chunk, emb in zip(chunks, embeddings, strict=False):
+                chunk.embedding = list(emb)
+            logger.debug(f"Generated {len(chunks)} embeddings")
+            return
 
-        # Fallback: placeholder embeddings
+        # No service injected: placeholder embeddings
         dims = self._embedding_dimensions or 1536
         placeholders = generate_placeholder_embeddings(len(chunks), dims)
         for chunk, emb in zip(chunks, placeholders, strict=False):
@@ -954,15 +953,17 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         Returns:
             Query embedding vector.
+
+        Raises:
+            Exception: Any error raised by the embedding service; a failed
+                provider call surfaces as the tool error rather than
+                searching with a zero vector.
         """
         if self._embedding_service is not None:
-            try:
-                embeddings = await self._embedding_service.generate_embeddings([query])
-                return list(embeddings[0])
-            except Exception as e:
-                logger.warning(f"Query embedding failed: {e}")
+            embeddings = await self._embedding_service.generate_embeddings([query])
+            return list(embeddings[0])
 
-        # Fallback: placeholder embedding
+        # No service injected: placeholder embedding
         dims = self._embedding_dimensions or 1536
         return [0.0] * dims
 

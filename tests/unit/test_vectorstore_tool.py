@@ -1273,8 +1273,10 @@ class TestEmbedChunks:
         assert all(v == 0.0 for v in embeddings[0])
 
     @pytest.mark.asyncio
-    async def test_embed_chunks_handles_service_error(self, tmp_path: Path) -> None:
-        """Test embedding handles service errors by falling back."""
+    async def test_embed_chunks_propagates_service_error(self, tmp_path: Path) -> None:
+        """A failing embedding service surfaces its error; no placeholder."""
+        from holodeck.lib.litellm_support import EmbeddingServiceError
+
         source_file = tmp_path / "test.md"
         source_file.write_text("# Test")
 
@@ -1288,20 +1290,40 @@ class TestEmbedChunks:
 
         tool = VectorStoreTool(config)
 
-        # Mock embedding service that fails
+        upstream = EmbeddingServiceError("Embedding request failed for model 'm'")
         mock_service = MagicMock()
-        mock_service.generate_embeddings = AsyncMock(
-            side_effect=RuntimeError("Service error")
-        )
+        mock_service.generate_embeddings = AsyncMock(side_effect=upstream)
         tool._embedding_service = mock_service
 
-        chunks = ["chunk1"]
-        embeddings = await tool._embed_chunks(chunks)
+        with pytest.raises(EmbeddingServiceError) as excinfo:
+            await tool._embed_chunks(["chunk1"])
 
-        # Should fall back to placeholder
-        assert len(embeddings) == 1
-        assert len(embeddings[0]) == 1536
-        assert all(v == 0.0 for v in embeddings[0])
+        assert excinfo.value is upstream
+
+    @pytest.mark.asyncio
+    async def test_embed_chunks_dimension_mismatch_raises(self, tmp_path: Path) -> None:
+        """A vector of the wrong size raises ValueError instead of placeholder."""
+        source_file = tmp_path / "test.md"
+        source_file.write_text("# Test")
+
+        config = VectorstoreTool(
+            name="test_vectorstore",
+            description="Test tool",
+            source=str(source_file),
+            embedding_dimensions=256,
+        )
+
+        from holodeck.tools.vectorstore_tool import VectorStoreTool
+
+        tool = VectorStoreTool(config)
+        tool._embedding_dimensions = 256
+
+        mock_service = MagicMock()
+        mock_service.generate_embeddings = AsyncMock(return_value=[[0.1] * 1536])
+        tool._embedding_service = mock_service
+
+        with pytest.raises(ValueError, match="expected 256, got 1536"):
+            await tool._embed_chunks(["chunk1"])
 
 
 class TestStoreChunks:

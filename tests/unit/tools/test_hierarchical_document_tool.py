@@ -2204,46 +2204,65 @@ class TestEmbedChunksEdgeCases:
         await tool._embed_chunks([])
 
     @pytest.mark.asyncio
-    async def test_embed_chunks_handles_exception(self, tmp_path: Path) -> None:
-        """Test _embed_chunks falls back to placeholders on exception."""
+    async def test_embed_chunks_propagates_exception(self, tmp_path: Path) -> None:
+        """A failing embedding service surfaces its error; no placeholder."""
+        from holodeck.lib.litellm_support import EmbeddingServiceError
         from holodeck.lib.structured_chunker import DocumentChunk
 
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
         tool._embedding_dimensions = 1536
 
+        upstream = EmbeddingServiceError("Embedding request failed for model 'm'")
         mock_embed = AsyncMock()
-        mock_embed.generate_embeddings.side_effect = Exception("API error")
+        mock_embed.generate_embeddings.side_effect = upstream
         tool._embedding_service = mock_embed
 
         mock_chunk = MagicMock(spec=DocumentChunk)
         mock_chunk.content = "Test content"
         mock_chunk.contextualized_content = None
+        mock_chunk.embedding = None
 
-        await tool._embed_chunks([mock_chunk])
+        with pytest.raises(EmbeddingServiceError) as excinfo:
+            await tool._embed_chunks([mock_chunk])
 
-        # Should have placeholder embedding
-        assert mock_chunk.embedding is not None
-        assert len(mock_chunk.embedding) == 1536
+        assert excinfo.value is upstream
+        assert mock_chunk.embedding is None
 
 
 class TestEmbedQueryEdgeCases:
     """Tests for edge cases in _embed_query."""
 
     @pytest.mark.asyncio
-    async def test_embed_query_handles_exception(self, tmp_path: Path) -> None:
-        """Test _embed_query falls back to placeholder on exception."""
+    async def test_embed_query_propagates_exception(self, tmp_path: Path) -> None:
+        """A failing query embedding surfaces its error; no zero vector."""
+        from holodeck.lib.litellm_support import EmbeddingServiceError
+
         config = create_config(tmp_path)
         tool = HierarchicalDocumentTool(config)
         tool._embedding_dimensions = 1536
 
+        upstream = EmbeddingServiceError("Embedding request failed for model 'm'")
         mock_embed = AsyncMock()
-        mock_embed.generate_embeddings.side_effect = Exception("API error")
+        mock_embed.generate_embeddings.side_effect = upstream
         tool._embedding_service = mock_embed
+
+        with pytest.raises(EmbeddingServiceError) as excinfo:
+            await tool._embed_query("test query")
+
+        assert excinfo.value is upstream
+
+    @pytest.mark.asyncio
+    async def test_embed_query_placeholder_without_service(
+        self, tmp_path: Path
+    ) -> None:
+        """Without an injected service the query embedding is a zero vector."""
+        config = create_config(tmp_path)
+        tool = HierarchicalDocumentTool(config)
+        tool._embedding_dimensions = 1536
 
         result = await tool._embed_query("test query")
 
-        # Should return placeholder embedding
         assert len(result) == 1536
         assert all(v == 0.0 for v in result)
 

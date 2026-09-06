@@ -196,3 +196,47 @@ def test_set_up_tracing_deduplicates_redacting_processor() -> None:
     processors = _get_span_processors(provider)
     redacting = [p for p in processors if isinstance(p, RedactingSpanProcessor)]
     assert len(redacting) == 1, "RedactingSpanProcessor must appear exactly once"
+
+
+def test_redacting_processor_scrubs_litellm_raw_response():
+    """LiteLLM's raw-response child span attribute is in the redacted set."""
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(RedactingSpanProcessor())
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tracer = provider.get_tracer("t")
+
+    token = "ghp_" + "a" * 36
+    with tracer.start_as_current_span("raw_gen_ai_request") as span:
+        span.set_attribute(
+            "llm.openai.stringified_raw_response", f'{{"text": "{token}"}}'
+        )
+        span.set_attribute("llm.request.type", "aembedding")
+
+    (finished,) = exporter.get_finished_spans()
+    assert token not in finished.attributes["llm.openai.stringified_raw_response"]
+    assert "[REDACTED" in finished.attributes["llm.openai.stringified_raw_response"]
+    assert finished.attributes["llm.request.type"] == "aembedding"
+
+
+def test_redacting_processor_scrubs_error_attributes_and_exception_event():
+    """Failure telemetry (error.*, exception event) is scrubbed too."""
+    provider, exporter = _new_provider_with_redaction()
+    tracer = provider.get_tracer("t")
+
+    token = "ghp_" + "b" * 36
+    with tracer.start_as_current_span("litellm_request") as span:
+        span.set_attribute("error.type", "BadRequestError")
+        span.set_attribute("error.message", f"invalid input: {token}")
+        span.set_attribute("error.stack_trace", f"Traceback ... {token}")
+        span.record_exception(RuntimeError(f"provider said {token}"))
+
+    (finished,) = exporter.get_finished_spans()
+    assert finished.attributes["error.type"] == "BadRequestError"
+    assert token not in finished.attributes["error.message"]
+    assert token not in finished.attributes["error.stack_trace"]
+    (event,) = finished.events
+    assert event.name == "exception"
+    assert token not in event.attributes["exception.message"]
+    assert token not in event.attributes["exception.stacktrace"]
+    assert event.attributes["exception.type"] == "RuntimeError"
