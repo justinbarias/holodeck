@@ -45,7 +45,7 @@ docs/
 │   └── new-user-onboarding.md
 ├── references/
 │   ├── design-system-reference-llms.txt
-│   ├── nix-llms.txt
+│   ├── nixpacks-llms.txt
 │   └── uv-llms.txt
 ├── DESIGN.md
 ├── FRONTEND.md
@@ -59,7 +59,7 @@ docs/
 Existing product guides remain canonical and linked. The initial adoption retained the root specification tree.
 A [subsequent migration](2026-09-06-spec-migration.md) moved its contents into product specs, design documents, and execution plans.
 The schema inventory is generated from committed JSON contracts because HoloDeck has no central relational database.
-The Nix reference explicitly records non-applicability. Environment management remains UV-based.
+The Nixpacks reference explicitly records non-applicability. Environment management remains UV-based.
 The checker validates local file targets and discovery. It does not claim semantic freshness or external-link availability.
 Existing schema and Temporal tests remain the executable architectural constraints.
 Global import-layer enforcement and an isolated observability stack remain explicit technical debt.

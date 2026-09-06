@@ -37,7 +37,7 @@ REQUIRED = (
     "docs/product-specs/new-user-onboarding.md",
     "docs/references/index.md",
     "docs/references/design-system-reference-llms.txt",
-    "docs/references/nix-llms.txt",
+    "docs/references/nixpacks-llms.txt",
     "docs/references/uv-llms.txt",
     "docs/DESIGN.md",
     "docs/FRONTEND.md",

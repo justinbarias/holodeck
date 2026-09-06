@@ -1,6 +1,0 @@
-Nix applicability
-
-HoloDeck does not use Nix. The environment is managed by UV and uv.lock.
-This reference retains the harness-engineering example's filename explicitly.
-Do not infer a Nix setup requirement from that example structure.
-Use docs/references/uv-llms.txt and docs/contributing.md for this repository.

@@ -1,0 +1,6 @@
+Nixpacks applicability
+
+HoloDeck does not use Nixpacks. Container packaging uses the repository Dockerfiles;
+the Python environment is managed by UV and uv.lock.
+This reference retains the harness-engineering example's filename explicitly.
+Use docs/RELIABILITY.md, docs/references/uv-llms.txt, and docs/contributing.md.
