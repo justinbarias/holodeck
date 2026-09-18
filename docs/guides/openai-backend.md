@@ -225,6 +225,19 @@ Hosted calls appear on the tool-event stream and in `ExecutionResult.tool_calls`
 
 Hosted entries load on `provider: azure_openai` too; there is no blanket configuration ban. Whether a call succeeds depends on the Azure resource, region, and API surface, and that is only known at run time. When a run fails on Azure and the agent declares hosted tools, the SDK error is preserved verbatim and HoloDeck appends a hint naming the declared hosted classes. If you see it, check the resource's Responses API tool support or remove the entry.
 
+Azure runs the same tool types through its `/openai/v1` Responses surface, with provider-side differences. The table reflects the Microsoft Learn documentation as of 2026-06 and the HoloDeck live run on a `gpt-5.4` deployment (E11 in the [035 acceptance matrix](../exec-plans/active/035-openai-agents-backend/acceptance-matrix.md#evidence-catalog)); only web search has been exercised live from HoloDeck.
+
+| `tool` | Azure status | What differs from OpenAI |
+|--------|--------------|--------------------------|
+| `WebSearchTool` | Supported; verified live from HoloDeck | Backed by Grounding with Bing: extra per-call cost, and the query leaves your Azure compliance and geo boundary. `external_web_access` is always treated as `false`. A subscription admin can block the tool (`OpenAI.BlockedTools.web_search`), which surfaces as a run-time error. |
+| `CodeInterpreterTool` | Supported | Same `container` shapes. Container sessions are billed separately with a minimum charge per session. |
+| `ImageGenerationTool` | Supported by Azure, **not yet usable from HoloDeck** ([H-024](../exec-plans/tech-debt-tracker.md#h-024)) | Azure selects the image deployment through the request header `x-ms-oai-image-generation-deployment`, which the HoloDeck Azure client does not send; the run fails with `imagegen deployment must be provided through header: x-ms-oai-image-generation-deployment`, and the capability hint does not match that message. The image model must be a deployment (`gpt-image-1`, `gpt-image-1-mini`, or a later `gpt-image-*` version) in the same resource. Azure also rejects streaming and multi-turn editing for this tool, so leave `partial_images` unset and expect `holodeck serve` (streamed) to fail even once the header is wired. |
+| `FileSearchTool` | Supported | `vector_store_ids` must name Azure-side vector stores. Azure attaches only one vector store per request even though the field is a list. |
+| `HostedMCPTool` | Supported | The Azure resource calls the MCP server itself, so `server_url` must be reachable from the public internet; there is no VNet or private egress. Azure's private-server path (Secure MCP Tunnel, `tunnel_id`) is not exposed by HoloDeck's params. |
+| `ComputerTool` | Rejected at load on every provider | Unchanged (H-012). |
+
+Region availability follows the Azure model catalog for the base deployment, not the tool.
+
 ### Limits
 
 - Hosted tools are outside HoloDeck's model-visible guardrails: no output redaction, hooks, or rejection rules apply to what the OpenAI platform executes (OTel attribute redaction still applies to exported spans).
