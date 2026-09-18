@@ -33,17 +33,24 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from holodeck.config.env_loader import substitute_env_vars
 from holodeck.lib.backends.base import BackendInitError
 from holodeck.lib.errors import ConfigError
 from holodeck.lib.function_tool_loader import load_function_tool
 from holodeck.models.tool import (
+    HOSTED_TOOL_CLASSES,
+    CodeInterpreterHostedTool,
+    FileSearchHostedTool,
     FunctionTool,
     HierarchicalDocumentToolConfig,
+    HostedMCPHostedTool,
+    ImageGenerationHostedTool,
     MCPTool,
     PromptTool,
     SkillTool,
     ToolUnion,
     VectorstoreTool,
+    WebSearchHostedTool,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime SDK import
@@ -225,13 +232,131 @@ def _extract_query(input_json: str) -> str:
     return ""
 
 
+CODE_INTERPRETER_OPT_IN_MESSAGE = (
+    "CodeInterpreterTool runs model-written code in an OpenAI-hosted container. "
+    "Set `openai.i_understand_this_is_unsafe: true` to acknowledge this and "
+    "load the tool, or remove the entry."
+)
+
+
+def code_interpreter_opt_in_error(tool_name: str) -> ConfigError:
+    """Build the canonical FR-083 safety-gate error for *tool_name*."""
+    return ConfigError(f"tools.{tool_name}", CODE_INTERPRETER_OPT_IN_MESSAGE)
+
+
+def build_hosted_tool(cfg: ToolUnion, *, allow_unsafe: bool = False) -> SDKTool:
+    """Construct the SDK hosted tool selected by a ``type: hosted`` entry.
+
+    The nested ``tool_config`` objects the SDK expects (``CodeInterpreter``,
+    ``ImageGeneration``, ``Mcp`` TypedDicts from ``openai.types.responses``)
+    are built from the validated YAML params. Only fields set in YAML are
+    forwarded so the API defaults apply to the rest.
+
+    Args:
+        cfg: A hosted tool config (one of ``HOSTED_TOOL_CLASSES``).
+        allow_unsafe: The ``openai.i_understand_this_is_unsafe`` opt-in;
+            required to construct ``CodeInterpreterTool`` (FR-083).
+
+    Returns:
+        The SDK tool instance.
+
+    Raises:
+        ConfigError: If the entry is not a hosted tool, or a
+            ``CodeInterpreterTool`` is declared without the opt-in.
+    """
+    from agents import (
+        CodeInterpreterTool,
+        FileSearchTool,
+        HostedMCPTool,
+        ImageGenerationTool,
+        WebSearchTool,
+    )
+
+    if isinstance(cfg, WebSearchHostedTool):
+        params = cfg.params
+        user_location: Any = None
+        if params.user_location is not None:
+            user_location = {
+                "type": "approximate",
+                **params.user_location.model_dump(exclude_none=True),
+            }
+        filters: Any = None
+        if params.allowed_domains is not None:
+            # The SDK converter calls ``filters.model_dump()``, so this must be
+            # the pydantic model, not a mapping.
+            from openai.types.responses.web_search_tool import (
+                Filters as WebSearchToolFilters,
+            )
+
+            filters = WebSearchToolFilters(allowed_domains=list(params.allowed_domains))
+        return WebSearchTool(
+            user_location=user_location,
+            filters=filters,
+            search_context_size=params.search_context_size,
+            external_web_access=params.external_web_access,
+        )
+    if isinstance(cfg, FileSearchHostedTool):
+        fs = cfg.params
+        ranking: Any = None
+        if fs.ranking_options is not None:
+            ranking = fs.ranking_options.model_dump(exclude_none=True) or None
+        return FileSearchTool(
+            vector_store_ids=list(fs.vector_store_ids),
+            max_num_results=fs.max_num_results,
+            include_search_results=fs.include_search_results,
+            ranking_options=ranking,
+            filters=fs.filters,  # type: ignore[arg-type]
+        )
+    if isinstance(cfg, CodeInterpreterHostedTool):
+        if not allow_unsafe:
+            raise code_interpreter_opt_in_error(cfg.name)
+        container = cfg.params.container
+        container_cfg: Any = (
+            container
+            if isinstance(container, str)
+            else container.model_dump(exclude_none=True)
+        )
+        return CodeInterpreterTool(
+            tool_config={"type": "code_interpreter", "container": container_cfg}
+        )
+    if isinstance(cfg, ImageGenerationHostedTool):
+        image_cfg: dict[str, Any] = {"type": "image_generation"}
+        image_cfg.update(cfg.params.model_dump(exclude_none=True))
+        return ImageGenerationTool(tool_config=image_cfg)  # type: ignore[arg-type]
+    if isinstance(cfg, HostedMCPHostedTool):
+        mcp = cfg.params
+        mcp_cfg: dict[str, Any] = {
+            "type": "mcp",
+            "server_label": mcp.server_label,
+            "require_approval": mcp.require_approval,
+        }
+        if mcp.server_url is not None:
+            mcp_cfg["server_url"] = mcp.server_url
+        if mcp.connector_id is not None:
+            mcp_cfg["connector_id"] = mcp.connector_id
+        if mcp.server_description is not None:
+            mcp_cfg["server_description"] = mcp.server_description
+        if mcp.authorization is not None:
+            mcp_cfg["authorization"] = substitute_env_vars(mcp.authorization)
+        if mcp.headers is not None:
+            mcp_cfg["headers"] = {
+                key: substitute_env_vars(value) for key, value in mcp.headers.items()
+            }
+        if mcp.allowed_tools is not None:
+            mcp_cfg["allowed_tools"] = list(mcp.allowed_tools)
+        return HostedMCPTool(tool_config=mcp_cfg)  # type: ignore[arg-type]
+    raise ConfigError(f"tools.{cfg.name}", f"'{cfg.type}' is not a hosted tool entry.")
+
+
 def build_sdk_tools(
     tool_configs: list[ToolUnion] | None,
     base_dir: Path | None,
     tool_instances: dict[str, Any] | None = None,
     disallowed: set[str] | None = None,
+    *,
+    allow_unsafe_hosted: bool = False,
 ) -> list[SDKTool]:
-    """Translate HoloDeck tool configs into SDK ``FunctionTool`` instances.
+    """Translate HoloDeck tool configs into SDK tool instances.
 
     Tools whose HoloDeck *config* name appears in *disallowed* are filtered out
     before any SDK tool is constructed (FR-034). Matching is on the config name
@@ -250,9 +375,13 @@ def build_sdk_tools(
             Required for those two tool types.
         disallowed: HoloDeck config names to omit from the built tool surface.
             ``None`` (the default) applies no filtering.
+        allow_unsafe_hosted: The ``openai.i_understand_this_is_unsafe`` opt-in
+            gating ``CodeInterpreterTool`` (FR-083). Permission filtering runs
+            first: a disallowed code interpreter is dropped, never built.
 
     Returns:
-        A list of ``agents.FunctionTool`` objects ready to pass to ``Agent``.
+        A list of SDK tools (``FunctionTool`` plus any hosted tools) ready to
+        pass to ``Agent``.
 
     Raises:
         BackendInitError: If a vectorstore / hierarchical-document tool has no
@@ -319,6 +448,8 @@ def build_sdk_tools(
             # ``openai_agents_subagents.build_handoff_agents``), not
             # ``FunctionTool``s, so they are skipped here.
             continue
+        elif isinstance(cfg, HOSTED_TOOL_CLASSES):
+            tools.append(build_hosted_tool(cfg, allow_unsafe=allow_unsafe_hosted))
         elif isinstance(cfg, PromptTool):
             logger.warning(
                 "Tool '%s' (type: prompt) has no runtime adapter on any backend; "
@@ -340,9 +471,11 @@ def sdk_tool_name_for(cfg: ToolUnion) -> str | None:
     """Return the SDK tool name a HoloDeck tool config is surfaced under.
 
     Function tools keep their config name; vectorstore and
-    hierarchical-document tools are surfaced as ``{name}_search``. MCP,
-    prompt, and skill configs produce no SDK ``FunctionTool`` and return
-    ``None``.
+    hierarchical-document tools are surfaced as ``{name}_search``; hosted
+    tools surface under the SDK's fixed name for their class (``web_search``,
+    ``file_search``, ``code_interpreter``, ``image_generation``,
+    ``hosted_mcp``), so two hosted entries of one class collide. MCP,
+    prompt, and skill configs produce no SDK tool and return ``None``.
 
     Args:
         cfg: A tool config from the parent's ``tools:`` list.
@@ -354,6 +487,8 @@ def sdk_tool_name_for(cfg: ToolUnion) -> str | None:
         return cfg.name
     if isinstance(cfg, VectorstoreTool | HierarchicalDocumentToolConfig):
         return f"{cfg.name}_search"
+    if isinstance(cfg, HOSTED_TOOL_CLASSES):
+        return cfg.sdk_tool_name
     return None
 
 
