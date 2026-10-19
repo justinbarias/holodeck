@@ -72,7 +72,7 @@ dependencies = [
     "httpx>=0.27",
     "authlib>=1.6.11",
     "azure-core>=1.38.0",
-    "claude-agent-sdk==0.2.82",
+    "claude-agent-sdk==0.2.121",
     "python-frontmatter>=1.1,<2.0",
     "optuna>=4.8.0",
     "litellm>=1.80.0,<1.89.0",
