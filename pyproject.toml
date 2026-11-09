@@ -158,7 +158,7 @@ openai-agents = ["openai-agents==0.20.0", "openai>=2.45.0,<3"]
 # the Streamlit draft — handoff CSS tokens paste into assets/ verbatim.
 dashboard = [
     "dash>=3.0,<4.0",
-    "plotly>=5.20,<7.0",
+    "plotly>=5.20,<8.0",
     "pandas>=2.0",
 ]
 
