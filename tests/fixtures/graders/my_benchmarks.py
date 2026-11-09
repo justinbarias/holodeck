@@ -10,6 +10,7 @@ These graders exercise the contract surface described in
 - ``returns_grader_result`` — returns a fully-formed ``GraderResult``; T034/T040.
 - ``returns_dict`` — returns a non-standard shape; T041 grader-error path.
 - ``program_equivalence`` — quickstart's canonical example (kept for parity).
+- ``lookup_returned_marker`` — inspects ``ctx.tool_invocations`` (name + result).
 """
 
 from __future__ import annotations
@@ -74,4 +75,17 @@ def program_equivalence(ctx: GraderContext) -> GraderResult:
         score=1.0 if matches else 0.0,
         passed=bool(matches),
         reason=f"expected {expected!r}, got {actual!r}",
+    )
+
+
+def lookup_returned_marker(ctx: GraderContext) -> GraderResult:
+    """Pass when a ``lookup`` tool invocation returned ``MARKER-42``."""
+    seen = [(inv.name, inv.result) for inv in ctx.tool_invocations]
+    matched = any(
+        name == "lookup" and "MARKER-42" in str(result) for name, result in seen
+    )
+    return GraderResult(
+        score=1.0 if matched else 0.0,
+        passed=matched,
+        reason=f"tool invocations seen: {seen!r}",
     )

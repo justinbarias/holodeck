@@ -15,6 +15,7 @@ import dataclasses
 import inspect
 import json
 import logging
+import os
 from collections.abc import AsyncGenerator, AsyncIterable
 from pathlib import Path
 from typing import Any, cast
@@ -654,7 +655,11 @@ def _process_message(
     return text_parts, tool_calls, tool_results, thinking_parts
 
 
-_RISKY_BUILTIN_TOOLS: frozenset[str] = frozenset({"Bash", "Write", "Edit", "WebFetch"})
+# NotebookEdit writes files and WebSearch reaches the network, so each is
+# gated by the same schema field as its closest declared capability.
+_RISKY_BUILTIN_TOOLS: frozenset[str] = frozenset(
+    {"Bash", "Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch"}
+)
 
 
 def _declared_builtin_tools(claude: Any) -> set[str]:
@@ -662,7 +667,8 @@ def _declared_builtin_tools(claude: Any) -> set[str]:
 
     A tool counts as declared when the HoloDeck schema explicitly opts in
     via a dedicated field (claude.bash.enabled, claude.file_system.write,
-    etc.) or when the tool name appears in claude.allowed_tools.
+    claude.web_search, etc.) or when the tool name appears in
+    claude.allowed_tools.
 
     Args:
         claude: ``ClaudeConfig`` instance or ``None``.
@@ -679,9 +685,14 @@ def _declared_builtin_tools(claude: Any) -> set[str]:
         if claude.file_system.write:
             declared.add("Write")
         if claude.file_system.edit:
-            declared.add("Edit")
+            declared.update({"Edit", "NotebookEdit"})
+    if claude.web_search:
+        declared.add("WebSearch")
     if claude.allowed_tools:
         declared.update(claude.allowed_tools)
+    # A subagent's ``tools`` list does not count: disallowed_tools is
+    # session-wide, so unblocking a tool for a subagent unblocks it for the
+    # parent too.
     return declared
 
 
@@ -882,7 +893,7 @@ def build_options(
     )
 
     # Disallowed tools (P1b — spec 034). Auto-disallow risky built-in SDK
-    # tools (Bash, Write, Edit, WebFetch) that the operator has not declared
+    # tools (_RISKY_BUILTIN_TOOLS) that the operator has not declared
     # via the dedicated schema fields or claude.allowed_tools. This is the
     # real fail-closed lever — permission_mode is only a tiebreaker for tools
     # not covered by either list.
@@ -1003,6 +1014,14 @@ def build_options(
         # on the MCP tool's `env` block — see docs/security/prompt-injection-defenses.md
         # §"Operator footgun".
         env_overrides.setdefault("CLAUDE_CODE_MCP_ALLOWLIST_ENV", "1")
+    # Claude Code >=0.2.17x defers MCP tools behind a ToolSearch step, so the
+    # model must search before it can call an agent's declared tools. Models
+    # behind custom endpoints (Ollama, gateways) may never do that, and every
+    # call costs an extra round trip. Send declared tools directly unless the
+    # operator opts back in by exporting ENABLE_TOOL_SEARCH.
+    env_overrides.setdefault(
+        "ENABLE_TOOL_SEARCH", os.environ.get("ENABLE_TOOL_SEARCH", "false")
+    )
     if env_overrides:
         opts_kwargs["env"] = env_overrides
 

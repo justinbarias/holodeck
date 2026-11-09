@@ -6,15 +6,31 @@ on:
   pull_request:
     branches: [main]
 
+# One self-hosted runner serves every run, so a superseded PR run only delays
+# the next one. Cancel it on a new push. Push runs key on the commit SHA, so
+# main and develop runs never cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
-    runs-on: self-hosted # 2 CPU cores (can upgrade to ubuntu-latest-4-cores or ubuntu-latest-8-cores)
+    # Keep the required check name "test (3.11)" (the default would add the runner).
+    name: test (${{ matrix.python-version }})
+    # The required 3.11 lane stays on the self-hosted runner. The 3.13 lane runs
+    # on a GitHub-hosted runner so the two lanes no longer queue behind each
+    # other on the single self-hosted machine.
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       id-token: write
     strategy:
       matrix:
-        python-version: ["3.11", "3.13"]
+        include:
+          - python-version: "3.11"
+            runner: self-hosted
+          - python-version: "3.13"
+            runner: ubuntu-latest
     env:
       PYTEST_XDIST_WORKERS: 8 # Match runner CPU count for optimal performance
       UV_PYTHON: ${{ matrix.python-version }} # make uv sync/run use this lane's interpreter
@@ -26,31 +42,19 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@v10.3.3 # no floating major tags since v8
+        with:
+          # Hosted runners start empty, so cache there; self-hosted keeps ~/.cache/uv.
+          enable-cache: ${{ matrix.runner != 'self-hosted' }}
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Cache uv dependencies
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-${{ runner.os }}-${{ matrix.python-version }}-
-
-      - name: Cache pre-commit environments
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            pre-commit-
-
+      # No actions/cache for ~/.cache/uv on self-hosted: that runner keeps its
+      # disk, and moving the 757 MB archive cost ~55s restore (+~90s save) per job.
       - name: Install dependencies
         run: uv sync --all-extras
 
-      - name: Run pre-commit
-        run: uv run pre-commit run --all-files
+      # pre-commit hooks run once, in the required pre-commit workflow.
 
       - name: Run tests in parallel
         run: |
@@ -89,4 +93,5 @@ jobs:
           report_type: test_results
 
       - name: Security scan
+        if: matrix.python-version == '3.11' # same uv.lock and src in both lanes
         run: make security

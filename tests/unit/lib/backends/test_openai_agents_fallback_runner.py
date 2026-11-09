@@ -74,7 +74,7 @@ def _response_payload(text: str, model: str) -> dict[str, Any]:
             "input_tokens": 3,
             "output_tokens": 2,
             "total_tokens": 5,
-            "input_tokens_details": {"cached_tokens": 0},
+            "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
             "output_tokens_details": {"reasoning_tokens": 0},
         },
     }
