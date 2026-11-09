@@ -11,6 +11,21 @@ updates:
     groups:
       python-minor-patch:
         update-types: ["minor", "patch"]
+      # One PR for all major bumps: each lone PR rewrites uv.lock, so the
+      # others fall behind main after every merge.
+      python-major:
+        update-types: ["major"]
+    # Majors with a known blocker would fail the whole python-major PR.
+    # Drop an entry when its migration lands. Security updates still open.
+    ignore:
+      - dependency-name: "ag-ui-protocol"  # 1.0 changes the multimodal input schema
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mcp"  # <2 until claude-agent-sdk supports MCP 2
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "openai"  # 3.x needs litellm and openai-agents 0.21+ together
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "azure-mgmt-appcontainers"  # 5.x needs the deployer moved to its new API
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
