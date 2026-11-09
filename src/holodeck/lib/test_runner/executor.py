@@ -940,17 +940,21 @@ class TestExecutor:
         fast_names_st, object_expected_st = _partition_expected_tools(
             test_case.expected_tools
         )
+        # Pair once: arg matching, code graders, and the TestResult all see
+        # the same invocations.
         try:
-            paired_invocations_for_args = pair_tool_calls(
+            tool_invocations = pair_tool_calls(
                 raw_tool_calls, tool_results, backend_kind=backend_kind
             )
         except TypeError:
-            paired_invocations_for_args = []
+            # Defensive: mock-based tests may pass non-list sentinels through;
+            # the on-disk contract still requires a list, so fall back to [].
+            tool_invocations = []
         fast_matched_st = validate_tool_calls(
             tool_calls, fast_names_st if fast_names_st else None
         )
         arg_matched_st, arg_details_st = evaluate_expected_tools(
-            list(object_expected_st), paired_invocations_for_args
+            list(object_expected_st), tool_invocations
         )
         if test_case.expected_tools is None:
             tools_matched = None
@@ -975,6 +979,8 @@ class TestExecutor:
             retrieval_context=test_case.retrieval_context,
             processed_files=processed_files,
             tool_results=tool_results,
+            tool_invocations=list(tool_invocations),
+            test_case_name=test_case.name,
         )
         logger.debug(
             f"Completed {len(metric_results)} evaluations for test: {test_case.name}"
@@ -992,15 +998,6 @@ class TestExecutor:
         # Step 7: Build TestResult
         elapsed_ms = int((time.time() - start_time) * 1000)
         logger.debug(f"Test execution completed: {test_case.name} ({elapsed_ms}ms)")
-
-        try:
-            tool_invocations = pair_tool_calls(
-                raw_tool_calls, tool_results, backend_kind=backend_kind
-            )
-        except TypeError:
-            # Defensive: mock-based tests may pass non-list sentinels through;
-            # the on-disk contract still requires a list, so fall back to [].
-            tool_invocations = []
 
         return TestResult(
             test_name=test_case.name,
