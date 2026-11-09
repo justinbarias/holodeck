@@ -32,10 +32,10 @@ Repository paths in this register are relative to the repository root.
 | C1 | Implemented | `openai_agents_mcp.py` and `test_openai_agents_mcp.py` cover transport construction, substitution, WebSocket warning, and static filtering; backend tests cover connection/cleanup. |
 | D1–D3 | Implemented (T3, 2026-09-06) | `models/openai_config.py` (`agents`), `models/tool.py` (`SkillTool`), `lib/skills.py`, `openai_agents_subagents.py`, `openai_agents_events.py`, session `tool_events`; schema regenerated. Fixture-level handoff acceptance through the real Runner in `test_openai_agents_events.py`; live handoff remains T10. |
 | E1–E2 | Pending | `OpenAIConfig` has no `hooks`; no OpenAI YAML hook or guardrail module exists. Budget hooks are implemented, but are not YAML hooks. |
-| F1–F3 | Implemented | Model settings, permission filtering, `openai_agents_cost.py`, and their unit tests exist. Backend catches budget exceptions into error results with partial output. Hosted filtering remains dependent on G1. |
+| F1–F3 | Implemented | Model settings, permission filtering, `openai_agents_cost.py`, and their unit tests exist. Backend catches budget exceptions into error results with partial output. Hosted filtering covered with G1 (T4). |
 | F4 | Partial; acceptance reopened | `openai_agents_fallback.py` and its unit tests cover one fallback on 429/5xx and no stream restart after the first event. Tests call the wrapper directly: SDK Runner retry exhaustion and both-attempt trace acceptance are not demonstrated. The wrapper catches primary errors internally, so the claimed Runner-retries-first ordering requires validation and potentially a fix. |
 | F5 | Implemented for configured reasoning effort | `openai_agents_output.py` and backend result extraction have unit coverage. `summary="auto"` is requested only when `openai.effort` is set; no-effort reasoning requests do not request a summary. Live structured/thinking acceptance remains K2. |
-| G1–G2 | Pending | `ToolUnion` has no `HostedTool`; the unsafe opt-in field is defined ahead of runtime enforcement. |
+| G1–G2 | Implemented (T4, 2026-09-06) | `models/tool.py` (`HostedTool` union: five classes plus the always-rejected `ComputerTool`), `openai_agents_tool_adapters.build_hosted_tool`, opt-in enforced in `validators.validate_openai_agents` and the factory, Claude rejection in `validate_no_hosted_tools`; schema regenerated. Per-factory acceptance in `test_openai_agents_hosted_tools.py`; live hosted calls remain T10. |
 | H1 | Partial; acceptance reopened | `openai_agents_tracing.py`, `_install_tracing_mirror`, and tracing tests exist; the Azure tracing-disable call is removed. Processor selection runs only when observability tracing is enabled and is guarded by a process-global installed flag. Validate disabled-observability and mixed-provider/config initialization before claiming unconditional Azure/override upload suppression. |
 | I1 | Pending; shared readiness exists | `serve/server.py` still restricts active-turn caps and startup credential preflight to Anthropic. OpenAI sizing fields have no serve enforcement. |
 | I2 | Shared implementation exists; acceptance open | Deploy CLI calls `agent_needs_nodejs`; Docker template conditionally includes Node and protects corpus/scratch paths. `test_dockerfile_hardening.py` covers these generic branches. Add OpenAI-configured coverage and verify generated image behavior; the proposed dedicated test file does not exist. |
@@ -589,7 +589,7 @@ thinking extraction, mocked run); creds-gated live check in K2.
 ### Phase G — Hosted tools (US5)
 
 #### Task G1: `HostedTool` model + 5 tool factories
-**Reconciled status:** Pending / acceptance not established.
+**Reconciled status:** Implemented (T4, 2026-09-06); entry shape is `name` + `tool` + `params` per spec D17.
 **Description:** Add `HostedTool` (`type: hosted`, `name` selecting the SDK class, `params`) to
 `ToolUnion` in `models/tool.py`. Factory builds `WebSearchTool` / `FileSearchTool` /
 `CodeInterpreterTool` / `ImageGenerationTool` / `HostedMCPTool`. `CodeInterpreterTool`,
@@ -601,12 +601,12 @@ harness — not yet supported" (Decision 7). Allowed on both providers (Decision
 unavailable on the live Azure resource surfaces a runtime error with a clear hint (not a
 config-load block). Unblocks E2's hosted-tool reject paths.
 **Acceptance criteria:**
-- [ ] `type: hosted, name: WebSearchTool` → `WebSearchTool()`; `FileSearchTool` passes
+- [x] `type: hosted, tool: WebSearchTool` → `WebSearchTool()`; `FileSearchTool` passes
       `vector_store_ids`/`max_num_results`.
-- [ ] `CodeInterpreterTool` params build the required nested `tool_config` (container spec);
+- [x] `CodeInterpreterTool` params build the required nested `tool_config` (container spec);
       missing container → clear config error (not a bare `TypeError`).
-- [ ] Unknown hosted name → clear config error; `ComputerTool` → the Decision-7 error.
-- [ ] On `azure_openai`, hosted tools load; a runtime unsupported error is propagated verbatim.
+- [x] Unknown hosted name → clear config error; `ComputerTool` → the Decision-7 error.
+- [x] On `azure_openai`, hosted tools load; a runtime unsupported error is propagated verbatim (plus a hint).
 **Verification:** `tests/unit/lib/backends/test_openai_agents_tool_adapters.py` (per hosted tool).
 **Dependencies:** A1
 **Files:** `src/holodeck/models/tool.py`, `schemas/agent.schema.json`,
@@ -614,15 +614,15 @@ config-load block). Unblocks E2's hosted-tool reject paths.
 **Scope:** M
 
 #### Task G2: Safety gate for `CodeInterpreterTool` (P1b)
-**Reconciled status:** Pending / acceptance not established.
+**Reconciled status:** Implemented (T4, 2026-09-06).
 **Description:** Auto-disallow `CodeInterpreterTool` unless
 `openai.i_understand_this_is_unsafe: true`; loading without the opt-in emits the canonical
 migration error (FR-083). (`ComputerTool` is unconditionally rejected by G1, so the gate no longer
 covers it.) Default guardrail gates (J1 redaction, E2 rejects) are never weakened by hosted-tool
 config (FR-084 as reinterpreted — see reconciliations).
 **Acceptance criteria:**
-- [ ] Declaring `CodeInterpreterTool` without the opt-in fails load with the canonical error.
-- [ ] With the opt-in (and a valid container `tool_config`), it constructs.
+- [x] Declaring `CodeInterpreterTool` without the opt-in fails load with the canonical error.
+- [x] With the opt-in (and a valid container `tool_config`), it constructs.
 **Verification:** `tests/unit/lib/backends/test_openai_agents_permissions.py`.
 **Dependencies:** G1, A1
 **Files:** `src/holodeck/lib/backends/openai_agents_tool_adapters.py`,
@@ -630,9 +630,9 @@ config (FR-084 as reinterpreted — see reconciliations).
 **Scope:** S
 
 ### Checkpoint G — Hosted tools (+ E2 hosted paths)
-- [ ] 5 hosted tools declarable (nested configs built from YAML); `ComputerTool` cleanly rejected;
-      safety gate enforced; Azure load works (runtime-gated); E2's `HostedMCPTool` reject +
-      hosted load-fail paths verified.
+- [x] 5 hosted tools declarable (nested configs built from YAML); `ComputerTool` cleanly rejected;
+      safety gate enforced; Azure load works (runtime-gated) — T4. E2's `HostedMCPTool` reject +
+      hosted load-fail paths remain with E2 (T6).
 
 ---
 

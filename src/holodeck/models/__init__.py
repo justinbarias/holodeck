@@ -38,6 +38,7 @@ from holodeck.models.test_case import FileInput, TestCase, TestCaseModel
 from holodeck.models.token_usage import TokenUsage
 from holodeck.models.tool import (
     FunctionTool,
+    HostedTool,
     MCPTool,
     PromptTool,
     SkillTool,
@@ -87,6 +88,7 @@ __all__: list[str] = [
     "MCPTool",
     "PromptTool",
     "SkillTool",
+    "HostedTool",
     # Tool execution
     "ToolExecution",
     "ToolStatus",

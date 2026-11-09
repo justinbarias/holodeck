@@ -12,8 +12,9 @@ install, to see handoffs and skills in the chat tools panel, or as a template.
 | Hierarchical-document hybrid RAG | `handbook` over `docs/handbook.md` |
 | MCP server (stdio) with a static tool filter | `filesystem` (needs Node.js / `npx`) |
 | Subagents / handoffs | `openai.agents`: `researcher` (restricted), `analyst` (inherits all), `writer` (no tools, prompt file, prefix opt-out) |
+| Hosted tool (OpenAI-platform web search) | `web` (`type: hosted`, `tool: WebSearchTool`); verified live on Azure `gpt-5.4` |
 | Skills | `summarise` (inline) and `research-assistant` (`skills/research-assistant/SKILL.md`) |
-| Reasoning effort + `thinking` | `openai.effort: low` on `gpt-5-mini` |
+| Reasoning effort + `thinking` | `openai.effort: low` on `gpt-5.4` (Azure) / `gpt-5-mini` (OpenAI) |
 | Budget cap | `openai.max_budget_usd` |
 | Fallback model | `openai.fallback_model` |
 | Tracing (OTel mirror) | `observability` block (disabled by default) |
@@ -41,7 +42,7 @@ the two RAG sources with `text-embedding-3-small`; later runs reuse the cache
 
 `agent.azure.yaml` is the same agent pointed at Azure OpenAI deployments. It
 reads `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`,
-`AZURE_OPENAI_DEPLOYMENT_NAME` (a `gpt-5-mini` deployment) and
+`AZURE_OPENAI_DEPLOYMENT_NAME` (a `gpt-5.4` deployment) and
 `AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME` from `.env`; `fallback_model` is
 commented out because it needs a second deployment. Trace upload to
 platform.openai.com is suppressed automatically for Azure.

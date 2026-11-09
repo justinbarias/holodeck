@@ -555,6 +555,144 @@
       "title": "CloudTargetConfig",
       "type": "object"
     },
+    "CodeInterpreterAutoContainer": {
+      "additionalProperties": false,
+      "description": "An auto-provisioned code-interpreter container.",
+      "properties": {
+        "type": {
+          "const": "auto",
+          "default": "auto",
+          "description": "Container mode.",
+          "title": "Type",
+          "type": "string"
+        },
+        "file_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Uploaded file ids mounted into the container.",
+          "title": "File Ids"
+        },
+        "memory_limit": {
+          "anyOf": [
+            {
+              "enum": [
+                "1g",
+                "4g",
+                "16g",
+                "64g"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Container memory limit.",
+          "title": "Memory Limit"
+        },
+        "network_policy": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Container network policy (``{type: disabled}`` or ``{type: allowlist, allowed_domains: [...]}``), passed through.",
+          "title": "Network Policy"
+        }
+      },
+      "title": "CodeInterpreterAutoContainer",
+      "type": "object"
+    },
+    "CodeInterpreterHostedTool": {
+      "additionalProperties": false,
+      "description": "``type: hosted`` entry selecting the SDK ``CodeInterpreterTool``.\n\nLoading requires ``openai.i_understand_this_is_unsafe: true`` (FR-083);\nthe gate is enforced at backend validation, not here, so the model stays\nbackend-agnostic.",
+      "properties": {
+        "name": {
+          "description": "Config name for this hosted tool (unique per agent).",
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "hosted",
+          "default": "hosted",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Operator note; hosted tools carry their own model-facing description.",
+          "title": "Description"
+        },
+        "tool": {
+          "const": "CodeInterpreterTool",
+          "description": "SDK hosted tool class",
+          "title": "Tool",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/CodeInterpreterParams",
+          "description": "CodeInterpreterTool parameters"
+        }
+      },
+      "required": [
+        "name",
+        "tool",
+        "params"
+      ],
+      "title": "CodeInterpreterHostedTool",
+      "type": "object"
+    },
+    "CodeInterpreterParams": {
+      "additionalProperties": false,
+      "description": "Constructor parameters for the SDK ``CodeInterpreterTool``.\n\n``container`` is required by the Responses API: either an existing\ncontainer id or an ``auto`` container spec.",
+      "properties": {
+        "container": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/CodeInterpreterAutoContainer"
+            }
+          ],
+          "description": "Container id (``cntr_...``) or an ``{type: auto, ...}`` spec.",
+          "title": "Container"
+        }
+      },
+      "required": [
+        "container"
+      ],
+      "title": "CodeInterpreterParams",
+      "type": "object"
+    },
     "CodeMetric": {
       "additionalProperties": false,
       "description": "User-supplied Python grader metric (data-model.md \u00a76).\n\nDiscriminator: ``type: code``. The ``grader`` path is resolved at config\nload time \u2014 ``importlib.import_module`` + ``getattr`` \u2014 so bad references\nsurface as ``ConfigError`` *before* any agent call (FR-025).\n\nThe resolved callable is cached in a private attribute so each turn's\ngrader invocation doesn't re-import.",
@@ -627,6 +765,66 @@
       ],
       "title": "CommandType",
       "type": "string"
+    },
+    "ComputerHostedTool": {
+      "additionalProperties": false,
+      "description": "``type: hosted`` entry naming ``ComputerTool``; always rejected (D06).",
+      "properties": {
+        "name": {
+          "description": "Config name for this hosted tool (unique per agent).",
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "hosted",
+          "default": "hosted",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Operator note; hosted tools carry their own model-facing description.",
+          "title": "Description"
+        },
+        "tool": {
+          "const": "ComputerTool",
+          "description": "SDK hosted tool class",
+          "title": "Tool",
+          "type": "string"
+        },
+        "params": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ignored",
+          "title": "Params"
+        }
+      },
+      "required": [
+        "name",
+        "tool"
+      ],
+      "title": "ComputerHostedTool",
+      "type": "object"
     },
     "ConsoleExporterConfig": {
       "additionalProperties": false,
@@ -1350,6 +1548,164 @@
       "title": "FileInput",
       "type": "object"
     },
+    "FileSearchHostedTool": {
+      "additionalProperties": false,
+      "description": "``type: hosted`` entry selecting the SDK ``FileSearchTool``.",
+      "properties": {
+        "name": {
+          "description": "Config name for this hosted tool (unique per agent).",
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "hosted",
+          "default": "hosted",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Operator note; hosted tools carry their own model-facing description.",
+          "title": "Description"
+        },
+        "tool": {
+          "const": "FileSearchTool",
+          "description": "SDK hosted tool class",
+          "title": "Tool",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/FileSearchParams",
+          "description": "FileSearchTool parameters"
+        }
+      },
+      "required": [
+        "name",
+        "tool",
+        "params"
+      ],
+      "title": "FileSearchHostedTool",
+      "type": "object"
+    },
+    "FileSearchParams": {
+      "additionalProperties": false,
+      "description": "Constructor parameters for the SDK ``FileSearchTool``.",
+      "properties": {
+        "vector_store_ids": {
+          "description": "OpenAI vector store ids (``vs_...``) to search.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Vector Store Ids",
+          "type": "array"
+        },
+        "max_num_results": {
+          "anyOf": [
+            {
+              "maximum": 50,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum results returned.",
+          "title": "Max Num Results"
+        },
+        "include_search_results": {
+          "default": false,
+          "description": "Include the raw search results in the model output.",
+          "title": "Include Search Results",
+          "type": "boolean"
+        },
+        "ranking_options": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileSearchRankingOptions"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ranking options for the search."
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OpenAI attribute filter (comparison or compound), passed through verbatim to the SDK.",
+          "title": "Filters"
+        }
+      },
+      "required": [
+        "vector_store_ids"
+      ],
+      "title": "FileSearchParams",
+      "type": "object"
+    },
+    "FileSearchRankingOptions": {
+      "additionalProperties": false,
+      "description": "``ranking_options`` for the SDK ``FileSearchTool``.",
+      "properties": {
+        "ranker": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "default-2024-11-15"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ranker to use for the file search.",
+          "title": "Ranker"
+        },
+        "score_threshold": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum relevance score (0-1) a result must reach.",
+          "title": "Score Threshold"
+        }
+      },
+      "title": "FileSearchRankingOptions",
+      "type": "object"
+    },
     "FileSystemConfig": {
       "additionalProperties": false,
       "description": "File read/write/edit access settings.",
@@ -1843,6 +2199,387 @@
         "source"
       ],
       "title": "HierarchicalDocumentToolConfig",
+      "type": "object"
+    },
+    "HostedMCPHostedTool": {
+      "additionalProperties": false,
+      "description": "``type: hosted`` entry selecting the SDK ``HostedMCPTool``.",
+      "properties": {
+        "name": {
+          "description": "Config name for this hosted tool (unique per agent).",
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "hosted",
+          "default": "hosted",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Operator note; hosted tools carry their own model-facing description.",
+          "title": "Description"
+        },
+        "tool": {
+          "const": "HostedMCPTool",
+          "description": "SDK hosted tool class",
+          "title": "Tool",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/HostedMCPParams",
+          "description": "HostedMCPTool parameters"
+        }
+      },
+      "required": [
+        "name",
+        "tool",
+        "params"
+      ],
+      "title": "HostedMCPHostedTool",
+      "type": "object"
+    },
+    "HostedMCPParams": {
+      "additionalProperties": false,
+      "description": "Constructor parameters for the SDK ``HostedMCPTool``.\n\nThe OpenAI platform calls the remote server; HoloDeck never connects to\nit. Exactly one of ``server_url`` / ``connector_id`` must be set.\nInteractive tool approval is not supported yet (spec 035 H-013), so\n``require_approval`` must stay ``never``.",
+      "properties": {
+        "server_label": {
+          "description": "Label identifying the remote server.",
+          "minLength": 1,
+          "title": "Server Label",
+          "type": "string"
+        },
+        "server_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Remote MCP server URL (https).",
+          "title": "Server Url"
+        },
+        "connector_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OpenAI connector id (for example connector_googledrive).",
+          "title": "Connector Id"
+        },
+        "server_description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional description shown to the model.",
+          "title": "Server Description"
+        },
+        "authorization": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OAuth access token for the remote server; supports ${VAR} substitution at load time.",
+          "title": "Authorization"
+        },
+        "headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Extra HTTP headers sent to the server.",
+          "title": "Headers"
+        },
+        "allowed_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Only expose these remote tool names to the model.",
+          "title": "Allowed Tools"
+        },
+        "require_approval": {
+          "const": "never",
+          "default": "never",
+          "description": "Only ``never`` is supported: interactive approval is deferred (H-013) and an unsupported gate must fail closed rather than run.",
+          "title": "Require Approval",
+          "type": "string"
+        }
+      },
+      "required": [
+        "server_label"
+      ],
+      "title": "HostedMCPParams",
+      "type": "object"
+    },
+    "ImageGenerationHostedTool": {
+      "additionalProperties": false,
+      "description": "``type: hosted`` entry selecting the SDK ``ImageGenerationTool``.",
+      "properties": {
+        "name": {
+          "description": "Config name for this hosted tool (unique per agent).",
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "hosted",
+          "default": "hosted",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Operator note; hosted tools carry their own model-facing description.",
+          "title": "Description"
+        },
+        "tool": {
+          "const": "ImageGenerationTool",
+          "description": "SDK hosted tool class",
+          "title": "Tool",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/ImageGenerationParams",
+          "description": "ImageGenerationTool parameters"
+        }
+      },
+      "required": [
+        "name",
+        "tool"
+      ],
+      "title": "ImageGenerationHostedTool",
+      "type": "object"
+    },
+    "ImageGenerationParams": {
+      "additionalProperties": false,
+      "description": "Constructor parameters for the SDK ``ImageGenerationTool``.\n\nEvery field is optional; only the fields set in YAML are forwarded so the\nAPI defaults apply to the rest.",
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image model (for example gpt-image-1).",
+          "title": "Model"
+        },
+        "action": {
+          "anyOf": [
+            {
+              "enum": [
+                "generate",
+                "edit",
+                "auto"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Generate a new image or edit an input image.",
+          "title": "Action"
+        },
+        "background": {
+          "anyOf": [
+            {
+              "enum": [
+                "transparent",
+                "opaque",
+                "auto"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Background transparency.",
+          "title": "Background"
+        },
+        "input_fidelity": {
+          "anyOf": [
+            {
+              "enum": [
+                "high",
+                "low"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Fidelity to the input image when editing.",
+          "title": "Input Fidelity"
+        },
+        "moderation": {
+          "anyOf": [
+            {
+              "enum": [
+                "auto",
+                "low"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Moderation strictness.",
+          "title": "Moderation"
+        },
+        "output_compression": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Compression level for webp/jpeg.",
+          "title": "Output Compression"
+        },
+        "output_format": {
+          "anyOf": [
+            {
+              "enum": [
+                "png",
+                "webp",
+                "jpeg"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output image format.",
+          "title": "Output Format"
+        },
+        "partial_images": {
+          "anyOf": [
+            {
+              "maximum": 3,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Partial images streamed.",
+          "title": "Partial Images"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "auto"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output quality.",
+          "title": "Quality"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output size (for example 1024x1024 or auto).",
+          "title": "Size"
+        }
+      },
+      "title": "ImageGenerationParams",
       "type": "object"
     },
     "Instructions": {
@@ -3960,6 +4697,177 @@
       ],
       "title": "VectorstoreTool",
       "type": "object"
+    },
+    "WebSearchHostedTool": {
+      "additionalProperties": false,
+      "description": "``type: hosted`` entry selecting the SDK ``WebSearchTool``.",
+      "properties": {
+        "name": {
+          "description": "Config name for this hosted tool (unique per agent).",
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "hosted",
+          "default": "hosted",
+          "description": "Tool type",
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Operator note; hosted tools carry their own model-facing description.",
+          "title": "Description"
+        },
+        "tool": {
+          "const": "WebSearchTool",
+          "description": "SDK hosted tool class",
+          "title": "Tool",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/$defs/WebSearchParams",
+          "description": "WebSearchTool parameters"
+        }
+      },
+      "required": [
+        "name",
+        "tool"
+      ],
+      "title": "WebSearchHostedTool",
+      "type": "object"
+    },
+    "WebSearchParams": {
+      "additionalProperties": false,
+      "description": "Constructor parameters for the SDK ``WebSearchTool``.",
+      "properties": {
+        "user_location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WebSearchUserLocation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Bias results toward this approximate location."
+        },
+        "allowed_domains": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Restrict results to these domains (SDK ``filters``).",
+          "title": "Allowed Domains"
+        },
+        "search_context_size": {
+          "default": "medium",
+          "description": "How much search context the model receives.",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Search Context Size",
+          "type": "string"
+        },
+        "external_web_access": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether live internet fetches are allowed. Omit for the API default; ``false`` requests cached/indexed-only behaviour.",
+          "title": "External Web Access"
+        }
+      },
+      "title": "WebSearchParams",
+      "type": "object"
+    },
+    "WebSearchUserLocation": {
+      "additionalProperties": false,
+      "description": "Approximate user location forwarded to ``WebSearchTool``.",
+      "properties": {
+        "city": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Free-text city name.",
+          "title": "City"
+        },
+        "country": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Two-letter ISO country code (for example US).",
+          "title": "Country"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Free-text region.",
+          "title": "Region"
+        },
+        "timezone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IANA timezone (for example America/Chicago).",
+          "title": "Timezone"
+        }
+      },
+      "title": "WebSearchUserLocation",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -4043,6 +4951,28 @@
               },
               {
                 "$ref": "#/$defs/SkillTool"
+              },
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/WebSearchHostedTool"
+                  },
+                  {
+                    "$ref": "#/$defs/FileSearchHostedTool"
+                  },
+                  {
+                    "$ref": "#/$defs/CodeInterpreterHostedTool"
+                  },
+                  {
+                    "$ref": "#/$defs/ImageGenerationHostedTool"
+                  },
+                  {
+                    "$ref": "#/$defs/HostedMCPHostedTool"
+                  },
+                  {
+                    "$ref": "#/$defs/ComputerHostedTool"
+                  }
+                ]
               }
             ]
           },

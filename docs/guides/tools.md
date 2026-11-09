@@ -499,6 +499,39 @@ The frontmatter must be a `---`-delimited YAML mapping with non-empty `name` and
 
 ---
 
+## Hosted tools ✅ (OpenAI Agents backend)
+
+Server-side tools that the OpenAI platform runs through the Responses API: web search, file search over OpenAI vector stores, code interpreter, image generation, and hosted (remote) MCP. HoloDeck builds the SDK tool from the entry and never executes anything locally. Only the **OpenAI Agents backend** (`provider: openai` / `azure_openai`) loads them; the Claude backend rejects them at load. Full parameter tables, Azure behaviour, and limits are in the [OpenAI backend guide](openai-backend.md#hosted-tools).
+
+### Fields
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `name` | string | Yes | Config name used by `disallowed_tools` and subagent `tools` lists |
+| `type` | `"hosted"` | Yes | Discriminator |
+| `tool` | enum | Yes | `WebSearchTool`, `FileSearchTool`, `CodeInterpreterTool`, `ImageGenerationTool`, `HostedMCPTool` (`ComputerTool` is rejected: deferred under H-012) |
+| `params` | object | Per class | Constructor parameters validated per `tool`; unknown keys fail load. `FileSearchTool` needs `vector_store_ids`; `CodeInterpreterTool` needs `container`; `HostedMCPTool` needs `server_label` and one of `server_url` / `connector_id` |
+| `description` | string | No | Operator note; the platform supplies the model-facing description |
+
+```yaml
+tools:
+  - name: web
+    type: hosted
+    tool: WebSearchTool
+    params: {search_context_size: low}
+  - name: sandbox
+    type: hosted
+    tool: CodeInterpreterTool
+    params: {container: {type: auto}}
+
+openai:
+  i_understand_this_is_unsafe: true   # required for CodeInterpreterTool
+```
+
+The model sees hosted tools under the SDK's fixed names (`web_search`, `file_search`, `code_interpreter`, `image_generation`, `hosted_mcp`). Tool events and `expected_tools` use those names for the first four; a hosted MCP call is recorded under the **remote tool's name** (for example `read`) with `server_label` in its arguments. One entry per class.
+
+---
+
 ## Prompt tools 🚧
 
 > **Status:** Planned — configuration schema defined, execution not yet implemented.
@@ -534,15 +567,15 @@ Template syntax supports simple variables (`{{name}}`), conditionals (`{{#if des
 
 ## Tool comparison
 
-| Feature        | Function        | Vectorstore             | Hierarchical Document       | MCP                     | Prompt          |
-| -------------- | --------------- | ----------------------- | --------------------------- | ----------------------- | --------------- |
-| **Status**     | ✅ Implemented  | ✅ Implemented          | ✅ Implemented               | ✅ Implemented          | 🚧 Planned      |
-| **Use case**   | Custom logic    | Search data             | Structured document search  | External integrations   | Template-based  |
-| **Execution**  | Python function | Vector similarity       | Hybrid RRF fusion           | MCP protocol (stdio)    | LLM generation  |
-| **Setup**      | Python files    | Data files              | Document files              | Server config + runtime | Template text   |
-| **Parameters** | Defined in code | Implicit (search query) | Implicit (search query)     | Server-specific tools   | Defined in YAML |
-| **Latency**    | Low (<10ms)     | Medium (~100ms)         | Medium (~100-300ms)         | Medium (~50-500ms)      | High (LLM call) |
-| **Cost**       | Internal        | Embedding API           | Embedding + context LLM     | Server resource         | LLM tokens      |
+| Feature        | Function        | Vectorstore             | Hierarchical Document       | MCP                     | Hosted (OpenAI)            | Prompt          |
+| -------------- | --------------- | ----------------------- | --------------------------- | ----------------------- | -------------------------- | --------------- |
+| **Status**     | ✅ Implemented  | ✅ Implemented          | ✅ Implemented               | ✅ Implemented          | ✅ OpenAI backend only     | 🚧 Planned      |
+| **Use case**   | Custom logic    | Search data             | Structured document search  | External integrations   | Web/file search, code, images, remote MCP | Template-based  |
+| **Execution**  | Python function | Vector similarity       | Hybrid RRF fusion           | MCP protocol (stdio)    | OpenAI platform (server-side) | LLM generation  |
+| **Setup**      | Python files    | Data files              | Document files              | Server config + runtime | YAML params                | Template text   |
+| **Parameters** | Defined in code | Implicit (search query) | Implicit (search query)     | Server-specific tools   | Model-driven               | Defined in YAML |
+| **Latency**    | Low (<10ms)     | Medium (~100ms)         | Medium (~100-300ms)         | Medium (~50-500ms)      | Medium–high (platform)     | High (LLM call) |
+| **Cost**       | Internal        | Embedding API           | Embedding + context LLM     | Server resource         | Platform tool pricing      | LLM tokens      |
 
 ---
 
@@ -560,6 +593,8 @@ Template syntax supports simple variables (`{{name}}`), conditionals (`{{#if des
 **Hierarchical document tools** — no results: check `source` path and supported format; slow ingestion: split very large PDFs or use persistent storage; missing context: ensure `contextual_embeddings: true` (default) and that documents have heading structure.
 
 **MCP tools** — server unavailable, invalid config, or runtime (npx/uvx/docker) not found error at startup; connection timeout is configurable via `request_timeout`; runtime errors are returned as tool error responses to the LLM.
+
+**Hosted tools** — unknown `tool`, missing or unknown `params`, `ComputerTool`, a `CodeInterpreterTool` without `openai.i_understand_this_is_unsafe`, or any hosted entry on the Claude backend error at startup (config validation); an Azure resource that lacks the capability fails the run with the SDK error plus a hint naming the declared hosted classes.
 
 **Prompt tools** — invalid template errors at startup; LLM failure is a soft failure (logged, error message returned); template-rendering errors surface during execution.
 
