@@ -96,6 +96,20 @@ class TransientFailureEvaluator(BaseEvaluator):
         return {"score": 0.9, "passed": True}
 
 
+@pytest.fixture
+def recorded_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Record retry backoff delays instead of sleeping in real time."""
+    delays: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(delay: float, *args: Any, **kwargs: Any) -> None:
+        delays.append(delay)
+        await real_sleep(0)
+
+    monkeypatch.setattr("holodeck.lib.evaluators.base.asyncio.sleep", fake_sleep)
+    return delays
+
+
 class TestBaseEvaluator:
     """Test BaseEvaluator abstract class."""
 
@@ -157,49 +171,37 @@ class TestBaseEvaluator:
         assert evaluator.attempt_count == 2  # max_retries
 
     @pytest.mark.asyncio
-    async def test_exponential_backoff_timing(self) -> None:
-        """Test exponential backoff delay calculation."""
+    async def test_exponential_backoff_delays(
+        self, recorded_sleeps: list[float]
+    ) -> None:
+        """Backoff sleeps base * exponential_base ** attempt between attempts."""
         retry_config = RetryConfig(
             max_retries=3, base_delay=1.0, exponential_base=2.0, max_delay=10.0
         )
-        # Fail on first 2 attempts (attempt 1, 2), succeed on attempt 3
+        # Fail on first 2 attempts, succeed on attempt 3
         evaluator = TransientFailureEvaluator(fail_count=2, retry_config=retry_config)
 
-        start_time = asyncio.get_event_loop().time()
         result = await evaluator.evaluate(query="test", response="test")
-        elapsed_time = asyncio.get_event_loop().time() - start_time
 
-        # Expected delays: 1.0s (after attempt 0), 2.0s (after attempt 1) = 3.0s total
-        # Allow some tolerance for execution time
-        assert elapsed_time >= 2.5, f"Elapsed time {elapsed_time}s is too short"
-        assert (
-            elapsed_time <= 4.0
-        ), f"Elapsed time {elapsed_time}s is too long"  # Allow overhead
-
+        assert recorded_sleeps == [1.0, 2.0]
         assert result["score"] == 0.9
         assert evaluator.attempt_count == 3  # 2 failures + 1 success
 
     @pytest.mark.asyncio
-    async def test_max_delay_cap(self) -> None:
-        """Test that delay is capped at max_delay."""
+    async def test_max_delay_cap(self, recorded_sleeps: list[float]) -> None:
+        """Backoff delay never exceeds max_delay."""
         retry_config = RetryConfig(
-            max_retries=10,  # Many retries
+            max_retries=10,
             base_delay=1.0,
             exponential_base=2.0,
-            max_delay=5.0,  # Cap at 5 seconds
+            max_delay=5.0,
         )
         evaluator = TransientFailureEvaluator(fail_count=5, retry_config=retry_config)
 
-        start_time = asyncio.get_event_loop().time()
         result = await evaluator.evaluate(query="test", response="test")
-        elapsed_time = asyncio.get_event_loop().time() - start_time
 
-        # Delays: 1.0, 2.0, 4.0, 5.0 (capped), 5.0 (capped) = 17.0s total
-        # But we only need 5 failures, so: 1.0, 2.0, 4.0, 5.0, 5.0 = 17.0s
-        assert (
-            elapsed_time >= 16.0
-        ), f"Elapsed time {elapsed_time}s should be ~17s (with cap)"
-
+        # Uncapped this would be [1, 2, 4, 8, 16].
+        assert recorded_sleeps == [1.0, 2.0, 4.0, 5.0, 5.0]
         assert result["score"] == 0.9
 
     @pytest.mark.asyncio

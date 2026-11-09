@@ -158,6 +158,7 @@ class TestObservabilityContext:
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("isolated_otel")
 class TestInitializeObservability:
     """Tests for initialize_observability() function (T033)."""
 
