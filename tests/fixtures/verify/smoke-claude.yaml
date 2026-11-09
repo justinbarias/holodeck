@@ -1,0 +1,43 @@
+# Offline smoke agent for the Claude Agent SDK backend (make verify-smoke).
+# scripts/verify/smoke.py sets HOLODECK_VERIFY_ANTHROPIC_URL to
+# scripts/verify/fake_provider.py and a fake ANTHROPIC_AUTH_TOKEN.
+name: verify-smoke-claude
+description: Offline smoke agent for the Claude Agent SDK backend.
+
+model:
+  provider: anthropic
+  name: claude-sonnet-4-5
+  auth_provider: custom
+  endpoint: ${HOLODECK_VERIFY_ANTHROPIC_URL}
+  max_tokens: 200
+
+instructions:
+  inline: "You are the HoloDeck verify smoke agent. Call smoke_echo when asked."
+
+tools:
+  - name: smoke_echo
+    type: function
+    description: Echo text back with a fixed marker.
+    file: tools/smoke.py
+    function: smoke_echo
+
+claude:
+  max_turns: 4
+
+evaluations:
+  metrics:
+    # The tool must return its success marker, not just be called.
+    - type: code
+      grader: "verify_graders:smoke_tool_succeeded"
+      name: smoke_tool_succeeded
+
+test_cases:
+  # Multi-turn form: single-turn cases currently hand code graders an empty
+  # tool_invocations list, so the grader below could never pass there.
+  - name: smoke tool call
+    turns:
+      - input: "Call the smoke tool now. SMOKE_TOOL"
+        expected_tools:
+          - name: smoke_echo
+            args:
+              text: smoke-ping

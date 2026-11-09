@@ -51,3 +51,6 @@ report.md
 .worktrees/
 /sample/openai-agents-full/results/
 /sample/openai-agents-full/.env
+
+# Verify suite artifacts (scripts/verify)
+.verify/

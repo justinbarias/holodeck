@@ -59,6 +59,10 @@ jobs:
           # Note: Coverage data is combined automatically by pytest-cov
           uv run pytest --cov --cov-branch --cov-report=xml --junitxml=junit.xml -o junit_family=legacy -n ${{ env.PYTEST_XDIST_WORKERS }}
 
+      - name: Offline smoke (fake provider, both backends)
+        if: matrix.python-version == '3.11'
+        run: make verify-smoke
+
       - name: Upload coverage
         if: always()
         uses: codecov/codecov-action@v7

@@ -1,0 +1,37 @@
+# Offline smoke agent for the OpenAI Agents backend (make verify-smoke).
+# scripts/verify/smoke.py points OPENAI_BASE_URL at scripts/verify/fake_provider.py.
+name: verify-smoke-openai
+description: Offline smoke agent for the OpenAI Agents backend.
+
+model:
+  provider: openai
+  name: gpt-4o-mini
+  max_tokens: 200
+
+instructions:
+  inline: "You are the HoloDeck verify smoke agent. Call smoke_echo when asked."
+
+tools:
+  - name: smoke_echo
+    type: function
+    description: Echo text back with a fixed marker.
+    file: tools/smoke.py
+    function: smoke_echo
+
+evaluations:
+  metrics:
+    # The tool must return its success marker, not just be called.
+    - type: code
+      grader: "verify_graders:smoke_tool_succeeded"
+      name: smoke_tool_succeeded
+
+test_cases:
+  # Multi-turn form: single-turn cases currently hand code graders an empty
+  # tool_invocations list, so the grader below could never pass there.
+  - name: smoke tool call
+    turns:
+      - input: "Call the smoke tool now. SMOKE_TOOL"
+        expected_tools:
+          - name: smoke_echo
+            args:
+              text: smoke-ping
