@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **DeepEval 4 and ChromaDB 1.5.** `deepeval` 3.8.9 → 4.3.3. It needs `posthog` 7, which `chromadb` 1.0.x rejects, so the `chromadb` extras now allow `<1.6` (locked 1.5.9). DeepEval 4 also accepts reasoning-model judges such as `gpt-6-luna`, which 3.8.9 rejected (it sent `temperature: 0`). The four ignored `chromadb` advisories are unchanged by 1.5.9.
+
 - **Agent runtime upgrade.** `claude-agent-sdk` 0.2.121 → 0.2.179 and `openai-agents` 0.17.4 → 0.20.0. The `openai<2.45` cap is lifted (`openai>=2.45,<3`); 0.21+ needs `openai` 3, which waits on a `litellm` upgrade.
 - **Claude tool search is off by default.** Claude Code 0.2.17x hides MCP tools behind `ToolSearch`, so a model must search before it can call an agent's own tools; models behind custom endpoints may never do that. HoloDeck now sets `ENABLE_TOOL_SEARCH=false` unless the operator exports it.
 - **More built-in Claude tools are blocked unless declared.** `NotebookEdit` (writes files) now needs `file_system.edit`, and `WebSearch` needs `web_search: true`. Before, both were available to every agent. The block is session-wide, so a subagent that needs one of these tools still needs it declared at the top level.
