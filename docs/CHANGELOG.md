@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Azure Container Apps SDK 5.** `azure-mgmt-appcontainers` 4.0 → 5.1. SDK 5 returns `provisioning_state` as an enum, so deploy and status now report its value (`Succeeded`) instead of `ContainerAppProvisioningState.SUCCEEDED`. It also stopped sending `activeRevisionsMode`, `allowInsecure` and `transport` by default; the deployer now sets them explicitly, so the request body matches 4.x.
 - **OpenAI stack on `openai` 3.** `openai` 2.54 → 3.48, `openai-agents` 0.20 → 0.24 and `litellm` 1.100 → 1.108, moved together: `openai-agents` 0.21+ requires `openai` 3, and `litellm` allows it from 1.108.
 
 - **Agent runtime upgrade.** `claude-agent-sdk` 0.2.121 → 0.2.179 and `openai-agents` 0.17.4 → 0.20.0. The `openai<2.45` cap is lifted (`openai>=2.45,<3`); 0.21+ needs `openai` 3, which waits on a `litellm` upgrade.

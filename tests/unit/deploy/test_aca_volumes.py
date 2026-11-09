@@ -13,7 +13,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from azure.mgmt.appcontainers.models import StorageType
+from azure.mgmt.appcontainers.models import ContainerAppProvisioningState, StorageType
 
 from holodeck.deploy.deployers.azure_containerapps import (
     AzureContainerAppsDeployer,
@@ -204,3 +204,53 @@ def test_echo_resolved_config_does_not_falsely_claim_aca_securitycontext(
     assert "allowprivilegeescalation" not in msgs
     assert "capabilities.drop" not in msgs
     assert "capabilities dropped" not in msgs
+
+
+@pytest.mark.unit
+def test_deploy_request_pins_defaults_dropped_by_sdk_5(
+    deployer: AzureContainerAppsDeployer,
+) -> None:
+    """The wire body keeps the ingress defaults azure-mgmt-appcontainers 4 sent."""
+    poller = MagicMock()
+    poller.result.return_value = _stub_poller_result()
+    deployer._client.container_apps.begin_create_or_update.return_value = poller
+
+    deployer.deploy(service_name="t", image_uri="img:1", port=8080, env_vars={})
+
+    envelope = deployer._client.container_apps.begin_create_or_update.call_args.kwargs[
+        "container_app_envelope"
+    ]
+    configuration = envelope.as_dict()["properties"]["configuration"]
+    assert configuration["activeRevisionsMode"] == "Single"
+    assert configuration["ingress"]["allowInsecure"] is False
+    assert configuration["ingress"]["transport"] == "auto"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        (ContainerAppProvisioningState.SUCCEEDED, "Succeeded"),
+        ("Failed", "Failed"),
+        (None, "UNKNOWN"),
+    ],
+)
+def test_deploy_reports_provisioning_state_wire_value(
+    deployer: AzureContainerAppsDeployer,
+    state: ContainerAppProvisioningState | str | None,
+    expected: str,
+) -> None:
+    """SDK 5 returns an enum; status must be ``Succeeded``, not its repr."""
+    result = _stub_poller_result()
+    result.provisioning_state = state
+    poller = MagicMock()
+    poller.result.return_value = result
+    deployer._client.container_apps.begin_create_or_update.return_value = poller
+    deployer._client.container_apps.get.return_value = result
+
+    deployed = deployer.deploy(
+        service_name="t", image_uri="img:1", port=8080, env_vars={}
+    )
+
+    assert deployed.status == expected
+    assert deployer.get_status("t").status == expected
