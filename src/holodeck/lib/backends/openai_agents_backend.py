@@ -19,6 +19,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -139,6 +140,9 @@ def _azure_v1_base_url(endpoint: str) -> str:
     return f"{base}/openai/v1"
 
 
+_GPT_GENERATION = re.compile(r"gpt-(\d+)(?:[.\-]|$)")
+
+
 def _is_reasoning_model(name: str) -> bool:
     """Heuristic for OpenAI reasoning models (o-series, ``gpt-5``+).
 
@@ -149,7 +153,11 @@ def _is_reasoning_model(name: str) -> bool:
     detected, in which case set sane sampling params in the config).
     """
     n = name.strip().lower()
-    return n.startswith(("o1", "o3", "o4", "gpt-5"))
+    if n.startswith(("o1", "o3", "o4")):
+        return True
+    # gpt-5 and every later generation (gpt-6-luna, gpt-6.1-terra, ...).
+    match = _GPT_GENERATION.match(n)
+    return match is not None and int(match.group(1)) >= 5
 
 
 def _preflight_credentials(agent: Agent) -> tuple[str, str | None]:

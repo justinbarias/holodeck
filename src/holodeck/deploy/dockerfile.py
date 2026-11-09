@@ -4,7 +4,7 @@ This module provides functionality to generate Dockerfiles for
 containerizing HoloDeck agents with proper OCI labels and configuration.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from jinja2 import Template
 
@@ -136,10 +136,11 @@ def generate_dockerfile(
         # HoloDeck Agent Container
         # Auto-generated Doc...
     """
-    template = Template(HOLODECK_DOCKERFILE_TEMPLATE)
+    # jinja2 types Template.__new__ as returning Any; annotate to keep render() typed.
+    template: Template = Template(HOLODECK_DOCKERFILE_TEMPLATE)
 
     # Generate ISO 8601 timestamp
-    created = datetime.now(timezone.utc).isoformat()
+    created = datetime.now(UTC).isoformat()
 
     return template.render(
         agent_name=agent_name,

@@ -614,7 +614,7 @@ class AgentExecutor:
         except BackendInitError as e:
             logger.error(f"Agent execution failed: {e}", exc_info=True)
             raise RuntimeError(f"Agent execution failed: {e}") from e
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # llm_timeout exceeded — let the caller distinguish timeout
             # from crash instead of wrapping it as a generic RuntimeError.
             logger.warning(
@@ -668,7 +668,7 @@ class AgentExecutor:
                     yield chunk
             except asyncio.CancelledError:
                 if timed_out:
-                    raise asyncio.TimeoutError(
+                    raise TimeoutError(
                         f"streaming response exceeded llm_timeout="
                         f"{self._llm_timeout}s"
                     ) from None

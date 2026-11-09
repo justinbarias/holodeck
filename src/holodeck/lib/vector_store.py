@@ -219,7 +219,12 @@ def create_qdrant_client(params: QdrantConnectionParams) -> Any:
                 query=[float(v) for v in values],
                 using=using,
                 query_filter=query_filter,
-                with_vectors=with_vectors,
+                # qdrant-client 1.20 narrowed this to `bool | list[str]`.
+                with_vectors=(
+                    with_vectors
+                    if isinstance(with_vectors, bool)
+                    else list(with_vectors)
+                ),
                 limit=limit,
                 offset=offset,
                 **kwargs,

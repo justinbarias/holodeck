@@ -167,8 +167,68 @@ def test_redacting_processor_continues_when_redact_raises(
     # Span should still export despite the redaction failure.
     spans = exporter.get_finished_spans()
     assert len(spans) == 1
+    # Fail closed: the original value never reaches the exporter.
+    assert spans[0].attributes["tool.output"] == "[REDACTED:redaction-failed]"
     # A warning should have been logged.
     assert any("failed to redact" in r.message for r in caplog.records)
+
+
+@pytest.mark.unit
+def test_redacting_processor_scrubs_semconv_tool_call_content() -> None:
+    """gen_ai.tool.call.arguments/result (current semconv) are scrubbed.
+
+    otel-instrumentation-claude-agent-sdk writes tool I/O under these names;
+    verify-live caught a raw token exported from gen_ai.tool.call.result.
+    """
+    provider, exporter = _new_provider_with_redaction()
+    tracer = provider.get_tracer(__name__)
+    token = "ghp_" + "x" * 36
+    with tracer.start_as_current_span("execute_tool leak_probe") as span:
+        span.set_attribute("gen_ai.tool.call.arguments", f'{{"key": "{token}"}}')
+        span.set_attribute("gen_ai.tool.call.result", f"token={token}")
+        span.set_attribute("gen_ai.tool.call.id", "toolu_123")
+    attrs = exporter.get_finished_spans()[0].attributes
+    for key in ("gen_ai.tool.call.arguments", "gen_ai.tool.call.result"):
+        assert token not in attrs[key]
+        assert "[REDACTED:github-token]" in attrs[key]
+    assert attrs["gen_ai.tool.call.id"] == "toolu_123"
+
+
+@pytest.mark.unit
+def test_redacting_processor_scrubs_bytes_values() -> None:
+    """OTel SDK 1.45+ keeps bytes attributes as bytes; they are scrubbed too."""
+    provider, exporter = _new_provider_with_redaction()
+    tracer = provider.get_tracer(__name__)
+    token = "ghp_" + "x" * 36
+    with tracer.start_as_current_span("execute_tool") as span:
+        span.set_attribute("tool.input.raw", f"key={token}".encode())
+        span.set_attribute("tool.output.parts", [b"ok", token.encode()])
+    attrs = exporter.get_finished_spans()[0].attributes
+    assert token not in str(attrs["tool.input.raw"])
+    assert "[REDACTED:github-token]" in str(attrs["tool.input.raw"])
+    assert all(token not in str(part) for part in attrs["tool.output.parts"])
+
+
+@pytest.mark.unit
+def test_redaction_reaches_processors_holding_the_original_span() -> None:
+    """A later processor that kept the live Span from on_start sees scrubbed data."""
+    from opentelemetry.sdk.trace import SpanProcessor
+
+    held: list[object] = []
+
+    class _Holder(SpanProcessor):
+        def on_start(self, span, parent_context=None):  # type: ignore[no-untyped-def]
+            held.append(span)
+
+    provider = TracerProvider()
+    provider.add_span_processor(RedactingSpanProcessor())
+    provider.add_span_processor(_Holder())
+    tracer = provider.get_tracer(__name__)
+    token = "ghp_" + "x" * 36
+    with tracer.start_as_current_span("execute_tool") as span:
+        span.set_attribute("tool.output", f"key={token}")
+    (original,) = held
+    assert token not in original.attributes["tool.output"]  # type: ignore[attr-defined]
 
 
 @pytest.mark.unit
@@ -240,3 +300,43 @@ def test_redacting_processor_scrubs_error_attributes_and_exception_event():
     assert token not in event.attributes["exception.message"]
     assert token not in event.attributes["exception.stacktrace"]
     assert event.attributes["exception.type"] == "RuntimeError"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("read_only", [False, True])
+def test_redacting_processor_handles_plain_and_read_only_mappings(
+    read_only: bool,
+) -> None:
+    """Spans built outside the SDK may carry a dict or a read-only mapping.
+
+    A dict is scrubbed in place; a read-only mapping is replaced by a scrubbed
+    frozen copy. Unrelated keys are left alone either way.
+    """
+    from types import MappingProxyType
+
+    from opentelemetry.sdk.trace import Event, ReadableSpan
+
+    token = "ghp_" + "x" * 36
+    raw: dict[str, object] = {"tool.output": f"key={token}", "tool.name": "Bash"}
+    attrs = MappingProxyType(raw) if read_only else raw
+    event_raw: dict[str, object] = {"exception.message": f"leaked {token}"}
+    event_attrs = MappingProxyType(event_raw) if read_only else event_raw
+    span = ReadableSpan(
+        name="execute_tool",
+        attributes=attrs,  # type: ignore[arg-type]
+        events=[
+            Event("exception", attributes=event_attrs),  # type: ignore[arg-type]
+            Event("empty"),
+        ],
+    )
+
+    RedactingSpanProcessor().on_end(span)
+
+    assert token not in span.attributes["tool.output"]
+    assert "[REDACTED:github-token]" in span.attributes["tool.output"]
+    assert span.attributes["tool.name"] == "Bash"
+    assert token not in str(span.events[0].attributes["exception.message"])
+    assert not span.events[1].attributes
+    if read_only:
+        # The original read-only mapping is untouched; the span holds a copy.
+        assert token in str(raw["tool.output"])

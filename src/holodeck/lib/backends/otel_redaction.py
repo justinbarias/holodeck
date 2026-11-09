@@ -11,12 +11,13 @@ Spec 034 P2b §"OTel attribute redaction (independent of hooks)".
 from __future__ import annotations
 
 import logging
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from typing import Any
 
 from opentelemetry.attributes import BoundedAttributes
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import Event, ReadableSpan, Span, SpanProcessor
+from opentelemetry.util.types import AnyValue
 
 from holodeck.lib.backends.claude_hooks import redact_credentials
 
@@ -37,6 +38,10 @@ _REDACTED_PREFIXES: tuple[str, ...] = (
     "tool.output",
     "gen_ai.tool.input",
     "gen_ai.tool.output",
+    # Current GenAI semconv tool-call content, emitted by
+    # otel-instrumentation-claude-agent-sdk on `execute_tool` spans.
+    "gen_ai.tool.call.arguments",
+    "gen_ai.tool.call.result",
     "gen_ai.prompt",
     "gen_ai.completion",
     "gen_ai.input.messages",
@@ -57,63 +62,100 @@ def _should_redact(attribute_key: str) -> bool:
     return any(attribute_key.startswith(prefix) for prefix in _REDACTED_PREFIXES)
 
 
-def _redact_mapping(attributes: MutableMapping[str, Any], what: str) -> None:
-    """Scrub every redacted-prefix key of *attributes* in place."""
-    for key in list(attributes.keys()):
-        if not _should_redact(key):
-            continue
+# Exported in place of a value whose redaction raised: fail closed, never
+# export the original.
+_REDACTION_FAILED = "[REDACTED:redaction-failed]"
+
+
+def _decode(value: AnyValue) -> AnyValue:
+    """Decode bytes (alone or inside a sequence) so the scrubber can see them.
+
+    OTel SDK 1.45+ keeps ``bytes`` attribute values as bytes, and
+    ``redact_credentials`` only scans text.
+    """
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    if isinstance(value, (list, tuple)) and any(isinstance(v, bytes) for v in value):
+        decoded = [
+            v.decode("utf-8", errors="replace") if isinstance(v, bytes) else v
+            for v in value
+        ]
+        return tuple(decoded) if isinstance(value, tuple) else decoded
+    return value
+
+
+def _redacted_value(key: str, value: AnyValue, what: str) -> AnyValue:
+    try:
+        redacted: AnyValue = redact_credentials(_decode(value))
+        return redacted
+    except Exception:  # noqa: BLE001 — never break tracing on redact failure
+        logger.warning(
+            "RedactingSpanProcessor: failed to redact %s %s; "
+            "exporting a placeholder instead",
+            what,
+            key,
+        )
+        return _REDACTION_FAILED
+
+
+def _redact_mapping(attributes: Mapping[str, Any], what: str) -> Mapping[str, Any]:
+    """Scrub every redacted-prefix key of *attributes*.
+
+    The SDK freezes attribute mappings (event attributes at ``add_event``,
+    span attributes before ``on_end`` since OTel SDK 1.45). A frozen
+    ``BoundedAttributes`` is unfrozen for the edit and frozen again, so the
+    scrub lands in the one mapping the ``Span`` and its ``ReadableSpan``
+    snapshot share: a processor holding the original span sees it too.
+    Returns the mapping to keep, which is a new copy only for a read-only
+    mapping of another type.
+    """
+    keys = [key for key in attributes if _should_redact(key)]
+    # Keep a typed handle: where opentelemetry is untyped (e.g. the pre-commit
+    # mypy env), isinstance() narrows *attributes* to Any.
+    original = attributes
+    if not keys:
+        return original
+    if isinstance(attributes, BoundedAttributes):
+        frozen = attributes._immutable
+        attributes._immutable = False
         try:
-            attributes[key] = redact_credentials(attributes[key])
-        except Exception:  # noqa: BLE001 — never break tracing on redact failure
-            logger.warning(
-                "RedactingSpanProcessor: failed to redact %s %s; "
-                "leaving original value",
-                what,
-                key,
-            )
+            for key in keys:
+                attributes[key] = _redacted_value(key, attributes[key], what)
+        finally:
+            attributes._immutable = frozen
+        return original
+    if isinstance(attributes, MutableMapping):
+        for key in keys:
+            attributes[key] = _redacted_value(key, attributes[key], what)
+        return original
+    scrubbed = dict(attributes)
+    for key in keys:
+        scrubbed[key] = _redacted_value(key, scrubbed[key], what)
+    rebuilt: Mapping[str, Any] = BoundedAttributes(None, scrubbed, immutable=True)
+    return rebuilt
 
 
 def _redact_event(event: Event) -> None:
-    """Replace an event's attribute mapping with a scrubbed copy.
-
-    The SDK wraps event attributes in an immutable ``BoundedAttributes`` at
-    ``add_event`` time, so the mapping is rebuilt (same limits, still
-    immutable) rather than edited in place. Exporters read ``event.attributes``,
-    which returns the replaced mapping.
-    """
+    """Scrub an event's attributes (exporters read ``event.attributes``)."""
     attributes = event.attributes
     if not attributes:
         return
-    keys = [key for key in attributes if _should_redact(key)]
-    if not keys:
-        return
-    try:
-        scrubbed = dict(attributes)
-        for key in keys:
-            scrubbed[key] = redact_credentials(scrubbed[key])
-        maxlen = getattr(attributes, "maxlen", None)
-        max_value_len = getattr(attributes, "max_value_len", None)
-        event._attributes = BoundedAttributes(
-            maxlen, scrubbed, immutable=True, max_value_len=max_value_len
-        )
-    except Exception:  # noqa: BLE001 — never break tracing on redact failure
-        logger.warning(
-            "RedactingSpanProcessor: failed to redact event %r attributes; "
-            "leaving original values",
-            event.name,
-        )
+    scrubbed = _redact_mapping(attributes, f"event {event.name!r} attribute")
+    if scrubbed is not attributes:
+        event._attributes = scrubbed
 
 
 class RedactingSpanProcessor(SpanProcessor):
     """SpanProcessor that scrubs credential-shaped strings on span end.
 
-    The OTel SDK exposes span attributes on ``ReadableSpan`` via the
-    ``_attributes`` dict, which the SDK mutates in place during the span's
-    lifetime. Mutating it on ``on_end`` is the documented mechanism used by
-    e.g. the Baggage span processor. Span events (``record_exception`` and
-    any content events) are scrubbed the same way through their mutable
-    attribute mapping. Exporters registered AFTER this processor see the
-    redacted payload.
+    ``Span.end`` builds one ``ReadableSpan`` snapshot that shares the span's
+    attribute mapping and hands it to every processor in registration order.
+    The mapping is frozen by then (OTel SDK 1.45+), so it is unfrozen for the
+    scrub and frozen again (see ``_redact_mapping``). Span events
+    (``record_exception`` and any content events) are scrubbed the same way.
+    A value whose redaction raises is exported as a placeholder, never as the
+    original. Exporters registered AFTER this processor see the redacted
+    payload.
     """
 
     def on_start(self, span: Span, parent_context: Context | None = None) -> None:
@@ -132,7 +174,9 @@ class RedactingSpanProcessor(SpanProcessor):
                 _warned_missing_attributes_attr = True
             return
         if attributes:
-            _redact_mapping(attributes, "attribute")
+            scrubbed = _redact_mapping(attributes, "attribute")
+            if scrubbed is not attributes:
+                span._attributes = scrubbed
         for event in span.events:
             _redact_event(event)
 

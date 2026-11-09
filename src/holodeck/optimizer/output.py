@@ -38,7 +38,10 @@ _BlockDumper.add_representer(str, _represent_str)
 def _agent_to_yaml(result: OptimizationResult) -> str:
     """Serialize the best candidate agent to YAML, dropping unset fields."""
     data = result.best_agent.model_dump(mode="json", exclude_none=True)
-    return yaml.dump(data, Dumper=_BlockDumper, sort_keys=False, allow_unicode=True)
+    dumped: str = yaml.dump(
+        data, Dumper=_BlockDumper, sort_keys=False, allow_unicode=True
+    )
+    return dumped
 
 
 def _trials_to_jsonl(trials: list[TrialRecord]) -> str:

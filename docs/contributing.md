@@ -5,7 +5,7 @@ Read [architecture](../ARCHITECTURE.md) before changing a module boundary.
 
 ## Development setup
 
-The package targets Python 3.10+. Current CI and `make init` use Python 3.10.
+The package targets Python 3.11+. CI tests Python 3.11 and 3.13; `make init` uses Python 3.11.
 Use UV to manage the environment and [uv.lock](../uv.lock) to reproduce dependencies.
 
 ```bash
@@ -17,7 +17,7 @@ uv run holodeck --version
 ```
 
 `uv run` selects the project environment without shell activation.
-`make init` also creates the environment, but requires a discoverable Python 3.10 executable.
+`make init` also creates the environment, but requires a discoverable Python 3.11 executable.
 Use [pyproject.toml](../pyproject.toml) for supported extras and dependency constraints.
 Use `uv add`, `uv add --dev`, or `uv remove` for requested dependency changes.
 
@@ -47,7 +47,7 @@ For documentation or formatting, use relevant checks without adding implementati
 
 ## Code style guide
 
-Use Python 3.10-compatible syntax, Black at 88 columns, Ruff, and MyPy.
+Use Python 3.11-compatible syntax, Black at 88 columns, Ruff, and MyPy.
 [pyproject.toml](../pyproject.toml) defines exact rules.
 Use Google-style docstrings for public modules, classes, and functions.
 
@@ -69,7 +69,7 @@ Use Google-style docstrings for public modules, classes, and functions.
 For touched Python files, run focused checks. Substitute the actual paths:
 
 ```bash
-uv run black --target-version py310 --check scripts/check_harness.py tests/unit/test_harness.py
+uv run black --target-version py311 --check scripts/check_harness.py tests/unit/test_harness.py
 uv run ruff check scripts/check_harness.py tests/unit/test_harness.py
 uv run mypy scripts/check_harness.py
 ```

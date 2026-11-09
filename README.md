@@ -6,7 +6,7 @@ HoloDeck is an open-source experimentation platform that enables teams to create
 
 [![PyPI version](https://badge.fury.io/py/holodeck-ai.svg)](https://badge.fury.io/py/holodeck-ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
 ---
 
@@ -271,7 +271,7 @@ The dashboard groups runs by `version`, draws a boundary marker on the pass-rate
 
 ### Prerequisites
 
-- Python 3.10 or higher
+- Python 3.11 or higher
 - Git
 - UV (package manager)
 
@@ -354,7 +354,7 @@ HoloDeck follows the [Google Python Style Guide](https://google.github.io/styleg
 - **Linting:** Ruff (comprehensive rule set)
 - **Type Checking:** MyPy (strict mode)
 - **Security:** Bandit, Safety, detect-secrets
-- **Target:** Python 3.10+
+- **Target:** Python 3.11+
 
 ### Full Contributing Guide
 

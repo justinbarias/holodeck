@@ -360,8 +360,13 @@ def _build_router() -> Any:
         def shutdown(self, timeout: float | None = None) -> None:
             for processor in self._all_processors():
                 try:
-                    if timeout is not None and processor is self._upload:
-                        processor.shutdown(timeout=timeout)  # type: ignore[call-arg]
+                    upload = self._upload
+                    if (
+                        timeout is not None
+                        and upload is not None
+                        and processor is upload
+                    ):
+                        upload.shutdown(timeout=timeout)  # type: ignore[call-arg]
                     else:
                         processor.shutdown()
                 except Exception:  # noqa: BLE001 - best-effort shutdown

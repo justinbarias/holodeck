@@ -23,24 +23,17 @@ Design input: ``docs/design-docs/036-deterministic-spine/dmn-yaml-mapping.md``.
 
 from __future__ import annotations
 
-import sys
 from collections import Counter
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from holodeck.lib.errors import DecisionTableError
 from holodeck.lib.workflow import feel
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
 
 # ``provenance`` records how a table was authored, never what it decides.
 # Reserving the root name keeps it out of every input expression and rule cell,

@@ -24,7 +24,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -1018,7 +1018,7 @@ class TestExecutor:
             passed=passed,
             execution_time_ms=elapsed_ms,
             errors=errors,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             token_usage=token_usage,
         )
 
@@ -1033,7 +1033,7 @@ class TestExecutor:
         """
         if test_case.turns is None:
             raise ValueError("_run_multi_turn requires test_case.turns to be set")
-        start_ts = datetime.now(timezone.utc).isoformat()
+        start_ts = datetime.now(UTC).isoformat()
         start_perf = time.time()
 
         if self._backend is None:
@@ -1247,7 +1247,7 @@ class TestExecutor:
             tool_names = extract_tool_names(exec_result.tool_calls)
             raw_usage: Any = exec_result.token_usage
             token_usage = raw_usage if isinstance(raw_usage, TokenUsage) else None
-        except asyncio.TimeoutError:
+        except TimeoutError:
             errors.append("timeout")
         except BackendSessionError as e:
             errors.append(f"BackendSessionError: {e}")
@@ -1925,7 +1925,7 @@ class TestExecutor:
             agent_config_path=self.agent_config_path,
             results=results,
             summary=summary,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             holodeck_version=version,
             environment={"execution_config": str(self.config.model_dump())},
         )

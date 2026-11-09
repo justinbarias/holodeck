@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from ulid import ULID
@@ -39,8 +39,8 @@ class ServerSession:
 
     agent_executor: AgentExecutor
     session_id: str = field(default_factory=lambda: str(ULID()))
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    last_activity: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    last_activity: datetime = field(default_factory=lambda: datetime.now(UTC))
     message_count: int = 0
 
 
@@ -160,7 +160,7 @@ class SessionStore:
                 session.agent_executor.shutdown(),
                 timeout=self._SHUTDOWN_TIMEOUT,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Executor shutdown timed out for session %s after %.1fs",
                 session_id,
@@ -184,7 +184,7 @@ class SessionStore:
         """
         session = self.sessions.get(session_id)
         if session:
-            session.last_activity = datetime.now(timezone.utc)
+            session.last_activity = datetime.now(UTC)
 
     async def cleanup_expired(self) -> int:
         """Remove all expired sessions, shutting down their executors.
@@ -195,7 +195,7 @@ class SessionStore:
         Returns:
             Number of sessions removed.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         cutoff = now - timedelta(seconds=self.ttl_seconds)
 
         expired_ids = [

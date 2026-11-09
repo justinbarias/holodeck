@@ -191,7 +191,7 @@ Build and deploy containers manually without the CLI.
 ghcr.io/justinbarias/holodeck-base:latest
 ```
 
-Includes Python 3.10+ with HoloDeck installed, `curl` for health checks, a non-root `holodeck` user, and `/app` as the working directory.
+Includes Python 3.13 with HoloDeck installed, `curl` for health checks, a non-root `holodeck` user, and `/app` as the working directory.
 
 ### Build context
 

@@ -7,7 +7,7 @@ field-for-field parity with ``trials.jsonl`` (FR-004).
 
 import io
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -133,7 +133,7 @@ def _accept_then_reject_loop(buf: io.StringIO) -> OptimizerLoop:
         numeric_proposer=proposer,
         run_id="run-acc",
         emitter=JsonlEmitter(buf),
-        started_at=datetime(2026, 6, 18, 11, 50, 36, tzinfo=timezone.utc),
+        started_at=datetime(2026, 6, 18, 11, 50, 36, tzinfo=UTC),
     )
 
 

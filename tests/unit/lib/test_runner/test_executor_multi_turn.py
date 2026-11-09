@@ -202,7 +202,7 @@ async def test_turn_timeout_fails_turn_continues_next() -> None:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
         return _mk_exec_result("second-response")
 
     session = Mock()
@@ -405,7 +405,7 @@ async def test_test_case_passed_requires_all_turns_passed() -> None:
 
     async def send(msg):
         if "fail" in msg:
-            raise asyncio.TimeoutError()
+            raise TimeoutError()
         return _mk_exec_result("ok")
 
     session = Mock()

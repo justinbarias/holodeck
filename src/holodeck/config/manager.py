@@ -97,7 +97,8 @@ class ConfigManager:
     def generate_config_content(config: GlobalConfig) -> str:
         """Generate YAML content for the configuration."""
         config_dict = config.model_dump(exclude_unset=True, mode="json")
-        return yaml.dump(config_dict, default_flow_style=False, sort_keys=False)
+        content: str = yaml.dump(config_dict, default_flow_style=False, sort_keys=False)
+        return content
 
     @staticmethod
     def write_config(path: Path, content: str) -> None:

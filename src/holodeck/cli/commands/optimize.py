@@ -11,7 +11,7 @@ import json
 import sys
 import uuid
 from contextlib import nullcontext
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -278,7 +278,7 @@ def optimize(
                 f"— {status}"
             )
 
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         run_id = started_at.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6]
 
         click.echo(f"Optimizing '{agent.name}' (run {run_id})…", err=json_progress)

@@ -6,7 +6,7 @@ FeelValidationError with a table/rule/cell locator, and field-shape problems
 raise pydantic ValidationError. Also covers the YAML loader's read/parse guards.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -317,9 +317,7 @@ class TestProvenance:
         assert table.provenance.source_doc == "corpus/wa-guidelines-part-b-v1.24.pdf"
         assert table.provenance.source_sha256 == "35cfdef9"
         assert table.provenance.reviewed_by == "J. Smith, Delegate"
-        assert table.provenance.reviewed_at == datetime(
-            2026, 7, 20, 10, 0, tzinfo=timezone.utc
-        )
+        assert table.provenance.reviewed_at == datetime(2026, 7, 20, 10, 0, tzinfo=UTC)
 
     def test_hand_authored_table_has_no_provenance(self) -> None:
         """A table omitting the block loads with provenance None."""

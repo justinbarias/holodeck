@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
@@ -196,7 +196,7 @@ class AgentServer:
         """Return server uptime in seconds."""
         if self._start_time is None:
             return 0.0
-        delta = datetime.now(timezone.utc) - self._start_time
+        delta = datetime.now(UTC) - self._start_time
         return delta.total_seconds()
 
     async def _validate_backend_prerequisites(self) -> None:
@@ -772,7 +772,7 @@ class AgentServer:
                 orphans_removed,
             )
 
-        self._start_time = datetime.now(timezone.utc)
+        self._start_time = datetime.now(UTC)
         self.state = ServerState.RUNNING
 
         # Start automatic session cleanup
