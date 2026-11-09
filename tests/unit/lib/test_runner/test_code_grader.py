@@ -25,6 +25,7 @@ from holodeck.lib.test_runner.code_grader import (
     build_grader_context,
     invoke_grader,
 )
+from holodeck.models.test_result import ToolInvocation
 
 
 def _ctx(**overrides: object) -> GraderContext:
@@ -223,3 +224,35 @@ class TestTestCaseFatalExceptionClass:
         from holodeck.lib.test_runner.executor import TestCaseFatal
 
         assert issubclass(TestCaseFatal, Exception)
+
+
+@pytest.mark.unit
+def test_grader_cannot_mutate_runner_tool_invocations() -> None:
+    """A grader editing ctx.tool_invocations leaves the runner's copies intact."""
+    original = ToolInvocation(
+        name="lookup", args={"q": "x"}, result={"v": 1}, bytes=8, duration_ms=1
+    )
+
+    def mutating(ctx: GraderContext) -> bool:
+        inv = ctx.tool_invocations[0]
+        inv.args["q"] = "changed"
+        inv.result["v"] = 2
+        inv.name = "renamed"
+        return True
+
+    for _ in range(2):  # the second grader must see unmodified evidence too
+        ctx = build_grader_context(
+            turn_input="q",
+            agent_response="a",
+            ground_truth=None,
+            tool_invocations=[original],
+            retrieval_context=None,
+            turn_index=0,
+            test_case_name="case",
+        )
+        assert ctx.tool_invocations[0].args == {"q": "x"}
+        invoke_grader(mutating, ctx, metric_name="m", threshold=None)
+
+    assert original.name == "lookup"
+    assert original.args == {"q": "x"}
+    assert original.result == {"v": 1}

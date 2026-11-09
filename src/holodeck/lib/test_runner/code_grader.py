@@ -104,12 +104,17 @@ def build_grader_context(
     test_case_name: str | None,
     turn_config: dict[str, Any] | None = None,
 ) -> GraderContext:
-    """Build a frozen ``GraderContext`` from per-turn runner state."""
+    """Build a frozen ``GraderContext`` from per-turn runner state.
+
+    Tool invocations are deep-copied: the runner persists the same objects
+    in ``TestResult``, so a grader that edits ``args`` or ``result`` must not
+    change the stored evidence or what the next grader sees.
+    """
     return GraderContext(
         turn_input=turn_input,
         agent_response=agent_response,
         ground_truth=ground_truth,
-        tool_invocations=tuple(tool_invocations),
+        tool_invocations=tuple(inv.model_copy(deep=True) for inv in tool_invocations),
         retrieval_context=(
             tuple(retrieval_context) if retrieval_context is not None else None
         ),
