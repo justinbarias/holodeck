@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+# One self-hosted runner serves every run, so a superseded PR run only delays
+# the next one. Cancel it on a new push. Push runs key on the commit SHA, so
+# main and develop runs never cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: self-hosted # 2 CPU cores (can upgrade to ubuntu-latest-4-cores or ubuntu-latest-8-cores)
