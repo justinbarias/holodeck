@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         ContainerApp,
         ContainerAppProbe,
         ContainerAppProbeHttpGet,
+        ContainerAppProperties,
         ContainerResources,
         EnvironmentVar,
         Ingress,
@@ -90,6 +91,7 @@ class AzureContainerAppsDeployer(BaseDeployer):
                 ContainerApp,
                 ContainerAppProbe,
                 ContainerAppProbeHttpGet,
+                ContainerAppProperties,
                 ContainerResources,
                 EnvironmentVar,
                 Ingress,
@@ -120,6 +122,9 @@ class AzureContainerAppsDeployer(BaseDeployer):
         self._Configuration: type[Configuration] = Configuration
         self._Container: type[Container] = Container
         self._ContainerApp: type[ContainerApp] = ContainerApp
+        self._ContainerAppProperties: type[ContainerAppProperties] = (
+            ContainerAppProperties
+        )
         self._ContainerAppProbe: type[ContainerAppProbe] = ContainerAppProbe
         self._ContainerAppProbeHttpGet: type[ContainerAppProbeHttpGet] = (
             ContainerAppProbeHttpGet
@@ -240,11 +245,15 @@ class AzureContainerAppsDeployer(BaseDeployer):
             ingress=ingress, active_revisions_mode="Single"
         )
 
+        # SDK 5 types these fields under ``properties``; passing them flat
+        # only works through its runtime compatibility shim.
         container_app = self._ContainerApp(
             location=self._config.location,
-            template=template,
-            configuration=configuration,
-            managed_environment_id=self._environment_id,
+            properties=self._ContainerAppProperties(
+                managed_environment_id=self._environment_id,
+                configuration=configuration,
+                template=template,
+            ),
         )
 
         try:
