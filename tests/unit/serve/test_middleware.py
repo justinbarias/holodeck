@@ -34,6 +34,15 @@ def basic_app() -> FastAPI:
     return app
 
 
+def _info_extras(mock_logger: MagicMock, message: str) -> list[dict]:
+    """Return the ``extra`` dicts of every ``logger.info(message, ...)`` call."""
+    return [
+        call.kwargs.get("extra", {})
+        for call in mock_logger.info.call_args_list
+        if call.args and call.args[0] == message
+    ]
+
+
 class TestLoggingMiddleware:
     """Tests for LoggingMiddleware."""
 
@@ -113,13 +122,9 @@ class TestLoggingMiddleware:
         with patch("holodeck.serve.middleware.logger") as mock_logger:
             client.get("/success", headers={"X-Session-ID": "test-session-123"})
 
-            # Check that session_id was logged
-            for call in mock_logger.info.call_args_list:
-                if "extra" in call.kwargs:
-                    extra = call.kwargs["extra"]
-                    if "session_id" in extra:
-                        assert extra["session_id"] == "test-session-123"
-                        break
+        for message in ("Request started", "Request completed"):
+            extras = _info_extras(mock_logger, message)
+            assert [e["session_id"] for e in extras] == ["test-session-123"]
 
     def test_middleware_extracts_session_id_from_query(
         self, basic_app: FastAPI
@@ -131,13 +136,9 @@ class TestLoggingMiddleware:
         with patch("holodeck.serve.middleware.logger") as mock_logger:
             client.get("/success?session_id=query-session-456")
 
-            # Check that session_id was logged
-            for call in mock_logger.info.call_args_list:
-                if "extra" in call.kwargs:
-                    extra = call.kwargs["extra"]
-                    if extra.get("session_id") == "query-session-456":
-                        assert True
-                        break
+        for message in ("Request started", "Request completed"):
+            extras = _info_extras(mock_logger, message)
+            assert [e["session_id"] for e in extras] == ["query-session-456"]
 
     def test_middleware_header_session_id_takes_priority(
         self, basic_app: FastAPI
@@ -152,13 +153,9 @@ class TestLoggingMiddleware:
                 headers={"X-Session-ID": "header-session"},
             )
 
-            # Check that header session_id was used
-            for call in mock_logger.info.call_args_list:
-                if "extra" in call.kwargs:
-                    extra = call.kwargs["extra"]
-                    if extra.get("session_id") == "header-session":
-                        assert True
-                        break
+        for message in ("Request started", "Request completed"):
+            extras = _info_extras(mock_logger, message)
+            assert [e["session_id"] for e in extras] == ["header-session"]
 
     def test_middleware_no_session_id_is_none(self, basic_app: FastAPI) -> None:
         """Test session_id is None when not provided."""
@@ -168,13 +165,8 @@ class TestLoggingMiddleware:
         with patch("holodeck.serve.middleware.logger") as mock_logger:
             client.get("/success")
 
-            # Check that session_id is None
-            for call in mock_logger.info.call_args_list:
-                if "extra" in call.kwargs:
-                    extra = call.kwargs["extra"]
-                    if "session_id" in extra and extra.get("path") == "/success":
-                        assert extra["session_id"] is None
-                        break
+        extras = _info_extras(mock_logger, "Request started")
+        assert extras == [{"method": "GET", "path": "/success", "session_id": None}]
 
 
 class TestLoggingMiddlewareExtractSessionId:
@@ -475,10 +467,13 @@ class TestMiddlewareIntegration:
             assert mock_logger.error.called
 
     def test_middleware_order_matters(self, basic_app: FastAPI) -> None:
-        """Test middleware order: logging should see the error response."""
-        # Note: Starlette applies middleware in reverse order
-        basic_app.add_middleware(LoggingMiddleware, debug=False)
+        """In the server's order, logging wraps error handling and logs the 500."""
+        # Same order as HoloDeckServer.create_app. Starlette makes the last
+        # added middleware the outermost, so LoggingMiddleware sees the
+        # response ErrorHandlingMiddleware builds. In the reverse order the
+        # exception passes through LoggingMiddleware and nothing is logged.
         basic_app.add_middleware(ErrorHandlingMiddleware, debug=False)
+        basic_app.add_middleware(LoggingMiddleware, debug=False)
         client = TestClient(basic_app, raise_server_exceptions=False)
 
         with patch("holodeck.serve.middleware.logger") as mock_logger:
@@ -487,10 +482,6 @@ class TestMiddlewareIntegration:
             # Error should be handled
             assert response.status_code == 500
 
-            # Logging middleware should log the 500 status
-            for call in mock_logger.info.call_args_list:
-                if "extra" in call.kwargs:
-                    extra = call.kwargs["extra"]
-                    if extra.get("status_code") == 500:
-                        assert True
-                        break
+        # Logging middleware wraps error handling, so it logs the 500 response.
+        completed = _info_extras(mock_logger, "Request completed")
+        assert [(e["path"], e["status_code"]) for e in completed] == [("/error", 500)]

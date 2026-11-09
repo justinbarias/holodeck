@@ -9,11 +9,12 @@ Tests cover:
 """
 
 import tempfile
+from collections.abc import AsyncIterator
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from click.testing import CliRunner
+from click.testing import CliRunner, Result
 
 from holodeck.lib.errors import (
     AgentInitializationError,
@@ -57,6 +58,30 @@ def _run_async_helper(coro):
         return loop.run_until_complete(coro)
     finally:
         loop.close()
+
+
+def _streaming_session(*replies: Exception | list[str]) -> AsyncMock:
+    """Build a session mock whose streaming turns follow ``replies`` in order.
+
+    Each reply is either a list of chunks to stream or an exception the
+    stream raises before yielding anything.
+    """
+    pending = list(replies)
+    session = AsyncMock()
+    session.start = AsyncMock()
+    session.terminate = AsyncMock()
+    session._executor = None
+    session.should_warn_context_limit = MagicMock(return_value=False)
+
+    async def stream(_message: str) -> AsyncIterator[str]:
+        reply = pending.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        for chunk in reply:
+            yield chunk
+
+    session.process_message_streaming = MagicMock(side_effect=stream)
+    return session
 
 
 class TestConfigurationErrors:
@@ -166,182 +191,133 @@ class TestAgentInitializationErrors:
 class TestValidationErrors:
     """Tests for input validation errors (session continues)."""
 
-    def test_validation_error_does_not_exit_session(self, chat_tmp_path):
-        """Validation errors don't exit the session, only display error."""
+    def _invoke(
+        self, chat_tmp_path: str, session: AsyncMock, user_input: str
+    ) -> Result:
         from holodeck.cli.commands.chat import chat
 
         runner = CliRunner()
-
         with (
             patch("holodeck.config.loader.load_agent_with_config") as mock_load,
-            patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
-            patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
+            patch(
+                "holodeck.cli.commands.chat.ChatSessionManager", return_value=session
+            ),
+            patch(
+                "holodeck.cli.commands.chat.asyncio.run",
+                side_effect=_run_async_helper,
+            ),
         ):
             mock_load.return_value = (
                 _create_agent(),
                 ExecutionConfig(),
                 MagicMock(),
             )
+            return runner.invoke(chat, [chat_tmp_path], input=user_input)
 
-            mock_session_instance = AsyncMock()
-            mock_session_instance.start = AsyncMock()
-            mock_session_instance.terminate = AsyncMock()
-            # Simulate validation error on first message, then exit
-            mock_session_instance.process_message = AsyncMock(
-                side_effect=[
-                    ChatValidationError("Message cannot be empty"),
-                    None,  # Allow exit
-                ]
-            )
-            mock_session_instance.should_warn_context_limit = MagicMock(
-                return_value=False
-            )
-            mock_session.return_value = mock_session_instance
+    def test_validation_error_does_not_exit_session(self, chat_tmp_path: str) -> None:
+        """A validation error is displayed and the next turn still runs."""
+        session = _streaming_session(
+            ChatValidationError("Message validation failed"), ["recovered reply"]
+        )
 
-            mock_asyncio_run.side_effect = _run_async_helper
+        result = self._invoke(chat_tmp_path, session, "hello\nagain\nexit\n")
 
-            # Send empty message, then exit
-            result = runner.invoke(chat, [chat_tmp_path], input="\nexit\n")
+        assert result.exit_code == 0, result.output
+        assert "Error: Message validation failed" in result.output
+        assert "recovered reply" in result.output
 
-            # Session should still be active (exit code 0 for normal exit)
-            assert result.exit_code == 0
+    def test_empty_message_is_skipped(self, chat_tmp_path: str) -> None:
+        """An empty line never reaches the session and does not end the chat."""
+        session = _streaming_session()
 
-    def test_empty_message_displays_error(self, chat_tmp_path):
-        """Empty message displays validation error."""
-        from holodeck.cli.commands.chat import chat
+        result = self._invoke(chat_tmp_path, session, "\n\nexit\n")
 
-        runner = CliRunner()
-
-        with (
-            patch("holodeck.config.loader.load_agent_with_config") as mock_load,
-            patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
-            patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
-        ):
-            mock_load.return_value = (
-                _create_agent(),
-                ExecutionConfig(),
-                MagicMock(),
-            )
-
-            mock_session_instance = AsyncMock()
-            mock_session_instance.start = AsyncMock()
-            mock_session_instance.terminate = AsyncMock()
-            # Raise validation error on non-empty message to test error display
-            mock_session_instance.process_message = AsyncMock(
-                side_effect=ChatValidationError("Message validation failed")
-            )
-            mock_session_instance.should_warn_context_limit = MagicMock(
-                return_value=False
-            )
-            mock_session.return_value = mock_session_instance
-
-            mock_asyncio_run.side_effect = _run_async_helper
-
-            # Send a non-empty message to trigger the error, then exit
-            result = runner.invoke(chat, [chat_tmp_path], input="hello\nexit\n")
-
-            # Error message should be displayed
-            assert "Error" in result.output or "error" in result.output.lower()
+        assert result.exit_code == 0, result.output
+        assert "Goodbye!" in result.output
+        session.process_message_streaming.assert_not_called()
 
 
 class TestKeyboardInterrupt:
     """Tests for keyboard interrupt handling."""
 
-    def test_keyboard_interrupt_exits_gracefully(self, chat_tmp_path):
-        """Keyboard interrupt (Ctrl+C) exits session gracefully."""
+    def _invoke_with_ctrl_c(self, chat_tmp_path: str) -> tuple[Result, AsyncMock]:
         from holodeck.cli.commands.chat import chat
 
         runner = CliRunner()
+        session = _streaming_session()
 
         with (
             patch("holodeck.config.loader.load_agent_with_config") as mock_load,
-            patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
-            patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
+            patch(
+                "holodeck.cli.commands.chat.ChatSessionManager", return_value=session
+            ),
+            patch(
+                "holodeck.cli.commands.chat.asyncio.run",
+                side_effect=_run_async_helper,
+            ),
+            patch(
+                "holodeck.cli.commands.chat.click.prompt",
+                side_effect=KeyboardInterrupt,
+            ),
         ):
             mock_load.return_value = (
                 _create_agent(),
                 ExecutionConfig(),
                 MagicMock(),
             )
+            result = runner.invoke(chat, [chat_tmp_path])
+        return result, session
 
-            mock_session_instance = AsyncMock()
-            mock_session_instance.start = AsyncMock()
-            mock_session_instance.terminate = AsyncMock()
-            mock_session.return_value = mock_session_instance
+    def test_keyboard_interrupt_exits_gracefully(self, chat_tmp_path: str) -> None:
+        """Ctrl+C at the prompt terminates the session and exits with 130."""
+        result, session = self._invoke_with_ctrl_c(chat_tmp_path)
 
-            mock_asyncio_run.side_effect = _run_async_helper
+        assert result.exit_code == 130
+        session.terminate.assert_awaited_once()
 
-            # Simulate Ctrl+C by raising KeyboardInterrupt
-            result = runner.invoke(
-                chat, [chat_tmp_path], input=None, catch_exceptions=False
-            )
+    def test_keyboard_interrupt_displays_goodbye(self, chat_tmp_path: str) -> None:
+        """Ctrl+C at the prompt prints the goodbye message."""
+        result, _ = self._invoke_with_ctrl_c(chat_tmp_path)
 
-            # Session should be terminated
-            assert mock_session_instance.terminate.called or result.exit_code in (
-                0,
-                130,
-                1,
-            )
-
-    def test_keyboard_interrupt_displays_goodbye(self, chat_tmp_path):
-        """Keyboard interrupt displays goodbye message."""
-        from holodeck.cli.commands.chat import chat
-
-        runner = CliRunner()
-
-        with (
-            patch("holodeck.config.loader.load_agent_with_config") as mock_load,
-            patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
-            patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
-        ):
-            mock_load.return_value = (
-                _create_agent(),
-                ExecutionConfig(),
-                MagicMock(),
-            )
-
-            mock_session_instance = AsyncMock()
-            mock_session_instance.start = AsyncMock()
-            mock_session_instance.terminate = AsyncMock()
-            mock_session.return_value = mock_session_instance
-
-            mock_asyncio_run.side_effect = _run_async_helper
-
-            # Use mix_stderr=False to avoid mixing error output
-            result = runner.invoke(chat, [chat_tmp_path], input=None)
-
-            # Should exit cleanly (goodbye message, or normal exit code)
-            assert result.exit_code in (0, 1, 130) or "goodbye" in result.output.lower()
+        assert "Goodbye!" in result.output
 
 
 class TestRuntimeErrors:
     """Tests for runtime execution errors."""
 
     @pytest.mark.parametrize(
-        "error_msg, user_input",
+        "error_msg, first_message",
         [
             pytest.param(
                 "Agent execution failed",
-                "hello\nexit\n",
+                "hello",
                 id="execution_error",
             ),
             pytest.param(
                 "Tool execution timeout",
-                "test\nexit\n",
+                "test",
                 id="tool_execution_error",
             ),
         ],
     )
-    def test_execution_error_handled(self, chat_tmp_path, error_msg, user_input):
-        """Execution errors during message processing are handled: {error_msg}."""
+    def test_execution_error_handled(
+        self, chat_tmp_path: str, error_msg: str, first_message: str
+    ) -> None:
+        """A failed turn shows the error and the session keeps accepting input."""
         from holodeck.cli.commands.chat import chat
 
         runner = CliRunner()
+        session = _streaming_session(ExecutionError(error_msg), ["recovered reply"])
 
         with (
             patch("holodeck.config.loader.load_agent_with_config") as mock_load,
-            patch("holodeck.cli.commands.chat.ChatSessionManager") as mock_session,
-            patch("holodeck.cli.commands.chat.asyncio.run") as mock_asyncio_run,
+            patch(
+                "holodeck.cli.commands.chat.ChatSessionManager", return_value=session
+            ),
+            patch(
+                "holodeck.cli.commands.chat.asyncio.run",
+                side_effect=_run_async_helper,
+            ),
         ):
             mock_load.return_value = (
                 _create_agent(),
@@ -349,23 +325,46 @@ class TestRuntimeErrors:
                 MagicMock(),
             )
 
-            mock_session_instance = AsyncMock()
-            mock_session_instance.start = AsyncMock()
-            mock_session_instance.terminate = AsyncMock()
-            mock_session_instance.process_message = AsyncMock(
-                side_effect=ExecutionError(error_msg)
+            result = runner.invoke(
+                chat, [chat_tmp_path], input=f"{first_message}\nagain\nexit\n"
             )
-            mock_session_instance.should_warn_context_limit = MagicMock(
-                return_value=False
+
+        assert result.exit_code == 0, result.output
+        assert f"Error: {error_msg}" in result.output
+        # The session survived the error: the next turn streamed a reply.
+        assert "recovered reply" in result.output
+        assert "Goodbye!" in result.output
+        session.terminate.assert_awaited_once()
+
+    def test_streaming_reply_is_displayed(self, chat_tmp_path: str) -> None:
+        """A successful turn streams every chunk to the terminal."""
+        from holodeck.cli.commands.chat import chat
+
+        runner = CliRunner()
+        session = _streaming_session(["Hello", ", ", "world"])
+
+        with (
+            patch("holodeck.config.loader.load_agent_with_config") as mock_load,
+            patch(
+                "holodeck.cli.commands.chat.ChatSessionManager", return_value=session
+            ),
+            patch(
+                "holodeck.cli.commands.chat.asyncio.run",
+                side_effect=_run_async_helper,
+            ),
+        ):
+            mock_load.return_value = (
+                _create_agent(),
+                ExecutionConfig(),
+                MagicMock(),
             )
-            mock_session.return_value = mock_session_instance
 
-            mock_asyncio_run.side_effect = _run_async_helper
+            result = runner.invoke(chat, [chat_tmp_path], input="hi\nexit\n")
 
-            result = runner.invoke(chat, [chat_tmp_path], input=user_input)
-
-            # Should not crash - allow continue or graceful exit
-            assert result.exit_code in (0, 1, 2) or "Error" in result.output
+        assert result.exit_code == 0, result.output
+        assert "Hello, world" in result.output
+        assert "Error" not in result.output
+        session.process_message_streaming.assert_called_once_with("hi")
 
     def test_unexpected_exception_displays_error(self, chat_tmp_path):
         """Unexpected exceptions display error message."""

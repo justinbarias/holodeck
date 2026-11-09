@@ -486,9 +486,17 @@ class TestRetryLogic:
 
     @pytest.mark.asyncio
     async def test_retry_with_exponential_backoff(
-        self, model_config: ModelConfig
+        self, model_config: ModelConfig, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test retry logic with 2s/4s/8s exponential backoff."""
+        """Retries back off 2s then 4s before the third attempt succeeds."""
+        delays: list[float] = []
+        real_sleep = asyncio.sleep
+
+        async def fake_sleep(delay: float, *args: Any, **kwargs: Any) -> None:
+            delays.append(delay)
+            await real_sleep(0)
+
+        monkeypatch.setattr("holodeck.lib.evaluators.base.asyncio.sleep", fake_sleep)
         retry_config = RetryConfig(max_retries=3, base_delay=2.0, exponential_base=2.0)
         evaluator = GroundednessEvaluator(
             model_config=model_config, retry_config=retry_config
@@ -508,17 +516,11 @@ class TestRetryLogic:
         ) as mock_call:
             mock_call.side_effect = mock_call_with_failures
 
-            start_time = asyncio.get_event_loop().time()
             result = await evaluator.evaluate(
                 query="test", response="test", context="test"
             )
-            elapsed_time = asyncio.get_event_loop().time() - start_time
 
-            # Expected delays: 2s (after 1st failure), 4s (after 2nd failure) = 6s total
-            assert elapsed_time >= 5.5, f"Elapsed time {elapsed_time}s is too short"
-            assert (
-                elapsed_time <= 7.5
-            ), f"Elapsed time {elapsed_time}s is too long"  # Allow overhead
+            assert delays == [2.0, 4.0]
 
             assert result["score"] == 0.8
             assert call_count == 3  # 2 failures + 1 success
