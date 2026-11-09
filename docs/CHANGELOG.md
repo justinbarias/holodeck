@@ -45,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dead Semantic Kernel harness leftovers.** Removed SK-coupled surfaces orphaned when the SK agent backend was deleted: the unused `holodeck.tools.mcp` SK plugin factory (live MCP runs through the Claude SDK bridge), the never-wired `holodeck.lib.tool_filter` module, the dead `to_semantic_kernel_function` stub, and the unused `metrics.include_semantic_kernel_metrics` config field. SK remains the backbone of the vectorstore / embedding / context-generation layer; the `semantic-kernel` dependency is unchanged.
 - **BREAKING: removed the `tool_filtering` agent-config field.** It was parsed but ignored (Claude manages tool selection natively). Because agent configs forbid extra fields, any `agent.yaml` still setting `tool_filtering:` will now fail validation — delete the block. No behavior change.
 
+### Fixed
+
+- **`type: code` graders now see tool invocations on single-turn test cases.** The single-turn path ran evaluations before pairing tool calls with results, so `GraderContext.tool_invocations` was always empty and any grader that checked tool calls or results scored 0, even though the test result listed the invocations. Calls are now paired once and the same list goes to the grader, the expected-tool arg matcher, and the `TestResult`. Single-turn graders also receive `test_case_name`. Multi-turn (`turns:`) cases were not affected.
+- **Code graders get their own copy of tool invocations.** A grader that edited `ctx.tool_invocations[i].args` or `.result` changed the invocations saved in the `TestResult` and seen by later graders. Each grader context now holds deep copies.
+
 ### Planned Features
 
 - **Deployment Engine**: Registry push (`holodeck deploy push`) and cloud deployment (`holodeck deploy run`)
