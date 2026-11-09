@@ -18,7 +18,7 @@ dependencies = [
     "urllib3>=2.8.0,<3.0.0",  # PYSEC-2026-4175/4176/4177 fix
     "cryptography>=50.0.0,<51.0.0",  # PYSEC-2026-3552/3553/3554 fix (50.0.0)
     "mkdocs-material>=9.7.7,<10.0.0",  # CVE-2026-73295 fix
-    "twine>=6.2.0,<7.0.0",
+    "twine>=6.2.0,<8.0.0",
     # format-nongpl (not the bare "format" extra): "format" pulls in rfc3987,
     # which is GPL-licensed and would contaminate this MIT-licensed project.
     # >=4.18: the workflow edge gate imports jsonschema.validators.SPECIFICATIONS
@@ -67,7 +67,7 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.20.0,<2.0.0",
     "rank-bm25>=0.2.2,<0.3.0", # BM25 sparse indexing (fallback for providers without native hybrid)
-    "opensearch-py>=2.0.0,<3.0.0", # OpenSearch client for production keyword index
+    "opensearch-py>=2.0.0,<4.0.0", # OpenSearch client for production keyword index
     "tiktoken>=0.12.0",
     "aiohttp>=3.14.4",  # CVE-2026-111063..111066/111748..111750 fix
     "httpx>=0.27",
@@ -158,7 +158,7 @@ openai-agents = ["openai-agents==0.24.0", "openai>=3,<4"]
 # Evaluation-runs dashboard (Dash + Plotly + pandas). Pixel-fidelity rewrite of
 # the Streamlit draft — handoff CSS tokens paste into assets/ verbatim.
 dashboard = [
-    "dash>=3.0,<4.0",
+    "dash>=3.0,<5.0",
     "plotly>=5.20,<8.0",
     "pandas>=2.0",
 ]
