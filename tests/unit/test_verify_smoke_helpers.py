@@ -15,7 +15,7 @@ from scripts.verify.fake_provider import (
     decide_openai,
     read_log,
 )
-from scripts.verify.smoke import isolation_problems
+from scripts.verify.smoke import BACKENDS, isolation_problems, missing_prerequisite
 
 pytestmark = pytest.mark.unit
 
@@ -191,3 +191,18 @@ def test_isolation_detects_leak_and_missing_thread(tmp_path: Path) -> None:
     assert isolation_problems(log, "ALPHA", "CHARLIE") == [
         "no provider request carried thread B's message"
     ]
+
+
+def test_claude_on_linux_without_bwrap_reports_install_hint() -> None:
+    claude = next(b for b in BACKENDS if b.name == "claude")
+    openai = next(b for b in BACKENDS if b.name == "openai")
+
+    def no_bwrap(_: str) -> str | None:
+        return None
+
+    problem = missing_prerequisite(claude, "linux", no_bwrap)
+    assert problem is not None
+    assert "apt-get install -y bubblewrap" in problem
+    assert missing_prerequisite(claude, "linux", lambda _: "/usr/bin/bwrap") is None
+    assert missing_prerequisite(claude, "darwin", no_bwrap) is None
+    assert missing_prerequisite(openai, "linux", no_bwrap) is None

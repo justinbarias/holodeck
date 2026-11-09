@@ -33,6 +33,14 @@ jobs:
       - name: Dependency audit
         run: make verify-deps
 
+      - name: Install bubblewrap (Claude CLI subprocess env scrubbing)
+        run: |
+          if ! command -v bwrap >/dev/null; then
+            SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -n"
+            $SUDO apt-get update -qq
+            $SUDO apt-get install -y -qq --no-install-recommends bubblewrap
+          fi
+
       - name: Offline smoke
         run: make verify-smoke
 

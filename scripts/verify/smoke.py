@@ -24,6 +24,7 @@ import json
 import shutil
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -143,6 +144,24 @@ def isolation_problems(log: Path, marker_a: str, marker_b: str) -> list[str]:
     return problems
 
 
+def missing_prerequisite(
+    backend: Backend, platform: str, which: Callable[[str], str | None]
+) -> str | None:
+    """Return why *backend* cannot start on this host, or None.
+
+    On Linux the Claude Code CLI refuses to start without bubblewrap while
+    HoloDeck's default subprocess env scrubbing is on, and every turn would
+    fail with an opaque "Backend session terminated unexpectedly".
+    """
+    if backend.name == "claude" and platform == "linux" and which("bwrap") is None:
+        return (
+            "bubblewrap (bwrap) not found: the Claude Code CLI needs it on Linux "
+            "for HoloDeck's default subprocess env scrubbing. "
+            "Install it: apt-get install -y bubblewrap"
+        )
+    return None
+
+
 def smoke_backend(
     backend: Backend, workdir: Path, provider_url: str, provider_log: Path
 ) -> list[Check]:
@@ -152,6 +171,9 @@ def smoke_backend(
         # Smoke promises both backends; a missing SDK is a failure, not a skip.
         reason = f"{backend.module} not installed (run `uv sync --all-extras`)"
         return [Check(f"{prefix}: setup", "FAIL", reason)]
+    missing = missing_prerequisite(backend, sys.platform, shutil.which)
+    if missing is not None:
+        return [Check(f"{prefix}: setup", "FAIL", missing)]
 
     agents_dir = workdir / prefix / "agents"
     shutil.copytree(FIXTURES, agents_dir)

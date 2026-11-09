@@ -51,6 +51,7 @@ For each backend, it runs `holodeck test run`, then 2 threads x 2 turns over `PO
 It asserts `RUN_STARTED` first, `RUN_FINISHED` last, no `RUN_ERROR`, scripted text, and `TOOL_CALL_*` events on the tool turn.
 It also asserts that no request for thread B carries thread A's text.
 Artifacts, including the provider request log, go to `.verify/smoke/<UTC timestamp>/`.
+On Linux the Claude backend needs `bubblewrap` (`bwrap`): the Claude Code CLI will not start without it while HoloDeck's default subprocess env scrubbing is on. Smoke fails fast with an install hint when it is missing.
 CI runs this tier on Python 3.11. A weekly [scheduled workflow](../.github/workflows/scheduled-verify.yml) runs `verify-deps` and `verify-smoke`.
 
 **live.** [live.py](../scripts/verify/live.py) runs the [live validation loop](../AGENTS.md) without the CopilotKit browser step.
