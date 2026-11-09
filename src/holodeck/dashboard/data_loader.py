@@ -181,7 +181,8 @@ def to_breakdown_dataframe(
     for run in sorted_runs:
         for m in _iter_metric_results(run, kind):
             entry = agg.setdefault(
-                m.metric_name, {"scores": [], "pass_count": 0, "total": 0}
+                m.metric_name,
+                {"scores": [], "pass_count": 0, "total": 0},  # nosec B105
             )
             entry["scores"].append(float(m.score))
             entry["total"] += 1
