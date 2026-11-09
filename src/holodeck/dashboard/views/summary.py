@@ -546,9 +546,11 @@ def _breakdown_row(runs: list[EvalRun]) -> html.Div:
 
 
 def _pill_class(tier: str) -> str:
-    return {"pass": "pill-pass", "warn": "pill-warn", "fail": "pill-fail"}.get(
-        tier, "pill-neutral"
-    )
+    return {
+        "pass": "pill-pass",  # nosec B105 - CSS class name, not a credential
+        "warn": "pill-warn",
+        "fail": "pill-fail",
+    }.get(tier, "pill-neutral")
 
 
 def _runs_table(

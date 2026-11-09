@@ -300,3 +300,43 @@ def test_redacting_processor_scrubs_error_attributes_and_exception_event():
     assert token not in event.attributes["exception.message"]
     assert token not in event.attributes["exception.stacktrace"]
     assert event.attributes["exception.type"] == "RuntimeError"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("read_only", [False, True])
+def test_redacting_processor_handles_plain_and_read_only_mappings(
+    read_only: bool,
+) -> None:
+    """Spans built outside the SDK may carry a dict or a read-only mapping.
+
+    A dict is scrubbed in place; a read-only mapping is replaced by a scrubbed
+    frozen copy. Unrelated keys are left alone either way.
+    """
+    from types import MappingProxyType
+
+    from opentelemetry.sdk.trace import Event, ReadableSpan
+
+    token = "ghp_" + "x" * 36
+    raw: dict[str, object] = {"tool.output": f"key={token}", "tool.name": "Bash"}
+    attrs = MappingProxyType(raw) if read_only else raw
+    event_raw: dict[str, object] = {"exception.message": f"leaked {token}"}
+    event_attrs = MappingProxyType(event_raw) if read_only else event_raw
+    span = ReadableSpan(
+        name="execute_tool",
+        attributes=attrs,  # type: ignore[arg-type]
+        events=[
+            Event("exception", attributes=event_attrs),  # type: ignore[arg-type]
+            Event("empty"),
+        ],
+    )
+
+    RedactingSpanProcessor().on_end(span)
+
+    assert token not in span.attributes["tool.output"]
+    assert "[REDACTED:github-token]" in span.attributes["tool.output"]
+    assert span.attributes["tool.name"] == "Bash"
+    assert token not in str(span.events[0].attributes["exception.message"])
+    assert not span.events[1].attributes
+    if read_only:
+        # The original read-only mapping is untouched; the span holds a copy.
+        assert token in str(raw["tool.output"])
