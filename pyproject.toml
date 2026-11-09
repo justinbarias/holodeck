@@ -72,7 +72,7 @@ dependencies = [
     "httpx>=0.27",
     "authlib>=1.9.1",  # PYSEC-2026-4354..4360, CVE-2026-96760/116672 fix
     "azure-core>=1.38.0",
-    "claude-agent-sdk==0.2.121",  # CVE-2026-96620 fix (smallest fixed release)
+    "claude-agent-sdk==0.2.179",  # >=0.2.121 for CVE-2026-96620; see ENABLE_TOOL_SEARCH in claude_backend
     "python-frontmatter>=1.1,<2.0",
     "optuna>=4.8.0",
     "litellm>=1.100.4,<1.101.0",  # PYSEC-2026-4066, GHSA-g5ff-637f-6q2m, CVE-2026-114612 fix
@@ -150,10 +150,9 @@ claude-otel = ["otel-instrumentation-claude-agent-sdk>=0.0.6,<0.1.0"]
 # OpenAI Agents SDK backend (provider: openai / azure_openai). Optional so
 # non-OpenAI backends incur no install/import cost — the import is gated lazily
 # inside holodeck.lib.backends.openai_agents_backend.
-# openai<2.45: 2.45 made Responses `InputTokensDetails.cache_write_tokens`
-# required, and openai-agents 0.17.4 builds usage without it (ValidationError
-# on every run). Lift the cap together with an openai-agents upgrade.
-openai-agents = ["openai-agents==0.17.4", "openai>=2.41.0,<2.45.0"]
+# openai<3: openai-agents 0.21+ requires openai 3, which litellm 1.100 does not
+# allow. Move both together.
+openai-agents = ["openai-agents==0.20.0", "openai>=2.45.0,<3"]
 
 # Evaluation-runs dashboard (Dash + Plotly + pandas). Pixel-fidelity rewrite of
 # the Streamlit draft — handoff CSS tokens paste into assets/ verbatim.

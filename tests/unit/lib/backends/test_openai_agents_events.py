@@ -321,7 +321,7 @@ def _response_payload(output: list[dict[str, Any]]) -> dict[str, Any]:
             "input_tokens": 1,
             "output_tokens": 1,
             "total_tokens": 2,
-            "input_tokens_details": {"cached_tokens": 0},
+            "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
             "output_tokens_details": {"reasoning_tokens": 0},
         },
     }
