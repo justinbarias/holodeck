@@ -15,9 +15,11 @@ Note: This test module requires mocking semantic_kernel modules because the full
 semantic_kernel library is not available in the test environment.
 """
 
+import logging
 import sys
 from collections.abc import Iterator
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Save original modules before mocking (these will be restored after import)
@@ -170,6 +172,12 @@ def create_config(
     }
     defaults.update(overrides)
     return HierarchicalDocumentToolConfig(**defaults)
+
+
+if TYPE_CHECKING:
+    from holodeck.lib.structured_chunker import DocumentChunk
+
+_TOOL_LOGGER = "holodeck.tools.hierarchical_document_tool"
 
 
 class TestHierarchicalDocumentToolInit:
@@ -2016,8 +2024,10 @@ class TestIngestDocumentsEdgeCases:
     """Tests for edge cases in _ingest_documents."""
 
     @pytest.mark.asyncio
-    async def test_ingest_logs_warning_no_files(self, tmp_path: Path) -> None:
-        """Test ingest logs warning when no supported files found."""
+    async def test_ingest_logs_warning_no_files(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """An empty source directory logs a warning and ingests nothing."""
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
 
@@ -2027,15 +2037,17 @@ class TestIngestDocumentsEdgeCases:
             source=str(empty_dir),
         )
         tool = HierarchicalDocumentTool(config)
-
-        # Set up required components
         tool._collection = MagicMock()
         tool._embedding_dimensions = 1536
 
-        with patch.object(tool, "_discover_files", return_value=[]):
-            await tool._ingest_documents()
+        with caplog.at_level(logging.WARNING, logger=_TOOL_LOGGER):
+            ingested = await tool._ingest_documents()
 
-        # Should complete without error even with no files
+        assert ingested == 0
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1
+        assert "No supported files found" in warnings[0].getMessage()
+        assert str(empty_dir) in warnings[0].getMessage()
 
     @pytest.mark.asyncio
     async def test_ingest_skips_unchanged_files(self, tmp_path: Path) -> None:
@@ -2122,73 +2134,95 @@ class TestIngestDocumentsEdgeCases:
 class TestContextualEmbeddings:
     """Tests for contextual embeddings generation."""
 
+    @staticmethod
+    async def _ingest_capturing_embedded_chunks(
+        tool: HierarchicalDocumentTool,
+    ) -> "list[DocumentChunk]":
+        """Run ingestion of the configured file and return the embedded chunks."""
+        embedded: list[DocumentChunk] = []
+
+        async def capture(chunks: "list[DocumentChunk]") -> None:
+            embedded.extend(chunks)
+
+        with (
+            patch.object(tool, "_delete_file_records", new_callable=AsyncMock),
+            patch.object(
+                tool,
+                "_convert_to_markdown",
+                new_callable=AsyncMock,
+                return_value="# Test\n\nFirst paragraph.\n\nSecond paragraph.",
+            ),
+            patch.object(tool, "_embed_chunks", side_effect=capture),
+            patch.object(tool, "_store_chunks", new_callable=AsyncMock, return_value=1),
+        ):
+            await tool._ingest_documents(force_ingest=True)
+        return embedded
+
     @pytest.mark.asyncio
     async def test_contextual_embeddings_when_enabled(self, tmp_path: Path) -> None:
-        """Test contextual embeddings generated when enabled and services available."""
-        from holodeck.lib.structured_chunker import DocumentChunk
-
-        doc_file = tmp_path / "test.md"
-        doc_file.write_text("# Test\n\nContent here.")
-
+        """Generated context replaces each chunk's contextualized_content."""
         config = create_config(tmp_path, contextual_embeddings=True)
         tool = HierarchicalDocumentTool(config)
         tool._collection = MagicMock()
         tool._embedding_dimensions = 1536
 
-        # Set up context generator and chat service
-        mock_context_gen = MagicMock()
-        mock_context_gen.contextualize_batch = AsyncMock(
-            return_value=["Contextualized content"]
+        async def contextualize(
+            chunks: "list[DocumentChunk]", document_text: str
+        ) -> list[str]:
+            return [f"[ctx] {c.content}" for c in chunks]
+
+        generator = MagicMock()
+        generator.contextualize_batch = AsyncMock(side_effect=contextualize)
+        tool.set_context_generator(generator)
+
+        embedded = await self._ingest_capturing_embedded_chunks(tool)
+
+        assert embedded, "ingestion embedded no chunks"
+        assert [c.contextualized_content for c in embedded] == [
+            f"[ctx] {c.content}" for c in embedded
+        ]
+        generator.contextualize_batch.assert_awaited_once()
+        assert "First paragraph." in (
+            generator.contextualize_batch.await_args.kwargs["document_text"]
         )
-        tool._context_generator = mock_context_gen
-        tool._chat_service = MagicMock()
-
-        mock_chunk = MagicMock(spec=DocumentChunk)
-        mock_chunk.id = "chunk_0"
-        mock_chunk.content = "Content"
-        mock_chunk.chunk_type = MagicMock()
-        mock_chunk.chunk_type.name = "PARAGRAPH"
-
-        with (
-            patch.object(
-                tool, "_needs_reingest", new_callable=AsyncMock, return_value=True
-            ),
-            patch.object(
-                tool,
-                "_convert_to_markdown",
-                new_callable=AsyncMock,
-                return_value="# Test\n\nContent",
-            ),
-            (
-                patch.object(tool._chunker, "parse", return_value=[mock_chunk])
-                if tool._chunker
-                else patch.object(tool, "_chunker")
-            ),
-            patch.object(tool, "_embed_chunks", new_callable=AsyncMock),
-            patch.object(tool, "_store_chunks", new_callable=AsyncMock, return_value=1),
-        ):
-            # Skip the actual test since chunker is None in this setup
-            pass
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("enabled", "with_generator", "reason"),
+        [
+            pytest.param(False, True, "disabled in config", id="disabled"),
+            pytest.param(True, False, "no context generator configured", id="no_gen"),
+        ],
+    )
     async def test_contextual_embeddings_disabled_reason_logged(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+        enabled: bool,
+        with_generator: bool,
+        reason: str,
     ) -> None:
-        """Test reason for skipping contextual embeddings is logged."""
-        doc_file = tmp_path / "test.md"
-        doc_file.write_text("# Test\n\nContent here.")
-
-        # contextual_embeddings=False by default
-        config = create_config(tmp_path, contextual_embeddings=False)
+        """Skipped contextualization logs why and embeds the original content."""
+        config = create_config(tmp_path, contextual_embeddings=enabled)
         tool = HierarchicalDocumentTool(config)
         tool._collection = MagicMock()
         tool._embedding_dimensions = 1536
+        generator = MagicMock()
+        generator.contextualize_batch = AsyncMock()
+        if with_generator:
+            tool.set_context_generator(generator)
 
-        # No chat service
-        tool._chat_service = None
-        tool._context_generator = None
+        with caplog.at_level(logging.INFO, logger=_TOOL_LOGGER):
+            embedded = await self._ingest_capturing_embedded_chunks(tool)
 
-        # This should run without error and log the reason
+        assert embedded, "ingestion embedded no chunks"
+        assert all(c.contextualized_content == c.content for c in embedded)
+        generator.contextualize_batch.assert_not_called()
+        assert any(
+            "Skipping contextual embeddings" in r.getMessage()
+            and f"({reason})" in r.getMessage()
+            for r in caplog.records
+        )
 
 
 class TestEmbedChunksEdgeCases:
