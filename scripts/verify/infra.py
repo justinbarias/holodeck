@@ -50,6 +50,19 @@ QDRANT = Service(
     ready_text="all shards are ready",
 )
 
+# Server image matching the locked chromadb client, so the HttpClient path
+# HoloDeck uses in production is what gets exercised. Host 8765 avoids the
+# commonly used 8000.
+CHROMA = Service(
+    label="chroma",
+    container="holodeck-verify-chroma",
+    image="chromadb/chroma:1.5.9",
+    ports=((8765, 8000),),
+    env=(),
+    ready_url="http://127.0.0.1:8765/api/v2/heartbeat",
+    ready_text="nanosecond heartbeat",
+)
+
 # Image env (docker inspect): UI on 18888, OTLP/gRPC on 18889, OTLP/HTTP on
 # 18890. Host 4317/4318 are the standard OTLP ports the fixtures export to.
 ASPIRE = Service(

@@ -1353,7 +1353,7 @@ wheels = [
 
 [[package]]
 name = "chromadb"
-version = "1.0.21"
+version = "1.5.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bcrypt" },
@@ -1372,9 +1372,9 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "orjson" },
     { name = "overrides" },
-    { name = "posthog" },
     { name = "pybase64" },
     { name = "pydantic" },
+    { name = "pydantic-settings" },
     { name = "pypika" },
     { name = "pyyaml" },
     { name = "rich" },
@@ -1385,13 +1385,13 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uvicorn", extra = ["standard"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/65/d7/98fdccb25ae3642213ebd29ca2060387cc6abd1f3f0e96b24a36796aa4ba/chromadb-1.0.21.tar.gz", hash = "sha256:583f12f8005f5d197e3207c3b845bce79b8ea6b57781aea505e12b08d26fd508", size = 1301769, upload-time = "2025-09-11T22:34:14.632Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/d1/5e33b26985f0c7046a0be1cee2158ada1748ee700d2545057fde1468d74d/chromadb-1.5.9.tar.gz", hash = "sha256:5c20e62a455c28bacac927f26116a73fd8e1799e0d908be8e8a4f02197a54731", size = 2595635, upload-time = "2026-05-05T05:54:51.713Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3d/87/554ec13e21150a548071dbaa9f13867946b56a8603ae045e79c7abf38034/chromadb-1.0.21-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:de6df7ba7a08cc8e76caa1509fd7b4317fc34f5842b4077e35985bf9625c9bab", size = 19173157, upload-time = "2025-09-11T22:34:11.973Z" },
-    { url = "https://files.pythonhosted.org/packages/8d/dc/b01512adc298874613728176782772692f78b16fdb8cb59ae7d9bedbedbf/chromadb-1.0.21-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:b1a328a76ba1b1b199473db108ec7a22e048888d8d695f39aa503210082e80af", size = 18258590, upload-time = "2025-09-11T22:34:09.384Z" },
-    { url = "https://files.pythonhosted.org/packages/58/93/a95266dd4d81f1015bf5259c647bcf1a7430b3fba58d4f8b6a5a11d3e399/chromadb-1.0.21-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7817cddbd52296c3c71031e330c2dbcd5c5b4f4430895c19ccea1dfa814f9787", size = 18835250, upload-time = "2025-09-11T22:34:03.7Z" },
-    { url = "https://files.pythonhosted.org/packages/4a/57/3630d9d90d2b6988be01565386dce0c3a7e4d4eed2d276f849a0be792369/chromadb-1.0.21-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c6b1420248865b5d3b6d0aac50e2d014c0b849959b6952ddd140cac13bb84c9f", size = 19838029, upload-time = "2025-09-11T22:34:06.818Z" },
-    { url = "https://files.pythonhosted.org/packages/86/6f/2ea981d3cfae2b0388ec1e311bdfecf3cdc1d45f803305fb1d7ad0d0d9a0/chromadb-1.0.21-cp39-abi3-win_amd64.whl", hash = "sha256:3e44fcea9b5ce4e653cd32b0673fe5ecb99f9f737c0cf97414b1d096794a19f9", size = 19809949, upload-time = "2025-09-11T22:34:16.333Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/5b/3cced915244f43ed14b53fe9f63a37f05f865064f4e4fe7d9448d3f2a352/chromadb-1.5.9-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:60701011b5e6409647fa40d12c7c5a66b2b0bfcf33a52db2ad53a30a2abc4957", size = 22564540, upload-time = "2026-05-05T05:54:48.906Z" },
+    { url = "https://files.pythonhosted.org/packages/34/4c/adcef1f4e82a2ef69ccd3711d55fc289193d54c4c0ff7a0292a3631db46f/chromadb-1.5.9-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:814b9c95617377f6501e5757d63dfddb554a283a7739c87b9fa573850174e6f3", size = 21699698, upload-time = "2026-05-05T05:54:45.078Z" },
+    { url = "https://files.pythonhosted.org/packages/38/4e/937bc4d2e6f8ab9664ec79931fbbd69efff47e513ec2924b071e4b0ff774/chromadb-1.5.9-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9192d111bd662241625867962333d99369a00769a50f8b2f58cb388731274d7e", size = 22680924, upload-time = "2026-05-05T05:54:36.25Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/ec/0c42039e80b9acc534f67b73b7a42471948042859b3a64867b50a4a77fa3/chromadb-1.5.9-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:cc09b3df76e5a5cb386aed2715a2eea152e3949f9e1ba93c7119505377749929", size = 23316203, upload-time = "2026-05-05T05:54:41.157Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/ce/0f7be6e5d0feafa2cda54b12e6542afeea7dea89d2d411e14da90f8abb96/chromadb-1.5.9-cp39-abi3-win_amd64.whl", hash = "sha256:4fd0b560e56761b7f3cb4d5c6205fd5f20814484b4a3e4e9af9038c2b428fc6c", size = 23542454, upload-time = "2026-05-05T05:54:54.942Z" },
 ]
 
 [[package]]
@@ -1736,7 +1736,7 @@ wheels = [
 
 [[package]]
 name = "deepeval"
-version = "3.8.9"
+version = "4.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1758,9 +1758,9 @@ dependencies = [
     { name = "pytest-rerunfailures" },
     { name = "pytest-xdist" },
     { name = "python-dotenv" },
+    { name = "questionary" },
     { name = "requests" },
     { name = "rich" },
-    { name = "sentry-sdk" },
     { name = "setuptools" },
     { name = "tabulate" },
     { name = "tenacity" },
@@ -1768,9 +1768,9 @@ dependencies = [
     { name = "typer" },
     { name = "wheel" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/25/6595792d9bc3948b3e11753b4f9fcd0b63f2ec0da784752472ca819a851f/deepeval-3.8.9.tar.gz", hash = "sha256:c75127db4929a7f53df2b008a237d35f0c62df88f1a06c30ddc695e807a94e5e", size = 599438, upload-time = "2026-03-05T17:19:26.824Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/07/0b85e434d66a34adaa7683c1711ae85c4ba3fba2d564adf3b527c1eeab2e/deepeval-4.3.3.tar.gz", hash = "sha256:4f33543a77b559336c0f3c49fd0a1418cef0cdb14867fb58ebb5b1fd25fad26e", size = 1067557, upload-time = "2026-11-04T11:29:21.589Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/ef/cf016f844e93165cd60d625586e7a56d03512de592c25afc12f8b264f150/deepeval-3.8.9-py3-none-any.whl", hash = "sha256:33124aa7f400e96ec27ab32b6c76fd4f0aae8af91d268dae92882fddcafd8931", size = 825128, upload-time = "2026-03-05T17:19:22.745Z" },
+    { url = "https://files.pythonhosted.org/packages/69/cb/74cac091d06ba05e5301cddd2a83b2d39b4f56bf8c79545be85ce3d3ce8d/deepeval-4.3.3-py3-none-any.whl", hash = "sha256:d81e2da8388046cce112ba55e5d218f8997f6b80e4574b3209b9e41ec8e7d089", size = 1537061, upload-time = "2026-11-04T11:29:23.499Z" },
 ]
 
 [[package]]
@@ -2605,13 +2605,13 @@ requires-dist = [
     { name = "boto3", marker = "extra == 'deploy-all'", specifier = ">=1.42.0" },
     { name = "boto3", marker = "extra == 'deploy-aws'", specifier = ">=1.42.0" },
     { name = "boto3", marker = "extra == 's3'", specifier = ">=1.42.0" },
-    { name = "chromadb", marker = "extra == 'chromadb'", specifier = ">=0.5,<1.1" },
-    { name = "chromadb", marker = "extra == 'vectorstores'", specifier = ">=0.5,<1.1" },
+    { name = "chromadb", marker = "extra == 'chromadb'", specifier = ">=0.5,<1.6" },
+    { name = "chromadb", marker = "extra == 'vectorstores'", specifier = ">=0.5,<1.6" },
     { name = "claude-agent-sdk", specifier = "==0.2.179" },
     { name = "click", specifier = ">=8.3.3,<9.0.0" },
     { name = "cryptography", specifier = ">=50.0.0,<51.0.0" },
     { name = "dash", marker = "extra == 'dashboard'", specifier = ">=3.0,<4.0" },
-    { name = "deepeval", specifier = ">=3.8.9,<3.9.0" },
+    { name = "deepeval", specifier = ">=4.3.3,<5" },
     { name = "detect-secrets", marker = "extra == 'dev'", specifier = ">=1.4.0" },
     { name = "docker", marker = "extra == 'deploy'", specifier = ">=7.0.0" },
     { name = "docker", marker = "extra == 'deploy-all'", specifier = ">=7.0.0" },
@@ -5872,18 +5872,17 @@ wheels = [
 
 [[package]]
 name = "posthog"
-version = "5.4.0"
+version = "7.86.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "backoff" },
     { name = "distro" },
-    { name = "python-dateutil" },
     { name = "requests" },
-    { name = "six" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/48/20/60ae67bb9d82f00427946218d49e2e7e80fb41c15dc5019482289ec9ce8d/posthog-5.4.0.tar.gz", hash = "sha256:701669261b8d07cdde0276e5bc096b87f9e200e3b9589c5ebff14df658c5893c", size = 88076, upload-time = "2025-06-20T23:19:23.485Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/02/3a/a4e38b4b5dd1892649dc2bbfe5f2b4ea1518d6ce5ad221b675accd90b62c/posthog-7.86.4.tar.gz", hash = "sha256:e52662b84404f047ab10a275b0ded8e22d82a361f92febb40506404a263cd6f7", size = 914864, upload-time = "2026-11-09T14:54:33.521Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4f/98/e480cab9a08d1c09b1c59a93dade92c1bb7544826684ff2acbfd10fcfbd4/posthog-5.4.0-py3-none-any.whl", hash = "sha256:284dfa302f64353484420b52d4ad81ff5c2c2d1d607c4e2db602ac72761831bd", size = 105364, upload-time = "2025-06-20T23:19:22.001Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/16/a705952fd790d46fca180e8dbf7038c1cab98144c65d3101d9d61ad4c77c/posthog-7.86.4-py3-none-any.whl", hash = "sha256:627caed7b0b47c340820734844ae4b3cbd3d31e46c1766571a4ee2f3bd55fe57", size = 1058830, upload-time = "2026-11-09T14:54:31.224Z" },
 ]
 
 [[package]]
@@ -7209,6 +7208,18 @@ wheels = [
 ]
 
 [[package]]
+name = "questionary"
+version = "2.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "prompt-toolkit" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f6/45/eafb0bba0f9988f6a2520f9ca2df2c82ddfa8d67c95d6625452e97b204a5/questionary-2.1.1.tar.gz", hash = "sha256:3d7e980292bb0107abaa79c68dd3eee3c561b83a0f89ae482860b181c8bd412d", size = 25845, upload-time = "2025-08-28T19:00:20.851Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/26/1062c7ec1b053db9e499b4d2d5bc231743201b74051c973dadeac80a8f43/questionary-2.1.1-py3-none-any.whl", hash = "sha256:a51af13f345f1cdea62347589fbb6df3b290306ab8930713bfae4d475a7d4a59", size = 36753, upload-time = "2025-08-28T19:00:19.56Z" },
+]
+
+[[package]]
 name = "rank-bm25"
 version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -7887,19 +7898,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b5/16/5424fe5fd6eeb68131bbfb486e85baf60204039bee803774bfd2bfc6737a/semantic_kernel-1.47.0.tar.gz", hash = "sha256:d7557c6dc62db7c708ff13442144ea4537935a489a688bceff1566fb597302ef", size = 635531, upload-time = "2026-11-05T10:58:33.634Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/5c/05a8686200d316b3f5268e09be51fbac2d7675b47a87f858a6c59670ff7d/semantic_kernel-1.47.0-py3-none-any.whl", hash = "sha256:6aed78a25bf3d0a70561ba25592f91a11e16e09e119c7512f90af3e132c40198", size = 952606, upload-time = "2026-11-05T10:58:35.73Z" },
-]
-
-[[package]]
-name = "sentry-sdk"
-version = "2.74.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "certifi" },
-    { name = "urllib3" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8e/7f/1b16ab4aee53cc5db976bac12e6df5d562aae3880965200cef812e7121d9/sentry_sdk-2.74.0.tar.gz", hash = "sha256:dd91d75aacaef636006b579ac3ddb2fdbc9dce35f00f4b353b6b1b110c6b256a", size = 1081514, upload-time = "2026-11-05T14:50:27.444Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/b1/736d4b4b308694b0071844a533522ac06669ad61751687b94edfbf863f17/sentry_sdk-2.74.0-py3-none-any.whl", hash = "sha256:40b205af015649df3ec9986e057ce24ce85956bee3fb75efa72c93aa7036bdff", size = 549800, upload-time = "2026-11-05T14:50:25.767Z" },
 ]
 
 [[package]]
