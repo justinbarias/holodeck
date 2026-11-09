@@ -45,7 +45,7 @@ dependencies = [
     # click>=8.3.3 security bump (PYSEC-2026-2132). 3.7.9 capped click <8.3.0.
     "deepeval>=3.8.9,<3.9.0",
     "python-ulid>=3.1.0,<4.0.0",
-    "ml-dtypes>=0.4.0,<0.5.0",
+    "ml-dtypes>=0.4.0,<0.7.0",
     # Cap below 2.0: claude-agent-sdk 0.2.x still uses the MCP 1.x low-level
     # Server API (@server.list_tools()), which the 2.0 line removed. Without the
     # cap, a prerelease-enabled install resolves mcp 2.0.0a1 and the Claude
@@ -72,7 +72,7 @@ dependencies = [
     "httpx>=0.27",
     "authlib>=1.9.1",  # PYSEC-2026-4354..4360, CVE-2026-96760/116672 fix
     "azure-core>=1.38.0",
-    "claude-agent-sdk==0.2.121",  # CVE-2026-96620 fix (smallest fixed release)
+    "claude-agent-sdk==0.2.178",  # CVE-2026-96620 fix (smallest fixed release)
     "python-frontmatter>=1.1,<2.0",
     "optuna>=4.8.0",
     "litellm>=1.100.4,<1.101.0",  # PYSEC-2026-4066, GHSA-g5ff-637f-6q2m, CVE-2026-114612 fix
@@ -117,7 +117,7 @@ qdrant = [
     "qdrant-client>=1.18,<2.0",
 ]
 chromadb = [
-    "chromadb>=0.5,<1.1",
+    "chromadb>=0.5,<1.6",
 ]
 
 # Convenience group for all vector stores
@@ -125,7 +125,7 @@ vectorstores = [
     "pinecone[asyncio,grpc]~=7.0",
     "psycopg[binary,pool]~=3.2",
     "qdrant-client>=1.18,<2.0",
-    "chromadb>=0.5,<1.1",
+    "chromadb>=0.5,<1.6",
 ]
 
 # OpenTelemetry exporters (install only what you need)
@@ -188,7 +188,7 @@ deploy-all = [
 # (SandboxedWorkflowRunner.prepare_workflow), an API the SDK marks "not yet
 # stable". Loosen to a range once that surface stabilizes.
 temporal = [
-    "temporalio==1.32.0",
+    "temporalio==1.35.0",
 ]
 
 [build-system]
