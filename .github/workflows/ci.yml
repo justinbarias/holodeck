@@ -45,19 +45,10 @@ jobs:
           restore-keys: |
             uv-${{ runner.os }}-${{ matrix.python-version }}-
 
-      - name: Cache pre-commit environments
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            pre-commit-
-
       - name: Install dependencies
         run: uv sync --all-extras
 
-      - name: Run pre-commit
-        run: uv run pre-commit run --all-files
+      # pre-commit hooks run once, in the required pre-commit workflow.
 
       - name: Run tests in parallel
         run: |
@@ -96,4 +87,5 @@ jobs:
           report_type: test_results
 
       - name: Security scan
+        if: matrix.python-version == '3.11' # same uv.lock and src in both lanes
         run: make security
