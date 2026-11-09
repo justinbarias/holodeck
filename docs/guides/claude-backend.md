@@ -188,7 +188,7 @@ HoloDeck blocks risky built-in tools unless the agent declares them:
 | `WebSearch` | `web_search: true` |
 | `WebFetch` | `allowed_tools: [WebFetch]` |
 
-Any tool named in `allowed_tools` or in a subagent's `tools` list also counts as declared. The block applies to the whole session, subagents included.
+Any tool named in `allowed_tools` also counts as declared. The block applies to the whole session, subagents included: a subagent's `tools` list narrows what that subagent may use but does not unblock a tool, so declare it here too (for example `web_search: true` for a researcher subagent that needs `WebSearch`).
 
 Declared MCP and function tools are sent to the model directly. Newer Claude Code versions otherwise hide them behind a `ToolSearch` step, which models behind custom endpoints (such as Ollama) may not use. To turn tool search back on, export `ENABLE_TOOL_SEARCH=true` (or `auto`) before starting HoloDeck.
 

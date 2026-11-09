@@ -668,7 +668,7 @@ def _declared_builtin_tools(claude: Any) -> set[str]:
     A tool counts as declared when the HoloDeck schema explicitly opts in
     via a dedicated field (claude.bash.enabled, claude.file_system.write,
     claude.web_search, etc.) or when the tool name appears in
-    claude.allowed_tools or a subagent's ``tools`` list.
+    claude.allowed_tools.
 
     Args:
         claude: ``ClaudeConfig`` instance or ``None``.
@@ -690,11 +690,9 @@ def _declared_builtin_tools(claude: Any) -> set[str]:
         declared.add("WebSearch")
     if claude.allowed_tools:
         declared.update(claude.allowed_tools)
-    # disallowed_tools applies to the whole session, subagents included, so
-    # a tool a subagent explicitly lists is declared too.
-    for spec in (claude.agents or {}).values():
-        if spec.tools:
-            declared.update(spec.tools)
+    # A subagent's ``tools`` list does not count: disallowed_tools is
+    # session-wide, so unblocking a tool for a subagent unblocks it for the
+    # parent too.
     return declared
 
 

@@ -565,6 +565,7 @@ class TestBuildOptions:
         HTTPS_PROXY) to confirm that build_options() constructs env
         exclusively from auth_env + otel_env (process env is not leaked).
         """
+        monkeypatch.delenv("ENABLE_TOOL_SEARCH", raising=False)
         monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://proxy.corp.example.com")
         monkeypatch.setenv("HTTP_PROXY", "http://squid.corp:3128")
         monkeypatch.setenv("HTTPS_PROXY", "http://squid.corp:3129")
@@ -1067,10 +1068,10 @@ class TestAutoDisallowBuiltinTools:
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
-    def test_subagent_declared_tools_drop_from_disallow(
+    def test_subagent_tools_do_not_unblock_session_builtins(
         self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
     ) -> None:
-        """A subagent's tools list declares them for the session."""
+        """A subagent listing a risky tool must not unblock it for the parent."""
         from holodeck.models.claude_config import SubagentSpec
 
         claude = ClaudeConfig(
@@ -1078,7 +1079,7 @@ class TestAutoDisallowBuiltinTools:
                 "researcher": SubagentSpec(
                     description="Gathers sources.",
                     prompt="Research.",
-                    tools=["WebSearch", "WebFetch"],
+                    tools=["WebSearch", "WebFetch", "Write"],
                 )
             }
         )
@@ -1096,6 +1097,8 @@ class TestAutoDisallowBuiltinTools:
             "Bash",
             "Edit",
             "NotebookEdit",
+            "WebFetch",
+            "WebSearch",
             "Write",
         }
 
