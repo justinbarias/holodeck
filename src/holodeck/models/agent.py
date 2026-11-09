@@ -4,14 +4,8 @@ This module defines the main Agent model and related configuration used
 in agent.yaml files.
 """
 
-import sys
 from collections import Counter
-from typing import Any
-
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 

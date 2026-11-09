@@ -1,7 +1,7 @@
 # HoloDeck Base Image
 # This Dockerfile creates the base image for HoloDeck agent containers.
 # It provides:
-# - Python 3.10+ runtime
+# - Python 3.13 runtime
 # - UV package manager (fast pip replacement)
 # - HoloDeck CLI installed
 # - Non-root user for security
@@ -13,7 +13,7 @@
 # Build Arguments:
 #   HOLODECK_VERSION - Version of holodeck-ai to install (default: latest)
 
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 # Build argument for holodeck version (empty = latest from PyPI)
 ARG HOLODECK_VERSION=""
@@ -43,10 +43,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 
-# Install UV for fast package management
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && mv /root/.local/bin/uv /usr/local/bin/uv \
-    && chmod +x /usr/local/bin/uv
+# Install UV from the pinned official image (no unpinned curl | sh)
+COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /uvx /usr/local/bin/
 
 # Create non-root user for security
 RUN groupadd --gid 1000 holodeck \

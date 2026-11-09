@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import subprocess  # nosec B404
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -145,7 +145,7 @@ def get_oci_labels(
         >>> labels["org.opencontainers.image.title"]
         'my-agent'
     """
-    created = datetime.now(timezone.utc).isoformat()
+    created = datetime.now(UTC).isoformat()
 
     labels = {
         "org.opencontainers.image.title": agent_name,

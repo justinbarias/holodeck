@@ -21,7 +21,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ProcessError
 from claude_agent_sdk._errors import CLIConnectionError
-from exceptiongroup import BaseExceptionGroup
 
 from holodeck.lib.backends.base import (
     AgentBackend,

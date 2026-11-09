@@ -47,7 +47,7 @@ async def _drain_tool_events(
     while not stop_event.is_set():
         try:
             evt = await asyncio.wait_for(queue.get(), timeout=0.1)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
         panel.apply(evt)
 
@@ -82,7 +82,7 @@ async def _paint_panel_loop(
         await composer.update_panel(lines)
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=_RENDER_INTERVAL_SEC)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
     # One last paint so end-of-turn state (e.g. final tool just finished)
     # is reflected before the composer tears the panel down.
@@ -389,7 +389,7 @@ async def _run_chat_session(
                             if drain_task is not None:
                                 try:
                                     await asyncio.wait_for(drain_task, timeout=0.25)
-                                except asyncio.TimeoutError:
+                                except TimeoutError:
                                     drain_task.cancel()
                                     with contextlib.suppress(asyncio.CancelledError):
                                         await drain_task

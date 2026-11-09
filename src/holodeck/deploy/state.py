@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -84,7 +84,7 @@ def update_deployment_record(
     """Update deployment record for an agent and persist it."""
     state = load_state(state_path)
     existing = state.deployments.get(agent_name)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     created_at = record.created_at or (existing.created_at if existing else None) or now
     updated_record = record.model_copy(

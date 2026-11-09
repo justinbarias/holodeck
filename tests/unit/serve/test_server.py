@@ -4,11 +4,12 @@ Tests cover server initialization, FastAPI app creation, health endpoints,
 lifecycle management, and state transitions.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from holodeck.lib.backends import BackendInitError
@@ -17,6 +18,15 @@ from holodeck.models.config import ExecutionConfig
 from holodeck.models.llm import ProviderEnum
 from holodeck.serve.models import ProtocolType, ServerState
 from holodeck.serve.server import AgentServer
+
+
+def _route_paths(app: FastAPI) -> set[str]:
+    """Registered paths, via the public OpenAPI schema.
+
+    FastAPI 0.162+ lists included routers in ``app.routes`` as router
+    wrappers without a ``.path``, so the schema is the stable source.
+    """
+    return set(app.openapi()["paths"])
 
 
 @pytest.fixture
@@ -323,7 +333,7 @@ class TestAgentServerProperties:
     def test_uptime_seconds_after_start(self, mock_agent_config: MagicMock) -> None:
         """Test uptime_seconds calculates correctly after start."""
         server = AgentServer(agent_config=mock_agent_config)
-        server._start_time = datetime.now(timezone.utc) - timedelta(seconds=100)
+        server._start_time = datetime.now(UTC) - timedelta(seconds=100)
 
         uptime = server.uptime_seconds
         assert 99 < uptime < 101  # Allow small variance
@@ -636,7 +646,7 @@ class TestAgentServerAGUIEndpoint:
         app = server.create_app()
 
         # Check endpoint is registered
-        routes = [route.path for route in app.routes]
+        routes = _route_paths(app)
         assert "/awp" in routes
 
     def test_agui_endpoint_not_present_on_rest_protocol(
@@ -650,7 +660,7 @@ class TestAgentServerAGUIEndpoint:
         app = server.create_app()
 
         # Check endpoint is NOT registered
-        routes = [route.path for route in app.routes]
+        routes = _route_paths(app)
         assert "/awp" not in routes
 
 
@@ -696,7 +706,7 @@ class TestToolInitRouterRegistration:
         server = AgentServer(agent_config=mock_agent_config)
         app = server.create_app()
 
-        routes = [route.path for route in app.routes]
+        routes = _route_paths(app)
         assert "/tools/{tool_name}/init" in routes
 
     def test_app_state_has_tool_init_manager(
@@ -718,7 +728,7 @@ class TestToolInitRouterRegistration:
         )
         app = server.create_app()
 
-        routes = [route.path for route in app.routes]
+        routes = _route_paths(app)
         assert "/tools/{tool_name}/init" in routes
 
     def test_tool_init_route_available_in_rest_protocol(
@@ -728,7 +738,7 @@ class TestToolInitRouterRegistration:
         server = AgentServer(agent_config=mock_agent_config, protocol=ProtocolType.REST)
         app = server.create_app()
 
-        routes = [route.path for route in app.routes]
+        routes = _route_paths(app)
         assert "/tools/{tool_name}/init" in routes
 
 

@@ -5,7 +5,7 @@ and session management operations.
 """
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -51,7 +51,7 @@ class TestServerSession:
         assert session.created_at.tzinfo is not None
         assert session.last_activity.tzinfo is not None
         # Both should be very close to now
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         assert abs((session.created_at - now).total_seconds()) < 1
         assert abs((session.last_activity - now).total_seconds()) < 1
 
@@ -207,7 +207,7 @@ class TestSessionStore:
         session = store.create(executor)
 
         # Manually set last_activity to past
-        session.last_activity = datetime.now(timezone.utc) - timedelta(seconds=10)
+        session.last_activity = datetime.now(UTC) - timedelta(seconds=10)
 
         count = await store.cleanup_expired()
 
@@ -240,7 +240,7 @@ class TestSessionStore:
         # Create expired session
         expired_executor = _mock_executor()
         expired_session = store.create(expired_executor)
-        expired_time = datetime.now(timezone.utc) - timedelta(seconds=120)
+        expired_time = datetime.now(UTC) - timedelta(seconds=120)
         expired_session.last_activity = expired_time
 
         count = await store.cleanup_expired()

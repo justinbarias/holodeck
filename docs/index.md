@@ -17,7 +17,7 @@
 ## Get Started
 
 ```bash
-uv tool install holodeck-ai@latest --prerelease allow --python 3.10
+uv tool install holodeck-ai@latest --prerelease allow --python 3.11
 ```
 
 [Installation Guide](getting-started/installation.md) | [Quickstart Tutorial](getting-started/quickstart.md)

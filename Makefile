@@ -1,5 +1,5 @@
 # Project variables
-PYTHON ?= $(shell command -v python3.10 2>/dev/null)
+PYTHON ?= $(shell command -v python3.11 2>/dev/null)
 PROJECT_NAME := your_package
 SRC_DIR := src
 TEST_DIR := tests
@@ -36,8 +36,8 @@ help: ## Show this help message
 	@echo '  $(YELLOW)ci-github$(NC)             Run CI checks formatted for Github'
 
 check-python: ## Verify Python installation
-	@[ -n "$(PYTHON)" ] || (echo "$(RED)Python 3.10 not found$(NC)" && exit 1)
-	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 10) else 1)' || (echo "$(RED)Python 3.10 required$(NC)" && exit 1)
+	@[ -n "$(PYTHON)" ] || (echo "$(RED)Python 3.11 not found$(NC)" && exit 1)
+	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else 1)' || (echo "$(RED)Python 3.11 required$(NC)" && exit 1)
 	@echo "$(GREEN)✓ Python found: $$($(PYTHON) --version)$(NC)"
 
 check-uv: ## Verify uv is installed
@@ -178,18 +178,11 @@ security: ## Run security checks
 	#                             reachable from this codebase. Drop these when chromadb
 	#                             ships a fix and the pin can move. Re-check by 2026-12:
 	#                             four indefinite ignores accumulate quietly.
-	# PYSEC-2026-3740 (nltk; CVE-2026-81726) — model-artifact pathsec bypass.
-	#                             No patched release as of 2026-09-06. Built-in
-	#                             evaluators use scoring/tokenization, not the
-	#                             affected model import/export APIs. Scope, owner,
-	#                             and removal conditions: docs/SECURITY.md.
-	#                             Re-review by 2026-10-06 or on evaluator changes.
 	uv run pip-audit --progress-spinner=off \
 		--ignore-vuln CVE-2026-45829 \
 		--ignore-vuln CVE-2026-45830 \
 		--ignore-vuln CVE-2026-45831 \
-		--ignore-vuln CVE-2026-45833 \
-		--ignore-vuln PYSEC-2026-3740
+		--ignore-vuln CVE-2026-45833
 	@echo "Scanning for security issues with Ruff..."
 	uv run ruff check $(SRC_DIR) --select S
 	@echo "Scanning for security issues with Bandit..."

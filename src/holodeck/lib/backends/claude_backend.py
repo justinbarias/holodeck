@@ -83,7 +83,6 @@ from claude_agent_sdk.types import (
     PreToolUseHookInput,
     SyncHookJSONOutput,
 )
-from exceptiongroup import BaseExceptionGroup
 from ulid import ULID
 
 from holodeck.lib.backends.base import (

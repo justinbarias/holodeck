@@ -847,7 +847,7 @@ class AGUIProtocol(Protocol):
                         event = await asyncio.wait_for(tool_queue.get(), timeout=0.1)
                         for agui_evt in _tool_event_to_agui(event, tool_msg_ids):
                             yield encoder.encode(agui_evt)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         continue
 
                 logger.debug(

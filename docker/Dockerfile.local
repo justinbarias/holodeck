@@ -11,7 +11,7 @@
 #     -t ghcr.io/justinbarias/holodeck-base:latest \
 #     --load .
 
-FROM python:3.10-slim
+FROM python:3.13-slim
 
 LABEL org.opencontainers.image.title="HoloDeck Base Image (local)"
 LABEL com.holodeck.managed="true"

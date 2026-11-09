@@ -11,7 +11,7 @@ budget; the whole run stops when a full cycle yields zero accepts or
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from holodeck.lib.errors import OptimizerError
@@ -150,7 +150,7 @@ class OptimizerLoop:
 
     def _emit_run_started(self) -> None:
         """Open the progress stream with the run's identity and search space."""
-        started = self._started_at or datetime.now(timezone.utc)
+        started = self._started_at or datetime.now(UTC)
         self._emitter.emit(
             RunStarted(
                 run_id=self.run_id,
@@ -169,9 +169,7 @@ class OptimizerLoop:
                 loss_weights=dict(self.config.loss),
                 # Normalize to UTC before stamping the `Z` suffix so a naive or
                 # non-UTC `started_at` can't yield a silently wrong timestamp.
-                started_at=started.astimezone(timezone.utc).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                ),
+                started_at=started.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             )
         )
 

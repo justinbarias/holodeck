@@ -77,7 +77,7 @@ communication MUST use well-defined contracts (not tight coupling).
 
 ## Code Quality & Testing Discipline
 
-- **Language Target**: Python 3.10+
+- **Language Target**: Python 3.11+
 - **Style Guide**: Google Python Style Guide (enforced via Black, Ruff)
 - **Type Checking**: MyPy strict mode (all new code must pass)
 - **Testing Framework**: pytest with markers (`@pytest.mark.unit`,

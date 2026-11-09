@@ -4,7 +4,7 @@ Get HoloDeck installed and ready to build AI agents.
 
 ## Prerequisites
 
-- **Python 3.10+** (check with `python --version`)
+- **Python 3.11+** (check with `python --version`)
 - **uv** - The fast Python package installer
 - **Node.js 18+** (required for Claude Agent SDK backend) — check with `node --version`
 
@@ -36,7 +36,7 @@ uv --version
 Install HoloDeck as a global tool using uv:
 
 ```bash
-uv tool install holodeck-ai@latest --prerelease allow --python 3.10
+uv tool install holodeck-ai@latest --prerelease allow --python 3.11
 ```
 
 This installs the `holodeck` command-line tool globally, available from any directory.
@@ -47,13 +47,13 @@ This installs the `holodeck` command-line tool globally, available from any dire
 - **OpenAI Agents backend** — `provider: openai` and `azure_openai`. Shipped as an **optional extra** so non-OpenAI installs stay lean (the SDK is imported only when this backend runs). Install it with the `openai-agents` extra:
 
 ```bash
-uv tool install "holodeck-ai[openai-agents]@latest" --prerelease allow --python 3.10
+uv tool install "holodeck-ai[openai-agents]@latest" --prerelease allow --python 3.11
 ```
 
 Extras compose — e.g. the OpenAI backend plus a Qdrant vector store for RAG:
 
 ```bash
-uv tool install "holodeck-ai[openai-agents,qdrant]@latest" --prerelease allow --python 3.10
+uv tool install "holodeck-ai[openai-agents,qdrant]@latest" --prerelease allow --python 3.11
 ```
 
 > **Without the extra**, an `openai` / `azure_openai` agent fails at startup with a missing-dependency error pointing you here.
@@ -64,13 +64,13 @@ If you plan to use semantic search with vector databases, install with extras:
 
 ```bash
 # Individual providers
-uv tool install "holodeck-ai[postgres]@latest" --prerelease allow --python 3.10
-uv tool install "holodeck-ai[qdrant]@latest" --prerelease allow --python 3.10
-uv tool install "holodeck-ai[pinecone]@latest" --prerelease allow --python 3.10
-uv tool install "holodeck-ai[chromadb]@latest" --prerelease allow --python 3.10
+uv tool install "holodeck-ai[postgres]@latest" --prerelease allow --python 3.11
+uv tool install "holodeck-ai[qdrant]@latest" --prerelease allow --python 3.11
+uv tool install "holodeck-ai[pinecone]@latest" --prerelease allow --python 3.11
+uv tool install "holodeck-ai[chromadb]@latest" --prerelease allow --python 3.11
 
 # Or install all vector store providers at once
-uv tool install "holodeck-ai[vectorstores]@latest" --prerelease allow --python 3.10
+uv tool install "holodeck-ai[vectorstores]@latest" --prerelease allow --python 3.11
 ```
 
 ## Verify Installation
@@ -219,7 +219,7 @@ uv tool upgrade holodeck-ai
 To reinstall with a specific version:
 
 ```bash
-uv tool install holodeck-ai@0.3.0 --prerelease allow --python 3.10 --force
+uv tool install holodeck-ai@0.3.0 --prerelease allow --python 3.11 --force
 ```
 
 ## Uninstalling
@@ -232,7 +232,7 @@ uv tool uninstall holodeck-ai
 
 ## Troubleshooting
 
-### "Python 3.10+ required"
+### "Python 3.11+ required"
 
 Check your Python version and upgrade if needed:
 
@@ -240,10 +240,10 @@ Check your Python version and upgrade if needed:
 python --version
 
 # macOS (Homebrew)
-brew install python@3.10
+brew install python@3.11
 
 # Ubuntu/Debian
-sudo apt-get install python3.10
+sudo apt-get install python3.11
 
 # Windows: Download from python.org
 ```
@@ -254,7 +254,7 @@ The CLI isn't in your PATH. Try:
 
 ```bash
 # Reinstall HoloDeck
-uv tool install holodeck-ai@latest --prerelease allow --python 3.10 --force
+uv tool install holodeck-ai@latest --prerelease allow --python 3.11 --force
 
 # Ensure uv tools are in PATH
 # Add to your shell profile (~/.bashrc, ~/.zshrc, etc.):
