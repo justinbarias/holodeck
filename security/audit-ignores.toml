@@ -1,0 +1,34 @@
+# Accepted dependency advisories for `scripts/verify/audit_deps.py`.
+#
+# Each entry ignores one advisory for one package. `id` may be the pip-audit id
+# (PYSEC-/GHSA-) or any alias (CVE-). Every entry needs a reason, an owner and
+# an expiry date (YYYY-MM-DD). `make verify-deps` fails when an entry expires
+# or no longer matches a reported vulnerability, so ignores cannot go stale.
+
+[[ignore]]
+id = "CVE-2026-45829"
+package = "chromadb"
+reason = "Pre-auth code injection in the ChromaDB server API (trust_remote_code). HoloDeck embeds the chromadb client only and never runs the server; no fixed release exists. See docs/guides/vector-stores.md."
+expires = "2026-12-31"
+owner = "justinbarias"
+
+[[ignore]]
+id = "CVE-2026-45830"
+package = "chromadb"
+reason = "Cross-tenant authorization bypass in the ChromaDB server. HoloDeck embeds the chromadb client only and never runs the server; no fixed release exists."
+expires = "2026-12-31"
+owner = "justinbarias"
+
+[[ignore]]
+id = "CVE-2026-45831"
+package = "chromadb"
+reason = "SimpleRBACAuthorizationProvider ignores tenant/database scope in the ChromaDB server. HoloDeck never runs the server or its auth providers; no fixed release exists."
+expires = "2026-12-31"
+owner = "justinbarias"
+
+[[ignore]]
+id = "CVE-2026-45833"
+package = "chromadb"
+reason = "Authenticated code injection via trust_remote_code in the ChromaDB server. HoloDeck embeds the chromadb client only and never runs the server; no fixed release exists."
+expires = "2026-12-31"
+owner = "justinbarias"

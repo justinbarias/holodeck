@@ -34,7 +34,7 @@ For deployment validation, use the authorization and evidence procedure in [Reli
 ## Verification
 
 `make security` runs pip-audit, Ruff security rules, Bandit, and detect-secrets.
-The [Makefile](../Makefile) records existing vulnerability exceptions and their review notes.
+[`security/audit-ignores.toml`](../security/audit-ignores.toml) records accepted vulnerability exceptions with a reason, owner and expiry date; `make verify-deps` fails when one expires or goes stale.
 Do not add broad ignores to make a new failure disappear.
 For an accepted exception, record the affected path, reason, owner, and removal condition.
 

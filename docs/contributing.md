@@ -45,6 +45,12 @@ For bug fixes, first reproduce the failure with a test or an existing determinis
 For behavior changes, cover meaningful edge cases and changed contracts.
 For documentation or formatting, use relevant checks without adding implementation-mirroring tests.
 
+### Verify suite
+
+Before a PR, run `make verify` (static gates, the full test suite, dependency audit, and an offline smoke of both backends).
+Run `make verify-live` when backends or serve change and you have credentials.
+[Reliability](RELIABILITY.md#verify-suite) describes each tier, its proof, and the credentials it needs.
+
 ## Code style guide
 
 Use Python 3.11-compatible syntax, Black at 88 columns, Ruff, and MyPy.

@@ -19,7 +19,8 @@ NC := $(shell tput sgr0 2>/dev/null)
         test-coverage test-parallel test-integration-parallel test-unit-parallel \
         lint format type-check security clean clean-all \
         pre-commit ci ci-github build docs run docker-build docker-run \
-        check-python check-uv init
+        check-python check-uv init \
+        verify verify-fast verify-deps verify-smoke verify-live
 
 #################################
 # Help and Verification Targets #
@@ -163,26 +164,8 @@ type-check: ## Run type checking with mypy
 security: ## Run security checks
 	@echo "$(GREEN)Running security checks...$(NC)"
 	@echo "Checking for known vulnerabilities..."
-	# CVE-2026-45829 (chromadb) — pre-auth code injection in ChromaDB server API when a
-	#                             malicious model repo is accepted with trust_remote_code=true.
-	#                             No fixed chromadb release exists yet; documented in
-	#                             docs/guides/vector-stores.md.
-	# CVE-2026-45830/45831/45833 (chromadb) — same HiddenLayer 2026-06 advisory batch as
-	#                             45829, all in the ChromaDB *server*: cross-tenant
-	#                             authorization bypass (45830), SimpleRBACAuthorizationProvider
-	#                             ignoring tenant/database scope (45831), and authenticated
-	#                             code injection via trust_remote_code (45833). No fixed
-	#                             release exists (1.5.9 still affected). HoloDeck embeds the
-	#                             chromadb *client* only — it never runs the ChromaDB server
-	#                             process or its auth providers, so no vulnerable path is
-	#                             reachable from this codebase. Drop these when chromadb
-	#                             ships a fix and the pin can move. Re-check by 2026-12:
-	#                             four indefinite ignores accumulate quietly.
-	uv run pip-audit --progress-spinner=off \
-		--ignore-vuln CVE-2026-45829 \
-		--ignore-vuln CVE-2026-45830 \
-		--ignore-vuln CVE-2026-45831 \
-		--ignore-vuln CVE-2026-45833
+	# Accepted advisories (reason, owner, expiry) live in security/audit-ignores.toml.
+	uv run python scripts/verify/audit_deps.py --skip-npm
 	@echo "Scanning for security issues with Ruff..."
 	uv run ruff check $(SRC_DIR) --select S
 	@echo "Scanning for security issues with Bandit..."
@@ -443,6 +426,31 @@ harness-check: ## Validate the repository knowledge map without installing depen
 
 harness-generate: ## Refresh the generated schema inventory and validate the harness
 	python3 scripts/check_harness.py --write
+
+#############################
+# Verify Suite              #
+#############################
+
+verify: verify-fast verify-deps verify-smoke ## Run the offline verify tiers (fast + deps + smoke)
+
+verify-fast: ## Static gates, schema check and the full test suite
+	$(MAKE) harness-check
+	uv lock --check
+	uv run ruff check src tests scripts
+	uv run black --check src tests scripts
+	uv run mypy src --ignore-missing-imports --no-error-summary
+	$(MAKE) schema-check
+	uv run pytest tests -n auto -q
+
+verify-deps: ## Lock check plus pip-audit and npm audit with expiring ignores
+	uv lock --check
+	uv run python scripts/verify/audit_deps.py
+
+verify-smoke: ## Offline end-to-end: test run + serve AG-UI on both backends (fake provider)
+	uv run python scripts/verify/smoke.py
+
+verify-live: ## Live: every tool type per backend with credentials set, Qdrant + Aspire in Docker (LIVE_ARGS="--backend claude --no-infra --limit N")
+	uv run python scripts/verify/live.py $(LIVE_ARGS)
 
 #############################
 # Git Helpers               #

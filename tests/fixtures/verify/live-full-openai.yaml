@@ -1,0 +1,166 @@
+# Live agent for the OpenAI Agents SDK backend (make verify-live).
+#
+# Needs OPENAI_API_KEY (model and embeddings). The vectorstore and
+# hierarchical_document tools also need the Qdrant container;
+# scripts/verify/live.py drops them and reports their cases as SKIP without
+# it. Traces go to the Aspire dashboard container.
+#
+# Tool types not covered on this backend:
+# - prompt: no runtime adapter on any backend; the OpenAI backend logs a
+#   warning and skips it (docs/guides/tools.md "Planned").
+#
+# Every case uses the multi-turn `turns:` form: single-turn cases currently
+# hand code graders an empty tool_invocations list.
+name: verify-live-openai
+description: Live agent that exercises every OpenAI-backend tool type.
+
+model:
+  provider: openai
+  name: gpt-6-luna
+  api_key: ${OPENAI_API_KEY}
+  max_tokens: 1500  # reasoning model: leave room for reasoning tokens
+
+instructions:
+  inline: >-
+    You are the HoloDeck verify live agent. Answer in one or two short
+    sentences. When the user names a tool, call exactly that tool once and
+    report what it returned. Use smoke_echo for "the smoke tool",
+    verify_marker for "the MCP tool", verify_kb_search for the vault notes,
+    verify_handbook_search for the operations handbook, leak_probe for "the
+    leak probe", transfer to verify_helper when the user asks for the helper,
+    and transfer to skillprobe when the user asks for the skill.
+
+embedding_provider:
+  provider: openai
+  name: text-embedding-3-small
+  api_key: ${OPENAI_API_KEY}
+
+tools:
+  - name: smoke_echo
+    type: function
+    description: Echo text back with a fixed marker.
+    file: tools/smoke.py
+    function: smoke_echo
+    defer_loading: false
+  - name: leak_probe
+    type: function
+    description: Return a fixed marker and a fake token (trace redaction probe).
+    file: tools/live.py
+    function: leak_probe
+    defer_loading: false
+  - name: verify_mcp
+    type: mcp
+    description: Local stdio MCP server with one marker tool.
+    transport: stdio
+    command: uvx
+    # Pin mcp to the version in uv.lock; "./" args resolve against this file.
+    args: ["--with", "mcp==1.30.0", "python", "./tools/verify_mcp_server.py"]
+  - name: verify_kb
+    type: vectorstore
+    description: Verify vault notes (access codes, sign-in rules).
+    source: rag/kb
+    top_k: 2
+    database:
+      provider: qdrant
+      connection_string: http://127.0.0.1:6333
+  - name: verify_handbook
+    type: hierarchical_document
+    description: Verify operations handbook with numbered sections.
+    source: rag/handbook
+    top_k: 3
+    contextual_embeddings: false  # no LLM calls during ingestion
+    database:
+      provider: qdrant
+      connection_string: http://127.0.0.1:6333
+  - name: skillprobe
+    type: skill
+    description: Verify skill. Use it when the user asks for the skill.
+    # Worded like verify_helper: a softer "reply with exactly" prompt let
+    # gpt-5-mini echo the transfer result ({"assistant": "skillprobe"}).
+    instructions: >-
+      You are the verify skill. Your entire reply must be the single token
+      SKILL-ACK. Do not mention handoffs, transfers, tools or other agents.
+
+openai:
+  max_turns: 8
+  effort: low
+  max_budget_usd: 0.25
+  agents:
+    verify_helper:
+      description: Verify helper. Use it when the user asks for the helper.
+      # No handoff preamble: with it, gpt-5-mini sometimes narrated the
+      # handoff ("I have handed this over...") instead of answering.
+      skip_recommended_prefix: true
+      prompt: >-
+        You are the verify helper. Your entire reply must be the single token
+        HELPER-ACK. Do not mention handoffs, transfers or other agents.
+      tools: []
+
+observability:
+  enabled: true
+  service_name: holodeck-verify-live-openai
+  traces:
+    capture_content: true  # so the leak_probe span shows the redacted output
+  metrics:
+    enabled: false
+  logs:
+    enabled: false
+  exporters:
+    console:
+      enabled: false
+    otlp:
+      enabled: true
+      endpoint: http://localhost:4317  # Aspire OTLP/gRPC (container port 18889)
+      protocol: grpc
+
+test_cases:
+  - name: function tool
+    turns:
+      - input: "Please use the smoke tool with text live-ping."
+        expected_tools: [smoke_echo]
+        turn_config: { tool: smoke_echo, marker: "SMOKE-TOOL-RESULT: " }
+        evaluations: &tool_result
+          - type: code
+            grader: "verify_graders:tool_result_contains"
+            name: tool_result_contains
+  - name: mcp tool
+    turns:
+      - input: "Please use the MCP tool with text live-mcp."
+        expected_tools: [verify_marker]
+        turn_config: { tool: verify_marker, marker: "MCP-TOOL-RESULT: " }
+        evaluations: *tool_result
+  - name: vectorstore tool
+    turns:
+      - input: "Search the vault notes: what is the vault access code?"
+        expected_tools: [verify_kb]
+        turn_config: { tool: verify_kb, marker: "ZEPHYR-4417" }
+        evaluations: *tool_result
+  - name: hierarchical document tool
+    turns:
+      - input: "Search the operations handbook: what is the calibration constant?"
+        expected_tools: [verify_handbook]
+        turn_config: { tool: verify_handbook, marker: "ORBIT-9182" }
+        evaluations: *tool_result
+  - name: subagent handoff
+    turns:
+      - # Ask for something only the helper can answer: "hand this over" made the
+        # helper (which sees the history) narrate the transfer instead.
+        input: "Ask the helper for its acknowledgement code and reply with only that code."
+        expected_tools: [transfer_to_verify_helper]
+        turn_config: { marker: HELPER-ACK }
+        evaluations: &reply
+          - type: code
+            grader: "verify_graders:response_contains"
+            name: response_contains
+  - name: skill
+    turns:
+      - input: "Use the skill to get its acknowledgement code and reply with only that code."
+        expected_tools: [transfer_to_skillprobe]
+        turn_config: { marker: SKILL-ACK }
+        evaluations: *reply
+  - name: trace redaction probe
+    turns:
+      - input: "Please run the leak probe and tell me whether it succeeded."
+        expected_tools: [leak_probe]
+        turn_config: { tool: leak_probe, marker: LEAK-PROBE-OK }
+        evaluations: *tool_result
