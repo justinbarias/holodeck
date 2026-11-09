@@ -37,14 +37,8 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Cache uv dependencies
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-${{ runner.os }}-${{ matrix.python-version }}-
-
+      # No actions/cache for ~/.cache/uv: the self-hosted runner keeps its disk,
+      # and moving the 757 MB archive cost ~55s restore (+~90s save) per job.
       - name: Install dependencies
         run: uv sync --all-extras
 
