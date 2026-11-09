@@ -389,7 +389,14 @@ class TestBuildOptions:
         assert "max_budget_usd" not in kwargs
         assert "fallback_model" not in kwargs
         # spec 034 P1b: empty ClaudeConfig auto-disallows risky built-in tools
-        assert kwargs["disallowed_tools"] == ["Bash", "Edit", "WebFetch", "Write"]
+        assert kwargs["disallowed_tools"] == [
+            "Bash",
+            "Edit",
+            "NotebookEdit",
+            "WebFetch",
+            "WebSearch",
+            "Write",
+        ]
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
@@ -418,7 +425,14 @@ class TestBuildOptions:
         assert kwargs["max_budget_usd"] == 2.5
         assert kwargs["fallback_model"] == "haiku"
         # spec 034 P1b: explicit disallow merges with auto-disallow set
-        assert kwargs["disallowed_tools"] == ["Bash", "Edit", "WebFetch", "Write"]
+        assert kwargs["disallowed_tools"] == [
+            "Bash",
+            "Edit",
+            "NotebookEdit",
+            "WebFetch",
+            "WebSearch",
+            "Write",
+        ]
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
@@ -438,7 +452,14 @@ class TestBuildOptions:
         )
 
         kwargs = mock_opts_cls.call_args[1]
-        assert kwargs["disallowed_tools"] == ["Bash", "Edit", "WebFetch", "Write"]
+        assert kwargs["disallowed_tools"] == [
+            "Bash",
+            "Edit",
+            "NotebookEdit",
+            "WebFetch",
+            "WebSearch",
+            "Write",
+        ]
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
@@ -580,6 +601,7 @@ class TestBuildOptions:
             **otel_env,
             "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
             "CLAUDE_CODE_MCP_ALLOWLIST_ENV": "1",
+            "ENABLE_TOOL_SEARCH": "false",
         }
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
@@ -915,7 +937,7 @@ class TestBuildPermissionMode:
 
 @pytest.mark.unit
 class TestAutoDisallowBuiltinTools:
-    """build_options() auto-disallows {Bash, Write, Edit, WebFetch} when not declared.
+    """build_options() auto-disallows risky built-ins that are not declared.
 
     A tool counts as declared when (a) the schema field opts in
     (claude.bash.enabled, claude.file_system.write/edit, claude.web_search)
@@ -938,7 +960,14 @@ class TestAutoDisallowBuiltinTools:
             mode="test",
         )
         kwargs = mock_opts_cls.call_args[1]
-        assert kwargs["disallowed_tools"] == ["Bash", "Edit", "WebFetch", "Write"]
+        assert kwargs["disallowed_tools"] == [
+            "Bash",
+            "Edit",
+            "NotebookEdit",
+            "WebFetch",
+            "WebSearch",
+            "Write",
+        ]
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
@@ -960,14 +989,20 @@ class TestAutoDisallowBuiltinTools:
         )
         kwargs = mock_opts_cls.call_args[1]
         assert "Bash" not in kwargs["disallowed_tools"]
-        assert set(kwargs["disallowed_tools"]) == {"Edit", "WebFetch", "Write"}
+        assert set(kwargs["disallowed_tools"]) == {
+            "Edit",
+            "NotebookEdit",
+            "WebFetch",
+            "WebSearch",
+            "Write",
+        }
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
     def test_write_and_edit_declared_via_file_system_drop_from_disallow(
         self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
     ) -> None:
-        """claude.file_system.write/edit → Write/Edit not auto-disallowed."""
+        """claude.file_system.write/edit → Write/Edit/NotebookEdit allowed."""
         from holodeck.models.claude_config import FileSystemConfig
 
         claude = ClaudeConfig(
@@ -983,7 +1018,7 @@ class TestAutoDisallowBuiltinTools:
             mode="test",
         )
         kwargs = mock_opts_cls.call_args[1]
-        assert set(kwargs["disallowed_tools"]) == {"Bash", "WebFetch"}
+        assert set(kwargs["disallowed_tools"]) == {"Bash", "WebFetch", "WebSearch"}
 
     @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
     @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
@@ -1003,7 +1038,99 @@ class TestAutoDisallowBuiltinTools:
         )
         kwargs = mock_opts_cls.call_args[1]
         assert "WebFetch" not in kwargs["disallowed_tools"]
-        assert set(kwargs["disallowed_tools"]) == {"Bash", "Edit", "Write"}
+        assert set(kwargs["disallowed_tools"]) == {
+            "Bash",
+            "Edit",
+            "NotebookEdit",
+            "WebSearch",
+            "Write",
+        }
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_web_search_flag_drops_websearch_from_disallow(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """claude.web_search=True → WebSearch allowed, not auto-disallowed."""
+        build_options(
+            agent=_make_agent(claude=ClaudeConfig(web_search=True)),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+        kwargs = mock_opts_cls.call_args[1]
+        assert "WebSearch" not in kwargs["disallowed_tools"]
+        assert "WebSearch" in kwargs["allowed_tools"]
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    def test_subagent_declared_tools_drop_from_disallow(
+        self, mock_resolve: MagicMock, mock_opts_cls: MagicMock
+    ) -> None:
+        """A subagent's tools list declares them for the session."""
+        from holodeck.models.claude_config import SubagentSpec
+
+        claude = ClaudeConfig(
+            agents={
+                "researcher": SubagentSpec(
+                    description="Gathers sources.",
+                    prompt="Research.",
+                    tools=["WebSearch", "WebFetch"],
+                )
+            }
+        )
+        build_options(
+            agent=_make_agent(claude=claude),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+        kwargs = mock_opts_cls.call_args[1]
+        assert set(kwargs["disallowed_tools"]) == {
+            "Bash",
+            "Edit",
+            "NotebookEdit",
+            "Write",
+        }
+
+
+@pytest.mark.unit
+class TestToolSearchDefault:
+    """Declared MCP tools reach the model directly unless the operator opts in."""
+
+    @patch(f"{_SDK_MODULE}.ClaudeAgentOptions")
+    @patch(f"{_SDK_MODULE}.resolve_instructions", return_value="Be helpful.")
+    @pytest.mark.parametrize(
+        ("exported", "expected"), [(None, "false"), ("true", "true")]
+    )
+    def test_tool_search_off_unless_exported(
+        self,
+        mock_resolve: MagicMock,
+        mock_opts_cls: MagicMock,
+        exported: str | None,
+        expected: str,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        if exported is None:
+            monkeypatch.delenv("ENABLE_TOOL_SEARCH", raising=False)
+        else:
+            monkeypatch.setenv("ENABLE_TOOL_SEARCH", exported)
+        build_options(
+            agent=_make_agent(),
+            tool_server=None,
+            tool_names=[],
+            mcp_configs={},
+            auth_env={},
+            otel_env={},
+            mode="test",
+        )
+        assert mock_opts_cls.call_args[1]["env"]["ENABLE_TOOL_SEARCH"] == expected
 
 
 # ---------------------------------------------------------------------------
