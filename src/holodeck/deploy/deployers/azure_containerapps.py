@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from holodeck.deploy.deployers.base import BaseDeployer
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
         ContainerApp,
         ContainerAppProbe,
         ContainerAppProbeHttpGet,
+        ContainerAppProperties,
         ContainerResources,
         EnvironmentVar,
         Ingress,
@@ -40,6 +42,19 @@ if TYPE_CHECKING:
         Volume,
         VolumeMount,
     )
+
+
+def _provisioning_status(state: str | Enum | None) -> str:
+    """Return Azure's provisioning state as its wire value (e.g. ``Succeeded``).
+
+    azure-mgmt-appcontainers 5 returns an enum, whose ``str()`` is
+    ``ContainerAppProvisioningState.SUCCEEDED``; 4.x returned the string.
+    """
+    if state is None or state == "":
+        return "UNKNOWN"
+    if isinstance(state, Enum):
+        return str(state.value)
+    return str(state)
 
 
 class AzureContainerAppsDeployer(BaseDeployer):
@@ -76,6 +91,7 @@ class AzureContainerAppsDeployer(BaseDeployer):
                 ContainerApp,
                 ContainerAppProbe,
                 ContainerAppProbeHttpGet,
+                ContainerAppProperties,
                 ContainerResources,
                 EnvironmentVar,
                 Ingress,
@@ -106,6 +122,9 @@ class AzureContainerAppsDeployer(BaseDeployer):
         self._Configuration: type[Configuration] = Configuration
         self._Container: type[Container] = Container
         self._ContainerApp: type[ContainerApp] = ContainerApp
+        self._ContainerAppProperties: type[ContainerAppProperties] = (
+            ContainerAppProperties
+        )
         self._ContainerAppProbe: type[ContainerAppProbe] = ContainerAppProbe
         self._ContainerAppProbeHttpGet: type[ContainerAppProbeHttpGet] = (
             ContainerAppProbeHttpGet
@@ -217,14 +236,24 @@ class AzureContainerAppsDeployer(BaseDeployer):
             external=self._config.ingress_external,
             target_port=port,
             traffic=[self._TrafficWeight(weight=100, latest_revision=True)],
+            # azure-mgmt-appcontainers 5 stopped sending these defaults; send
+            # them explicitly so the request matches what 4.x sent.
+            allow_insecure=False,
+            transport="auto",
         )
-        configuration = self._Configuration(ingress=ingress)
+        configuration = self._Configuration(
+            ingress=ingress, active_revisions_mode="Single"
+        )
 
+        # SDK 5 types these fields under ``properties``; passing them flat
+        # only works through its runtime compatibility shim.
         container_app = self._ContainerApp(
             location=self._config.location,
-            template=template,
-            configuration=configuration,
-            managed_environment_id=self._environment_id,
+            properties=self._ContainerAppProperties(
+                managed_environment_id=self._environment_id,
+                configuration=configuration,
+                template=template,
+            ),
         )
 
         try:
@@ -265,9 +294,7 @@ class AzureContainerAppsDeployer(BaseDeployer):
 
         result_service_id = result.id or result.name or service_name
         result_service_name = result.name or service_name
-        result_status = (
-            str(result.provisioning_state) if result.provisioning_state else "UNKNOWN"
-        )
+        result_status = _provisioning_status(result.provisioning_state)
 
         return DeployResult(
             service_id=result_service_id,
@@ -318,7 +345,7 @@ class AzureContainerAppsDeployer(BaseDeployer):
             if fqdn:
                 url = f"https://{fqdn}"
 
-        status = str(app.provisioning_state) if app.provisioning_state else "UNKNOWN"
+        status = _provisioning_status(app.provisioning_state)
         return StatusResult(status=status, url=url)
 
     def destroy(self, service_id: str) -> None:

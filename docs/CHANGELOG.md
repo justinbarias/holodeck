@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Azure Container Apps SDK 5.** `azure-mgmt-appcontainers` 4.0 → 5.1. SDK 5 returns `provisioning_state` as an enum, so deploy and status now report its value (`Succeeded`) instead of `ContainerAppProvisioningState.SUCCEEDED`. It also stopped sending `activeRevisionsMode`, `allowInsecure` and `transport` by default; the deployer now sets them explicitly, so the request body matches 4.x.
+
 - **Agent runtime upgrade.** `claude-agent-sdk` 0.2.121 → 0.2.179 and `openai-agents` 0.17.4 → 0.20.0. The `openai<2.45` cap is lifted (`openai>=2.45,<3`); 0.21+ needs `openai` 3, which waits on a `litellm` upgrade.
 - **Claude tool search is off by default.** Claude Code 0.2.17x hides MCP tools behind `ToolSearch`, so a model must search before it can call an agent's own tools; models behind custom endpoints may never do that. HoloDeck now sets `ENABLE_TOOL_SEARCH=false` unless the operator exports it.
 - **More built-in Claude tools are blocked unless declared.** `NotebookEdit` (writes files) now needs `file_system.edit`, and `WebSearch` needs `web_search: true`. Before, both were available to every agent. The block is session-wide, so a subagent that needs one of these tools still needs it declared at the top level.

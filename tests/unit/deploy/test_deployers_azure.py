@@ -85,6 +85,7 @@ def azure_sdk(monkeypatch: pytest.MonkeyPatch) -> type:
         "Configuration",
         "Container",
         "ContainerApp",
+        "ContainerAppProperties",
         "ContainerAppProbe",
         "ContainerAppProbeHttpGet",
         "ContainerResources",
@@ -182,9 +183,11 @@ class TestAzureContainerAppsDeployer:
 
         envelope = call_kwargs["container_app_envelope"]
         assert envelope.location == "eastus"
-        assert envelope.managed_environment_id.endswith("/managedEnvironments/test-env")
+        assert envelope.properties.managed_environment_id.endswith(
+            "/managedEnvironments/test-env"
+        )
 
-        container = envelope.template.containers[0]
+        container = envelope.properties.template.containers[0]
         assert container.name == "test-agent"
         assert container.image == "ghcr.io/holodeck/test-agent:abc1234"
         assert container.resources.cpu == config.cpu
@@ -210,11 +213,11 @@ class TestAzureContainerAppsDeployer:
         assert readiness.failure_threshold == 3
         assert readiness.timeout_seconds == 5
 
-        scale = envelope.template.scale
+        scale = envelope.properties.template.scale
         assert scale.min_replicas == 1
         assert scale.max_replicas == 3
 
-        ingress = envelope.configuration.ingress
+        ingress = envelope.properties.configuration.ingress
         assert ingress.external is True
         assert ingress.target_port == 8080
         assert ingress.traffic[0].weight == 100
@@ -303,7 +306,7 @@ class TestAzureContainerAppsDeployer:
 
         call_kwargs = container_apps.begin_create_or_update.call_args.kwargs
         envelope = call_kwargs["container_app_envelope"]
-        container = envelope.template.containers[0]
+        container = envelope.properties.template.containers[0]
 
         # Verify custom health check path is used by the liveness probe
         liveness = next(p for p in container.probes if p.type == "Liveness")
