@@ -26,7 +26,7 @@ instructions:
     You are the HoloDeck verify live agent. Answer in one or two short
     sentences. When the user names a tool, call exactly that tool once and
     report what it returned. Use smoke_echo for "the smoke tool",
-    verify_marker for "the MCP tool", verify_kb for the vault notes,
+    verify_marker for "the MCP tool", verify_kb for the vault notes, verify_ledger for the ledger notes,
     verify_handbook for the operations handbook, leak_probe for "the leak
     probe", and the verify_helper subagent when the user asks for the helper.
 
@@ -63,6 +63,14 @@ tools:
     database:
       provider: qdrant
       connection_string: http://127.0.0.1:6333
+  - name: verify_ledger
+    type: vectorstore
+    description: Verify ledger notes (reconciliation keys, closing dates).
+    source: rag/ledger
+    top_k: 2
+    database:
+      provider: chromadb
+      connection_string: http://127.0.0.1:8765
   - name: verify_handbook
     type: hierarchical_document
     description: Verify operations handbook with numbered sections.
@@ -125,6 +133,12 @@ test_cases:
       - input: "Search the vault notes: what is the vault access code?"
         expected_tools: [verify_kb]
         turn_config: { tool: verify_kb, marker: "ZEPHYR-4417" }
+        evaluations: *tool_result
+  - name: chromadb vectorstore tool
+    turns:
+      - input: "Search the ledger notes: what is the ledger reconciliation key?"
+        expected_tools: [verify_ledger]
+        turn_config: { tool: verify_ledger, marker: "LUMEN-6203" }
         evaluations: *tool_result
   - name: hierarchical document tool
     turns:

@@ -145,7 +145,11 @@ def test_live_fixtures_without_rag_keep_non_rag_cases(fixture: str) -> None:
 
     raw = yaml.safe_load((FIXTURES / fixture).read_text(encoding="utf-8"))
     data, dropped = prepare_config(raw, drop_rag=True, traces=True)
-    assert dropped == ["vectorstore tool", "hierarchical document tool"]
+    assert dropped == [
+        "vectorstore tool",
+        "chromadb vectorstore tool",
+        "hierarchical document tool",
+    ]
     kept = set(_names(data["tools"]))
     assert {"smoke_echo", "leak_probe", "verify_mcp"} <= kept
     assert "embedding_provider" not in data
@@ -266,6 +270,9 @@ def test_run_args_bind_loopback_and_pin_image() -> None:
     assert args[-1] == "mcr.microsoft.com/dotnet/aspire-dashboard:13.5.2"
     assert not args[-1].endswith(":latest")
     assert infra.run_args(infra.QDRANT)[-1] == "qdrant/qdrant:v1.17.1"
+    chroma = infra.run_args(infra.CHROMA)
+    assert chroma[-1] == "chromadb/chroma:1.5.9"
+    assert "127.0.0.1:8765:8000" in chroma
 
 
 def test_ensure_without_docker_is_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -350,3 +357,16 @@ def test_claude_subagent_ran_accepts_task_and_agent(tool: str) -> None:
     )
     assert graders.claude_subagent_ran(_ctx(config, "", call)) is True
     assert graders.claude_subagent_ran(_ctx(config, "", wrong)) is False
+
+
+def test_rag_skips_when_any_vector_store_is_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts.verify import infra
+    from scripts.verify.live import rag_skip_reason
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    up = infra.InfraStatus(infra.QDRANT, True, "started")
+    down = infra.InfraStatus(infra.CHROMA, False, "port 8765 in use")
+    assert rag_skip_reason([up, up]) is None
+    assert rag_skip_reason([up, down]) == "chroma unavailable: port 8765 in use"

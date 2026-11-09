@@ -8,15 +8,15 @@ For each backend whose credential is set in the environment:
   ``tests/fixtures/verify/live-full-openai.yaml``.
 
 Each agent exercises every tool type its backend supports (function, stdio
-MCP, Qdrant vectorstore and hierarchical_document, subagents, skills on
+MCP, Qdrant and ChromaDB vectorstores, hierarchical_document, subagents, skills on
 OpenAI) with one ``type: code`` graded test case per type, and exports traces
 to a local Aspire dashboard. The script:
 
-1. starts or reuses the ``holodeck-verify-qdrant`` and
-   ``holodeck-verify-aspire`` containers (skip with ``--no-infra``);
+1. starts or reuses the ``holodeck-verify-qdrant``, ``holodeck-verify-chroma``
+   and ``holodeck-verify-aspire`` containers (skip with ``--no-infra``);
 2. runs ``holodeck test run`` and reports PASS/FAIL/SKIP per test case from
    the results JSON. The vector tools need ``OPENAI_API_KEY`` (embeddings)
-   and Qdrant; without either, they are removed from the run copy of the
+   and both vector stores; without them, they are removed from the run copy of the
    agent and their cases are reported as SKIP;
 3. starts ``holodeck serve`` and drives 2 threads x 2 turns over AG-UI
    ``POST /awp``: thread A turn 2 must call ``smoke_echo``; thread B turn 2
@@ -45,7 +45,7 @@ import shutil
 import subprocess  # noqa: S404 - asks the uv CLI for its directories
 import sys
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,6 +71,7 @@ from .agui import (  # noqa: E402
 from .infra import (  # noqa: E402
     ASPIRE,
     ASPIRE_TRACES_URL,
+    CHROMA,
     QDRANT,
     InfraStatus,
     ensure,
@@ -383,12 +384,13 @@ def isolated_home(home: Path) -> dict[str, str]:
     }
 
 
-def rag_skip_reason(qdrant: InfraStatus) -> str | None:
+def rag_skip_reason(stores: Sequence[InfraStatus]) -> str | None:
     """Return why the vector tools cannot run, or ``None`` when they can."""
     if not os.environ.get(EMBEDDING_CREDENTIAL):
         return f"{EMBEDDING_CREDENTIAL} not set (OpenAI embeddings)"
-    if not qdrant.ready:
-        return f"Qdrant unavailable: {qdrant.detail}"
+    for store in stores:
+        if not store.ready:
+            return f"{store.service.label} unavailable: {store.detail}"
     return None
 
 
@@ -396,7 +398,7 @@ def live_backend(
     backend: LiveBackend,
     rundir: Path,
     limit: int | None,
-    qdrant: InfraStatus,
+    stores: Sequence[InfraStatus],
     aspire: InfraStatus,
 ) -> tuple[list[Check], str | None]:
     """Run the live checks for one backend whose credential is set.
@@ -418,7 +420,7 @@ def live_backend(
     raw: object = yaml.safe_load((FIXTURES / backend.fixture).read_text("utf-8"))
     if not isinstance(raw, dict):
         return [Check(f"{prefix}: setup", "FAIL", f"{backend.fixture} not a map")], None
-    skip_reason = rag_skip_reason(qdrant)
+    skip_reason = rag_skip_reason(stores)
     data, dropped = prepare_config(
         raw, drop_rag=skip_reason is not None, traces=aspire.ready
     )
@@ -599,11 +601,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.no_infra:
-        statuses = [InfraStatus(s, False, "--no-infra") for s in (QDRANT, ASPIRE)]
+        statuses = [
+            InfraStatus(s, False, "--no-infra") for s in (QDRANT, CHROMA, ASPIRE)
+        ]
     else:
-        print("verify-live: starting Qdrant and the Aspire dashboard (Docker)...")
-        statuses = [ensure(QDRANT), ensure(ASPIRE)]
-    qdrant, aspire = statuses
+        print(
+            "verify-live: starting Qdrant, Chroma and the Aspire dashboard "
+            "(Docker)..."
+        )
+        statuses = [ensure(QDRANT), ensure(CHROMA), ensure(ASPIRE)]
+    qdrant, chroma, aspire = statuses
     checks.extend(infra_checks(statuses))
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -613,7 +620,7 @@ def main(argv: list[str] | None = None) -> int:
     for backend in runnable:
         print(f"verify-live: running {backend.name} ({backend.fixture})...")
         backend_checks, service = live_backend(
-            backend, rundir, args.limit, qdrant, aspire
+            backend, rundir, args.limit, [qdrant, chroma], aspire
         )
         checks.extend(backend_checks)
         if service is not None:
