@@ -234,30 +234,30 @@ docker exec -it postgres psql -U postgres -c "SELECT 1;"
 
 ### Pinecone
 
-[Pinecone](https://www.pinecone.io/) is a fully managed, serverless vector database. For production, use the cloud service with an API key:
+[Pinecone](https://www.pinecone.io/) is a fully managed, serverless vector database. HoloDeck uses the `pinecone` client 10.x (`holodeck-ai[pinecone]`) over asyncio and creates one serverless, cosine index per collection:
 
 ```yaml
 database:
   provider: pinecone
   api_key: ${PINECONE_API_KEY}
   namespace: my-namespace  # optional
+  cloud: aws               # optional, for a new index
+  region: us-east-1        # optional, for a new index
 ```
 
-For local development without an account, use [Pinecone Local](https://www.pinecone.io/learn/series/vector-databases-in-production-for-busy-engineers/cicd-pinecone-local/):
+| Setting | Meaning |
+|---------|---------|
+| `api_key`, `connection_string` | API key, or `pinecone://key[@namespace]`. `PINECONE_API_KEY` is the fallback. |
+| `namespace` | Namespace of the records. Default: the default namespace. |
+| `cloud`, `region` | Where a new serverless index runs. Default `aws`, `us-east-1`. |
+| `index_name` | Index name instead of the collection name. |
+| `host`, `index_host` | Control plane and data plane URLs, for a gateway or private endpoint. |
 
-```bash
-docker run -d \
-  --name pinecone-local \
-  -e PORT=5081 \
-  -e INDEX_TYPE=serverless \
-  -e DIMENSION=1536 \
-  -e METRIC=cosine \
-  -p 5081:5081 \
-  --platform linux/amd64 \
-  ghcr.io/pinecone-io/pinecone-index:latest
-```
+Pinecone index names are lowercase letters, digits and hyphens, at most 45 characters. HoloDeck maps a collection name such as `documents_dim1536` to `documents-dim1536` and shortens a long name with a hash.
 
-> **Note**: Pinecone Local is for development and testing only. Use the cloud service for production workloads.
+Record IDs must be ASCII (at most 512 characters). A source file with a non-ASCII path is rejected at ingestion with a clear error. Pinecone reads are eventually consistent, so a search right after ingestion can briefly miss new chunks.
+
+> **Note**: Pinecone Local reached end of life on 2026-10-07. The last emulator image (`ghcr.io/pinecone-io/pinecone-local:latest`, 1.0.0-rc0) speaks the pre-10 control plane, so the 10.x client cannot create indexes on it. HoloDeck's own tests use it with a small test-only control plane. For local development use the cloud service, or the in-memory, Qdrant or ChromaDB providers.
 
 ---
 
@@ -293,7 +293,7 @@ For remote Qdrant, add `api_key: ${QDRANT_API_KEY}`.
 
 ### Pinecone
 
-Pinecone uses API key authentication (no connection string), or the `pinecone://pc-abc123@my-namespace` connection-string form.
+Pinecone uses API key authentication, or the `pinecone://pc-abc123@my-namespace` connection-string form (the key keeps its case).
 
 ---
 

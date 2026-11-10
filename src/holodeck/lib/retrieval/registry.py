@@ -58,7 +58,7 @@ PROVIDERS: dict[str, ProviderEntry] = {
     "azure-cosmos-mongo": ProviderEntry(_BRIDGE, "SKCosmosMongoAdapter"),
     "azure-cosmos-nosql": ProviderEntry(_BRIDGE, "SKCosmosNoSqlAdapter"),
     "sql-server": ProviderEntry(_BRIDGE, "SKSqlServerAdapter"),
-    "pinecone": ProviderEntry(_BRIDGE, "SKPineconeAdapter", extra="pinecone"),
+    "pinecone": ProviderEntry(f"{_ADAPTERS}.pinecone", "PineconeAdapter", "pinecone"),
 }
 
 RETIRED_PROVIDERS: dict[str, str] = {}

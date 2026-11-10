@@ -19,6 +19,7 @@ from holodeck.lib.retrieval.adapters.sk_bridge import (
     SKInMemoryAdapter,
     SKQdrantAdapter,
 )
+from tests.contract.retrieval import pinecone_local
 
 QDRANT_URL = "http://127.0.0.1:6333"
 CHROMA_URL = "http://127.0.0.1:8765"
@@ -84,5 +85,10 @@ TARGETS: list[ContractTarget] = [
             schema, {"connection_string": POSTGRES_URL}
         ),
         available=port_open("127.0.0.1", 54329),
+    ),
+    ContractTarget(
+        name="pinecone-local",
+        build=pinecone_local.LocalPineconeAdapter.build,
+        available=pinecone_local.skip_reason,
     ),
 ]

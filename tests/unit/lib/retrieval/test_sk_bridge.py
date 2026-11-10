@@ -59,8 +59,8 @@ BRIDGED = [
     "azure-cosmos-mongo",
     "azure-cosmos-nosql",
     "sql-server",
-    "pinecone",
 ]
+# "pinecone" left the bridge in 042 T8: the registry points at the native adapter.
 
 
 def _schema_from(definition: VectorStoreCollectionDefinition) -> CollectionSchema:
@@ -201,7 +201,6 @@ EXPECTED: dict[str, set[Operation]] = {
     "azure-cosmos-mongo": _BASE,
     "azure-cosmos-nosql": _BASE | _HYBRID,
     "sql-server": _BASE,
-    "pinecone": _BASE,
 }
 
 
