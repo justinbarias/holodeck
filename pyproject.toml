@@ -43,11 +43,9 @@ dependencies = [
     "anthropic>=0.72.0,<2.7.0",
     "ollama>=0.4,<1.0",
     "python-ulid>=3.1.0,<5.0.0",
-    # Cap below 2.0: claude-agent-sdk 0.2.x still uses the MCP 1.x low-level
-    # Server API (@server.list_tools()), which the 2.0 line removed. Without the
-    # cap, a prerelease-enabled install resolves mcp 2.0.0a1 and the Claude
-    # backend fails at init with "'Server' object has no attribute 'list_tools'".
-    "mcp>=1.30.0,<2",  # PYSEC-2026-3481..3483, CVE-2026-59951/116684..116686 fix
+    # Upper bound <3: claude-agent-sdk 0.2.179+ and openai-agents 0.24 both allow
+    # mcp<3, and the Claude backend runs on the stable 2.x line (042 T17).
+    "mcp>=1.30.0,<3",  # PYSEC-2026-3481..3483, CVE-2026-59951/116684..116686 fix
     "inquirerpy>=0.3.4,<0.4.0",
     "fastapi>=0.115.0,<1.0.0",
     # Pin starlette transitive (via fastapi/mcp) to the patched release. fastapi
