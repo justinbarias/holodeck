@@ -57,6 +57,16 @@ def render_schema() -> str:
     return json.dumps(schema, indent=2) + "\n"
 
 
+def schema_paths() -> list[Path]:
+    """Return every tracked copy of the schema: the published one first.
+
+    Each ``holodeck init`` template ships a copy so that editors validate a
+    new project offline. The copies must not drift from the published file.
+    """
+    templates = SCHEMA_PATH.parent.parent / "src" / "holodeck" / "templates"
+    return [SCHEMA_PATH, *sorted(templates.glob("*/schemas/agent.schema.json"))]
+
+
 def main(argv: list[str] | None = None) -> int:
     """Write the schema, or in ``--check`` mode verify it is up to date."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -68,20 +78,24 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     rendered = render_schema()
+    targets = schema_paths()
     if args.check:
-        current = SCHEMA_PATH.read_text() if SCHEMA_PATH.exists() else ""
-        if current != rendered:
-            print(
-                f"{SCHEMA_PATH} is out of date. "
-                "Run: python scripts/generate_agent_schema.py",
-                file=sys.stderr,
-            )
+        stale = [
+            path
+            for path in targets
+            if not path.exists() or path.read_text() != rendered
+        ]
+        if stale:
+            for path in stale:
+                print(f"{path} is out of date.", file=sys.stderr)
+            print("Run: python scripts/generate_agent_schema.py", file=sys.stderr)
             return 1
         print(f"{SCHEMA_PATH} is up to date.")
         return 0
 
-    SCHEMA_PATH.write_text(rendered)
-    print(f"Wrote {SCHEMA_PATH}")
+    for path in targets:
+        path.write_text(rendered)
+        print(f"Wrote {path}")
     return 0
 
 
