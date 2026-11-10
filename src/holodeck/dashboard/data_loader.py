@@ -21,6 +21,7 @@ from typing import Literal
 
 import pandas as pd
 
+from holodeck.config.context import STORED_SNAPSHOT
 from holodeck.dashboard.seed_data import build_seed_runs
 from holodeck.models.eval_run import EvalRun
 
@@ -54,7 +55,13 @@ def load_all(results_dir: Path) -> list[EvalRun]:
     runs: list[EvalRun] = []
     for path in sorted(results_dir.glob("*.json")):
         try:
-            runs.append(EvalRun.model_validate_json(path.read_text(encoding="utf-8")))
+            runs.append(
+                EvalRun.model_validate_json(
+                    path.read_text(encoding="utf-8"),
+                    # A stored run may be opened away from its agent's files.
+                    context={STORED_SNAPSHOT: True},
+                )
+            )
         except Exception as exc:
             logger.warning("Skipping %s — failed to load EvalRun: %s", path.name, exc)
             continue

@@ -14,10 +14,12 @@ from pydantic import (
     ConfigDict,
     Field,
     PrivateAttr,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
 
+from holodeck.config.context import is_stored_snapshot
 from holodeck.lib.errors import ConfigError
 from holodeck.models.llm import LLMProvider
 from holodeck.optimizer.config import OptimizerConfig
@@ -440,13 +442,18 @@ class CodeMetric(BaseModel):
     _resolved_callable: Any = PrivateAttr(default=None)
 
     @model_validator(mode="after")
-    def _resolve_grader(self) -> "CodeMetric":
+    def _resolve_grader(self, info: ValidationInfo) -> "CodeMetric":
         """Resolve ``grader`` at load time per contracts/code-grader-contract.md §2.
+
+        Skipped for a stored snapshot (see ``is_stored_snapshot``);
+        ``resolved_callable`` then stays ``None``.
 
         Raises:
             ConfigError: if the module fails to import, the attribute is
                 missing, or the resolved object is not callable.
         """
+        if is_stored_snapshot(info):
+            return self
         module_path, _, callable_name = self.grader.partition(":")
         try:
             module = importlib.import_module(module_path)
