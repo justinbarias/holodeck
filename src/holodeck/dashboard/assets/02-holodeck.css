@@ -363,6 +363,35 @@ table.runs tbody tr.active { background: rgba(123, 255, 90, 0.08); box-shadow: i
 .rc-slider-mark-text { color: var(--hd-muted) !important; font-family: var(--font-mono) !important; font-size: 11px !important; }
 .rc-slider-dot { background-color: #050b09 !important; border-color: var(--hd-border) !important; }
 
+/* ---------- Dash 4 components ----------
+   Dash 4 replaced the rc-slider / react-select / react-dates components with
+   its own, themed through --Dash-* variables and dash-* classes; the rules
+   above only style Dash 3. Map the theme onto the dashboard tokens. */
+:root {
+  --Dash-Fill-Interactive-Strong: var(--hd-accent);
+  --Dash-Fill-Interactive-Weak: var(--hd-accent-glow);
+  --Dash-Fill-Primary-Hover: rgba(123, 255, 90, 0.06);
+  --Dash-Fill-Primary-Active: rgba(123, 255, 90, 0.12);
+  --Dash-Fill-Inverse-Strong: var(--hd-bg-body);
+  --Dash-Fill-Disabled: var(--hd-card-2);
+  --Dash-Stroke-Strong: var(--hd-border);
+  --Dash-Stroke-Weak: var(--hd-border);
+  --Dash-Text-Strong: var(--hd-fg);
+  --Dash-Text-Primary: var(--hd-fg);
+  --Dash-Text-Weak: var(--hd-muted);
+  --Dash-Text-Disabled: var(--hd-muted);
+}
+.dash-slider-track { background-color: #050b09 !important; height: 6px !important; border-radius: 999px !important; border: 1px solid var(--hd-border); }
+.dash-slider-range { background: linear-gradient(90deg, rgba(123, 255, 90, 0.25), var(--hd-accent)) !important; border-radius: 999px !important; }
+.dash-slider-thumb {
+  width: 14px !important; height: 14px !important;
+  background-color: var(--hd-accent) !important;
+  border: 2px solid #050b09 !important;
+  box-shadow: 0 0 10px rgba(123, 255, 90, 0.6) !important;
+}
+.dash-slider-mark { color: var(--hd-muted) !important; font-family: var(--font-mono) !important; font-size: 11px !important; }
+.dash-slider-dot { background-color: #050b09 !important; border-color: var(--hd-border) !important; }
+
 /* ---------- Dash DatePicker overrides ---------- */
 .DateInput, .DateInput_input, .DateRangePickerInput {
   background: #050b09 !important;
