@@ -58,7 +58,7 @@ Severity: **High** means a test cannot detect the regression its name describes.
 - Evidence: [test_base.py:183-203](../../tests/unit/lib/evaluators/test_base.py) asserts only `elapsed_time >= 16.0`.
   With `max_delay` removed, the delays are 1+2+4+8+16 = 31 s, which still passes.
   It is the slowest test in the suite (17.01 s).
-  [test_azure_ai.py:488-518](../../tests/unit/lib/evaluators/test_azure_ai.py) (6.0 s) and [test_base.py:174](../../tests/unit/lib/evaluators/test_base.py) use the same lower-bound timing pattern.
+  `test_azure_ai.py:488-518` (6.0 s; file removed in 042 T18) and [test_base.py:174](../../tests/unit/lib/evaluators/test_base.py) use the same lower-bound timing pattern.
 - Contract: `BaseEvaluator._calculate_delay` returns `min(base * exp**attempt, max_delay)` ([base.py:171-194](../../src/holodeck/lib/evaluators/base.py)).
 - Fix: patch `holodeck.lib.evaluators.base.asyncio.sleep` with a recorder. Assert the exact delays `[1.0, 2.0, 4.0, 5.0, 5.0]`. This adds the missing upper bound and removes about 25 s of real sleep.
 
@@ -225,7 +225,7 @@ Proof method: for each fix, one deliberate change to the production owner made t
 
 | Finding | Change | Mutant (production change) | New tests | HEAD tests |
 | --- | --- | --- | --- | --- |
-| H1 | [test_base.py](../../tests/unit/lib/evaluators/test_base.py): a `recorded_sleeps` fixture replaces `asyncio.sleep` in `holodeck.lib.evaluators.base`. Exact delays are asserted: `[1.0, 2.0]` and `[1.0, 2.0, 4.0, 5.0, 5.0]`. [test_azure_ai.py](../../tests/unit/lib/evaluators/test_azure_ai.py) asserts `[2.0, 4.0]` the same way. | `_calculate_delay` returns `delay` (cap removed) | `test_max_delay_cap` fails: `[1, 2, 4, 8, 16] != [1, 2, 4, 5, 5]` | By arithmetic, the old `elapsed >= 16.0` also holds at 31 s |
+| H1 | [test_base.py](../../tests/unit/lib/evaluators/test_base.py): a `recorded_sleeps` fixture replaces `asyncio.sleep` in `holodeck.lib.evaluators.base`. Exact delays are asserted: `[1.0, 2.0]` and `[1.0, 2.0, 4.0, 5.0, 5.0]`. `test_azure_ai.py` (removed in 042 T18) asserted `[2.0, 4.0]` the same way. | `_calculate_delay` returns `delay` (cap removed) | `test_max_delay_cap` fails: `[1, 2, 4, 8, 16] != [1, 2, 4, 5, 5]` | By arithmetic, the old `elapsed >= 16.0` also holds at 31 s |
 | H1 | as above | delay × 1.5 | 3 tests fail | — |
 | H2 | [test_chat_errors.py](../../tests/unit/cli/commands/test_chat_errors.py): a `_streaming_session` helper streams chunks or raises from `process_message_streaming`. The error tests assert `exit_code == 0`, `Error: <msg>`, and a successful next turn. New `test_streaming_reply_is_displayed` covers the happy path. The Ctrl+C tests patch `click.prompt` to raise `KeyboardInterrupt` and assert exit 130, `terminate` awaited, and `Goodbye!`. The empty-line test asserts the session is never called. | The REPL `except Exception` re-raises instead of logging | 3 fail | **5 passed** |
 | H2 | as above | `composer.write_text(chunk)` removed | 4 fail | — |

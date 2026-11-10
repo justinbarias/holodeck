@@ -461,11 +461,13 @@ evaluations:
     name: gpt-4o
 
   metrics:
-    - metric: groundedness
+    - type: rag
+      metric_type: faithfulness
       threshold: 0.8
       enabled: true
 
-    - metric: relevance
+    - type: rag
+      metric_type: answer_relevancy
       threshold: 0.75
 ```
 

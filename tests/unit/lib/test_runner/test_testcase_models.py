@@ -150,12 +150,12 @@ class TestTestCase:
             (
                 "evaluations",
                 [
-                    EvaluationMetric(metric="groundedness", threshold=0.7),
-                    EvaluationMetric(metric="relevance", threshold=0.8),
+                    EvaluationMetric(metric="bleu", threshold=0.7),
+                    EvaluationMetric(metric="rouge", threshold=0.8),
                 ],
                 lambda v: len(v) == 2
-                and v[0].metric == "groundedness"
-                and v[1].metric == "relevance",
+                and v[0].metric == "bleu"
+                and v[1].metric == "rouge",
             ),
         ],
         ids=["name", "expected_tools", "ground_truth", "evaluations"],
@@ -204,8 +204,8 @@ class TestTestCase:
             ground_truth="Expected output",
             files=[file_input],
             evaluations=[
-                EvaluationMetric(metric="groundedness", threshold=0.7),
-                EvaluationMetric(metric="relevance", threshold=0.8),
+                EvaluationMetric(metric="bleu", threshold=0.7),
+                EvaluationMetric(metric="rouge", threshold=0.8),
             ],
         )
         assert test_case.name == "Test case 1"
@@ -214,8 +214,8 @@ class TestTestCase:
         assert test_case.ground_truth == "Expected output"
         assert len(test_case.files) == 1
         assert len(test_case.evaluations) == 2
-        assert test_case.evaluations[0].metric == "groundedness"
-        assert test_case.evaluations[1].metric == "relevance"
+        assert test_case.evaluations[0].metric == "bleu"
+        assert test_case.evaluations[1].metric == "rouge"
 
     def test_test_case_max_input_length(self) -> None:
         """Test that long inputs are accepted (up to reasonable limit)."""

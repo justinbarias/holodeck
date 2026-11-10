@@ -36,11 +36,13 @@ evaluations:
     provider: openai
     name: gpt-4o-mini
   metrics:
-    - metric: groundedness
-      threshold: 4.0
+    - type: rag
+      metric_type: faithfulness
+      threshold: 0.8
       enabled: true
-    - metric: relevance
-      threshold: 4.0
+    - type: rag
+      metric_type: answer_relevancy
+      threshold: 0.8
       enabled: true
 
 test_cases:

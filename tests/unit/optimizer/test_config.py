@@ -14,7 +14,7 @@ class TestOptimizerConfigParsing:
     def test_minimal_config_parses_with_defaults(self) -> None:
         cfg = OptimizerConfig.model_validate(
             {
-                "loss": {"groundedness": 1.0},
+                "loss": {"bleu": 1.0},
                 "axes": {
                     "numeric": [
                         {
@@ -28,7 +28,7 @@ class TestOptimizerConfigParsing:
             }
         )
 
-        assert cfg.loss == {"groundedness": 1.0}
+        assert cfg.loss == {"bleu": 1.0}
         assert cfg.axes.numeric[0].path == "model.temperature"
         assert cfg.axes.numeric[0].type == "float"
         assert cfg.axes.textual[0].max_chars == 4000
@@ -67,13 +67,13 @@ class TestOptimizerConfigValidation:
 
     def test_non_positive_loss_weight_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            OptimizerConfig.model_validate({"loss": {"groundedness": 0.0}})
+            OptimizerConfig.model_validate({"loss": {"bleu": 0.0}})
 
     def test_bad_axis_type_rejected(self) -> None:
         with pytest.raises(ValidationError):
             OptimizerConfig.model_validate(
                 {
-                    "loss": {"groundedness": 1.0},
+                    "loss": {"bleu": 1.0},
                     "axes": {
                         "numeric": [
                             {
@@ -90,7 +90,7 @@ class TestOptimizerConfigValidation:
         with pytest.raises(ValidationError):
             OptimizerConfig.model_validate(
                 {
-                    "loss": {"groundedness": 1.0},
+                    "loss": {"bleu": 1.0},
                     "axes": {
                         "numeric": [
                             {
@@ -107,7 +107,7 @@ class TestOptimizerConfigValidation:
         with pytest.raises(ValidationError):
             OptimizerConfig.model_validate(
                 {
-                    "loss": {"groundedness": 1.0},
+                    "loss": {"bleu": 1.0},
                     "axes": {
                         "numeric": [
                             {
@@ -130,9 +130,9 @@ class TestEvaluationConfigIntegration:
             model=LLMProvider(provider=ProviderEnum.OPENAI, name="gpt-4o-mini"),
             instructions=Instructions(inline="You are helpful."),
             evaluations={
-                "metrics": [{"type": "standard", "metric": "groundedness"}],
+                "metrics": [{"type": "standard", "metric": "bleu"}],
                 "optimizer": {
-                    "loss": {"groundedness": 1.0},
+                    "loss": {"bleu": 1.0},
                     "axes": {
                         "numeric": [
                             {
@@ -148,4 +148,4 @@ class TestEvaluationConfigIntegration:
         assert agent.evaluations is not None
         assert agent.evaluations.optimizer is not None
         assert isinstance(agent.evaluations.optimizer, OptimizerConfig)
-        assert agent.evaluations.optimizer.loss == {"groundedness": 1.0}
+        assert agent.evaluations.optimizer.loss == {"bleu": 1.0}

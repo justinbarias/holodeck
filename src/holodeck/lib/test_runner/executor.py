@@ -36,13 +36,6 @@ from holodeck.lib.backends.base import (
 )
 from holodeck.lib.backends.selector import BackendSelector
 from holodeck.lib.chat_history_utils import extract_tool_names
-from holodeck.lib.errors import ConfigError
-from holodeck.lib.evaluators.azure_ai import (
-    CoherenceEvaluator,
-    FluencyEvaluator,
-    GroundednessEvaluator,
-    RelevanceEvaluator,
-)
 from holodeck.lib.evaluators.base import BaseEvaluator
 from holodeck.lib.evaluators.deepeval import (
     AnswerRelevancyEvaluator,
@@ -689,52 +682,8 @@ class TestExecutor:
             # Handle standard EvaluationMetric types
             metric_name = metric_config.metric
 
-            # Get model config (per-metric or default)
-            llm_model = metric_config.model or default_model
-
-            # Convert LLMProvider to ModelConfig for Azure evaluators
-            azure_model_config = None
-            if llm_model:
-                from holodeck.lib.evaluators.azure_ai import ModelConfig
-
-                # Validate required Azure config - fail fast with clear error message
-                if not llm_model.endpoint or not llm_model.api_key:
-                    raise ConfigError(
-                        f"evaluations.metrics.{metric_name}",
-                        f"Azure AI metrics require 'endpoint' and 'api_key' in LLM "
-                        f"config for metric '{metric_name}'. Please configure these "
-                        f"in your agent.yaml or set via environment variables.",
-                    )
-
-                azure_model_config = ModelConfig(
-                    azure_endpoint=llm_model.endpoint,
-                    api_key=llm_model.api_key.get_secret_value(),
-                    azure_deployment=llm_model.name,
-                )
-
-            if metric_name == "groundedness":
-                if azure_model_config:
-                    evaluators[metric_name] = GroundednessEvaluator(
-                        model_config=azure_model_config
-                    )
-            elif metric_name == "relevance":
-                if azure_model_config:
-                    evaluators[metric_name] = RelevanceEvaluator(
-                        model_config=azure_model_config
-                    )
-            elif metric_name == "coherence":
-                if azure_model_config:
-                    evaluators[metric_name] = CoherenceEvaluator(
-                        model_config=azure_model_config
-                    )
-            elif metric_name == "fluency":
-                if azure_model_config:
-                    evaluators[metric_name] = FluencyEvaluator(
-                        model_config=azure_model_config
-                    )
-
             # NLP metrics
-            elif metric_name == "bleu":
+            if metric_name == "bleu":
                 evaluators[metric_name] = BLEUEvaluator()
             elif metric_name == "rouge":
                 evaluators[metric_name] = ROUGEEvaluator()
@@ -1439,7 +1388,7 @@ class TestExecutor:
         `None`, this method falls back to extracting it from retrieval tool
         results.
 
-        Text-comparison metrics (BLEU/ROUGE/METEOR/GEval/Azure AI) are
+        Text-comparison metrics (BLEU/ROUGE/METEOR/GEval) are
         skipped silently when `ground_truth` is `None` — the per-turn rollup
         (data-model.md §9) relies on this to distinguish "turn didn't run
         this metric" from "turn ran it and failed".
@@ -1519,7 +1468,7 @@ class TestExecutor:
 
                 # Prepare evaluation inputs using EvalKwargsBuilder
                 # This handles the parameter name differences between evaluator types:
-                # - Azure AI / NLP: response, query, ground_truth, context
+                # - NLP: response, query, ground_truth, context
                 # - DeepEval: actual_output, input, expected_output, retrieval_context
                 file_content = self._combine_file_contents(processed_files)
 
@@ -1613,7 +1562,7 @@ class TestExecutor:
 
                 # Extract score and passed status
                 # NLP metrics return results with metric name as key
-                # (e.g., "bleu", "meteor"). Azure AI metrics use "score".
+                # (e.g., "bleu", "meteor"); other evaluators use "score".
                 score = result.get(metric_name, result.get("score", 0.0))
                 threshold = metric_config.threshold
                 # When an explicit threshold is configured, treat it as the

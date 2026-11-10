@@ -1,10 +1,9 @@
 # Evaluation Framework API
 
-HoloDeck provides a flexible evaluation framework for measuring agent response quality. The framework supports three tiers of metrics:
+HoloDeck provides a flexible evaluation framework for measuring agent response quality. The framework supports two tiers of metrics:
 
 1. **Standard NLP Metrics** -- Traditional text-comparison metrics (BLEU, ROUGE, METEOR) that require no LLM
-2. **Azure AI Metrics** -- AI-assisted quality metrics via Azure AI Evaluation SDK (groundedness, relevance, coherence, fluency, similarity)
-3. **DeepEval Metrics** -- LLM-as-a-judge evaluation with multi-provider support (G-Eval custom criteria, RAG pipeline metrics)
+2. **DeepEval Metrics** -- LLM-as-a-judge evaluation with multi-provider support (G-Eval custom criteria, RAG pipeline metrics)
 
 All evaluators share a common base class with retry logic, timeout handling, and a unified parameter specification system.
 
@@ -17,12 +16,6 @@ BaseEvaluator (base.py)
 ├── BLEUEvaluator (nlp_metrics.py)
 ├── ROUGEEvaluator (nlp_metrics.py)
 ├── METEOREvaluator (nlp_metrics.py)
-├── AzureAIEvaluator (azure_ai.py)
-│   ├── GroundednessEvaluator
-│   ├── RelevanceEvaluator
-│   ├── CoherenceEvaluator
-│   ├── FluencyEvaluator
-│   └── SimilarityEvaluator
 └── DeepEvalBaseEvaluator (deepeval/base.py)
     ├── GEvalEvaluator (deepeval/geval.py)
     ├── FaithfulnessEvaluator (deepeval/faithfulness.py)
@@ -179,7 +172,7 @@ Two naming conventions exist side-by-side:
 
 | Convention | Query | Response | Reference |
 |---|---|---|---|
-| Azure AI / NLP | `query` | `response` | `ground_truth` |
+| NLP | `query` | `response` | `ground_truth` |
 | DeepEval | `input` | `actual_output` | `expected_output` |
 
 Both conventions share `context` and `retrieval_context`.
@@ -255,104 +248,9 @@ print(result["rouge1"], result["rouge2"], result["rougeL"])
 
 ---
 
-## Azure AI Metrics
+## Removed Azure AI Metrics
 
-AI-assisted quality metrics powered by the Azure AI Evaluation SDK. All Azure evaluators normalize scores from a 1--5 scale to 0.0--1.0.
-
-### ModelConfig
-
-::: holodeck.lib.evaluators.azure_ai.ModelConfig
-    options:
-      docstring_style: google
-      show_source: true
-
-### AzureAIEvaluator
-
-::: holodeck.lib.evaluators.azure_ai.AzureAIEvaluator
-    options:
-      docstring_style: google
-      show_source: true
-
-### GroundednessEvaluator
-
-Assesses whether all claims in the response are supported by the provided context. Use an expensive model (e.g., `gpt-4o`) for this critical metric.
-
-::: holodeck.lib.evaluators.azure_ai.GroundednessEvaluator
-    options:
-      docstring_style: google
-      show_source: true
-
-### RelevanceEvaluator
-
-Measures whether the response directly addresses the user's question.
-
-::: holodeck.lib.evaluators.azure_ai.RelevanceEvaluator
-    options:
-      docstring_style: google
-      show_source: true
-
-### CoherenceEvaluator
-
-Evaluates logical flow and readability of the response.
-
-::: holodeck.lib.evaluators.azure_ai.CoherenceEvaluator
-    options:
-      docstring_style: google
-      show_source: true
-
-### FluencyEvaluator
-
-Assesses grammar, spelling, punctuation, word choice, and sentence structure.
-
-::: holodeck.lib.evaluators.azure_ai.FluencyEvaluator
-    options:
-      docstring_style: google
-      show_source: true
-
-### SimilarityEvaluator
-
-Compares semantic similarity between response and ground truth.
-
-::: holodeck.lib.evaluators.azure_ai.SimilarityEvaluator
-    options:
-      docstring_style: google
-      show_source: true
-
-### Azure AI Usage
-
-```python
-from holodeck.lib.evaluators.azure_ai import (
-    ModelConfig,
-    GroundednessEvaluator,
-    RelevanceEvaluator,
-)
-
-config = ModelConfig(
-    azure_endpoint="https://my-resource.openai.azure.com/",
-    api_key="my-api-key",
-    azure_deployment="gpt-4o",
-)
-
-groundedness = GroundednessEvaluator(model_config=config)
-result = await groundedness.evaluate(
-    query="What is the capital of France?",
-    response="The capital of France is Paris.",
-    context="France is a country in Europe. Its capital is Paris.",
-)
-print(result["score"])          # 0.0-1.0 (normalized from 1-5)
-print(result["groundedness"])   # Raw 1-5 score
-print(result["reasoning"])      # LLM explanation
-```
-
-### Azure AI Metrics Summary
-
-| Evaluator | Required Params | Optional Params | Score Key |
-|---|---|---|---|
-| `GroundednessEvaluator` | `response`, `context` | `query` | `groundedness` |
-| `RelevanceEvaluator` | `response`, `query` | `context` | `relevance` |
-| `CoherenceEvaluator` | `response`, `query` | -- | `coherence` |
-| `FluencyEvaluator` | `response`, `query` | -- | `fluency` |
-| `SimilarityEvaluator` | `response`, `query`, `ground_truth` | -- | `similarity` |
+The Azure AI evaluators (`groundedness`, `relevance`, `coherence`, `fluency`, `similarity`) and the `azure-ai-evaluation` dependency were removed in HoloDeck 0.8.0. See [Removed Azure AI metrics](../guides/evaluations.md#removed-azure-ai-metrics) for the DeepEval replacements.
 
 ---
 

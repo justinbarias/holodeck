@@ -14,7 +14,7 @@ HoloDeck is an open-source experimentation platform that enables teams to create
 
 - **🎯 No-Code Agent Definition** - Define agents using simple YAML configuration
 - **🧪 Hypothesis-Driven Testing** - Test agent behaviors against structured test cases
-- **📊 Integrated Evaluations** - Built-in AI and NLP metrics (Groundedness, Relevance, F1, BLEU, ROUGE)
+- **📊 Integrated Evaluations** - Built-in AI and NLP metrics (Faithfulness, Answer Relevancy, G-Eval, BLEU, ROUGE)
 - **🔌 Plugin Ecosystem** - Extend agents with tools, APIs, and custom functions
 - **💾 RAG Support** - Native vector database integration for grounding data
 - **🚀 One-Click Deployment** - Deploy agents as production-ready FastAPI endpoints
@@ -1821,7 +1821,7 @@ Built with:
 
 - [Semantic Kernel](https://github.com/microsoft/semantic-kernel) - Agent framework, Vector Store abstractions
 - [FastAPI](https://fastapi.tiangolo.com/) - API deployment
-- [Azure AI Evaluation](https://github.com/Azure/azure-sdk-for-python/tree/azure-ai-evaluation_1.11.2/sdk/evaluation/azure-ai-evaluation) - Evaluation metrics
+- [DeepEval](https://github.com/confident-ai/deepeval) - LLM-as-a-judge evaluation metrics
 - [Redis](https://redis.io/) - Vector storage
 
 Inspired by:

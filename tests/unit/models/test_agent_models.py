@@ -177,7 +177,7 @@ class TestAgent:
         """Test Agent with evaluations."""
         eval_config = EvaluationConfig(
             metrics=[
-                EvaluationMetric(metric="groundedness"),
+                EvaluationMetric(metric="bleu"),
             ]
         )
         agent = Agent(
@@ -354,9 +354,7 @@ class TestAgent:
             type="vectorstore",
             source="data.txt",
         )
-        eval_config = EvaluationConfig(
-            metrics=[EvaluationMetric(metric="groundedness")]
-        )
+        eval_config = EvaluationConfig(metrics=[EvaluationMetric(metric="bleu")])
         test_case = TestCase(input="Test")
 
         agent = Agent(
@@ -478,9 +476,7 @@ class TestAgent:
             "type": "object",
             "properties": {"result": {"type": "string"}},
         }
-        eval_config = EvaluationConfig(
-            metrics=[EvaluationMetric(metric="groundedness")]
-        )
+        eval_config = EvaluationConfig(metrics=[EvaluationMetric(metric="bleu")])
         test_case = TestCase(input="Test")
 
         agent = Agent(

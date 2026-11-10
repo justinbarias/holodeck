@@ -121,12 +121,12 @@ class TestConfigEndToEndWorkflow:
                 "metrics": [
                     {
                         "type": "standard",
-                        "metric": "groundedness",
+                        "metric": "bleu",
                         "threshold": 0.8,
                     },
                     {
                         "type": "standard",
-                        "metric": "relevance",
+                        "metric": "rouge",
                         "threshold": 0.75,
                     },
                 ],

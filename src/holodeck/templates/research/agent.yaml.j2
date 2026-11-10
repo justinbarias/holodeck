@@ -185,9 +185,11 @@ evaluations:
       threshold: 0.7
 {% endif %}
 {% endfor %}
-    - type: standard
-      metric: groundedness
+{% if "rag-faithfulness" not in evals %}
+    - type: rag
+      metric_type: faithfulness
       threshold: 0.9
+{% endif %}
 
 # Test Cases
 test_cases:

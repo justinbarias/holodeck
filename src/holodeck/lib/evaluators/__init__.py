@@ -9,12 +9,6 @@ multiple evaluation approaches:
   - ROUGE: Recall-Oriented Understudy for Gisting Evaluation
   - METEOR: Metric for Evaluation of Translation with Explicit ORdering
 
-- **Azure AI Metrics**: AI-powered semantic evaluation metrics
-  - Groundedness: How factually grounded responses are
-  - Relevance: How well responses address the query
-  - Coherence: How logically coherent responses are
-  - (Customizable) Additional metrics via Azure AI Evaluation
-
 - **DeepEval Metrics**: LLM-as-a-judge evaluation with multi-provider support
   - GEvalEvaluator: Custom criteria evaluation using G-Eval algorithm
   - Support for OpenAI, Azure OpenAI, Anthropic, and Ollama providers
@@ -23,15 +17,10 @@ multiple evaluation approaches:
 
 Example:
     from holodeck.lib.evaluators.nlp_metrics import compute_f1_score
-    from holodeck.lib.evaluators.azure_ai import AzureAIEvaluator
     from holodeck.lib.evaluators.deepeval import GEvalEvaluator
 
     # NLP metric
     score = compute_f1_score(prediction, reference)
-
-    # AI-powered metric (Azure)
-    evaluator = AzureAIEvaluator(model="gpt-4")
-    results = await evaluator.evaluate(response, ground_truth)
 
     # AI-powered metric (DeepEval)
     evaluator = GEvalEvaluator(
@@ -43,7 +32,6 @@ Example:
 Classes:
     BaseEvaluator: Abstract evaluator base class
     NLPEvaluator: NLP metrics implementation
-    AzureAIEvaluator: Azure AI evaluation metrics
     GEvalEvaluator: DeepEval G-Eval custom criteria evaluator
 
 Functions:

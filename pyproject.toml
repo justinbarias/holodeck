@@ -30,7 +30,6 @@ dependencies = [
     "lark>=1.1.0,<2.0.0",
     "markitdown[all]>=0.1.4,<0.2.0",
     "pypdf>=6.21.4",  # CVE-2026-59935..59938, PYSEC-2026-4153..4160, CVE-2026-1137xx/1155xx/1192xx fix
-    "azure-ai-evaluation>=1.13.0,<2.0.0",
     "evaluate>=0.4.6,<0.5.0",
     "rouge-score>=0.1.2,<0.2.0",
     "sacrebleu>=2.5.1,<3.0.0",

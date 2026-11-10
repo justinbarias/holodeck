@@ -144,15 +144,12 @@ class TestExecutorMainFlow:
         mock_config.execution = None
         mock_loader.load_agent_yaml.return_value = mock_config
 
-        # Mock ModelConfig import in executor
-        with patch.dict("sys.modules", {"holodeck.lib.evaluators.azure_ai": Mock()}):
-            # Inject dependencies
-            executor = TestExecutor(
-                agent_config_path=agent_config_path,
-                config_loader=mock_loader,
-                file_processor=mock_file_processor,
-                backend=mock_backend,
-            )
+        executor = TestExecutor(
+            agent_config_path=agent_config_path,
+            config_loader=mock_loader,
+            file_processor=mock_file_processor,
+            backend=mock_backend,
+        )
 
         assert executor.agent_config_path == agent_config_path
         assert executor.agent_config is not None
@@ -685,24 +682,6 @@ class TestEvaluationMetrics:
         "metric_name,test_name,test_input,ground_truth,response,score_key,score_value",
         [
             (
-                "groundedness",
-                "test_groundedness",
-                "Query",
-                "Expected answer",
-                "Agent response",
-                "score",
-                0.8,
-            ),
-            (
-                "relevance",
-                "test_relevance",
-                "What is AI?",
-                None,
-                "AI is artificial intelligence",
-                "score",
-                0.9,
-            ),
-            (
                 "bleu",
                 "test_bleu",
                 "Translate hello",
@@ -710,24 +689,6 @@ class TestEvaluationMetrics:
                 "hola",
                 "bleu",
                 1.0,
-            ),
-            (
-                "coherence",
-                "test_coherence",
-                "Query",
-                None,
-                "Coherent response",
-                "score",
-                0.85,
-            ),
-            (
-                "fluency",
-                "test_fluency",
-                "Query",
-                None,
-                "Fluent response",
-                "score",
-                0.9,
             ),
             (
                 "rouge",
@@ -738,14 +699,20 @@ class TestEvaluationMetrics:
                 "rouge",
                 0.75,
             ),
+            (
+                "meteor",
+                "test_meteor",
+                "Paraphrase",
+                "Expected paraphrase",
+                "Paraphrase",
+                "meteor",
+                0.7,
+            ),
         ],
         ids=[
-            "groundedness",
-            "relevance",
             "bleu",
-            "coherence",
-            "fluency",
             "rouge",
+            "meteor",
         ],
     )
     async def test_evaluator_metrics(
@@ -853,7 +820,7 @@ class TestEvaluationMetrics:
             model=None,
             metrics=[
                 EvaluationMetric(
-                    metric="groundedness",
+                    metric="meteor",
                     threshold=0.7,
                     enabled=True,
                 ),
@@ -895,7 +862,7 @@ class TestEvaluationMetrics:
         # Mock evaluator that raises exception
         # Must return proper ParamSpec for get_param_spec() to avoid coroutine issues
         mock_evaluator = Mock()
-        mock_evaluator.name = "groundedness"
+        mock_evaluator.name = "meteor"
         mock_evaluator.get_param_spec = Mock(
             return_value=ParamSpec(
                 required=frozenset({EvalParam.RESPONSE, EvalParam.CONTEXT}),
@@ -911,7 +878,7 @@ class TestEvaluationMetrics:
             config_loader=mock_loader,
             file_processor=mock_file_processor,
             backend=mock_backend,
-            evaluators={"groundedness": mock_evaluator},
+            evaluators={"meteor": mock_evaluator},
         )
 
         report = await executor.execute_tests()
@@ -993,15 +960,15 @@ class TestContextInEvaluation:
     """Tests for context inclusion in evaluations."""
 
     @pytest.mark.asyncio
-    async def test_context_passed_to_groundedness_metric(self):
-        """Test that file context is passed to groundedness evaluation."""
+    async def test_context_passed_to_context_aware_metric(self):
+        """Test that file context reaches an evaluator that uses context."""
         from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
         from holodeck.models.agent import Instructions
         from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
         from holodeck.models.llm import LLMProvider, ProviderEnum
 
         test_case = TestCaseModel(
-            name="test_groundedness_context",
+            name="test_metric_context",
             input="Question",
             expected_tools=None,
             ground_truth=None,
@@ -1013,7 +980,7 @@ class TestContextInEvaluation:
             model=None,
             metrics=[
                 EvaluationMetric(
-                    metric="groundedness",
+                    metric="meteor",
                     threshold=0.7,
                     enabled=True,
                 ),
@@ -1067,7 +1034,7 @@ class TestContextInEvaluation:
             return {"score": 0.85}
 
         mock_evaluator = Mock()
-        mock_evaluator.name = "groundedness"
+        mock_evaluator.name = "meteor"
         mock_evaluator.get_param_spec = Mock(
             return_value=ParamSpec(
                 required=frozenset({EvalParam.RESPONSE, EvalParam.CONTEXT}),
@@ -1081,7 +1048,7 @@ class TestContextInEvaluation:
             config_loader=mock_loader,
             file_processor=mock_file_processor,
             backend=mock_backend,
-            evaluators={"groundedness": mock_evaluator},
+            evaluators={"meteor": mock_evaluator},
         )
 
         await executor.execute_tests()
@@ -1333,8 +1300,8 @@ class TestPerTestMetricResolution:
         from holodeck.models.llm import LLMProvider, ProviderEnum
 
         # Create per-test metric
-        groundedness_metric = EvaluationMetric(
-            metric="groundedness",
+        rouge_metric = EvaluationMetric(
+            metric="rouge",
             threshold=0.8,
             enabled=True,
         )
@@ -1346,10 +1313,10 @@ class TestPerTestMetricResolution:
             expected_tools=None,
             ground_truth="Expected answer",
             files=None,
-            evaluations=[groundedness_metric],  # Only groundedness, not bleu
+            evaluations=[rouge_metric],  # Only rouge, not bleu
         )
 
-        # Global config has both METEOR and BLEU
+        # Global config has METEOR, BLEU and ROUGE
         eval_config = EvaluationConfig(
             model=None,
             metrics=[
@@ -1364,7 +1331,7 @@ class TestPerTestMetricResolution:
                     enabled=True,
                 ),
                 EvaluationMetric(
-                    metric="groundedness",
+                    metric="rouge",
                     threshold=0.8,
                     enabled=True,
                 ),
@@ -1419,9 +1386,9 @@ class TestPerTestMetricResolution:
 
         report = await executor.execute_tests()
 
-        # Verify only groundedness was evaluated
+        # Verify only rouge was evaluated
         assert len(report.results[0].metric_results) == 1
-        assert report.results[0].metric_results[0].metric_name == "groundedness"
+        assert report.results[0].metric_results[0].metric_name == "rouge"
 
     @pytest.mark.asyncio
     async def test_fallback_to_global_metrics(self):
@@ -2280,206 +2247,6 @@ class TestOnTestStartCallback:
         assert callback_invocations[0] == "test_callback"
 
 
-class TestAzureAIEvaluatorCreation:
-    """Tests for Azure AI evaluator creation with ModelConfig."""
-
-    @pytest.mark.asyncio
-    async def test_groundedness_evaluator_creation(self):
-        """Test creation of groundedness evaluator with ModelConfig."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
-        from holodeck.models.llm import LLMProvider, ProviderEnum
-
-        eval_config = EvaluationConfig(
-            model=LLMProvider(
-                provider=ProviderEnum.AZURE_OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-                endpoint="https://test.openai.azure.com/",
-            ),
-            metrics=[
-                EvaluationMetric(
-                    metric="groundedness",
-                    threshold=0.7,
-                    enabled=True,
-                ),
-            ],
-        )
-
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[],
-            evaluations=eval_config,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-        )
-
-        # Verify groundedness evaluator was created
-        assert "groundedness" in executor.evaluators
-
-    @pytest.mark.asyncio
-    async def test_relevance_evaluator_creation(self):
-        """Test creation of relevance evaluator with ModelConfig."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
-        from holodeck.models.llm import LLMProvider, ProviderEnum
-
-        eval_config = EvaluationConfig(
-            model=LLMProvider(
-                provider=ProviderEnum.AZURE_OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-                endpoint="https://test.openai.azure.com/",
-            ),
-            metrics=[
-                EvaluationMetric(
-                    metric="relevance",
-                    threshold=0.7,
-                    enabled=True,
-                ),
-            ],
-        )
-
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[],
-            evaluations=eval_config,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-        )
-
-        # Verify relevance evaluator was created
-        assert "relevance" in executor.evaluators
-
-    @pytest.mark.asyncio
-    async def test_coherence_evaluator_creation(self):
-        """Test creation of coherence evaluator with ModelConfig."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
-        from holodeck.models.llm import LLMProvider, ProviderEnum
-
-        eval_config = EvaluationConfig(
-            model=LLMProvider(
-                provider=ProviderEnum.AZURE_OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-                endpoint="https://test.openai.azure.com/",
-            ),
-            metrics=[
-                EvaluationMetric(
-                    metric="coherence",
-                    threshold=0.7,
-                    enabled=True,
-                ),
-            ],
-        )
-
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[],
-            evaluations=eval_config,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-        )
-
-        # Verify coherence evaluator was created
-        assert "coherence" in executor.evaluators
-
-    @pytest.mark.asyncio
-    async def test_fluency_evaluator_creation(self):
-        """Test creation of fluency evaluator with ModelConfig."""
-        from holodeck.models.agent import Instructions
-        from holodeck.models.evaluation import EvaluationConfig, EvaluationMetric
-        from holodeck.models.llm import LLMProvider, ProviderEnum
-
-        eval_config = EvaluationConfig(
-            model=LLMProvider(
-                provider=ProviderEnum.AZURE_OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-                endpoint="https://test.openai.azure.com/",
-            ),
-            metrics=[
-                EvaluationMetric(
-                    metric="fluency",
-                    threshold=0.7,
-                    enabled=True,
-                ),
-            ],
-        )
-
-        agent_config = Agent(
-            name="test_agent",
-            description="Test agent",
-            model=LLMProvider(
-                provider=ProviderEnum.OPENAI,
-                name="gpt-4",
-                api_key="test-key",
-            ),
-            instructions=Instructions(inline="Test instructions"),
-            test_cases=[],
-            evaluations=eval_config,
-            execution=None,
-        )
-
-        mock_loader = Mock(spec=ConfigLoader)
-        mock_loader.load_agent_yaml.return_value = agent_config
-        mock_loader.resolve_execution_config.return_value = ExecutionConfig()
-
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-        )
-
-        # Verify fluency evaluator was created
-        assert "fluency" in executor.evaluators
-
-
 class TestChatHistoryEdgeCases:
     """Tests for chat history edge cases."""
 
@@ -2564,7 +2331,7 @@ class TestUnconfiguredMetrics:
             # "unconfigured metric is skipped" path.
             evaluations=[
                 EvaluationMetric(
-                    metric="groundedness",  # Valid name, intentionally unwired.
+                    metric="rouge",  # Valid name; the evaluator map is empty.
                     threshold=0.7,
                     enabled=True,
                 )
@@ -2604,12 +2371,15 @@ class TestUnconfiguredMetrics:
         mock_backend.invoke_once = AsyncMock(return_value=mock_result)
         mock_backend.teardown = AsyncMock()
 
-        executor = TestExecutor(
-            agent_config_path="test.yaml",
-            config_loader=mock_loader,
-            file_processor=mock_file_processor,
-            backend=mock_backend,
-        )
+        # Every built-in metric registers an evaluator, so force the
+        # evaluator map to stay empty.
+        with patch.object(TestExecutor, "_create_evaluators", return_value={}):
+            executor = TestExecutor(
+                agent_config_path="test.yaml",
+                config_loader=mock_loader,
+                file_processor=mock_file_processor,
+                backend=mock_backend,
+            )
 
         report = await executor.execute_tests()
 
