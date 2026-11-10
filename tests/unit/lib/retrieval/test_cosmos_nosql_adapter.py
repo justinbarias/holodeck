@@ -16,6 +16,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -31,6 +32,7 @@ from holodeck.lib.retrieval import (
     LexicalQuery,
     MissingClientError,
     Operation,
+    Record,
     RecordFilter,
     SchemaError,
     ScoreKind,
@@ -1259,3 +1261,54 @@ class TestErrors:
 
 def test_the_fake_account_starts_empty() -> None:
     assert FakeAccount().databases == {}
+
+
+# -- review fixes (042 phase 3) ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"chunk_index": 1.9},
+        {"chunk_index": "1"},
+        {"mtime": "2.25"},
+        {"source_path": 3},
+        {"pinned": 1},
+    ],
+)
+def test_a_filter_value_that_cannot_equal_a_stored_value_is_rejected(
+    bad: dict[str, Any],
+) -> None:
+    """``where(chunk_index=1.9)`` must not become ``chunk_index = 1``."""
+    with pytest.raises(SchemaError, match="another type"):
+        _adapter().select_statement(RecordFilter.where(**bad))
+
+
+def test_an_integral_float_still_filters_an_integer_field() -> None:
+    statement = _adapter().select_statement(RecordFilter.where(chunk_index=1.0))
+    assert statement.parameters == (("@f0", 1),)
+    assert isinstance(statement.parameters[0][1], int)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad",
+    [
+        make_record("a_chunk_0", [float("nan"), 0.0, 0.0, 0.0]),
+        make_record("a" * 1024, [1.0, 0.0, 0.0, 0.0]),
+        make_record("/" * 800, [1.0, 0.0, 0.0, 0.0]),
+        Record("a_chunk_0", {"chunk_index": "abc"}, [1.0, 0.0, 0.0, 0.0]),
+    ],
+    ids=["nan-vector", "long-id", "long-encoded-id", "string-in-integer-field"],
+)
+async def test_replace_source_converts_every_record_before_deleting(
+    bad: Record,
+) -> None:
+    adapter = _adapter()
+    await adapter.ensure_collection()
+    await adapter.upsert(CORPUS)
+    with pytest.raises(SchemaError):
+        await adapter.replace_source(RecordFilter.where(source_path="a.md"), [bad])
+    kept = await adapter.find(RecordFilter.where(source_path="a.md"))
+    assert sorted(record.id for record in kept) == ["a_chunk_0", "a_chunk_1"]
+    assert await adapter.count() == len(CORPUS)

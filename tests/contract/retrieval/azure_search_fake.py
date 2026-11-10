@@ -28,12 +28,17 @@ Scoring follows the documentation:
   and an explicit ``None`` clears the field.
 
 ``search_lag`` delays the visibility of writes by that many ``search`` calls, to
-test the adapter's wait for eventual consistency.
+test the adapter's wait for eventual consistency. A document keeps showing its
+old content (or stays deleted from the reader's point of view, i.e. keeps
+showing) until its write becomes visible, so a read can be stale. ``key_lag``
+gives single keys their own lag, so one document of a batch can lag behind the
+others.
 
 ``$filter`` is parsed, not pattern-matched, for the subset the adapter emits:
 ``field op literal`` clauses joined by ``and``, with ``eq ne gt ge lt le``,
 single-quoted strings (``''`` is a quote), numbers, ``true``, ``false`` and
-``null``. Anything else is HTTP 400.
+``null``, plus ``search.in(field, 'a,b,c', ',')`` on a string field. Anything
+else is HTTP 400.
 """
 
 from __future__ import annotations
@@ -94,41 +99,47 @@ class Clause:
 
     field: str
     op: str
-    value: str | int | float | bool | None
+    value: str | int | float | bool | tuple[str, ...] | None
 
 
-def _tokens(text: str) -> list[tuple[str, str]]:
-    position, out = 0, []
-    while position < len(text):
-        if not text[position:].strip():
-            break
-        match = _TOKEN.match(text, position)
-        if match is None:
-            raise bad_request(f"Invalid $filter near {text[position:position+20]!r}.")
-        kind = str(match.lastgroup)
-        out.append((kind, match.group(kind)))
-        position = match.end()
-    return out
+_SEARCH_IN = re.compile(
+    r"\s*search\.in\(\s*(?P<field>[A-Za-z_][A-Za-z0-9_]*)\s*,\s*"
+    r"'(?P<values>(?:[^']|'')*)'\s*(?:,\s*'(?P<sep>(?:[^']|'')*)'\s*)?\)"
+)
 
 
 def parse_filter(text: str) -> list[Clause]:
     """Parse the adapter's ``$filter`` subset into clauses."""
-    tokens = _tokens(text)
     clauses: list[Clause] = []
-    index = 0
+    position = 0
     while True:
-        if index + 3 > len(tokens):
-            raise bad_request("Incomplete $filter.")
-        name, op, literal = tokens[index], tokens[index + 1], tokens[index + 2]
-        if name[0] != "word" or op[0] != "word" or op[1] not in _OPERATORS:
-            raise bad_request("Invalid $filter clause.")
-        clauses.append(Clause(name[1], op[1], _value(literal)))
-        index += 3
-        if index == len(tokens):
+        found = _SEARCH_IN.match(text, position)
+        if found is not None:
+            separator = (found.group("sep") or ",").replace("''", "'")
+            values = found.group("values").replace("''", "'").split(separator)
+            clauses.append(Clause(found.group("field"), "in", tuple(values)))
+            position = found.end()
+        else:
+            tokens: list[tuple[str, str]] = []
+            for _ in range(3):
+                match = _TOKEN.match(text, position)
+                if match is None:
+                    raise bad_request(
+                        f"Invalid $filter near {text[position:position+20]!r}."
+                    )
+                kind = str(match.lastgroup)
+                tokens.append((kind, match.group(kind)))
+                position = match.end()
+            name, op, literal = tokens
+            if name[0] != "word" or op[0] != "word" or op[1] not in _OPERATORS:
+                raise bad_request("Invalid $filter clause.")
+            clauses.append(Clause(name[1], op[1], _value(literal)))
+        if not text[position:].strip():
             return clauses
-        if tokens[index] != ("word", "and"):
+        match = _TOKEN.match(text, position)
+        if match is None or match.group("word") != "and":
             raise bad_request("Clauses must be joined by 'and'.")
-        index += 1
+        position = match.end()
 
 
 def _value(token: tuple[str, str]) -> str | int | float | bool | None:
@@ -148,6 +159,9 @@ _ORDER = {"gt": operator.gt, "ge": operator.ge, "lt": operator.lt, "le": operato
 
 
 def _compare(stored: object, op: str, literal: object) -> bool:
+    if op == "in":
+        assert isinstance(literal, tuple)
+        return isinstance(stored, str) and stored in literal
     if op in ("eq", "ne"):
         same = stored == literal and isinstance(stored, bool) == isinstance(
             literal, bool
@@ -223,9 +237,12 @@ class _Pending:
 class FakeSearchService:
     """One Azure AI Search service: a set of indexes shared by every client."""
 
-    def __init__(self, *, search_lag: int = 0) -> None:
+    def __init__(
+        self, *, search_lag: int = 0, key_lag: Mapping[str, int] | None = None
+    ) -> None:
         self.indexes: dict[str, _Index] = {}
         self.search_lag = search_lag
+        self.key_lag: dict[str, int] = dict(key_lag or {})
         self.calls: list[tuple[str, dict[str, object]]] = []
         self.closed = 0
         self.built: list[str] = []
@@ -243,9 +260,10 @@ class FakeSearchService:
             indexes=FakeSearchIndexClient(self),
         )
 
-    def _write(self, apply: Callable[[], None]) -> None:
-        if self.search_lag > 0:
-            self._pending.append(_Pending(self.search_lag, apply))
+    def _write(self, apply: Callable[[], None], key: str) -> None:
+        lag = self.key_lag.get(key, self.search_lag)
+        if lag > 0:
+            self._pending.append(_Pending(lag, apply))
         else:
             apply()
 
@@ -360,7 +378,9 @@ class FakeSearchClient:
                 continue
             assert isinstance(key, str)
             created = key not in index.docs
-            self._service._write(self._apply(index, key, document, delete, declared))
+            self._service._write(
+                self._apply(index, key, document, delete, declared), key
+            )
             results.append(
                 IndexingResult(
                     key=key,
@@ -529,6 +549,10 @@ class FakeSearchClient:
     @staticmethod
     def _check_literal(declared: SearchField, clause: Clause) -> None:
         if clause.value is None:
+            return
+        if clause.op == "in":
+            if _edm(declared) != "Edm.String":
+                raise bad_request(f"search.in needs a string field: '{clause.field}'.")
             return
         edm = _edm(declared)
         ok = {

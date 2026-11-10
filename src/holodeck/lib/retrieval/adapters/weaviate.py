@@ -7,10 +7,12 @@ The layout is the one Semantic Kernel's ``WeaviateCollection`` produces
 could never create that collection, see "Compatibility" below.
 
 * one collection (Weaviate "class") per HoloDeck collection; the name is
-  ``weaviate_class_name(schema.name)``: the first letter upper-cased, every
-  character outside ``[0-9A-Za-z_]`` replaced by ``_``. SK only upper-cased the
-  first letter and so rejected names with ``-`` or ``.``. Names that differ
-  only in the case of the first letter share one collection;
+  ``weaviate_class_name(schema.name)``. A name that is already valid
+  (``[A-Z][_0-9A-Za-z]*``, at most 255 characters) is used unchanged. Any other
+  name is cleaned (every other character becomes ``_``, the first letter is
+  upper-cased) and gets ``_`` plus the first 8 hex digits of the SHA-256 of the
+  original name, so ``docs``, ``Docs`` and ``a-b``/``a_b`` never share one
+  collection. SK only upper-cased the first letter;
 * one self-provided named vector, ``schema.vector_field`` (``embedding``), cosine
   distance, a flat index, no vectorizer. SK's default index kind is flat too;
 * one property per data field: ``text``, ``int``, ``number`` or ``boolean``;
@@ -20,7 +22,11 @@ could never create that collection, see "Compatibility" below.
   ``namespace = uuid5(NAMESPACE_URL, "holodeck/retrieval/<schema.name>")``
   (the Qdrant adapter's mapping) and the original ID goes into the
   ``holodeck_id`` text property. Reads return the HoloDeck ID. SK passed the ID
-  to Weaviate unchanged and so accepted only UUIDs.
+  to Weaviate unchanged and so accepted only UUIDs. Two different IDs cannot
+  share one object: ``invoice-7`` and the text of its own UUID map to the same
+  object, so ``upsert`` and ``replace_source`` raise ``SchemaError`` when two
+  IDs of one call share an object, or when a write would overwrite an object
+  that holds another ID. Two spellings of one UUID are one ID.
 
 Property indexes follow the ``FieldSpec`` flags:
 
@@ -38,15 +44,22 @@ Filters
 -------
 A filter is a conjunction of ``equal`` clauses built from typed values, never
 from strings. A clause on a field that is not ``indexed``, ``None`` values and
-full-text strings cannot be matched exactly and raise ``SchemaError``. ``find``
-and ``delete_where`` check every returned record against the filter, so a
-collection made elsewhere with word
-tokenization still gets exact matches there. Vector and hybrid searches push
-the filter to the server and rely on the field tokenization above.
+full-text strings cannot be matched exactly and raise ``SchemaError``, and so
+does a value that cannot equal a stored value of the field's type
+(``chunk_index=1.5``). ``find`` and ``delete_where`` check every returned
+record against the filter. Vector and hybrid searches push the filter to the
+server and rely on the field tokenization above, so an existing collection
+whose ``indexed`` string properties are not ``field``-tokenized is refused with
+``IncompatibleCollectionError``.
 
 Weaviate limits one query to ``offset + limit <= QUERY_MAXIMUM_RESULTS``
-(10,000 by default), so ``find`` fails for a filter that matches more records.
-``list_page`` uses the cursor API (``after``) and has no such limit.
+(10,000 by default). ``find`` pages by offset with the filter on the server
+while the next page stays under ``QUERY_MAXIMUM_RESULTS`` (the module constant,
+which must equal the server setting). When it would cross, ``find`` starts over
+and enumerates the whole collection by cursor (``after``), checking every
+object against the filter locally. So ``find``, ``delete_where`` and
+``replace_source`` do not fail on a source with more records. ``list_page``
+uses the cursor API and has no limit.
 
 Search
 ------
@@ -63,9 +76,11 @@ Against Weaviate 1.40 the SK path fails: ``SKWeaviateAdapter.ensure_collection``
 raises ("Distance function COSINE_SIMILARITY is not supported by Weaviate"; SK's
 connector accepts only ``COSINE_DISTANCE``), the first upsert then creates a
 collection with a default, unnamed vector and fails again, and non-UUID IDs fail
-at the server. No HoloDeck collection written through SK exists. With the
-distance function corrected SK writes the layout above, which this adapter reads
-and writes (``tests/integration/retrieval/test_weaviate_compat.py``).
+at the server. No HoloDeck collection written through SK exists, so nothing is
+migrated. A collection that SK's connector would create (with the distance
+function corrected) uses word tokenization on every string and is refused with
+``IncompatibleCollectionError``: exact-match filters need field tokenization
+(``tests/integration/retrieval/test_weaviate_compat.py``).
 
 Lifecycle
 ---------
@@ -144,8 +159,9 @@ from holodeck.lib.retrieval.types import (
     ScoredRecord,
     ScoreKind,
     VectorQuery,
+    check_filter,
+    checked_filter_value,
     clamp_similarity,
-    normalize_filter_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -160,6 +176,12 @@ UPSERT_BATCH: Final = 500
 GET_BATCH: Final = 500
 DELETE_BATCH: Final = 500
 MAX_CLASS_NAME: Final = 255
+QUERY_MAXIMUM_RESULTS = 10_000
+"""The server's ``QUERY_MAXIMUM_RESULTS`` (10,000 by default).
+
+One query may ask for ``offset + limit`` up to this value. ``find`` pages by
+offset below it and enumerates by cursor beyond it.
+"""
 HYBRID_ALPHA: Final = 0.5
 """Weight of the vector leg in hybrid search; 0.5 weighs both legs equally."""
 
@@ -168,6 +190,7 @@ DEFAULT_LOCAL_GRPC_PORT: Final = 50051
 _LOCAL_HOSTS: Final = frozenset({"localhost", "127.0.0.1", "::1"})
 _RESERVED_PROPERTIES: Final = frozenset({"id", "_id", "vector", "_additional"})
 _PROPERTY_NAME = re.compile(r"^[_A-Za-z][_0-9A-Za-z]*$")
+_CLASS_NAME = re.compile(r"^[A-Z][_0-9A-Za-z]*$")
 
 CAPABILITIES: Final = Capabilities(
     PROVIDER,
@@ -415,17 +438,21 @@ def weaviate_class_name(name: str) -> str:
     """Return the Weaviate collection name for a HoloDeck collection name.
 
     Weaviate names match ``[A-Z][_0-9A-Za-z]*`` and have at most 255
-    characters. The mapping is deterministic and leaves a valid name that
-    starts with an upper-case letter unchanged.
+    characters. A name that is already valid is used unchanged. Any other name
+    is cleaned (invalid characters become ``_``, the first letter is
+    upper-cased) and gets ``_`` plus the first 8 hex digits of the SHA-256 of
+    the original name, so two names never share a collection because they
+    clean to the same text, and Weaviate's own upper-casing of the first
+    letter cannot merge ``docs`` with ``Docs``.
     """
+    if len(name) <= MAX_CLASS_NAME and _CLASS_NAME.match(name):
+        return name
     cleaned = re.sub(r"[^0-9A-Za-z_]", "_", name)
     if not cleaned[:1].isalpha():
         cleaned = f"Collection_{cleaned}"
     cleaned = cleaned[0].upper() + cleaned[1:]
-    if len(cleaned) > MAX_CLASS_NAME:
-        digest = hashlib.sha256(name.encode()).hexdigest()[:8]
-        cleaned = f"{cleaned[: MAX_CLASS_NAME - len(digest) - 1]}_{digest}"
-    return cleaned
+    digest = hashlib.sha256(name.encode()).hexdigest()[:8]
+    return f"{cleaned[: MAX_CLASS_NAME - len(digest) - 1]}_{digest}"
 
 
 def property_for(spec: FieldSpec) -> Property:
@@ -496,6 +523,14 @@ def _stored(spec: FieldSpec, value: FieldValue) -> str | int | float | bool:
     if spec.type is FieldType.BOOLEAN:
         return bool(value)
     return value if isinstance(value, str) else str(value)
+
+
+def _canonical_id(record_id: str) -> str:
+    """Return the form in which two spellings of one record ID are equal."""
+    try:
+        return str(uuid.UUID(record_id))
+    except ValueError:
+        return record_id
 
 
 def _dense_vector(vectors: Mapping[str, object], name: str) -> list[float] | None:
@@ -672,7 +707,8 @@ class WeaviateAdapter(BaseVectorStoreAdapter):
 
         Raises:
             IncompatibleCollectionError: The named vector is missing or not
-                cosine, or a property has another type.
+                cosine, a property has another type, or an exact-match string
+                property is not field-tokenized.
         """
         config = await collection.config.get()
         vectors = config.vector_config or {}
@@ -714,6 +750,19 @@ class WeaviateAdapter(BaseVectorStoreAdapter):
                 raise IncompatibleCollectionError(
                     f"Weaviate property '{spec.name}' of '{self._class}' has no "
                     "filter index; exact-match filters need one."
+                )
+            if (
+                spec.type is FieldType.STRING
+                and spec.indexed
+                and not spec.full_text
+                and found.tokenization != Tokenization.FIELD
+            ):
+                shown = found.tokenization.value if found.tokenization else "none"
+                raise IncompatibleCollectionError(
+                    f"Weaviate property '{spec.name}' of '{self._class}' uses "
+                    f"{shown} tokenization; exact-match filters need field "
+                    "tokenization. Delete the collection or use another "
+                    "collection_name."
                 )
         for spec in self._schema.fields:
             if spec.name not in existing:
@@ -773,35 +822,6 @@ class WeaviateAdapter(BaseVectorStoreAdapter):
                 f"schema '{self._schema.name}' needs {self._schema.dimensions}."
             )
 
-    def _filter_value(
-        self, spec: FieldSpec, value: FieldValue
-    ) -> str | int | float | bool:
-        if value is None:
-            raise SchemaError(
-                f"Field '{spec.name}': Weaviate stores type defaults, never null, "
-                "so a filter on None cannot match."
-            )
-        if spec.type is FieldType.STRING and isinstance(value, str):
-            return value
-        if spec.type is FieldType.BOOLEAN and isinstance(value, bool):
-            return value
-        if (
-            spec.type is FieldType.INTEGER
-            and isinstance(value, int)
-            and not isinstance(value, bool)
-        ):
-            return value
-        if (
-            spec.type is FieldType.FLOAT
-            and isinstance(value, int | float)
-            and not isinstance(value, bool)
-        ):
-            return float(value)
-        raise SchemaError(
-            f"Field '{spec.name}' is {spec.type.value}; the filter value "
-            f"{value!r} has another type."
-        )
-
     def build_filter(self, record_filter: RecordFilter | None) -> FilterReturn | None:
         """Return the Weaviate filter for ``record_filter``, or None.
 
@@ -825,11 +845,13 @@ class WeaviateAdapter(BaseVectorStoreAdapter):
                     f"Field '{spec.name}' is not indexed; Weaviate filters need "
                     "FieldSpec(indexed=True)."
                 )
-            clauses.append(
-                Filter.by_property(spec.name).equal(
-                    self._filter_value(spec, normalize_filter_value(spec, clause.value))
+            value = checked_filter_value(spec, clause.value)
+            if value is None:
+                raise SchemaError(
+                    f"Field '{spec.name}': Weaviate stores type defaults, never "
+                    "null, so a filter on None cannot match."
                 )
-            )
+            clauses.append(Filter.by_property(spec.name).equal(value))
         return clauses[0] if len(clauses) == 1 else Filter.all_of(clauses)
 
     async def replace_source(
@@ -842,7 +864,8 @@ class WeaviateAdapter(BaseVectorStoreAdapter):
         spelling would delete the replacement.
         """
         self.capabilities.require(Operation.FIND, Operation.DELETE, Operation.UPSERT)
-        self._validate(records)
+        self._preflight(records)
+        await self._guard_existing_ids(records)
         existing = await self.find(record_filter)
         keep = {self.store_id(record.id) for record in records}
         stale = [
@@ -850,13 +873,64 @@ class WeaviateAdapter(BaseVectorStoreAdapter):
         ]
         if stale:
             await self.delete(stale)
-        if records:
-            await self.upsert(records)
+        await self._write(records)
+
+    def _preflight(self, records: Sequence[Record]) -> None:
+        """Check the schema, and that no two record IDs share an object UUID.
+
+        A UUID-form ID is its own object UUID; any other ID is hashed. So
+        ``"invoice-7"`` and the string form of its hash would share an object.
+        Two spellings of one UUID are one ID and are fine.
+        """
+        super()._preflight(records)
+        owners: dict[uuid.UUID, str] = {}
+        for record in records:
+            key = self.store_id(record.id)
+            self._properties(record, key)  # a value of the wrong type fails here
+            first = owners.setdefault(key, record.id)
+            if _canonical_id(first) != _canonical_id(record.id):
+                raise SchemaError(
+                    f"Record IDs {first!r} and {record.id!r} map to the same "
+                    f"store ID {key} in collection '{self._schema.name}'."
+                )
+
+    async def _guard_existing_ids(self, records: Sequence[Record]) -> None:
+        """Refuse to overwrite a stored object that has another HoloDeck ID.
+
+        One batched read of the target objects per ``GET_BATCH``. A record
+        that rewrites its own object passes.
+        """
+        wanted = {self.store_id(record.id): record.id for record in records}
+        if not wanted:
+            return
+        keys = list(wanted)
+        collection = await self._collection()
+        with self._errors():
+            for start in range(0, len(keys), GET_BATCH):
+                chunk = keys[start : start + GET_BATCH]
+                response = await collection.query.fetch_objects(
+                    filters=Filter.by_id().contains_any(chunk),
+                    limit=len(chunk),
+                    return_properties=[ID_PROPERTY],
+                )
+                for obj in response.objects:
+                    held = obj.properties.get(ID_PROPERTY)
+                    held_id = held if isinstance(held, str) and held else str(obj.uuid)
+                    new_id = wanted[obj.uuid]
+                    if _canonical_id(held_id) != _canonical_id(new_id):
+                        raise SchemaError(
+                            f"Store ID {obj.uuid} already holds record "
+                            f"{held_id!r}; record {new_id!r} would overwrite it."
+                        )
 
     # -- writes and point reads -------------------------------------------------
 
     async def upsert(self, records: Sequence[Record]) -> None:
-        self._validate(records)
+        self._preflight(records)
+        await self._guard_existing_ids(records)
+        await self._write(records)
+
+    async def _write(self, records: Sequence[Record]) -> None:
         if not records:
             return
         objects: dict[
@@ -930,26 +1004,50 @@ class WeaviateAdapter(BaseVectorStoreAdapter):
         self, record_filter: RecordFilter, *, limit: int | None = None
     ) -> list[Record]:
         query_filter = self.build_filter(record_filter)
+        exact = check_filter(self._schema, record_filter)
         collection = await self._collection()
+        page = min(DEFAULT_PAGE_SIZE, QUERY_MAXIMUM_RESULTS)
         results: list[Record] = []
         offset = 0
         with self._errors():
             while True:
+                if offset + page > QUERY_MAXIMUM_RESULTS:
+                    # The server refuses ``offset + limit`` above its ceiling:
+                    # enumerate the whole collection by cursor instead.
+                    return await self._scan(collection, exact, limit)
                 response = await collection.query.fetch_objects(
-                    filters=query_filter,
-                    limit=DEFAULT_PAGE_SIZE,
-                    offset=offset,
+                    filters=query_filter, limit=page, offset=offset
                 )
                 for obj in response.objects:
                     record = self._record(obj, vectors=False)
                     # Exact match, also on collections with word tokenization.
-                    if record_filter.matches(record):
+                    if exact.matches(record):
                         results.append(record)
                         if limit is not None and len(results) >= limit:
                             return results
-                if len(response.objects) < DEFAULT_PAGE_SIZE:
+                if len(response.objects) < page:
                     return results
-                offset += DEFAULT_PAGE_SIZE
+                offset += page
+
+    async def _scan(
+        self, collection: CollectionAsync, exact: RecordFilter, limit: int | None
+    ) -> list[Record]:
+        """Check every object of the collection against ``exact``, by cursor."""
+        results: list[Record] = []
+        after: uuid.UUID | None = None
+        while True:
+            response = await collection.query.fetch_objects(
+                limit=DEFAULT_PAGE_SIZE, after=after
+            )
+            for obj in response.objects:
+                record = self._record(obj, vectors=False)
+                if exact.matches(record):
+                    results.append(record)
+                    if limit is not None and len(results) >= limit:
+                        return results
+            if len(response.objects) < DEFAULT_PAGE_SIZE:
+                return results
+            after = response.objects[-1].uuid
 
     async def list_page(
         self, *, cursor: str | None = None, limit: int = DEFAULT_PAGE_SIZE

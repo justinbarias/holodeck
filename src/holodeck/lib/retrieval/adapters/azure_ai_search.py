@@ -26,6 +26,9 @@ Compatible with what Semantic Kernel's ``AzureAISearchCollection`` creates:
 * one field per data field: ``Edm.String``, ``Edm.Int64``, ``Edm.Double`` or
   ``Edm.Boolean``, the types SK uses.
 
+An existing index is accepted only when its vector field resolves, through its
+profile, to an algorithm configuration with the ``cosine`` metric.
+
 Differences from the SK index, all on the safe side: ``filterable`` is true only
 for ``FieldSpec.indexed`` fields (SK also made full-text fields filterable, which
 Azure limits to 32 KB terms), ``searchable`` is true only for
@@ -43,10 +46,11 @@ source paths (``docs/a.md_chunk_0``), and Semantic Kernel wrote them unchanged,
 which Azure rejects for any path with a ``/`` or ``.``. ``encode_key`` therefore
 keeps an ID that is already a valid key (so records written by the SK path stay
 readable) and stores every other ID as ``b64-`` plus its URL-safe Base64 text.
-An ID that is valid but starts with ``b64-`` is encoded too, and ``decode_key``
-only decodes text that re-encodes to itself, so the mapping is one to one and a
-raw key such as ``b64-foo`` still reads as itself. The original ID is
-recoverable from the key, so the index needs no extra field. IDs longer than 759
+An ID that is valid but starts with ``b64-`` is encoded too, so every key the
+adapter writes that starts with ``b64-`` is an encoding and the mapping from IDs
+to keys is one to one. ``decode_key`` reverses it, and returns a key that is not
+an encoding (one another tool wrote) unchanged. The original ID is recoverable
+from the key, so the index needs no extra field. IDs longer than 759
 UTF-8 bytes do not fit and raise ``SchemaError``.
 
 Index names
@@ -56,8 +60,10 @@ Azure index names are 2 to 128 characters: lowercase letters, digits, ``-`` and
 default names (``documents_dim1536``) are valid and are used unchanged, so they
 match the index SK would create. ``normalize_index_name`` maps any other name
 deterministically: lower-cased, every run of other characters becomes one
-hyphen, and a name that is too short or too long gets a hash of the full name.
-Names that differ only in invalid characters share an index.
+hyphen, and ``-`` plus the first 8 hex digits of the SHA-256 of the original name
+is appended (within the 128 characters). A name that is valid is never changed
+and a name that is changed always carries the hash, so no two collection names
+share an index.
 
 Filters
 -------
@@ -101,13 +107,15 @@ the clamp.
 Consistency
 -----------
 Indexing is eventually consistent: a document can be missing from search for a
-moment after an upload, or still present after a delete. ``upsert`` and
-``delete`` therefore poll one search for the last document of the call (present
-with the written values, or gone) for up to ``VISIBILITY_TIMEOUT`` seconds, then
-log a warning and continue. This keeps ``find`` after ``replace_source`` and a
-re-ingest right after an ingest correct without a sleep. ``count`` is the
-service's document count, which the service documents as approximate while
-documents are being indexed.
+moment after an upload, or still present after a delete. ``delete`` therefore
+polls until search shows none of the deleted keys (one batched
+``search.in(id, '...', ',')`` filter per 500 keys, count zero), and ``upsert``
+polls until search shows every written key and returns the last written
+document with the written field values and embedding, for up to
+``VISIBILITY_TIMEOUT`` seconds, then logs a warning and continues. This keeps
+``find`` after ``replace_source`` and a re-ingest right after an ingest correct
+without a sleep. ``count`` is the service's document count, which the service
+documents as approximate while documents are being indexed.
 
 ``upsert`` is ``merge_or_upload``. Because merge keeps fields that a document
 leaves out, every schema field is written (``None`` as JSON null), so an upsert
@@ -173,6 +181,7 @@ from azure.core.exceptions import (
 from azure.search.documents.aio import SearchClient
 from azure.search.documents.indexes.aio import SearchIndexClient
 from azure.search.documents.indexes.models import (
+    ExhaustiveKnnAlgorithmConfiguration,
     HnswAlgorithmConfiguration,
     HnswParameters,
     SearchField,
@@ -206,8 +215,8 @@ from holodeck.lib.retrieval.types import (
     RecordFilter,
     ScoredRecord,
     ScoreKind,
+    checked_filter_value,
     clamp_similarity,
-    normalize_filter_value,
 )
 from holodeck.lib.retrieval.types import (
     VectorQuery as HoloVectorQuery,
@@ -235,6 +244,8 @@ GET_CONCURRENCY = 8
 HYBRID_MIN_NEIGHBOURS = 20
 HYBRID_POOL_FACTOR = 4
 VISIBILITY_TIMEOUT = 10.0
+VISIBILITY_BATCH = 500
+"""Keys per ``search.in`` filter in the wait for a write to show."""
 _POLL_START = 0.1
 _POLL_MAX = 1.0
 
@@ -371,9 +382,9 @@ def normalize_index_name(name: str) -> str:
         name
     ):
         return name
+    # The hash is of the original name, so ``a_b`` and ``a-b`` (or ``Docs`` and
+    # ``docs``) never share an index even when they clean to the same slug.
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    if MIN_INDEX_NAME <= len(slug) <= MAX_INDEX_NAME:
-        return slug
     digest = hashlib.sha256(name.encode()).hexdigest()[:8]
     head = slug[: MAX_INDEX_NAME - len(digest) - 1].strip("-")
     return f"{head or 'holodeck'}-{digest}"
@@ -850,6 +861,7 @@ class AzureAISearchAdapter(BaseVectorStoreAdapter):
             raise IncompatibleCollectionError(
                 f"{where} has no vector field '{self._schema.vector_field}'."
             )
+        self._check_metric(index, vector, where)
         if (
             vector.vector_search_dimensions is not None
             and vector.vector_search_dimensions != self._schema.dimensions
@@ -872,6 +884,51 @@ class AzureAISearchAdapter(BaseVectorStoreAdapter):
                 raise IncompatibleCollectionError(
                     f"{where}: field '{spec.name}' is not searchable."
                 )
+
+    def _check_metric(
+        self, index: SearchIndex, vector: SearchField, where: str
+    ) -> None:
+        """Require the cosine metric on the profile and algorithm of the vector."""
+        search = index.vector_search
+        profile = next(
+            (
+                item
+                for item in (search.profiles if search else None) or []
+                if item.name == vector.vector_search_profile_name
+            ),
+            None,
+        )
+        if profile is None:
+            raise IncompatibleCollectionError(
+                f"{where}: vector field '{vector.name}' has no vector search profile "
+                f"'{vector.vector_search_profile_name}'."
+            )
+        algorithm = next(
+            (
+                item
+                for item in (search.algorithms if search else None) or []
+                if item.name == profile.algorithm_configuration_name
+            ),
+            None,
+        )
+        if algorithm is None:
+            raise IncompatibleCollectionError(
+                f"{where}: the profile '{profile.name}' names the algorithm "
+                f"'{profile.algorithm_configuration_name}', which the index does "
+                "not define."
+            )
+        metric: str | VectorSearchAlgorithmMetric | None = None
+        if isinstance(
+            algorithm, HnswAlgorithmConfiguration | ExhaustiveKnnAlgorithmConfiguration
+        ):
+            parameters = algorithm.parameters
+            metric = parameters.metric if parameters is not None else None
+        # An algorithm without a stated metric uses the service default, cosine.
+        if metric is not None and metric != VectorSearchAlgorithmMetric.COSINE:
+            raise IncompatibleCollectionError(
+                f"{where} compares vectors with the {metric} metric; collection "
+                f"'{self._schema.name}' needs cosine."
+            )
 
     async def delete_collection(self) -> None:
         self._ready = False
@@ -924,6 +981,16 @@ class AzureAISearchAdapter(BaseVectorStoreAdapter):
         document[self._schema.vector_field] = _vector(record.vector or ())
         return document
 
+    def _preflight(self, records: Sequence[Record]) -> None:
+        """Convert every record as the upload would, before anything is changed.
+
+        Covers what the schema check cannot see: key encoding and length,
+        value conversion and non-finite numbers.
+        """
+        super()._preflight(records)
+        for record in records:
+            self._document(record)
+
     def _record(
         self, document: Mapping[str, object], *, vector: bool = False
     ) -> Record:
@@ -958,7 +1025,7 @@ class AzureAISearchAdapter(BaseVectorStoreAdapter):
                         f"Field '{clause.field}' is not indexed, so Azure AI Search "
                         "cannot filter on it."
                     )
-                value = normalize_filter_value(spec, clause.value)
+                value = checked_filter_value(spec, clause.value)
                 clauses.append(f"{spec.name} eq {_odata_literal(spec, value)}")
         clauses.extend(extra)
         return " and ".join(clauses) or None
@@ -979,9 +1046,13 @@ class AzureAISearchAdapter(BaseVectorStoreAdapter):
     # -- write and point reads ---------------------------------------------------------
 
     async def upsert(self, records: Sequence[Record]) -> None:
-        self._validate(records)
+        self._preflight(records)
         with self._translated():
-            documents = [self._document(record) for record in records]
+            by_key: dict[str, dict[str, object]] = {}
+            for record in records:
+                document = self._document(record)
+                by_key[str(document[self._schema.key_field])] = document  # last wins
+            documents = list(by_key.values())
             if not documents:
                 return
             if not self._ready:
@@ -995,8 +1066,7 @@ class AzureAISearchAdapter(BaseVectorStoreAdapter):
                     await self.ensure_collection()
                     results = await client.merge_or_upload_documents(batch)
                 self._check_results(results, "upload")
-            last = documents[-1]
-            await self._await_visible(str(last[self._schema.key_field]), expected=last)
+            await self._await_present(documents)
 
     async def get(
         self, ids: Sequence[str], *, include_vectors: bool = False
@@ -1048,7 +1118,7 @@ class AzureAISearchAdapter(BaseVectorStoreAdapter):
                     self._check_results(results, "delete")
             except ResourceNotFoundError:
                 return
-            await self._await_visible(keys[-1], expected=None)
+            await self._await_gone(keys)
 
     async def count(self) -> int:
         with self._translated():
@@ -1264,29 +1334,81 @@ class AzureAISearchAdapter(BaseVectorStoreAdapter):
             raise SchemaError(self._scrub(detail))
         raise StoreConnectionError(PROVIDER, self._scrub(detail))
 
-    async def _await_visible(
-        self, key: str, *, expected: Mapping[str, object] | None
-    ) -> None:
-        """Wait until search shows ``key`` as written, or gone if ``expected`` is None.
+    async def _count_shown(self, keys: Sequence[str]) -> int:
+        """Return how many of ``keys`` search shows (one batched ``search.in``)."""
+        key_field = self._schema.key_field
+        client = await self._documents()
+        joined = odata_string(",".join(keys))
+        results = await client.search(
+            "*",
+            filter=f"search.in({key_field}, {joined}, ',')",
+            select=[key_field],
+            top=len(keys),
+        )
+        return len([document async for document in results])
+
+    async def _write_is_shown(self, last: Mapping[str, object]) -> bool:
+        """Return True when search returns ``last`` with the values written."""
+        key_field = self._schema.key_field
+        client = await self._documents()
+        results = await client.search(
+            "*",
+            filter=f"{key_field} eq {odata_string(str(last[key_field]))}",
+            select=self._select(vector=True),
+            top=1,
+        )
+        found = [document async for document in results]
+        if not found or not _same_fields(self._schema, last, found[0]):
+            return False
+        sent = last.get(self._schema.vector_field)
+        stored = found[0].get(self._schema.vector_field)
+        if not isinstance(sent, Sequence) or not isinstance(stored, Sequence):
+            return False
+        return len(sent) == len(stored) and all(
+            math.isclose(a, b, rel_tol=1e-5, abs_tol=1e-6)
+            for a, b in zip(sent, stored, strict=True)
+            if isinstance(a, (int, float)) and isinstance(b, (int, float))
+        )
+
+    async def _await_present(self, documents: Sequence[Mapping[str, object]]) -> None:
+        """Wait until search shows every written document, the last as written.
 
         Gives up after ``VISIBILITY_TIMEOUT`` seconds with a warning.
         """
-        client = await self._documents()
+        key_field = self._schema.key_field
+        keys = [str(document[key_field]) for document in documents]
+        batches = [
+            keys[start : start + VISIBILITY_BATCH]
+            for start in range(0, len(keys), VISIBILITY_BATCH)
+        ]
+        last = documents[-1]
+
+        async def settled() -> bool:
+            nonlocal batches
+            batches = [b for b in batches if await self._count_shown(b) < len(b)]
+            return not batches and await self._write_is_shown(last)
+
+        await self._poll(settled)
+
+    async def _await_gone(self, keys: Sequence[str]) -> None:
+        """Wait until search shows none of the deleted ``keys``."""
+        batches = [
+            list(keys[start : start + VISIBILITY_BATCH])
+            for start in range(0, len(keys), VISIBILITY_BATCH)
+        ]
+
+        async def settled() -> bool:
+            nonlocal batches
+            batches = [b for b in batches if await self._count_shown(b) > 0]
+            return not batches
+
+        await self._poll(settled)
+
+    async def _poll(self, settled: Callable[[], Awaitable[bool]]) -> None:
+        """Call ``settled`` until it returns True, for up to ``VISIBILITY_TIMEOUT``."""
         deadline = time.monotonic() + VISIBILITY_TIMEOUT
         delay = _POLL_START
-        while True:
-            results = await client.search(
-                "*",
-                filter=f"{self._schema.key_field} eq {odata_string(key)}",
-                select=self._select(),
-                top=1,
-            )
-            found = [document async for document in results]
-            if expected is None:
-                if not found:
-                    return
-            elif found and _same_fields(self._schema, expected, found[0]):
-                return
+        while not await settled():
             if time.monotonic() >= deadline:
                 logger.warning(
                     "Azure AI Search index %s did not show a write within %.0f s; "

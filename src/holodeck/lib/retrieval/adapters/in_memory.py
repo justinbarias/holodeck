@@ -17,6 +17,7 @@ from holodeck.lib.retrieval.types import (
     ScoredRecord,
     ScoreKind,
     VectorQuery,
+    check_filter,
     clamp_similarity,
 )
 
@@ -87,7 +88,7 @@ class InMemoryAdapter(BaseVectorStoreAdapter):
         return len(self._records)
 
     async def upsert(self, records: Sequence[Record]) -> None:
-        self._validate(records)
+        self._preflight(records)
         self._exists = True
         for record in records:
             vector = tuple(float(value) for value in record.vector or ())
@@ -108,10 +109,11 @@ class InMemoryAdapter(BaseVectorStoreAdapter):
     async def find(
         self, record_filter: RecordFilter, *, limit: int | None = None
     ) -> list[Record]:
+        checked = check_filter(self.schema, record_filter)
         matches = [
             _without_vector(record)
             for record in self._records.values()
-            if record_filter.matches(record)
+            if checked.matches(record)
         ]
         return matches if limit is None else matches[:limit]
 
@@ -137,13 +139,14 @@ class InMemoryAdapter(BaseVectorStoreAdapter):
                 f"Query vector has {len(query.vector)} dimensions; "
                 f"schema '{self.schema.name}' needs {self.schema.dimensions}."
             )
+        checked = check_filter(self.schema, query.filter)
         # Rank on the raw cosine, then clamp: clamping first would tie every
         # negative similarity at zero and pick by insertion order.
         ranked = sorted(
             (
                 (_cosine(query.vector, record.vector or ()), record)
                 for record in self._records.values()
-                if query.filter is None or query.filter.matches(record)
+                if checked.matches(record)
             ),
             key=lambda pair: pair[0],
             reverse=True,

@@ -13,10 +13,11 @@ against a Weaviate server (verified against Weaviate 1.40, client 4.24):
   tools use (``/srv/doc.md_chunk_3``) fail at the server.
 
 No HoloDeck collection written through that bridge exists, so there is nothing
-to migrate. Instead of bridge-to-native round trips, these tests build the
-collection with SK's own ``WeaviateCollection`` and the one change that makes it
-work (``COSINE_DISTANCE``), which is the layout SK's connector would produce, and
-prove the native adapter reads it, writes to it, and creates the same layout.
+to migrate. These tests build the collection with SK's own
+``WeaviateCollection`` and the one change that makes it work
+(``COSINE_DISTANCE``), which is the layout SK's connector would produce, and
+prove the native adapter creates the same layout except where it is stricter
+(field tokenization on filter fields), and refuses the SK layout for that reason.
 The first test pins the bridge defect; it goes away with the bridge (task T16).
 
 Each test uses its own collections on the Weaviate server the live suite uses
@@ -201,7 +202,7 @@ async def names(raw: WeaviateAsyncClient) -> AsyncIterator[list[str]]:
 
 
 def unique(names: list[str]) -> str:
-    name = f"compat_{uuid.uuid4().hex[:12]}"
+    name = f"Compat_{uuid.uuid4().hex[:12]}"  # valid class name: used unchanged
     names.append(name)
     return name
 
@@ -313,22 +314,24 @@ async def test_the_sk_bridge_cannot_create_a_collection_today(
 # -- SK layout, native adapter --------------------------------------------------------
 
 
-async def test_native_reads_an_sk_collection_identically(names: list[str]) -> None:
-    sk_schema = make_schema(unique(names))
-    own_schema = make_schema(unique(names))
-    reader = native(sk_schema)
-    own = native(own_schema)
+async def test_native_refuses_an_sk_collection_with_word_tokenized_filters(
+    names: list[str],
+) -> None:
+    """SK tokenizes every string by word, so exact-match filters are not exact.
+
+    The native adapter reads and writes only the layout it creates (field
+    tokenization on filter fields). No SK-written Weaviate data exists to keep.
+    """
+    schema = make_schema(unique(names))
+    adapter = native(schema)
     try:
-        async with sk_collection(sk_schema) as collection:
+        async with sk_collection(schema) as collection:
             await collection.ensure_collection_exists()
             await collection.upsert(sk_rows(CORPUS))
-            from_sk = await snapshot(reader)
-        await own.ensure_collection()
-        await own.upsert(CORPUS)
-        assert_same(from_sk, await snapshot(own))
-        assert uid("q1") in {i for i, *_ in from_sk["hybrid"][0]}
+            with pytest.raises(IncompatibleCollectionError, match="tokenization"):
+                await adapter.ensure_collection()
     finally:
-        await _close(reader, own)
+        await adapter.close()
 
 
 async def test_sk_reads_a_native_collection(names: list[str]) -> None:
@@ -464,73 +467,24 @@ async def test_stored_objects_are_identical(
         assert vectors["embedding"] == pytest.approx(sk_vectors["embedding"], abs=1e-7)
 
 
-async def test_native_writes_to_an_sk_collection_stay_consistent(
+async def test_ensure_collection_on_a_native_collection_is_idempotent(
     names: list[str], raw: WeaviateAsyncClient
 ) -> None:
     schema = make_schema(unique(names))
-    adapter = native(schema)
-    try:
-        async with sk_collection(schema) as collection:
-            await collection.ensure_collection_exists()
-            await collection.upsert(sk_rows(CORPUS))
-
-            # The SK collection has no holodeck_id property; ensure adds it.
-            await adapter.ensure_collection()
-            config = await raw.collections.get(
-                weaviate_class_name(schema.name)
-            ).config.get()
-            assert "holodeck_id" in {p.name for p in config.properties}
-
-            await adapter.upsert(
-                [
-                    rec(uid("a0"), [0.0, 0.0, 0.0, 1.0], "a.md", 0, "rewritten"),
-                    rec(
-                        "/srv/x/doc.md_chunk_3", [0.1, 0.2, 0.3, 0.4], "e.md", 0, "new"
-                    ),
-                ]
-            )
-            await adapter.delete([uid("d3"), "missing"])
-            await adapter.replace_source(
-                RecordFilter.where(source_path="a.md"),
-                [rec(uid("a0"), [0.5, 0.5, 0.0, 0.0], "a.md", 0, "shorter")],
-            )
-            assert (
-                await adapter.delete_where(RecordFilter.where(source_path="c.md")) == 1
-            )
-
-            expected = [uid("a0"), uid("q0"), uid("q1"), "/srv/x/doc.md_chunk_3"]
-            got = await adapter.get(expected + [uid("a1"), uid("c0"), uid("d3")])
-            assert [r.id for r in got] == expected
-            assert got[0].fields["content"] == "shorter"
-            assert await adapter.count() == 4
-            sk_rows_after = await collection.get([uid("a0"), uid("q0")])
-            assert {r["content"] for r in sk_rows_after} == {
-                "shorter",
-                "beta cherry tree",
-            }
-    finally:
-        await adapter.close()
-
-
-async def test_ensure_collection_on_an_sk_collection_is_idempotent(
-    names: list[str], raw: WeaviateAsyncClient
-) -> None:
-    schema = make_schema(unique(names))
-    async with sk_collection(schema) as collection:
-        await collection.ensure_collection_exists()
-        await collection.upsert(sk_rows(CORPUS))
     configs = []
     for _ in range(3):
         adapter = native(schema)
         try:
             await adapter.ensure_collection()
+            if not configs:
+                await adapter.upsert(CORPUS)
             configs.append(
                 await raw.collections.get(weaviate_class_name(schema.name)).config.get()
             )
             assert await adapter.count() == len(CORPUS)
         finally:
             await adapter.close()
-    assert configs[1] == configs[2]
+    assert configs[0] == configs[1] == configs[2]
 
 
 # -- collections the adapter must refuse ----------------------------------------------

@@ -283,8 +283,12 @@ async def test_upload_request() -> None:
         "pinned": False,
         "embedding": [1.0, 0.0, 0.0, 0.0],
     }
-    # The wait for visibility is one search for the last document.
-    (probe,) = service.requests("/docs/search.post.search")
+    # The wait for visibility: one batched key check, then the last document.
+    keys, probe = service.requests("/docs/search.post.search")
+    assert keys.body["filter"] == (
+        f"search.in(id, '{module.encode_key('docs/a.md_chunk_0')},plain_1', ',')"
+    )
+    assert keys.body["top"] == 2 and keys.body["select"] == "id"
     assert probe.body["filter"] == "id eq 'plain_1'" and probe.body["top"] == 1
 
 

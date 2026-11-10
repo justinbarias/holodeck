@@ -150,8 +150,8 @@ from holodeck.lib.retrieval.types import (
     ScoredRecord,
     ScoreKind,
     VectorQuery,
+    checked_filter_value,
     clamp_similarity,
-    normalize_filter_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -765,24 +765,11 @@ class PineconeAdapter(BaseVectorStoreAdapter):
         clauses: list[dict[str, object]] = []
         for clause in record_filter.all_of:
             spec = self._schema.field(clause.field)
-            value = normalize_filter_value(spec, clause.value)
+            value = checked_filter_value(spec, clause.value)
             if value is None:
                 raise SchemaError(
                     f"Pinecone cannot store null, so field '{clause.field}' cannot "
                     "be filtered on None."
-                )
-            numeric = isinstance(value, (int, float)) and not isinstance(value, bool)
-            ok = {
-                FieldType.STRING: isinstance(value, str),
-                FieldType.INTEGER: isinstance(value, int)
-                and not isinstance(value, bool),
-                FieldType.FLOAT: numeric,
-                FieldType.BOOLEAN: isinstance(value, bool),
-            }[spec.type]
-            if not ok:
-                raise SchemaError(
-                    f"Filter value {value!r} does not fit {spec.type.value} field "
-                    f"'{clause.field}'."
                 )
             clauses.append({clause.field: {"$eq": value}})
         return clauses[0] if len(clauses) == 1 else {"$and": clauses}
@@ -797,7 +784,7 @@ class PineconeAdapter(BaseVectorStoreAdapter):
     # -- write and point reads -----------------------------------------------------
 
     async def upsert(self, records: Sequence[Record]) -> None:
-        self._validate(records)
+        self._preflight(records)
         for record in records:
             if not _valid_id(record.id):
                 raise SchemaError(

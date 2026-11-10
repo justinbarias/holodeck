@@ -133,20 +133,30 @@ def no_poll_delay(monkeypatch: pytest.MonkeyPatch) -> None:
         ("contract_0123456789ab", "contract_0123456789ab"),
         ("hierarchical_docs_policy_dim768", "hierarchical_docs_policy_dim768"),
         ("my-index", "my-index"),
-        ("Product Catalog.v2", "product-catalog-v2"),
-        ("a__b", "a-b"),
-        ("a--b", "a-b"),
-        ("-edge-", "edge"),
-        ("_lead", "lead"),
-        ("a" + "-" + "_", "a"),
+        ("Product Catalog.v2", "product-catalog-v2-{}"),
+        ("a__b", "a-b-{}"),
+        ("a--b", "a-b-{}"),
+        ("-edge-", "edge-{}"),
+        ("_lead", "lead-{}"),
+        ("a" + "-" + "_", "a-{}"),
+        ("x", "x-{}"),
     ],
 )
 def test_index_names_follow_the_service_rules(name: str, expected: str) -> None:
-    result = normalize_index_name(name)
-    if len(expected) < 2:
-        assert result == f"{expected}-{hashlib.sha256(name.encode()).hexdigest()[:8]}"
-    else:
-        assert result == expected
+    """A valid name is unchanged; any other change appends a hash of the original."""
+    assert normalize_index_name(name) == expected.format(_digest(name))
+
+
+def _digest(name: str) -> str:
+    return hashlib.sha256(name.encode()).hexdigest()[:8]
+
+
+def test_names_that_clean_to_the_same_text_get_different_indexes() -> None:
+    names = ["a_b", "a-b", "A-B", "a.b", "a b", "A_b", "a__b", "a--b"]
+    indexes = [normalize_index_name(name) for name in names]
+    assert len(set(indexes)) == len(names)
+    assert normalize_index_name("a-b") == "a-b"
+    assert normalize_index_name("a_b") == "a_b"
 
 
 @pytest.mark.parametrize("name", ["x", "___", "日本語", "a" * 200, "UPPER_and spaces"])
@@ -171,7 +181,9 @@ def test_long_names_keep_their_head_and_a_hash() -> None:
 def test_index_name_setting_replaces_the_collection_name(
     service: FakeSearchService,
 ) -> None:
-    assert adapter_on(service, index_name="Shared Index").index_name == "shared-index"
+    assert adapter_on(service, index_name="Shared Index").index_name == (
+        f"shared-index-{_digest('Shared Index')}"
+    )
     assert adapter_on(service, name="my_docs").index_name == "my_docs"
 
 
@@ -274,7 +286,7 @@ def test_filter_on_a_field_that_is_not_indexed_fails_before_a_request(
 def test_filter_values_must_fit_the_field_type(
     adapter: AzureAISearchAdapter, clause: Mapping[str, object]
 ) -> None:
-    with pytest.raises(SchemaError, match="does not fit"):
+    with pytest.raises(SchemaError, match="does not fit|another type"):
         adapter._filter_expression(RecordFilter.where(**clause))  # type: ignore[arg-type]
 
 
@@ -1427,3 +1439,144 @@ async def test_a_create_conflict_is_not_an_error() -> None:
     await built.ensure_collection()
 
     assert await built.collection_exists() is True
+
+
+# -- review fixes (042 phase 3) ----------------------------------------------------
+
+
+def test_every_adapter_written_key_decodes_to_its_id() -> None:
+    """An ID that starts with the prefix is always encoded, so decoding is exact."""
+    tricky = [
+        "b64-",
+        "b64-b64-",
+        "b64-Zm9v",
+        "b64-%%%",
+        encode_key("b64-Zm9v"),
+        encode_key("a/b"),
+        "B64-x",
+        "b64",
+    ]
+    keys = [encode_key(record_id) for record_id in tricky]
+    assert len(set(keys)) == len(tricky)
+    assert [decode_key(key) for key in keys] == tricky
+    assert all(key.startswith("b64-") for key in keys[:6])
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"chunk_index": 1.5},
+        {"chunk_index": "1"},
+        {"source_path": 5},
+        {"chunk_index": True},
+    ],
+)
+def test_a_filter_value_that_cannot_equal_a_stored_value_is_rejected(
+    adapter: AzureAISearchAdapter, bad: Mapping[str, object]
+) -> None:
+    with pytest.raises(SchemaError, match="another type|boolean is not a number"):
+        adapter._filter_expression(RecordFilter.where(**bad))  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad",
+    [
+        record("a_chunk_0", vector=(float("nan"), 0.0, 0.0, 0.0)),
+        record("é" * 600),
+        record("a" * 2000),
+        Record("a_chunk_0", {"chunk_index": "abc"}, [1.0, 0.0, 0.0, 0.0]),
+    ],
+    ids=["nan-vector", "long-encoded-id", "long-raw-id", "string-in-integer-field"],
+)
+async def test_replace_source_converts_every_record_before_deleting(
+    service: FakeSearchService, adapter: AzureAISearchAdapter, bad: Record
+) -> None:
+    await adapter.upsert([record("a_chunk_0"), record("a_chunk_1", index=1)])
+    deletes = len(service.names("delete"))
+    with pytest.raises(SchemaError):
+        await adapter.replace_source(RecordFilter.where(source_path="a.md"), [bad])
+    assert len(service.names("delete")) == deletes
+    kept = await adapter.find(RecordFilter.where(source_path="a.md"))
+    assert sorted(r.id for r in kept) == ["a_chunk_0", "a_chunk_1"]
+
+
+@pytest.mark.asyncio
+async def test_delete_waits_until_none_of_the_deleted_documents_shows() -> None:
+    # The last key leaves search at once; the first one lags behind.
+    service = FakeSearchService()
+    adapter = adapter_on(service)
+    await adapter.upsert([record("a"), record("b"), record("c")])
+    service.key_lag = {"a": 3}
+
+    await adapter.delete(["a", "b", "c"])
+
+    assert await adapter.find(RecordFilter()) == []
+
+
+@pytest.mark.asyncio
+async def test_upsert_waits_until_every_written_document_shows() -> None:
+    # The last document is searchable at once; the first one lags behind.
+    service = FakeSearchService(key_lag={"a": 3})
+    adapter = adapter_on(service)
+    await adapter.ensure_collection()
+
+    await adapter.upsert([record("a"), record("b"), record("c")])
+
+    assert sorted(r.id for r in await adapter.find(RecordFilter())) == ["a", "b", "c"]
+
+
+@pytest.mark.asyncio
+async def test_upsert_waits_for_the_new_embedding_of_the_last_document() -> None:
+    service = FakeSearchService()
+    adapter = adapter_on(service)
+    await adapter.upsert([record("a", vector=(1.0, 0.0, 0.0, 0.0))])
+    service.search_lag = 2
+
+    await adapter.upsert([record("a", vector=(0.0, 1.0, 0.0, 0.0))])
+
+    (found,) = await adapter.get(["a"], include_vectors=True)
+    assert found.vector == pytest.approx([0.0, 1.0, 0.0, 0.0])
+
+
+@pytest.mark.asyncio
+async def test_the_wait_checks_keys_in_one_batched_filter() -> None:
+    service = FakeSearchService()
+    adapter = adapter_on(service)
+    await adapter.upsert([record("a"), record("b")])
+    before = len(service.names("search"))
+
+    await adapter.delete(["a", "b"])
+
+    waits = service.names("search")[before:]
+    assert len(waits) == 1
+    assert waits[0]["filter"] == "search.in(id, 'a,b', ',')"
+
+
+# -- the index metric (review fix 9) -----------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_index_with_another_metric_is_incompatible(
+    service: FakeSearchService,
+) -> None:
+    def mutate(index: SearchIndex) -> None:
+        index.vector_search.algorithms[0].parameters.metric = "euclidean"
+
+    other = await _existing(service, mutate)
+
+    with pytest.raises(IncompatibleCollectionError, match="cosine"):
+        await other.ensure_collection()
+
+
+@pytest.mark.asyncio
+async def test_an_index_whose_vector_profile_is_missing_is_incompatible(
+    service: FakeSearchService,
+) -> None:
+    def mutate(index: SearchIndex) -> None:
+        index.vector_search.profiles = []
+
+    other = await _existing(service, mutate)
+
+    with pytest.raises(IncompatibleCollectionError, match="profile"):
+        await other.ensure_collection()

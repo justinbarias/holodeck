@@ -151,8 +151,8 @@ from holodeck.lib.retrieval.types import (
     ScoredRecord,
     ScoreKind,
     VectorQuery,
+    checked_filter_value,
     clamp_similarity,
-    normalize_filter_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -455,16 +455,25 @@ def decode_id(stored_id: str) -> str:
 
 
 def _stored(spec: FieldSpec, value: FieldValue) -> FieldValue:
-    """Return ``value`` in the JSON type Cosmos stores for ``spec``."""
+    """Return ``value`` in the JSON type Cosmos stores for ``spec``.
+
+    Raises:
+        SchemaError: The value cannot be converted, or is not a finite number.
+    """
     if value is None:
         return None
-    if spec.type is FieldType.INTEGER:
-        return int(value)
-    if spec.type is FieldType.FLOAT:
-        number = float(value)
-        if not math.isfinite(number):
-            raise SchemaError(f"Field '{spec.name}' must be a finite number.")
-        return number
+    try:
+        if spec.type is FieldType.INTEGER:
+            return int(value)
+        if spec.type is FieldType.FLOAT:
+            number = float(value)
+            if not math.isfinite(number):
+                raise SchemaError(f"Field '{spec.name}' must be a finite number.")
+            return number
+    except (TypeError, ValueError, OverflowError) as error:
+        raise SchemaError(
+            f"Field '{spec.name}' needs {spec.type.value}, got {value!r}."
+        ) from error
     if spec.type is FieldType.BOOLEAN:
         return bool(value)
     return value if isinstance(value, str) else str(value)
@@ -956,7 +965,7 @@ class CosmosNoSqlAdapter(BaseVectorStoreAdapter):
         for clause in record_filter.all_of:
             spec = self._schema.field(clause.field)
             reference = self._ref(spec.name)
-            value = _stored(spec, normalize_filter_value(spec, clause.value))
+            value = _stored(spec, checked_filter_value(spec, clause.value))
             if value is None:
                 clauses.append(f"IS_NULL({reference})")
             else:
@@ -1049,6 +1058,16 @@ class CosmosNoSqlAdapter(BaseVectorStoreAdapter):
         document[VECTOR_FIELD] = vector
         return document
 
+    def _preflight(self, records: Sequence[Record]) -> None:
+        """Convert every record as the write would, before anything is changed.
+
+        Covers what the schema check cannot see: ID length and encoding, value
+        conversion and non-finite numbers.
+        """
+        super()._preflight(records)
+        for record in records:
+            self._document(record)
+
     def _check_vector(self, vector: Sequence[float]) -> None:
         if len(vector) != self._schema.dimensions:
             raise SchemaError(
@@ -1119,7 +1138,7 @@ class CosmosNoSqlAdapter(BaseVectorStoreAdapter):
         return [row for row in rows or () if isinstance(row, Mapping)]
 
     async def upsert(self, records: Sequence[Record]) -> None:
-        self._validate(records)
+        self._preflight(records)
         documents: dict[str, dict[str, object]] = {}
         for record in records:
             document = self._document(record)

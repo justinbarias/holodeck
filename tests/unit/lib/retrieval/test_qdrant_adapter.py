@@ -295,7 +295,6 @@ def test_a_number_filter_follows_the_field_type_not_the_python_type() -> None:
 
     float_field = adapter.build_filter(RecordFilter.where(mtime=2))
     integer_field = adapter.build_filter(RecordFilter.where(chunk_index=3.0))
-    fractional = adapter.build_filter(RecordFilter.where(chunk_index=2.5))
 
     assert float_field == qm.Filter(
         must=[qm.FieldCondition(key="mtime", range=qm.Range(gte=2.0, lte=2.0))]
@@ -303,9 +302,23 @@ def test_a_number_filter_follows_the_field_type_not_the_python_type() -> None:
     assert integer_field == qm.Filter(
         must=[qm.FieldCondition(key="chunk_index", match=qm.MatchValue(value=3))]
     )
-    assert fractional == qm.Filter(  # no integer equals 2.5, and none matches
-        must=[qm.FieldCondition(key="chunk_index", range=qm.Range(gte=2.5, lte=2.5))]
-    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"chunk_index": 2.5},
+        {"chunk_index": "2"},
+        {"mtime": "2.5"},
+        {"source_path": 2},
+        {"pinned": 1},
+    ],
+)
+def test_a_filter_value_that_cannot_equal_a_stored_value_is_rejected(
+    bad: dict[str, Any],
+) -> None:
+    with pytest.raises(SchemaError, match="another type"):
+        _memory().build_filter(RecordFilter.where(**bad))
 
 
 @pytest.mark.parametrize("field", ["chunk_index", "mtime"])
@@ -641,3 +654,75 @@ async def test_an_error_without_a_secret_keeps_its_chain() -> None:
 
     assert raised.value.__cause__ is original
     assert "connection refused" in str(raised.value)
+
+
+# -- ID collisions (review fix 1) ---------------------------------------------
+
+
+def _rec(record_id: str, content: str = "") -> Record:
+    return Record(
+        record_id,
+        {"source_path": "s.md", "content": content},
+        [1.0, 0.0, 0.0, 0.0],
+    )
+
+
+@pytest.mark.asyncio
+async def test_two_ids_sharing_a_point_id_are_rejected_in_one_call() -> None:
+    adapter = _memory()
+    try:
+        await adapter.ensure_collection()
+        clash = adapter.store_id("invoice-7")
+        with pytest.raises(SchemaError, match="same store ID"):
+            await adapter.upsert([_rec("invoice-7"), _rec(clash)])
+        with pytest.raises(SchemaError, match="same store ID"):
+            await adapter.replace_source(
+                RecordFilter.where(source_path="s.md"),
+                [_rec(clash), _rec("invoice-7")],
+            )
+        assert await adapter.count() == 0
+    finally:
+        await adapter.close()
+
+
+@pytest.mark.asyncio
+async def test_two_spellings_of_one_uuid_are_one_id_not_a_collision() -> None:
+    adapter = _memory()
+    native = str(uuid.uuid4())
+    try:
+        await adapter.ensure_collection()
+        await adapter.upsert([_rec(native, "lower"), _rec(native.upper(), "upper")])
+        assert await adapter.count() == 1
+        await adapter.upsert([_rec(native.upper(), "again")])
+        assert await adapter.count() == 1
+    finally:
+        await adapter.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("hashed_first", [True, False])
+async def test_an_id_cannot_overwrite_a_record_with_another_id(
+    hashed_first: bool,
+) -> None:
+    adapter = _memory()
+    try:
+        await adapter.ensure_collection()
+        clash = adapter.store_id("invoice-7")
+        first, second = ("invoice-7", clash) if hashed_first else (clash, "invoice-7")
+        await adapter.upsert([_rec(first, "original")])
+        with pytest.raises(SchemaError, match="already holds"):
+            await adapter.upsert([_rec("fresh"), _rec(second, "intruder")])
+        with pytest.raises(SchemaError, match="already holds"):
+            await adapter.replace_source(
+                RecordFilter.where(source_path="s.md"), [_rec(second, "intruder")]
+            )
+        (kept,) = await adapter.get([first])
+        assert kept.id == first
+        assert kept.fields["content"] == "original"
+        assert await adapter.count() == 1
+        # The owner may still rewrite its own record.
+        await adapter.upsert([_rec(first, "rewritten")])
+        (kept,) = await adapter.get([first])
+        assert kept.fields["content"] == "rewritten"
+    finally:
+        await adapter.close()

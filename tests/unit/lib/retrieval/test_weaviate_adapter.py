@@ -7,6 +7,7 @@ Weaviate server.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -368,26 +369,46 @@ def test_every_operation_is_supported() -> None:
 # -- names, properties -----------------------------------------------------------------
 
 
+def _digest(name: str) -> str:
+    return hashlib.sha256(name.encode()).hexdigest()[:8]
+
+
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("documents_dim1536", "Documents_dim1536"),
+        ("Documents_dim1536", "Documents_dim1536"),
         ("Already", "Already"),
-        ("hierarchical_docs_my-tool_dim768", "Hierarchical_docs_my_tool_dim768"),
-        ("a.b c", "A_b_c"),
-        ("1docs", "Collection_1docs"),
-        ("_x", "Collection__x"),
-        ("é", "Collection__"),
+        ("A", "A"),
+        ("X" * 255, "X" * 255),
+        ("documents_dim1536", "Documents_dim1536_{}"),
+        ("hierarchical_docs_my-tool_dim768", "Hierarchical_docs_my_tool_dim768_{}"),
+        ("a.b c", "A_b_c_{}"),
+        ("1docs", "Collection_1docs_{}"),
+        ("_x", "Collection__x_{}"),
+        ("é", "Collection___{}"),
     ],
 )
 def test_class_names(name: str, expected: str) -> None:
-    assert weaviate_class_name(name) == expected
+    """A valid name is unchanged; any other change appends a hash of the original."""
+    assert weaviate_class_name(name) == expected.format(_digest(name))
+
+
+def test_names_that_clean_to_the_same_text_get_different_collections() -> None:
+    names = ["docs", "Docs", "a-b", "a_b", "a.b", "A-b", "a b"]
+    classes = {weaviate_class_name(name) for name in names}
+    assert len(classes) == len(names)
+    # Weaviate upper-cases the first letter itself, so only the hash separates
+    # "docs" from "Docs".
+    assert weaviate_class_name("Docs") == "Docs"
+    assert weaviate_class_name("docs") == f"Docs_{_digest('docs')}"
 
 
 def test_a_long_class_name_keeps_a_hash() -> None:
     long = weaviate_class_name("x" * 400)
     assert len(long) == 255
+    assert long.endswith(f"_{_digest('x' * 400)}")
     assert long != weaviate_class_name("x" * 401)
+    assert len(weaviate_class_name("X" * 256)) == 255
 
 
 def test_property_definitions() -> None:
@@ -476,6 +497,7 @@ def test_no_clauses_means_no_filter() -> None:
         (RecordFilter.where(chunk_index="1"), "has another type"),
         (RecordFilter.where(chunk_index=True), "boolean is not a number"),
         (RecordFilter.where(chunk_index=1.5), "has another type"),
+        (RecordFilter.where(mtime="1.5"), "has another type"),
         (RecordFilter.where(pinned=1), "has another type"),
         (RecordFilter.where(note="x"), "not indexed"),
     ],
@@ -667,6 +689,37 @@ async def test_find_pages_until_a_short_page_and_honours_limit(
 
 
 @pytest.mark.asyncio
+async def test_find_switches_to_cursor_enumeration_at_the_query_ceiling(
+    clients: list[FakeClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(module, "QUERY_MAXIMUM_RESULTS", 1024)
+    built = adapter()
+    await built.collection_exists()
+    page = [stored_object(uuid.uuid4(), props()) for _ in range(512)]
+    other = [stored_object(uuid.uuid4(), props(source="b.md")) for _ in range(512)]
+    tail = [stored_object(uuid.uuid4(), props()) for _ in range(3)]
+    clients[0].collection.responses = [
+        Response(page),
+        Response(page),
+        # Past the ceiling: the scan starts over and reads the whole collection.
+        Response(other),
+        Response(page),
+        Response(tail),
+    ]
+    found = await built.find(RecordFilter.where(source_path="a.md"))
+    assert len(found) == 512 + 3
+    calls = clients[0].collection.names("fetch_objects")
+    assert [(c.get("offset"), c.get("after")) for c in calls] == [
+        (0, None),
+        (512, None),
+        (None, None),
+        (None, other[-1].uuid),
+        (None, page[-1].uuid),
+    ]
+    assert all(c.get("filters") is None for c in calls[2:])
+
+
+@pytest.mark.asyncio
 async def test_list_page_cursor_is_the_last_uuid(clients: list[FakeClient]) -> None:
     built = adapter()
     await built.collection_exists()
@@ -843,7 +896,7 @@ async def test_ensure_collection_creates_the_sk_layout(
     clients[0].exists = False
     await built.ensure_collection()
     (call,) = clients[0].created
-    assert call["name"] == "Contract_docs"
+    assert call["name"] == weaviate_class_name("contract_docs")
     properties = cast(list[object], call["properties"])
     names = [vars(p)["name"] for p in properties]
     assert names == [*schema().field_names, ID_PROPERTY]
