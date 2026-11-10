@@ -16,13 +16,14 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from holodeck.lib.file_processor import FileProcessor, SourceFile
+from holodeck.lib.file_processor import PARSER_POLICY, FileProcessor, SourceFile
 from holodeck.lib.retrieval import (
     CollectionSchema,
     Operation,
@@ -34,6 +35,7 @@ from holodeck.lib.retrieval import (
     VectorStoreAdapter,
     clamp_similarity,
 )
+from holodeck.lib.retrieval.fingerprint import PipelineInputs, record_layout_id
 from holodeck.lib.retrieval.schemas import (
     DocumentChunkRecord,
     document_schema,
@@ -43,7 +45,8 @@ from holodeck.lib.retrieval.schemas import (
     structured_schema,
     text_field,
 )
-from holodeck.lib.text_chunker import TextChunker
+from holodeck.lib.structured_loader import STRUCTURED_ROWS_POLICY
+from holodeck.lib.text_chunker import SPLITTER_POLICY, TextChunker
 from holodeck.lib.vector_store import QueryResult, StructuredQueryResult
 from holodeck.tools.base_tool import DatabaseConfigMixin, EmbeddingServiceMixin
 from holodeck.tools.common import (
@@ -53,6 +56,7 @@ from holodeck.tools.common import (
     get_file_type,
     resolve_source_path,
 )
+from holodeck.tools.pipeline_mixin import PipelineGuardMixin
 
 if TYPE_CHECKING:
     from holodeck.lib.structured_loader import StructuredDataLoader
@@ -104,7 +108,7 @@ def _is_qdrant_native_id(record_id: str) -> bool:
     return True
 
 
-class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
+class VectorStoreTool(PipelineGuardMixin, EmbeddingServiceMixin, DatabaseConfigMixin):
     """Vectorstore tool for semantic search over unstructured data.
 
     This tool enables agents to perform semantic search over documents by:
@@ -176,7 +180,11 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         # Initialize components (lazy initialization for some)
         chunk_size = config.chunk_size or TextChunker.DEFAULT_CHUNK_SIZE
-        chunk_overlap = config.chunk_overlap or TextChunker.DEFAULT_CHUNK_OVERLAP
+        if config.chunk_overlap is None:
+            # Unset overlap: the default, capped so it stays below small sizes.
+            chunk_overlap = min(TextChunker.DEFAULT_CHUNK_OVERLAP, chunk_size // 4)
+        else:
+            chunk_overlap = config.chunk_overlap
         self._text_chunker = TextChunker(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
@@ -343,6 +351,8 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             schema=schema,
             connection_kwargs=connection_kwargs,
         )
+        self._collection_schema = schema
+        self._connection = dict(connection_kwargs)
         self._adapter.capabilities.require(
             *(
                 _STRUCTURED_OPERATIONS
@@ -354,6 +364,48 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         logger.debug(
             f"Collection created for provider: {self._provider}, "
             f"dimensions={self._embedding_dimensions}"
+        )
+
+    def pipeline_inputs(self) -> PipelineInputs:
+        """Return the inputs of this tool's ingestion pipeline (FR-023)."""
+        if self._collection_schema is None or self._embedding_dimensions is None:
+            raise RuntimeError("Collection not initialized")
+        provider, model = self.embedding_identity()
+        chunker_settings: tuple[tuple[str, str | int | bool | None], ...]
+        if self._is_structured_mode():
+            vector_field = self.config.vector_field
+            fields = [vector_field] if isinstance(vector_field, str) else vector_field
+            parser_policy = STRUCTURED_ROWS_POLICY
+            chunker_policy = "none"
+            meta_fields = self.config.meta_fields
+            # Every loader setting that changes a record's ID, content or
+            # metadata. record_path, record_prefix and meta_prefix are not
+            # read by the loader, so they change nothing that is stored.
+            chunker_settings = (
+                ("vector_fields", ",".join(fields or [])),
+                ("field_separator", self.config.field_separator),
+                ("id_field", self.config.id_field),
+                ("delimiter", self.config.delimiter),
+                (
+                    "meta_fields",
+                    None if meta_fields is None else ",".join(meta_fields),
+                ),
+            )
+        else:
+            parser_policy = PARSER_POLICY
+            chunker_policy = SPLITTER_POLICY
+            chunker_settings = (
+                ("chunk_size", self._text_chunker.chunk_size),
+                ("chunk_overlap", self._text_chunker.chunk_overlap),
+            )
+        return PipelineInputs(
+            embedding_provider=provider,
+            embedding_model=model,
+            embedding_dimensions=self._embedding_dimensions,
+            parser_policy=parser_policy,
+            chunker_policy=chunker_policy,
+            chunker_settings=chunker_settings,
+            record_layout=record_layout_id(self._collection_schema),
         )
 
     def _require_adapter(self) -> VectorStoreAdapter:
@@ -371,10 +423,10 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         if self._file_processor is None:
             if self._execution_config:
                 self._file_processor = FileProcessor.from_execution_config(
-                    self._execution_config
+                    self._execution_config, read_only=self._read_only
                 )
             else:
-                self._file_processor = FileProcessor()
+                self._file_processor = FileProcessor(read_only=self._read_only)
         return self._file_processor
 
     def _resolve_source_path(self) -> Path:
@@ -579,6 +631,11 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             )
         ]
 
+        guard = self._pipeline_guard()
+        marker = content_hash or repr(source_file.mtime)
+        # The manifest marks the source incomplete before any chunk is
+        # written and complete after the last write (FR-016).
+        await guard.begin_source(source_key, len(records), marker)
         await adapter.ensure_collection()
         # Stale chunks go first. If a delete fails, chunk 0 still carries the
         # old mtime and hash, so the next start ingests the file again.
@@ -592,6 +649,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         if records[1:]:
             await adapter.upsert(records[1:])
         await adapter.upsert(records[:1])
+        await guard.complete_source(source_key, len(records), marker)
         if stale:
             logger.debug(f"Deleted {stale} stale chunks of {source_file.path}")
 
@@ -645,6 +703,8 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             return True  # No collection, must ingest
 
         source_key = self._compute_source_key(file_path)
+        if self._pipeline_guard().is_incomplete(source_key):
+            return True  # An earlier ingestion of this source did not finish
 
         try:
             # Get first chunk to check mtime (all chunks share same mtime)
@@ -742,14 +802,19 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             return 0
 
         source_key = self._compute_source_key(file_path)
+        guard = self._pipeline_guard()
+        await guard.validate_before_write(source_key)
         deleted_count = await self._delete_chunks_from(self._adapter, source_key, 0)
+        await guard.forget_source(source_key)
 
         if deleted_count > 0:
             logger.debug(f"Deleted {deleted_count} records for {file_path}")
 
         return deleted_count
 
-    async def _initialize_structured(self, provider_type: str) -> None:
+    async def _initialize_structured(
+        self, provider_type: str, force_ingest: bool = False
+    ) -> None:
         """Initialize for structured data mode (CSV, JSON, JSONL).
 
         Loads structured data using StructuredDataLoader, generates embeddings
@@ -762,8 +827,6 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             ConfigError: If configured fields don't exist in source data.
             FileNotFoundError: If source file doesn't exist.
         """
-        from holodeck.lib.structured_loader import StructuredDataLoader
-
         source_path = self._resolve_source_path()
 
         # Validate source exists
@@ -777,31 +840,19 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 f"base_dir: {effective_base_dir})"
             )
 
-        # Normalize vector_field to list
-        vector_field = self.config.vector_field
-        if isinstance(vector_field, str):
-            vector_fields = [vector_field]
-        else:
-            vector_fields = list(vector_field) if vector_field else []
-
-        # Create loader
-        loader = StructuredDataLoader(
-            source_path=str(source_path),
-            id_field=self.config.id_field or "",
-            vector_fields=vector_fields,
-            metadata_fields=self.config.meta_fields,
-            field_separator=self.config.field_separator,
-            delimiter=self.config.delimiter,
-        )
+        loader = self._structured_loader(source_path)
 
         # Validate schema before ingestion (raises ConfigError if fields missing)
         loader.validate_schema()
 
         # Set up the adapter with the structured schema (metadata fields)
         self._setup_collection(provider_type)
+        await self._bind_pipeline(self.config.name)
 
         # Ingest records
-        await self._ingest_structured_records(loader, str(source_path))
+        await self._ingest_structured_records(
+            loader, str(source_path), force_ingest=force_ingest
+        )
 
         self.is_initialized = True
         self.last_ingest_time = datetime.now()
@@ -811,16 +862,103 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             f"source={source_path}, {self.document_count} records indexed"
         )
 
+    def _structured_loader(self, source_path: Path) -> StructuredDataLoader:
+        """Return the loader for the structured source at ``source_path``."""
+        from holodeck.lib.structured_loader import StructuredDataLoader
+
+        vector_field = self.config.vector_field
+        if isinstance(vector_field, str):
+            vector_fields = [vector_field]
+        else:
+            vector_fields = list(vector_field) if vector_field else []
+        return StructuredDataLoader(
+            source_path=str(source_path),
+            id_field=self.config.id_field or "",
+            vector_fields=vector_fields,
+            metadata_fields=self.config.meta_fields,
+            field_separator=self.config.field_separator,
+            delimiter=self.config.delimiter,
+        )
+
+    async def preview_chunks(self) -> list[tuple[str, list[str]]]:
+        """Return ``(source key, chunk texts)`` per source, without storing.
+
+        Runs parsing and splitting only: no embedding or vector store call.
+        ``holodeck vectorstore inspect`` uses it.
+        """
+        if self._is_structured_mode():
+            source_path = self._resolve_source_path()
+            loader = self._structured_loader(source_path)
+            rows = [row["content"] for batch in loader.iter_batches() for row in batch]
+            key = self._structured_source_key(source_path)
+            return [(key, rows)] if rows else []
+        preview: list[tuple[str, list[str]]] = []
+        for file_path in self._discover_files():
+            source_file = await self._process_file(file_path)
+            if source_file is not None and source_file.chunks:
+                preview.append(
+                    (self._compute_source_key(file_path), list(source_file.chunks))
+                )
+        return preview
+
+    def _structured_source_key(self, source_path: Path) -> str:
+        """Return the source key of the structured source file.
+
+        A remote source is downloaded to a new temporary path on each start,
+        so its key is relative to the downloaded root (or the file name).
+        """
+        if self._is_remote and self._source_root is not None:
+            if source_path == self._source_root:
+                return source_path.name
+            return str(source_path.relative_to(self._source_root))
+        return str(source_path)
+
+    @property
+    def source_field(self) -> str:
+        """Record field that holds a record's source key."""
+        return "source_file" if self._is_structured_mode() else "source_path"
+
+    def source_inventory(self) -> list[str]:
+        """Return the source keys a full ingestion writes, without parsing."""
+        if self._is_structured_mode():
+            return [self._structured_source_key(self._resolve_source_path())]
+        return [self._compute_source_key(path) for path in self._discover_files()]
+
     async def _ingest_structured_records(
-        self, loader: StructuredDataLoader, source_path: str
+        self,
+        loader: StructuredDataLoader,
+        source_path: str,
+        *,
+        force_ingest: bool = False,
     ) -> None:
         """Ingest structured records with embeddings.
+
+        The source file has a completion marker like a document source: it
+        is marked incomplete before the first row is written and complete,
+        with the row count, after the last. An unchanged source whose marker
+        is complete is not embedded again (unless ``force_ingest``).
 
         Args:
             loader: StructuredDataLoader instance.
             source_path: Path to source file for record metadata.
+            force_ingest: Re-embed even when the marker is complete.
         """
+        from holodeck.lib.retrieval.guard import collection_has_records
+
         adapter = self._require_adapter()
+        guard = self._pipeline_guard()
+        source_key = self._structured_source_key(Path(source_path))
+        marker = await asyncio.to_thread(self._file_sha256, Path(source_path))
+        done = guard.completed(source_key, marker)
+        if (
+            done is not None
+            and not force_ingest
+            and await collection_has_records(adapter)
+        ):
+            self.document_count = done.chunk_count
+            logger.debug(f"Skipping unchanged structured source: {source_path}")
+            return
+        await guard.begin_source(source_key, 0, marker)
         total_records = 0
 
         for batch in loader.iter_batches():
@@ -847,7 +985,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                         record_id,
                         content=record_data["content"],
                         embedding=embedding,
-                        source_file=source_path,
+                        source_file=source_key,
                         metadata=record_data["metadata"],
                         metadata_field_names=self.config.meta_fields,
                     )
@@ -860,7 +998,19 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             total_records += len(records)
             logger.debug(f"Ingested batch of {len(records)} structured records")
 
+        await guard.complete_source(source_key, total_records, marker)
         self.document_count = total_records
+
+    @staticmethod
+    def _file_sha256(file_path: Path) -> str:
+        """Return the SHA-256 hex digest of a file's content."""
+        import hashlib
+
+        digest = hashlib.sha256()
+        with open(file_path, "rb") as handle:
+            for block in iter(lambda: handle.read(65536), b""):
+                digest.update(block)
+        return digest.hexdigest()
 
     async def initialize(
         self,
@@ -900,7 +1050,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         # Branch to structured mode if vector_field is configured
         if self._is_structured_mode():
-            await self._initialize_structured(provider_type)
+            await self._initialize_structured(provider_type, force_ingest)
             return
 
         source_path = self._resolve_source_path()
@@ -919,6 +1069,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         # Set up collection instance with provider type before processing files
         self._setup_collection(provider_type)
+        await self._bind_pipeline(self.config.name)
 
         # Discover files
         files = self._discover_files()

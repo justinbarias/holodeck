@@ -687,6 +687,12 @@
           "default": null,
           "description": "Database connection string (format depends on provider). Examples: postgresql://user:pass@host/db, https://search-service.search.windows.net",
           "title": "Connection String"
+        },
+        "manifest": {
+          "default": true,
+          "description": "Keep the holodeck_manifest collection that records each collection's ingestion pipeline and per-source completion markers. false turns fingerprint protection, interrupted-ingestion markers and 'holodeck vectorstore migrate' off for this store; on Pinecone it avoids the extra manifest index.",
+          "title": "Manifest",
+          "type": "boolean"
         }
       },
       "required": [

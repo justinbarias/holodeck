@@ -200,3 +200,40 @@ def delete_remote_collections(provider: str, names: list[str]) -> None:
             for name in names:
                 with contextlib.suppress(Exception):
                     client.delete_collection(name)
+
+
+def forget_manifest_entries(provider: str, names: list[str]) -> None:
+    """Best-effort removal of the ``holodeck_manifest`` entries of *names*.
+
+    The retrieval tools record each collection in a companion manifest
+    collection (042 T15). Deleting a test collection leaves its entries; this
+    removes them so runs do not accumulate state. The async manifest API runs
+    on its own thread, so this works inside or outside an event loop.
+    """
+    import asyncio
+    import threading
+
+    from holodeck.lib.retrieval.manifest import ManifestStore
+
+    url = {"qdrant": QDRANT_URL, "chromadb": CHROMA_URL}.get(provider)
+    if url is None:
+        return
+
+    async def forget() -> None:
+        store = ManifestStore.open(provider, {"connection_string": url})
+        if store is None:
+            return
+        try:
+            for name in names:
+                await store.delete_collection_entry(name)
+                await store.delete_sources(name)
+        finally:
+            await store.close()
+
+    def run() -> None:
+        with contextlib.suppress(Exception):  # cleanup must not mask a result
+            asyncio.run(forget())
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    worker.join(timeout=60)

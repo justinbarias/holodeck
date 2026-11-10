@@ -12,6 +12,14 @@ created before the move stay readable:
 * every data field is a metadata key of the same name;
 * one namespace per adapter (default: the default namespace).
 
+A collection is the pair (index, namespace). With the default namespace it is
+the whole index: ``delete_collection`` deletes the index. With a named
+namespace it is that namespace only: ``delete_collection`` deletes every
+record of the namespace and keeps the index, which other namespaces share,
+and ``collection_exists`` is True only while the namespace holds records
+(Pinecone has no empty namespaces), so after ``ensure_collection`` an empty
+named namespace still reads as absent. ``count`` always reads the namespace.
+
 Client 10 creates indexes from a field schema. The adapter declares the single
 reserved dense field ``_values``, which Pinecone stores exactly like an index
 made with the pre-10 ``dimension``/``metric`` arguments, so the vector
@@ -449,8 +457,14 @@ class _DataPlane(Protocol):
         """Read one page of the vectors that match a filter."""
         ...
 
-    async def delete(self, *, ids: Sequence[str], namespace: str = "") -> None:
-        """Delete vectors by ID."""
+    async def delete(
+        self,
+        *,
+        ids: Sequence[str] | None = None,
+        delete_all: bool = False,
+        namespace: str = "",
+    ) -> None:
+        """Delete vectors by ID, or every vector of a namespace."""
         ...
 
     async def list_paginated(
@@ -668,8 +682,26 @@ class PineconeAdapter(BaseVectorStoreAdapter):
             await index.close()
 
     async def collection_exists(self) -> bool:
+        """True when the index exists; with a named namespace, when the
+        namespace also holds records (Pinecone has no empty namespaces)."""
         with self._translated():
-            return await self._describe() is not None
+            if not self._namespace:
+                return await self._describe() is not None
+            return await self._namespace_count() > 0
+
+    async def _namespace_count(self) -> int:
+        """Return the records of the adapter's namespace; 0 without an index."""
+        index = await self._open_index()
+        if index is None:
+            return 0
+        stats = await index.describe_index_stats()
+        for key in (
+            _DEFAULT_NAMESPACE_KEYS if not self._namespace else (self._namespace,)
+        ):
+            summary = stats.namespaces.get(key)
+            if summary is not None:
+                return int(summary.vector_count)
+        return 0
 
     async def ensure_collection(self) -> None:
         with self._translated():
@@ -699,10 +731,41 @@ class PineconeAdapter(BaseVectorStoreAdapter):
             )
 
     async def delete_collection(self) -> None:
+        """Delete the collection.
+
+        With the default namespace the collection is the index, which is
+        deleted. With a named namespace only that namespace's records are
+        deleted: the index can hold other namespaces.
+        """
         with self._translated():
+            if self._namespace:
+                await self._delete_namespace()
+                return
             await self._release_index()
             if await self._describe() is not None:
                 await self._drop_index()
+
+    async def _delete_namespace(self) -> None:
+        if await self._namespace_count() == 0:
+            return
+        index = await self._open_index()
+        if index is None:
+            return
+        await index.delete(delete_all=True, namespace=self._namespace)
+        deadline = time.monotonic() + VISIBILITY_TIMEOUT
+        delay = _POLL_START
+        while await self._namespace_count() > 0:
+            if time.monotonic() >= deadline:
+                logger.warning(
+                    "Pinecone namespace %s of index %s still reports records "
+                    "%.0f s after it was deleted; counts may lag behind it.",
+                    self._namespace,
+                    self._index_name,
+                    VISIBILITY_TIMEOUT,
+                )
+                return
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, _POLL_MAX)
 
     async def close(self) -> None:
         async with self._lock:
@@ -843,17 +906,7 @@ class PineconeAdapter(BaseVectorStoreAdapter):
 
     async def count(self) -> int:
         with self._translated():
-            index = await self._open_index()
-            if index is None:
-                return 0
-            stats = await index.describe_index_stats()
-        for key in (
-            _DEFAULT_NAMESPACE_KEYS if not self._namespace else (self._namespace,)
-        ):
-            summary = stats.namespaces.get(key)
-            if summary is not None:
-                return int(summary.vector_count)
-        return 0
+            return await self._namespace_count()
 
     # -- filtered reads and enumeration -------------------------------------------
 

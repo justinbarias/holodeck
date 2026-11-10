@@ -94,6 +94,7 @@ class MockDatabaseConfig:
             SecretStr(connection_string) if connection_string is not None else None
         )
         self.model_extra = extra or {}
+        self.manifest = True
 
 
 class TestDatabaseConfigMixin:

@@ -68,7 +68,17 @@ _load_dotenv_files()
 # it): `holodeck init` must not import the evaluation, SDK and server stacks.
 _COMMANDS = {
     name: f"holodeck.cli.commands.{name}:{name}"
-    for name in ("chat", "config", "deploy", "init", "mcp", "serve", "test", "worker")
+    for name in (
+        "chat",
+        "config",
+        "deploy",
+        "init",
+        "mcp",
+        "serve",
+        "test",
+        "vectorstore",
+        "worker",
+    )
 }
 
 
@@ -85,6 +95,7 @@ def main(ctx: click.Context) -> None:
         serve   Start an HTTP server exposing an agent
         deploy  Build and deploy agent containers
         worker  Run a Temporal worker serving agents as activities
+        vectorstore  Inspect and migrate retrieval collections
 
     Initialize and manage AI agent projects with YAML configuration.
     """

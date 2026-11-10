@@ -276,6 +276,13 @@ Pinecone index names are lowercase letters, digits and hyphens, at most 45 chara
 
 Record IDs must be ASCII (at most 512 characters). A source file with a non-ASCII path is rejected at ingestion with a clear error. Pinecone reads are eventually consistent, so a search right after ingestion can briefly miss new chunks.
 
+A HoloDeck collection on Pinecone is the pair (index, namespace):
+
+- With the default namespace the collection is the whole index. Deleting the collection (`holodeck vectorstore prune`) deletes the index.
+- With a named `namespace` the collection is that namespace only. Deleting it deletes every record in the namespace and keeps the index, which other namespaces can share. Record counts and "exists" checks read the namespace. Pinecone has no empty namespaces, so a named namespace with no records reads as absent.
+
+The pipeline manifest (see [Pipeline fingerprint and migration](#pipeline-fingerprint-and-migration)) is one more small serverless index, `holodeck-manifest-<hash>`, per project and API key. Set `manifest: false` in the database settings if you cannot afford the extra index; fingerprint protection and `holodeck vectorstore migrate` are then off.
+
 > **Note**: Pinecone Local reached end of life on 2026-10-07. The last emulator image (`ghcr.io/pinecone-io/pinecone-local:latest`, 1.0.0-rc0) speaks the pre-10 control plane, so the 10.x client cannot create indexes on it. HoloDeck's own tests use it with a small test-only control plane. For local development use the cloud service, or the in-memory, Qdrant or ChromaDB providers.
 
 ### Weaviate
@@ -520,6 +527,165 @@ docker compose up -d           # 1. Start Qdrant
 curl http://localhost:6333/healthz   # 2. Verify it's up
 holodeck test                  # 3. Run the agent (uses agent.yaml by default)
 ```
+
+---
+
+## Pipeline fingerprint and migration
+
+Records in a collection depend on more than its schema. HoloDeck records the
+**pipeline** that wrote a collection and refuses to mix records from two
+different pipelines in one collection.
+
+### What is fingerprinted
+
+The fingerprint is a SHA-256 hash of these inputs:
+
+| Input | `vectorstore` tool | `hierarchical_document` tool |
+| --- | --- | --- |
+| Embedding | provider, model, dimensions | provider, model, dimensions |
+| Parser | `markitdown/1` (`structured-rows/1` for CSV/JSON rows) | `markitdown/1` |
+| Chunker | `plain-tiktoken-cl100k/1`, `chunk_size`, `chunk_overlap` (rows: vector fields, field separator) | `structured-chunker/1`, `max_chunk_tokens`, `document_domain`, `max_subsection_depth` |
+| Record layout | field names, types and index flags, key and vector field, dimensions, distance | same |
+| Retrieval | none | contextual embeddings on or off, `searchable-text/1` recipe; when on, the context generator (`litellm-context/1` or `claude-sdk-context/1` recipe, its model, `context_max_tokens`, document truncation), `context_model` provider and name |
+| Structured rows | vector fields, `field_separator`, `id_field`, `delimiter`, `meta_fields` | - |
+
+Search settings such as `top_k`, `min_similarity_score` and the search mode are
+not part of the fingerprint: they do not change stored records.
+
+### The manifest collection
+
+HoloDeck does not add fields to your collections. It keeps its state in one
+extra collection per store connection, `holodeck_manifest`, which it creates
+through the same provider. The manifest holds:
+
+- one entry per collection: the fingerprint, the physical collection that
+  currently serves the tool, and the collection kept for rollback;
+- one entry per ingested source file: the expected chunk count and a
+  completion flag. A source is marked incomplete before its chunks are written
+  and complete after the last write. A source whose ingestion stopped midway
+  (a crash, a failed write) is ingested again on the next start.
+
+A collection's manifest entry is keyed by its **logical name**: the name the
+provider is asked for, which is `index_name` when set, else `collection_name`,
+else the default (`documents_dim<N>`, the tool name for structured data,
+`hierarchical_docs_<tool>_dim<N>`). Two tools with the same logical name share
+one collection and one entry; two tools with different names have their own.
+
+A provider that cannot hold the manifest logs one warning and works as
+before, without fingerprint protection. Settings that address one collection
+(`collection_name`, `index_name`, Pinecone `index_host`) do not apply to the
+manifest: it is stored in its own `holodeck_manifest` collection or index.
+
+If the manifest collection does not exist and cannot be created (a quota, a
+missing permission, a provider error), HoloDeck logs one warning that names
+the cause and says fingerprint protection is off, and the tool works as
+before. If the manifest exists but cannot be read or written, an established
+pointer or fingerprint may be in it: searches still work and every write is
+refused until the store answers again.
+
+Set `manifest: false` in a tool's `database` settings to turn the manifest off
+on purpose (no warning). Fingerprint protection, completion markers and the
+`holodeck vectorstore` migration commands are then off for that store.
+
+```yaml
+database:
+  provider: pinecone
+  api_key: ${PINECONE_API_KEY}
+  manifest: false
+```
+
+#### Concurrent starts
+
+Two processes that start at the same time can both find no manifest entry.
+Vector stores have no portable compare-and-set, so HoloDeck narrows the race
+this way:
+
+- every write of a collection entry carries a new random `revision`;
+- after writing the entry, a tool reads it back and writes data only if the
+  stored revision is its own. Otherwise the other process's entry decides:
+  the same fingerprint allows writes, a different one refuses them;
+- immediately before the first write of each source file, the tool reads the
+  entry again (one read per file) and refuses to write if the fingerprint or
+  the physical collection changed. If only the revision changed, the tool
+  continues with the new entry once.
+
+This narrows the race but cannot remove it on a store without transactions:
+two writers can still interleave between the last check and a write. Do not
+start agents with different pipelines against one collection at the same
+time. The manifest update on PostgreSQL uses the same read-back rule; it does
+not take a transaction or advisory lock.
+
+### What happens at start-up
+
+| Situation | Result |
+| --- | --- |
+| New or empty collection | The current fingerprint is recorded. |
+| Structured data (CSV, JSON, JSONL) | The source file gets a completion marker with its row count. An unchanged file with a complete marker is not embedded again; a changed file is embedded again. |
+| Collection created before this release (no manifest entry) | It stays readable. Unchanged files are not embedded again. A changed file is replaced as a whole. HoloDeck records the current pipeline marked `legacy` and logs that `holodeck vectorstore migrate` rebuilds the collection. |
+| Same fingerprint | Normal incremental ingestion. |
+| Different fingerprint | Searches read the existing records. Any write (a changed file, `--force-ingest`) fails with an error that lists the inputs that differ and names the commands below. |
+
+HoloDeck never deletes or recreates a collection on its own.
+
+### Commands
+
+```bash
+# Read-only dry run: collection, record count, compatibility, the inputs that
+# differ, and the files, chunks and estimated tokens a migration embeds.
+holodeck vectorstore inspect agent.yaml [--tool NAME] [--json]
+
+# Build a new collection <name>__<fingerprint prefix> with the current
+# pipeline, verify it, then switch to it. --tool selects the collection; every
+# tool of the agent that uses it is rebuilt. The old collection is kept.
+holodeck vectorstore migrate agent.yaml --tool NAME [--yes] [--restart] [--drop-unlisted-sources]
+
+# Switch back to the kept collection.
+holodeck vectorstore rollback agent.yaml --tool NAME [--yes]
+
+# Delete the kept collection. The only command that deletes a collection.
+holodeck vectorstore prune agent.yaml --tool NAME --yes
+```
+
+- `inspect` is strictly read-only: it downloads nothing, creates no file,
+  directory, collection or manifest entry, and calls no model. It counts
+  chunks by parsing and splitting local sources. A remote source (`s3://`,
+  `https://`, ...) is listed as "remote source: not estimated". The token
+  figure is an estimate: tiktoken `cl100k_base` tokens of the chunk text,
+  without the text that contextual embeddings add.
+- `migrate` works on a collection. Several tools can share one (plain
+  `vectorstore` tools share `documents_dim<N>` unless they set
+  `collection_name`), so every tool of the agent bound to the selected
+  tool's collection is rebuilt together, and the plan lists them. They must
+  have the same pipeline; if not, `migrate` refuses and shows the inputs that
+  differ.
+- `migrate` lists every source file before it embeds anything. A source that
+  fails to parse, produces no chunks or does not finish fails the migration;
+  nothing is skipped silently.
+- Before it switches, `migrate` checks that the old collection holds no
+  source that the migration did not rebuild (for example, files written by a
+  tool in another agent file). If it does, `migrate` lists them and does not
+  switch. Pass `--drop-unlisted-sources` to switch without them.
+- `migrate` calls the embedding model. If it stops (for example, the
+  embedding service fails), run it again: files that were completed are not
+  embedded again. The tools keep using the old collection until every source
+  of the new one is complete with its expected chunk count, the total record
+  count matches, and it answers a vector search. A migration for a different
+  pipeline that is still in progress blocks a new one; add `--restart` to
+  abandon it. Run `prune` before a second migration if a collection is still
+  kept from the first.
+- `migrate`, `rollback` and `prune` take a lock on the collection in the
+  manifest while they run (a `lock` record with an owner, the command, and
+  the time it was taken). A second command on the same collection reports
+  who holds the lock and exits with an error. A lock that is not refreshed
+  for two hours is stale and the next command takes it over; a running
+  migration refreshes it every ten minutes.
+- `rollback` checks that the kept collection still exists, under the lock,
+  immediately before it switches.
+- `prune` first removes the kept collection from the manifest (it is marked
+  reserved for deletion), then deletes it. If the delete fails, run `prune`
+  again to finish; `rollback` never points at a collection being deleted.
+- `migrate`, `rollback` and `prune` print what they will do and ask for
+  confirmation unless you pass `--yes`.
 
 ---
 

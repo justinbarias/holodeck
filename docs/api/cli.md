@@ -283,6 +283,22 @@ Start an HTTP server exposing an agent via AG-UI or REST protocol.
       docstring_style: google
       show_source: true
 
+### Vectorstore Command
+
+Inspect, migrate, roll back and prune the collections of `vectorstore` and
+`hierarchical_document` tools. See
+[Pipeline fingerprint and migration](../guides/vector-stores.md#pipeline-fingerprint-and-migration).
+
+::: holodeck.cli.commands.vectorstore.vectorstore
+    options:
+      docstring_style: google
+      show_source: true
+
+::: holodeck.lib.vectorstore_migration
+    options:
+      docstring_style: google
+      show_source: false
+
 ---
 
 ## CLI Utilities
@@ -504,6 +520,12 @@ holodeck mcp remove filesystem
 # Configuration management
 holodeck config init -g
 holodeck config init -p
+
+# Vector store collections
+holodeck vectorstore inspect agent.yaml --json
+holodeck vectorstore migrate agent.yaml --tool knowledge_base --yes
+holodeck vectorstore rollback agent.yaml --tool knowledge_base --yes
+holodeck vectorstore prune agent.yaml --tool knowledge_base --yes
 ```
 
 ## Related Documentation

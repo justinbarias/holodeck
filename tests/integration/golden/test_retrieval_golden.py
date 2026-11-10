@@ -54,6 +54,7 @@ from ._golden import (
     assert_golden,
     chroma_reachable,
     delete_remote_collections,
+    forget_manifest_entries,
     qdrant_reachable,
     sha12,
 )
@@ -243,6 +244,7 @@ class Cleanup:
     def run(self) -> None:
         for provider, name in self.collections:
             delete_remote_collections(provider, [name])
+            forget_manifest_entries(provider, [name])
         for directory in self.dirs:
             shutil.rmtree(directory, ignore_errors=True)
         for handle in self._locks:

@@ -10,7 +10,7 @@ This inventory lists published JSON contracts and links storage code.
 | [agent.schema.json](../../schemas/agent.schema.json) | Agent | 16 | 63 |
 | [optimize-progress.schema.json](../../schemas/optimize-progress.schema.json) | optimize-progress.schema | 0 | 14 |
 
-<!-- agent.schema.json sha256: 53248496bea5a66ead75c51a0a5807130ebcedb4ee21391b7c8e24be87455ae0 -->
+<!-- agent.schema.json sha256: 204b7566df3e5ce9691fee3a5f1b4d125f0847db9b1d3910dcd6a138399e34d1 -->
 <!-- optimize-progress.schema.json sha256: ea6ea54961bac9b1c8e6c141ae74cc11ce9c394502bda0b244a90b486d92f18f -->
 
 ## Storage implementations

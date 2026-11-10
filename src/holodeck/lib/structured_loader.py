@@ -26,6 +26,9 @@ from holodeck.lib.errors import ConfigError
 
 logger = logging.getLogger(__name__)
 
+STRUCTURED_ROWS_POLICY = "structured-rows/1"
+"""Pipeline policy ID of row-to-text conversion. Bump it when row text changes."""
+
 
 class FileType(Enum):
     """Supported structured data file types."""

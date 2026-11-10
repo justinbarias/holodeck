@@ -185,9 +185,22 @@ class FakeIndex:
             pagination=Pagination(next=str(start + size)) if more else None,
         )
 
-    async def delete(self, *, ids: Sequence[str], namespace: str = "") -> None:
-        self._log("delete", ids=list(ids), namespace=namespace)
-        for key in ids:
+    async def delete(
+        self,
+        *,
+        ids: Sequence[str] | None = None,
+        delete_all: bool = False,
+        namespace: str = "",
+    ) -> None:
+        self._log(
+            "delete", ids=list(ids or ()), delete_all=delete_all, namespace=namespace
+        )
+        if delete_all:
+            self.stored.clear()
+            if self.namespaces is not None:
+                self.namespaces.pop(namespace, None)
+            return
+        for key in ids or ():
             self.stored.pop(key, None)
 
     async def list_paginated(
@@ -661,6 +674,42 @@ async def test_collection_exists_and_delete() -> None:
     assert test.indexes.deleted == ["contract-docs"]
     assert test.index.closed == 1
     assert await test.adapter.collection_exists() is False
+
+
+@pytest.mark.asyncio
+async def test_a_named_namespace_is_the_collection() -> None:
+    """With a named namespace the collection is (index, namespace) (042 review).
+
+    Deleting it deletes the namespace's records only; the index, which other
+    namespaces share, stays. Existence and count read the namespace.
+    """
+    test = harness(exists=True, namespace="team-a", namespaces={"team-b": 4})
+
+    assert await test.adapter.collection_exists() is False
+    assert await test.adapter.count() == 0
+    await test.adapter.delete_collection()
+    assert test.index.names("delete") == []  # nothing in the namespace
+
+    test.index.namespaces = {"team-a": 2, "team-b": 4}
+    assert await test.adapter.collection_exists() is True
+    assert await test.adapter.count() == 2
+    await test.adapter.delete_collection()
+
+    assert test.indexes.deleted == []
+    assert test.indexes.exists is True
+    (call,) = test.index.names("delete")
+    assert call["delete_all"] is True and call["namespace"] == "team-a"
+    assert test.index.namespaces == {"team-b": 4}
+    assert await test.adapter.collection_exists() is False
+
+
+@pytest.mark.asyncio
+async def test_the_default_namespace_collection_is_the_index() -> None:
+    test = harness(exists=True, namespaces={"__default__": 0})
+    assert await test.adapter.collection_exists() is True
+    await test.adapter.delete_collection()
+    assert test.indexes.deleted == ["contract-docs"]
+    assert test.index.names("delete") == []
 
 
 @pytest.mark.asyncio

@@ -386,6 +386,10 @@ class _Section:
     subsection_ids: list[str] = field(default_factory=list)
 
 
+STRUCTURED_CHUNKER_POLICY = "structured-chunker/1"
+"""Pipeline policy ID of ``StructuredChunker``. Bump it when chunks change."""
+
+
 class StructuredChunker:
     """Structure-aware markdown chunker with hierarchy preservation.
 

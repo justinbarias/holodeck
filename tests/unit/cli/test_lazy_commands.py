@@ -20,7 +20,17 @@ from holodeck.cli.lazy_group import LazyGroup
 from holodeck.cli.main import main
 
 HEAVY = ("pandas", "deepeval", "semantic_kernel", "claude_agent_sdk", "agents")
-COMMANDS = ["chat", "config", "deploy", "init", "mcp", "serve", "test", "worker"]
+COMMANDS = [
+    "chat",
+    "config",
+    "deploy",
+    "init",
+    "mcp",
+    "serve",
+    "test",
+    "vectorstore",
+    "worker",
+]
 
 
 def _heavy_modules_after(command: str | None) -> list[str]:
@@ -44,7 +54,9 @@ def _heavy_modules_after(command: str | None) -> list[str]:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("command", [None, "init", "config", "serve", "worker"])
+@pytest.mark.parametrize(
+    "command", [None, "init", "config", "serve", "vectorstore", "worker"]
+)
 def test_light_commands_do_not_import_heavy_stacks(command: str | None) -> None:
     assert _heavy_modules_after(command) == []
 

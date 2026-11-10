@@ -23,149 +23,149 @@
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "b86ce9075d6b",
-          "chunk_head": "3. Interview facility personnel regarding compliance matters",
-          "score": 0.23
+          "chunk_sha": "99c4770fda3e",
+          "chunk_head": "ulations 2. Calibration records for measurement equipment 3.",
+          "score": 0.31
         },
         {
           "rank": 2,
           "source": "legislation.md",
-          "chunk_sha": "97cbff58c3dc",
-          "chunk_head": "\"Affiliate\" means any entity that directly or indirectly con",
-          "score": 0.21
+          "chunk_sha": "767bd8153b4d",
+          "chunk_head": "(b) Notice. Except in cases of emergency or suspected fraud,",
+          "score": 0.24
         },
         {
           "rank": 3,
-          "source": "platform_guide.md",
-          "chunk_sha": "0c73e6e02ac1",
-          "chunk_head": "- 16 GB RAM per node (minimum 3 nodes) - 100 GB SSD storage ",
-          "score": 0.13
+          "source": "legislation.md",
+          "chunk_sha": "22232fe6043f",
+          "chunk_head": "# Sample Environmental Reporting Act  ## Article I - Definit",
+          "score": 0.2
         },
         {
           "rank": 4,
-          "source": "field_notes.txt",
-          "chunk_sha": "05f836bf5427",
-          "chunk_head": "Field notes from the Tern Island survey. The ringing crew ar",
-          "score": 0.13
+          "source": "platform_guide.md",
+          "chunk_sha": "886182aedfe0",
+          "chunk_head": "-region deployments  ### Frontend  The frontend tier deliver",
+          "score": 0.14
         }
       ],
       "heading": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "639635bbe8df",
-          "chunk_head": "(c) Electronic Submission. All reports shall be submitted el",
-          "score": 0.22
+          "chunk_sha": "ad3e0fd567ac",
+          "chunk_head": "requirements.  ### Section 202 - Reporting Timelines  (a) St",
+          "score": 0.23
         },
         {
           "rank": 2,
-          "source": "platform_guide.md",
-          "chunk_sha": "27c486ddc876",
-          "chunk_head": "1. Resource limits - increase if OOMKilled 2. Image pull err",
-          "score": 0.21
+          "source": "legislation.md",
+          "chunk_sha": "7ba455d7542f",
+          "chunk_head": "category as specified in the guidelines issued pursuant to S",
+          "score": 0.22
         },
         {
           "rank": 3,
           "source": "platform_guide.md",
-          "chunk_sha": "0c73e6e02ac1",
-          "chunk_head": "- 16 GB RAM per node (minimum 3 nodes) - 100 GB SSD storage ",
-          "score": 0.13
+          "chunk_sha": "79e39f83f03a",
+          "chunk_head": "management via HashiCorp Vault  ## Troubleshooting  Common i",
+          "score": 0.21
         },
         {
           "rank": 4,
-          "source": "field_notes.txt",
-          "chunk_sha": "05f836bf5427",
-          "chunk_head": "Field notes from the Tern Island survey. The ringing crew ar",
-          "score": 0.13
+          "source": "platform_guide.md",
+          "chunk_sha": "886182aedfe0",
+          "chunk_head": "-region deployments  ### Frontend  The frontend tier deliver",
+          "score": 0.14
         }
       ],
       "section_id": [
         {
           "rank": 1,
-          "source": "platform_guide.md",
-          "chunk_sha": "0c73e6e02ac1",
-          "chunk_head": "- 16 GB RAM per node (minimum 3 nodes) - 100 GB SSD storage ",
+          "source": "legislation.md",
+          "chunk_sha": "750e4ee57c60",
+          "chunk_head": "2. $25,000 per day for submission of incomplete or inaccurat",
           "score": 0.33
         },
         {
           "rank": 2,
-          "source": "legislation.md",
-          "chunk_sha": "5b7422ab83a3",
-          "chunk_head": "(a) Civil Penalties. Any person who violates any provision o",
-          "score": 0.29
+          "source": "platform_guide.md",
+          "chunk_sha": "848fb1613516",
+          "chunk_head": "encryption at rest and in transit 4. **Observability**: Comp",
+          "score": 0.31
         },
         {
           "rank": 3,
-          "source": "platform_guide.md",
-          "chunk_sha": "b4d2fc59de44",
-          "chunk_head": "The architecture follows these core design principles: 1. **",
-          "score": 0.23
+          "source": "legislation.md",
+          "chunk_sha": "cf37afc9340f",
+          "chunk_head": "house gases annually; (b) is located within the territorial ",
+          "score": 0.24
         },
         {
           "rank": 4,
           "source": "platform_guide.md",
-          "chunk_sha": "0357c074babe",
-          "chunk_head": "- Pub/sub messaging for real-time updates ##### Document Sto",
-          "score": 0.22
+          "chunk_sha": "bdb79915da9a",
+          "chunk_head": "oling via PgBouncer - Automated backups with point-in-time r",
+          "score": 0.23
         }
       ],
       "contextual_text": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "526dca88b796",
-          "chunk_head": "(b) Report Contents. Each report required under subsection (",
-          "score": 0.32
+          "chunk_sha": "7ba455d7542f",
+          "chunk_head": "category as specified in the guidelines issued pursuant to S",
+          "score": 0.31
         },
         {
           "rank": 2,
-          "source": "platform_guide.md",
-          "chunk_sha": "1e779dc4f579",
-          "chunk_head": "- Authentication token validation - Request/response transfo",
-          "score": 0.2
+          "source": "legislation.md",
+          "chunk_sha": "e662445e480b",
+          "chunk_head": ". Each owner or operator of a Covered Facility shall submit ",
+          "score": 0.26
         },
         {
           "rank": 3,
           "source": "platform_guide.md",
-          "chunk_sha": "b4d2fc59de44",
-          "chunk_head": "The architecture follows these core design principles: 1. **",
-          "score": 0.14
+          "chunk_sha": "ef25b7c68746",
+          "chunk_head": "on URL patterns and headers - Rate limiting and throttling -",
+          "score": 0.2
         },
         {
           "rank": 4,
-          "source": "field_notes.txt",
-          "chunk_sha": "c2919daa35db",
-          "chunk_head": "Equipment checklist: spotting scope, leg rings (size C), cal",
-          "score": 0.14
+          "source": "platform_guide.md",
+          "chunk_sha": "a52e4a555f62",
+          "chunk_head": "is built on Kubernetes and integrates with major cloud provi",
+          "score": 0.19
         }
       ],
       "plain_text": [
         {
           "rank": 1,
           "source": "field_notes.txt",
-          "chunk_sha": "05f836bf5427",
-          "chunk_head": "Field notes from the Tern Island survey. The ringing crew ar",
+          "chunk_sha": "12c72d9e23c9",
+          "chunk_head": "Field notes from the Tern Island survey.  The ringing crew a",
           "score": 0.35
         },
         {
           "rank": 2,
           "source": "platform_guide.md",
-          "chunk_sha": "c6819bc84ef7",
-          "chunk_head": "kubectl get pods -n cloudscale ``` ### Configuration Options",
+          "chunk_sha": "9ac8e54b9589",
+          "chunk_head": "deployment:    ```bash    kubectl get pods -n cloudscale    ",
           "score": 0.31
         },
         {
           "rank": 3,
           "source": "legislation.md",
-          "chunk_sha": "5b7422ab83a3",
-          "chunk_head": "(a) Civil Penalties. Any person who violates any provision o",
+          "chunk_sha": "0fe41d5d0c20",
+          "chunk_head": "ity. Information obtained during inspections shall be treate",
           "score": 0.27
         },
         {
           "rank": 4,
-          "source": "platform_guide.md",
-          "chunk_sha": "0c73e6e02ac1",
-          "chunk_head": "- 16 GB RAM per node (minimum 3 nodes) - 100 GB SSD storage ",
+          "source": "legislation.md",
+          "chunk_sha": "750e4ee57c60",
+          "chunk_head": "2. $25,000 per day for submission of incomplete or inaccurat",
           "score": 0.24
         }
       ],
@@ -173,29 +173,29 @@
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "bab1c858f915",
-          "chunk_head": "(c) is not specifically exempted under Section 301(b). \"Forc",
-          "score": 0.51
+          "chunk_sha": "cf37afc9340f",
+          "chunk_head": "house gases annually; (b) is located within the territorial ",
+          "score": 0.49
         },
         {
           "rank": 2,
           "source": "legislation.md",
-          "chunk_sha": "97cbff58c3dc",
-          "chunk_head": "\"Affiliate\" means any entity that directly or indirectly con",
-          "score": 0.42
+          "chunk_sha": "22232fe6043f",
+          "chunk_head": "# Sample Environmental Reporting Act  ## Article I - Definit",
+          "score": 0.41
         },
         {
           "rank": 3,
           "source": "legislation.md",
-          "chunk_sha": "67498d7b43de",
-          "chunk_head": "1. Original measurement data and calculations 2. Calibration",
-          "score": 0.31
+          "chunk_sha": "84498ff493ca",
+          "chunk_head": "control with another entity. For purposes of this definition",
+          "score": 0.33
         },
         {
           "rank": 4,
           "source": "legislation.md",
-          "chunk_sha": "e762a3f707c2",
-          "chunk_head": "# Sample Environmental Reporting Act ## Article I - Definiti",
+          "chunk_sha": "99c4770fda3e",
+          "chunk_head": "ulations 2. Calibration records for measurement equipment 3.",
           "score": 0.27
         }
       ],
@@ -203,119 +203,119 @@
         {
           "rank": 1,
           "source": "platform_guide.md",
-          "chunk_sha": "5f42fceafebd",
-          "chunk_head": "- Enable database replication with automatic failover - Use ",
-          "score": 0.49
+          "chunk_sha": "a28dd2ee628f",
+          "chunk_head": "- SAML 2.0 for enterprise SSO - API keys for service-to-serv",
+          "score": 0.43
         },
         {
           "rank": 2,
           "source": "platform_guide.md",
-          "chunk_sha": "61c62cf74421",
-          "chunk_head": "##### Primary Database PostgreSQL serves as the primary rela",
-          "score": 0.31
+          "chunk_sha": "bdb79915da9a",
+          "chunk_head": "oling via PgBouncer - Automated backups with point-in-time r",
+          "score": 0.3
         },
         {
           "rank": 3,
-          "source": "legislation.md",
-          "chunk_sha": "e762a3f707c2",
-          "chunk_head": "# Sample Environmental Reporting Act ## Article I - Definiti",
-          "score": 0.26
+          "source": "platform_guide.md",
+          "chunk_sha": "b22041f83342",
+          "chunk_head": "2. Review database query performance 3. Analyze network late",
+          "score": 0.23
         },
         {
           "rank": 4,
           "source": "platform_guide.md",
-          "chunk_sha": "d35510cee1f7",
-          "chunk_head": "1. Verify network policies allow required traffic 2. Check s",
-          "score": 0.2
+          "chunk_sha": "c42e3650dc4c",
+          "chunk_head": "- Message queue consumers should match producer throughput -",
+          "score": 0.21
         }
       ],
       "section_id_phrase": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "294defdfc557",
-          "chunk_head": "3. Facilities that qualify under the small emitter threshold",
-          "score": 0.41
+          "chunk_sha": "7ba455d7542f",
+          "chunk_head": "category as specified in the guidelines issued pursuant to S",
+          "score": 0.45
         },
         {
           "rank": 2,
           "source": "legislation.md",
-          "chunk_sha": "639635bbe8df",
-          "chunk_head": "(c) Electronic Submission. All reports shall be submitted el",
-          "score": 0.31
+          "chunk_sha": "ce9746bef11e",
+          "chunk_head": "the Covered Facility being verified 3. Complete training pro",
+          "score": 0.37
         },
         {
           "rank": 3,
           "source": "legislation.md",
-          "chunk_sha": "67498d7b43de",
-          "chunk_head": "1. Original measurement data and calculations 2. Calibration",
-          "score": 0.31
+          "chunk_sha": "50e49eb9faed",
+          "chunk_head": "1. All applicable reporting requirements set forth in Articl",
+          "score": 0.35
         },
         {
           "rank": 4,
           "source": "legislation.md",
-          "chunk_sha": "f1141681a9aa",
-          "chunk_head": "(a) Third-Party Verification. Reports submitted under Sectio",
-          "score": 0.31
+          "chunk_sha": "4e269a476df3",
+          "chunk_head": "year for which emissions data is reported, as specified in S",
+          "score": 0.34
         }
       ],
       "contextual_phrase": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "6c8e5803a1bc",
-          "chunk_head": "- Market conditions affecting profitability - Acts of neglig",
-          "score": 0.72
+          "chunk_sha": "4e269a476df3",
+          "chunk_head": "year for which emissions data is reported, as specified in S",
+          "score": 0.73
         },
         {
           "rank": 2,
           "source": "legislation.md",
-          "chunk_sha": "00b946f2550d",
-          "chunk_head": "The Administrator shall issue guidelines for reporting under",
-          "score": 0.28
+          "chunk_sha": "e662445e480b",
+          "chunk_head": ". Each owner or operator of a Covered Facility shall submit ",
+          "score": 0.6
         },
         {
           "rank": 3,
           "source": "legislation.md",
-          "chunk_sha": "639635bbe8df",
-          "chunk_head": "(c) Electronic Submission. All reports shall be submitted el",
-          "score": 0.26
+          "chunk_sha": "76ef2e6a050b",
+          "chunk_head": "ricanes - Acts of war, terrorism, or civil unrest - Governme",
+          "score": 0.45
         },
         {
           "rank": 4,
           "source": "legislation.md",
-          "chunk_sha": "526dca88b796",
-          "chunk_head": "(b) Report Contents. Each report required under subsection (",
-          "score": 0.25
+          "chunk_sha": "945e898f44b3",
+          "chunk_head": "Reporting Guidelines  The Administrator shall issue guidelin",
+          "score": 0.3
         }
       ],
       "none": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "f1141681a9aa",
-          "chunk_head": "(a) Third-Party Verification. Reports submitted under Sectio",
-          "score": 0.38
+          "chunk_sha": "46a168dbab68",
+          "chunk_head": "204 - Verification Requirements  (a) Third-Party Verificatio",
+          "score": 0.36
         },
         {
           "rank": 2,
-          "source": "platform_guide.md",
-          "chunk_sha": "c6819bc84ef7",
-          "chunk_head": "kubectl get pods -n cloudscale ``` ### Configuration Options",
-          "score": 0.2
+          "source": "legislation.md",
+          "chunk_sha": "945e898f44b3",
+          "chunk_head": "Reporting Guidelines  The Administrator shall issue guidelin",
+          "score": 0.28
         },
         {
           "rank": 3,
           "source": "platform_guide.md",
-          "chunk_sha": "4b3c5485e1fd",
-          "chunk_head": "### Frontend The frontend tier delivers the user interface t",
-          "score": 0.19
+          "chunk_sha": "2430f9743dad",
+          "chunk_head": "the platform components:    ```bash    helm install cloudsca",
+          "score": 0.21
         },
         {
           "rank": 4,
           "source": "platform_guide.md",
-          "chunk_sha": "8541f06f6d06",
-          "chunk_head": "- **Metrics**: Prometheus for time-series metrics collection",
+          "chunk_sha": "995ad71e1eb7",
+          "chunk_head": "collection - **Logging**: Elasticsearch, Fluentd, and Kibana",
           "score": 0.19
         }
       ],
@@ -323,67 +323,82 @@
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "526dca88b796",
-          "chunk_head": "(b) Report Contents. Each report required under subsection (",
+          "chunk_sha": "22232fe6043f",
+          "chunk_head": "# Sample Environmental Reporting Act  ## Article I - Definit",
           "score": 0.24
         },
         {
           "rank": 2,
           "source": "legislation.md",
-          "chunk_sha": "294defdfc557",
-          "chunk_head": "3. Facilities that qualify under the small emitter threshold",
-          "score": 0.21
+          "chunk_sha": "59413eaad1e3",
+          "chunk_head": "be attributed to individual facilities 2. Information requir",
+          "score": 0.22
         },
         {
           "rank": 3,
           "source": "legislation.md",
-          "chunk_sha": "97cbff58c3dc",
-          "chunk_head": "\"Affiliate\" means any entity that directly or indirectly con",
-          "score": 0.21
+          "chunk_sha": "e662445e480b",
+          "chunk_head": ". Each owner or operator of a Covered Facility shall submit ",
+          "score": 0.22
         },
         {
           "rank": 4,
-          "source": "platform_guide.md",
-          "chunk_sha": "c6819bc84ef7",
-          "chunk_head": "kubectl get pods -n cloudscale ``` ### Configuration Options",
-          "score": 0.19
+          "source": "legislation.md",
+          "chunk_sha": "50e49eb9faed",
+          "chunk_head": "1. All applicable reporting requirements set forth in Articl",
+          "score": 0.21
         }
       ]
     },
     "semantic_min_score_0.3": {
-      "definition": [],
+      "definition": [
+        {
+          "rank": 1,
+          "source": "legislation.md",
+          "chunk_sha": "99c4770fda3e",
+          "chunk_head": "ulations 2. Calibration records for measurement equipment 3.",
+          "score": 0.31
+        }
+      ],
       "heading": [],
       "section_id": [
         {
           "rank": 1,
-          "source": "platform_guide.md",
-          "chunk_sha": "0c73e6e02ac1",
-          "chunk_head": "- 16 GB RAM per node (minimum 3 nodes) - 100 GB SSD storage ",
+          "source": "legislation.md",
+          "chunk_sha": "750e4ee57c60",
+          "chunk_head": "2. $25,000 per day for submission of incomplete or inaccurat",
           "score": 0.33
+        },
+        {
+          "rank": 2,
+          "source": "platform_guide.md",
+          "chunk_sha": "848fb1613516",
+          "chunk_head": "encryption at rest and in transit 4. **Observability**: Comp",
+          "score": 0.31
         }
       ],
       "contextual_text": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "526dca88b796",
-          "chunk_head": "(b) Report Contents. Each report required under subsection (",
-          "score": 0.32
+          "chunk_sha": "7ba455d7542f",
+          "chunk_head": "category as specified in the guidelines issued pursuant to S",
+          "score": 0.31
         }
       ],
       "plain_text": [
         {
           "rank": 1,
           "source": "field_notes.txt",
-          "chunk_sha": "05f836bf5427",
-          "chunk_head": "Field notes from the Tern Island survey. The ringing crew ar",
+          "chunk_sha": "12c72d9e23c9",
+          "chunk_head": "Field notes from the Tern Island survey.  The ringing crew a",
           "score": 0.35
         },
         {
           "rank": 2,
           "source": "platform_guide.md",
-          "chunk_sha": "c6819bc84ef7",
-          "chunk_head": "kubectl get pods -n cloudscale ``` ### Configuration Options",
+          "chunk_sha": "9ac8e54b9589",
+          "chunk_head": "deployment:    ```bash    kubectl get pods -n cloudscale    ",
           "score": 0.31
         }
       ],
@@ -391,87 +406,101 @@
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "bab1c858f915",
-          "chunk_head": "(c) is not specifically exempted under Section 301(b). \"Forc",
-          "score": 0.51
+          "chunk_sha": "cf37afc9340f",
+          "chunk_head": "house gases annually; (b) is located within the territorial ",
+          "score": 0.49
         },
         {
           "rank": 2,
           "source": "legislation.md",
-          "chunk_sha": "97cbff58c3dc",
-          "chunk_head": "\"Affiliate\" means any entity that directly or indirectly con",
-          "score": 0.42
+          "chunk_sha": "22232fe6043f",
+          "chunk_head": "# Sample Environmental Reporting Act  ## Article I - Definit",
+          "score": 0.41
         },
         {
           "rank": 3,
           "source": "legislation.md",
-          "chunk_sha": "67498d7b43de",
-          "chunk_head": "1. Original measurement data and calculations 2. Calibration",
-          "score": 0.31
+          "chunk_sha": "84498ff493ca",
+          "chunk_head": "control with another entity. For purposes of this definition",
+          "score": 0.33
         }
       ],
       "heading_phrase": [
         {
           "rank": 1,
           "source": "platform_guide.md",
-          "chunk_sha": "5f42fceafebd",
-          "chunk_head": "- Enable database replication with automatic failover - Use ",
-          "score": 0.49
+          "chunk_sha": "a28dd2ee628f",
+          "chunk_head": "- SAML 2.0 for enterprise SSO - API keys for service-to-serv",
+          "score": 0.43
         },
         {
           "rank": 2,
           "source": "platform_guide.md",
-          "chunk_sha": "61c62cf74421",
-          "chunk_head": "##### Primary Database PostgreSQL serves as the primary rela",
-          "score": 0.31
+          "chunk_sha": "bdb79915da9a",
+          "chunk_head": "oling via PgBouncer - Automated backups with point-in-time r",
+          "score": 0.3
         }
       ],
       "section_id_phrase": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "294defdfc557",
-          "chunk_head": "3. Facilities that qualify under the small emitter threshold",
-          "score": 0.41
+          "chunk_sha": "7ba455d7542f",
+          "chunk_head": "category as specified in the guidelines issued pursuant to S",
+          "score": 0.45
         },
         {
           "rank": 2,
           "source": "legislation.md",
-          "chunk_sha": "639635bbe8df",
-          "chunk_head": "(c) Electronic Submission. All reports shall be submitted el",
-          "score": 0.31
+          "chunk_sha": "ce9746bef11e",
+          "chunk_head": "the Covered Facility being verified 3. Complete training pro",
+          "score": 0.37
         },
         {
           "rank": 3,
           "source": "legislation.md",
-          "chunk_sha": "67498d7b43de",
-          "chunk_head": "1. Original measurement data and calculations 2. Calibration",
-          "score": 0.31
+          "chunk_sha": "50e49eb9faed",
+          "chunk_head": "1. All applicable reporting requirements set forth in Articl",
+          "score": 0.35
         },
         {
           "rank": 4,
           "source": "legislation.md",
-          "chunk_sha": "f1141681a9aa",
-          "chunk_head": "(a) Third-Party Verification. Reports submitted under Sectio",
-          "score": 0.31
+          "chunk_sha": "4e269a476df3",
+          "chunk_head": "year for which emissions data is reported, as specified in S",
+          "score": 0.34
         }
       ],
       "contextual_phrase": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "6c8e5803a1bc",
-          "chunk_head": "- Market conditions affecting profitability - Acts of neglig",
-          "score": 0.72
+          "chunk_sha": "4e269a476df3",
+          "chunk_head": "year for which emissions data is reported, as specified in S",
+          "score": 0.73
+        },
+        {
+          "rank": 2,
+          "source": "legislation.md",
+          "chunk_sha": "e662445e480b",
+          "chunk_head": ". Each owner or operator of a Covered Facility shall submit ",
+          "score": 0.6
+        },
+        {
+          "rank": 3,
+          "source": "legislation.md",
+          "chunk_sha": "76ef2e6a050b",
+          "chunk_head": "ricanes - Acts of war, terrorism, or civil unrest - Governme",
+          "score": 0.45
         }
       ],
       "none": [
         {
           "rank": 1,
           "source": "legislation.md",
-          "chunk_sha": "f1141681a9aa",
-          "chunk_head": "(a) Third-Party Verification. Reports submitted under Sectio",
-          "score": 0.38
+          "chunk_sha": "46a168dbab68",
+          "chunk_head": "204 - Verification Requirements  (a) Third-Party Verificatio",
+          "score": 0.36
         }
       ],
       "punctuation_only": []

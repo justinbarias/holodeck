@@ -45,8 +45,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from holodeck.lib.file_processor import PARSER_POLICY
 from holodeck.lib.keyword_search import HybridSearchExecutor
 from holodeck.lib.retrieval import (
     Operation,
@@ -57,6 +58,7 @@ from holodeck.lib.retrieval import (
     VectorStoreAdapter,
     clamp_similarity,
 )
+from holodeck.lib.retrieval.fingerprint import PipelineInputs, record_layout_id
 from holodeck.lib.retrieval.schemas import (
     chunk_from_record,
     chunk_to_record,
@@ -77,7 +79,11 @@ if TYPE_CHECKING:
     from holodeck.models.config import ExecutionConfig
 
 from holodeck.lib.hybrid_search import SearchResult
-from holodeck.lib.structured_chunker import DOMAIN_PATTERNS, ChunkType
+from holodeck.lib.structured_chunker import (
+    DOMAIN_PATTERNS,
+    STRUCTURED_CHUNKER_POLICY,
+    ChunkType,
+)
 from holodeck.models.tool import (
     DocumentDomain,
     HierarchicalDocumentToolConfig,
@@ -91,8 +97,23 @@ from holodeck.tools.common import (
     get_file_type,
     resolve_source_path,
 )
+from holodeck.tools.pipeline_mixin import PipelineGuardMixin
 
 logger = logging.getLogger(__name__)
+
+
+@runtime_checkable
+class _PolicyIdentified(Protocol):
+    """A context generator that names what decides its output text."""
+
+    def context_policy(self) -> str:
+        """Return the generator's recipe, model and output settings."""
+        ...
+
+
+SEARCHABLE_TEXT_RECIPE = "searchable-text/1"
+"""Pipeline policy ID of ``_build_searchable_text``. Bump it when the recipe
+changes, so stored ``searchable_text`` values are detected as stale."""
 
 # Operations ingestion and search use. Incremental ingestion looks records up
 # and deletes them by source_path, so FIND is required: without it a changed
@@ -106,7 +127,9 @@ _REQUIRED_OPERATIONS = (
 )
 
 
-class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
+class HierarchicalDocumentTool(
+    PipelineGuardMixin, EmbeddingServiceMixin, DatabaseConfigMixin
+):
     """Semantic Kernel tool for hierarchical document retrieval.
 
     This tool provides intelligent document search that understands
@@ -193,10 +216,10 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         if self._file_processor is None:
             if self._execution_config is not None:
                 self._file_processor = FileProcessor.from_execution_config(
-                    self._execution_config
+                    self._execution_config, read_only=self._read_only
                 )
             else:
-                self._file_processor = FileProcessor()
+                self._file_processor = FileProcessor(read_only=self._read_only)
         return self._file_processor
 
     # set_embedding_service is inherited from EmbeddingServiceMixin
@@ -242,6 +265,15 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         if self._is_remote and self._source_root is not None:
             return str(file_path.relative_to(self._source_root))
         return str(file_path)
+
+    def source_inventory(self) -> list[str]:
+        """Return the source keys a full ingestion writes, without parsing."""
+        return [self._compute_source_key(path) for path in self._discover_files()]
+
+    @property
+    def source_field(self) -> str:
+        """Record field that holds a chunk's source key."""
+        return "source_path"
 
     def _compute_content_hash(self, file_path: Path) -> str:
         """Compute SHA-256 hash of file content for change detection.
@@ -391,12 +423,64 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             schema=schema,
             connection_kwargs=connection_kwargs,
         )
+        self._collection_schema = schema
+        self._connection = dict(connection_kwargs)
         self._adapter.capabilities.require(*_REQUIRED_OPERATIONS)
 
         logger.debug(
             f"Collection setup: provider={self._provider}, "
             f"dimensions={self._embedding_dimensions}"
         )
+
+    def pipeline_inputs(self) -> PipelineInputs:
+        """Return the inputs of this tool's ingestion pipeline (FR-023)."""
+        if self._collection_schema is None or self._embedding_dimensions is None:
+            raise RuntimeError("Collection not initialized")
+        provider, model = self.embedding_identity()
+        contextual = (
+            self.config.contextual_embeddings and self._context_generator is not None
+        )
+        context_model = self.config.context_model if contextual else None
+        return PipelineInputs(
+            embedding_provider=provider,
+            embedding_model=model,
+            embedding_dimensions=self._embedding_dimensions,
+            parser_policy=PARSER_POLICY,
+            chunker_policy=STRUCTURED_CHUNKER_POLICY,
+            chunker_settings=(
+                ("max_tokens", self.config.max_chunk_tokens),
+                ("document_domain", self.config.document_domain.value),
+                ("max_subsection_depth", self.config.max_subsection_depth),
+            ),
+            record_layout=record_layout_id(self._collection_schema),
+            retrieval_settings=(
+                ("contextual_embeddings", contextual),
+                ("context_generator", self._context_policy() if contextual else None),
+                (
+                    "context_provider",
+                    context_model.provider.value if context_model else None,
+                ),
+                ("context_model", context_model.name if context_model else None),
+                (
+                    "context_max_tokens",
+                    self.config.context_max_tokens if contextual else None,
+                ),
+                ("searchable_text", SEARCHABLE_TEXT_RECIPE),
+            ),
+        )
+
+    def _context_policy(self) -> str:
+        """Return the identity of the context generator, for the fingerprint.
+
+        A generator that does not name its policy is identified by its class.
+        """
+        generator: object = self._context_generator
+        if isinstance(generator, _PolicyIdentified):
+            # A test double can claim the method and return anything.
+            policy: object = generator.context_policy()
+            if isinstance(policy, str) and policy:
+                return policy
+        return f"custom:{type(generator).__qualname__}"
 
     def _require_adapter(self) -> VectorStoreAdapter:
         """Return the adapter or raise when the collection is not set up."""
@@ -447,6 +531,8 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             return True  # No collection, must ingest
 
         source_key = self._compute_source_key(file_path)
+        if self._pipeline_guard().is_incomplete(source_key):
+            return True  # An earlier ingestion of this source did not finish
 
         try:
             # Every stored chunk is checked, not one. A rewrite that stopped
@@ -491,6 +577,8 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         source_key = self._compute_source_key(file_path)
         deleted_count = 0
+        guard = self._pipeline_guard()
+        await guard.validate_before_write(source_key)
 
         try:
             deleted_count = await self._adapter.delete_where(
@@ -500,6 +588,9 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             raise
         except Exception as e:
             logger.debug(f"Error deleting records for {file_path}: {e}")
+
+        else:
+            await guard.forget_source(source_key)
 
         if deleted_count > 0:
             logger.debug(f"Deleted {deleted_count} records for {file_path}")
@@ -599,6 +690,38 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         domain_key = self.config.document_domain.value
         return DOMAIN_PATTERNS.get(domain_key)
 
+    def _get_chunker(self) -> StructuredChunker:
+        """Return the structured chunker, built from the config on first use."""
+        from holodeck.lib.structured_chunker import StructuredChunker
+
+        if self._chunker is None:
+            self._chunker = StructuredChunker(
+                max_tokens=self.config.max_chunk_tokens,
+                subsection_patterns=self._get_subsection_patterns(),
+                max_subsection_depth=self.config.max_subsection_depth,
+            )
+        return self._chunker
+
+    async def preview_chunks(self) -> list[tuple[str, list[str]]]:
+        """Return ``(source key, chunk texts)`` per source, without storing.
+
+        Runs conversion and chunking only: no embedding, context-generation
+        or vector store call. ``holodeck vectorstore inspect`` uses it.
+        """
+        chunker = self._get_chunker()
+        preview: list[tuple[str, list[str]]] = []
+        for file_path in self._discover_files():
+            markdown_content = await self._convert_to_markdown(str(file_path))
+            if not markdown_content.strip():
+                continue
+            chunks = chunker.parse(
+                markdown_content, str(file_path), file_path.stat().st_mtime
+            )
+            texts = [c.content for c in chunks if c.chunk_type != ChunkType.HEADER]
+            if texts:
+                preview.append((self._compute_source_key(file_path), texts))
+        return preview
+
     async def _ingest_documents(
         self,
         force_ingest: bool = False,
@@ -629,18 +752,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             FileNotFoundError: If source path does not exist.
             RuntimeError: If no supported files found in source.
         """
-        from holodeck.lib.structured_chunker import StructuredChunker
-
-        # Initialize chunker if needed
-        if self._chunker is None:
-            # Get subsection patterns based on document domain
-            subsection_patterns = self._get_subsection_patterns()
-
-            self._chunker = StructuredChunker(
-                max_tokens=self.config.max_chunk_tokens,
-                subsection_patterns=subsection_patterns,
-                max_subsection_depth=self.config.max_subsection_depth,
-            )
+        chunker = self._get_chunker()
 
         # 1. Resolve source path (handles absolute/relative with base_dir)
         source_path = self._resolve_source_path()
@@ -697,7 +809,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             mtime = file_path.stat().st_mtime
 
             # 3. Parse structure
-            chunks = self._chunker.parse(markdown_content, str(file_path), mtime)
+            chunks = chunker.parse(markdown_content, str(file_path), mtime)
 
             # Remap chunk keys for stable record IDs (remote sources)
             self._remap_chunk_keys(chunks, file_path)
@@ -840,11 +952,19 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 )
             )
 
+        guard = self._pipeline_guard()
+        guard.require_writable()
         await adapter.ensure_collection()
         for source_path, records in by_source.items():
+            marker = content_hash or repr(
+                min(float_field(record, "mtime") for record in records)
+            )
+            # Incomplete before the first write, complete after the last.
+            await guard.begin_source(source_path, len(records), marker)
             await adapter.replace_source(
                 RecordFilter.where(source_path=source_path), records
             )
+            await guard.complete_source(source_path, len(records), marker)
 
         logger.debug(f"Stored {len(chunks)} chunks")
         return len(chunks)
@@ -1108,6 +1228,7 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
 
         # Set up collection with provider type for dimension resolution
         self._setup_collection(provider_type)
+        await self._bind_pipeline(self.config.name)
 
         # Ingest all documents (with incremental check)
         skipped_files = await self._ingest_documents(
