@@ -25,12 +25,13 @@ Regenerate with ``HOLODECK_UPDATE_GOLDEN=1`` (see ``_golden.py``).
 
 from __future__ import annotations
 
+import fcntl
 import os
 import re
 import shutil
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import pytest
 from pydantic import SecretStr
@@ -210,9 +211,23 @@ class Cleanup:
     def __init__(self) -> None:
         self.collections: list[tuple[str, str]] = []
         self.dirs: list[Path] = []
+        self._locks: list[IO[str]] = []
+
+    def _lock(self, name: str) -> None:
+        """Hold a lock on *name* until teardown.
+
+        The staged path and the collection names are fixed, because record
+        IDs depend on them. Two runs on one machine (other worktrees, xdist
+        workers) must not share them at the same time.
+        """
+        STAGE_ROOT.mkdir(parents=True, exist_ok=True)
+        handle = (STAGE_ROOT / f"{name}.lock").open("w")
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        self._locks.append(handle)
 
     def stage_corpus(self, key: str) -> Path:
         """Copy the corpus to a fixed path for *key*; removed after the test."""
+        self._lock(key)
         target = STAGE_ROOT / key / "corpus"
         shutil.rmtree(target.parent, ignore_errors=True)
         shutil.copytree(CORPUS_SRC, target)
@@ -220,6 +235,7 @@ class Cleanup:
         return target
 
     def collection(self, provider: str, name: str) -> None:
+        self._lock(f"{provider}-{name}")
         self.collections.append((provider, name))
         delete_remote_collections(provider, [name])  # leftovers of a killed run
 
@@ -228,6 +244,9 @@ class Cleanup:
             delete_remote_collections(provider, [name])
         for directory in self.dirs:
             shutil.rmtree(directory, ignore_errors=True)
+        for handle in self._locks:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+            handle.close()
 
 
 @pytest.fixture

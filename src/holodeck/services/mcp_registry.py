@@ -14,6 +14,7 @@ from holodeck.lib.errors import (
     RegistryConnectionError,
     ServerNotFoundError,
 )
+from holodeck.lib.http_client import netrc_auth, tls_verify
 from holodeck.lib.validation import sanitize_tool_name
 from holodeck.models.registry import (
     RegistryServer,
@@ -60,7 +61,9 @@ class MCPRegistryClient:
         """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self._session = httpx.Client(follow_redirects=True)
+        self._session = httpx.Client(
+            follow_redirects=True, verify=tls_verify(), auth=netrc_auth()
+        )
 
     def __enter__(self) -> "MCPRegistryClient":
         """Enter context manager."""

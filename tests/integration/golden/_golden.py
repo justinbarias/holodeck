@@ -21,6 +21,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -68,7 +69,7 @@ def _diff(
         and isinstance(actual, (int, float))
         and not isinstance(actual, bool)
     ):
-        if abs(float(actual) - expected) > abs_tol:
+        if not math.isfinite(float(actual)) or abs(float(actual) - expected) > abs_tol:
             out.append(f"{path}: {actual!r} != expected {expected!r} (tol {abs_tol})")
     elif actual != expected or type(actual) is not type(expected):
         out.append(f"{path}: {actual!r} != expected {expected!r}")
