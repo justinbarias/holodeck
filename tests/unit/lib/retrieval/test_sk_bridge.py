@@ -54,7 +54,6 @@ _FIELD_TYPES = {
 # Providers the registry still routes to the bridge. chromadb has a native
 # adapter (042 T6); SKChromaAdapter stays for compatibility tests until T16.
 BRIDGED = [
-    "azure-ai-search",
     "qdrant",
     "weaviate",
     "faiss",
@@ -62,7 +61,8 @@ BRIDGED = [
     "azure-cosmos-nosql",
     "sql-server",
 ]
-# "pinecone" left the bridge in 042 T8: the registry points at the native adapter.
+# "pinecone" left the bridge in 042 T8 and "azure-ai-search" in T11: the registry
+# points at the native adapters.
 
 
 def _schema_from(definition: VectorStoreCollectionDefinition) -> CollectionSchema:
@@ -169,7 +169,7 @@ def test_registry_extras_exist_in_pyproject() -> None:
         "optional-dependencies"
     ]
     assert {e.extra for e in PROVIDERS.values() if e.extra} <= set(extras)
-    for provider in ("postgres", "qdrant", "chromadb", "pinecone"):
+    for provider in ("postgres", "qdrant", "chromadb", "pinecone", "azure-ai-search"):
         assert PROVIDERS[provider].extra == provider
 
 
@@ -196,7 +196,6 @@ _FILTERS = {Operation.FIND, Operation.LIST, Operation.DELETE_WHERE, Operation.CO
 _BASE = {Operation.UPSERT, Operation.GET, Operation.DELETE, Operation.VECTOR_SEARCH}
 _HYBRID = {Operation.HYBRID_SEARCH}
 EXPECTED: dict[str, set[Operation]] = {
-    "azure-ai-search": _BASE | _HYBRID,
     "qdrant": _BASE | _FILTERS | _HYBRID,
     "weaviate": _BASE | _FILTERS | _HYBRID,
     "faiss": _BASE,

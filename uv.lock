@@ -734,6 +734,20 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-search-documents"
+version = "12.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/59/dc/bb4db263381aa5b29414e280a8535a343d877a3831a501ef39332174c85c/azure_search_documents-12.0.0.tar.gz", hash = "sha256:8e6d73ec0ed1623083435b757e34324db65d72d4e09cca061a59fc7e90c8ddbc", size = 386222, upload-time = "2026-05-01T20:28:22.269Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a4/b1/4869a064dbb79fb4ecac684de51a8f8f7a93a315f3f9cc4bf8a65cc413cd/azure_search_documents-12.0.0-py3-none-any.whl", hash = "sha256:d88114e4179cd753845711042380a4571e7faa8619addf5e017928ebe37fc0d1", size = 352117, upload-time = "2026-05-01T20:28:23.989Z" },
+]
+
+[[package]]
 name = "azure-storage-blob"
 version = "12.32.0b1"
 source = { registry = "https://pypi.org/simple" }
@@ -2499,6 +2513,10 @@ all-sources = [
     { name = "azure-storage-blob" },
     { name = "boto3" },
 ]
+azure-ai-search = [
+    { name = "azure-identity" },
+    { name = "azure-search-documents" },
+]
 azure-blob = [
     { name = "azure-storage-blob" },
 ]
@@ -2584,6 +2602,8 @@ temporal = [
     { name = "temporalio" },
 ]
 vectorstores = [
+    { name = "azure-identity" },
+    { name = "azure-search-documents" },
     { name = "chromadb" },
     { name = "pgvector" },
     { name = "pinecone" },
@@ -2610,12 +2630,16 @@ requires-dist = [
     { name = "authlib", specifier = ">=1.9.1" },
     { name = "azure-ai-evaluation", specifier = ">=1.13.0,<2.0.0" },
     { name = "azure-core", specifier = ">=1.38.0" },
+    { name = "azure-identity", marker = "extra == 'azure-ai-search'", specifier = ">=1.15.0" },
     { name = "azure-identity", marker = "extra == 'deploy-all'", specifier = ">=1.15.0" },
     { name = "azure-identity", marker = "extra == 'deploy-azure'", specifier = ">=1.15.0" },
+    { name = "azure-identity", marker = "extra == 'vectorstores'", specifier = ">=1.15.0" },
     { name = "azure-mgmt-appcontainers", marker = "extra == 'deploy-all'", specifier = ">=5.1.0,<6" },
     { name = "azure-mgmt-appcontainers", marker = "extra == 'deploy-azure'", specifier = ">=5.1.0,<6" },
     { name = "azure-monitor-opentelemetry-exporter", marker = "extra == 'otel-all'", specifier = ">=1.0.0b24,<2.0.0" },
     { name = "azure-monitor-opentelemetry-exporter", marker = "extra == 'otel-azmon'", specifier = ">=1.0.0b24,<2.0.0" },
+    { name = "azure-search-documents", marker = "extra == 'azure-ai-search'", specifier = ">=12.0.0,<12.1" },
+    { name = "azure-search-documents", marker = "extra == 'vectorstores'", specifier = ">=12.0.0,<12.1" },
     { name = "azure-storage-blob", marker = "extra == 'all-sources'", specifier = ">=12.19" },
     { name = "azure-storage-blob", marker = "extra == 'azure-blob'", specifier = ">=12.19" },
     { name = "bandit", extras = ["toml"], marker = "extra == 'dev'", specifier = ">=1.8.0" },
@@ -2705,7 +2729,7 @@ requires-dist = [
     { name = "weaviate-client", marker = "extra == 'weaviate'", specifier = ">=4.24,<5" },
     { name = "werkzeug", specifier = ">=3.1.9" },
 ]
-provides-extras = ["all-sources", "azure-blob", "chromadb", "claude-otel", "dashboard", "deploy", "deploy-all", "deploy-aws", "deploy-azure", "deploy-gcp", "dev", "openai-agents", "otel-all", "otel-azmon", "otel-prometheus", "pinecone", "postgres", "qdrant", "s3", "temporal", "vectorstores", "weaviate"]
+provides-extras = ["all-sources", "azure-ai-search", "azure-blob", "chromadb", "claude-otel", "dashboard", "deploy", "deploy-all", "deploy-aws", "deploy-azure", "deploy-gcp", "dev", "openai-agents", "otel-all", "otel-azmon", "otel-prometheus", "pinecone", "postgres", "qdrant", "s3", "temporal", "vectorstores", "weaviate"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -51,6 +51,7 @@ uv add holodeck-ai[postgres]      # PostgreSQL with pgvector
 uv add holodeck-ai[chromadb]      # ChromaDB
 uv add holodeck-ai[pinecone]      # Pinecone
 uv add holodeck-ai[weaviate]      # Weaviate
+uv add holodeck-ai[azure-ai-search]  # Azure AI Search
 uv add holodeck-ai[vectorstores]  # all of the above
 ```
 
@@ -65,6 +66,7 @@ The same extras work with `pip install holodeck-ai[<extra>]`.
 | `postgres`  | Existing PostgreSQL infrastructure     | Medium           |
 | `pinecone`  | Serverless, managed cloud              | Low              |
 | `weaviate`  | Self-hosted or cloud, native hybrid search | Medium       |
+| `azure-ai-search` | Azure-hosted search, native hybrid | Medium         |
 | `in-memory` | Testing and prototyping                | None             |
 
 See the [Tools Guide](tools.md) for the complete list.
@@ -289,6 +291,15 @@ database:
   provider: weaviate
   url: https://my-cluster.weaviate.cloud
   api_key: ${WEAVIATE_API_KEY}
+### Azure AI Search
+
+[Azure AI Search](https://learn.microsoft.com/azure/search/) is Azure's managed search service. HoloDeck uses the `azure-search-documents` 12.0 asyncio clients (`holodeck-ai[azure-ai-search]`, which also installs `azure-identity`) and keeps one index per collection:
+
+```yaml
+database:
+  provider: azure-ai-search
+  connection_string: https://my-service.search.windows.net
+  api_key: ${AZURE_AI_SEARCH_API_KEY}   # omit to use Microsoft Entra ID
 ```
 
 | Setting | Meaning |
@@ -317,6 +328,21 @@ Limits to know:
 - Semantic Kernel's Weaviate path never worked against a server (its cosine setting was rejected and it could not store free-text IDs), so there are no earlier HoloDeck Weaviate collections to migrate.
 - Weaviate returns at most `QUERY_MAXIMUM_RESULTS` (10,000) results for one query. Replacing the chunks of a single source file that has more chunks than that fails with an error instead of leaving stale chunks.
 - An existing collection must have the `embedding` named vector with cosine distance and matching property types, or HoloDeck raises an error and leaves it alone.
+| `connection_string`, `endpoint`, `search_endpoint` | Service URL, `https://<service>.search.windows.net`. `AZURE_AI_SEARCH_ENDPOINT` is the fallback. |
+| `api_key` | Admin key. `AZURE_AI_SEARCH_API_KEY` is the fallback. With no key, `DefaultAzureCredential` (Microsoft Entra ID) signs in. |
+| `index_name` | Index name instead of the collection name. |
+
+Unknown settings are an error. The index is created on first use with a key field `id`, one field per data field, and a vector field `embedding` with an HNSW cosine profile. Only fields that the tool filters on are `filterable`, and only the text field the keyword leg searches is `searchable`.
+
+**Search.** All of vector, keyword and hybrid search run in the service. Hybrid mode is one request that carries the text query and the vector query, and the service fuses the two lists with Reciprocal Rank Fusion. Keyword text is reduced to words first, so characters such as `-` or `"` in a question are not read as query operators. Vector scores are converted from Azure's `1 / (1 + distance)` value to cosine similarity.
+
+**Record IDs and names.** Azure keys allow only letters, digits, `_`, `-` and `=`, so an ID such as `docs/policy.md_chunk_0` is stored as `b64-` plus its URL-safe Base64 text. An ID that is already a valid key is stored unchanged. Index names are lowercase letters, digits, `-` and `_`; a collection name that does not fit is lower-cased and cleaned (`Product Catalog.v2` becomes `product-catalog-v2`). Default names such as `documents_dim1536` are used as they are.
+
+**Existing indexes.** An index that an earlier Semantic Kernel setup created has a key that cannot be sorted. Azure cannot change that on an existing index, so HoloDeck stops with an `IncompatibleCollectionError`. Delete the index or use another `index_name`.
+
+Azure indexes documents asynchronously. After a write, HoloDeck checks for up to 10 seconds that a search shows the last document, then continues with a warning. The document count is approximate while indexing runs.
+
+> **Note**: Azure AI Search has no local emulator, and this adapter has been verified only against an in-memory fake of the client and against the SDK's request shapes with a stubbed transport. It has not been run against the Azure service. Ordering of string keys in range filters, indexing delay, and score values are therefore unobserved. Treat the first run on a real service as a check, and report problems.
 
 ---
 
@@ -349,6 +375,14 @@ Limits to know:
 | Local path | `/path/to/qdrant/data` |
 
 For remote Qdrant, add `api_key: ${QDRANT_API_KEY}`.
+
+### Azure AI Search
+
+| Format | Example |
+|--------|---------|
+| Endpoint | `https://my-service.search.windows.net` |
+
+The URL must use `https`. Add `api_key`, or leave it out to use Microsoft Entra ID.
 
 ### Pinecone
 
