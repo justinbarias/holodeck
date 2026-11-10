@@ -37,7 +37,7 @@ Expected: the agent calls `search-kb`, retrieves matching chunks, and grounds it
 
 ## How it works
 
-A `vectorstore` tool embeds your `source` documents into chunks and stores them in a vector database, then retrieves the most semantically similar chunks at query time to ground the agent's answer (RAG). Embeddings work across providers, and `vectorstore` (and `hierarchical_document`) RAG tools run on **both** the Claude and OpenAI backends. The vector store connectors are internally built on the Semantic Kernel connector library — an implementation detail that gives you a uniform API across providers; on Qdrant the connector layer also supports native hybrid (dense + sparse) search. See the [OpenAI backend](openai-backend.md) and [Claude backend](claude-backend.md) guides for backend specifics, and the [Tools Guide](tools.md) for the full tool schema.
+A `vectorstore` tool embeds your `source` documents into chunks and stores them in a vector database, then retrieves the most semantically similar chunks at query time to ground the agent's answer (RAG). Embeddings work across providers, and `vectorstore` (and `hierarchical_document`) RAG tools run on **both** the Claude and OpenAI backends. Each provider runs on a HoloDeck adapter that uses the store's own client library behind one contract, so every provider offers the same operations or says clearly which it lacks (see [What each provider supports](#what-each-provider-supports)). See the [OpenAI backend](openai-backend.md) and [Claude backend](claude-backend.md) guides for backend specifics, and the [Tools Guide](tools.md) for the full tool schema.
 
 ---
 
@@ -72,6 +72,20 @@ The same extras work with `pip install holodeck-ai[<extra>]`.
 | `in-memory` | Testing and prototyping                | None             |
 
 See the [Tools Guide](tools.md) for the complete list.
+
+### What each provider supports
+
+Every provider supports the core operations: upsert, get and delete by ID, exact metadata filtering, paginated listing, delete by metadata filter, record count and vector search. Lexical and hybrid search differ. Where a store has no native support, HoloDeck runs its own BM25 index and fuses the results, so the tool still works. An operation a provider cannot do fails before ingestion; it never returns empty results.
+
+| Provider | Lexical search | Hybrid search |
+| --- | --- | --- |
+| `in-memory`, `chromadb`, `pinecone` | HoloDeck BM25 | HoloDeck fusion |
+| `qdrant` | Not offered alone (use hybrid) | Native (dense plus full-text, RRF) |
+| `postgres` | Native | HoloDeck fusion |
+| `weaviate`, `azure-ai-search` | Native | Native |
+| `azure-cosmos-nosql` | HoloDeck BM25 | Native with `full_text_search: true`, otherwise HoloDeck fusion |
+
+Not every provider has been run against its hosted service. Pinecone and Azure AI Search ran on local emulators or fakes only, and Cosmos DB hybrid search ran on a fake. See [Quality score](../QUALITY_SCORE.md).
 
 ### Removed vector store providers
 

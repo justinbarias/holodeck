@@ -193,7 +193,8 @@ observability:
 
 Core dependencies (see `pyproject.toml`):
 
-- Semantic Kernel: Agent framework and vector store abstractions
+- Claude Agent SDK and OpenAI Agents SDK (extra `openai-agents`): agent backends
+- Native vector store adapters in `holodeck.lib.retrieval` (one install extra per store)
 - FastAPI: API deployment
 - Pydantic: Configuration validation
 - OpenTelemetry: Observability instrumentation

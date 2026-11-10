@@ -34,7 +34,8 @@ The `/verify` skill ([SKILL.md](../.claude/skills/verify/SKILL.md)) selects tier
 
 | Tier | Command | Proves | Credentials |
 | --- | --- | --- | --- |
-| fast | `make verify-fast` | Harness, lock, Ruff, Black, MyPy and schema checks pass, and the full pytest suite passes | None |
+| all offline | `make verify` | The three offline tiers below (fast, deps, smoke) in one run. It does not run profiles, live or providers | None |
+| fast | `make verify-fast` | Harness, lock, Ruff, Black, MyPy, schema and image-constraints checks pass, and the full pytest suite passes | None |
 | deps | `make verify-deps` | The lock is current. No unreviewed pip-audit advisory exists. npm audit of `sample/copilotkit` passes (skipped when that sample is absent) | None (network to the advisory databases) |
 | smoke | `make verify-smoke` | Both backends complete real `holodeck test run` and `holodeck serve` AG-UI turns, including a tool call and thread isolation | None |
 | profiles | `make verify-profiles` | The built wheel installs and works in a clean venv for each extras profile, and unselected packages are absent (details below) | None (network to the package index) |
@@ -108,7 +109,7 @@ Vector store providers. Each has one `vectorstore` tool and case per backend, wi
 | `azure-ai-search` | Credential-gated: `AZURE_AI_SEARCH_ENDPOINT` and `AZURE_AI_SEARCH_API_KEY`. Azure has no emulator | Document chunks in a hosted search index |
 
 The agent YAML is static, so the hosted providers' tools stay in the fixtures. The script drops a provider's tools and cases when its prerequisite is missing, and the SKIP row names the missing variable or the unavailable container.
-The tools fall back to in-memory storage when a provider cannot be created, and a case could then still pass. So each tool gets a collection name unique to the run (`verify_<backend><id>_<tool>`).
+A tool falls back to in-memory storage when its provider cannot be reached (a missing client library or a retired provider name is an error, not a fallback), and a case could then still pass. So each tool gets a collection name unique to the run (`verify_<backend><id>_<tool>`).
 After the cases and the AG-UI turns, the script creates the provider's adapter, asks for that collection, and reports `provider <name> (<tool>) holds records`. The row is FAIL when the collection is missing or empty.
 Then it deletes every run collection, so a hosted service keeps no data. A failed delete is a FAIL row named `cleanup`.
 Pinecone reads can lag a write, so the count is polled for up to 30 seconds.
@@ -126,7 +127,7 @@ Docker containers (left running after the run; `--no-infra` skips them, and loca
 
 If another service of the same kind already serves those ports, the script reuses it and does not stop it.
 Stop the managed containers with `docker rm -f holodeck-verify-qdrant holodeck-verify-chroma holodeck-verify-postgres holodeck-verify-weaviate holodeck-verify-cosmos holodeck-verify-aspire`.
-Traces are for human review at <http://127.0.0.1:18888/traces>. Look for the services `holodeck-verify-live-claude` and `holodeck-verify-live-openai`.
+The run reads its spans back from the Aspire dashboard and fails when a backend's `leak_probe` span is missing or shows the fake token (`collector spans redacted` row). The traces are also open for review at <http://127.0.0.1:18888/traces>. Look for the services `holodeck-verify-live-claude` and `holodeck-verify-live-openai`.
 The `leak_probe` tool returns a fake `ghp_` token. Its span must show `[REDACTED:github-token]`, never the token.
 
 Pass flags through `LIVE_ARGS`, for example `make verify-live LIVE_ARGS="--backend claude --no-infra"`. `--limit N` runs only the first N test cases.

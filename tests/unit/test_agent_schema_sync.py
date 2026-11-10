@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.generate_agent_schema import render_schema
+from scripts.generate_agent_schema import render_schema, schema_paths
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "agent.schema.json"
 
@@ -40,3 +40,20 @@ def test_schema_exposes_optimizer_block() -> None:
     assert "OptimizerConfig" in schema["$defs"]
     optimizer = schema["$defs"]["EvaluationConfig"]["properties"]["optimizer"]
     assert {"$ref": "#/$defs/OptimizerConfig"} in optimizer["anyOf"]
+
+
+@pytest.mark.unit
+def test_every_template_schema_copy_is_tracked_and_current() -> None:
+    # The copies are found from the template directories, so a deleted copy
+    # is reported as missing, not skipped.
+    templates = SCHEMA_PATH.parents[1] / "src" / "holodeck" / "templates"
+    expected = {
+        path / "schemas" / "agent.schema.json"
+        for path in templates.iterdir()
+        if path.is_dir() and not path.name.startswith("_")
+    }
+    copies = set(schema_paths()) - {SCHEMA_PATH}
+    assert copies == expected
+    assert len(copies) >= 3
+    for path in copies:
+        assert path.read_text() == render_schema(), f"{path} is stale"

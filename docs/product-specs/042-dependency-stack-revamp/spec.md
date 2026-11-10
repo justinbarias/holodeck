@@ -1,6 +1,6 @@
 # SPEC: HoloDeck Dependency Stack Revamp
 
-**Status:** Draft for review; no dependency changes implemented.
+**Status:** Implemented 2026-11-10; live evidence open. All open decisions in section 9 are decided. The [execution plan](../../exec-plans/active/042-dependency-stack-revamp/2026-11-10-remove-semantic-kernel.md) records the acceptance evidence and the items that keep it open. The requirements below are unchanged.
 **Date:** 2026-09-06. **Revised:** 2026-11-10 at `00d1ed4`: retrieval direction changed from LlamaIndex to HoloDeck-owned native adapters after the second [selection evidence](../../design-docs/042-dependency-stack-revamp/selection-evidence.md) round.
 **Code baseline:** `3e59e1d` on `feat/035-t2-litellm-acceptance`; working tree clean at audit start.
 **Owners:** Backend, retrieval, packaging, evaluation, and observability maintainers for their respective boundaries.
@@ -204,17 +204,17 @@ Implementation planning follows review of this product contract. The expected re
 
 Do not wait for every unrelated 035 feature to audit dependencies. Do not bypass unresolved 035 live evidence by citing this spec. Spec 041 must reuse the retained file-processing boundary and explicitly account for any parser/package change.
 
-## 9. Open decisions with owners and exit criteria
+## 9. Decisions
 
-| Decision | Draft direction | Owner / evidence required before implementation |
+| Decision | Outcome (2026-11-10) | Where recorded |
 | --- | --- | --- |
-| Native client versions | One client per kept store; dated versions in selection evidence | Packaging: compatible locked resolver output, Python/platform wheels, license/security review |
-| Qdrant adapter | Consolidate existing native code into the adapter | Retrieval: compare against existing payload/ranking fixtures and public native APIs |
-| Provider scope | Build the eight stores named in section 3. faiss, sql-server and azure-cosmos-mongo have no install extra, sample or live test today | Product: keep and build, or retire with a migration path (FR-014). Retirement needs an explicit decision |
-| Parsing and plain chunking | MarkItDown with selective extras; in-house tiktoken splitter | Retrieval: extraction/chunk golden results, fingerprint and reindex policy |
-| Evaluation migration and packaging | DeepEval retention and Microsoft/legacy evaluation removal are fixed; assess replacement criteria and retained metric-library overhead | Evaluation: certify migration guidance, early rejection, absence of the removed stack, and DeepEval availability; map compatibility for changes to retained metric libraries |
-| Profile names and release compatibility | Lean host plus selected features and compatibility aggregate excluding retired evaluators | Packaging/product: exact extra mapping, missing-extra UX, release/version policy |
-| Performance and ranking gates | Fixed old/new environments and fixtures | Retrieval/serving: freeze baseline, permitted changes and thresholds before migration; explain any regression |
+| Native client versions | Decided: one client per kept store, locked by `uv.lock` (for example `pinecone` 10, `weaviate-client` 4.24, `azure-cosmos` 4.17) | [Dependency inventory](dependency-inventory.md#state-after-implementation-2026-11-10) |
+| Qdrant adapter | Decided: the existing native code is consolidated into the adapter; layout and ranking proven equal to the SK path | Plan, T5 |
+| Provider scope | Decided: eight native adapters. `faiss`, `sql-server` and `azure-cosmos-mongo` are retired with a config-time migration error (the maintainer confirmed `sql-server` explicitly) | Plan, T9 and "Open questions" |
+| Parsing and plain chunking | Decided: MarkItDown with `[pdf,docx,pptx,xlsx]`; an in-house tiktoken splitter; fingerprint and `holodeck vectorstore migrate` for reindexing | Plan, T14, T15, T20 |
+| Evaluation migration and packaging | Decided: DeepEval retained; Microsoft and legacy evaluation removed; ROUGE and METEOR called directly | Plan, T18, T19 |
+| Profile names and release compatibility | Decided: extras `eval`, `nlp`, `optimizer`, `opensearch` and the aggregate `all`; missing-extra error with the install command | Plan, T21, and the [upgrade guide](../../guides/upgrading-to-0.8.md) |
+| Performance and ranking gates | Decided: fixed fixtures (T0) and the measured old-against-new table | [Baseline measurements](../../exec-plans/active/042-dependency-stack-revamp/baseline-measurements.md#result-after-spec-042) |
 
 These are bounded validation decisions, not permission to leave SK dependencies behind in a release declared complete.
 

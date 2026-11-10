@@ -667,3 +667,67 @@ def test_unchecked_target_is_deleted_silently_and_a_failed_delete_is_reported(
     assert row.name == "claude: provider weaviate (verify_beacon) cleanup"
     assert "RuntimeError: boom" in row.detail
     assert broken.closed
+
+
+def _span_payload(
+    service: str, name: str, start: int, result: str
+) -> dict[str, object]:
+    return {
+        "data": {
+            "resourceSpans": [
+                {
+                    "resource": {
+                        "attributes": [
+                            {"key": "service.name", "value": {"stringValue": service}}
+                        ]
+                    },
+                    "scopeSpans": [
+                        {
+                            "spans": [
+                                {
+                                    "name": name,
+                                    "startTimeUnixNano": str(start),
+                                    "attributes": [
+                                        {
+                                            "key": "gen_ai.tool.call.result",
+                                            "value": {"stringValue": result},
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+
+
+def test_probe_spans_keeps_this_run_and_this_service() -> None:
+    payload = _span_payload("svc", "execute_tool leak_probe", 200, "x")
+
+    assert len(live.probe_spans(payload, "svc", 100)) == 1
+    assert live.probe_spans(payload, "svc", 300) == []  # an earlier run
+    assert live.probe_spans(payload, "other", 100) == []
+    assert live.probe_spans({"title": "Resource not found"}, "svc", 100) == []
+
+
+@pytest.mark.parametrize(
+    ("result", "expected"),
+    [
+        ("LEAK-PROBE-OK token=[REDACTED:github-token]", None),
+        ("LEAK-PROBE-OK token=ghp_" + "x" * 36, "unredacted"),
+        ("LEAK-PROBE-OK", "no leak_probe span shows"),
+    ],
+)
+def test_trace_problem_requires_the_marker_and_no_token(
+    result: str, expected: str | None
+) -> None:
+    payload = _span_payload("svc", "execute_tool leak_probe", 200, result)
+    problem = live.trace_problem(live.probe_spans(payload, "svc", 100))
+
+    assert (problem is None) if expected is None else (expected in (problem or ""))
+
+
+def test_trace_problem_fails_when_no_span_arrived() -> None:
+    assert "no leak_probe span" in (live.trace_problem([]) or "")

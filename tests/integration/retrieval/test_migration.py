@@ -1,8 +1,9 @@
 """Collection migration: dry run, interruption, resume, rollback, prune (AC-08).
 
 Spec 042 FR-023. Runs on a persistent in-memory store (a shared registry of
-fake adapters) and on the Qdrant and pgvector containers; a container that is
-not reachable is skipped. The offline hash embedding stands in for the model.
+fake adapters) and on the Qdrant, pgvector, Chroma, Weaviate and Cosmos DB
+emulator containers; a container that is not reachable is skipped. The
+offline hash embedding stands in for the model.
 
 The old collection is written with ``chunk_size=40``; the agent then asks for
 ``chunk_size=60``, so its pipeline fingerprint differs and a migration is
@@ -39,7 +40,14 @@ from holodeck.models.agent import Agent, Instructions
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.tool import DatabaseConfig
 from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
-from tests.contract.retrieval.targets import POSTGRES_URL, QDRANT_URL, port_open
+from tests.contract.retrieval import cosmos_emulator
+from tests.contract.retrieval.targets import (
+    CHROMA_URL,
+    POSTGRES_URL,
+    QDRANT_URL,
+    WEAVIATE_CONNECTION,
+    port_open,
+)
 from tests.integration.golden._golden import RETRIEVAL_ROOT, HashEmbeddingService
 from tests.unit.tools.fakes import StoreRegistry
 
@@ -47,7 +55,14 @@ pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
 DIMS = 256
 CORPUS = RETRIEVAL_ROOT / "corpus"
-TARGETS = ["memory", "qdrant", "postgres"]
+TARGETS = [
+    "memory",
+    "qdrant",
+    "postgres",
+    "chromadb",
+    "weaviate",
+    "azure-cosmos-nosql",
+]
 WRITE_METHODS = (
     "upsert",
     "delete",
@@ -93,19 +108,33 @@ class Store:
     def database(self) -> DatabaseConfig:
         if self.target == "memory":
             return DatabaseConfig(provider="in-memory", collection_name=self.collection)
-        url = QDRANT_URL if self.target == "qdrant" else POSTGRES_URL
+        if self.target == "azure-cosmos-nosql":
+            return DatabaseConfig(
+                provider=self.target,
+                collection_name=self.collection,
+                **cosmos_emulator.connection(),
+            )
+        if self.target == "weaviate":
+            return DatabaseConfig(
+                provider=self.target,
+                collection_name=self.collection,
+                **WEAVIATE_CONNECTION,
+            )
+        urls = {"qdrant": QDRANT_URL, "postgres": POSTGRES_URL, "chromadb": CHROMA_URL}
         return DatabaseConfig(
             provider=self.target,
-            connection_string=SecretStr(url),
+            connection_string=SecretStr(urls[self.target]),
             collection_name=self.collection,
         )
 
     def connection(self) -> dict[str, object]:
         database = self.database()
-        if database.connection_string is None:
-            return {}
-        assert database.connection_string is not None
-        return {"connection_string": database.connection_string.get_secret_value()}
+        settings: dict[str, object] = dict(database.model_extra or {})
+        if database.connection_string is not None:
+            settings["connection_string"] = (
+                database.connection_string.get_secret_value()
+            )
+        return settings
 
     def create(
         self,
@@ -196,6 +225,12 @@ def _skip_reason(target: str) -> str | None:
         return port_open("127.0.0.1", 6333)()
     if target == "postgres":
         return port_open("127.0.0.1", 54329)()
+    if target == "chromadb":
+        return port_open("127.0.0.1", 8765)()
+    if target == "weaviate":
+        return port_open("127.0.0.1", 8089)()
+    if target == "azure-cosmos-nosql":
+        return cosmos_emulator.skip_reason()
     return None
 
 

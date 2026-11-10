@@ -129,6 +129,8 @@ ASPIRE = Service(
 )
 
 ASPIRE_TRACES_URL = "http://127.0.0.1:18888/traces"
+# The dashboard's read API. The limit is above what a full run exports.
+ASPIRE_SPANS_API = "http://127.0.0.1:18888/api/telemetry/spans?limit=20000"
 
 
 @dataclass(frozen=True)
