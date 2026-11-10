@@ -409,15 +409,24 @@ class METEOREvaluator(BaseEvaluator):
             from nltk.translate import meteor_score
 
             def _score(reference: str, prediction: str) -> float:
-                return float(
-                    meteor_score.single_meteor_score(
-                        word_tokenize(reference),
-                        word_tokenize(prediction),
-                        alpha=_METEOR_ALPHA,
-                        beta=_METEOR_BETA,
-                        gamma=_METEOR_GAMMA,
+                try:
+                    return float(
+                        meteor_score.single_meteor_score(
+                            word_tokenize(reference),
+                            word_tokenize(prediction),
+                            alpha=_METEOR_ALPHA,
+                            beta=_METEOR_BETA,
+                            gamma=_METEOR_GAMMA,
+                        )
                     )
-                )
+                except (LookupError, OSError) as error:
+                    # The data directories exist but a file inside is missing
+                    # or unreadable, so the up-front check passed.
+                    raise NLPMetricsError(
+                        "NLTK data for METEOR is incomplete or unreadable "
+                        f"({error.__class__.__name__}). "
+                        f"Install it again with: {_NLTK_DOWNLOAD_COMMAND}"
+                    ) from error
 
             self._metric = _score
         return self._metric
