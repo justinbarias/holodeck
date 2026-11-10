@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from holodeck.lib.retrieval import CollectionSchema, VectorStoreAdapter
 from holodeck.lib.retrieval.adapters.in_memory import InMemoryAdapter
+from holodeck.lib.retrieval.adapters.qdrant import QdrantAdapter
 from holodeck.lib.retrieval.adapters.sk_bridge import (
     SKChromaAdapter,
     SKInMemoryAdapter,
@@ -46,6 +47,17 @@ def port_open(host: str, port: int) -> Callable[[], str | None]:
 
 TARGETS: list[ContractTarget] = [
     ContractTarget(name="in-memory", build=InMemoryAdapter),
+    ContractTarget(
+        name="qdrant",
+        build=lambda schema: QdrantAdapter.create(
+            schema, {"connection_string": QDRANT_URL}
+        ),
+        available=port_open("127.0.0.1", 6333),
+    ),
+    ContractTarget(
+        name="qdrant:memory",
+        build=lambda schema: QdrantAdapter.create(schema, {"location": ":memory:"}),
+    ),
     ContractTarget(
         name="sk-bridge:in-memory",
         build=lambda schema: SKInMemoryAdapter.create(schema, {}),

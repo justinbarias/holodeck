@@ -139,9 +139,19 @@ def test_definition_has_one_key_and_one_cosine_vector_field() -> None:
     assert vector.distance_function.value == "cosine_similarity"
 
 
+# Providers that moved to a native adapter; their bridge class stays until T16.
+NATIVE = {"qdrant": "QdrantAdapter"}
+BRIDGE_CLASSES: dict[str, type[SKBridgeAdapter]] = {
+    "qdrant": SKQdrantAdapter,
+}
+
+
 def test_registry_maps_every_bridged_provider() -> None:
     assert PROVIDERS["in-memory"].class_name == "InMemoryAdapter"
-    for provider in BRIDGED:
+    for provider, class_name in NATIVE.items():
+        assert PROVIDERS[provider].class_name == class_name
+        assert PROVIDERS[provider].module.endswith(f".adapters.{provider}")
+    for provider in (p for p in BRIDGED if p not in NATIVE):
         entry = PROVIDERS[provider]
         assert entry.module == "holodeck.lib.retrieval.adapters.sk_bridge"
         adapter_class = getattr(importlib.import_module(entry.module), entry.class_name)
@@ -168,14 +178,14 @@ def test_missing_client_with_an_extra_names_the_extra() -> None:
     with (
         patch(
             "holodeck.lib.vector_store.get_collection_class",
-            side_effect=ImportError("no qdrant"),
+            side_effect=ImportError("no psycopg"),
         ),
         pytest.raises(MissingClientError) as raised,
     ):
-        create_adapter("qdrant", _schema(), {})
+        create_adapter("postgres", _schema(), {})
 
-    assert raised.value.extra == "qdrant"
-    assert "pip install 'holodeck-ai[qdrant]'" in str(raised.value)
+    assert raised.value.extra == "postgres"
+    assert "pip install 'holodeck-ai[postgres]'" in str(raised.value)
 
 
 def test_missing_client_without_an_extra_keeps_the_package_hint() -> None:
@@ -213,7 +223,7 @@ EXPECTED: dict[str, set[Operation]] = {
 @pytest.mark.parametrize("provider", BRIDGED)
 def test_capabilities_match_what_works_today(provider: str) -> None:
     entry = PROVIDERS[provider]
-    adapter_class: type[SKBridgeAdapter] = getattr(
+    adapter_class: type[SKBridgeAdapter] = BRIDGE_CLASSES.get(provider) or getattr(
         importlib.import_module(entry.module), entry.class_name
     )
 
