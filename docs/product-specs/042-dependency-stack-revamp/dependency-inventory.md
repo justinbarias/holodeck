@@ -1,121 +1,165 @@
 # Dependency inventory
 
-Status: audit baseline for [spec 042](spec.md). Inspected 2026-09-06 at commit `3e59e1d`. This is a declaration/import audit, not a measured clean-install footprint. Versions below come from the repository lockfile, not claims about latest upstream releases.
+Status: audit baseline for [spec 042](spec.md). Re-inspected 2026-11-10 at commit `00d1ed4`, after the dependency upgrades in #419–#431. The first audit was 2026-09-06 at `3e59e1d`. This is a declaration, import and lockfile audit. It is not a measured clean-install footprint. Versions come from `uv.lock`; upstream "latest" claims are dated and sourced in the [selection evidence](../../design-docs/042-dependency-stack-revamp/selection-evidence.md).
+
+## What changed since 2026-09-06
+
+- `requires-python` is now `>=3.11` (was `>=3.10`). CI runs 3.11 and 3.13. FR-006 must be read against 3.11.
+- Upgraded: openai-agents 0.17 → 0.24 with openai 3, LiteLLM 1.88 → 1.108, DeepEval 3.8 → 4.3, claude-agent-sdk 0.2.82 → 0.2.179, chromadb → 1.5, temporalio 1.32 → 1.35, opensearch-py 2 → 3, dash 3 → 4, twine 6 → 7, azure-mgmt-appcontainers 4 → 5, pypdf 6 → 7, optuna 4 → 5, MarkItDown 0.1.5b1 → 0.1.9 (stable), Semantic Kernel 1.43 → 1.47.
+- SK is now the only package that holds back `mcp` 2 (it requires `mcp<2.0`) and newer Pinecone (`~=7.0`). Both native agent SDKs allow `mcp<3`.
+- The CLI imports each command lazily (#430), so a heavy dependency no longer slows unrelated commands. Profile isolation (FR-005) still needs installed-wheel tests.
+- The lock has 370 packages. The base install (core dependencies only) resolves 269; all extras resolve 368.
+
+## Measured removal effect on the base install
+
+Computed from `uv.lock` by removing a root and counting packages that nothing else in the base install requires. These are package counts, not bytes or import time (FR-008 still requires those).
+
+| Root removed | Packages that leave the base install |
+| --- | --- |
+| `semantic-kernel` | 26 |
+| `markitdown[all]` → selective extras | up to 26 (depends on the extras kept) |
+| `deepeval` → evaluation profile | 17 |
+| `mkdocs-material` → docs tooling | 14 |
+| `twine` → release tooling | 14 |
+| `evaluate` | 5 |
+| `azure-ai-evaluation` | 3 |
+| SK + azure-ai-evaluation + evaluate + mkdocs-material + twine together | 71 (269 → 198) |
 
 ## Direct runtime declarations
 
-All **50** `[project].dependencies` declarations are accounted for. “No direct source import” is evidence for review, not proof a dependency is safe to remove: dynamic loading, upstream requirements and security constraints must be checked. Paths in this inventory are relative to `src/holodeck/` unless stated otherwise.
+All **50** `[project].dependencies` declarations are accounted for. "No import" is evidence for review, not proof that a dependency is safe to remove: dynamic loading, upstream requirements and security constraints must be checked. Paths are relative to `src/holodeck/` unless stated otherwise.
 
 | Dependency constraint | Locked version | Observed role | Proposed disposition |
 | --- | --- | --- | --- |
-| `requests>=2.32.5,<3.0.0` | `2.33.0` | HTTP fetches in `lib/file_processor.py`, `services/mcp_registry.py`. | Review consolidation with HTTPX; retain until sync/async, retries and TLS behavior match. |
-| `pydantic>=2.11.0` | `2.13.4` | 45 source files: `models/`, config validation, backend output, workflow and serving. | Retain as HoloDeck schema/contract boundary. |
-| `pyyaml>=6.0.0` | `6.0.3` | `config/loader.py`, `config/manager.py`, templates, workflows, optimizer output. | Retain. |
-| `click>=8.3.3,<9.0.0` | `8.3.3` | 12 CLI source files, including `cli/main.py`. | Retain; preserve security lower bound. |
-| `jinja2>=3.0.0,<4.0.0` | `3.1.6` | `lib/template_engine.py`, `deploy/dockerfile.py`. | Retain; not superseded by LlamaIndex. |
-| `python-dotenv>=1.0.0` | `1.2.2` | `cli/main.py`. | Retain. |
-| `python-dateutil>=2.8.0` | `2.9.0.post0` | No direct source import found. | Review historical/transitive rationale; remove direct declaration only after clean-install tests. |
-| `urllib3>=2.6.0,<3.0.0` | `2.7.0` | No direct source import; Requests transport dependency. | Review security constraint placement; do not lose patched lower bound. |
-| `cryptography>=50.0.0,<51.0.0` | `50.0.1` | No direct source import; manifest records security fix. | Review security constraint placement, not blind removal. |
-| `mkdocs-material>=9.7.7,<10.0.0` | `9.7.7` | Documentation tooling; no runtime source import. | Move out of runtime into docs tooling. |
-| `twine>=6.2.0,<7.0.0` | `6.2.0` | Release tooling; no runtime source import. | Move out of runtime into release tooling. |
-| `jsonschema[format-nongpl]>=4.18.0,<5.0.0` | `4.25.1` | `lib/workflow/edge.py`, native backend output validation. | Retain format-nongpl extra and >=4.18 registry semantics. |
-| `referencing>=0.36.0,<1.0.0` | `0.36.2` | `lib/workflow/edge.py` imports specification/registry APIs. | Retain explicit direct dependency. |
-| `lark>=1.1.0,<2.0.0` | `1.3.1` | `lib/workflow/feel.py` uses parser nodes. | Retain explicit direct dependency. |
-| `semantic-kernel>=1.39.4,<2.0.0` | `1.43.0` | `lib/vector_store.py` record contracts and 11 dynamically imported connectors; `lib/text_chunker.py`. | Replace with HoloDeck contracts plus selected LlamaIndex integration packages/native extensions; remove SK hooks and package only after parity. |
-| `markitdown[all]>=0.1.4,<0.2.0` | `0.1.5b1` | `lib/file_processor.py`; all extra includes numerous document/audio/cloud loaders. | Evaluate selective readers behind existing file-processing contract; preserve formats, heading/page extraction and multimodal behavior. |
-| `pypdf>=6.14.2` | `6.16.2` | `lib/pdf_processor/page_extractor.py`. | Retain until PDF/page parity demonstrated; preserve security floor. |
-| `azure-ai-evaluation>=1.13.0,<2.0.0` | `1.13.7` | `lib/evaluators/azure_ai.py`. | Remove completely from all profiles and resolved graphs, alongside legacy Azure AI evaluators/configuration. Migrate users to retained DeepEval; no optional legacy fallback (FR-030–031, AC-13). |
-| `evaluate>=0.4.6,<0.5.0` | `0.4.6` | `lib/evaluators/nlp_metrics.py` lazy loader. | Evaluate removing framework overhead using dedicated metric libraries, or optionalize; preserve metric behavior. |
-| `aiofiles>=25.1.0,<26.0.0` | `25.1.0` | No direct source import found. | Review/remove direct declaration if no runtime need survives. |
-| `rouge-score>=0.1.2,<0.2.0` | `0.1.2` | Metric backend used through evaluate loader, not a direct import. | Retain in NLP evaluation capability until equivalent metric implementation verified. |
-| `absl-py>=2.3.1,<3.0.0` | `2.3.1` | No direct source import; support dependency for ROUGE ecosystem. | Review transitive placement in NLP evaluation capability. |
-| `sacrebleu>=2.5.1,<3.0.0` | `2.5.1` | `lib/evaluators/nlp_metrics.py`, direct BLEU backend. | Retain/optionalize with NLP metrics; preserve smoothing and normalization. |
-| `anthropic>=0.72.0,<0.73.0` | `0.72.1` | No direct source import found; runtime uses Claude Agent SDK. | Review/remove direct declaration after provider/DeepEval compatibility tests; package-name absence alone does not mean provider removal. |
-| `ollama>=0.4,<1.0` | `0.6.1` | No direct source import found; runtime provider routes through Claude, inference through LiteLLM. | Review/remove direct declaration after Ollama runtime and inference tests. |
-| `deepeval>=3.8.9,<3.9.0` | `3.8.9` | Eight evaluator modules under `lib/evaluators/deepeval/`. | Retain DeepEval and all existing evaluators; replacement is out of scope. Optional packaging must keep DeepEval available in evaluation and compatibility profiles with unchanged behavior (FR-025, AC-09). |
-| `python-ulid>=3.1.0,<4.0.0` | `3.1.0` | Claude backend and serve sessions/protocols/models. | Retain. |
-| `ml-dtypes>=0.4.0,<0.5.0` | `0.4.1` | No direct source import; current manifest caps <0.5. | Review legacy numeric compatibility cap and reverse dependency graph. |
-| `mcp>=1.28.1,<2` | `1.28.1` | Consumed by native SDKs; tool bridges rely on their MCP APIs. | Retain 1.x compatibility cap until Claude SDK API compatibility established. |
-| `inquirerpy>=0.3.4,<0.4.0` | `0.3.4` | `cli/utils/wizard.py`. | Retain CLI capability; optionalize only with workable noninteractive install UX. |
-| `fastapi>=0.115.0,<1.0.0` | `0.136.1` | `serve/server.py`, REST protocol, middleware and tool init routes. | Retain hosting capability; consider explicit serving profile. |
-| `starlette>=1.3.1` | `1.3.1` | `serve/middleware.py`; also FastAPI/MCP dependency. | Retain hosting compatibility and security floor. |
-| `uvicorn[standard]>=0.34.0,<1.0.0` | `0.38.0` | `cli/commands/serve.py`. | Retain serving runner; review standard extra costs by platform. |
-| `ag-ui-protocol>=0.1.18,<1.0.0` | `0.1.18` | `chat/executor.py`, Claude backend, AG-UI server/protocol. | Retain protocol contract. |
-| `werkzeug>=3.1.6` | `3.1.6` | No direct source import; manifest security floor. | Review as transitive/dashboard constraint. |
-| `opentelemetry-sdk>=1.20.0,<2.0.0` | `1.39.1` | Observability providers, exporters, serving, optimizer and SDK tracing. | Retain portable observability core. |
-| `opentelemetry-exporter-otlp-proto-grpc>=1.20.0,<2.0.0` | `1.39.1` | `lib/observability/exporters/otlp.py`. | Retain supported transport; optionalize only with explicit compatibility decision. |
-| `opentelemetry-exporter-otlp-proto-http>=1.20.0,<2.0.0` | `1.39.1` | `lib/observability/exporters/otlp.py`. | Retain supported transport; optionalize only with explicit compatibility decision. |
-| `rank-bm25>=0.2.2,<0.3.0` | `0.2.2` | `lib/keyword_search.py` sparse fallback. | Retain until candidate sparse retrieval preserves ranking semantics. |
-| `opensearch-py>=2.0.0,<3.0.0` | `2.8.0` | `lib/keyword_search.py` production keyword index. | Optionalize provider capability; preserve existing keyword search. |
-| `tiktoken>=0.12.0` | `0.12.0` | `lib/structured_chunker.py`, contextual generation paths. | Retain token budgets/chunking parity; do not duplicate tokenization ownership. |
-| `aiohttp>=3.13.4` | `3.14.3` | No direct source import; LiteLLM and other SDK transport dependency; stricter uv security constraint exists. | Review direct vs constraint scope while preserving security floor. |
-| `httpx>=0.27` | `0.28.1` | `lib/source_resolver.py` async remote resolution. | Retain; candidate common HTTP client. |
-| `authlib>=1.6.11` | `1.7.0` | No direct source import; security-sensitive transitive support. | Review necessity/constraint scope; preserve auth behavior. |
-| `azure-core>=1.38.0` | `1.38.2` | `deploy/deployers/azure_containerapps.py` imports exception types. | Move with Azure deployment capability if core no longer needs it; retain direct ownership where imported. |
-| `claude-agent-sdk==0.2.82` | `0.2.82` | `lib/backends/claude_backend.py`, hooks, tool/MCP adapters, `lib/claude_context_generator.py`. | Retain native agent execution and pin. |
-| `python-frontmatter>=1.1,<2.0` | `1.1.0` | `lib/prompt_version.py`. | Retain prompt versioning. |
-| `optuna>=4.8.0` | `4.9.0` | `optimizer/proposers/numeric.py`. | Optionalize optimization capability; retain proposer semantics. |
-| `litellm>=1.80.0,<1.89.0` | `1.88.1` | `lib/litellm_support.py`, `lib/llm_context_generator.py`, telemetry instrumentation. | Retain provider-neutral embedding/context inference boundary from 035; LlamaIndex must not add competing provider configuration. |
-| `bkflow-feel==1.2.0` | `1.2.0` | `lib/workflow/feel.py`. | Retain exact pin; shared transformer correctness depends on verified 1.2.0 statelessness. |
+| `requests>=2.32.5,<3.0.0` | `2.34.2` | `lib/file_processor.py`, `services/mcp_registry.py`. | Move both sites to HTTPX and drop the direct declaration. No blocker found; set `follow_redirects=True`, because HTTPX does not follow redirects by default. Requests stays in the graph through MarkItDown, tiktoken, DeepEval and OpenAI Agents. |
+| `pydantic>=2.11.0` | `2.13.5` | 46 source files: models, config validation, backend output, workflow and serving. | Retain as HoloDeck schema/contract boundary. SK caps `pydantic<2.14`; the cap goes away with SK. |
+| `pyyaml>=6.0.0` | `6.0.3` | Config loader/manager, templates, workflows, optimizer output. | Retain. |
+| `click>=8.3.3,<9.0.0` | `8.3.3` | 13 CLI source files. Commands load lazily since #430. | Retain; preserve security lower bound. |
+| `jinja2>=3.0.0,<4.0.0` | `3.1.6` | `lib/template_engine.py`, `deploy/dockerfile.py`. | Retain. |
+| `python-dotenv>=1.0.0` | `1.2.4` | `cli/main.py`. | Retain. |
+| `python-dateutil>=2.8.0` | `2.9.0.post0` | No import in `src/` or `tests/`. Required by bkflow-feel, botocore, opensearch-py and others. | Remove the direct declaration; it stays as a transitive dependency. |
+| `urllib3>=2.8.0,<3.0.0` | `2.8.0` | No direct source import; security floor. | Move the floor to resolver constraints and published-wheel policy; do not lose it. |
+| `cryptography>=50.0.0,<51.0.0` | `50.0.2` | No direct source import; security floor. | Same as urllib3: keep the floor, review where it is declared. |
+| `mkdocs-material>=9.7.7,<10.0.0` | `9.8.1` | Documentation tooling; no runtime import. Brings 14 packages that nothing else needs. | Move out of runtime into docs tooling. |
+| `twine>=6.2.0,<8.0.0` | `7.0.0` | Release tooling; no runtime import. Brings 14 packages that nothing else needs. 7.x reads metadata 2.5 wheels (#431). | Move out of runtime into release tooling. |
+| `jsonschema[format-nongpl]>=4.18.0,<5.0.0` | `4.26.0` | `lib/workflow/edge.py`, native backend output validation. | Retain format-nongpl extra and >=4.18 registry semantics. |
+| `referencing>=0.36.0,<1.0.0` | `0.36.2` | `lib/workflow/edge.py`. | Retain explicit direct dependency. |
+| `lark>=1.1.0,<2.0.0` | `1.3.1` | `lib/workflow/feel.py`. | Retain explicit direct dependency. |
+| `semantic-kernel>=1.39.4,<2.0.0` | `1.47.0` | Two importing files: `lib/vector_store.py` (record contracts, 11 dynamically imported connectors) and `lib/text_chunker.py`. Also telemetry helper names, logging namespaces and 10 test files. Brings 26 packages that nothing else needs (aiortc, av, azure-ai-agents, azure-ai-projects, scipy, openapi-core, prance, pybars4 and others). Its metadata caps `mcp<2.0`, `pydantic<2.14` and `pinecone~=7.0`. | Remove. Replace with HoloDeck-owned adapters on native store clients and an in-house tiktoken splitter; see the [selection evidence](../../design-docs/042-dependency-stack-revamp/selection-evidence.md). |
+| `markitdown[all]>=0.1.4,<0.2.0` | `0.1.9` | `lib/file_processor.py`. Now a stable release (was 0.1.5b1). `[all]` brings 26 packages that nothing else needs, including audio/speech, YouTube, Azure Document Intelligence and `azure-ai-contentunderstanding>=1.2.0b1`, which has only prerelease versions. | Retain MarkItDown; replace `[all]` with `[pdf,docx,pptx,xlsx]` (add `xls`/`outlook` only on evidence). Base MarkItDown still requires magika, which pulls onnxruntime. Declare directly imported `openpyxl`, `pdfminer.six` and `python-pptx`. Verify with format fixtures (FR-021). |
+| `pypdf>=6.21.4` | `7.0.0` | `lib/pdf_processor/page_extractor.py`. Now on 7.x. | Retain; preserve security floor. |
+| `azure-ai-evaluation>=1.13.0,<2.0.0` | `1.18.11` | `lib/evaluators/azure_ai.py`. Own closure is 61 packages; only 3 are exclusive (msrest, oauthlib, requests-oauthlib). | Remove completely (FR-030–031, AC-13). Unchanged decision. |
+| `evaluate>=0.4.6,<0.5.0` | `0.4.6` | `lib/evaluators/nlp_metrics.py`: only ROUGE and METEOR use `evaluate.load`, which fetches metric scripts from the Hugging Face Hub at first use. No release since 2025-09. Brings datasets, pyarrow, dill, multiprocess, xxhash. | Remove. Call `rouge_score` and NLTK METEOR directly; freeze fixtures first to prove equal scores (FR-025). Drops the `datasets` and `pyarrow` constraints if no other package needs them. |
+| `aiofiles>=25.1.0,<26.0.0` | `25.1.0` | No import in `src/` or `tests/`; only HoloDeck requires it. | Remove. |
+| `rouge-score>=0.1.2,<0.2.0` | `0.1.2` | ROUGE backend, reached through `evaluate` today. Last release 2022, sdist only; requires absl-py, nltk, numpy, six. | Retain and call directly. No maintained drop-in found. |
+| `absl-py>=2.3.1,<3.0.0` | `2.5.1` | No direct import; rouge-score already requires it. | Remove the direct declaration. |
+| `sacrebleu>=2.5.1,<3.0.0` | `2.6.0` | `lib/evaluators/nlp_metrics.py`, called directly for BLEU. | Retain. |
+| `anthropic>=0.72.0,<2.7.0` | `2.6.0` | No import in `src/` or `tests/`; only HoloDeck requires it. DeepEval does not declare it. The `<2.7.0` cap excludes 2.7.0, which moves to `httpx2`. | Remove after a Claude backend and DeepEval-on-Anthropic test run without it. |
+| `ollama>=0.4,<1.0` | `0.6.3` | No import in `src/` or `tests/`; only HoloDeck requires it. | Remove after Ollama runtime and embedding tests run without it. |
+| `deepeval>=4.3.3,<5` | `4.3.3` | Eight evaluator modules under `lib/evaluators/deepeval/`. Now 4.x. Still requires pytest, pytest-asyncio, pytest-xdist, pytest-repeat, pytest-rerunfailures and posthog at runtime; no slim extra exists. No longer declares sentry-sdk. | Retain (FR-025, AC-09). Move to an evaluation profile so the base host does not install pytest and posthog. |
+| `python-ulid>=3.1.0,<5.0.0` | `4.1.0` | Claude backend and serve sessions/protocols/models. Now 4.x. | Retain. |
+| `ml-dtypes>=0.4.0,<0.7.0` | `0.6.0` | No direct import; only HoloDeck requires it. Cap widened to `<0.7` in #431. | Remove the direct declaration unless a reverse dependency appears after SK removal. |
+| `mcp>=1.30.0,<2` | `1.30.0` | Consumed by native SDKs and tool bridges. Latest upstream is 2.3.0. SK requires `mcp<2.0`. claude-agent-sdk 0.2.179 and openai-agents 0.24.0 both allow `mcp<3`. | Retain. Lift the `<2` cap after SK removal, and only after the Claude backend passes on MCP 2: the manifest comment records a past `Server.list_tools` failure. |
+| `inquirerpy>=0.3.4,<0.4.0` | `0.3.4` | `cli/utils/wizard.py`. | Retain. |
+| `fastapi>=0.115.0,<1.0.0` | `0.162.2` | `serve/server.py`, REST protocol, middleware, tool-init routes. | Retain; consider explicit serving profile. |
+| `starlette>=1.3.1` | `1.10.0` | `serve/middleware.py`; also FastAPI/MCP dependency. | Retain with security floor. |
+| `uvicorn[standard]>=0.34.0,<1.0.0` | `0.54.0` | `cli/commands/serve.py`. | Retain. |
+| `ag-ui-protocol>=0.1.18,<1.0.0` | `0.1.22` | Chat executor, Claude backend, AG-UI server/protocol. Upstream 1.0 needs a multimodal migration (Dependabot #413). | Retain; 1.0 migration is separate work. |
+| `werkzeug>=3.1.9` | `3.1.9` | No direct import; security floor. Required by dash and flask (dashboard) and by openapi-core (SK). | Move the floor to the dashboard profile/constraints after SK removal. |
+| `opentelemetry-sdk>=1.20.0,<2.0.0` | `1.45.2` | Observability providers, exporters, serving, optimizer, SDK tracing. | Retain. |
+| `opentelemetry-exporter-otlp-proto-grpc>=1.20.0,<2.0.0` | `1.45.2` | `lib/observability/exporters/otlp.py`. | Retain. |
+| `opentelemetry-exporter-otlp-proto-http>=1.20.0,<2.0.0` | `1.45.2` | `lib/observability/exporters/otlp.py`. | Retain. |
+| `rank-bm25>=0.2.2,<0.3.0` | `0.2.2` | `lib/keyword_search.py` sparse fallback. Last release 2022; numpy only; works on Python 3.14. | Retain. `bm25s` 0.3.16 is active but has no mode that reproduces BM25Okapi's idf floor, so rankings would change. Fallback if maintenance fails: vendor BM25Okapi (about 60 lines). |
+| `opensearch-py>=2.0.0,<4.0.0` | `3.2.0` | `lib/keyword_search.py` production keyword index. Now 3.x, verified against OpenSearch 2.19 (#431). | Optionalize as a provider capability. |
+| `tiktoken>=0.12.0` | `0.14.0` | `lib/structured_chunker.py`, contextual generation paths. | Retain; also the token counter for the replacement plain splitter. |
+| `aiohttp>=3.14.4` | `3.14.5` | No direct import; LiteLLM/DeepEval transport; security floor. | Keep the floor; review direct vs constraint scope. |
+| `httpx>=0.27` | `0.28.1` | `lib/source_resolver.py`. | Retain; becomes the single HTTP client. |
+| `authlib>=1.9.1` | `1.9.5` | No direct import; only HoloDeck requires it. | Review: either a security floor for a dependency that has since left the graph, or dead. Remove if no reverse dependency remains. |
+| `azure-core>=1.38.0` | `1.41.0` | `deploy/deployers/azure_containerapps.py`, `lib/source_resolver.py`. | Move with the Azure deploy/source capabilities. |
+| `claude-agent-sdk==0.2.179` | `0.2.179` | Claude backend, hooks, tool/MCP adapters, `lib/claude_context_generator.py`. | Retain native agent execution and exact pin. |
+| `python-frontmatter>=1.1,<2.0` | `1.3.0` | `lib/prompt_version.py`. | Retain. |
+| `optuna>=4.8.0` | `5.0.0` | `optimizer/proposers/numeric.py`. Now 5.x; brings sqlalchemy 2.1 and alembic. | Optionalize with the optimizer. |
+| `litellm>=1.108.3,<1.109` | `1.108.3` | `lib/litellm_support.py`, `lib/llm_context_generator.py`, telemetry instrumentation. Pinned to one minor (`<1.109`). | Retain as the embedding/context inference boundary. |
+| `bkflow-feel==1.2.0` | `1.2.0` | `lib/workflow/feel.py`. | Retain exact pin. |
 
 ## Optional capabilities
 
-| Extra | Declared packages | Evidence and disposition |
+| Extra | Declared packages (locked) | Evidence and disposition |
 | --- | --- | --- |
-| `dev` | `pytest>=9.0.3`, `pytest-cov>=4.1.0`, `pytest-asyncio>=0.21.0`, `pytest-mock>=3.11.0`, `pytest-xdist>=3.8.0`, `black>=26.3.1`, `ruff>=0.14.7`, `mypy>=1.19.0`, `pre-commit>=3.3.0`, `tox>=4.0.0`, `bandit[toml]>=1.8.0`, `pip-audit>=2.7.0`, `detect-secrets>=1.4.0`, `types-PyYAML>=6.0.12`, `mkdocstrings[python]>=0.25.0`, `mkdocs-llmstxt>=0.4` | Tests, linters, type checking, security and docs tooling; keep separate from production profiles. |
-| `pinecone` | `pinecone[asyncio,grpc]~=7.0` | SK connector mapping exists; retain provider coverage through migration. |
-| `postgres` | `psycopg[binary,pool]~=3.2` | SK connector plus native filtered reads in `lib/collection_filter.py`; preserve record layout/filter behavior. |
-| `qdrant` | `qdrant-client>=1.18,<2.0` | Native async client use spans four files as well as SK connector; preserve bespoke full-text hybrid/RRF and payload indexes. |
-| `chromadb` | `chromadb>=0.5,<1.1` | SK connector plus native collection handling; migration parity required. |
-| `vectorstores` | `pinecone[asyncio,grpc]~=7.0`, `psycopg[binary,pool]~=3.2`, `qdrant-client>=1.18,<2.0`, `chromadb>=0.5,<1.1` | Convenience union covers only four provider extras, despite eleven connector mappings. |
-| `otel-prometheus` | `opentelemetry-exporter-prometheus>=0.60b0,<1.0.0`, `prometheus-client>=0.17.0,<1.0.0` | Declared/configured; no exporter implementation module found. `lib/observability/config.py` tracks enablement; must not claim installation yields working exporter. |
-| `otel-azmon` | `azure-monitor-opentelemetry-exporter>=1.0.0b24,<2.0.0` | Declared/configured; no exporter implementation module found. Resolve supported status before packaging promise. |
-| `otel-all` | `opentelemetry-exporter-prometheus>=0.60b0,<1.0.0`, `prometheus-client>=0.17.0,<1.0.0`, `azure-monitor-opentelemetry-exporter>=1.0.0b24,<2.0.0` | Convenience group repeats declared Prometheus/Azure Monitor exporters; implementation gap above applies. |
-| `claude-otel` | `otel-instrumentation-claude-agent-sdk>=0.0.6,<0.1.0` | Lazily imported by Claude backend; retain tracing/redaction behavior. |
-| `openai-agents` | `openai-agents==0.17.4` | Native OpenAI/Azure backend; retain lazy optional install and exact pin. |
-| `dashboard` | `dash>=3.0,<4.0`, `plotly>=5.20,<7.0`, `pandas>=2.0` | Actual Dash/Plotly/pandas implementation under `dashboard/`; retain separate profile. pandas also currently arrives through file parsing/evaluation. |
-| `deploy` | `docker>=7.0.0` | Docker SDK used by `deploy/builder.py`. |
-| `deploy-aws` | `boto3>=1.42.0` | AWS deployer explicitly unimplemented in `deploy/deployers/__init__.py`; boto3 actually used by S3 source resolver. |
-| `s3` | `boto3>=1.42.0` | Actual boto3 source resolution in `lib/source_resolver.py`. |
-| `azure-blob` | `azure-storage-blob>=12.19` | Actual Azure Blob source resolution in `lib/source_resolver.py`. |
-| `all-sources` | `boto3>=1.42.0`, `azure-storage-blob>=12.19` | Convenience union of implemented source resolvers. |
-| `deploy-gcp` | `google-cloud-run>=0.13.0` | GCP deployer explicitly unimplemented in `deploy/deployers/__init__.py`; no google-cloud-run source import found. |
-| `deploy-azure` | `azure-mgmt-appcontainers>=4.0.0`, `azure-identity>=1.15.0` | Implemented `deploy/deployers/azure_containerapps.py`; preserve Azure credential flow. |
-| `deploy-all` | `docker>=7.0.0`, `boto3>=1.42.0`, `google-cloud-run>=0.13.0`, `azure-mgmt-appcontainers>=4.0.0`, `azure-identity>=1.15.0` | Includes implemented Docker/Azure and unimplemented AWS/GCP deployment declarations; resolve advertised support. |
-| `temporal` | `temporalio==1.32.0` | Actual durable activity/worker implementation; keep exact pin and workflow sandbox compatibility. |
+| `dev` | `pytest>=9.0.3` (`9.2.0`), `pytest-cov>=4.1.0` (`7.1.0`), `pytest-asyncio>=0.21.0` (`1.4.1.post1`), `pytest-mock>=3.11.0` (`3.17.0`), `pytest-xdist>=3.8.0` (`3.8.0`), `black>=26.10.1` (`26.10.1`), `ruff>=0.17.4` (`0.17.4`), `mypy>=2.4.1` (`2.4.1`), `pre-commit>=3.3.0` (`4.7.0`), `tox>=4.0.0` (`4.67.13`), `bandit[toml]>=1.8.0` (`1.9.4`), `pip-audit>=2.7.0` (`2.10.1`), `detect-secrets>=1.4.0` (`1.5.0`), `types-PyYAML>=6.0.12` (`6.0.12.20261103`), `mkdocstrings[python]>=0.25.0` (`1.0.8`), `mkdocs-llmstxt>=0.4` (`0.5.1`) | Tests, linters, type checking, security and docs tooling; keep separate from production profiles. |
+| `pinecone` | `pinecone[asyncio,grpc]~=7.0` (`7.0.2.dev1`) | Held at 7.x only by SK (`7.0.2.dev1`, a dev build, is what the `~=7.0` pin resolves to; 7.1+ needs `packaging<25`). Latest client is 10.3.0. SK's connector fails to import with 8+. Dependabot ignores Pinecone majors until SK is removed. |
+| `postgres` | `psycopg[binary,pool]~=3.2` (`3.3.8`) | SK connector plus native filtered reads in `lib/collection_filter.py`; preserve record layout and filters. |
+| `qdrant` | `qdrant-client>=1.18,<2.0` (`1.20.0`) | Native async client in four files as well as the SK connector; live verify coverage. Preserve full-text hybrid/RRF and payload indexes. |
+| `chromadb` | `chromadb>=0.5,<1.6` (`1.5.9`) | SK connector plus native client setup. Now 1.5.x with a live verify case (#425). SK caps `chromadb<1.6`. |
+| `vectorstores` | `pinecone[asyncio,grpc]~=7.0` (`7.0.2.dev1`), `psycopg[binary,pool]~=3.2` (`3.3.8`), `qdrant-client>=1.18,<2.0` (`1.20.0`), `chromadb>=0.5,<1.6` (`1.5.9`) | Convenience union of four provider extras; eleven connector names exist. |
+| `otel-prometheus` | `opentelemetry-exporter-prometheus>=0.60b0,<1.0.0` (`0.66b2`), `prometheus-client>=0.17.0,<1.0.0` (`0.26.0`) | Declared/configured; no exporter implementation module found. Must not claim installation yields a working exporter. |
+| `otel-azmon` | `azure-monitor-opentelemetry-exporter>=1.0.0b24,<2.0.0` (`1.0.0b59`) | Declared/configured; no exporter implementation module found. Resolve supported status before packaging promise. |
+| `otel-all` | `opentelemetry-exporter-prometheus>=0.60b0,<1.0.0` (`0.66b2`), `prometheus-client>=0.17.0,<1.0.0` (`0.26.0`), `azure-monitor-opentelemetry-exporter>=1.0.0b24,<2.0.0` (`1.0.0b59`) | Convenience group for the two exporters above; same implementation gap. |
+| `claude-otel` | `otel-instrumentation-claude-agent-sdk>=0.0.6,<0.1.0` (`0.0.6`) | Lazily imported by the Claude backend; retain tracing/redaction behaviour. |
+| `openai-agents` | `openai-agents==0.24.0` (`0.24.0`), `openai>=3,<4` (`3.48.0`) | Native OpenAI/Azure backend. Now on the openai 3 stack (#424); `openai` is declared here, which closes the earlier hidden-import gap. |
+| `dashboard` | `dash>=3.0,<5.0` (`4.5.0`), `plotly>=5.20,<8.0` (`7.1.0`), `pandas>=2.0` (`2.3.3`) | Dash 4 (#431), Plotly 7, pandas. Retain as a separate profile. |
+| `deploy` | `docker>=7.0.0` (`7.2.0`) | Docker SDK used by `deploy/builder.py`. |
+| `deploy-aws` | `boto3>=1.42.0` (`1.43.126`) | AWS deployer is unimplemented; boto3 is actually used by the S3 source resolver. |
+| `s3` | `boto3>=1.42.0` (`1.43.126`) | boto3 source resolution in `lib/source_resolver.py`. |
+| `azure-blob` | `azure-storage-blob>=12.19` (`12.32.0b1`) | Azure Blob source resolution in `lib/source_resolver.py`. The lock resolves a beta (`12.32.0b1`) because prereleases are allowed. |
+| `all-sources` | `boto3>=1.42.0` (`1.43.126`), `azure-storage-blob>=12.19` (`12.32.0b1`) | Convenience union of implemented source resolvers. |
+| `deploy-gcp` | `google-cloud-run>=0.13.0` (`0.16.1`) | GCP deployer is unimplemented; no google-cloud-run import found. |
+| `deploy-azure` | `azure-mgmt-appcontainers>=5.1.0,<6` (`5.1.0`), `azure-identity>=1.15.0` (`1.27.0`) | Implemented `deploy/deployers/azure_containerapps.py`; azure-mgmt-appcontainers moved to 5.x (#426). |
+| `deploy-all` | `docker>=7.0.0` (`7.2.0`), `boto3>=1.42.0` (`1.43.126`), `google-cloud-run>=0.13.0` (`0.16.1`), `azure-mgmt-appcontainers>=5.1.0,<6` (`5.1.0`), `azure-identity>=1.15.0` (`1.27.0`) | Includes implemented Docker/Azure and unimplemented AWS/GCP declarations; resolve advertised support. |
+| `temporal` | `temporalio==1.35.0` (`1.35.0`) | Durable activity/worker implementation; exact pin, moved to 1.35 with live tests (#431). |
+
+## Vector store providers: what works today
+
+Checked in the full development environment (all extras installed) at `00d1ed4` by importing each SK connector module. "Repo use" counts files under `sample/`, `docs/examples`, `docs/guides` and templates that set the provider.
+
+| Provider | SK connector imports | HoloDeck extra for the client | Repo use | Live verify |
+| --- | --- | --- | --- | --- |
+| `qdrant` | Yes | `qdrant` | 10 | Yes |
+| `chromadb` | Yes | `chromadb` | 22 | Yes |
+| `postgres` | Yes | `postgres` | 8 | No |
+| `pinecone` | Yes (7.x only) | `pinecone` | 4 | No |
+| `in-memory` | Yes | none needed | 1 | No |
+| `sql-server` | Yes (module only; needs `pyodbc`, not installed) | none | 0 | No |
+| `azure-ai-search` | No: `azure.search` missing | none | 0 | No |
+| `weaviate` | No: `weaviate` missing | none | 0 | No |
+| `faiss` | No: `faiss` missing | none | 0 | No |
+| `azure-cosmos-nosql` | No: `azure.cosmos` missing | none | 0 | No |
+| `azure-cosmos-mongo` | No: `azure.cosmos` missing | none | 0 | No |
+
+Six of the eleven provider names cannot run from any documented HoloDeck install. A user must install the client by hand. This is evidence for the provider-scope decision in the spec (FR-014); it is not a decision to retire them.
 
 ## Build and dependency groups
 
-- Build: `hatchling`, `hatch-vcs`; retain VCS version/wheel behavior. These are not runtime dependencies.
-- `[dependency-groups].dev`: `pyasn1>=0.6.4`, `types-requests>=2.32.4.20250913`, `virtualenv>=20.36.1`; distinct from the published `dev` extra. Reconcile contributor/CI install commands rather than silently dropping either group.
-- `tool.uv.prerelease = "allow"` is justified in the manifest by SK Azure agent dependencies. Reassess after SK removal; current `markitdown` lock is also a prerelease.
-- `tool.uv.override-dependencies`: `pytz>=2024` overrides bkflow-feel’s old cap and influences Optuna resolution. Preserve FEEL conformance evidence.
-- Security constraints in `tool.uv.constraint-dependencies` must be reevaluated against the new graph, not discarded when a direct declaration moves. Verify constraints in built-wheel/non-uv consumer installations as well as development resolution.
+- Build: `hatchling`, `hatch-vcs`; retain VCS version/wheel behaviour.
+- `[dependency-groups].dev`: `pyasn1>=0.6.5`, `types-requests>=2.32.4.20250913`, `virtualenv>=21.14.9`; distinct from the published `dev` extra. Reconcile contributor/CI install commands.
+- `tool.uv.prerelease = "allow"`: the manifest comment names SK's `azure-ai-agents`. MarkItDown `[all]` also needs it (`azure-ai-contentunderstanding` has only prereleases). The setting lets other packages resolve prereleases: the lock holds `pinecone 7.0.2.dev1`, `azure-storage-blob 12.32.0b1`, `lxml 7.0.0b1` and `wrapt 1.17.4rc1`. Removing SK and MarkItDown `[all]` should allow `prerelease = "if-necessary-or-explicit"`; OTel 0.x beta packages are explicit pins.
+- `tool.uv.override-dependencies`: `pytz>=2024` overrides bkflow-feel's old cap. Preserve FEEL conformance evidence.
+- The published wheel carries no `readme`, so the PyPI page has no description (twine warns). Fix with the packaging changes.
 
 ## Hidden direct imports and transitive ownership
 
-- Runtime imports not individually declared in core include `openai`, `typing_extensions`, `exceptiongroup`, `grpc`, `openpyxl`, `pandas`, `pdfminer` and `pptx`. Some are intentionally supplied by named extras or an SDK, but each must have an explicit owning capability in the new graph. `openai` belongs with the native OpenAI capability, document libraries with selected ingestion formats, and `grpcio` with OTLP gRPC.
-- `psycopg` and `qdrant_client` have provider extras. `weaviate` is imported in `lib/collection_filter.py` but has no HoloDeck extra. Azure AI Search, Weaviate, FAISS, Cosmos NoSQL/MongoDB and SQL Server have connector mappings but no matching provider extras here. A mapping alone does not prove a fresh install supports the provider.
-- `semantic_kernel` occurs as direct imports in two source files, but also as dynamically imported connector paths, telemetry helper names, logging namespaces and tests. Import counting alone understates removal scope.
+- Imported but not declared in core: `openpyxl`, `pdfminer`, `pptx` (all through MarkItDown `[all]`), `grpc` (through the OTLP gRPC exporter), `pandas` (dashboard extra; in the base install it arrives only through azure-ai-evaluation and `evaluate`), `weaviate` (no extra). Each needs an owning declaration before its current carrier is removed.
+- `openai` is now declared in the `openai-agents` extra.
+- `semantic_kernel` appears as imports in two source files, and as connector path strings, telemetry helper names (`enable_semantic_kernel_telemetry`), logging namespaces and default filter namespaces in six more. Import counting alone understates removal scope.
 
 ## High-impact locked transitive clusters
 
 | Root (locked) | Selected dependencies and implication |
 | --- | --- |
-| `semantic-kernel 1.43.0` | `aiortc`, `azure-ai-agents`, `azure-ai-projects`, `azure-identity`, `numpy`, `scipy`, `openapi-core`, `prance`, `pybars4`, `openai`, MCP and OTel. These illustrate agent/cloud/media/schema baggage unrelated to remaining SK storage/text uses. Shared descendants may remain after removal. |
-| `markitdown 0.1.5b1` with `all` | Base includes `magika`, `onnxruntime`, BeautifulSoup and Requests; all adds Azure Document Intelligence, pandas, openpyxl, pdfminer/pdfplumber, audio/speech, PowerPoint and YouTube parsing. Selective reader policy can materially affect footprint; benchmark rather than assume savings. |
-| `azure-ai-evaluation 1.13.7` | Retire this evaluation root and any other Microsoft AI evaluation packages discovered in its graph. Remove exclusive transitives; retain Azure Identity/Storage, NLTK, pandas, OpenAI, HTTPX/AIOHTTP or YAML packages only where other retained features need them. Verify reverse dependencies and applicable security constraints (FR-030). |
-| `evaluate 0.4.6` | `datasets`, Hugging Face Hub, pandas, multiprocess, NumPy, fsspec; metrics framework has a broad graph. |
-| `deepeval 3.8.9` | OpenAI/OTel plus pytest, pytest-asyncio, pytest-repeat, pytest-rerunfailures and pytest-xdist, PostHog/Sentry and build utilities. Production graph currently includes testing/telemetry dependencies through evaluation. |
-| `litellm 1.88.1` | OpenAI, tokenizers/tiktoken, HTTPX/AIOHTTP, Jinja2, JSON Schema and Pydantic. Keep one inference-owner boundary. |
-| `claude-agent-sdk 0.2.82` / `openai-agents 0.17.4` | Claude depends on AnyIO/MCP; OpenAI Agents depends on OpenAI/MCP/Pydantic/Requests/websockets and types-requests. Retaining both native runtimes preserves some shared packages after SK removal. |
+| `semantic-kernel 1.47.0` | Own closure 98 packages; 26 exclusive: aiortc, aioice, av, pylibsrtp, azure-ai-agents, azure-ai-projects, scipy, openapi-core, prance, pybars4, cloudevents and others. Caps `mcp<2.0`, `pydantic<2.14`. |
+| `markitdown 0.1.9` with `all` | 26 exclusive: magika, onnxruntime, pdfminer-six, pdfplumber, python-pptx, openpyxl, mammoth, speechrecognition, pydub, youtube-transcript-api, azure-ai-documentintelligence, azure-ai-contentunderstanding (prerelease). |
+| `azure-ai-evaluation 1.18.11` | Own closure 61; only msrest, oauthlib, requests-oauthlib are exclusive. It is one of two carriers of pandas and NLTK into the base install. |
+| `evaluate 0.4.6` | datasets, pyarrow, dill, multiprocess, xxhash exclusive. Downloads metric scripts at runtime. |
+| `deepeval 4.3.3` | 17 exclusive: pytest and four pytest plugins, posthog, questionary, pyfiglet, setuptools, wheel. |
+| `litellm 1.108.3` | 9 exclusive: boto3/botocore/s3transfer, tokenizers, h2 stack. Keep one inference-owner boundary. |
+| `optuna 5.0.0` | sqlalchemy 2.1.8, alembic, mako, colorlog. sqlalchemy 2.1 conflicts with the LlamaIndex Postgres connector (`sqlalchemy<2.1`). |
+| `claude-agent-sdk 0.2.179` / `openai-agents 0.24.0` | Both allow `mcp<3`. Retaining both native runtimes preserves shared packages after SK removal. |
 
 ## Audit limits and acceptance implications
 
-- This audit inspects declarations, AST import sites, dynamic connector paths and selected lock entries. It does not certify every provider installed, licensed, vulnerability-free or behavior-compatible.
-- Fresh isolated installs must exercise CLI, provider initialization, tool ingestion/retrieval, protocol serving and evaluation profiles. The current developer environment can hide missing direct/provider dependencies.
-- A “complete revamp” should mean an explicit disposition for every dependency and install capability, with evidence. It should not force replacement of stable Pydantic, native SDK, protocol, workflow, OTel or deployment boundaries by LlamaIndex.
+- This audit inspects declarations, AST import sites, dynamic connector paths, lock entries and connector imports in one developer environment. It does not certify that a provider is licensed, vulnerability-free or behaviour-compatible.
+- Exclusive-package counts follow required dependencies and requested extras in `uv.lock`. Platform markers are ignored, so a count can differ by one or two per platform.
+- Fresh isolated installs must exercise CLI, provider initialization, tool ingestion/retrieval, serving and evaluation profiles.
 
 ## Non-Python hosting and build prerequisites
 
@@ -123,7 +167,7 @@ Sources: [base image](../../../docker/Dockerfile), [local-wheel image](../../../
 
 | Dependency | Inspected behavior | Disposition / owner |
 | --- | --- | --- |
-| Python and Linux base image | Both Dockerfiles use `python:3.10-slim`; published base defaults to latest PyPI HoloDeck when no version argument is supplied. | Packaging: record supported Python/OS/architecture and immutable build inputs; test actual images. |
+| Python and Linux base image | Both Dockerfiles now use `python:3.13-slim`; published base defaults to latest PyPI HoloDeck when no version argument is supplied. | Packaging: record supported Python/OS/architecture and immutable build inputs; test actual images. |
 | Claude executable | Claude Agent SDK bundles a CLI binary; the backend runs it as a subprocess. Node is not required solely because the provider is Anthropic. | Backend: retain SDK executable provisioning, platform wheels, startup and lifecycle checks. |
 | Node.js / NodeSource | Generator conditionally installs Node 22 through NodeSource; validator requires Node >=18 for MCP commands `node`, `npx`, `yarn`, or `pnpm`. Some generator comments still incorrectly attribute the need to Claude itself. | Backend/packaging: preserve conditional installation, verify supported versions and bootstrap provenance; correct comments during implementation. |
 | MCP launchers and server packages | Selected stdio tools may require Node package managers, `uv`/`uvx`, Python or other configured executables and server packages. These are agent-specific dependencies, not all universal requirements. | Tool/deployment maintainers: inventory the selected agent's command/args and package versions, provide missing-launcher errors, do not install arbitrary user tool dependencies globally. |
@@ -150,29 +194,37 @@ Owners apply to the rows in their domain; the spec acceptance IDs are the exit g
 
 ## Complete resolver constraints
 
-These are current declarations, not newly verified vulnerability claims. Preserve or revise them based on the resolved candidate graph and [Security](../../SECURITY.md). `uv` constraints alone do not constrain a downstream pip installation of a published wheel.
+These are current declarations (28; 20 at the first audit), not newly verified vulnerability claims. `uv` constraints do not constrain a downstream pip installation of a published wheel.
 
 | Constraint | Proposed disposition / gate |
 | --- | --- |
-| `sentry-sdk>=2.0.0,<3.0.0` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `filelock>=3.20.3` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `jaraco-context>=6.1.0` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `nltk>=3.9.3` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `pyopenssl>=26.0.0` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `pillow>=12.3.0` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `protobuf>=5.29.6` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `python-multipart>=0.0.31` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `pyarrow>=23.0.1` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `markdown>=3.10.2` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `pygments>=2.20.0` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `aiohttp>=3.14.1` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `pyjwt>=2.13.0` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `pip>=26.1.2` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `msgpack>=1.2.1` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `pydantic-settings>=2.14.2` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `joserfc>=1.6.8` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `soupsieve>=2.8.4` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `setuptools>=83.0.0` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
-| `pymdown-extensions>=11.0.0` | Packaging/security review of reverse dependencies and patched compatibility; retain protection until AC-11 establishes replacement/removal. |
+| `sentry-sdk>=2.0.0,<3.0.0` | Stale: sentry-sdk is no longer in the lock (DeepEval 4 dropped it). Remove after confirming no profile resolves it. |
+| `filelock>=4.2.1` | Retain until AC-11 reviews the candidate graph. |
+| `jaraco-context>=6.1.0` | Retain until AC-11 reviews the candidate graph. |
+| `nltk>=3.10.4` | Still needed: rouge-score requires NLTK, and METEOR uses it. The scoped security exception stays. |
+| `pyopenssl>=26.0.0` | Retain until AC-11 reviews the candidate graph. |
+| `pillow>=13.0.0` | Retain until AC-11 reviews the candidate graph. |
+| `protobuf>=5.29.6` | Retain until AC-11 reviews the candidate graph. |
+| `python-multipart>=0.0.31` | Retain until AC-11 reviews the candidate graph. |
+| `pyarrow>=23.0.1` | Needed only while `evaluate` is installed; remove with it if no reverse dependency remains. |
+| `markdown>=3.10.2` | Retain until AC-11 reviews the candidate graph. |
+| `pygments>=2.20.0` | Retain until AC-11 reviews the candidate graph. |
+| `aiohttp>=3.14.4` | Retain until AC-11 reviews the candidate graph. |
+| `pyjwt>=2.15.0` | Retain until AC-11 reviews the candidate graph. |
+| `pip>=26.1.2` | Retain until AC-11 reviews the candidate graph. |
+| `msgpack>=1.2.3` | Retain until AC-11 reviews the candidate graph. |
+| `pydantic-settings>=2.14.2` | Retain until AC-11 reviews the candidate graph. |
+| `joserfc>=1.7.6` | Retain until AC-11 reviews the candidate graph. |
+| `soupsieve>=2.8.4` | Retain until AC-11 reviews the candidate graph. |
+| `setuptools>=84.1.0` | Retain until AC-11 reviews the candidate graph. |
+| `pymdown-extensions>=11.0.0` | Retain until AC-11 reviews the candidate graph. |
+| `anyio>=4.14.2` | Retain until AC-11 reviews the candidate graph. |
+| `certifi>=2026.10.18` | Retain until AC-11 reviews the candidate graph. |
+| `dnspython>=2.9.0` | Retain until AC-11 reviews the candidate graph. |
+| `fsspec>=2026.6.0` | Retain until AC-11 reviews the candidate graph. |
+| `multidict>=6.9.1` | Retain until AC-11 reviews the candidate graph. |
+| `oauthlib>=4.0.1` | Retain until AC-11 reviews the candidate graph. |
+| `opentelemetry-api>=1.45.1` | Retain until AC-11 reviews the candidate graph. |
+| `datasets>=5.0.1` | Needed only while `evaluate` is installed; remove with it if no reverse dependency remains. |
 
-The declaration above is an audit snapshot. `pyproject.toml` and `uv.lock` remain the executable source of truth. Candidate changes must update this inventory with measured evidence.
+`pyproject.toml` and `uv.lock` remain the executable source of truth. Candidate changes must update this inventory with measured evidence.

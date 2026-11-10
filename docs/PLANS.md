@@ -30,9 +30,10 @@ An earlier release does not close unfinished work. The inventory remains the sou
 | Eval Runs & Test View Dashboard | [031-eval-runs-dashboard](exec-plans/active/031-eval-runs-dashboard/index.md) |
 | Test Optimizer | [033-holodeck-test-optimizer](exec-plans/active/033-holodeck-test-optimizer/index.md) |
 | Production Hardening | [034-production-hardening](exec-plans/active/034-production-hardening/index.md) |
+| Dependency Stack Revamp (Semantic Kernel removal) | [Execution plan](exec-plans/active/042-dependency-stack-revamp/2026-11-10-remove-semantic-kernel.md); [records](exec-plans/active/042-dependency-stack-revamp/index.md) |
 | OpenAI Agents SDK Backend | [Completion execution plan](exec-plans/active/035-openai-agents-backend/2026-09-06-complete-035.md); [historical records](exec-plans/active/035-openai-agents-backend/index.md) |
 
-Drafts without an execution plan yet: [037](product-specs/037-gepa-optimizer/index.md), [041](product-specs/041-temporal-file-inputs/index.md), [042](product-specs/042-dependency-stack-revamp/index.md).
+Drafts without an execution plan yet: [037](product-specs/037-gepa-optimizer/index.md), [041](product-specs/041-temporal-file-inputs/index.md).
 
 ## Completed and archived plans
 

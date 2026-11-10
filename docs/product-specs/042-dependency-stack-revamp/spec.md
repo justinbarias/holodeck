@@ -1,14 +1,14 @@
 # SPEC: HoloDeck Dependency Stack Revamp
 
 **Status:** Draft for review; no dependency changes implemented.
-**Date:** 2026-09-06.
+**Date:** 2026-09-06. **Revised:** 2026-11-10 at `00d1ed4`: retrieval direction changed from LlamaIndex to HoloDeck-owned native adapters after the second [selection evidence](../../design-docs/042-dependency-stack-revamp/selection-evidence.md) round.
 **Code baseline:** `3e59e1d` on `feat/035-t2-litellm-acceptance`; working tree clean at audit start.
 **Owners:** Backend, retrieval, packaging, evaluation, and observability maintainers for their respective boundaries.
 **Related:** [035](../035-openai-agents-backend/spec.md), [040](../040-holodeck-temporal/spec.md), [041](../041-temporal-file-inputs/spec.md), [H-008](../../exec-plans/tech-debt-tracker.md#h-008).
 
 ## 1. Objective
 
-Revamp the dependencies that define HoloDeck's agent hosting stack. Establish clear ownership for agent execution, inference, retrieval, parsing, evaluation, serving, deployment, and telemetry. Remove Semantic Kernel completely and consolidate retrieval integrations around selected open-source LlamaIndex packages.
+Revamp the dependencies that define HoloDeck's agent hosting stack. Establish clear ownership for agent execution, inference, retrieval, parsing, evaluation, serving, deployment, and telemetry. Remove Semantic Kernel completely and replace its storage connectors with HoloDeck-owned adapters on each store's native client. No retrieval framework replaces SK.
 
 The target users are agent authors, operators building deployment images, and maintainers upgrading provider integrations. Agent authors retain declarative YAML. Operators install the features they use. Maintainers work through typed HoloDeck contracts instead of framework objects spread through the runtime.
 
@@ -18,7 +18,7 @@ Success is an SK-free, reproducible installation with preserved agent behavior, 
 
 - Native Claude Agent SDK and OpenAI Agents SDK remain the execution foundations. OpenAI/Azure use OpenAI Agents; Anthropic/Ollama use Claude through `BackendSelector`.
 - LiteLLM remains the embedding and contextual-generation inference service established by 035. Claude-specific context generation remains supported.
-- LlamaIndex is the preferred retrieval integration layer, subject to operation-level acceptance. Native adapters are permitted when a connector cannot satisfy the contract.
+- Retrieval uses HoloDeck-owned adapters on native store clients behind one typed interface. No retrieval framework (LlamaIndex, LangChain, Haystack, Microsoft Agent Framework) is adopted. The second evidence round found that no framework meets the operation contract and that each lags the store clients. Microsoft Agent Framework vector stores are revisited when they leave experimental status; the HoloDeck interface keeps that option open.
 - DeepEval remains the existing evaluation framework. Replacing DeepEval or its evaluators is outside this revamp.
 - Remove all Microsoft AI evaluation libraries and the deprecated Azure AI evaluation paths. This retirement is explicitly in scope; DeepEval owns LLM-based evaluation.
 - Existing YAML, result artifacts, deployment behavior, and persisted collections must have an explicit compatibility path.
@@ -36,17 +36,18 @@ SK remains in vector record definitions, eleven collection connectors, text spli
 
 - Disposition of every direct dependency, extra, dependency group, build requirement, override, and security constraint.
 - Complete SK removal from executable source, tests, fixtures, installation metadata, and the resolved dependency graph.
-- LlamaIndex integration selection, HoloDeck retrieval contracts, provider adapters, chunking, and parser consolidation assessment.
+- HoloDeck retrieval contracts, native provider adapters, a HoloDeck-owned plain text splitter, and parser dependency selection.
 - Feature-based installation, import isolation, Docker/worker packaging, and migration documentation.
 - Evaluation, optimization, transport, and telemetry dependency rationalization while preserving their product contracts.
 - Complete Microsoft AI evaluation dependency removal and retirement of legacy Azure AI metrics, with explicit configuration migration to DeepEval.
 
 ### Excluded
 
-- Replacing native agent SDKs with LlamaIndex agents or another agent framework.
-- Replacing DeepEval with LlamaIndex evaluators or another evaluation framework.
-- Replacing Temporal with LlamaIndex workflows, or moving I/O into deterministic workflow execution.
-- Requiring LlamaCloud, hosted parsing, a new SaaS account, or paid services for existing local capabilities.
+- Replacing native agent SDKs with another agent framework.
+- Adopting a retrieval or orchestration framework to replace SK storage or text splitting.
+- Replacing DeepEval with another evaluation framework.
+- Replacing Temporal with another workflow engine, or moving I/O into deterministic workflow execution.
+- Requiring hosted parsing, a new SaaS account, or paid services for existing local capabilities.
 - Dropping providers, file formats, metrics, or security floors merely to make dependency resolution easier.
 - Implementing unfinished 035 hosted tools, hooks, or serving features through this migration.
 
@@ -58,19 +59,19 @@ The explicitly requested retirement of Microsoft AI evaluation and legacy Azure 
 | --- | --- | --- |
 | YAML/configuration and shared results | HoloDeck Pydantic models, PyYAML, schema validation | SDK types converted at adapters; no vendor types in public YAML/results |
 | Agent execution | Native Claude and OpenAI agent SDKs | Consumers continue through `BackendSelector` and backend protocols |
-| Embedding/context inference | Existing LiteLLM service; retained Claude context path | LlamaIndex receives computed embeddings or an explicit per-agent adapter |
-| Storage/retrieval integrations | Selected LlamaIndex core/integration packages | HoloDeck-owned interface contains node/filter/result conversion |
-| Provider-specific capabilities | Native client inside the relevant adapter | Qdrant compatibility behavior remains available without SK |
-| Document conversion | Existing `FileProcessor` contract | Consolidate readers only after proving extraction parity |
-| Chunking/hierarchical semantics | HoloDeck policies with selected LlamaIndex splitter where suitable | Retain domain-specific structure; replace SK splitting |
+| Embedding/context inference | Existing LiteLLM service; retained Claude context path | Adapters receive computed embeddings; no adapter calls a model |
+| Storage/retrieval integrations | HoloDeck adapters, one per store, on the store's native client | HoloDeck-owned interface defines records, filters, queries, results and capabilities |
+| Provider-specific capabilities | The same adapter | Native hybrid, indexes and pagination stay inside the adapter; Qdrant behavior remains available without SK |
+| Document conversion | Existing `FileProcessor` contract on MarkItDown and pypdf | Replace `markitdown[all]` with the format extras in use; prove extraction parity |
+| Chunking/hierarchical semantics | HoloDeck structured chunker plus a HoloDeck plain splitter on tiktoken | Retain domain-specific structure; replace SK splitting without a new package |
 | Serving and streaming | FastAPI, Uvicorn, AG-UI, MCP | Preserve existing HTTP, lifecycle, and tool-event contracts |
 | Telemetry | OpenTelemetry and HoloDeck redaction/routing | Adapt retrieval events without duplicate inference spans |
 | Evaluation and optimization | DeepEval, existing metric contracts, and Optuna | Retain DeepEval; optional feature installation must preserve evaluation behavior |
 | Durable execution and deployment | Temporal and existing deployers | Optional packages; no new deployment target inferred from an extra |
 
-Use `llama-index-core` plus selected integrations, not the `llama-index` starter bundle. The bundle adds model-provider integrations that would duplicate established inference ownership. Core itself has substantial transitive dependencies, including workflow packages; installed presence does not authorize using a second workflow engine.
+Each adapter depends only on its store's client package, installed through that store's extra. The base install carries no store client. Build order follows evidence of use: qdrant, postgres, chromadb and in-memory first, then pinecone, weaviate, azure-ai-search and azure-cosmos-nosql. Whether faiss, sql-server and azure-cosmos-mongo stay is an open decision in section 9.
 
-LlamaIndex consolidation must reduce duplicated integration responsibility. It does not require adopting every component from that ecosystem. Retained dependencies and exceptions require explicit rationale in the inventory.
+Owning adapters is a maintenance cost. It is accepted because client versions, Python support and security floors then no longer wait on a framework release. Retained dependencies and exceptions require explicit rationale in the inventory.
 
 ## 4. Functional requirements
 
@@ -81,16 +82,16 @@ LlamaIndex consolidation must reduce duplicated integration responsibility. It d
 - **FR-003:** Remove `semantic-kernel` from all supported installation profiles and their lock resolution after replacing runtime and test consumers. Historical documentation may name SK; executable imports, dynamic connector strings, and test helpers must not require it. Close H-008 only with this evidence.
 - **FR-004:** Separate documentation/release tooling from production installation. Make heavyweight evaluation, optimizer, parser, search-service, cloud, and dashboard packages feature-scoped where contracts permit. Retain security requirements even when their scope moves.
 - **FR-005:** Preserve existing extra names through aliases or documented migration. Define exact new profile names and a release compatibility policy before editing package metadata. A missing optional feature yields an actionable install command when selected; unrelated commands and backends must still import and start.
-- **FR-006:** Preserve Python 3.10 support and publish a tested Python/platform matrix. Resolve any new upper bound, binary-wheel limitation, or driver conflict explicitly. Do not silently narrow the existing `requires-python` promise.
+- **FR-006:** Preserve Python 3.11 support (the declared minimum since the 2026-11 upgrades) and publish a tested Python/platform matrix. Resolve any new upper bound, binary-wheel limitation, or driver conflict explicitly. Do not silently narrow the existing `requires-python` promise.
 - **FR-007:** Reconcile all security constraints, license obligations, overrides, and prerelease policy against the new graph. Removing SK is not evidence that shared transitive constraints are obsolete. Existing exceptions must be re-reviewed when newly selected packages introduce new affected code paths.
 - **FR-008:** Measure installed distributions, installed bytes, clean import/startup time, and built-image size for identical old/new profiles and environments. Record regressions and their causes; do not claim consolidation reduces footprint without measurements. Documentation/release and unselected feature packages must be absent from the lean hosting profile unless a documented runtime dependency requires them.
 
 ### Runtime and inference boundaries
 
 - **FR-009:** Preserve provider routing, single/multi-turn execution, streaming, multimodal inputs, structured output, tools, budget/fallback behavior, and backend cleanup. SDK changes must preserve the shared result and event contracts.
-- **FR-010:** Keep retrieval model inference behind existing HoloDeck services. Preserve dimensions, model overrides, errors, retries, truncation, concurrency, Azure endpoints, and OpenAI/Azure/Ollama embedding support. No implicit LlamaIndex default model, embedding call, credential requirement, or remote service is permitted.
-- **FR-011:** Use per-agent configuration and explicit dependencies. Do not mutate LlamaIndex global `Settings`, shared clients, or process-global telemetry to select an agent's embedding model or storage configuration. Concurrent agents with different providers/dimensions must remain isolated.
-- **FR-012:** Restrict LlamaIndex/node/filter objects and native SDK clients to integration adapters. Define concrete HoloDeck record, query, result, capability, and error types. New boundaries must not use `Any` or `getattr` to bypass known contracts.
+- **FR-010:** Keep retrieval model inference behind existing HoloDeck services. Preserve dimensions, model overrides, errors, retries, truncation, concurrency, Azure endpoints, and OpenAI/Azure/Ollama embedding support. No adapter may introduce a default model, embedding call, credential requirement, or remote service.
+- **FR-011:** Use per-agent configuration and explicit dependencies. Do not mutate process-global settings, shared clients, or process-global telemetry to select an agent's embedding model or storage configuration. Concurrent agents with different providers/dimensions must remain isolated.
+- **FR-012:** Restrict native client objects and vendor filter/record types to their adapters. Define concrete HoloDeck record, query, result, capability, and error types. New boundaries must not use `Any` or `getattr` to bypass known contracts.
 
 ### Retrieval and provider contracts
 
@@ -99,20 +100,20 @@ LlamaIndex consolidation must reduce duplicated integration responsibility. It d
 - **FR-015:** Preserve plain, structured, and hierarchical record families: IDs, configurable dimensions, vector names, cosine semantics, dynamic metadata types, provenance, source keys, and hierarchical relationships. Convert scores into a documented HoloDeck convention; raw distance and similarity values must not be confused.
 - **FR-016:** Preserve incremental ingestion for local mtime and remote content-hash sources. Replacing a source must remove stale chunks, including when its chunk count shrinks. Interrupted ingestion must be recoverable. Cold restart must support persisted retrieval without reembedding unchanged sources, including rebuilding fallback lexical indexes where required.
 - **FR-017:** Preserve Qdrant UUIDv5 IDs, the `embedding` vector name, payload layout, index configuration, filtered pagination, and reusable async-client ownership. Consolidate existing native code into the adapter instead of rebuilding it around SK objects.
-- **FR-018:** Preserve Qdrant dense-plus-full-text retrieval: weighted `searchable_text`, `MatchText` token matching, OR filters, candidate pool `max(4 * top_k, 20)`, RRF fusion, and punctuation-only fallback. Dense-plus-sparse LlamaIndex hybrid is a different retrieval policy; enabling it requires a declared schema/index migration and quality comparison. It must not silently replace the current path.
-- **FR-019:** Select each LlamaIndex connector only after verifying the required operations. A native extension must use supported client APIs and declare its capability/ownership; vendor-private attribute access must not leak into tools. No placeholder SK-backed adapter may remain at final cutover.
+- **FR-018:** Preserve Qdrant dense-plus-full-text retrieval: weighted `searchable_text`, `MatchText` token matching, OR filters, candidate pool `max(4 * top_k, 20)`, RRF fusion, and punctuation-only fallback. Dense-plus-sparse hybrid is a different retrieval policy; enabling it requires a declared schema/index migration and quality comparison. It must not silently replace the current path.
+- **FR-019:** Each adapter implements the FR-013 operations through supported public client APIs and declares its capabilities. Vendor-private attribute access must not leak into tools. Each store's client is an optional dependency with an actionable missing-install error (FR-005). No SK-backed adapter and no retrieval-framework dependency may remain at final cutover.
 - **FR-020:** Keep async execution responsive. Audit actual connector methods rather than trusting an `async` method name. Use native async calls or bounded offloading for synchronous parsing/storage, with cancellation, backpressure, timeouts, and deterministic client closure.
 
 ### Parsing, chunking, and stored data
 
-- **FR-021:** Preserve `FileProcessor` behavior for PDF, Word, PowerPoint, Excel, CSV, text, images, URLs, caching, and extraction options. Readers must preserve selected pages, sheet/range behavior, headings, provenance, and multimodal routing. Keep MarkItDown/pypdf behind the boundary where LlamaIndex readers do not provide parity; optionalize unused format dependencies.
-- **FR-022:** Replace SK's text splitter and retain HoloDeck's structured/hierarchical chunker. The current plain splitter ignores accepted overlap/separator settings; the replacement must implement their declared behavior or reject unsupported combinations explicitly. Any changed chunk boundaries require a new pipeline fingerprint and controlled reindexing, not mixed old/new chunks.
+- **FR-021:** Preserve `FileProcessor` behavior for PDF, Word, PowerPoint, Excel, CSV, text, images, URLs, caching, and extraction options. Readers must preserve selected pages, sheet/range behavior, headings, provenance, and multimodal routing. Keep MarkItDown and pypdf behind the boundary. Replace the `all` extra with the format extras in use, and declare directly imported parser packages explicitly.
+- **FR-022:** Replace SK's text splitter with a HoloDeck-owned splitter that counts tokens with tiktoken, and retain HoloDeck's structured/hierarchical chunker. SK counts tokens as characters divided by four, so boundaries will change. The current plain splitter ignores accepted overlap/separator settings; the replacement must implement their declared behavior or reject unsupported combinations explicitly. Any changed chunk boundaries require a new pipeline fingerprint and controlled reindexing, not mixed old/new chunks.
 - **FR-023:** Fingerprint embedding model/dimensions, parser/splitter policy, record layout, vector names, and retrieval mode. Detect incompatible existing collections before writes. Produce a migration dry run reporting collection identity, record counts, compatibility, reembedding need, and estimated work/cost assumptions. Migration must be resumable, verified, and reversible via retained source collections/snapshots. Never silently recreate a collection.
 - **FR-024:** Preserve hierarchy, section IDs, ancestry, definitions, cross references, contextual content, token budgets, and source attribution. Existing JSON-encoded relationship fields require decoding compatibility or an explicit migration. New ingestion must not rely on old SK decorators or dynamic record-class mutation.
 
 ### Evaluation, observability, and hosting
 
-- **FR-025:** Retain DeepEval and all existing DeepEval evaluators; do not replace them with LlamaIndex evaluators or another framework. Audit retained evaluation packaging and inference/telemetry dependencies across DeepEval, Hugging Face Evaluate, and direct NLP libraries. Optional packaging must preserve DeepEval availability in the evaluation and compatibility profiles, inputs, scores, scales, thresholds, explanations, model overrides, and errors. Any consolidation of retained metric libraries requires a metric-by-metric compatibility mapping; NLP evaluation remains free of LLM calls. Microsoft AI evaluation and legacy metrics follow the removal requirements in FR-030–031.
+- **FR-025:** Retain DeepEval and all existing DeepEval evaluators; do not replace them with another framework. Audit retained evaluation packaging and inference/telemetry dependencies across DeepEval, Hugging Face Evaluate, and direct NLP libraries. Optional packaging must preserve DeepEval availability in the evaluation and compatibility profiles, inputs, scores, scales, thresholds, explanations, model overrides, and errors. Any consolidation of retained metric libraries requires a metric-by-metric compatibility mapping; NLP evaluation remains free of LLM calls. Microsoft AI evaluation and legacy metrics follow the removal requirements in FR-030–031.
 - **FR-026:** Preserve optimizer scoring, candidate artifacts, and deterministic FEEL/schema gates. Optuna and `bkflow-feel` are not replaced solely for vendor consolidation. Preserve exact pins that encode verified correctness until equivalent verification supports a change.
 - **FR-027:** Preserve OpenTelemetry GenAI events, cost/token accounting, provider-upload policy, content-capture opt-out, and redaction. Add retrieval spans without duplicating embedding/model spans. Remove SK-specific instrumentation only after its retained responsibilities have owners. No new telemetry destination or upload is enabled implicitly.
 - **FR-028:** Verify chat, test, REST/AG-UI serve, tool-init, Docker/ACA packaging, and Temporal activities under their selected profiles. Preserve readiness/capacity contracts owned by 035; measurements after dependency changes must expose memory regressions. Parsing, retrieval, and LLM imports/I/O must not enter the Temporal deterministic surface.
@@ -128,7 +129,7 @@ These are proposed capability boundaries, not existing extra names or runnable i
 | --- | --- | --- |
 | Base hosting | Configuration, CLI, current default Claude backend, MCP, serving, OTel | SK, docs/release tools, evaluators, optimizer, dashboard, cloud SDKs |
 | OpenAI hosting | Base plus OpenAI Agents; OpenAI/Azure routing | Retrieval/parsing or evaluation unless selected |
-| Retrieval | Selected LlamaIndex components, LiteLLM inference where used, selected store, required parser/chunker | Every store driver or hosted LlamaCloud account |
+| Retrieval | HoloDeck adapter and native client for the selected store, LiteLLM inference where used, required parser/chunker | Every store driver, a retrieval framework, or a hosted account |
 | Evaluation / optimization | Retained DeepEval and selected existing metric families; optimizer as separately selected capability | Unselected providers or dashboard |
 | Worker / deployment / sources | Temporal, Docker/cloud/source packages as selected | Unimplemented AWS/GCP deployment merely because extras exist |
 | Development / docs / release | Test/style/security tools, site build, package publication | Inclusion in production wheel requirements |
@@ -207,10 +208,10 @@ Do not wait for every unrelated 035 feature to audit dependencies. Do not bypass
 
 | Decision | Draft direction | Owner / evidence required before implementation |
 | --- | --- | --- |
-| LlamaIndex package versions | Selective core/integrations; dated candidates in selection evidence | Packaging: compatible locked resolver output, Python/platform wheels, license/security review |
-| Qdrant extension | LlamaIndex adapter with native compatibility operations where necessary | Retrieval: compare against existing payload/ranking fixtures and public native APIs |
-| SQL Server and incomplete store operations | Preserve provider intent; no verified universal connector | Retrieval: choose supported native/integration implementation, certify operations, or request explicit scope change |
-| Parsing and plain chunking | Evaluate LlamaIndex components; retain format-specific processing as needed | Retrieval: extraction/chunk golden results, fingerprint and reindex policy |
+| Native client versions | One client per kept store; dated versions in selection evidence | Packaging: compatible locked resolver output, Python/platform wheels, license/security review |
+| Qdrant adapter | Consolidate existing native code into the adapter | Retrieval: compare against existing payload/ranking fixtures and public native APIs |
+| Provider scope | Build the eight stores named in section 3. faiss, sql-server and azure-cosmos-mongo have no install extra, sample or live test today | Product: keep and build, or retire with a migration path (FR-014). Retirement needs an explicit decision |
+| Parsing and plain chunking | MarkItDown with selective extras; in-house tiktoken splitter | Retrieval: extraction/chunk golden results, fingerprint and reindex policy |
 | Evaluation migration and packaging | DeepEval retention and Microsoft/legacy evaluation removal are fixed; assess replacement criteria and retained metric-library overhead | Evaluation: certify migration guidance, early rejection, absence of the removed stack, and DeepEval availability; map compatibility for changes to retained metric libraries |
 | Profile names and release compatibility | Lean host plus selected features and compatibility aggregate excluding retired evaluators | Packaging/product: exact extra mapping, missing-extra UX, release/version policy |
 | Performance and ranking gates | Fixed old/new environments and fixtures | Retrieval/serving: freeze baseline, permitted changes and thresholds before migration; explain any regression |
@@ -219,12 +220,12 @@ These are bounded validation decisions, not permission to leave SK dependencies 
 
 ## 10. Constitution check and boundaries
 
-- **No-code-first:** Keep agent YAML and public models; no user-authored LlamaIndex pipeline required.
+- **No-code-first:** Keep agent YAML and public models; no user-authored retrieval pipeline required.
 - **MCP:** External API tools remain MCP. Native database clients implement the existing internal retrieval service boundary, not a new API-tool category.
 - **Multimodal tests:** Preserve file/image paths and tracked test fixtures across backends.
 - **OTel-native:** Keep existing instrumentation, provider routing, and redaction ownership.
 - **Evaluation flexibility:** Preserve global/run/metric overrides and deterministic NLP metrics.
-- **Decoupled engines:** Retrieval consolidation must not couple deployment/evaluation to an agent SDK or LlamaIndex runtime.
+- **Decoupled engines:** Retrieval consolidation must not couple deployment/evaluation to an agent SDK or a retrieval framework.
 
 Always preserve working data and unrelated changes, validate models, and verify changed contracts. Resolve dependency additions in the reviewed implementation plan. Obtain explicit authorization for destructive migration, live targets, provider retirement, or public compatibility changes beyond that plan. Never commit credentials, silently discard collections, or weaken failing acceptance tests. No constitution exception is requested.
 
@@ -233,3 +234,5 @@ Always preserve working data and unrelated changes, validate models, and verify 
 Source and manifest inspection plus upstream documentation/package-metadata research establish this draft. No candidate dependency has been installed or benchmarked; no live provider, database, or migration acceptance is claimed.
 
 Draft checks passed after the evaluation scope updates: `make harness-check`, `uv run mkdocs build --strict`, and `git diff --check`. Requirement structure checks cover 31 functional requirements and 13 acceptance criteria. The initial inventory audit accounted for all 50 core dependencies, 21 optional dependency groups, development/build requirements, and security constraints, with 35 local links and anchors checked. Independent dependency and retrieval-contract reviews informed the draft, including the non-Python runtime and reproducible deployment-image requirements.
+
+The 2026-11-10 revision changed the retrieval direction only. It followed a second inventory and market scan recorded in the selection evidence. No candidate was installed or run against a live store. `make harness-check` and `uv run mkdocs build --strict` passed after the revision.

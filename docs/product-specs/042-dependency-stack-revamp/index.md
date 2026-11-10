@@ -10,6 +10,7 @@ Feature: `042-dependency-stack-revamp`. **Status:** Draft for review.
 
 ## Related records
 
+- [Execution plan](../../exec-plans/active/042-dependency-stack-revamp/index.md)
 - [Feature inventory](../inventory.md)
 - [Native OpenAI backend migration](../035-openai-agents-backend/index.md)
 - [SK decommission debt](../../exec-plans/tech-debt-tracker.md#h-008)
