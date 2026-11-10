@@ -1,0 +1,372 @@
+{
+ "collection": "legacy_structured_25d00df9",
+ "expected": {
+  "count": 4,
+  "find": [
+   [
+    "rec_1",
+    {
+     "content": "content 1 kestrel",
+     "region": "region 1 kestrel",
+     "source_file": "doc1.md",
+     "year": "year 1 kestrel"
+    }
+   ],
+   [
+    "rec_3",
+    {
+     "content": "v3",
+     "region": "v3",
+     "source_file": "doc1.md",
+     "year": "v3"
+    }
+   ]
+  ],
+  "get": [
+   [
+    "rec_0",
+    {
+     "content": "v0",
+     "region": "v0",
+     "source_file": "doc0.md",
+     "year": "v0"
+    }
+   ],
+   [
+    "rec_1",
+    {
+     "content": "content 1 kestrel",
+     "region": "region 1 kestrel",
+     "source_file": "doc1.md",
+     "year": "year 1 kestrel"
+    }
+   ],
+   [
+    "rec_2",
+    {
+     "content": "v2",
+     "region": "v2",
+     "source_file": "doc0.md",
+     "year": "v2"
+    }
+   ],
+   [
+    "rec_3",
+    {
+     "content": "v3",
+     "region": "v3",
+     "source_file": "doc1.md",
+     "year": "v3"
+    }
+   ]
+  ],
+  "list": [
+   [
+    "rec_0",
+    {
+     "content": "v0",
+     "region": "v0",
+     "source_file": "doc0.md",
+     "year": "v0"
+    }
+   ],
+   [
+    "rec_1",
+    {
+     "content": "content 1 kestrel",
+     "region": "region 1 kestrel",
+     "source_file": "doc1.md",
+     "year": "year 1 kestrel"
+    }
+   ],
+   [
+    "rec_2",
+    {
+     "content": "v2",
+     "region": "v2",
+     "source_file": "doc0.md",
+     "year": "v2"
+    }
+   ],
+   [
+    "rec_3",
+    {
+     "content": "v3",
+     "region": "v3",
+     "source_file": "doc1.md",
+     "year": "v3"
+    }
+   ]
+  ],
+  "vector_search": [
+   [
+    "rec_0",
+    0.9667365192029654
+   ],
+   [
+    "rec_3",
+    0.13534312190793307
+   ],
+   [
+    "rec_2",
+    0.12970131955002895
+   ]
+  ],
+  "vectors": [
+   [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    1.0,
+    0.25,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    1.0,
+    0.5,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.75,
+    0.0,
+    0.0,
+    0.0
+   ]
+  ]
+ },
+ "layout": {
+  "columns": [
+   [
+    "id",
+    "text",
+    "text",
+    "NO",
+    null,
+    null,
+    null,
+    1
+   ],
+   [
+    "content",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    2
+   ],
+   [
+    "source_file",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    3
+   ],
+   [
+    "region",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    4
+   ],
+   [
+    "year",
+    "text",
+    "text",
+    "YES",
+    null,
+    null,
+    null,
+    5
+   ],
+   [
+    "embedding",
+    "USER-DEFINED",
+    "vector",
+    "YES",
+    null,
+    null,
+    null,
+    6
+   ]
+  ],
+  "constraints": [
+   [
+    "p",
+    "PRIMARY KEY (id)"
+   ]
+  ],
+  "indexes": [
+   [
+    "<table>_embedding_idx",
+    "CREATE INDEX <table>_embedding_idx ON public.<table> USING hnsw (embedding vector_cosine_ops)"
+   ],
+   [
+    "<table>_pkey",
+    "CREATE UNIQUE INDEX <table>_pkey ON public.<table> USING btree (id)"
+   ]
+  ],
+  "types": [
+   [
+    "id",
+    "text"
+   ],
+   [
+    "content",
+    "text"
+   ],
+   [
+    "source_file",
+    "text"
+   ],
+   [
+    "region",
+    "text"
+   ],
+   [
+    "year",
+    "text"
+   ],
+   [
+    "embedding",
+    "vector(8)"
+   ]
+  ]
+ },
+ "meta": {
+  "base_commit": "62a2af5f9a5347fb677da9c689af8ba836422ed8",
+  "client": "psycopg 3.3.8",
+  "generated_at": "2026-11-10",
+  "generator": "scripts/freeze_legacy_layouts.py",
+  "semantic_kernel": "1.47.0",
+  "server_version": "PostgreSQL 17.11 (Debian 17.11-1.pgdg12+2), pgvector 0.8.7",
+  "store": "postgres"
+ },
+ "rows": [
+  {
+   "content": "v0",
+   "embedding": [
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "id": "rec_0",
+   "region": "v0",
+   "source_file": "doc0.md",
+   "year": "v0"
+  },
+  {
+   "content": "content 1 kestrel",
+   "embedding": [
+    0,
+    1,
+    0.25,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "id": "rec_1",
+   "region": "region 1 kestrel",
+   "source_file": "doc1.md",
+   "year": "year 1 kestrel"
+  },
+  {
+   "content": "v2",
+   "embedding": [
+    0,
+    0,
+    1,
+    0.5,
+    0,
+    0,
+    0,
+    0
+   ],
+   "id": "rec_2",
+   "region": "v2",
+   "source_file": "doc0.md",
+   "year": "v2"
+  },
+  {
+   "content": "v3",
+   "embedding": [
+    0,
+    0,
+    0,
+    1,
+    0.75,
+    0,
+    0,
+    0
+   ],
+   "id": "rec_3",
+   "region": "v3",
+   "source_file": "doc1.md",
+   "year": "v3"
+  }
+ ],
+ "schema": {
+  "dimensions": 8,
+  "fields": [
+   [
+    "content",
+    "string",
+    false,
+    true
+   ],
+   [
+    "source_file",
+    "string",
+    true,
+    false
+   ],
+   [
+    "region",
+    "string",
+    true,
+    false
+   ],
+   [
+    "year",
+    "string",
+    true,
+    false
+   ]
+  ]
+ }
+}
