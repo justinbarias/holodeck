@@ -26,6 +26,8 @@ from holodeck.lib.file_processor import FileProcessor, SourceFile
 from holodeck.lib.retrieval import (
     CollectionSchema,
     Operation,
+    Record,
+    RecordFilter,
     ScoredRecord,
     UnsupportedOperationError,
     VectorQuery,
@@ -578,8 +580,10 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         ]
 
         await adapter.ensure_collection()
+        # Stale chunks go first. If a delete fails, chunk 0 still carries the
+        # old mtime and hash, so the next start ingests the file again.
+        stale = await self._delete_stale_chunks(adapter, source_key, records)
         await adapter.upsert(records)
-        stale = await self._delete_chunks_from(adapter, source_key, len(records))
         if stale:
             logger.debug(f"Deleted {stale} stale chunks of {source_file.path}")
 
@@ -658,8 +662,36 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             logger.debug(f"Could not retrieve record for {file_path}: {e}")
             return True  # Error = must ingest
 
+    async def _delete_stale_chunks(
+        self, adapter: VectorStoreAdapter, source_key: str, records: list[Record]
+    ) -> int:
+        """Delete the file's stored chunks that ``records`` does not replace.
+
+        Providers that can filter by ``source_path`` list the stored chunks,
+        so gaps left by an earlier interrupted run are also removed. Other
+        providers walk chunk IDs from the new count. Errors propagate.
+
+        Returns:
+            Number of records deleted.
+        """
+        if adapter.capabilities.supports(Operation.FIND):
+            keep = {record.id for record in records}
+            stored = await adapter.find(RecordFilter.where(source_path=source_key))
+            stale_ids = [record.id for record in stored if record.id not in keep]
+            if stale_ids:
+                await adapter.delete(stale_ids)
+            return len(stale_ids)
+        return await self._delete_chunks_from(
+            adapter, source_key, len(records), strict=True
+        )
+
     async def _delete_chunks_from(
-        self, adapter: VectorStoreAdapter, source_key: str, start: int
+        self,
+        adapter: VectorStoreAdapter,
+        source_key: str,
+        start: int,
+        *,
+        strict: bool = False,
     ) -> int:
         """Delete a file's chunks from index ``start`` until one is missing.
 
@@ -681,6 +713,8 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             except UnsupportedOperationError:
                 raise
             except Exception as e:
+                if strict:
+                    raise
                 logger.debug(f"Error deleting record {record_id}: {e}")
                 break
             deleted_count += 1

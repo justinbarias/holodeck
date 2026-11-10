@@ -137,14 +137,22 @@ class InMemoryAdapter(BaseVectorStoreAdapter):
                 f"Query vector has {len(query.vector)} dimensions; "
                 f"schema '{self.schema.name}' needs {self.schema.dimensions}."
             )
-        scored = [
+        # Rank on the raw cosine, then clamp: clamping first would tie every
+        # negative similarity at zero and pick by insertion order.
+        ranked = sorted(
+            (
+                (_cosine(query.vector, record.vector or ()), record)
+                for record in self._records.values()
+                if query.filter is None or query.filter.matches(record)
+            ),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+        return [
             ScoredRecord(
                 record=_without_vector(record),
-                score=clamp_similarity(_cosine(query.vector, record.vector or ())),
+                score=clamp_similarity(raw),
                 kind=ScoreKind.SIMILARITY,
             )
-            for record in self._records.values()
-            if query.filter is None or query.filter.matches(record)
+            for raw, record in ranked[: query.top_k]
         ]
-        scored.sort(key=lambda hit: hit.score, reverse=True)
-        return scored[: query.top_k]

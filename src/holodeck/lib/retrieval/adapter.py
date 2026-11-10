@@ -230,18 +230,21 @@ class BaseVectorStoreAdapter(ABC):
     ) -> None:
         """Replace the records that match the filter with ``records``.
 
-        New records are written first, then stale ones are removed, so an
-        interrupted call never leaves the source with no records.
+        Stale records are removed first, then the new set is written. A
+        caller that detects changes from a stored record (mtime, content
+        hash) therefore sees the old values until the write succeeds, and
+        ingests the source again after an interrupted call. Adapters with
+        transactions override this to make the replacement atomic.
         """
         self._capabilities.require(Operation.FIND, Operation.DELETE, Operation.UPSERT)
         self._validate(records)
         existing = await self.find(record_filter)
-        if records:
-            await self.upsert(records)
         keep = {record.id for record in records}
         stale = [record.id for record in existing if record.id not in keep]
         if stale:
             await self.delete(stale)
+        if records:
+            await self.upsert(records)
 
     async def vector_search(self, query: VectorQuery) -> list[ScoredRecord]:
         """Return the nearest records, best first, scored by similarity."""

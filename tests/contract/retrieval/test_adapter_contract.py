@@ -269,3 +269,19 @@ async def test_unsupported_operations_raise_instead_of_returning_nothing(
         else:
             await loaded.list_page()
     assert loaded.provider in str(raised.value)
+
+
+async def test_vector_search_ranks_negative_similarities_before_clamping(
+    adapter: VectorStoreAdapter,
+) -> None:
+    needs(adapter, Operation.VECTOR_SEARCH)
+    await adapter.ensure_collection()
+    await adapter.upsert(
+        [
+            make_record("opposite", [-1.0, 0.0, 0.0, 0.0]),
+            make_record("nearly-orthogonal", [-0.1, 1.0, 0.0, 0.0]),
+        ]
+    )
+    hits = await adapter.vector_search(VectorQuery([1.0, 0.0, 0.0, 0.0], top_k=1))
+    assert [hit.record.id for hit in hits] == ["nearly-orthogonal"]
+    assert hits[0].score == 0.0

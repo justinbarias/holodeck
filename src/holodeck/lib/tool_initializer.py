@@ -400,7 +400,8 @@ async def _initialize_vectorstore_tools(
                     f"Failed to initialize vectorstore tool "
                     f"'{tool_config.name}': {exc}"
                 ) from exc
-    except Exception:
+    except BaseException:
+        # BaseException: a cancelled start must still release open clients.
         await close_tools(created)
         for temp_dir in cleanup_stack:
             await SourceResolver.cleanup(temp_dir)
@@ -606,7 +607,8 @@ async def initialize_hierarchical_doc_tools(
                     f"Failed to initialize hierarchical document tool "
                     f"'{tool_config.name}': {exc}"
                 ) from exc
-    except Exception:
+    except BaseException:
+        # BaseException: a cancelled start must still release open clients.
         await close_tools(created)
         for temp_dir in cleanup_stack:
             await SourceResolver.cleanup(temp_dir)
