@@ -127,7 +127,7 @@ Docker containers (left running after the run; `--no-infra` skips them, and loca
 
 If another service of the same kind already serves those ports, the script reuses it and does not stop it.
 Stop the managed containers with `docker rm -f holodeck-verify-qdrant holodeck-verify-chroma holodeck-verify-postgres holodeck-verify-weaviate holodeck-verify-cosmos holodeck-verify-aspire`.
-Traces are for human review at <http://127.0.0.1:18888/traces>. Look for the services `holodeck-verify-live-claude` and `holodeck-verify-live-openai`.
+The run reads its spans back from the Aspire dashboard and fails when a backend's `leak_probe` span is missing or shows the fake token (`collector spans redacted` row). The traces are also open for review at <http://127.0.0.1:18888/traces>. Look for the services `holodeck-verify-live-claude` and `holodeck-verify-live-openai`.
 The `leak_probe` tool returns a fake `ghp_` token. Its span must show `[REDACTED:github-token]`, never the token.
 
 Pass flags through `LIVE_ARGS`, for example `make verify-live LIVE_ARGS="--backend claude --no-infra"`. `--limit N` runs only the first N test cases.

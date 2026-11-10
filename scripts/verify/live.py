@@ -33,8 +33,9 @@ to a local Aspire dashboard. The script:
 5. checks that no credential value was written to the run directory.
 
 ``--only providers`` runs only the vector store matrix (steps 1 to 3, no AG-UI).
-Transcripts and logs go to ``.verify/live/<UTC ts>/``. Traces are for human
-inspection in Aspire; the script does not read them back.
+Transcripts and logs go to ``.verify/live/<UTC ts>/``. When Aspire runs, the
+script reads the exported spans back and checks the ``leak_probe`` span: it
+must be there and show the redaction marker, never the fake token.
 
 Exit codes: 0 all run backends passed, 1 any failure (including a backend
 with its credential set and no passing check), 2 every backend skipped.
@@ -68,6 +69,7 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     __package__ = "scripts.verify"  # noqa: A001
 
+import httpx  # noqa: E402
 import yaml  # noqa: E402
 from dotenv import dotenv_values  # noqa: E402
 from pydantic import ValidationError  # noqa: E402
@@ -89,6 +91,7 @@ from .agui import (  # noqa: E402
 )
 from .infra import (  # noqa: E402
     ASPIRE,
+    ASPIRE_SPANS_API,
     ASPIRE_TRACES_URL,
     CHROMA,
     COSMOS,
@@ -729,6 +732,7 @@ def live_backend(
         The checks and the trace service name (``None`` when not traced).
     """
     prefix = backend.name
+    started_ns = time.time_ns()
     if shutil.which("uvx") is None:
         return [Check(f"{prefix}: setup", "FAIL", "uvx not found (MCP tool)")], None
 
@@ -811,6 +815,9 @@ def live_backend(
         provider_checks(prefix, targets, exercised_targets(data, targets, ran))
     )
 
+    if traced is not None and only is None:
+        checks.append(trace_check(prefix, traced, started_ns))
+
     leaked = leaked_credentials(workdir, kept)
     checks.append(
         Check(
@@ -850,6 +857,87 @@ def no_pass_failures(checks: list[Check], ran: list[str]) -> list[Check]:
             for c in checks
         )
     ]
+
+
+REDACTION_MARKER = "[REDACTED:github-token]"
+FAKE_TOKEN_PREFIX = "ghp_"  # noqa: S105 - prefix of the fixture's fake token
+
+
+def probe_spans(
+    payload: Mapping[str, object], service: str, started_ns: int
+) -> list[Mapping[str, object]]:
+    """Return *service*'s ``leak_probe`` spans that started in this run.
+
+    *payload* is the dashboard's OTLP JSON answer. The dashboard keeps the
+    spans of earlier runs, so spans that started before *started_ns* are left
+    out.
+    """
+    data = payload.get("data")
+    found: list[Mapping[str, object]] = []
+    if not isinstance(data, Mapping):
+        return found
+    for resource_spans in _maps(data.get("resourceSpans")):
+        resource = resource_spans.get("resource")
+        attributes = (
+            _maps(resource.get("attributes")) if isinstance(resource, Mapping) else []
+        )
+        names = [
+            value.get("stringValue")
+            for attribute in attributes
+            if attribute.get("key") == "service.name"
+            and isinstance(value := attribute.get("value"), Mapping)
+        ]
+        if service not in names:
+            continue
+        for scope_spans in _maps(resource_spans.get("scopeSpans")):
+            for span in _maps(scope_spans.get("spans")):
+                start = span.get("startTimeUnixNano")
+                if (
+                    "leak_probe" in str(span.get("name"))
+                    and isinstance(start, str)
+                    and start.isdigit()
+                    and int(start) >= started_ns
+                ):
+                    found.append(span)
+    return found
+
+
+def trace_problem(spans: Sequence[Mapping[str, object]]) -> str | None:
+    """Return why the ``leak_probe`` spans fail the redaction check, or None."""
+    if not spans:
+        return "no leak_probe span from this run reached the collector"
+    text = json.dumps(list(spans))
+    if FAKE_TOKEN_PREFIX in text:
+        return "a leak_probe span holds the fake token unredacted"
+    if REDACTION_MARKER not in text:
+        return f"no leak_probe span shows {REDACTION_MARKER}"
+    return None
+
+
+def trace_check(prefix: str, service: str, started_ns: int) -> Check:
+    """Read the run's spans back from Aspire and check the redaction.
+
+    Exporters send in batches, so the read is tried again for a short time
+    before a missing span counts as a failure.
+    """
+    row = f"{prefix}: collector spans redacted"
+    problem: str | None = None
+    for attempt in range(5):
+        if attempt:
+            time.sleep(3)
+        try:
+            response = httpx.get(ASPIRE_SPANS_API, timeout=30.0)
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            return Check(row, "SKIP", f"Aspire read API unavailable: {exc}")
+        if not isinstance(payload, Mapping):
+            return Check(row, "SKIP", "Aspire read API gave no JSON object")
+        spans = probe_spans(payload, service, started_ns)
+        problem = trace_problem(spans)
+        if problem is None:
+            return Check(row, "PASS", f"{len(spans)} leak_probe spans")
+    return Check(row, "FAIL", problem or "")
 
 
 def print_trace_help(services: list[str], aspire: InfraStatus) -> None:

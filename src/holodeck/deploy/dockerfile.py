@@ -46,8 +46,16 @@ USER root
 WORKDIR /app
 
 {% if needs_nodejs %}
-# Install Node.js (required for Claude Agent SDK)
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \\
+# Install Node.js (required for Claude Agent SDK and Node MCP servers) from
+# the NodeSource apt repository. apt verifies each package against the
+# repository signing key; no remote script is run.
+RUN mkdir -p /etc/apt/keyrings \\
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \\
+        -o /etc/apt/keyrings/nodesource.asc \\
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.asc]" \\
+        "https://deb.nodesource.com/node_22.x nodistro main" \\
+        > /etc/apt/sources.list.d/nodesource.list \\
+    && apt-get update \\
     && apt-get install -y --no-install-recommends nodejs \\
     && rm -rf /var/lib/apt/lists/*
 {% endif %}

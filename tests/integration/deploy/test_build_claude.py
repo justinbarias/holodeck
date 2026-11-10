@@ -106,7 +106,7 @@ class TestAcceptanceScenarios:
         assert result.exit_code == 0
         # Both Python base image and Node.js install present
         assert "FROM" in result.output
-        assert "nodesource.com/setup_22.x" in result.output
+        assert "deb.nodesource.com/node_22.x" in result.output
 
     def test_dry_run_shows_claude_dockerfile_additions(
         self, cli_runner: CliRunner, claude_agent_dir: Path
@@ -123,7 +123,7 @@ class TestAcceptanceScenarios:
         assert result.exit_code == 0
         output = result.output
         # Node.js setup
-        assert "nodesource.com/setup_22.x" in output
+        assert "deb.nodesource.com/node_22.x" in output
         assert "--no-install-recommends" in output
         assert "rm -rf /var/lib/apt/lists/*" in output
         # Security: non-root user

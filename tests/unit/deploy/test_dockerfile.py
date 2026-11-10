@@ -451,7 +451,9 @@ class TestDockerfileNodejs:
             needs_nodejs=True,
         )
 
-        assert "nodesource.com/setup_22.x" in dockerfile
+        assert "deb.nodesource.com/node_22.x" in dockerfile
+        assert "signed-by=/etc/apt/keyrings/nodesource.asc" in dockerfile
+        assert "| bash" not in dockerfile
         assert "apt-get install -y --no-install-recommends nodejs" in dockerfile
 
     def test_generate_dockerfile_nodejs_cleanup(self) -> None:
@@ -609,7 +611,7 @@ class TestProviderDetection:
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
         # Node.js block must be absent
-        assert "nodesource.com/setup_22.x" not in content
+        assert "deb.nodesource.com" not in content
         # Standard Dockerfile elements still present
         assert "USER holodeck" in content
         assert "HEALTHCHECK" in content
