@@ -25,9 +25,11 @@ hyphens, and cannot start or end with a hyphen. HoloDeck's default collection
 names contain underscores (``documents_dim1536``), which Pinecone rejects, so
 ``normalize_index_name`` maps a name deterministically: a name Pinecone already
 accepts is unchanged; otherwise it is lower-cased, every other character run
-becomes one hyphen, and a name over 45 characters keeps its head plus a hash of
-the full name. Names that differ only by ``_`` and ``-`` therefore share an
-index.
+becomes one hyphen, and the result ends in the first 8 hex digits of the
+SHA-256 of the original name (the head is cut to keep the whole name within 45
+characters). Two different collection names therefore never share an index:
+``a_b`` becomes ``a-b-<hash>`` and ``a-b`` stays ``a-b``. ``documents_dim1536``
+becomes ``documents-dim1536-<hash>``.
 
 Enumeration and filtering (FR-014)
 ----------------------------------
@@ -129,6 +131,12 @@ from holodeck.lib.retrieval.errors import (
     SchemaError,
     StoreConnectionError,
 )
+from holodeck.lib.retrieval.redaction import (
+    check_header_value,
+    redact,
+    secret_values,
+    translated,
+)
 from holodeck.lib.retrieval.types import (
     Capabilities,
     CollectionSchema,
@@ -143,6 +151,7 @@ from holodeck.lib.retrieval.types import (
     ScoreKind,
     VectorQuery,
     clamp_similarity,
+    normalize_filter_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -244,7 +253,10 @@ def parse_pinecone_connection_string(
     * ``pinecone://api_key@namespace``
     * ``pinecone://api_key/namespace`` (the path wins over ``@namespace``)
 
-    The key keeps its case.
+    The key keeps its case. A namespace in the ``@namespace`` form is lower-cased:
+    the earlier parser read it as a URL host, which lower-cases it, and records
+    written under that namespace must stay visible. A path namespace and the
+    ``namespace`` setting keep their case.
 
     Raises:
         ValueError: The connection string is empty.
@@ -261,7 +273,7 @@ def parse_pinecone_connection_string(
         api_key, _, namespace = authority.rpartition("@")
         params["api_key"] = api_key
         if namespace:
-            params["namespace"] = namespace
+            params["namespace"] = namespace.lower()
     elif authority:
         params["api_key"] = authority
     if path:
@@ -281,6 +293,8 @@ class PineconeSettings:
         host: Control plane URL, for a gateway or a private endpoint.
         index_host: Data plane URL. Skips the host lookup of the index.
         index_name: Index name that replaces the collection name.
+        connection_string: The connection string the key came from, if any.
+            Never shown in ``repr``; errors mask it.
     """
 
     api_key: str = field(repr=False)
@@ -290,6 +304,7 @@ class PineconeSettings:
     host: str | None = None
     index_host: str | None = None
     index_name: str | None = None
+    connection_string: str | None = field(default=None, repr=False)
 
 
 def _text(connection: Mapping[str, object], key: str) -> str | None:
@@ -363,6 +378,10 @@ def settings_from_connection(connection: Mapping[str, object]) -> PineconeSettin
             "settings, or the PINECONE_API_KEY environment variable.",
         )
     namespace = _text(connection, "namespace") or namespace or ""
+    try:
+        check_header_value("api_key", api_key)
+    except ValueError as error:
+        raise StoreConnectionError(PROVIDER, str(error)) from None
     if len(namespace) > MAX_ID_LENGTH or not namespace.isascii() or "\0" in namespace:
         raise StoreConnectionError(
             PROVIDER,
@@ -380,6 +399,7 @@ def settings_from_connection(connection: Mapping[str, object]) -> PineconeSettin
         host=_text(connection, "host"),
         index_host=_text(connection, "index_host"),
         index_name=_text(connection, "index_name"),
+        connection_string=connection_string,
     )
 
 
@@ -387,10 +407,10 @@ def normalize_index_name(name: str) -> str:
     """Return the Pinecone index name for a collection name. See the module docs."""
     if len(name) <= MAX_INDEX_NAME and _VALID_NAME.match(name):
         return name
-    slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9-]+", "-", name.lower())).strip("-")
-    if slug and len(slug) <= MAX_INDEX_NAME:
-        return slug
+    # The hash is of the original name, so ``a_b`` and ``a-b`` never share an
+    # index even though both normalize to the slug ``a-b``.
     digest = hashlib.sha256(name.encode()).hexdigest()[:8]
+    slug = re.sub(r"-+", "-", re.sub(r"[^a-z0-9-]+", "-", name.lower())).strip("-")
     head = slug[: MAX_INDEX_NAME - len(digest) - 1].strip("-")
     return f"{head}-{digest}" if head else f"holodeck-{digest}"
 
@@ -511,6 +531,7 @@ class PineconeAdapter(BaseVectorStoreAdapter):
                     "reserves for filter operators."
                 )
         self._settings = settings
+        self._secrets = secret_values(settings.api_key, settings.connection_string)
         self._index_name = normalize_index_name(settings.index_name or schema.name)
         self._namespace = settings.namespace
         self._lock = asyncio.Lock()
@@ -533,8 +554,7 @@ class PineconeAdapter(BaseVectorStoreAdapter):
     # -- errors --------------------------------------------------------------------
 
     def _scrub(self, text: str) -> str:
-        key = self._settings.api_key
-        return text.replace(key, "***") if key else text
+        return redact(text, self._secrets)
 
     @contextmanager
     def _translated(self) -> Iterator[None]:
@@ -544,17 +564,14 @@ class PineconeAdapter(BaseVectorStoreAdapter):
         except RetrievalError:
             raise
         except PineconeValueError as error:
-            text = str(error)
-            cause: BaseException | None = (
-                None if self._settings.api_key in text else error
-            )
-            raise SchemaError(self._scrub(text)) from cause
+            translated(error, SchemaError, self._secrets)
         except PineconeError as error:
-            text = str(error)
-            cause = None if self._settings.api_key in text else error
-            raise StoreConnectionError(
-                PROVIDER, self._scrub(f"{type(error).__name__}: {text}")
-            ) from cause
+            translated(
+                error,
+                lambda message: StoreConnectionError(PROVIDER, message),
+                self._secrets,
+                text=f"{type(error).__name__}: {error}",
+            )
 
     # -- control plane (the testing seam) -------------------------------------------
 
@@ -748,7 +765,7 @@ class PineconeAdapter(BaseVectorStoreAdapter):
         clauses: list[dict[str, object]] = []
         for clause in record_filter.all_of:
             spec = self._schema.field(clause.field)
-            value = clause.value
+            value = normalize_filter_value(spec, clause.value)
             if value is None:
                 raise SchemaError(
                     f"Pinecone cannot store null, so field '{clause.field}' cannot "

@@ -54,6 +54,11 @@ from holodeck.lib.retrieval.errors import (
     SchemaError,
     StoreConnectionError,
 )
+from holodeck.lib.retrieval.redaction import (
+    check_header_value,
+    secret_values,
+    translated,
+)
 from holodeck.lib.retrieval.types import (
     Capabilities,
     CollectionSchema,
@@ -68,6 +73,7 @@ from holodeck.lib.retrieval.types import (
     ScoreKind,
     VectorQuery,
     clamp_similarity,
+    normalize_filter_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -324,6 +330,10 @@ def qdrant_connection_params(
             params["force_disable_check_same_thread"] = _as_bool(key, value)
         elif key == "headers":
             params["headers"] = _as_headers(key, value)
+    if "api_key" in params:
+        check_header_value("api_key", params["api_key"])
+    for name, item in params.get("headers", {}).items():
+        check_header_value(f"headers.{name}", item)
     targets = [key for key in ("url", "host", "location", "path") if key in params]
     if len(targets) > 1:
         raise ValueError(
@@ -402,6 +412,14 @@ def index_params(
 # -- adapter -------------------------------------------------------------------
 
 
+def _unreachable(message: str) -> RetrievalError:
+    return StoreConnectionError(PROVIDER, message)
+
+
+def _failed(message: str) -> RetrievalError:
+    return RetrievalError(f"Qdrant request failed: {message}")
+
+
 class QdrantAdapter(BaseVectorStoreAdapter):
     """One Qdrant collection through ``AsyncQdrantClient``."""
 
@@ -419,6 +437,9 @@ class QdrantAdapter(BaseVectorStoreAdapter):
         self._client: AsyncQdrantClient | None = None
         self._lock = asyncio.Lock()
         self._indexes_ensured = False
+        self._secrets: tuple[str, ...] = secret_values(
+            params.get("api_key"), *params.get("headers", {}).values()
+        )
 
     @classmethod
     def create(
@@ -433,7 +454,13 @@ class QdrantAdapter(BaseVectorStoreAdapter):
             params = qdrant_connection_params(connection)
         except ValueError as error:
             raise StoreConnectionError(PROVIDER, str(error)) from error
-        return cls(schema, params)
+        adapter = cls(schema, params)
+        if "api_key" in params:
+            # A connection string that carries the key is a secret as a whole.
+            adapter._secrets = secret_values(
+                *adapter._secrets, connection.get("connection_string")
+            )
+        return adapter
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -457,17 +484,16 @@ class QdrantAdapter(BaseVectorStoreAdapter):
         try:
             yield
         except ResponseHandlingException as error:
-            raise StoreConnectionError(PROVIDER, str(error)) from error
+            translated(error, _unreachable, self._secrets)
         except UnexpectedResponse as error:
             if error.status_code in (401, 403):
-                raise StoreConnectionError(PROVIDER, str(error)) from error
-            raise RetrievalError(f"Qdrant request failed: {error}") from error
+                translated(error, _unreachable, self._secrets)
+            translated(error, _failed, self._secrets)
         except AioRpcError as error:
-            if error.code() in _CONNECTION_REFUSED:
-                raise StoreConnectionError(PROVIDER, str(error.details())) from error
-            raise RetrievalError(f"Qdrant request failed: {error.details()}") from error
+            make = _unreachable if error.code() in _CONNECTION_REFUSED else _failed
+            translated(error, make, self._secrets, text=str(error.details()))
         except (ConnectionError, TimeoutError) as error:
-            raise StoreConnectionError(PROVIDER, str(error)) from error
+            translated(error, _unreachable, self._secrets)
 
     # -- collection ----------------------------------------------------------
 
@@ -610,7 +636,12 @@ class QdrantAdapter(BaseVectorStoreAdapter):
             return None
         conditions: list[qm.Condition] = []
         for clause in record_filter.all_of:
-            value = clause.value
+            # The form follows the field's type: a float field is always a
+            # range (``mtime=2`` finds ``2.0``), an integer field given an
+            # integral float matches the integer.
+            value = normalize_filter_value(
+                self._schema.field(clause.field), clause.value
+            )
             if value is None:
                 conditions.append(
                     qm.IsNullCondition(is_null=qm.PayloadField(key=clause.field))

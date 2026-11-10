@@ -221,6 +221,15 @@ def test_the_password_stays_out_of_repr_and_messages() -> None:
     assert "s3cret" not in settings.target
 
 
+def test_the_connection_string_and_escaped_passwords_are_masked_too() -> None:
+    settings = parse_connection({"connection_string": URL}, EMPTY_ENV)
+
+    masked = settings.redact(f"bad dsn {URL}; password b's3cret\\n' and s3cret")
+
+    assert "s3cret" not in masked
+    assert masked.startswith("bad dsn ***;")
+
+
 @pytest.mark.asyncio
 async def test_a_failed_connection_raises_without_the_password() -> None:
     adapter = _adapter(
@@ -365,8 +374,8 @@ def test_vector_search_orders_by_cosine_distance_with_the_filter_pushed_down() -
         VectorQuery([1.0, 0.0, 0.0], 4, filter=RecordFilter.where(source_path=HOSTILE))
     )
     text = _sql(statement)
-    assert '"embedding" <=> %s AS distance' in text
-    assert 'WHERE "source_path" = %s ORDER BY distance LIMIT %s' in text
+    assert '"embedding" <=> %s AS "__holodeck_distance"' in text
+    assert 'WHERE "source_path" = %s ORDER BY "__holodeck_distance" LIMIT %s' in text
     assert "DROP" not in text
     assert len(params) == 3
     assert params[1:] == [HOSTILE, 4]
@@ -383,7 +392,7 @@ def test_lexical_search_pushes_filter_and_tokens_as_parameters() -> None:
     text = _sql(statement)
     assert "to_tsvector('simple', \"content\") @@ to_tsquery('simple', %s)" in text
     assert 'AND "source_path" = %s' in text
-    assert text.endswith('ORDER BY rank DESC, "id" LIMIT %s')
+    assert text.endswith('ORDER BY "__holodeck_rank" DESC, "id" LIMIT %s')
     assert params == ["x | drop", "x | drop", "a", 5]
 
 
@@ -475,3 +484,14 @@ def test_missing_fields_are_written_as_the_type_default() -> None:
     row = adapter._row(Record("r", {"source_path": "a.md"}, [1.0, 0.0, 0.0]))
     assert row[:6] == ["r", "a.md", 0, "", 0.0, False]
     assert row[6].to_list() == [1.0, 0.0, 0.0]
+
+
+def test_number_filters_follow_the_field_type() -> None:
+    adapter = _adapter()
+
+    _, params = adapter.select_statement(RecordFilter.where(mtime=2, chunk_index=3.0))
+
+    assert params == [2.0, 3]
+    assert [type(value) for value in params] == [float, int]
+    with pytest.raises(SchemaError):
+        adapter.select_statement(RecordFilter.where(chunk_index=True))

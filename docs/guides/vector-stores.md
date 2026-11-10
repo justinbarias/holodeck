@@ -253,7 +253,7 @@ database:
 | `index_name` | Index name instead of the collection name. |
 | `host`, `index_host` | Control plane and data plane URLs, for a gateway or private endpoint. |
 
-Pinecone index names are lowercase letters, digits and hyphens, at most 45 characters. HoloDeck maps a collection name such as `documents_dim1536` to `documents-dim1536` and shortens a long name with a hash.
+Pinecone index names are lowercase letters, digits and hyphens, at most 45 characters. A name that is already valid is used unchanged. Otherwise HoloDeck lower-cases it, turns other characters into hyphens and adds a short hash of the original name, so `documents_dim1536` becomes `documents-dim1536-<hash>` and `a_b` and `a-b` never share an index. Set `index_name` or `collection_name` to a valid name to choose the index name yourself.
 
 Record IDs must be ASCII (at most 512 characters). A source file with a non-ASCII path is rejected at ingestion with a clear error. Pinecone reads are eventually consistent, so a search right after ingestion can briefly miss new chunks.
 
@@ -293,7 +293,7 @@ For remote Qdrant, add `api_key: ${QDRANT_API_KEY}`.
 
 ### Pinecone
 
-Pinecone uses API key authentication, or the `pinecone://pc-abc123@my-namespace` connection-string form (the key keeps its case).
+Pinecone uses API key authentication, or the `pinecone://pc-abc123@my-namespace` connection-string form (the key keeps its case; a namespace after `@` is lower-cased, as in earlier releases, so existing data stays visible; a `/namespace` path and the `namespace` setting keep their case).
 
 ---
 
@@ -390,6 +390,8 @@ holodeck test                  # 3. Run the agent (uses agent.yaml by default)
 2. Check logs: `docker logs <name>`
 3. Test connectivity (Qdrant: `curl http://localhost:6333/healthz`; ChromaDB: `curl http://localhost:8000/api/v2/heartbeat`)
 4. Ensure the port isn't blocked by a firewall
+
+Error messages never contain the API key, password or connection string you configured: HoloDeck replaces them with `***`. An API key or header value that contains a control character (a trailing newline from a file or environment variable, for example) is rejected when the adapter is created, with a message that names the setting but not its value.
 
 ### Data not persisting
 

@@ -74,6 +74,7 @@ from holodeck.lib.retrieval.errors import (
     SchemaError,
     StoreConnectionError,
 )
+from holodeck.lib.retrieval.redaction import redact, secret_values
 from holodeck.lib.retrieval.types import (
     Capabilities,
     CollectionSchema,
@@ -89,6 +90,7 @@ from holodeck.lib.retrieval.types import (
     ScoreKind,
     VectorQuery,
     clamp_similarity,
+    normalize_filter_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,6 +100,10 @@ DEFAULT_DB_SCHEMA = "public"
 MAX_DIMENSIONS = 2000
 """pgvector's limit for HNSW indexes on ``vector`` columns."""
 MAX_IDENTIFIER_BYTES = 63
+RESERVED_PREFIX = "__holodeck_"
+"""Prefix of the computed columns of a search; no schema field may start with it."""
+DISTANCE_ALIAS = RESERVED_PREFIX + "distance"
+RANK_ALIAS = RESERVED_PREFIX + "rank"
 UPSERT_BATCH_SIZE = 1000
 DEFAULT_MIN_POOL = 1
 DEFAULT_MAX_POOL = 5
@@ -171,13 +177,13 @@ class PostgresConnectionSettings:
     db_schema: str = DEFAULT_DB_SCHEMA
     min_pool: int = DEFAULT_MIN_POOL
     max_pool: int = DEFAULT_MAX_POOL
+    dsn: str | None = field(default=None, repr=False)
 
     def redact(self, text: str) -> str:
-        """Return ``text`` with the password removed."""
-        password = self.connect_args.get("password")
-        if password is None or str(password) == "":
-            return text
-        return text.replace(str(password), "***")
+        """Return ``text`` with the password and the connection string removed."""
+        return redact(
+            text, secret_values(self.dsn, str(self.connect_args.get("password", "")))
+        )
 
     @property
     def target(self) -> str:
@@ -266,6 +272,7 @@ def parse_connection(
         db_schema=_text(connection.get("db_schema")) or DEFAULT_DB_SCHEMA,
         min_pool=min_pool,
         max_pool=max_pool,
+        dsn=dsn or None,
     )
 
 
@@ -349,6 +356,12 @@ class PostgresAdapter(BaseVectorStoreAdapter):
         _check_identifier("collection", schema.name)
         for name in (schema.key_field, schema.vector_field, *schema.field_names):
             _check_identifier("column", name)
+        for name in schema.field_names:
+            if name.startswith(RESERVED_PREFIX):
+                raise SchemaError(
+                    f"Field name '{name}' starts with '{RESERVED_PREFIX}', which "
+                    "the Postgres adapter reserves for computed columns."
+                )
         self._settings = settings
         self._pool: AsyncConnectionPool[AsyncConnection[TupleRow]] | None = None
         self._lock = asyncio.Lock()
@@ -435,7 +448,7 @@ class PostgresAdapter(BaseVectorStoreAdapter):
             return conditions, params
         for clause in record_filter.all_of:
             spec = self._schema.field(clause.field)
-            value = _write_value(spec, clause.value)
+            value = _write_value(spec, normalize_filter_value(spec, clause.value))
             if value is None:
                 conditions.append(
                     sql.SQL("{} IS NULL").format(sql.Identifier(spec.name))
@@ -475,13 +488,20 @@ class PostgresAdapter(BaseVectorStoreAdapter):
         """Return the nearest-neighbour ``SELECT`` and its parameters.
 
         The last selected column is the cosine distance. ``ORDER BY`` uses its
-        alias, which keeps the HNSW index usable.
+        alias, which keeps the HNSW index usable. The alias starts with the
+        reserved prefix, so it cannot match a field name.
         """
         conditions, filter_params = self._where(query.filter)
+        alias = sql.Identifier(DISTANCE_ALIAS)
         statement = sql.SQL(
-            "SELECT {}, {} <=> %s AS distance FROM {}{} ORDER BY distance LIMIT %s"
+            "SELECT {cols}, {vector} <=> %s AS {alias} FROM {table}{where} "
+            "ORDER BY {alias} LIMIT %s"
         ).format(
-            self._columns(), self._vector, self._table, self._where_sql(conditions)
+            cols=self._columns(),
+            vector=self._vector,
+            alias=alias,
+            table=self._table,
+            where=self._where_sql(conditions),
         )
         params: list[object] = [
             Vector([float(value) for value in query.vector]),
@@ -510,9 +530,10 @@ class PostgresAdapter(BaseVectorStoreAdapter):
         )
         statement = sql.SQL(
             "SELECT {cols}, ts_rank(to_tsvector({cfg}, {col}), "
-            "to_tsquery({cfg}, %s)) AS rank FROM {table}{where} "
-            "ORDER BY rank DESC, {key} LIMIT %s"
+            "to_tsquery({cfg}, %s)) AS {alias} FROM {table}{where} "
+            "ORDER BY {alias} DESC, {key} LIMIT %s"
         ).format(
+            alias=sql.Identifier(RANK_ALIAS),
             cols=self._columns(),
             cfg=sql.Literal(LEXICAL_CONFIG),
             col=column,
@@ -555,11 +576,15 @@ class PostgresAdapter(BaseVectorStoreAdapter):
         )
         try:
             await pool.open(wait=True, timeout=POOL_TIMEOUT_SECONDS)
-        except PoolTimeout:
-            await pool.close()
-            raise StoreConnectionError(
-                PROVIDER, f"timed out opening a pool to {settings.target}."
-            ) from None
+        except BaseException as error:
+            # Any unsuccessful open, a cancellation included, must not leave
+            # the pool's worker tasks running with nothing to close them.
+            await asyncio.shield(pool.close())
+            if isinstance(error, PoolTimeout):
+                raise StoreConnectionError(
+                    PROVIDER, f"timed out opening a pool to {settings.target}."
+                ) from None
+            raise
         return pool
 
     async def _discard_pool(self) -> None:
@@ -837,6 +862,16 @@ class PostgresAdapter(BaseVectorStoreAdapter):
         values.append(Vector([float(item) for item in record.vector or ()]))
         return values
 
+    def _source_lock_key(self, record_filter: RecordFilter) -> str:
+        """Return the lock key for a table and a canonical form of the filter."""
+        clauses: list[tuple[str, str]] = []
+        for clause in record_filter.all_of:
+            spec = self._schema.field(clause.field)
+            value = _write_value(spec, normalize_filter_value(spec, clause.value))
+            clauses.append((clause.field, repr(value)))
+        clauses.sort()
+        return f"{self._settings.db_schema}.{self._schema.name}:{clauses!r}"
+
     async def _write(
         self, records: Sequence[Record], stale: RecordFilter | None
     ) -> None:
@@ -848,6 +883,14 @@ class PostgresAdapter(BaseVectorStoreAdapter):
         rows = [self._row(record) for record in records]
         statement = self.upsert_statement()
         async with self._connection() as connection, connection.transaction():
+            if stale is not None:
+                # Two replacements of one source would each miss the other's
+                # uncommitted rows and both keep their own. The lock, held to
+                # the end of this transaction, makes the second one wait.
+                await connection.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                    (self._source_lock_key(stale),),
+                )
             async with connection.cursor() as cursor:
                 for start in range(0, len(rows), UPSERT_BATCH_SIZE):
                     await cursor.executemany(

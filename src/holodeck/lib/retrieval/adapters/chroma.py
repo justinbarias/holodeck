@@ -66,6 +66,11 @@ from holodeck.lib.retrieval.errors import (
     SchemaError,
     StoreConnectionError,
 )
+from holodeck.lib.retrieval.redaction import (
+    check_header_value,
+    secret_values,
+    translated,
+)
 from holodeck.lib.retrieval.types import (
     Capabilities,
     CollectionSchema,
@@ -219,6 +224,8 @@ def parse_connection(connection: Mapping[str, object]) -> ChromaSettings:
         ):
             raise ValueError("ChromaDB setting 'headers' must map strings to strings.")
         headers = {str(k): str(v) for k, v in headers_raw.items()}
+        for name, value in headers.items():
+            check_header_value(f"headers.{name}", value)
 
     connection_string = _optional_text(connection, "connection_string")
     if connection_string is not None:
@@ -260,6 +267,29 @@ def create_chromadb_client(settings: ChromaSettings) -> ClientAPI:
             database=settings.database,
         )
     return chromadb.EphemeralClient(tenant=settings.tenant, database=settings.database)
+
+
+def _secrets(settings: ChromaSettings) -> tuple[str, ...]:
+    """Return the configured values that no error message may repeat."""
+    userinfo = urlparse(settings.connection_string or "")
+    return secret_values(
+        *(settings.headers or {}).values(),
+        # A connection string with a user or password in it is a secret as a whole.
+        settings.connection_string if userinfo.username or userinfo.password else None,
+        userinfo.password,
+    )
+
+
+def _unreachable(message: str) -> RetrievalError:
+    return StoreConnectionError(PROVIDER, message)
+
+
+def _incompatible(message: str) -> RetrievalError:
+    return IncompatibleCollectionError(message)
+
+
+def _failed(message: str) -> RetrievalError:
+    return RetrievalError(f"ChromaDB error: {message}")
 
 
 # -- the synchronous store ---------------------------------------------------
@@ -317,9 +347,15 @@ class _ChromaStore:
 
     def __init__(self, settings: ChromaSettings, name: str) -> None:
         self._settings = settings
+        self._secrets = _secrets(settings)
         self._name = name
         self._client: ClientAPI | None = None
         self._handle: Collection | None = None
+
+    @property
+    def secrets(self) -> tuple[str, ...]:
+        """Configured values that error messages must not repeat."""
+        return self._secrets
 
     def _connect(self) -> ClientAPI:
         if self._client is None:
@@ -329,7 +365,7 @@ class _ChromaStore:
                 # Chroma reports an unreachable server, or a tenant or
                 # database it does not have, as a ValueError at construction.
                 if self._settings.connection_string:
-                    raise StoreConnectionError(PROVIDER, str(error)) from error
+                    translated(error, _unreachable, self._secrets)
                 raise
         return self._client
 
@@ -427,10 +463,14 @@ class _ChromaStore:
 
         A batch is not atomic: a failure between the delete and the add
         leaves those rows missing, which the callers' source replacement and
-        re-ingestion repair.
+        re-ingestion repair. Whatever can be checked beforehand is checked
+        before the first delete: the distance space (in ``_resolve``) and
+        the stored vector size.
         """
+        dimensions = {len(vector) for vector in batch.vectors}
 
         def operation(collection: Collection) -> None:
+            self._check_dimensions(collection, dimensions)
             for start in range(0, len(batch.ids), _WRITE_BATCH):
                 stop = start + _WRITE_BATCH
                 ids = batch.ids[start:stop]
@@ -448,6 +488,19 @@ class _ChromaStore:
                 )
 
         self._with(operation, absent=None, create=True)
+
+    def _check_dimensions(self, collection: Collection, wanted: set[int]) -> None:
+        """Raise when the stored vectors do not have the size being written."""
+        stored = collection.get(limit=1, include=["embeddings"])["embeddings"]
+        if stored is None or len(stored) == 0:
+            return  # empty collection: the first add fixes the size
+        size = len(stored[0])
+        if wanted != {size}:
+            raise IncompatibleCollectionError(
+                f"Chroma collection '{self._name}' holds vectors with a dimension "
+                f"of {size}; the records have a dimension of "
+                f"{', '.join(str(n) for n in sorted(wanted))}."
+            )
 
     def delete_ids(self, ids: Sequence[str]) -> None:
         def operation(collection: Collection) -> None:
@@ -559,6 +612,7 @@ class ChromaAdapter(BaseVectorStoreAdapter):
         self._settings = settings
         self._store = _ChromaStore(settings, schema.name)
         self._pool: ThreadPoolExecutor | None = None
+        self._closing: asyncio.Task[None] | None = None
 
     @classmethod
     def create(
@@ -581,6 +635,11 @@ class ChromaAdapter(BaseVectorStoreAdapter):
 
     async def _run(self, function: Callable[[], T]) -> T:
         """Run one store call on the adapter's worker thread."""
+        # A close that is still running owns the executor and the client. A
+        # call that arrives meanwhile waits for it instead of starting a
+        # second executor on the same store.
+        while self._closing is not None:
+            await asyncio.shield(self._closing)
         if self._pool is None:
             self._pool = ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix=f"holodeck-chroma-{self._schema.name}"
@@ -591,26 +650,36 @@ class ChromaAdapter(BaseVectorStoreAdapter):
         except RetrievalError:
             raise
         except httpx.TransportError as error:
-            raise StoreConnectionError(PROVIDER, str(error)) from error
+            translated(error, _unreachable, self._store.secrets)
         except InvalidDimensionException as error:
-            raise IncompatibleCollectionError(str(error)) from error
+            translated(error, _incompatible, self._store.secrets)
         except InvalidArgumentError as error:
             if "dimension" in str(error):
-                raise IncompatibleCollectionError(str(error)) from error
-            raise RetrievalError(f"ChromaDB error: {error}") from error
+                translated(error, _incompatible, self._store.secrets)
+            translated(error, _failed, self._store.secrets)
         except ChromaError as error:
-            raise RetrievalError(f"ChromaDB error: {error}") from error
+            translated(error, _failed, self._store.secrets)
 
     async def close(self) -> None:
-        pool, self._pool = self._pool, None
-        if pool is None:
-            return
+        # The shutdown runs in its own task, so cancelling the caller does
+        # not abandon it half way. The executor and client stay owned by the
+        # adapter until that task ends, and every close waits for it.
+        if self._closing is None:
+            pool = self._pool
+            if pool is None:
+                return
+            self._closing = asyncio.ensure_future(self._shut_down(pool))
+        await asyncio.shield(self._closing)
+
+    async def _shut_down(self, pool: ThreadPoolExecutor) -> None:
         try:
             await asyncio.get_running_loop().run_in_executor(pool, self._store.close)
         except httpx.HTTPError:
             logger.debug("Chroma client close failed", exc_info=True)
         finally:
             pool.shutdown(wait=False)
+            self._pool = None
+            self._closing = None
 
     # -- collection ----------------------------------------------------------
 

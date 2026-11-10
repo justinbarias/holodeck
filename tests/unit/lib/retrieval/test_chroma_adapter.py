@@ -11,12 +11,14 @@ import logging
 import sys
 import threading
 import time
+import traceback
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
 
 import chromadb
+import httpx
 import pytest
 import pytest_asyncio
 from chromadb.api.models.Collection import Collection
@@ -576,6 +578,28 @@ async def test_a_collection_of_another_size_is_refused(directory: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_refused_write_to_a_collection_of_another_size_keeps_the_record(
+    directory: str,
+) -> None:
+    """Delete-then-add must not run when the add cannot succeed."""
+    other = ChromaAdapter.create(
+        CollectionSchema("chroma_unit", 2, (FieldSpec("content", FieldType.STRING),)),
+        {"persist_directory": directory},
+    )
+    built = ChromaAdapter.create(_schema(), {"persist_directory": directory})
+    try:
+        await other.upsert([Record("a", {"content": "original"}, [1.0, 0.0])])
+        with pytest.raises(IncompatibleCollectionError, match="dimension"):
+            await built.upsert([_record("a", [1, 0, 0, 0])])
+        (kept,) = await other.get(["a"], include_vectors=True)
+        assert kept.fields["content"] == "original"
+        assert kept.vector == pytest.approx([1.0, 0.0])
+    finally:
+        await other.close()
+        await built.close()
+
+
+@pytest.mark.asyncio
 async def test_an_unreachable_server_is_a_connection_error() -> None:
     built = ChromaAdapter.create(_schema(), {"connection_string": "http://127.0.0.1:9"})
     try:
@@ -696,6 +720,79 @@ async def test_a_cancelled_call_does_not_free_the_client_for_another(
     assert state["peak"] == 1
 
 
+def _slow_store_close(
+    monkeypatch: pytest.MonkeyPatch, seconds: float
+) -> dict[str, int]:
+    """Make ``_ChromaStore.close`` slow; count its runs and overlapping calls."""
+    original = chroma._ChromaStore.close
+    state = {"closing": 0, "closed": 0, "overlap": 0}
+    guard = threading.Lock()
+
+    def slow_close(self: chroma._ChromaStore) -> None:
+        with guard:
+            state["closing"] += 1
+        try:
+            time.sleep(seconds)
+            original(self)
+        finally:
+            with guard:
+                state["closing"] -= 1
+                state["closed"] += 1
+
+    original_count = Collection.count
+
+    def count(self: Collection, *args: object, **kwargs: object) -> int:
+        with guard:
+            if state["closing"]:
+                state["overlap"] += 1
+        return original_count(self)
+
+    monkeypatch.setattr(chroma._ChromaStore, "close", slow_close)
+    monkeypatch.setattr(Collection, "count", count)
+    return state
+
+
+def _chroma_threads() -> list[threading.Thread]:
+    return [t for t in threading.enumerate() if t.name.startswith("holodeck-chroma")]
+
+
+@pytest.mark.asyncio
+async def test_close_finishes_even_when_the_awaiting_task_is_cancelled(
+    adapter: ChromaAdapter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await adapter.upsert([_record("a", [1, 0, 0, 0])])
+    state = _slow_store_close(monkeypatch, 0.3)
+
+    closing = asyncio.create_task(adapter.close())
+    await asyncio.sleep(0.1)
+    closing.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await closing
+
+    await adapter.close()  # waits for the close that is still running
+    assert state["closed"] == 1
+    assert state["closing"] == 0
+    assert adapter._pool is None
+    assert await adapter.count() == 1  # usable again
+
+
+@pytest.mark.asyncio
+async def test_a_request_during_close_waits_and_never_shares_the_client(
+    adapter: ChromaAdapter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await adapter.upsert([_record("a", [1, 0, 0, 0])])
+    state = _slow_store_close(monkeypatch, 0.3)
+
+    closing = asyncio.create_task(adapter.close())
+    await asyncio.sleep(0.1)
+    count = await adapter.count()
+    await closing
+
+    assert count == 1
+    assert state["overlap"] == 0
+    assert len(_chroma_threads()) <= 1  # one executor at a time
+
+
 @pytest.mark.asyncio
 async def test_writes_never_use_chroma_upsert_or_update(
     adapter: ChromaAdapter, monkeypatch: pytest.MonkeyPatch
@@ -715,3 +812,76 @@ async def test_writes_never_use_chroma_upsert_or_update(
     assert record.fields["content"] == "new"
     assert record.vector == pytest.approx([0.0, 1.0, 0.0, 0.0])
     assert await adapter.count() == 1
+
+
+# -- secrets stay out of errors --------------------------------------------------
+
+TOKEN = "chroma-token-4711"  # noqa: S105
+
+
+def _formatted(error: BaseException) -> str:
+    return "".join(traceback.format_exception(error))
+
+
+@pytest.mark.parametrize("bad", [f"{TOKEN}\n", f"{TOKEN}\r\n", f"a\tb{TOKEN}"])
+def test_a_header_with_a_control_character_is_rejected_without_echoing_it(
+    bad: str,
+) -> None:
+    with pytest.raises(RetrievalError, match="control character") as raised:
+        ChromaAdapter.create(
+            _schema(),
+            {"connection_string": "http://chroma.test:8000", "headers": {"X-T": bad}},
+        )
+
+    assert TOKEN not in _formatted(raised.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("echoed", [TOKEN, f"b'{TOKEN}\\n'"])
+async def test_an_error_that_repeats_a_header_value_is_masked_and_not_chained(
+    echoed: str,
+) -> None:
+    built = ChromaAdapter.create(
+        _schema(),
+        {
+            "connection_string": "http://chroma.test:8000",
+            "headers": {"X-Chroma-Token": TOKEN},
+        },
+    )
+
+    def fail() -> None:
+        raise httpx.ConnectError(f"rejected header {echoed}")
+
+    try:
+        with pytest.raises(StoreConnectionError) as raised:
+            await built._run(fail)
+    finally:
+        await built.close()
+
+    assert TOKEN not in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__
+    assert TOKEN not in _formatted(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_an_error_without_a_secret_keeps_its_chain() -> None:
+    built = ChromaAdapter.create(
+        _schema(),
+        {
+            "connection_string": "http://chroma.test:8000",
+            "headers": {"X-Chroma-Token": TOKEN},
+        },
+    )
+    original = httpx.ConnectError("connection refused")
+
+    def fail() -> None:
+        raise original
+
+    try:
+        with pytest.raises(StoreConnectionError, match="connection refused") as raised:
+            await built._run(fail)
+    finally:
+        await built.close()
+
+    assert raised.value.__cause__ is original

@@ -449,8 +449,11 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         source_key = self._compute_source_key(file_path)
 
         try:
+            # Every stored chunk is checked, not one. A rewrite that stopped
+            # midway leaves some chunks with the new mtime and the rest with
+            # the old one; the oldest chunk decides.
             records = await self._adapter.find(
-                RecordFilter.where(source_path=source_key), limit=1
+                RecordFilter.where(source_path=source_key)
             )
 
             if not records:
@@ -459,14 +462,14 @@ class HierarchicalDocumentTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             if self._is_remote:
                 # For remote sources, compare content hash
                 current_hash = self._compute_content_hash(file_path)
-                stored_hash = text_field(records[0], "content_hash")
-                if not stored_hash:
-                    return True  # No hash stored (old record)
-                return current_hash != stored_hash
+                return any(
+                    text_field(record, "content_hash") != current_hash
+                    for record in records
+                )
             # For local sources, compare mtime (backward compat)
             current_mtime = file_path.stat().st_mtime
-            stored_mtime = float_field(records[0], "mtime")
-            return current_mtime - stored_mtime > 0.001
+            oldest_mtime = min(float_field(record, "mtime") for record in records)
+            return current_mtime - oldest_mtime > 0.001
 
         except UnsupportedOperationError:
             raise

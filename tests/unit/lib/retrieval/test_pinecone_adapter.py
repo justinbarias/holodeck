@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import traceback
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import cast
@@ -330,21 +331,40 @@ def no_poll_delay(monkeypatch: pytest.MonkeyPatch) -> None:
 # -- names and settings ------------------------------------------------------------
 
 
+def _digest(name: str) -> str:
+    return hashlib.sha256(name.encode()).hexdigest()[:8]
+
+
+@pytest.mark.parametrize("name", ["documents-dim1536", "a", "a-b", "9lives", "a" * 45])
+def test_a_valid_index_name_is_used_unchanged(name: str) -> None:
+    assert normalize_index_name(name) == name
+
+
 @pytest.mark.parametrize(
-    ("name", "expected"),
+    ("name", "slug"),
     [
-        ("documents-dim1536", "documents-dim1536"),
-        ("a", "a"),
         ("documents_dim1536", "documents-dim1536"),
         ("contract_0123456789ab", "contract-0123456789ab"),
         ("Product Catalog.v2", "product-catalog-v2"),
         ("--edge--", "edge"),
         ("a__b", "a-b"),
-        ("___", "holodeck-" + hashlib.sha256(b"___").hexdigest()[:8]),
     ],
 )
-def test_index_names_follow_pinecone_rules(name: str, expected: str) -> None:
-    assert normalize_index_name(name) == expected
+def test_a_changed_index_name_gets_a_hash_of_the_original(name: str, slug: str) -> None:
+    assert normalize_index_name(name) == f"{slug}-{_digest(name)}"
+
+
+def test_an_unusable_name_becomes_holodeck_and_a_hash() -> None:
+    assert normalize_index_name("___") == f"holodeck-{_digest('___')}"
+
+
+def test_names_that_differ_only_by_underscore_and_hyphen_never_share_an_index() -> None:
+    names = ["a_b", "a-b", "a__b", "A_b", "a b"]
+
+    index_names = [normalize_index_name(name) for name in names]
+
+    assert len(set(index_names)) == len(names)
+    assert normalize_index_name("a-b") == "a-b"
 
 
 def test_long_names_keep_their_head_and_a_hash() -> None:
@@ -357,6 +377,7 @@ def test_long_names_keep_their_head_and_a_hash() -> None:
     assert one != two
     assert one == normalize_index_name(first)
     assert one.startswith("hierarchical-docs-")
+    assert one.endswith(_digest(first))
     assert not one.endswith("-") and "_" not in one
 
 
@@ -364,6 +385,7 @@ def test_a_valid_long_name_over_the_limit_is_shortened() -> None:
     name = "a" * 60
 
     assert len(normalize_index_name(name)) == 45
+    assert normalize_index_name(name).endswith(_digest(name))
 
 
 class TestConnectionString:
@@ -397,14 +419,48 @@ class TestConnectionString:
             "api_key": "pc-abc123"
         }
 
-    def test_the_key_and_namespace_keep_their_case(self) -> None:
+    def test_the_key_keeps_its_case_and_an_at_namespace_is_lower_cased(self) -> None:
+        """The old parser read ``@namespace`` as a URL host, which lower-cases it."""
         parsed = parse_pinecone_connection_string("pinecone://pcsk_AbC_dEf@Prod")
 
+        assert parsed == {"api_key": "pcsk_AbC_dEf", "namespace": "prod"}
+
+    def test_a_path_namespace_keeps_its_case(self) -> None:
+        parsed = parse_pinecone_connection_string("pinecone://pcsk_AbC_dEf/Prod")
+
         assert parsed == {"api_key": "pcsk_AbC_dEf", "namespace": "Prod"}
+
+    def test_an_explicit_namespace_setting_keeps_its_case(self) -> None:
+        settings = settings_from_connection(
+            {"connection_string": "pinecone://key@Prod", "namespace": "Prod"}
+        )
+
+        assert settings.namespace == "Prod"
+        assert (
+            settings_from_connection(
+                {"connection_string": "pinecone://key@Prod"}
+            ).namespace
+            == "prod"
+        )
 
     def test_empty_string_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="cannot be empty"):
             parse_pinecone_connection_string("")
+
+
+def test_number_filters_follow_the_field_type() -> None:
+    adapter = harness().adapter
+
+    expression = adapter._filter_expression(
+        RecordFilter.where(mtime=2, chunk_index=3.0)
+    )
+
+    assert expression == {
+        "$and": [{"mtime": {"$eq": 2.0}}, {"chunk_index": {"$eq": 3}}]
+    }
+    assert isinstance(expression["$and"][0]["mtime"]["$eq"], float)  # type: ignore[index]
+    with pytest.raises(SchemaError):
+        adapter._filter_expression(RecordFilter.where(chunk_index=True))
 
 
 class TestSettings:
@@ -549,7 +605,7 @@ async def test_ensure_collection_creates_the_layout_semantic_kernel_wrote() -> N
 
     (created,) = test.indexes.created
     assert created == {
-        "name": "documents-dim4",
+        "name": f"documents-dim4-{_digest('documents_dim4')}",
         "schema": {
             "fields": {
                 "_values": {"type": "dense_vector", "dimension": 4, "metric": "cosine"}
@@ -1266,6 +1322,45 @@ async def test_the_api_key_never_appears_in_an_error(operation: str) -> None:
     assert API_KEY not in str(raised.value)
     assert "***" in str(raised.value)
     assert raised.value.__cause__ is None  # the original message held the key
+
+
+@pytest.mark.parametrize("bad", [f"{API_KEY}\n", f"{API_KEY}\r\n", f"a\tb{API_KEY}"])
+def test_a_key_with_a_control_character_is_rejected_without_echoing_it(
+    bad: str,
+) -> None:
+    for connection in ({"api_key": bad}, {"connection_string": bad}):
+        with pytest.raises(StoreConnectionError, match="control character") as raised:
+            settings_from_connection(connection)
+        assert API_KEY not in "".join(traceback.format_exception(raised.value))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("echoed", [f"b'{API_KEY}\\n'", f"key={API_KEY}"])
+async def test_an_echoed_key_form_is_masked_and_the_chain_dropped(
+    echoed: str,
+) -> None:
+    test = harness()
+    await test.adapter.get(["a"])
+    test.index.failure = PineconeError(f"Illegal header value {echoed}")
+
+    with pytest.raises(StoreConnectionError) as raised:
+        await test.adapter.get(["a"])
+
+    text = "".join(traceback.format_exception(raised.value))
+    assert API_KEY not in text
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__
+
+
+@pytest.mark.asyncio
+async def test_a_connection_string_is_masked_as_a_whole() -> None:
+    settings = settings_from_connection(
+        {"connection_string": f"pinecone://{API_KEY}@ns"}
+    )
+    adapter = PineconeAdapter(schema("docs"), settings)
+
+    assert f"pinecone://{API_KEY}@ns" in adapter._secrets
+    assert adapter._scrub(f"bad pinecone://{API_KEY}@ns") == "bad ***"
 
 
 @pytest.mark.asyncio

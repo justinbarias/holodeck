@@ -7,6 +7,7 @@ request shapes against a mocked client, and lifecycle against the in-process
 
 from __future__ import annotations
 
+import traceback
 import uuid
 from pathlib import Path
 from typing import Any
@@ -289,6 +290,30 @@ def test_filter_clause_types() -> None:
     ]
 
 
+def test_a_number_filter_follows_the_field_type_not_the_python_type() -> None:
+    adapter = _memory()
+
+    float_field = adapter.build_filter(RecordFilter.where(mtime=2))
+    integer_field = adapter.build_filter(RecordFilter.where(chunk_index=3.0))
+    fractional = adapter.build_filter(RecordFilter.where(chunk_index=2.5))
+
+    assert float_field == qm.Filter(
+        must=[qm.FieldCondition(key="mtime", range=qm.Range(gte=2.0, lte=2.0))]
+    )
+    assert integer_field == qm.Filter(
+        must=[qm.FieldCondition(key="chunk_index", match=qm.MatchValue(value=3))]
+    )
+    assert fractional == qm.Filter(  # no integer equals 2.5, and none matches
+        must=[qm.FieldCondition(key="chunk_index", range=qm.Range(gte=2.5, lte=2.5))]
+    )
+
+
+@pytest.mark.parametrize("field", ["chunk_index", "mtime"])
+def test_a_boolean_is_never_a_number_in_a_filter(field: str) -> None:
+    with pytest.raises(SchemaError, match="boolean"):
+        _memory().build_filter(RecordFilter.where(**{field: True}))
+
+
 def test_empty_filter_and_unknown_field() -> None:
     adapter = _memory()
     assert adapter.build_filter(None) is None
@@ -529,3 +554,90 @@ async def test_unreachable_server_raises_store_connection_error() -> None:
             await adapter.collection_exists()
     finally:
         await adapter.close()
+
+
+# -- secrets stay out of errors --------------------------------------------------
+
+KEY = "s3cr3t-api-key-value"
+
+
+def _formatted(error: BaseException) -> str:
+    return "".join(traceback.format_exception(error))
+
+
+@pytest.mark.parametrize("bad", [f"{KEY}\n", f"{KEY}\r\n", f"a\tb{KEY}"])
+def test_a_credential_with_a_control_character_is_rejected_without_echoing_it(
+    bad: str,
+) -> None:
+    for connection in ({"api_key": bad}, {"headers": {"X-Token": bad}}):
+        with pytest.raises(StoreConnectionError, match="control character") as raised:
+            QdrantAdapter.create(_schema(), connection)
+        assert KEY not in _formatted(raised.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("echoed", [KEY, f"b'{KEY}\\n'", f"Illegal header value {KEY}"])
+async def test_an_error_that_repeats_the_api_key_is_masked_and_not_chained(
+    echoed: str,
+) -> None:
+    from qdrant_client.http.exceptions import ResponseHandlingException
+
+    adapter = QdrantAdapter.create(
+        _schema(), {"url": "http://qdrant.test:6333", "api_key": KEY}
+    )
+    client = MagicMock(spec=AsyncQdrantClient)
+    client.collection_exists = AsyncMock(
+        side_effect=ResponseHandlingException(Exception(echoed))
+    )
+    await _prime(adapter, client)
+
+    with pytest.raises(StoreConnectionError) as raised:
+        await adapter.collection_exists()
+
+    assert KEY not in str(raised.value)
+    assert "***" in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__
+    assert KEY not in _formatted(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_a_header_value_and_a_keyed_connection_string_are_masked() -> None:
+    from qdrant_client.http.exceptions import UnexpectedResponse
+
+    url = f"https://{KEY}@qdrant.test:6333"
+    adapter = QdrantAdapter.create(
+        _schema(), {"connection_string": url, "headers": {"X-Token": "tok-123456"}}
+    )
+    client = MagicMock(spec=AsyncQdrantClient)
+    client.collection_exists = AsyncMock(
+        side_effect=UnexpectedResponse(
+            401, "Unauthorized", f"{url} tok-123456".encode(), MagicMock()
+        )
+    )
+    await _prime(adapter, client)
+
+    with pytest.raises(StoreConnectionError) as raised:
+        await adapter.collection_exists()
+
+    assert KEY not in _formatted(raised.value)
+    assert "tok-123456" not in _formatted(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_an_error_without_a_secret_keeps_its_chain() -> None:
+    from qdrant_client.http.exceptions import ResponseHandlingException
+
+    adapter = QdrantAdapter.create(
+        _schema(), {"url": "http://qdrant.test:6333", "api_key": KEY}
+    )
+    original = ResponseHandlingException(Exception("connection refused"))
+    client = MagicMock(spec=AsyncQdrantClient)
+    client.collection_exists = AsyncMock(side_effect=original)
+    await _prime(adapter, client)
+
+    with pytest.raises(StoreConnectionError) as raised:
+        await adapter.collection_exists()
+
+    assert raised.value.__cause__ is original
+    assert "connection refused" in str(raised.value)
