@@ -1,0 +1,4 @@
+Plain text sample for the golden parser tests.
+It has two lines in the first paragraph.
+
+Second paragraph with unicode: café, naïve, 日本語.

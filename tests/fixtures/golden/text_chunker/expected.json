@@ -1,0 +1,179 @@
+{
+  "short": {
+    "input_sha": "717d3f10da0d",
+    "settings": {
+      "size=32,overlap=0": {
+        "chunk_count": 1,
+        "chunks": [
+          "HoloDeck defines agents in YAML. A short note fits in one chunk."
+        ]
+      },
+      "size=64,overlap=8": {
+        "chunk_count": 1,
+        "chunks": [
+          "HoloDeck defines agents in YAML. A short note fits in one chunk."
+        ]
+      },
+      "size=128,overlap=16": {
+        "chunk_count": 1,
+        "chunks": [
+          "HoloDeck defines agents in YAML. A short note fits in one chunk."
+        ]
+      },
+      "size=512,overlap=50": {
+        "chunk_count": 1,
+        "chunks": [
+          "HoloDeck defines agents in YAML. A short note fits in one chunk."
+        ]
+      }
+    }
+  },
+  "multi_paragraph": {
+    "input_sha": "84cc77542ac5",
+    "settings": {
+      "size=32,overlap=0": {
+        "chunk_count": 7,
+        "chunks": [
+          "Introduction",
+          "HoloDeck runs agents defined in YAML through provider backends. Each backend adapts the agent definition to the provider SDK.",
+          "Configuration\nAn agent file lists the model, the instructions and the tools.",
+          "Tools can search documents, call MCP servers or run Python functions.\nEvery field is validated before the agent starts.",
+          "Evaluation\nTest cases pair an input with expected tools and ground truth.",
+          "Metrics score each response, and the run report lists every failure with its reason.\nDeployment",
+          "The serve command exposes the agent over HTTP. Containers package the agent with its configuration for cloud hosting."
+        ]
+      },
+      "size=64,overlap=8": {
+        "chunk_count": 4,
+        "chunks": [
+          "Introduction\nHoloDeck runs agents defined in YAML through provider backends. Each backend adapts the agent definition to the provider SDK.\nConfiguration",
+          "An agent file lists the model, the instructions and the tools. Tools can search documents, call MCP servers or run Python functions.\nEvery field is validated before the agent starts.\nEvaluation",
+          "Test cases pair an input with expected tools and ground truth. Metrics score each response, and the run report lists every failure with its reason.\nDeployment",
+          "The serve command exposes the agent over HTTP. Containers package the agent with its configuration for cloud hosting."
+        ]
+      },
+      "size=128,overlap=16": {
+        "chunk_count": 1,
+        "chunks": [
+          "Introduction\nHoloDeck runs agents defined in YAML through provider backends. Each backend adapts the agent definition to the provider SDK.\nConfiguration\nAn agent file lists the model, the instructions and the tools. Tools can search documents, call MCP servers or run Python functions.\nEvery field is validated before the agent starts.\nEvaluation\nTest cases pair an input with expected tools and ground truth. Metrics score each response, and the run report lists every failure with its reason.\nDeployment\nThe serve command exposes the agent over HTTP. Containers package the agent with its configuration for cloud hosting."
+        ]
+      },
+      "size=512,overlap=50": {
+        "chunk_count": 1,
+        "chunks": [
+          "Introduction\nHoloDeck runs agents defined in YAML through provider backends. Each backend adapts the agent definition to the provider SDK.\nConfiguration\nAn agent file lists the model, the instructions and the tools. Tools can search documents, call MCP servers or run Python functions.\nEvery field is validated before the agent starts.\nEvaluation\nTest cases pair an input with expected tools and ground truth. Metrics score each response, and the run report lists every failure with its reason.\nDeployment\nThe serve command exposes the agent over HTTP. Containers package the agent with its configuration for cloud hosting."
+        ]
+      }
+    }
+  },
+  "long_single_paragraph": {
+    "input_sha": "b4551361e44b",
+    "settings": {
+      "size=32,overlap=0": {
+        "chunk_count": 30,
+        "chunks": [
+          "The survey crew counted nests along the northern shingle before the tide came in.",
+          "Wind speed stayed below ten knots, which kept the grass short and the gravel dry.",
+          "Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate.",
+          "By evening the boat had returned twice, and the harbour master closed the log at 16:45.",
+          "Nothing in the data suggested a decline; density was highest near the old lighthouse.",
+          "The survey crew counted nests along the northern shingle before the tide came in.",
+          "Wind speed stayed below ten knots, which kept the grass short and the gravel dry.",
+          "Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate.",
+          "By evening the boat had returned twice, and the harbour master closed the log at 16:45.",
+          "Nothing in the data suggested a decline; density was highest near the old lighthouse.",
+          "The survey crew counted nests along the northern shingle before the tide came in.",
+          "Wind speed stayed below ten knots, which kept the grass short and the gravel dry.",
+          "Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate.",
+          "By evening the boat had returned twice, and the harbour master closed the log at 16:45.",
+          "Nothing in the data suggested a decline; density was highest near the old lighthouse.",
+          "The survey crew counted nests along the northern shingle before the tide came in.",
+          "Wind speed stayed below ten knots, which kept the grass short and the gravel dry.",
+          "Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate.",
+          "By evening the boat had returned twice, and the harbour master closed the log at 16:45.",
+          "Nothing in the data suggested a decline; density was highest near the old lighthouse.",
+          "The survey crew counted nests along the northern shingle before the tide came in.",
+          "Wind speed stayed below ten knots, which kept the grass short and the gravel dry.",
+          "Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate.",
+          "By evening the boat had returned twice, and the harbour master closed the log at 16:45.",
+          "Nothing in the data suggested a decline; density was highest near the old lighthouse."
+        ]
+      },
+      "size=64,overlap=8": {
+        "chunk_count": 14,
+        "chunks": [
+          "The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry.",
+          "Rangers logged each sighting with a position fix, a species code and a short comment. Spare batteries, leg rings and a waterproof notebook travelled in the same crate.",
+          "By evening the boat had returned twice, and the harbour master closed the log at 16:45. Nothing in the data suggested a decline; density was highest near the old lighthouse.",
+          "The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry.",
+          "Rangers logged each sighting with a position fix, a species code and a short comment. Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45.",
+          "Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in.",
+          "Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45.",
+          "Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in.",
+          "Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45.",
+          "Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in.",
+          "Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45. Nothing in the data suggested a decline; density was highest near the old lighthouse."
+        ]
+      },
+      "size=128,overlap=16": {
+        "chunk_count": 8,
+        "chunks": [
+          "The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment. Spare batteries, leg rings and a waterproof notebook travelled in the same crate.",
+          "By evening the boat had returned twice, and the harbour master closed the log at 16:45. Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry.",
+          "Rangers logged each sighting with a position fix, a species code and a short comment. Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45.",
+          "Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45. Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in.",
+          "Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment. Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45.",
+          "Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45. Nothing in the data suggested a decline; density was highest near the old lighthouse."
+        ]
+      },
+      "size=512,overlap=50": {
+        "chunk_count": 2,
+        "chunks": [
+          "The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment. Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45. Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment. Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45. Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment.",
+          "Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45. Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment. Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45. Nothing in the data suggested a decline; density was highest near the old lighthouse. The survey crew counted nests along the northern shingle before the tide came in. Wind speed stayed below ten knots, which kept the grass short and the gravel dry. Rangers logged each sighting with a position fix, a species code and a short comment. Spare batteries, leg rings and a waterproof notebook travelled in the same crate. By evening the boat had returned twice, and the harbour master closed the log at 16:45. Nothing in the data suggested a decline; density was highest near the old lighthouse."
+        ]
+      }
+    }
+  },
+  "unicode": {
+    "input_sha": "af632506edc6",
+    "settings": {
+      "size=32,overlap=0": {
+        "chunk_count": 3,
+        "chunks": [
+          "Ünïcödé tëst — naïve café, façade, jalapeño, Zürich, Œuvre.\n日本語のテキストです。これは二つ目の文です。三つ目の文はここにあります。",
+          "Привет, мир! Это проверка многоязычного текста для разбиения на части.",
+          "Emoji and symbols: ✓ ★ → ∑ ≈ ½, 😀 🚀 🧪. Mixed: naïve 数据 data — fin."
+        ]
+      },
+      "size=64,overlap=8": {
+        "chunk_count": 1,
+        "chunks": [
+          "Ünïcödé tëst — naïve café, façade, jalapeño, Zürich, Œuvre.\n日本語のテキストです。これは二つ目の文です。三つ目の文はここにあります。\nПривет, мир! Это проверка многоязычного текста для разбиения на части.\nEmoji and symbols: ✓ ★ → ∑ ≈ ½, 😀 🚀 🧪. Mixed: naïve 数据 data — fin."
+        ]
+      },
+      "size=128,overlap=16": {
+        "chunk_count": 1,
+        "chunks": [
+          "Ünïcödé tëst — naïve café, façade, jalapeño, Zürich, Œuvre.\n日本語のテキストです。これは二つ目の文です。三つ目の文はここにあります。\nПривет, мир! Это проверка многоязычного текста для разбиения на части.\nEmoji and symbols: ✓ ★ → ∑ ≈ ½, 😀 🚀 🧪. Mixed: naïve 数据 data — fin."
+        ]
+      },
+      "size=512,overlap=50": {
+        "chunk_count": 1,
+        "chunks": [
+          "Ünïcödé tëst — naïve café, façade, jalapeño, Zürich, Œuvre.\n日本語のテキストです。これは二つ目の文です。三つ目の文はここにあります。\nПривет, мир! Это проверка многоязычного текста для разбиения на части.\nEmoji and symbols: ✓ ★ → ∑ ≈ ½, 😀 🚀 🧪. Mixed: naïve 数据 data — fin."
+        ]
+      }
+    }
+  }
+}

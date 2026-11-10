@@ -1,0 +1,5 @@
+id,name,notes,price
+1,Widget,"Small, blue",9.99
+2,Gadget,"Quoted ""name""",19.5
+3,Café Crème,Unicode row,4.25
+4,Empty,,0

@@ -1,0 +1,8 @@
+{
+  "name": "golden",
+  "items": [
+    {"id": 1, "tags": ["a", "b"]},
+    {"id": 2, "tags": []}
+  ],
+  "nested": {"ok": true, "ratio": 0.5}
+}
