@@ -385,10 +385,7 @@ class TestGetCollectionFactory:
             "qdrant",
             "weaviate",
             "chromadb",
-            "faiss",
-            "azure-cosmos-mongo",
             "azure-cosmos-nosql",
-            "sql-server",
             "pinecone",
             "in-memory",
         ]

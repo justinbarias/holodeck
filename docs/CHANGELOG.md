@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **BREAKING: retired the `faiss`, `sql-server` and `azure-cosmos-mongo` vector store providers.** They had no install extra, sample or live test and could not run from a documented install. An `agent.yaml` or global `config.yaml` that names one now fails at config load with a migration message, before any backend, embedding or agent call. Migrate `faiss` to `chromadb` (embedded, local files) or `in-memory`, `sql-server` to `postgres` (pgvector), and `azure-cosmos-mongo` to `azure-cosmos-nosql`. Stored runs that name a retired provider still open in the dashboard. The published `agent.schema.json` lists only the eight supported providers.
 - **Dead Semantic Kernel harness leftovers.** Removed SK-coupled surfaces orphaned when the SK agent backend was deleted: the unused `holodeck.tools.mcp` SK plugin factory (live MCP runs through the Claude SDK bridge), the never-wired `holodeck.lib.tool_filter` module, the dead `to_semantic_kernel_function` stub, and the unused `metrics.include_semantic_kernel_metrics` config field. SK remains the backbone of the vectorstore / embedding / context-generation layer; the `semantic-kernel` dependency is unchanged.
 - **BREAKING: removed the `tool_filtering` agent-config field.** It was parsed but ignored (Claude manages tool selection natively). Because agent configs forbid extra fields, any `agent.yaml` still setting `tool_filtering:` will now fail validation — delete the block. No behavior change.
 

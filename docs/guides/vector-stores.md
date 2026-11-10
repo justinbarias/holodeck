@@ -67,6 +67,17 @@ The same extras work with `pip install holodeck-ai[<extra>]`.
 
 See the [Tools Guide](tools.md) for the complete list.
 
+### Removed vector store providers
+
+HoloDeck 0.8.0 removed three providers. An `agent.yaml` or `config.yaml` that
+names one fails at config load with the migration advice below.
+
+| Removed              | Use instead                                                  |
+| -------------------- | ------------------------------------------------------------ |
+| `faiss`              | `chromadb` (embedded, local files) or `in-memory` for local development |
+| `sql-server`         | `postgres` (pgvector) for a SQL database                     |
+| `azure-cosmos-mongo` | `azure-cosmos-nosql`                                         |
+
 ## Configuring vector stores
 
 You can configure a store inline (as in the Quick start) or define it once in global config and reference it by name.

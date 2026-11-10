@@ -96,14 +96,10 @@ FALLBACK_BM25_PROVIDERS: set[str] = {
     "postgres",
     "pinecone",
     "chromadb",
-    "faiss",
     "in-memory",
-    "sql-server",
 }
 """Providers that require BM25 fallback + app-level RRF.
 
-NOTE: azure-cosmos-mongo is EXCLUDED from both sets. MongoDB vCore uses a different
-API and requires MongoDBAtlasStore for native hybrid search.
 """
 
 

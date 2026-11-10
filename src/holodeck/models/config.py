@@ -6,8 +6,11 @@ for sharing default settings across multiple agents.
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
+from holodeck.config.context import is_stored_snapshot
+from holodeck.lib.errors import ConfigError
+from holodeck.lib.retired_providers import retired_provider_message
 from holodeck.models.deployment import DeploymentConfig  # noqa: F401 - re-exported
 from holodeck.models.llm import LLMProvider
 from holodeck.models.tool import MCPTool
@@ -33,10 +36,13 @@ class VectorstoreConfig(BaseModel):
 
     @field_validator("provider")
     @classmethod
-    def validate_provider(cls, v: str) -> str:
+    def validate_provider(cls, v: str, info: ValidationInfo) -> str:
         """Validate provider is not empty."""
         if not v or not v.strip():
             raise ValueError("provider must be a non-empty string")
+        message = retired_provider_message(v)
+        if message is not None and not is_stored_snapshot(info):
+            raise ConfigError("vectorstores.provider", message)
         return v
 
     @field_validator("connection_string")

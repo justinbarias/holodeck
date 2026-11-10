@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol, cast
 
+from holodeck.lib.retired_providers import RETIRED_PROVIDERS
 from holodeck.lib.retrieval.adapter import VectorStoreAdapter
 from holodeck.lib.retrieval.errors import (
     MissingClientError,
@@ -41,27 +42,27 @@ class ProviderEntry:
 
 _ADAPTERS = "holodeck.lib.retrieval.adapters"
 
-_BRIDGE = f"{_ADAPTERS}.sk_bridge"
 
 PROVIDERS: dict[str, ProviderEntry] = {
     "in-memory": ProviderEntry(f"{_ADAPTERS}.in_memory", "InMemoryAdapter"),
     "qdrant": ProviderEntry(f"{_ADAPTERS}.qdrant", "QdrantAdapter", extra="qdrant"),
+    "chromadb": ProviderEntry(f"{_ADAPTERS}.chroma", "ChromaAdapter", extra="chromadb"),
     "postgres": ProviderEntry(
         f"{_ADAPTERS}.postgres", "PostgresAdapter", extra="postgres"
     ),
-    "chromadb": ProviderEntry(f"{_ADAPTERS}.chroma", "ChromaAdapter", extra="chromadb"),
-    # Temporary Semantic Kernel bridge; each entry moves to a native adapter
-    # and the bridge is deleted in task T16 of the 042 exec plan.
-    "azure-ai-search": ProviderEntry(_BRIDGE, "SKAzureAISearchAdapter"),
-    "weaviate": ProviderEntry(_BRIDGE, "SKWeaviateAdapter"),
-    "faiss": ProviderEntry(_BRIDGE, "SKFaissAdapter"),
-    "azure-cosmos-mongo": ProviderEntry(_BRIDGE, "SKCosmosMongoAdapter"),
-    "azure-cosmos-nosql": ProviderEntry(_BRIDGE, "SKCosmosNoSqlAdapter"),
-    "sql-server": ProviderEntry(_BRIDGE, "SKSqlServerAdapter"),
-    "pinecone": ProviderEntry(f"{_ADAPTERS}.pinecone", "PineconeAdapter", "pinecone"),
+    "pinecone": ProviderEntry(
+        f"{_ADAPTERS}.pinecone", "PineconeAdapter", extra="pinecone"
+    ),
+    "weaviate": ProviderEntry(
+        f"{_ADAPTERS}.weaviate", "WeaviateAdapter", extra="weaviate"
+    ),
+    "azure-ai-search": ProviderEntry(
+        f"{_ADAPTERS}.azure_ai_search", "AzureAISearchAdapter", extra="azure-ai-search"
+    ),
+    "azure-cosmos-nosql": ProviderEntry(
+        f"{_ADAPTERS}.cosmos_nosql", "CosmosNoSqlAdapter", extra="azure-cosmos"
+    ),
 }
-
-RETIRED_PROVIDERS: dict[str, str] = {}
 
 
 def supported_providers() -> list[str]:

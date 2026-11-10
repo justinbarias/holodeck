@@ -24,11 +24,14 @@ from pydantic import (
     SecretStr,
     Tag,
     ValidationInfo,
+    ValidatorFunctionWrapHandler,
     field_validator,
     model_validator,
 )
 
 from holodeck.config.context import agent_base_dir, is_stored_snapshot
+from holodeck.lib.errors import ConfigError
+from holodeck.lib.retired_providers import retired_provider_message
 from holodeck.lib.skills import SkillLoadError, load_skill_definition, resolve_skill_dir
 from holodeck.models.llm import LLMProvider
 
@@ -180,7 +183,7 @@ class DatabaseConfig(BaseModel):
     """Vector database connection configuration.
 
     Supports all Semantic Kernel vector store providers including PostgreSQL,
-    Azure AI Search, Qdrant, Weaviate, ChromaDB, FAISS, Pinecone, and more.
+    Azure AI Search, Qdrant, Weaviate, ChromaDB, Pinecone, and more.
 
     Provider-specific parameters are passed via the config dict:
     - postgres: connection_string
@@ -188,7 +191,6 @@ class DatabaseConfig(BaseModel):
     - qdrant: url, api_key (optional)
     - weaviate: url, api_key (optional)
     - chromadb: path or host
-    - faiss: path
     - pinecone: api_key, index_name
     - And more...
     """
@@ -201,18 +203,14 @@ class DatabaseConfig(BaseModel):
         "qdrant",
         "weaviate",
         "chromadb",
-        "faiss",
-        "azure-cosmos-mongo",
         "azure-cosmos-nosql",
-        "sql-server",
         "pinecone",
         "in-memory",
     ] = Field(
         ...,
         description=(
             "Vector database provider: postgres, azure-ai-search, qdrant, "
-            "weaviate, chromadb, faiss, azure-cosmos-mongo, azure-cosmos-nosql, "
-            "sql-server, pinecone, in-memory"
+            "weaviate, chromadb, azure-cosmos-nosql, pinecone, in-memory"
         ),
     )
     connection_string: SecretStr | None = Field(
@@ -223,6 +221,24 @@ class DatabaseConfig(BaseModel):
             "https://search-service.search.windows.net"
         ),
     )
+
+    @field_validator("provider", mode="wrap")
+    @classmethod
+    def reject_retired_provider(
+        cls, v: object, handler: ValidatorFunctionWrapHandler, info: ValidationInfo
+    ) -> object:
+        """Fail on a retired provider name with its migration advice.
+
+        A stored snapshot (see ``is_stored_snapshot``) keeps the retired name
+        as recorded, so an old run still opens; every other load fails here,
+        before any backend, embedding or agent call.
+        """
+        message = retired_provider_message(v) if isinstance(v, str) else None
+        if message is None:
+            return handler(v)
+        if is_stored_snapshot(info):
+            return v
+        raise ConfigError("database.provider", message)
 
     @field_validator("connection_string")
     @classmethod

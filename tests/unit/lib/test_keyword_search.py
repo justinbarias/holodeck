@@ -107,19 +107,17 @@ class TestProviderSets:
         assert len(NATIVE_HYBRID_PROVIDERS) == 5
 
     def test_fallback_bm25_providers_contains_expected(self) -> None:
-        """Test FALLBACK_BM25_PROVIDERS contains 6 expected providers."""
+        """Test FALLBACK_BM25_PROVIDERS contains 4 expected providers."""
         from holodeck.lib.keyword_search import FALLBACK_BM25_PROVIDERS
 
         expected = {
             "postgres",
             "pinecone",
             "chromadb",
-            "faiss",
             "in-memory",
-            "sql-server",
         }
         assert expected == FALLBACK_BM25_PROVIDERS
-        assert len(FALLBACK_BM25_PROVIDERS) == 6
+        assert len(FALLBACK_BM25_PROVIDERS) == 4
 
     def test_azure_cosmos_mongo_excluded(self) -> None:
         """Test azure-cosmos-mongo is excluded from both sets (no hybrid support)."""
