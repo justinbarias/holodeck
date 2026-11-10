@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Vector store tools no longer fall back to in-memory storage when the provider's client library is missing or the provider is retired.** The tool fails with the install command or the migration text. A store that cannot be reached still falls back, as before.
+
 - **BREAKING: evaluation, optimizer and OpenSearch dependencies are install extras.** `pip install holodeck-ai` no longer installs DeepEval, `anthropic`, `ollama` (new `eval` extra), `nltk`, `rouge-score`, `sacrebleu` (new `nlp` extra), `optuna` (new `optimizer` extra) or `opensearch-py` (new `opensearch` extra). MkDocs Material and Twine left the runtime requirements for the `dev` extra. The new `all` extra installs every runtime extra. A test run whose configuration selects a metric without its extra stops before any agent or model call and prints the install command (`MissingExtraError`); `holodeck test optimize` and an OpenSearch keyword index do the same. Commands that do not use these features still start. Vector store `MissingClientError` is now a `MissingExtraError` with the same attributes. Upgrade commands:
 
 | You ran | Now run |
