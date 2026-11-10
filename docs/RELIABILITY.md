@@ -37,7 +37,8 @@ The `/verify` skill ([SKILL.md](../.claude/skills/verify/SKILL.md)) selects tier
 | fast | `make verify-fast` | Harness, lock, Ruff, Black, MyPy and schema checks pass, and the full pytest suite passes | None |
 | deps | `make verify-deps` | The lock is current. No unreviewed pip-audit advisory exists. npm audit of `sample/copilotkit` passes (skipped when that sample is absent) | None (network to the advisory databases) |
 | smoke | `make verify-smoke` | Both backends complete real `holodeck test run` and `holodeck serve` AG-UI turns, including a tool call and thread isolation | None |
-| live | `make verify-live` | Every tool type each backend supports, plus serve AG-UI turns, against real providers; traces in a local Aspire dashboard | `CLAUDE_CODE_OAUTH_TOKEN` (Claude), `OPENAI_API_KEY` (OpenAI, and embeddings for both); Docker for Qdrant and Aspire |
+| live | `make verify-live` | Every tool type each backend supports, a vector store case on every supported provider, plus serve AG-UI turns, against real providers; traces in a local Aspire dashboard | `CLAUDE_CODE_OAUTH_TOKEN` (Claude), `OPENAI_API_KEY` (OpenAI, and embeddings for both); Docker for the vector stores and Aspire; optional `PINECONE_API_KEY` and `AZURE_AI_SEARCH_ENDPOINT` + `AZURE_AI_SEARCH_API_KEY` |
+| providers | `make verify-providers` | Only the vector store matrix of the live tier: the provider table below, with no AG-UI turns | Same as live |
 
 **deps.** [audit_deps.py](../scripts/verify/audit_deps.py) audits every locked package (all extras and groups).
 Accepted advisories live in [audit-ignores.toml](../security/audit-ignores.toml).
@@ -62,34 +63,55 @@ Claude uses [live-full-claude.yaml](../tests/fixtures/verify/live-full-claude.ya
 | --- | --- | --- |
 | `function` (`smoke_echo`, `leak_probe`) | yes | yes |
 | `mcp` stdio (local FastMCP server, started with `uvx`) | yes | yes |
-| `vectorstore` on Qdrant, ChromaDB (server) and PostgreSQL (pgvector), `hierarchical_document` on Qdrant | needs `OPENAI_API_KEY` | yes |
+| `vectorstore` on every provider in the table below, `hierarchical_document` on Qdrant, PostgreSQL and Weaviate | needs `OPENAI_API_KEY` | yes |
 | subagents (`claude.agents` / `openai.agents` handoff) | yes | yes |
 | `skill` | no: the Claude backend does not adapt skills yet | yes |
 | `prompt` | no: no runtime adapter on any backend | no |
 
 Each tool type has one multi-turn test case with `expected_tools` and a `type: code` grader that checks the tool result or reply for a fixed marker. No case uses an LLM judge.
 The script reports PASS, FAIL or SKIP for each test case from the results JSON under the run copy's `results/`.
-Without `OPENAI_API_KEY` (embeddings), Qdrant, Chroma or Postgres, it removes the vector tools from the run copy and reports their cases as SKIP. The other cases still run.
+Without `OPENAI_API_KEY` (embeddings), it removes every vector tool from the run copy. Without a provider's container or credentials, it removes that provider's tools. Each removed tool's cases are reported as SKIP with the reason, never PASS. The other cases still run.
 Then it starts `holodeck serve` and sends 2 threads x 2 turns. Thread A turn 2 must emit `TOOL_CALL_START` for `smoke_echo`. Thread B turn 2 must contain B's code word and not A's.
 It also fails when a credential value occurs in any file of the run directory.
 Each run uses an empty `HOME` and `CLAUDE_CONFIG_DIR`, so `~/.holodeck/.env` and a stored Claude login cannot replace the credential under test.
 
-Docker containers (left running after the run; `--no-infra` skips them, and vector and trace checks then SKIP):
+Vector store providers. Each has one `vectorstore` tool and case per backend, with its own small corpus under [rag/](../tests/fixtures/verify/rag) and a marker string the answer must contain. `hierarchical_document` runs on three providers over the same handbook corpus, each with its own tool name and collection.
+
+| Provider | Infrastructure | What the case proves |
+| --- | --- | --- |
+| `qdrant` | container `holodeck-verify-qdrant` | Document chunks through the native adapter; `hierarchical_document` with Qdrant vector search plus the in-process BM25 leg |
+| `chromadb` | container `holodeck-verify-chroma` (HTTP client) | Document chunks through the server client |
+| `postgres` | container `holodeck-verify-postgres` (pgvector) | Document chunks in a pgvector table; `hierarchical_document` through the BM25 fallback, since the adapter has no hybrid search |
+| `weaviate` | container `holodeck-verify-weaviate` (HTTP 8089, gRPC 50059) | Document chunks through the native adapter; `hierarchical_document` through Weaviate's native hybrid search |
+| `azure-cosmos-nosql` | container `holodeck-verify-cosmos`, the Linux emulator (HTTP, published key). It accepts only the `diskANN` vector index and has no full-text search, so the tool sets `vector_index: diskANN` | Document chunks in a Cosmos container with a vector policy |
+| `pinecone` | Credential-gated: `PINECONE_API_KEY` (serverless index, `aws` / `us-east-1`). No local emulator: Pinecone Local is end-of-life and rejects the v10 control plane | Document chunks in a hosted serverless index |
+| `azure-ai-search` | Credential-gated: `AZURE_AI_SEARCH_ENDPOINT` and `AZURE_AI_SEARCH_API_KEY`. Azure has no emulator | Document chunks in a hosted search index |
+
+The agent YAML is static, so the hosted providers' tools stay in the fixtures. The script drops a provider's tools and cases when its prerequisite is missing, and the SKIP row names the missing variable or the unavailable container.
+The tools fall back to in-memory storage when a provider cannot be created, and a case could then still pass. So each tool gets a collection name unique to the run (`verify_<backend><id>_<tool>`).
+After the cases and the AG-UI turns, the script creates the provider's adapter, asks for that collection, and reports `provider <name> (<tool>) holds records`. The row is FAIL when the collection is missing or empty.
+Then it deletes every run collection, so a hosted service keeps no data. A failed delete is a FAIL row named `cleanup`.
+Pinecone reads can lag a write, so the count is polled for up to 30 seconds.
+
+Docker containers (left running after the run; `--no-infra` skips them, and local vector store and trace checks then SKIP; hosted providers still run when their credentials are set):
 
 | Container | Image | Host ports |
 | --- | --- | --- |
 | `holodeck-verify-qdrant` | `qdrant/qdrant:v1.17.1` | 6333 |
 | `holodeck-verify-chroma` | `chromadb/chroma:1.5.9` (matches the locked client) | 8765 |
 | `holodeck-verify-postgres` | `pgvector/pgvector:pg17` (throwaway credentials, loopback only) | 54329 |
+| `holodeck-verify-weaviate` | `cr.weaviate.io/semitechnologies/weaviate:1.40.4` (anonymous, no vectorizer) | 8089 HTTP, 50059 gRPC |
+| `holodeck-verify-cosmos` | `mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview` (`--protocol http`; first start takes about a minute) | 8081 gateway, 1234 data explorer |
 | `holodeck-verify-aspire` | `mcr.microsoft.com/dotnet/aspire-dashboard:13.5.2` (anonymous) | 18888 UI, 4317 OTLP/gRPC, 4318 OTLP/HTTP |
 
-If another Aspire dashboard, Qdrant, Chroma or Postgres already serves those ports, the script reuses it and does not stop it.
-Stop the managed containers with `docker rm -f holodeck-verify-qdrant holodeck-verify-chroma holodeck-verify-postgres holodeck-verify-aspire`. Removing Qdrant, Chroma or Postgres also clears the ingested fixture vectors.
+If another service of the same kind already serves those ports, the script reuses it and does not stop it.
+Stop the managed containers with `docker rm -f holodeck-verify-qdrant holodeck-verify-chroma holodeck-verify-postgres holodeck-verify-weaviate holodeck-verify-cosmos holodeck-verify-aspire`.
 Traces are for human review at <http://127.0.0.1:18888/traces>. Look for the services `holodeck-verify-live-claude` and `holodeck-verify-live-openai`.
 The `leak_probe` tool returns a fake `ghp_` token. Its span must show `[REDACTED:github-token]`, never the token.
 
 Pass flags through `LIVE_ARGS`, for example `make verify-live LIVE_ARGS="--backend claude --no-infra"`. `--limit N` runs only the first N test cases.
-Cost: each backend makes about 12 small model calls (`claude-haiku-5-5`, `gpt-6-luna`) plus a few embedding calls.
+`--only providers` (or `make verify-providers`) runs only the vector store cases: it keeps the test cases for vector tools and skips the AG-UI turns.
+Cost: each backend makes about 20 small model calls (`claude-haiku-5-5`, `gpt-6-luna`) plus a few embedding calls; hosted providers add a serverless index or search index that the run creates and deletes.
 Artifacts (SSE transcripts, logs, the run copy of the agent) go to `.verify/live/<UTC timestamp>/`.
 Exit code 2 means every backend was skipped. Report that as skipped, not passed.
 A backend with its credential set and no passing case or turn fails.
