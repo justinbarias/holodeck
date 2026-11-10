@@ -54,6 +54,18 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras
 
+      # METEOR reads NLTK data and never downloads it at run time. Hosted runners
+      # start empty, so cache it there; self-hosted keeps ~/nltk_data on disk.
+      - name: Cache NLTK data
+        if: matrix.runner != 'self-hosted'
+        uses: actions/cache@v6
+        with:
+          path: ~/nltk_data
+          key: nltk-data-wordnet-punkt_tab-omw-1.4
+
+      - name: Download NLTK data (METEOR)
+        run: uv run python -m nltk.downloader wordnet punkt_tab omw-1.4
+
       # pre-commit hooks run once, in the required pre-commit workflow.
 
       - name: Run tests in parallel

@@ -115,6 +115,14 @@ Token / n-gram overlap against `ground_truth`. All score `0.0`–`1.0` (higher i
   threshold: 0.8
 ```
 
+`meteor` reads NLTK language data and never downloads it during a run. Install it once on every machine that runs `holodeck test` (a CI runner, for example):
+
+```bash
+python -m nltk.downloader wordnet punkt_tab omw-1.4
+```
+
+If the data is missing, the metric fails with an error that names the missing resource and this command. Deployed agent images serve agents and do not run evaluations, so they do not include the data.
+
 ---
 
 ## DeepEval metrics (`type: geval`, `type: rag`)

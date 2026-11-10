@@ -1,9 +1,10 @@
 """Guard: dependencies removed by 042 stay out of the lock and the source.
 
 Remediation: when this fails, do not bring the package back. DeepEval metrics
-replace Azure AI evaluation (042 T18). If another dependency started to pull
-a removed package in, run ``uv tree --invert --package <name>`` to find it and
-drop or replace that dependency.
+replace Azure AI evaluation (042 T18); ROUGE and METEOR call rouge_score and
+NLTK directly, not Hugging Face ``evaluate`` (042 T19). If another dependency
+started to pull a removed package in, run ``uv tree --invert --package <name>``
+to find it, then drop or replace that dependency.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 
-REMOVED_LOCK_PACKAGES = ("azure-ai-evaluation",)
+REMOVED_LOCK_PACKAGES = ("azure-ai-evaluation", "evaluate")
 REMOVED_IMPORTS = ("azure.ai.evaluation",)
 
 

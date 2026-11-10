@@ -1,13 +1,13 @@
 """Unit tests for NLP metrics evaluators.
 
 Tests cover:
-- BLEU score calculation using Hugging Face evaluate library
+- BLEU score calculation using SacreBLEU
 - ROUGE score calculation (ROUGE-1, ROUGE-2, ROUGE-L)
 - METEOR score calculation
 - F1 score calculation for text similarity
 - Error handling for missing ground truth
 - Metric normalization (SacreBLEU 0-100 → 0-1)
-- Lazy loading of evaluate metrics
+- Lazy loading of metric backends
 """
 
 import logging
@@ -20,6 +20,7 @@ from holodeck.lib.evaluators.nlp_metrics import (
     BLEUEvaluator,
     METEOREvaluator,
     ROUGEEvaluator,
+    missing_nltk_resource,
 )
 
 
@@ -240,28 +241,24 @@ class TestROUGEEvaluator:
 
     @pytest.mark.asyncio
     async def test_rouge_lazy_loading(self) -> None:
-        """Test that ROUGE metric is loaded lazily."""
-        with patch(
-            "holodeck.lib.evaluators.nlp_metrics._get_evaluate"
-        ) as mock_get_evaluate:
-            mock_evaluate = MagicMock()
-            mock_get_evaluate.return_value = mock_evaluate
+        """The rouge_score scorer is built on first use, not in the constructor."""
+        evaluator = ROUGEEvaluator()
+        assert evaluator._metric is None
 
-            evaluator = ROUGEEvaluator()
-            mock_evaluate.load.assert_not_called()
-
-            mock_metric = MagicMock()
-            mock_metric.compute.return_value = {
-                "rouge1": 0.5,
-                "rouge2": 0.3,
-                "rougeL": 0.4,
-            }
-            mock_evaluate.load.return_value = mock_metric
-
-            await evaluator.evaluate(response="test", ground_truth="test")
-            mock_evaluate.load.assert_called_once_with("rouge")
+        await evaluator.evaluate(response="test", ground_truth="test")
+        assert evaluator._metric is not None
 
 
+requires_nltk_data = pytest.mark.skipif(
+    missing_nltk_resource() is not None,
+    reason=(
+        "NLTK data missing; "
+        "run `python -m nltk.downloader wordnet punkt_tab omw-1.4`"
+    ),
+)
+
+
+@requires_nltk_data
 class TestMETEOREvaluator:
     """Test METEOR score evaluator."""
 
@@ -357,21 +354,13 @@ class TestMETEOREvaluator:
 
     @pytest.mark.asyncio
     async def test_meteor_lazy_loading(self) -> None:
-        """Test that METEOR metric is loaded lazily."""
-        with patch(
-            "holodeck.lib.evaluators.nlp_metrics._get_evaluate"
-        ) as mock_get_evaluate:
-            mock_evaluate = MagicMock()
-            mock_get_evaluate.return_value = mock_evaluate
+        """METEOR checks NLTK data and builds its scorer on first use only."""
+        with patch("holodeck.lib.evaluators.nlp_metrics._ensure_nltk_data") as ensure:
             evaluator = METEOREvaluator()
-            mock_evaluate.load.assert_not_called()
-
-            mock_metric = MagicMock()
-            mock_metric.compute.return_value = {"meteor": 0.75}
-            mock_evaluate.load.return_value = mock_metric
+            ensure.assert_not_called()
 
             await evaluator.evaluate(response="test", ground_truth="test")
-            mock_evaluate.load.assert_called_once_with("meteor")
+            ensure.assert_called_once()
 
 
 class TestNLPMetricsErrorHandling:
@@ -392,18 +381,12 @@ class TestNLPMetricsErrorHandling:
             await rouge_evaluator.evaluate(response="test", ground_truth=None)
 
     @pytest.mark.asyncio
-    async def test_meteor_library_import_error(self) -> None:
-        """Test METEOR evaluator when evaluate library is not available."""
-        with patch(
-            "holodeck.lib.evaluators.nlp_metrics._get_evaluate",
-            side_effect=EvaluationError(
-                "evaluate library is not installed. "
-                "Install with: pip install evaluate sacrebleu"
-            ),
-        ):
+    async def test_meteor_missing_nltk_data(self) -> None:
+        """A missing NLTK resource is reported with its name and the fix command."""
+        with patch("nltk.data.find", side_effect=LookupError("resource not found")):
             evaluator = METEOREvaluator()
 
-            with pytest.raises(EvaluationError, match="evaluate.*not installed"):
+            with pytest.raises(EvaluationError, match="wordnet.*nltk.downloader"):
                 await evaluator.evaluate(response="test", ground_truth="test")
 
     @pytest.mark.asyncio
@@ -424,6 +407,7 @@ class TestNLPMetricsErrorHandling:
                 await evaluator.evaluate(response="test", ground_truth="test")
 
 
+@requires_nltk_data
 class TestNLPMetricsIntegration:
     """Integration tests for NLP metrics with realistic scenarios."""
 
