@@ -147,16 +147,20 @@ The former local sample, `sample/financial-assistant/claude`, is git-ignored and
 Use the user-selected agent, registry, and target. Do not assume a personal cloud endpoint.
 
 1. Build the working-tree wheel with `uv build --wheel`. Keep exactly the intended wheel in the Docker build context.
-2. Build [docker/Dockerfile.local](../docker/Dockerfile.local) with that wheel, using `--no-cache` and the target platform.
+2. Build [docker/Dockerfile.local](../docker/Dockerfile.local) with that wheel, using `--no-cache` and the target platform. Give the image a name that is not a published tag, for example `holodeck-base-local:test`.
 3. Inspect the installed wheel version inside the image.
-4. Account for [builder.py](../src/holodeck/deploy/builder.py), which currently passes `pull=True` to Docker.
-5. Build the agent image with `holodeck deploy build`, then publish the verified tag to the authorized registry.
+4. Build the agent image with `holodeck deploy build --wheel dist/<wheel> --base-image <local base> --no-pull`. Without `--no-pull`, [builder.py](../src/holodeck/deploy/builder.py) passes `pull=True` to Docker.
+5. Publish the verified tag to the authorized registry.
 6. Deploy with `holodeck deploy run` for the selected agent configuration.
 7. Wait for health with a bounded timeout, then send a deterministic request with a known expected answer.
-8. Record the image digest, target, response, and relevant telemetry.
+8. Record the image digest, target, response, and relevant telemetry. Keep the build manifest (`.holodeck/builds/<tag>.json`).
 
-`pull=True` can replace a locally tagged base image with its published registry version.
-If validation requires a temporary local override, keep that edit isolated and restore only that edit afterward.
-Do not commit an override that disables normal base-image pulling.
+By default the build pulls the base image, which can replace a locally tagged base image with its published registry version. Use `--no-pull` only for a base image you built locally.
 Azure Container Apps requires a compatible target image, commonly `linux/amd64` for this repository's deployment loop.
 Readiness and cold-start timings vary. Measure them instead of relying on the old sample's timings.
+Local image builds (steps 1 to 4) need no registry access and are safe to run. Pushing images and `holodeck deploy run` need the authorization described above.
+
+### Image pins and manifest
+
+Every image installs `holodeck-ai[extras]==X.Y.Z` with `--constraint` and `--override` files shipped in the wheel (`src/holodeck/deploy/constraints.txt` and `overrides.txt`, generated from `uv.lock`). Regenerate them with `make constraints`; `make constraints-check` fails when they are stale and runs in `make verify-fast`. A build that uses `--wheel` takes the files from that wheel. The Python base image is pinned by digest; update the digest on purpose.
+`holodeck deploy build` writes `.holodeck/builds/<tag>.json` (HoloDeck version, extras, base image reference and digest or image ID, built image ID, package list), and every image keeps its package list in `/opt/holodeck/manifest.txt`. Serving images carry only the extras the agent needs; they never carry `eval`, `nlp` or `optimizer`. See the [deployment guide](guides/deployment.md#reproducible-images).

@@ -2,10 +2,14 @@
 # Build script for HoloDeck base image
 #
 # Usage:
-#   ./scripts/build-base-image.sh                       # Build locally
-#   ./scripts/build-base-image.sh --tag 0.1.0           # Build with version tag
-#   ./scripts/build-base-image.sh --push --tag 0.1.0    # Build and push
-#   ./scripts/build-base-image.sh --platform linux/arm64  # Build for specific platform
+#   ./scripts/build-base-image.sh --version 0.7.1               # Build locally
+#   ./scripts/build-base-image.sh --version 0.7.1 --tag 0.7.1   # Build with version tag
+#   ./scripts/build-base-image.sh --version 0.7.1 --push --tag 0.7.1  # Build and push
+#   ./scripts/build-base-image.sh --version 0.7.1 --platform linux/arm64
+#
+# --version is required: the image installs that exact holodeck-ai release
+# (never "latest", never a prerelease resolution) with dependency versions
+# constrained to the lock shipped in that release.
 
 set -euo pipefail
 
@@ -52,16 +56,15 @@ Options:
     --tag TAG           Image tag (default: latest)
     --push              Push image to registry after build
     --platform PLATFORM Target platform (e.g., linux/amd64, linux/arm64)
-    --version VERSION   HoloDeck version to install (default: latest from PyPI)
+    --version VERSION   Exact holodeck-ai release to install (required)
     --no-cache          Build without cache
     -h, --help          Show this help message
 
 Examples:
-    $(basename "$0")                           # Build locally with tag 'latest'
-    $(basename "$0") --tag 0.1.0               # Build with specific tag
-    $(basename "$0") --push --tag 0.1.0        # Build and push to registry
-    $(basename "$0") --platform linux/arm64    # Build for ARM64
-    $(basename "$0") --version 0.1.0           # Install specific holodeck version
+    $(basename "$0") --version 0.7.1                       # Build locally with tag 'latest'
+    $(basename "$0") --version 0.7.1 --tag 0.7.1           # Build with specific tag
+    $(basename "$0") --version 0.7.1 --push --tag 0.7.1    # Build and push to registry
+    $(basename "$0") --version 0.7.1 --platform linux/arm64  # Build for ARM64
 EOF
     exit 0
 }
@@ -99,6 +102,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# The image installs one exact release; "latest" and an empty version are not pins.
+if [[ -z "${HOLODECK_VERSION}" || "${HOLODECK_VERSION}" == "latest" ]]; then
+    print_error "--version is required: give the exact holodeck-ai release to install (e.g. 0.7.1)"
+    exit 1
+fi
+if [[ ! "${HOLODECK_VERSION}" =~ ^[0-9]+(\.[0-9]+)*((a|b|rc)[0-9]+)?(\.post[0-9]+)?$ ]]; then
+    print_error "--version must be a published release (e.g. 0.7.1), not '${HOLODECK_VERSION}'"
+    exit 1
+fi
+
 # Get script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -124,10 +137,8 @@ if [[ "${NO_CACHE}" == true ]]; then
     BUILD_CMD+=" --no-cache"
 fi
 
-# Add build args (only add version if it's a specific version, not "latest")
-if [[ -n "${HOLODECK_VERSION}" && "${HOLODECK_VERSION}" != "latest" ]]; then
-    BUILD_CMD+=" --build-arg HOLODECK_VERSION=${HOLODECK_VERSION}"
-fi
+# Add build args
+BUILD_CMD+=" --build-arg HOLODECK_VERSION=${HOLODECK_VERSION}"
 
 # Add tags
 BUILD_CMD+=" -t ${IMAGE_NAME}:${TAG}"
@@ -142,9 +153,7 @@ print_info "  Dockerfile: ${DOCKERFILE_PATH}"
 if [[ -n "${PLATFORM}" ]]; then
     print_info "  Platform: ${PLATFORM}"
 fi
-if [[ -n "${HOLODECK_VERSION}" ]]; then
-    print_info "  HoloDeck Version: ${HOLODECK_VERSION}"
-fi
+print_info "  HoloDeck Version: ${HOLODECK_VERSION}"
 echo ""
 
 # Run build

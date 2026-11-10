@@ -18,6 +18,13 @@ from typing import TYPE_CHECKING, Any
 import click
 
 from holodeck.deploy.deployers import create_deployer
+from holodeck.deploy.extras import required_extras
+from holodeck.deploy.install import (
+    DEFAULT_BASE_REPOSITORY,
+    HoloDeckInstall,
+    default_base_image,
+    resolve_install,
+)
 from holodeck.deploy.state import (
     compute_config_hash,
     get_deployment_record,
@@ -31,7 +38,7 @@ from holodeck.models.deployment import CloudProvider
 from holodeck.models.deployment_state import DeploymentRecord
 
 if TYPE_CHECKING:
-    from holodeck.deploy.builder import BuildResult
+    from holodeck.deploy.builder import BuildResult, ContainerBuilder
     from holodeck.models.agent import Agent
     from holodeck.models.deployment import DeploymentConfig
 
@@ -173,6 +180,29 @@ def deploy(ctx: click.Context) -> None:
     help="Build without using cache",
 )
 @click.option(
+    "--wheel",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "HoloDeck wheel to install instead of the PyPI release. Needed when "
+        "this HoloDeck is a development version (build one with `uv build --wheel`)"
+    ),
+)
+@click.option(
+    "--base-image",
+    type=str,
+    default=None,
+    help=(
+        f"Base image (default: {DEFAULT_BASE_REPOSITORY}:<version> for a release, "
+        ":latest for a development build)"
+    ),
+)
+@click.option(
+    "--no-pull",
+    is_flag=True,
+    help="Use the base image already in the local Docker daemon; do not pull it",
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help="Show what would be done without executing",
@@ -193,6 +223,9 @@ def build(
     agent_config: str,
     tag: str | None,
     no_cache: bool,
+    wheel: Path | None,
+    base_image: str | None,
+    no_pull: bool,
     dry_run: bool,
     verbose: bool,
     quiet: bool,
@@ -202,7 +235,10 @@ def build(
     AGENT_CONFIG is the path to the agent.yaml configuration file.
 
     Generates a Dockerfile from the agent configuration and builds
-    a container image using Docker.
+    a container image using Docker. The image installs exactly this HoloDeck
+    version with the extras the agent needs, constrained to that release's
+    lock file. A manifest of the image is written to
+    .holodeck/builds/<tag>.json.
 
     Example:
 
@@ -211,6 +247,8 @@ def build(
         holodeck deploy build agent.yaml --tag v1.0.0
 
         holodeck deploy build --dry-run
+
+        holodeck deploy build --wheel dist/holodeck_ai-0.7.2.dev64-py3-none-any.whl
     """
     # Setup logging based on verbosity
     if not quiet:
@@ -242,6 +280,11 @@ def build(
             )
         deployment_config = agent.deployment
 
+        # Decide which HoloDeck the image installs. A development version
+        # without a wheel fails here, before any Docker work.
+        install = _resolve_holodeck_install(wheel)
+        image_base = base_image or default_base_image(install)
+
         # Determine tag
         if tag:
             # Custom tag from CLI overrides config
@@ -269,6 +312,8 @@ def build(
             click.echo(f"  Platform:  {deployment_config.platform}")
             click.echo(f"  Protocol:  {deployment_config.protocol.value}")
             click.echo(f"  Port:      {deployment_config.port}")
+            click.echo(f"  HoloDeck:  {install.version} ({install.source})")
+            click.echo(f"  Base:      {image_base}")
             click.echo()
 
         if dry_run:
@@ -283,6 +328,8 @@ def build(
                 image_tag,
                 test_cases_file=_read_raw_test_cases_file(agent_path),
                 base_dir=agent_dir,
+                install=install,
+                base_image=image_base,
             )
             click.echo()
             click.secho("Generated Dockerfile:", bold=True)
@@ -298,7 +345,12 @@ def build(
             click.echo("Preparing build context...")
 
         build_dir = _prepare_build_context(
-            agent, deployment_config, agent_dir, image_tag
+            agent,
+            deployment_config,
+            agent_dir,
+            image_tag,
+            install=install,
+            base_image=image_base,
         )
 
         try:
@@ -331,7 +383,19 @@ def build(
                 tag=image_tag,
                 labels=labels,
                 platform=deployment_config.platform,
+                pull=not no_pull,
                 **build_kwargs,
+            )
+
+            manifest_file = _record_image_manifest(
+                builder,
+                result,
+                agent_name=agent_name,
+                platform=deployment_config.platform,
+                install=install,
+                extras=required_extras(agent),
+                base_image=image_base,
+                agent_dir=agent_dir,
             )
 
             # Display build logs if verbose
@@ -343,7 +407,7 @@ def build(
                 click.echo()
 
             # Success message
-            _display_build_success(result, quiet)
+            _display_build_success(result, quiet, manifest_file)
 
         finally:
             # Cleanup build context
@@ -624,6 +688,9 @@ def _generate_dockerfile_content(
     version: str,
     test_cases_file: str | None = None,
     base_dir: Path | None = None,
+    *,
+    install: HoloDeckInstall | None = None,
+    base_image: str | None = None,
 ) -> str:
     """Generate Dockerfile content for the agent.
 
@@ -634,12 +701,14 @@ def _generate_dockerfile_content(
         test_cases_file: Optional raw test_cases_file path from agent YAML.
         base_dir: Agent directory; when provided, credential-shaped files in
             the COPY surface are flagged with a warning.
+        install: HoloDeck the image installs. Defaults to the running version.
+        base_image: Base image reference. Defaults to the HoloDeck base image
+            for ``install``.
 
     Returns:
         Generated Dockerfile content
     """
     from holodeck.deploy.dockerfile import generate_dockerfile
-    from holodeck.models.llm import ProviderEnum
     from holodeck.models.tool import (
         FunctionTool,
         HierarchicalDocumentToolConfig,
@@ -696,25 +765,7 @@ def _generate_dockerfile_content(
     # Node.js is only needed if an MCP tool spawns a Node interpreter.
     needs_nodejs = _agent_needs_nodejs(agent)
 
-    # Detect required extras from agent config. Vector-store provider names
-    # match the optional-dependency group names in pyproject.toml 1:1.
-    vectorstore_extras = {"chromadb", "qdrant", "pinecone", "postgres"}
-    extras: list[str] = []
-    for tool in agent.tools or []:
-        if isinstance(tool, VectorstoreTool | HierarchicalDocumentToolConfig):
-            provider = (
-                getattr(tool.database, "provider", None) if tool.database else None
-            )
-            if provider in vectorstore_extras:
-                extras.append(provider)
-            if tool.source:
-                if tool.source.startswith("az://"):
-                    extras.append("azure-blob")
-                elif tool.source.startswith("s3://"):
-                    extras.append("s3")
-    if agent.model.provider == ProviderEnum.ANTHROPIC:
-        extras.append("claude-otel")
-    extras = sorted(set(extras))
+    install = install or _resolve_holodeck_install(None)
 
     return generate_dockerfile(
         agent_name=agent.name,
@@ -725,7 +776,10 @@ def _generate_dockerfile_content(
         data_directories=data_directories if data_directories else None,
         environment=deployment_config.environment or None,
         needs_nodejs=needs_nodejs,
-        extras=extras if extras else None,
+        extras=required_extras(agent),
+        holodeck_version=install.version,
+        holodeck_wheel=install.wheel.name if install.wheel is not None else None,
+        base_image=base_image or default_base_image(install),
     )
 
 
@@ -734,6 +788,9 @@ def _prepare_build_context(
     deployment_config: DeploymentConfig,
     agent_dir: Path,
     version: str,
+    *,
+    install: HoloDeckInstall | None = None,
+    base_image: str | None = None,
 ) -> Path:
     """Prepare build context directory with all required files.
 
@@ -742,15 +799,24 @@ def _prepare_build_context(
         deployment_config: Deployment configuration
         agent_dir: Directory containing agent.yaml
         version: Version for Dockerfile labels
+        install: HoloDeck the image installs. Defaults to the running version.
+        base_image: Base image reference. Defaults to the HoloDeck base image
+            for ``install``.
 
     Returns:
         Path to temporary build context directory
     """
+    from holodeck.deploy.dockerfile import (
+        CONSTRAINTS_CONTEXT_FILE,
+        OVERRIDES_CONTEXT_FILE,
+    )
     from holodeck.models.tool import (
         FunctionTool,
         HierarchicalDocumentToolConfig,
         VectorstoreTool,
     )
+
+    install = install or _resolve_holodeck_install(None)
 
     # Create temporary build directory
     build_dir = Path(tempfile.mkdtemp(prefix="holodeck-build-"))
@@ -763,8 +829,17 @@ def _prepare_build_context(
         version,
         test_cases_file=test_cases_file,
         base_dir=agent_dir,
+        install=install,
+        base_image=base_image,
     )
     (build_dir / "Dockerfile").write_text(dockerfile_content)
+
+    # The pins of the HoloDeck being installed, and its wheel when it is not on
+    # PyPI. The Dockerfile copies them from the context root.
+    (build_dir / CONSTRAINTS_CONTEXT_FILE).write_text(install.constraints)
+    (build_dir / OVERRIDES_CONTEXT_FILE).write_text(install.overrides)
+    if install.wheel is not None:
+        shutil.copy2(install.wheel, build_dir / install.wheel.name)
 
     # Copy agent.yaml
     shutil.copy2(agent_dir / "agent.yaml", build_dir / "agent.yaml")
@@ -821,12 +896,67 @@ exec holodeck serve /app/agent.yaml \\
     return build_dir
 
 
-def _display_build_success(result: BuildResult, quiet: bool) -> None:
+def _installed_holodeck_version() -> str:
+    """Return the version of the running HoloDeck."""
+    from holodeck import __version__
+
+    return __version__
+
+
+def _resolve_holodeck_install(wheel: Path | None) -> HoloDeckInstall:
+    """Choose the HoloDeck the image installs (see ``deploy.install``)."""
+    return resolve_install(
+        _installed_holodeck_version(),
+        wheel=wheel,
+        search_dirs=[Path.cwd() / "dist"],
+    )
+
+
+def _record_image_manifest(
+    builder: ContainerBuilder,
+    result: BuildResult,
+    *,
+    agent_name: str,
+    platform: str,
+    install: HoloDeckInstall,
+    extras: list[str],
+    base_image: str,
+    agent_dir: Path,
+) -> Path:
+    """Write the manifest of the image that was just built.
+
+    Reads the package list the Dockerfile stored in the image, looks up the
+    base image in the daemon (it was pulled or used by the build), and writes
+    ``.holodeck/builds/<tag>.json`` next to the agent.
+    """
+    from holodeck.deploy.dockerfile import MANIFEST_IMAGE_PATH
+    from holodeck.deploy.manifest import build_manifest, manifest_path, write_manifest
+
+    freeze_text = builder.read_image_file(result.image_id, MANIFEST_IMAGE_PATH)
+    manifest = build_manifest(
+        agent=agent_name,
+        platform=platform,
+        install=install,
+        extras=extras,
+        base_image=builder.inspect_image(base_image),
+        image_reference=result.full_name,
+        image=builder.inspect_image(result.image_id),
+        freeze_text=freeze_text,
+    )
+    path = manifest_path(agent_dir, result.tag)
+    write_manifest(path, manifest)
+    return path
+
+
+def _display_build_success(
+    result: BuildResult, quiet: bool, manifest_file: Path | None = None
+) -> None:
     """Display build success message.
 
     Args:
         result: Build result with image details
         quiet: If True, only show minimal output
+        manifest_file: Where the image manifest was written, if it was
     """
     if quiet:
         click.echo(result.full_name)
@@ -839,6 +969,8 @@ def _display_build_success(result: BuildResult, quiet: bool) -> None:
     click.echo()
     click.echo(f"  Image:    {result.full_name}")
     click.echo(f"  ID:       {result.image_id[:19]}...")
+    if manifest_file is not None:
+        click.echo(f"  Manifest: {manifest_file}")
     click.echo()
     click.secho("  Next steps:", bold=True)
     click.echo(f"    Run locally:  docker run -p 8080:8080 {result.full_name}")

@@ -421,6 +421,12 @@ schema: ## Regenerate schemas/agent.schema.json from the Agent model
 schema-check: ## Verify the committed agent.schema.json matches the model
 	uv run python scripts/generate_agent_schema.py --check
 
+constraints: ## Regenerate src/holodeck/deploy/constraints.txt from uv.lock
+	uv run python scripts/generate_constraints.py
+
+constraints-check: ## Verify the shipped image constraints match uv.lock
+	uv run python scripts/generate_constraints.py --check
+
 harness-check: ## Validate the repository knowledge map without installing dependencies
 	python3 scripts/check_harness.py
 
@@ -440,6 +446,7 @@ verify-fast: ## Static gates, schema check and the full test suite
 	uv run black --check src tests scripts
 	uv run mypy src --ignore-missing-imports --no-error-summary
 	$(MAKE) schema-check
+	$(MAKE) constraints-check
 	uv run pytest tests -n auto -q
 
 verify-deps: ## Lock check plus pip-audit and npm audit with expiring ignores

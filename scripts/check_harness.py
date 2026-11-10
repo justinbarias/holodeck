@@ -93,6 +93,8 @@ def render_inventory(root: Path) -> str:
             "atomic JSON artifacts under `results/<agent-slug>/`.",
             "- [Deployment state](../../src/holodeck/deploy/state.py): "
             "`.holodeck/deployments.json` beside the agent configuration.",
+            "- [Image manifest](../../src/holodeck/deploy/manifest.py): "
+            "`.holodeck/builds/<tag>.json` beside the agent configuration.",
             "- [Vector stores](../guides/vector-stores.md): "
             "configured embedding stores.",
             "- [Temporal](../guides/temporal.md): externally managed workflow history.",

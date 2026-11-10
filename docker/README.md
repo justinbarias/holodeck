@@ -10,9 +10,10 @@ ghcr.io/justinbarias/holodeck-base
 
 ## Features
 
-- Python 3.10+ runtime
-- UV package manager (fast pip replacement)
-- HoloDeck CLI pre-installed
+- Python 3.13 runtime (the Python image is pinned by digest)
+- UV package manager (fast pip replacement), pinned by version and digest
+- HoloDeck CLI pre-installed at one exact version, with no extras
+- Dependency versions constrained to that release's lock; the package list is in `/opt/holodeck/manifest.txt`
 - Non-root user for security (`holodeck` user, UID 1000)
 - Health check endpoint support
 - Multi-platform support (amd64, arm64)
@@ -26,11 +27,15 @@ ghcr.io/justinbarias/holodeck-base
 | `<version>` | Release version (e.g., `0.1.0`, `1.0.0`) |
 | `<major>.<minor>` | Minor version (e.g., `0.1`, `1.0`) |
 
+### Reproducibility
+
+The image installs `holodeck-ai==<version>` from PyPI with `--constraint` and `--override` files that ship inside that release (`holodeck/deploy/constraints.txt` and `overrides.txt`, generated from `uv.lock`). There is no `--prerelease` flag and no unpinned install. The base image has **no extras**: an agent that needs one (`openai-agents` for OpenAI and Azure OpenAI, a vector store client, and so on) is built on top with `holodeck deploy build`, which installs the extras the agent file needs. See the [deployment guide](../docs/guides/deployment.md#reproducible-images).
+
 ### Versioning Strategy
 
 - **latest**: Always points to the most recent build from the `main` branch. Suitable for development and testing.
 - **SHA tags**: Useful for pinning to a specific commit for reproducibility.
-- **Semantic versioning**: Use these tags for production deployments. Tags like `0.1.0` are immutable.
+- **Semantic versioning**: Use these tags for production deployments. The tag `0.1.0` is the base image of `holodeck-ai==0.1.0`; `holodeck deploy build` builds on the tag of the HoloDeck version it runs.
 
 ## Usage
 
@@ -62,7 +67,7 @@ docker run -v $(pwd)/agent.yaml:/app/agent.yaml \
 version: '3.8'
 services:
   agent:
-    image: ghcr.io/justinbarias/holodeck-base:latest
+    image: ghcr.io/justinbarias/holodeck-base:0.7.1
     volumes:
       - ./agent.yaml:/app/agent.yaml:ro
       - ./instructions.md:/app/instructions.md:ro
@@ -104,34 +109,28 @@ Depending on your agent configuration, you may need to provide API keys:
 ### Using the Build Script
 
 ```bash
-# Build with default tag (latest)
-./scripts/build-base-image.sh
+# --version is required: the exact holodeck-ai release to install
+./scripts/build-base-image.sh --version 0.7.1
 
 # Build with specific tag
-./scripts/build-base-image.sh --tag 0.1.0
-
-# Build with specific HoloDeck version
-./scripts/build-base-image.sh --tag 0.1.0 --version 0.1.0
+./scripts/build-base-image.sh --version 0.7.1 --tag 0.7.1
 
 # Build and push to registry
-./scripts/build-base-image.sh --push --tag 0.1.0
+./scripts/build-base-image.sh --version 0.7.1 --push --tag 0.7.1
 
 # Build for specific platform
-./scripts/build-base-image.sh --platform linux/arm64
+./scripts/build-base-image.sh --version 0.7.1 --platform linux/arm64
 
 # Build without cache
-./scripts/build-base-image.sh --no-cache
+./scripts/build-base-image.sh --version 0.7.1 --no-cache
 ```
 
 ### Using Docker Directly
 
 ```bash
-# From project root
-docker build -t ghcr.io/justinbarias/holodeck-base:test -f docker/Dockerfile docker/
-
-# With specific HoloDeck version
-docker build --build-arg HOLODECK_VERSION=0.1.0 \
-  -t ghcr.io/justinbarias/holodeck-base:0.1.0 \
+# From project root; HOLODECK_VERSION is required (exact release)
+docker build --build-arg HOLODECK_VERSION=0.7.1 \
+  -t ghcr.io/justinbarias/holodeck-base:0.7.1 \
   -f docker/Dockerfile docker/
 ```
 
@@ -142,7 +141,7 @@ Follow these steps to verify the base image works correctly:
 ### 1. Build the Image
 
 ```bash
-./scripts/build-base-image.sh --tag test
+./scripts/build-base-image.sh --version 0.7.1 --tag test
 ```
 
 ### 2. Verify Image Created

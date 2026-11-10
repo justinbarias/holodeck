@@ -1,17 +1,21 @@
 # Local-source variant of docker/Dockerfile.
 # Installs HoloDeck from a wheel built from the current working tree
-# (../dist/*.whl) instead of PyPI. Tag the resulting image with the same
-# name as the published base so `holodeck deploy build` picks it up
-# locally before reaching for ghcr.io.
+# (dist/*.whl, exactly one) instead of PyPI. Same pins as docker/Dockerfile:
+# the Python image by digest, uv from its pinned image, and dependency versions
+# constrained to the constraints.txt inside the wheel. Tag the resulting image
+# with the same name as the published base so `holodeck deploy build` picks it
+# up locally (pass --no-pull to `holodeck deploy build` so Docker does not
+# replace it with the registry image).
 #
 # Build (from repo root):
-#   uv build --wheel
+#   rm -rf dist && uv build --wheel
 #   docker buildx build --platform linux/arm64 \
 #     -f docker/Dockerfile.local \
 #     -t ghcr.io/justinbarias/holodeck-base:latest \
 #     --load .
 
-FROM python:3.13-slim
+ARG PYTHON_IMAGE=python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
+FROM ${PYTHON_IMAGE}
 
 LABEL org.opencontainers.image.title="HoloDeck Base Image (local)"
 LABEL com.holodeck.managed="true"
@@ -32,18 +36,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bubblewrap \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && mv /root/.local/bin/uv /usr/local/bin/uv \
-    && chmod +x /usr/local/bin/uv
+# Install UV from the pinned official image (no unpinned curl | sh)
+COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /uvx /usr/local/bin/
 
 RUN groupadd --gid 1000 holodeck \
     && useradd --uid 1000 --gid 1000 --shell /bin/bash --create-home holodeck
 
 WORKDIR /app
 
+# Install the wheel without dependencies, then its dependencies constrained to
+# the lock that ships inside it. No --prerelease.
 COPY dist/*.whl /tmp/wheels/
-RUN uv pip install --system --no-cache --prerelease=allow /tmp/wheels/*.whl \
-    && rm -rf /tmp/wheels
+RUN set -eu; \
+    test "$(ls /tmp/wheels/*.whl | wc -l)" -eq 1 \
+      || { echo "dist/ must hold exactly one wheel" >&2; exit 1; }; \
+    uv pip install --system --no-cache --no-deps /tmp/wheels/*.whl; \
+    CONSTRAINTS="$(python -c "import importlib.util as u; print(u.find_spec('holodeck').submodule_search_locations[0] + '/deploy/constraints.txt')")"; \
+    OVERRIDES="$(dirname "${CONSTRAINTS}")/overrides.txt"; \
+    test -f "${CONSTRAINTS}" -a -f "${OVERRIDES}" \
+      || { echo "the wheel ships no deploy/constraints.txt or overrides.txt" >&2; exit 1; }; \
+    uv pip install --system --no-cache --constraint "${CONSTRAINTS}" --override "${OVERRIDES}" /tmp/wheels/*.whl; \
+    mkdir -p /opt/holodeck; \
+    { echo "# holodeck-ai local wheel; extras: none"; uv pip freeze --system; } > /opt/holodeck/manifest.txt; \
+    rm -rf /tmp/wheels
 
 COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh

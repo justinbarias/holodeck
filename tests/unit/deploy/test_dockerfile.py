@@ -27,7 +27,7 @@ class TestGenerateDockerfile:
 
     def test_minimal_dockerfile_generation(self) -> None:
         """Test minimal Dockerfile generation."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -44,7 +44,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_oci_labels(self) -> None:
         """Test OCI labels are included in generated Dockerfile."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="my-agent",
@@ -61,7 +61,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_instruction_files_copy(self) -> None:
         """Test COPY statements for instruction files."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -76,7 +76,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_data_directories_copy(self) -> None:
         """Test COPY statements for data directories."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -91,7 +91,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_protocol_configuration_rest(self) -> None:
         """Test protocol configuration for REST."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -106,7 +106,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_protocol_configuration_ag_ui(self) -> None:
         """Test protocol configuration for AG-UI."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -121,7 +121,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_protocol_configuration_both(self) -> None:
         """Test protocol configuration for both protocols."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -136,7 +136,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_custom_port(self) -> None:
         """Test custom port configuration."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -153,7 +153,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_custom_base_image(self) -> None:
         """Test custom base image configuration."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -166,7 +166,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_default_base_image(self) -> None:
         """Test default base image when not specified."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -179,7 +179,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_healthcheck_present(self) -> None:
         """Test HEALTHCHECK instruction is present."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -193,7 +193,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_entrypoint_present(self) -> None:
         """Test ENTRYPOINT instruction is present."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -207,7 +207,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_agent_yaml_copy(self) -> None:
         """Test that agent.yaml is copied."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -219,7 +219,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_environment_variables(self) -> None:
         """Test environment variables are set."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -235,7 +235,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_version_label(self) -> None:
         """Test version label with custom version."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -248,7 +248,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_created_timestamp_format(self) -> None:
         """Test created timestamp is in ISO 8601 format."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -269,7 +269,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_source_label(self) -> None:
         """Test source label with custom source URL."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -285,7 +285,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_workdir_set(self) -> None:
         """Test WORKDIR is set to /app."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -297,7 +297,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_user_set(self) -> None:
         """Test non-root USER is set."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -314,7 +314,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_no_instruction_files(self) -> None:
         """Test Dockerfile generation without instruction files."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -329,7 +329,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_no_data_directories(self) -> None:
         """Test Dockerfile generation without data directories."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -344,7 +344,7 @@ class TestGenerateDockerfile:
 
     def test_dockerfile_entrypoint_copy(self) -> None:
         """Test that entrypoint.sh is copied."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -362,7 +362,7 @@ class TestDockerfileValidation:
 
     def test_generated_dockerfile_is_valid_syntax(self) -> None:
         """Test that generated Dockerfile has valid syntax structure."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -386,7 +386,7 @@ class TestDockerfileValidation:
 
     def test_no_secrets_in_dockerfile(self) -> None:
         """Test that no secrets are embedded in Dockerfile."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test-agent",
@@ -428,7 +428,7 @@ class TestDockerfileNodejs:
 
     def test_generate_dockerfile_without_nodejs(self) -> None:
         """Test Dockerfile without Node.js has no nodejs references."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test",
@@ -442,7 +442,7 @@ class TestDockerfileNodejs:
 
     def test_generate_dockerfile_with_nodejs(self) -> None:
         """Test Dockerfile with Node.js includes nodesource setup."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test",
@@ -456,7 +456,7 @@ class TestDockerfileNodejs:
 
     def test_generate_dockerfile_nodejs_cleanup(self) -> None:
         """Test Node.js install includes apt cache cleanup."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test",
@@ -469,7 +469,7 @@ class TestDockerfileNodejs:
 
     def test_generate_dockerfile_nodejs_before_user_switch(self) -> None:
         """Test Node.js install appears before USER holodeck switch."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test",
@@ -489,7 +489,7 @@ class TestDockerfileNodejs:
 
     def test_generate_dockerfile_default_needs_nodejs_false(self) -> None:
         """Test that needs_nodejs defaults to False (no Node.js block)."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             agent_name="test",
@@ -638,7 +638,7 @@ class TestDockerfileExtras:
 
     def test_generate_dockerfile_with_extras(self) -> None:
         """Test Dockerfile with extras includes uv pip install line."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile(
             "test", 8080, "rest", extras=["chromadb", "s3"]
@@ -649,7 +649,7 @@ class TestDockerfileExtras:
 
     def test_generate_dockerfile_with_single_extra(self) -> None:
         """Test Dockerfile with a single extra."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile("test", 8080, "rest", extras=["chromadb"])
 
@@ -657,7 +657,7 @@ class TestDockerfileExtras:
 
     def test_generate_dockerfile_without_extras(self) -> None:
         """Test Dockerfile without extras has no holodeck-ai extras line."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile("test", 8080, "rest", extras=None)
 
@@ -665,7 +665,7 @@ class TestDockerfileExtras:
 
     def test_generate_dockerfile_empty_extras(self) -> None:
         """Test Dockerfile with empty extras list has no extras line."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile("test", 8080, "rest", extras=[])
 
@@ -673,7 +673,7 @@ class TestDockerfileExtras:
 
     def test_generate_dockerfile_extras_before_user_switch(self) -> None:
         """Test extras install appears before USER holodeck switch."""
-        from holodeck.deploy.dockerfile import generate_dockerfile
+        from tests.unit.deploy.helpers import generate_dockerfile
 
         dockerfile = generate_dockerfile("test", 8080, "rest", extras=["chromadb"])
 
@@ -725,7 +725,7 @@ class TestExtrasDetection:
         agent = loader.load_agent_yaml(str(agent_yaml))
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
-        assert "holodeck-ai[chromadb]" in content
+        assert "holodeck-ai[chromadb,openai-agents]==1.2.3" in content
 
     def test_azure_blob_source_detected(self, tmp_path: Path) -> None:
         """Test az:// source triggers azure-blob extra."""
@@ -761,7 +761,7 @@ class TestExtrasDetection:
         agent = loader.load_agent_yaml(str(agent_yaml))
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
-        assert "holodeck-ai[azure-blob]" in content
+        assert "holodeck-ai[azure-blob,openai-agents]==1.2.3" in content
 
     def test_s3_source_detected(self, tmp_path: Path) -> None:
         """Test s3:// source triggers s3 extra."""
@@ -797,14 +797,10 @@ class TestExtrasDetection:
         agent = loader.load_agent_yaml(str(agent_yaml))
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
-        assert "holodeck-ai[s3]" in content
+        assert "holodeck-ai[openai-agents,s3]==1.2.3" in content
 
-    def test_anthropic_provider_triggers_claude_otel_extra(self) -> None:
-        """Anthropic agent without Node MCP tools still gets the claude-otel extra.
-
-        claude-otel must be present for all Anthropic agents regardless of whether
-        any MCP tool spawns a Node subprocess.
-        """
+    def test_anthropic_agent_without_tracing_has_no_extras(self) -> None:
+        """A Claude agent with no tools or observability installs no extras."""
         from holodeck.cli.commands.deploy import _generate_dockerfile_content
         from holodeck.config.loader import ConfigLoader
 
@@ -818,7 +814,8 @@ class TestExtrasDetection:
         agent = loader.load_agent_yaml(str(agent_path))
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
-        assert "claude-otel" in content
+        assert '"holodeck-ai==1.2.3"' in content
+        assert "claude-otel" not in content
 
     def test_duplicate_extras_deduplicated(self, tmp_path: Path) -> None:
         """Test two tools with same extra produce only one entry."""
@@ -865,7 +862,7 @@ class TestExtrasDetection:
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
         # Should appear exactly once
-        assert content.count("chromadb") == 1
+        assert content.count("holodeck-ai[chromadb,openai-agents]") == 1
 
     def test_no_tools_no_extras(self, tmp_path: Path) -> None:
         """Test empty tool list produces no extras line."""
@@ -896,7 +893,9 @@ class TestExtrasDetection:
         agent = loader.load_agent_yaml(str(agent_yaml))
         content = _generate_dockerfile_content(agent, agent.deployment, "test")
 
-        assert "holodeck-ai[" not in content
+        # No tool extras: an OpenAI agent still needs the OpenAI Agents backend.
+        assert "holodeck-ai[openai-agents]==1.2.3" in content
+        assert "chromadb" not in content
 
     def test_qdrant_provider_detected(self, tmp_path: Path) -> None:
         """qdrant database provider triggers the qdrant extra."""

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from holodeck.deploy.dockerfile import generate_dockerfile
+from tests.unit.deploy.helpers import generate_dockerfile
 
 
 def _gen(**overrides) -> str:

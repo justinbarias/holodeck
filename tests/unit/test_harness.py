@@ -27,6 +27,7 @@ def harness(tmp_path: Path) -> Path:
     for name in (
         "src/holodeck/lib/eval_run/writer.py",
         "src/holodeck/deploy/state.py",
+        "src/holodeck/deploy/manifest.py",
         "docs/guides/vector-stores.md",
         "docs/guides/temporal.md",
     ):
