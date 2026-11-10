@@ -50,11 +50,12 @@ _FIELD_TYPES = {
     "bool": FieldType.BOOLEAN,
 }
 
+# Providers the registry still routes to the bridge. chromadb has a native
+# adapter (042 T6); SKChromaAdapter stays for compatibility tests until T16.
 BRIDGED = [
     "azure-ai-search",
     "qdrant",
     "weaviate",
-    "chromadb",
     "faiss",
     "azure-cosmos-mongo",
     "azure-cosmos-nosql",
@@ -196,7 +197,6 @@ EXPECTED: dict[str, set[Operation]] = {
     "azure-ai-search": _BASE | _HYBRID,
     "qdrant": _BASE | _FILTERS | _HYBRID,
     "weaviate": _BASE | _FILTERS | _HYBRID,
-    "chromadb": _BASE | _FILTERS,
     "faiss": _BASE,
     "azure-cosmos-mongo": _BASE,
     "azure-cosmos-nosql": _BASE | _HYBRID,

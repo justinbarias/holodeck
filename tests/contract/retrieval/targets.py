@@ -7,10 +7,12 @@ when the store cannot be reached, or None when the target can run.
 from __future__ import annotations
 
 import socket
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from holodeck.lib.retrieval import CollectionSchema, VectorStoreAdapter
+from holodeck.lib.retrieval.adapters.chroma import ChromaAdapter
 from holodeck.lib.retrieval.adapters.in_memory import InMemoryAdapter
 from holodeck.lib.retrieval.adapters.postgres import PostgresAdapter
 from holodeck.lib.retrieval.adapters.qdrant import QdrantAdapter
@@ -48,6 +50,16 @@ def port_open(host: str, port: int) -> Callable[[], str | None]:
     return probe
 
 
+_EMBEDDED_DIRECTORIES: list[tempfile.TemporaryDirectory[str]] = []
+
+
+def _embedded_chroma(schema: CollectionSchema) -> VectorStoreAdapter:
+    """A native Chroma adapter on its own persistent directory."""
+    directory = tempfile.TemporaryDirectory(prefix="holodeck-chroma-contract-")
+    _EMBEDDED_DIRECTORIES.append(directory)  # removed when the process ends
+    return ChromaAdapter.create(schema, {"persist_directory": directory.name})
+
+
 TARGETS: list[ContractTarget] = [
     ContractTarget(name="in-memory", build=InMemoryAdapter),
     ContractTarget(
@@ -61,6 +73,14 @@ TARGETS: list[ContractTarget] = [
         name="qdrant:memory",
         build=lambda schema: QdrantAdapter.create(schema, {"location": ":memory:"}),
     ),
+    ContractTarget(
+        name="chromadb",
+        build=lambda schema: ChromaAdapter.create(
+            schema, {"connection_string": CHROMA_URL}
+        ),
+        available=port_open("127.0.0.1", 8765),
+    ),
+    ContractTarget(name="chromadb-embedded", build=_embedded_chroma),
     ContractTarget(
         name="sk-bridge:in-memory",
         build=lambda schema: SKInMemoryAdapter.create(schema, {}),

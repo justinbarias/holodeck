@@ -49,11 +49,11 @@ PROVIDERS: dict[str, ProviderEntry] = {
     "postgres": ProviderEntry(
         f"{_ADAPTERS}.postgres", "PostgresAdapter", extra="postgres"
     ),
+    "chromadb": ProviderEntry(f"{_ADAPTERS}.chroma", "ChromaAdapter", extra="chromadb"),
     # Temporary Semantic Kernel bridge; each entry moves to a native adapter
     # and the bridge is deleted in task T16 of the 042 exec plan.
     "azure-ai-search": ProviderEntry(_BRIDGE, "SKAzureAISearchAdapter"),
     "weaviate": ProviderEntry(_BRIDGE, "SKWeaviateAdapter"),
-    "chromadb": ProviderEntry(_BRIDGE, "SKChromaAdapter", extra="chromadb"),
     "faiss": ProviderEntry(_BRIDGE, "SKFaissAdapter"),
     "azure-cosmos-mongo": ProviderEntry(_BRIDGE, "SKCosmosMongoAdapter"),
     "azure-cosmos-nosql": ProviderEntry(_BRIDGE, "SKCosmosNoSqlAdapter"),
