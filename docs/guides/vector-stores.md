@@ -523,6 +523,90 @@ holodeck test                  # 3. Run the agent (uses agent.yaml by default)
 
 ---
 
+## Pipeline fingerprint and migration
+
+Records in a collection depend on more than its schema. HoloDeck records the
+**pipeline** that wrote a collection and refuses to mix records from two
+different pipelines in one collection.
+
+### What is fingerprinted
+
+The fingerprint is a SHA-256 hash of these inputs:
+
+| Input | `vectorstore` tool | `hierarchical_document` tool |
+| --- | --- | --- |
+| Embedding | provider, model, dimensions | provider, model, dimensions |
+| Parser | `markitdown/1` (`structured-rows/1` for CSV/JSON rows) | `markitdown/1` |
+| Chunker | `plain-tiktoken-cl100k/1`, `chunk_size`, `chunk_overlap` (rows: vector fields, field separator) | `structured-chunker/1`, `max_chunk_tokens`, `document_domain`, `max_subsection_depth` |
+| Record layout | field names, types and index flags, key and vector field, dimensions, distance | same |
+| Retrieval | none | contextual embeddings on or off, `searchable-text/1` recipe |
+
+Search settings such as `top_k`, `min_similarity_score` and the search mode are
+not part of the fingerprint: they do not change stored records.
+
+### The manifest collection
+
+HoloDeck does not add fields to your collections. It keeps its state in one
+extra collection per store connection, `holodeck_manifest`, which it creates
+through the same provider. The manifest holds:
+
+- one entry per collection: the fingerprint, the physical collection that
+  currently serves the tool, and the collection kept for rollback;
+- one entry per ingested source file: the expected chunk count and a
+  completion flag. A source is marked incomplete before its chunks are written
+  and complete after the last write. A source whose ingestion stopped midway
+  (a crash, a failed write) is ingested again on the next start.
+
+A provider that cannot hold the manifest logs one warning and works as
+before, without fingerprint protection. A provider whose database settings
+set `index_name` or `collection_name` stores the manifest in its own
+`holodeck_manifest` collection or index, not in the named one.
+
+### What happens at start-up
+
+| Situation | Result |
+| --- | --- |
+| New or empty collection | The current fingerprint is recorded. |
+| Collection created before this release (no manifest entry) | It stays readable. Unchanged files are not embedded again. A changed file is replaced as a whole. HoloDeck records the current pipeline marked `legacy` and logs that `holodeck vectorstore migrate` rebuilds the collection. |
+| Same fingerprint | Normal incremental ingestion. |
+| Different fingerprint | Searches read the existing records. Any write (a changed file, `--force-ingest`) fails with an error that lists the inputs that differ and names the commands below. |
+
+HoloDeck never deletes or recreates a collection on its own.
+
+### Commands
+
+```bash
+# Read-only dry run: collection, record count, compatibility, the inputs that
+# differ, and the files, chunks and estimated tokens a migration embeds.
+holodeck vectorstore inspect agent.yaml [--tool NAME] [--json]
+
+# Build a new collection <name>__<fingerprint prefix> with the current
+# pipeline, verify it, then switch the tool to it. The old collection is kept.
+holodeck vectorstore migrate agent.yaml --tool NAME [--yes]
+
+# Switch back to the kept collection.
+holodeck vectorstore rollback agent.yaml --tool NAME [--yes]
+
+# Delete the kept collection. The only command that deletes a collection.
+holodeck vectorstore prune agent.yaml --tool NAME --yes
+```
+
+- `inspect` creates nothing and calls no model. It counts chunks by parsing
+  and splitting the sources locally. The token figure is an estimate:
+  tiktoken `cl100k_base` tokens of the chunk text, without the text that
+  contextual embeddings add.
+- `migrate` calls the embedding model. If it stops (for example, the
+  embedding service fails), run it again: files that were completed are not
+  embedded again. The tool keeps using the old collection until the new one
+  has the expected record count and answers a vector search. A migration for
+  a different pipeline that is still in progress blocks a new one; add
+  `--restart` to abandon it. Run `prune` before a second migration if a
+  collection is still kept from the first.
+- `migrate`, `rollback` and `prune` print what they will do and ask for
+  confirmation unless you pass `--yes`.
+
+---
+
 ## Troubleshooting
 
 ### Cannot connect to the vector database
