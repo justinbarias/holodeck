@@ -89,8 +89,8 @@ from holodeck.lib.retrieval.types import (
     ScoredRecord,
     ScoreKind,
     VectorQuery,
+    checked_filter_value,
     clamp_similarity,
-    normalize_filter_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -448,7 +448,7 @@ class PostgresAdapter(BaseVectorStoreAdapter):
             return conditions, params
         for clause in record_filter.all_of:
             spec = self._schema.field(clause.field)
-            value = _write_value(spec, normalize_filter_value(spec, clause.value))
+            value = _write_value(spec, checked_filter_value(spec, clause.value))
             if value is None:
                 conditions.append(
                     sql.SQL("{} IS NULL").format(sql.Identifier(spec.name))
@@ -867,7 +867,7 @@ class PostgresAdapter(BaseVectorStoreAdapter):
         clauses: list[tuple[str, str]] = []
         for clause in record_filter.all_of:
             spec = self._schema.field(clause.field)
-            value = _write_value(spec, normalize_filter_value(spec, clause.value))
+            value = _write_value(spec, checked_filter_value(spec, clause.value))
             clauses.append((clause.field, repr(value)))
         clauses.sort()
         return f"{self._settings.db_schema}.{self._schema.name}:{clauses!r}"
@@ -907,7 +907,7 @@ class PostgresAdapter(BaseVectorStoreAdapter):
                 )
 
     async def upsert(self, records: Sequence[Record]) -> None:
-        self._validate(records)
+        self._preflight(records)
         if not records:
             return
         await self._after_create(lambda: self._write(records, None))
@@ -916,7 +916,7 @@ class PostgresAdapter(BaseVectorStoreAdapter):
         self, record_filter: RecordFilter, records: Sequence[Record]
     ) -> None:
         """Upsert ``records`` and delete the rest of the source in one transaction."""
-        self._validate(records)
+        self._preflight(records)
         self._where(record_filter)  # reject unknown fields before any write
         await self._after_create(lambda: self._write(records, record_filter))
 

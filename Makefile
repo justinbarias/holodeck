@@ -20,7 +20,7 @@ NC := $(shell tput sgr0 2>/dev/null)
         lint format type-check security clean clean-all \
         pre-commit ci ci-github build docs run docker-build docker-run \
         check-python check-uv init \
-        verify verify-fast verify-deps verify-smoke verify-live
+        verify verify-fast verify-deps verify-smoke verify-live verify-providers
 
 #################################
 # Help and Verification Targets #
@@ -449,8 +449,11 @@ verify-deps: ## Lock check plus pip-audit and npm audit with expiring ignores
 verify-smoke: ## Offline end-to-end: test run + serve AG-UI on both backends (fake provider)
 	uv run python scripts/verify/smoke.py
 
-verify-live: ## Live: every tool type per backend with credentials set, Qdrant + Aspire in Docker (LIVE_ARGS="--backend claude --no-infra --limit N")
+verify-live: ## Live: every tool type per backend with credentials set, vector stores + Aspire in Docker (LIVE_ARGS="--backend claude --no-infra --limit N")
 	uv run python scripts/verify/live.py $(LIVE_ARGS)
+
+verify-providers: ## Live: only the vector store provider matrix (one case per provider; hosted ones need credentials)
+	uv run python scripts/verify/live.py --only providers $(LIVE_ARGS)
 
 #############################
 # Git Helpers               #

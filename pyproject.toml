@@ -108,6 +108,11 @@ dev = [
 pinecone = [
     "pinecone>=10,<11",
 ]
+# <12.1: the lock allows pre-releases (see [tool.uv]) and 12.1 is beta only.
+azure-ai-search = [
+    "azure-search-documents>=12.0.0,<12.1",
+    "azure-identity>=1.15.0",
+]
 postgres = [
     "psycopg[binary,pool]>=3.3,<4.0",
     "pgvector>=0.5,<1.0",
@@ -118,14 +123,24 @@ qdrant = [
 chromadb = [
     "chromadb>=0.5,<1.6",
 ]
+weaviate = [
+    "weaviate-client>=4.24,<5",
+]
+azure-cosmos = [
+    "azure-cosmos>=4.17,<5",
+]
 
 # Convenience group for all vector stores
 vectorstores = [
     "pinecone>=10,<11",
+    "azure-search-documents>=12.0.0,<12.1",
+    "azure-identity>=1.15.0",
     "psycopg[binary,pool]>=3.3,<4.0",
     "pgvector>=0.5,<1.0",
     "qdrant-client>=1.18,<2.0",
     "chromadb>=0.5,<1.6",
+    "weaviate-client>=4.24,<5",
+    "azure-cosmos>=4.17,<5",
 ]
 
 # OpenTelemetry exporters (install only what you need)

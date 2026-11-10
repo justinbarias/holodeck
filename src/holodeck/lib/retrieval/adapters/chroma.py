@@ -83,6 +83,7 @@ from holodeck.lib.retrieval.types import (
     ScoredRecord,
     ScoreKind,
     VectorQuery,
+    checked_filter_value,
     clamp_similarity,
 )
 
@@ -728,19 +729,19 @@ class ChromaAdapter(BaseVectorStoreAdapter):
             return None
         clauses: list[dict[str, FieldValue]] = []
         for clause in record_filter.all_of:
-            self._schema.field(clause.field)
-            if clause.value is None:
+            value = checked_filter_value(self._schema.field(clause.field), clause.value)
+            if value is None:
                 raise SchemaError(
                     f"Cannot filter on None for field '{clause.field}': "
                     "ChromaDB stores no null values."
                 )
-            clauses.append({clause.field: clause.value})
+            clauses.append({clause.field: value})
         return cast(Where, clauses[0] if len(clauses) == 1 else {"$and": clauses})
 
     # -- records -------------------------------------------------------------
 
     async def upsert(self, records: Sequence[Record]) -> None:
-        self._validate(records)
+        self._preflight(records)
         if not records:
             return
         batch = self._batch(records)

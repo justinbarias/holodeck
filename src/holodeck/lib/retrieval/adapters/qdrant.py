@@ -72,8 +72,8 @@ from holodeck.lib.retrieval.types import (
     ScoredRecord,
     ScoreKind,
     VectorQuery,
+    check_filter,
     clamp_similarity,
-    normalize_filter_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,6 +123,14 @@ _CONNECTION_REFUSED = frozenset(
         StatusCode.DEADLINE_EXCEEDED,
     }
 )
+
+
+def _canonical_id(record_id: str) -> str:
+    """Return the form in which two spellings of one record ID are equal."""
+    try:
+        return str(uuid.UUID(record_id))
+    except ValueError:
+        return record_id
 
 
 # -- connection settings -------------------------------------------------------
@@ -574,7 +582,8 @@ class QdrantAdapter(BaseVectorStoreAdapter):
         spelling would delete the replacement.
         """
         self.capabilities.require(Operation.FIND, Operation.DELETE, Operation.UPSERT)
-        self._validate(records)
+        self._preflight(records)
+        await self._guard_existing_ids(records)
         existing = await self.find(record_filter)
         keep = {self.store_id(record.id) for record in records}
         stale = [
@@ -582,8 +591,53 @@ class QdrantAdapter(BaseVectorStoreAdapter):
         ]
         if stale:
             await self.delete(stale)
-        if records:
-            await self.upsert(records)
+        await self._write(records)
+
+    def _preflight(self, records: Sequence[Record]) -> None:
+        """Check the schema, and that no two record IDs share a point ID.
+
+        A UUID-form ID is its own point ID; any other ID is hashed. So
+        ``"invoice-7"`` and the string form of its hash would share a point.
+        Two spellings of one UUID are one ID and are fine.
+        """
+        super()._preflight(records)
+        owners: dict[str, str] = {}
+        for record in records:
+            point_id = self.store_id(record.id)
+            first = owners.setdefault(point_id, record.id)
+            if _canonical_id(first) != _canonical_id(record.id):
+                raise SchemaError(
+                    f"Record IDs {first!r} and {record.id!r} map to the same "
+                    f"store ID {point_id} in collection '{self._schema.name}'."
+                )
+
+    async def _guard_existing_ids(self, records: Sequence[Record]) -> None:
+        """Refuse to overwrite a stored record that has another HoloDeck ID.
+
+        One batched payload read of the target points. A record that rewrites
+        its own point (the same ID, or another spelling of the same UUID)
+        passes, so a collection that uses UUID IDs only is unaffected.
+        """
+        wanted = {self.store_id(record.id): record.id for record in records}
+        if not wanted:
+            return
+        client = await self._open()
+        with self._errors():
+            points = await client.retrieve(
+                collection_name=self._schema.name,
+                ids=list(wanted),
+                with_payload=[ID_PAYLOAD_KEY],
+                with_vectors=False,
+            )
+        for point in points:
+            held = (point.payload or {}).get(ID_PAYLOAD_KEY)
+            held_id = str(held) if held is not None else str(point.id)
+            new_id = wanted[str(point.id)]
+            if _canonical_id(held_id) != _canonical_id(new_id):
+                raise SchemaError(
+                    f"Store ID {point.id} already holds record {held_id!r}; "
+                    f"record {new_id!r} would overwrite it."
+                )
 
     def store_id(self, record_id: str) -> str:
         """Return the Qdrant point ID for a HoloDeck record ID."""
@@ -624,24 +678,21 @@ class QdrantAdapter(BaseVectorStoreAdapter):
             ),
         )
 
-    def _check_filter(self, record_filter: RecordFilter | None) -> None:
-        if record_filter is not None:
-            for clause in record_filter.all_of:
-                self._schema.field(clause.field)
-
     def build_filter(self, record_filter: RecordFilter | None) -> qm.Filter | None:
-        """Return the Qdrant filter for ``record_filter``, or None."""
-        self._check_filter(record_filter)
-        if record_filter is None or not record_filter.all_of:
+        """Return the Qdrant filter for ``record_filter``, or None.
+
+        Raises:
+            SchemaError: A value does not fit its field's type.
+        """
+        checked = check_filter(self._schema, record_filter)
+        if not checked.all_of:
             return None
         conditions: list[qm.Condition] = []
-        for clause in record_filter.all_of:
-            # The form follows the field's type: a float field is always a
-            # range (``mtime=2`` finds ``2.0``), an integer field given an
-            # integral float matches the integer.
-            value = normalize_filter_value(
-                self._schema.field(clause.field), clause.value
-            )
+        for clause in checked.all_of:
+            # The checked form follows the field's type: a float field is
+            # always a range (``mtime=2`` finds ``2.0``), an integer field
+            # given an integral float matches the integer.
+            value = clause.value
             if value is None:
                 conditions.append(
                     qm.IsNullCondition(is_null=qm.PayloadField(key=clause.field))
@@ -670,7 +721,11 @@ class QdrantAdapter(BaseVectorStoreAdapter):
     # -- writes and point reads ----------------------------------------------
 
     async def upsert(self, records: Sequence[Record]) -> None:
-        self._validate(records)
+        self._preflight(records)
+        await self._guard_existing_ids(records)
+        await self._write(records)
+
+    async def _write(self, records: Sequence[Record]) -> None:
         if not records:
             return
         points: list[qm.PointStruct] = []

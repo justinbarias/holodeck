@@ -16,6 +16,7 @@ Score convention
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -71,7 +72,8 @@ class FieldSpec:
     Attributes:
         name: Field name as stored.
         type: Storage type.
-        indexed: True when exact-match filters use this field.
+        indexed: True when exact-match filters use this field. Filter only
+            on indexed fields: some stores reject a filter on any other.
         full_text: True when lexical search uses this field.
     """
 
@@ -276,6 +278,56 @@ def normalize_filter_value(spec: FieldSpec, value: FieldValue) -> FieldValue:
     return value
 
 
+def checked_filter_value(spec: FieldSpec, value: FieldValue) -> FieldValue:
+    """Return ``value`` in the stored form of ``spec``, or raise ``SchemaError``.
+
+    A filter value that cannot equal any stored value of the field's type is
+    an error, not an empty result and not a lossy conversion:
+    ``where(chunk_index=1.9)`` on an ``INTEGER`` field never becomes ``1``.
+    ``None`` passes through; each adapter decides what a null filter means.
+
+    Raises:
+        SchemaError: The value does not fit the field type.
+    """
+    normalized = normalize_filter_value(spec, value)
+    if normalized is None:
+        return None
+    fits = {
+        FieldType.STRING: isinstance(normalized, str),
+        FieldType.INTEGER: isinstance(normalized, int)
+        and not isinstance(normalized, bool),
+        FieldType.FLOAT: isinstance(normalized, float),
+        FieldType.BOOLEAN: isinstance(normalized, bool),
+    }[spec.type]
+    if not fits:
+        raise SchemaError(
+            f"Filter value {value!r} does not fit {spec.type.value} field "
+            f"'{spec.name}': it has another type and cannot equal a stored value."
+        )
+    return normalized
+
+
+def check_filter(
+    schema: CollectionSchema, record_filter: RecordFilter | None
+) -> RecordFilter:
+    """Return ``record_filter`` with every value checked and normalized.
+
+    Raises:
+        SchemaError: A clause names an unknown field or its value does not fit.
+    """
+    if record_filter is None:
+        return RecordFilter()
+    return RecordFilter(
+        tuple(
+            FieldEquals(
+                clause.field,
+                checked_filter_value(schema.field(clause.field), clause.value),
+            )
+            for clause in record_filter.all_of
+        )
+    )
+
+
 def validate_record(schema: CollectionSchema, record: Record) -> None:
     """Raise ``SchemaError`` when ``record`` cannot be written to ``schema``."""
     if not record.id:
@@ -292,4 +344,9 @@ def validate_record(schema: CollectionSchema, record: Record) -> None:
         raise SchemaError(
             f"Record '{record.id}' has a vector of {len(record.vector)} dimensions; "
             f"schema '{schema.name}' needs {schema.dimensions}."
+        )
+    if not all(math.isfinite(component) for component in record.vector):
+        raise SchemaError(
+            f"Record '{record.id}' has a vector with a non-finite (NaN or "
+            "infinite) value."
         )

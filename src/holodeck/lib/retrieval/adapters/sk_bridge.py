@@ -1167,33 +1167,12 @@ class SKAzureAISearchAdapter(SKBridgeAdapter):
     PACKAGE = "azure-search-documents"
 
 
-class SKFaissAdapter(SKBridgeAdapter):
-    """FAISS through SK's collection."""
-
-    PROVIDER = "faiss"
-    PACKAGE = "faiss-cpu"
-
-
-class SKCosmosMongoAdapter(SKBridgeAdapter):
-    """Azure Cosmos DB (MongoDB API) through SK's collection."""
-
-    PROVIDER = "azure-cosmos-mongo"
-    PACKAGE = "pymongo"
-
-
 class SKCosmosNoSqlAdapter(SKBridgeAdapter):
     """Azure Cosmos DB (NoSQL API) through SK's collection."""
 
     PROVIDER = "azure-cosmos-nosql"
     OPERATIONS = _BASE_OPERATIONS | {Operation.HYBRID_SEARCH}
     PACKAGE = "azure-cosmos"
-
-
-class SKSqlServerAdapter(SKBridgeAdapter):
-    """SQL Server through SK's collection."""
-
-    PROVIDER = "sql-server"
-    PACKAGE = "pyodbc"
 
 
 class SKPineconeAdapter(SKBridgeAdapter):

@@ -656,20 +656,17 @@
     },
     "DatabaseConfig": {
       "additionalProperties": true,
-      "description": "Vector database connection configuration.\n\nSupports all Semantic Kernel vector store providers including PostgreSQL,\nAzure AI Search, Qdrant, Weaviate, ChromaDB, FAISS, Pinecone, and more.\n\nProvider-specific parameters are passed via the config dict:\n- postgres: connection_string\n- azure-ai-search: connection_string, api_key\n- qdrant: url, api_key (optional)\n- weaviate: url, api_key (optional)\n- chromadb: path or host\n- faiss: path\n- pinecone: api_key, index_name\n- And more...",
+      "description": "Vector database connection configuration.\n\nSupports all Semantic Kernel vector store providers including PostgreSQL,\nAzure AI Search, Qdrant, Weaviate, ChromaDB, Pinecone, and more.\n\nProvider-specific parameters are passed via the config dict:\n- postgres: connection_string\n- azure-ai-search: connection_string, api_key\n- qdrant: url, api_key (optional)\n- weaviate: url, api_key (optional)\n- chromadb: path or host\n- pinecone: api_key, index_name\n- And more...",
       "properties": {
         "provider": {
-          "description": "Vector database provider: postgres, azure-ai-search, qdrant, weaviate, chromadb, faiss, azure-cosmos-mongo, azure-cosmos-nosql, sql-server, pinecone, in-memory",
+          "description": "Vector database provider: postgres, azure-ai-search, qdrant, weaviate, chromadb, azure-cosmos-nosql, pinecone, in-memory",
           "enum": [
             "postgres",
             "azure-ai-search",
             "qdrant",
             "weaviate",
             "chromadb",
-            "faiss",
-            "azure-cosmos-mongo",
             "azure-cosmos-nosql",
-            "sql-server",
             "pinecone",
             "in-memory"
           ],

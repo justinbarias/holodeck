@@ -161,6 +161,19 @@ class BaseVectorStoreAdapter(ABC):
         for record in records:
             validate_record(self._schema, record)
 
+    def _preflight(self, records: Sequence[Record]) -> None:
+        """Reject records the store would refuse, before anything is changed.
+
+        ``upsert`` and ``replace_source`` call this before any delete or
+        write, so a bad record leaves the stored data intact. The default is
+        the schema check. An adapter whose store has limits of its own (key
+        length, numeric range) overrides it to run the full conversion.
+
+        Raises:
+            SchemaError: A record does not fit the schema or the store.
+        """
+        self._validate(records)
+
     @abstractmethod
     async def collection_exists(self) -> bool:
         """Return True when the collection exists in the store."""
@@ -237,7 +250,7 @@ class BaseVectorStoreAdapter(ABC):
         transactions override this to make the replacement atomic.
         """
         self._capabilities.require(Operation.FIND, Operation.DELETE, Operation.UPSERT)
-        self._validate(records)
+        self._preflight(records)
         existing = await self.find(record_filter)
         keep = {record.id for record in records}
         stale = [record.id for record in existing if record.id not in keep]

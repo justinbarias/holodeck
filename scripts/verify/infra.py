@@ -38,6 +38,8 @@ class Service:
     ready_url: str | None  # None: only ``tcp_ports`` decide (no HTTP endpoint)
     ready_text: str | None = None
     tcp_ports: tuple[int, ...] = ()  # host ports that must accept connections
+    command: tuple[str, ...] = ()  # arguments after the image name
+    ready_timeout: float = 60.0  # seconds to wait for a first start
 
 
 QDRANT = Service(
@@ -74,6 +76,39 @@ POSTGRES = Service(
     env=(("POSTGRES_PASSWORD", "holodeck"), ("POSTGRES_DB", "holodeck")),
     ready_url=None,
     tcp_ports=(54329,),
+)
+
+# Weaviate 1.40 with anonymous access and no vectorizer module: the agents bring
+# their own embeddings. HTTP on host 8089 and gRPC on 50059 avoid the commonly
+# used 8080 and 50051; the fixtures name both ports.
+WEAVIATE = Service(
+    label="weaviate",
+    container="holodeck-verify-weaviate",
+    image="cr.weaviate.io/semitechnologies/weaviate:1.40.4",
+    ports=((8089, 8080), (50059, 50051)),
+    env=(
+        ("AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED", "true"),
+        ("PERSISTENCE_DATA_PATH", "/var/lib/weaviate"),
+        ("DEFAULT_VECTORIZER_MODULE", "none"),
+    ),
+    ready_url="http://127.0.0.1:8089/v1/.well-known/ready",
+    tcp_ports=(50059,),
+)
+
+# Linux vNext-preview Cosmos DB emulator over plain HTTP. The account endpoint
+# answers without a key once the gateway is up. It accepts only the diskANN
+# vector index and has no full-text search (tests/contract/retrieval/
+# cosmos_emulator.py). First start takes a minute or more.
+COSMOS = Service(
+    label="cosmos",
+    container="holodeck-verify-cosmos",
+    image="mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview",
+    ports=((8081, 8081), (1234, 1234)),
+    env=(),
+    ready_url="http://127.0.0.1:8081/",
+    ready_text='"_dbs"',
+    command=("--protocol", "http"),
+    ready_timeout=240.0,
 )
 
 # Image env (docker inspect): UI on 18888, OTLP/gRPC on 18889, OTLP/HTTP on
@@ -149,7 +184,7 @@ def run_args(service: Service) -> list[str]:
         args += ["-p", f"127.0.0.1:{host}:{container}"]
     for key, value in service.env:
         args += ["-e", f"{key}={value}"]
-    return [*args, service.image]
+    return [*args, service.image, *service.command]
 
 
 def probe(service: Service) -> str | None:
@@ -179,8 +214,12 @@ def wait_ready(service: Service, timeout: float) -> str | None:
     return reason
 
 
-def ensure(service: Service, timeout: float = 60.0) -> InfraStatus:
-    """Start or reuse *service* and wait until it is ready."""
+def ensure(service: Service, timeout: float | None = None) -> InfraStatus:
+    """Start or reuse *service* and wait until it is ready.
+
+    *timeout* defaults to the service's ``ready_timeout``.
+    """
+    timeout = service.ready_timeout if timeout is None else timeout
     problem = docker_problem()
     if problem is not None:
         return InfraStatus(service, ready=False, detail=problem)

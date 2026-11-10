@@ -207,7 +207,7 @@ Resolves agent instructions from `Instructions` config objects, supporting both 
 
 ## Vector Store
 
-Unified interface for working with various vector storage backends through vector store connectors (PostgreSQL/pgvector, Azure AI Search, Qdrant, Weaviate, ChromaDB, FAISS, Pinecone, …).
+Unified interface for working with various vector storage backends through vector store connectors (PostgreSQL/pgvector, Azure AI Search, Qdrant, Weaviate, ChromaDB, Pinecone, …).
 
 ::: holodeck.lib.vector_store.ChromaConnectionParams
     options:

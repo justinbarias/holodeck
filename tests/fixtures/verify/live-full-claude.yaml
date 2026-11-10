@@ -1,9 +1,12 @@
 # Live agent for the Claude Agent SDK backend (make verify-live).
 #
-# Needs CLAUDE_CODE_OAUTH_TOKEN. The vectorstore and hierarchical_document
-# tools also need OPENAI_API_KEY (OpenAI embeddings) and the Qdrant container;
-# scripts/verify/live.py drops those tools and reports their cases as SKIP
-# when either is missing. Traces go to the Aspire dashboard container.
+# Needs CLAUDE_CODE_OAUTH_TOKEN. Vector tools also need
+# OPENAI_API_KEY (OpenAI embeddings for both backends) and their store: a local
+# container (Qdrant, Chroma, Postgres, Weaviate, Cosmos DB emulator), or for
+# Pinecone and Azure AI Search the credentials named below. scripts/verify/live.py
+# drops a tool whose prerequisite is missing and reports its cases as SKIP, and
+# gives every remote tool a collection name unique to the run. Traces go to
+# the Aspire dashboard container.
 #
 # Tool types not covered on this backend:
 # - skill: the Claude backend does not adapt `type: skill` tools yet
@@ -26,9 +29,14 @@ instructions:
     You are the HoloDeck verify live agent. Answer in one or two short
     sentences. When the user names a tool, call exactly that tool once and
     report what it returned. Use smoke_echo for "the smoke tool",
-    verify_marker for "the MCP tool", verify_kb for the vault notes, verify_ledger for the ledger notes, verify_registry for the registry notes,
-    verify_handbook for the operations handbook, leak_probe for "the leak
-    probe", and the verify_helper subagent when the user asks for the helper.
+    verify_marker for "the MCP tool", verify_kb for the vault notes,
+    verify_ledger for the ledger notes, verify_registry for the registry
+    notes, verify_beacon for the beacon notes, verify_depot for the depot
+    notes, verify_harbor for the harbor notes, verify_archive for the
+    archive notes, verify_handbook for the operations handbook,
+    verify_pg_handbook for the Postgres handbook, verify_weaviate_handbook
+    for the Weaviate handbook, leak_probe for "the leak probe", and the
+    verify_helper subagent when the user asks for the helper.
 
 embedding_provider:
   provider: openai
@@ -79,6 +87,47 @@ tools:
     database:
       provider: postgres
       connection_string: postgresql://postgres:holodeck@127.0.0.1:54329/holodeck
+  - name: verify_beacon
+    type: vectorstore
+    description: Verify beacon notes (beacon channel codes, rotation dates).
+    source: rag/beacon
+    top_k: 2
+    database:
+      provider: weaviate
+      connection_string: http://127.0.0.1:8089
+      local_grpc_port: 50059
+  - name: verify_depot
+    type: vectorstore
+    description: Verify depot notes (depot manifest ids, archive periods).
+    source: rag/depot
+    top_k: 2
+    database:
+      provider: azure-cosmos-nosql
+      # The Linux emulator's published account key, not a secret. The emulator
+      # accepts only the diskANN vector index.
+      url: http://127.0.0.1:8081
+      key: C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==
+      database_name: holodeck_verify
+      create_database: true
+      vector_index: diskANN
+  - name: verify_harbor
+    type: vectorstore
+    description: Verify harbor notes (harbor berth codes, inspection dates).
+    source: rag/harbor
+    top_k: 2
+    # Hosted, no emulator: runs only when PINECONE_API_KEY is set (the adapter
+    # reads it). scripts/verify/live.py drops the tool and reports SKIP without it.
+    database:
+      provider: pinecone
+  - name: verify_archive
+    type: vectorstore
+    description: Verify archive notes (archive shelf codes, cleaning dates).
+    source: rag/archive
+    top_k: 2
+    # Hosted, no emulator: runs only when AZURE_AI_SEARCH_ENDPOINT and
+    # AZURE_AI_SEARCH_API_KEY are set (the adapter reads them).
+    database:
+      provider: azure-ai-search
   - name: verify_handbook
     type: hierarchical_document
     description: Verify operations handbook with numbered sections.
@@ -88,6 +137,25 @@ tools:
     database:
       provider: qdrant
       connection_string: http://127.0.0.1:6333
+  - name: verify_pg_handbook
+    type: hierarchical_document
+    description: Verify operations handbook on Postgres (keyword fallback).
+    source: rag/handbook
+    top_k: 3
+    contextual_embeddings: false
+    database:
+      provider: postgres
+      connection_string: postgresql://postgres:holodeck@127.0.0.1:54329/holodeck
+  - name: verify_weaviate_handbook
+    type: hierarchical_document
+    description: Verify operations handbook on Weaviate (native hybrid search).
+    source: rag/handbook
+    top_k: 3
+    contextual_embeddings: false
+    database:
+      provider: weaviate
+      connection_string: http://127.0.0.1:8089
+      local_grpc_port: 50059
 
 claude:
   max_turns: 10
@@ -154,11 +222,47 @@ test_cases:
         expected_tools: [verify_registry]
         turn_config: { tool: verify_registry, marker: "OPAL-9158" }
         evaluations: *tool_result
+  - name: weaviate vectorstore tool
+    turns:
+      - input: "Search the beacon notes: what is the beacon channel code?"
+        expected_tools: [verify_beacon]
+        turn_config: { tool: verify_beacon, marker: "TIDAL-7731" }
+        evaluations: *tool_result
+  - name: cosmos vectorstore tool
+    turns:
+      - input: "Search the depot notes: what is the depot manifest id?"
+        expected_tools: [verify_depot]
+        turn_config: { tool: verify_depot, marker: "CEDAR-5526" }
+        evaluations: *tool_result
+  - name: pinecone vectorstore tool
+    turns:
+      - input: "Search the harbor notes: what is the harbor berth code?"
+        expected_tools: [verify_harbor]
+        turn_config: { tool: verify_harbor, marker: "MARLIN-3084" }
+        evaluations: *tool_result
+  - name: azure ai search vectorstore tool
+    turns:
+      - input: "Search the archive notes: what is the archive shelf code?"
+        expected_tools: [verify_archive]
+        turn_config: { tool: verify_archive, marker: "GARNET-8849" }
+        evaluations: *tool_result
   - name: hierarchical document tool
     turns:
       - input: "Search the operations handbook: what is the calibration constant?"
         expected_tools: [verify_handbook]
         turn_config: { tool: verify_handbook, marker: "ORBIT-9182" }
+        evaluations: *tool_result
+  - name: postgres hierarchical document tool
+    turns:
+      - input: "Search the Postgres handbook: what is the calibration constant?"
+        expected_tools: [verify_pg_handbook]
+        turn_config: { tool: verify_pg_handbook, marker: "ORBIT-9182" }
+        evaluations: *tool_result
+  - name: weaviate hierarchical document tool
+    turns:
+      - input: "Search the Weaviate handbook: what is the calibration constant?"
+        expected_tools: [verify_weaviate_handbook]
+        turn_config: { tool: verify_weaviate_handbook, marker: "ORBIT-9182" }
         evaluations: *tool_result
   - name: subagent
     turns:

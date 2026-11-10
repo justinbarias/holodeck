@@ -12,7 +12,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from holodeck.lib.retrieval import CollectionSchema, VectorStoreAdapter
+from holodeck.lib.retrieval.adapters.azure_ai_search import (
+    AzureAISearchAdapter,
+    AzureSearchSettings,
+)
 from holodeck.lib.retrieval.adapters.chroma import ChromaAdapter
+from holodeck.lib.retrieval.adapters.cosmos_nosql import CosmosNoSqlAdapter
 from holodeck.lib.retrieval.adapters.in_memory import InMemoryAdapter
 from holodeck.lib.retrieval.adapters.postgres import PostgresAdapter
 from holodeck.lib.retrieval.adapters.qdrant import QdrantAdapter
@@ -21,11 +26,31 @@ from holodeck.lib.retrieval.adapters.sk_bridge import (
     SKInMemoryAdapter,
     SKQdrantAdapter,
 )
-from tests.contract.retrieval import pinecone_local
+from holodeck.lib.retrieval.adapters.weaviate import WeaviateAdapter
+from tests.contract.retrieval import cosmos_emulator, cosmos_fake, pinecone_local
+from tests.contract.retrieval.azure_search_fake import FakeSearchService
 
 QDRANT_URL = "http://127.0.0.1:6333"
 CHROMA_URL = "http://127.0.0.1:8765"
 POSTGRES_URL = "postgresql://postgres:holodeck@127.0.0.1:54329/holodeck"
+WEAVIATE_CONNECTION = {
+    "local_host": "127.0.0.1",
+    "local_port": 8089,
+    "local_grpc_port": 50059,
+}
+
+
+def build_azure_fake(schema: CollectionSchema) -> AzureAISearchAdapter:
+    """Return the Azure AI Search adapter on the in-memory fake clients.
+
+    No emulator or credentials exist for this store, so this target is the only
+    contract run for it. It does not prove behavior of the live service.
+    """
+    return AzureAISearchAdapter(
+        schema,
+        AzureSearchSettings(endpoint="https://fake.search.windows.net", api_key="fake"),
+        client_factory=FakeSearchService().pair,
+    )
 
 
 @dataclass(frozen=True)
@@ -107,8 +132,25 @@ TARGETS: list[ContractTarget] = [
         available=port_open("127.0.0.1", 54329),
     ),
     ContractTarget(
+        name="weaviate",
+        build=lambda schema: WeaviateAdapter.create(schema, WEAVIATE_CONNECTION),
+        available=port_open("127.0.0.1", 8089),
+    ),
+    ContractTarget(
         name="pinecone-local",
         build=pinecone_local.LocalPineconeAdapter.build,
         available=pinecone_local.skip_reason,
+    ),
+    ContractTarget(name="azure-ai-search:fake", build=build_azure_fake),
+    ContractTarget(
+        name="azure-cosmos-nosql:emulator",
+        build=lambda schema: CosmosNoSqlAdapter.create(
+            schema, cosmos_emulator.connection()
+        ),
+        available=cosmos_emulator.skip_reason,
+    ),
+    ContractTarget(
+        name="azure-cosmos-nosql:fake",
+        build=cosmos_fake.FakeCosmosAdapter.build,
     ),
 ]

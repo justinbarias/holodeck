@@ -13,10 +13,7 @@ Supported Providers:
 - qdrant: Qdrant vector database
 - weaviate: Weaviate vector database
 - chromadb: ChromaDB (local or server)
-- faiss: FAISS (in-memory or file-based)
-- azure-cosmos-mongo: Azure Cosmos DB (MongoDB API)
 - azure-cosmos-nosql: Azure Cosmos DB (NoSQL API)
-- sql-server: SQL Server with vector support
 - pinecone: Pinecone serverless vector database
 - in-memory: Simple in-memory storage (development only)
 """
@@ -915,16 +912,10 @@ def get_collection_class(provider: str) -> type[Any]:
         "qdrant": ("semantic_kernel.connectors.qdrant", "QdrantCollection"),
         "weaviate": ("semantic_kernel.connectors.weaviate", "WeaviateCollection"),
         "chromadb": ("semantic_kernel.connectors.chroma", "ChromaCollection"),
-        "faiss": ("semantic_kernel.connectors.faiss", "FaissCollection"),
-        "azure-cosmos-mongo": (
-            "semantic_kernel.connectors.azure_cosmos_db",
-            "CosmosMongoCollection",
-        ),
         "azure-cosmos-nosql": (
             "semantic_kernel.connectors.azure_cosmos_db",
             "CosmosNoSqlCollection",
         ),
-        "sql-server": ("semantic_kernel.connectors.sql_server", "SqlServerCollection"),
         "pinecone": ("semantic_kernel.connectors.pinecone", "PineconeCollection"),
         "in-memory": ("semantic_kernel.connectors.in_memory", "InMemoryCollection"),
     }
@@ -951,10 +942,7 @@ def get_collection_class(provider: str) -> type[Any]:
             "qdrant": "holodeck-ai[qdrant]",
             "weaviate": "weaviate-client",
             "chromadb": "holodeck-ai[chromadb]",
-            "faiss": "faiss-cpu",
-            "azure-cosmos-mongo": "pymongo",
             "azure-cosmos-nosql": "azure-cosmos",
-            "sql-server": "pyodbc",
             "pinecone": "holodeck-ai[pinecone]",
         }
         hint = dep_hints.get(provider, "")
@@ -989,10 +977,7 @@ def get_collection_factory(
             - qdrant: Qdrant vector database
             - weaviate: Weaviate vector database
             - chromadb: ChromaDB (local or server)
-            - faiss: FAISS (in-memory or file-based)
-            - azure-cosmos-mongo: Azure Cosmos DB (MongoDB API)
             - azure-cosmos-nosql: Azure Cosmos DB (NoSQL API)
-            - sql-server: SQL Server with vector support
             - pinecone: Pinecone serverless vector database
             - in-memory: Simple in-memory storage (development only)
 
@@ -1074,10 +1059,7 @@ def get_collection_factory(
         "qdrant",
         "weaviate",
         "chromadb",
-        "faiss",
-        "azure-cosmos-mongo",
         "azure-cosmos-nosql",
-        "sql-server",
         "pinecone",
         "in-memory",
     ]

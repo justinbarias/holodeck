@@ -169,6 +169,34 @@ async def test_find_matches_a_number_by_the_type_of_the_field(
     assert sorted(record.id for record in by_integer) == ["a_chunk_1", "b_chunk_1"]
 
 
+@pytest.mark.parametrize(
+    "bad_filter",
+    [
+        RecordFilter.where(chunk_index=1.5),
+        RecordFilter.where(chunk_index="1"),
+        RecordFilter.where(mtime="2.25"),
+        RecordFilter.where(source_path=3),
+        RecordFilter.where(chunk_index=True),
+    ],
+    ids=[
+        "fraction-on-integer",
+        "string-on-integer",
+        "string-on-float",
+        "number-on-string",
+        "bool-on-integer",
+    ],
+)
+async def test_find_rejects_a_filter_value_that_cannot_equal_a_stored_value(
+    loaded: VectorStoreAdapter, target: ContractTarget, bad_filter: RecordFilter
+) -> None:
+    """``where(chunk_index=1.5)`` must raise, never match ``chunk_index == 1``."""
+    needs(loaded, Operation.FIND)
+    if target.name.startswith("sk-bridge:"):
+        pytest.skip("the Semantic Kernel bridge is deleted in T16")
+    with pytest.raises(SchemaError):
+        await loaded.find(bad_filter)
+
+
 async def test_list_page_returns_every_record_once(
     loaded: VectorStoreAdapter,
 ) -> None:
@@ -210,6 +238,26 @@ async def test_replace_source_removes_stale_chunks_when_a_source_shrinks(
     assert [record.id for record in remaining] == ["a_chunk_0"]
     assert remaining[0].fields["content"] == "shorter"
     assert len(await loaded.find(RecordFilter.where(source_path="b.md"))) == 2
+
+
+@pytest.mark.parametrize(
+    "bad_vector",
+    [[math.nan, 0.0, 0.0, 0.0], [math.inf, 0.0, 0.0, 0.0]],
+    ids=["nan", "infinity"],
+)
+async def test_replace_source_rejects_bad_records_before_deleting(
+    loaded: VectorStoreAdapter, bad_vector: list[float]
+) -> None:
+    needs(loaded, Operation.FIND, Operation.DELETE, Operation.UPSERT)
+    bad = make_record("a_chunk_0", bad_vector, content="poisoned")
+    with pytest.raises(SchemaError):
+        await loaded.replace_source(RecordFilter.where(source_path="a.md"), [bad])
+    remaining = await loaded.find(RecordFilter.where(source_path="a.md"))
+    assert sorted(record.id for record in remaining) == ["a_chunk_0", "a_chunk_1"]
+    assert {r.fields["content"] for r in remaining} == {
+        "alpha apple orchard",
+        "alpha banana grove",
+    }
 
 
 async def test_vector_search_orders_by_similarity(loaded: VectorStoreAdapter) -> None:
