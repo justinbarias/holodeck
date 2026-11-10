@@ -10,6 +10,7 @@ command runs or ``--help`` lists it.
 from __future__ import annotations
 
 import importlib
+import threading
 
 import click
 
@@ -25,6 +26,7 @@ class LazyGroup(click.Group):
     ) -> None:
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self._lazy_subcommands = dict(lazy_subcommands or {})
+        self._load_lock = threading.Lock()
 
     def list_commands(self, ctx: click.Context) -> list[str]:
         """Return all command names sorted, as ``click.Group`` does."""
@@ -32,9 +34,12 @@ class LazyGroup(click.Group):
 
     def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
         """Return the command, importing its module on first use."""
-        if cmd_name in self._lazy_subcommands:
-            return self._load(cmd_name)
-        return super().get_command(ctx, cmd_name)
+        if cmd_name in self.commands or cmd_name not in self._lazy_subcommands:
+            return super().get_command(ctx, cmd_name)
+        # Serialize first loads: concurrent lookups must all get the command.
+        with self._load_lock:
+            loaded = self.commands.get(cmd_name)
+            return loaded if loaded is not None else self._load(cmd_name)
 
     def _load(self, cmd_name: str) -> click.Command:
         module_name, attribute = self._lazy_subcommands[cmd_name].split(":", 1)
@@ -45,7 +50,6 @@ class LazyGroup(click.Group):
                 f"lazy command {cmd_name!r}: {module_name}:{attribute} is "
                 f"{type(command).__name__}, not a click.Command"
             )
-        # Cache as an eager command so later lookups skip the import path.
+        # Cache as an eager command so later lookups skip the lock and import.
         self.add_command(command, cmd_name)
-        del self._lazy_subcommands[cmd_name]
         return command

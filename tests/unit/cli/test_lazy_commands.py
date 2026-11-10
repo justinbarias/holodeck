@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
 
 import click
 import pytest
@@ -76,3 +77,30 @@ def test_lazy_target_that_is_not_a_command_fails_loudly() -> None:
     group = LazyGroup(name="g", lazy_subcommands={"bad": "json:dumps"})
     with pytest.raises(TypeError, match="not a click.Command"):
         group.get_command(click.Context(group), "bad")
+
+
+@pytest.mark.unit
+def test_concurrent_first_lookups_all_get_the_command() -> None:
+    """Threads racing on a command's first load must not raise."""
+    group = LazyGroup(
+        name="g", lazy_subcommands={"init": "holodeck.cli.commands.init:init"}
+    )
+    barrier = threading.Barrier(8)
+    results: list[object] = []
+
+    def lookup() -> None:
+        barrier.wait()
+        try:
+            results.append(group.get_command(click.Context(group), "init"))
+        except Exception as exc:  # noqa: BLE001 - the test records any failure
+            results.append(exc)
+
+    threads = [threading.Thread(target=lookup) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(results) == 8
+    assert all(isinstance(r, click.Command) for r in results), results
+    assert len({id(r) for r in results}) == 1
