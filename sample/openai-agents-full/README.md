@@ -32,7 +32,9 @@ holodeck chat agent.yaml            # watch handoffs nest in the tools panel
 
 Each run writes an EvalRun JSON under `results/` (gitignored).
 
-Requirements: the `openai-agents` extra, and Node.js for the MCP server
+Requirements: the `openai-agents` and `eval` extras (`pip install
+"holodeck-ai[openai-agents,eval]"`; the GEval and RAG metrics need DeepEval),
+and Node.js for the MCP server
 (remove the `filesystem` tool if `npx` is unavailable). The first run ingests
 the two RAG sources with `text-embedding-3-small`; later runs reuse the cache
 (`-f` forces re-ingest).

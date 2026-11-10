@@ -134,6 +134,8 @@ evaluations:
     api_key: ${ANTHROPIC_API_KEY}
 {% endif %}
     temperature: 0.0
+  # DeepEval metrics (type: geval, type: rag) need the eval extra:
+  #   pip install 'holodeck-ai[eval]'
   metrics:
     - type: geval
       name: Coherence

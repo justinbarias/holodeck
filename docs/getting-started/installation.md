@@ -58,6 +58,52 @@ uv tool install "holodeck-ai[openai-agents,qdrant]@latest" --prerelease allow --
 
 > **Without the extra**, an `openai` / `azure_openai` agent fails at startup with a missing-dependency error pointing you here.
 
+### Install profiles
+
+The base install has what every user needs to build, chat with, serve and test
+an agent on the Claude backend. Features with heavy or rarely used dependencies
+are extras. Add only the extras you use; they compose
+(`holodeck-ai[openai-agents,eval,qdrant]`).
+
+| Install | Enables | Key packages |
+| --- | --- | --- |
+| `holodeck-ai` (base) | CLI, config, Claude backend, MCP, `serve`, `chat`, `test run` with code, equality and numeric metrics, document ingestion, in-memory BM25 keyword index, OpenTelemetry | `claude-agent-sdk`, `pydantic`, `fastapi`, `markitdown`, `litellm`, `tiktoken` |
+| `[eval]` | DeepEval metrics (`type: geval`, `type: rag`) | `deepeval`, `anthropic`, `ollama` |
+| `[nlp]` | NLP overlap metrics (`bleu`, `rouge`, `meteor`) | `sacrebleu`, `rouge-score`, `nltk` |
+| `[optimizer]` | `holodeck test optimize` | `optuna` |
+| `[opensearch]` | OpenSearch keyword index (`keyword_index.provider: opensearch`) | `opensearch-py` |
+| `[openai-agents]` | OpenAI Agents backend (`openai`, `azure_openai`) | `openai-agents`, `openai` |
+| `[dashboard]` | `holodeck test view` | `dash`, `plotly` |
+| `[temporal]` | `holodeck worker` | `temporalio` |
+| `[qdrant]`, `[postgres]`, `[chromadb]`, … `[vectorstores]` | Vector store providers | one client each; `vectorstores` has all |
+| `[otel-prometheus]`, `[otel-azmon]`, `[otel-all]`, `[claude-otel]` | Extra telemetry exporters and instrumentation | |
+| `[deploy]`, `[deploy-azure]`, … `[deploy-all]`, `[s3]`, `[azure-blob]`, `[all-sources]` | `holodeck deploy` and cloud sources | `docker`, cloud SDKs |
+| `[all]` | Every extra above | |
+
+When a command needs an extra that is not installed, it stops before any agent
+or model call and prints the install command, for example:
+
+```text
+Error: DeepEval metrics needs the 'eval' extra, which is not installed. Install it with: pip install 'holodeck-ai[eval]'
+```
+
+Commands that do not use the feature still run.
+
+#### Upgrading from an earlier release
+
+Before this release, the base install also contained DeepEval, the NLP metric
+libraries, Optuna, opensearch-py, MkDocs Material and Twine.
+
+| You ran | Now run |
+| --- | --- |
+| `pip install holodeck-ai` and use DeepEval or NLP metrics | `pip install "holodeck-ai[eval,nlp]"` |
+| `pip install holodeck-ai` and use `holodeck test optimize` | `pip install "holodeck-ai[optimizer]"` (add `eval,nlp` for its metrics) |
+| `pip install holodeck-ai` and use an OpenSearch keyword index | `pip install "holodeck-ai[opensearch]"` |
+| `pip install holodeck-ai` and want everything as before | `pip install "holodeck-ai[all]"` |
+
+With `uv tool`, use the same extras:
+`uv tool install "holodeck-ai[eval,nlp]@latest" --prerelease allow --python 3.11`.
+
 ### Install with Vector Store Providers (Optional)
 
 If you plan to use semantic search with vector databases, install with extras:

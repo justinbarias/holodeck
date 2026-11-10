@@ -20,6 +20,21 @@ from holodeck.cli.lazy_group import LazyGroup
 from holodeck.cli.main import main
 
 HEAVY = ("pandas", "deepeval", "claude_agent_sdk", "agents")
+# Modules from optional install extras (042 T21) and from dev-only tooling.
+# No base command's --help may import them: a base install does not have them.
+EXTRA_MODULES = (
+    "deepeval",
+    "anthropic",
+    "ollama",
+    "nltk",
+    "sacrebleu",
+    "rouge_score",
+    "optuna",
+    "opensearchpy",
+    "dash",
+    "mkdocs",
+    "twine",
+)
 COMMANDS = [
     "chat",
     "config",
@@ -59,6 +74,49 @@ def _heavy_modules_after(command: str | None) -> list[str]:
 )
 def test_light_commands_do_not_import_heavy_stacks(command: str | None) -> None:
     assert _heavy_modules_after(command) == []
+
+
+def _extra_modules_after_help(argv: list[str]) -> list[str]:
+    """Run ``holodeck <argv> --help`` in a fresh interpreter."""
+    code = (
+        "import json, sys\n"
+        "from holodeck.cli.main import main\n"
+        "try:\n"
+        f"    main({[*argv, '--help']!r}, standalone_mode=False)\n"
+        "except SystemExit:\n"
+        "    pass\n"
+        f"print(json.dumps([m for m in {EXTRA_MODULES!r} if m in sys.modules]))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=120,
+    )
+    loaded: list[str] = json.loads(out.stdout.strip().splitlines()[-1])
+    return loaded
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "argv",
+    [
+        [],
+        ["init"],
+        ["chat"],
+        ["serve"],
+        ["test"],
+        ["test", "run"],
+        ["test", "optimize"],
+        ["mcp"],
+        ["vectorstore"],
+        ["config"],
+    ],
+    ids=lambda argv: " ".join(argv) or "root",
+)
+def test_help_does_not_import_optional_extras(argv: list[str]) -> None:
+    assert _extra_modules_after_help(argv) == []
 
 
 @pytest.mark.unit

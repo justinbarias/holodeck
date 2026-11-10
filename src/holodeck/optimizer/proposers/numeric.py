@@ -6,17 +6,29 @@ suggests a value per declared axis within its range, and ``tell`` feeds the
 scored outcome back to the study so TPE can steer subsequent suggestions.
 """
 
-from typing import Literal
+from __future__ import annotations
 
-import optuna
+from types import ModuleType
+from typing import TYPE_CHECKING, Literal
 
+from holodeck.lib.extras import require_extra
 from holodeck.models.agent import Agent
 from holodeck.models.test_result import TestReport
 from holodeck.optimizer.config import NumericAxis
 from holodeck.optimizer.proposers.base import Proposal
 
-# Optuna is chatty at INFO; keep optimizer output to the loop's own logging.
-optuna.logging.set_verbosity(optuna.logging.WARNING)
+if TYPE_CHECKING:
+    import optuna
+
+
+def _optuna() -> ModuleType:
+    """Import Optuna (the optional ``optimizer`` extra) on first use."""
+    module = require_extra(
+        "optuna", "optimizer", "The optimizer (holodeck test optimize)"
+    )
+    # Optuna is chatty at INFO; keep optimizer output to the loop's own logging.
+    module.logging.set_verbosity(module.logging.WARNING)
+    return module
 
 
 class NumericProposer:
@@ -31,6 +43,7 @@ class NumericProposer:
             axes: Declared numeric axes to tune.
             seed: Seed for the TPE sampler (config-reproducibility).
         """
+        self._optuna = _optuna()
         self._axes = axes
         self._seed = seed
         self._study: optuna.Study | None = None
@@ -38,8 +51,8 @@ class NumericProposer:
 
     def begin(self, best_agent: Agent, best_report: TestReport | None) -> None:
         """Start a fresh seeded study for a new numeric phase."""
-        sampler = optuna.samplers.TPESampler(seed=self._seed)
-        self._study = optuna.create_study(direction="minimize", sampler=sampler)
+        sampler = self._optuna.samplers.TPESampler(seed=self._seed)
+        self._study = self._optuna.create_study(direction="minimize", sampler=sampler)
         self._pending = None
 
     async def ask(self) -> Proposal | None:

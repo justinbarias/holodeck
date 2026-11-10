@@ -19,6 +19,7 @@ from holodeck.lib.eval_run import (
     build_eval_run_metadata,
     write_eval_run,
 )
+from holodeck.lib.extras import MissingExtraError
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.observability import (
     ObservabilityContext,
@@ -374,6 +375,12 @@ def run(
             logger.info("Exiting with success status (all tests passed)")
             sys.exit(0)
 
+    except MissingExtraError as e:
+        # A selected metric needs an extra that is not installed. Raised while
+        # the executor builds evaluators, before any agent or model call.
+        logger.error(f"Missing install extra: {e}")
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(2)
     except ConfigError as e:
         logger.error(f"Configuration error: {e}", exc_info=True)
         click.echo(f"Configuration Error: {e}", err=True)

@@ -6,6 +6,10 @@ libraries directly (SacreBLEU, ``rouge_score``, ``nltk.translate``); nothing is
 fetched from a model or metric hub, and no network call is made at import or
 metric-load time.
 
+The libraries are the optional ``nlp`` extra. Each evaluator checks its library
+when it is constructed, so a test run that selects a metric without the extra
+fails with the install command before any agent call.
+
 METEOR needs NLTK data (wordnet, punkt_tab, omw-1.4). HoloDeck never downloads
 it: when a resource is missing, METEOR raises ``NLPMetricsError`` naming it and
 the command ``python -m nltk.downloader wordnet punkt_tab omw-1.4``.
@@ -28,9 +32,12 @@ from typing import Any, ClassVar
 
 from holodeck.lib.evaluators.base import BaseEvaluator, EvaluationError
 from holodeck.lib.evaluators.param_spec import EvalParam, ParamSpec
+from holodeck.lib.extras import require_extra
 from holodeck.lib.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+NLP_EXTRA = "nlp"
 
 # Lazy imports to avoid loading libraries if not needed
 _sacrebleu = None
@@ -91,7 +98,7 @@ def _get_sacrebleu() -> Any:
             logger.error("Failed to import sacrebleu library", exc_info=True)
             raise NLPMetricsError(
                 "sacrebleu library is not installed. "
-                "Install with: pip install sacrebleu"
+                "Install with: pip install 'holodeck-ai[nlp]'"
             ) from e
     return _sacrebleu
 
@@ -144,7 +151,11 @@ class BLEUEvaluator(BaseEvaluator):
             threshold: Minimum passing score (0.0-1.0)
             timeout: Timeout in seconds
             **kwargs: Additional arguments passed to BaseEvaluator
+
+        Raises:
+            MissingExtraError: SacreBLEU (the ``nlp`` extra) is not installed.
         """
+        require_extra("sacrebleu", NLP_EXTRA, "The BLEU metric")
         super().__init__(timeout=timeout, **kwargs)
         self.threshold = threshold
 
@@ -268,7 +279,9 @@ class ROUGEEvaluator(BaseEvaluator):
 
         Raises:
             ValueError: If variant is not valid
+            MissingExtraError: rouge_score (the ``nlp`` extra) is not installed.
         """
+        require_extra("rouge_score", NLP_EXTRA, "The ROUGE metric")
         super().__init__(timeout=timeout, **kwargs)
         self.threshold = threshold
 
@@ -392,7 +405,11 @@ class METEOREvaluator(BaseEvaluator):
             threshold: Minimum passing score (0.0-1.0)
             timeout: Timeout in seconds
             **kwargs: Additional arguments passed to BaseEvaluator
+
+        Raises:
+            MissingExtraError: NLTK (the ``nlp`` extra) is not installed.
         """
+        require_extra("nltk", NLP_EXTRA, "The METEOR metric")
         super().__init__(timeout=timeout, **kwargs)
         self.threshold = threshold
         self._metric: Any = None  # Lazy loaded

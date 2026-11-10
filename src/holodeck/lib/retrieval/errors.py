@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from holodeck.lib.errors import HoloDeckError
+from holodeck.lib.extras import MissingExtraError
 
 
 class RetrievalError(HoloDeckError):
@@ -25,17 +26,16 @@ class UnsupportedOperationError(RetrievalError):
         super().__init__(message)
 
 
-class MissingClientError(RetrievalError):
-    """The provider's client library is not installed."""
+class MissingClientError(RetrievalError, MissingExtraError):
+    """The provider's client library is not installed.
+
+    A ``MissingExtraError`` too, so the CLI reports it like every other
+    missing extra: one line with the install command.
+    """
 
     def __init__(self, provider: str, extra: str) -> None:
         self.provider = provider
-        self.extra = extra
-        self.install_command = f"pip install 'holodeck-ai[{extra}]'"
-        super().__init__(
-            f"Vector store provider '{provider}' needs a client library that is "
-            f"not installed. Install it with: {self.install_command}"
-        )
+        MissingExtraError.__init__(self, f"Vector store provider '{provider}'", extra)
 
 
 class RetiredProviderError(RetrievalError):

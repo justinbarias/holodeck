@@ -36,17 +36,6 @@ dependencies = [
     "pdfminer.six>=20260107",
     "python-pptx>=1.0.2",
     "pypdf>=6.21.4",  # CVE-2026-59935..59938, PYSEC-2026-4153..4160, CVE-2026-1137xx/1155xx/1192xx fix
-    "nltk>=3.10.4,<4.0.0",
-    "rouge-score>=0.1.2,<0.2.0",
-    "sacrebleu>=2.5.1,<3.0.0",
-    # deepeval 4 needs posthog 7, which chromadb 1.0.x rejects: keep the
-    # chromadb extra at >=1.5 compatible ranges. Click must stay >=8.3.3
-    # (PYSEC-2026-2132).
-    "deepeval>=4.3.3,<5",
-    # DeepEval's AnthropicModel/OllamaModel (built in lib/evaluators/deepeval/config.py)
-    # import these lazily and fail without them; nothing else installs them.
-    "anthropic>=0.72.0,<2.7.0",
-    "ollama>=0.4,<1.0",
     "python-ulid>=3.1.0,<5.0.0",
     # Upper bound <3: claude-agent-sdk 0.2.179+ and openai-agents 0.24 both allow
     # mcp<3, and the Claude backend runs on the stable 2.x line (042 T17).
@@ -66,7 +55,6 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.20.0,<2.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.20.0,<2.0.0",
     "rank-bm25>=0.2.2,<0.3.0", # BM25 sparse indexing (fallback for providers without native hybrid)
-    "opensearch-py>=2.0.0,<4.0.0", # OpenSearch client for production keyword index
     "tiktoken>=0.12.0",
     "aiohttp>=3.14.4",  # CVE-2026-111063..111066/111748..111750 fix
     "httpx>=0.27",
@@ -74,7 +62,6 @@ dependencies = [
     "azure-core>=1.38.0",
     "claude-agent-sdk==0.2.179",  # >=0.2.121 for CVE-2026-96620; see ENABLE_TOOL_SEARCH in claude_backend
     "python-frontmatter>=1.1,<2.0",
-    "optuna>=4.8.0",
     "litellm>=1.108.3,<1.109",  # >=1.100.4 for PYSEC-2026-4066, GHSA-g5ff-637f-6q2m, CVE-2026-114612; 1.108 for openai 3
     # FEEL evaluator; the exact pin is load-bearing for correctness, not just
     # stability: feel.py shares FEELTransformer singletons across concurrent
@@ -109,6 +96,31 @@ dev = [
     "mkdocs-material>=9.7.7,<10.0.0",  # CVE-2026-73295 fix
     "twine>=6.2.0,<8.0.0",
 ]
+
+# Evaluation metrics (042 T21). Base installs leave these out; a test run that
+# selects one of these metrics fails before any agent call with the install
+# command (holodeck.lib.extras.MissingExtraError).
+# DeepEval LLM-as-a-judge metrics (type: geval, type: rag).
+eval = [
+    # deepeval 4 needs posthog 7, which chromadb 1.0.x rejects: keep the
+    # chromadb extra at >=1.5 compatible ranges. Click must stay >=8.3.3
+    # (PYSEC-2026-2132).
+    "deepeval>=4.3.3,<5",
+    # DeepEval's AnthropicModel/OllamaModel (built in lib/evaluators/deepeval/config.py)
+    # import these lazily and fail without them; nothing else installs them.
+    "anthropic>=0.72.0,<2.7.0",
+    "ollama>=0.4,<1.0",
+]
+# NLP overlap metrics (metric: bleu, rouge, meteor). No model calls.
+nlp = [
+    "nltk>=3.10.4,<4.0.0",
+    "rouge-score>=0.1.2,<0.2.0",
+    "sacrebleu>=2.5.1,<3.0.0",
+]
+# `holodeck test optimize` (Optuna TPE for numeric axes).
+optimizer = ["optuna>=4.8.0"]
+# OpenSearch keyword index backend (keyword_index.provider: opensearch).
+opensearch = ["opensearch-py>=2.0.0,<4.0.0"]
 
 # Vector store providers (install only what you need)
 pinecone = [
@@ -208,6 +220,18 @@ deploy-all = [
 # stable". Loosen to a range once that surface stabilizes.
 temporal = [
     "temporalio==1.35.0",
+]
+
+# Compatibility aggregate: every runtime extra (all except dev). Listed by
+# self-reference so it cannot drift from the extras above;
+# tests/unit/test_install_profiles.py fails when an extra is missing here.
+all = [
+    "holodeck-ai[eval,nlp,optimizer,opensearch]",
+    "holodeck-ai[pinecone,azure-ai-search,postgres,qdrant,chromadb,weaviate,azure-cosmos,vectorstores]",
+    "holodeck-ai[otel-prometheus,otel-azmon,otel-all,claude-otel]",
+    "holodeck-ai[openai-agents,dashboard,temporal]",
+    "holodeck-ai[deploy,deploy-aws,deploy-gcp,deploy-azure,deploy-all]",
+    "holodeck-ai[s3,azure-blob,all-sources]",
 ]
 
 [build-system]

@@ -153,6 +153,12 @@ class DeepEvalModelConfig(BaseModel):
         elif self.provider == ProviderEnum.ANTHROPIC:
             from deepeval.models import AnthropicModel
 
+            from holodeck.lib.extras import require_extra
+
+            # DeepEval imports the Anthropic SDK lazily; check it here so a
+            # missing package names the extra instead of failing mid-run.
+            require_extra("anthropic", "eval", "DeepEval metrics with Anthropic")
+
             kwargs = {
                 "model": self.model_name,
                 "temperature": self.temperature,
@@ -163,6 +169,10 @@ class DeepEvalModelConfig(BaseModel):
 
         elif self.provider == ProviderEnum.OLLAMA:
             from deepeval.models import OllamaModel
+
+            from holodeck.lib.extras import require_extra
+
+            require_extra("ollama", "eval", "DeepEval metrics with Ollama")
 
             return OllamaModel(
                 model=self.model_name,

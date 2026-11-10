@@ -386,6 +386,13 @@ def init(
             click.echo("  5. Update test_cases in agent.yaml")
             click.echo("  6. Run tests with: holodeck test agent.yaml")
             click.echo()
+            # Every template configures DeepEval metrics (type: geval/rag),
+            # which the base install leaves out (042 T21).
+            click.echo(
+                "The generated evaluations use DeepEval metrics. Install them "
+                "with: pip install 'holodeck-ai[eval]'"
+            )
+            click.echo()
         else:
             # Display error message
             click.secho("Project initialization failed", fg="red", bold=True)

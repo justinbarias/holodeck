@@ -36,10 +36,12 @@ import logging
 import re
 from collections.abc import Callable
 from enum import Enum
+from types import ModuleType
 from typing import TYPE_CHECKING, Any, Protocol, TypedDict, runtime_checkable
 
 from opentelemetry import trace
 
+from holodeck.lib.extras import MissingExtraError, require_extra
 from holodeck.lib.retrieval import (
     HybridQuery,
     Operation,
@@ -49,6 +51,8 @@ from holodeck.lib.retrieval import (
 )
 
 if TYPE_CHECKING:
+    import opensearchpy
+
     from holodeck.lib.structured_chunker import DocumentChunk
     from holodeck.models.tool import KeywordIndexConfig
 
@@ -378,6 +382,14 @@ class InMemoryBM25KeywordProvider:
             return results
 
 
+OPENSEARCH_FEATURE = "The OpenSearch keyword index"
+
+
+def require_opensearch() -> ModuleType:
+    """Import opensearch-py, or raise ``MissingExtraError`` naming its extra."""
+    return require_extra("opensearchpy", "opensearch", OPENSEARCH_FEATURE)
+
+
 class OpenSearchKeywordProvider:
     """OpenSearch-backed keyword search provider with multi-field indexing.
 
@@ -460,8 +472,12 @@ class OpenSearchKeywordProvider:
             api_key: API key for authentication (alternative to basic auth).
             verify_certs: Whether to verify TLS certificates.
             timeout_seconds: Connection timeout in seconds.
+
+        Raises:
+            MissingExtraError: opensearch-py (the ``opensearch`` extra) is not
+                installed.
         """
-        import opensearchpy
+        client_module = require_opensearch()
 
         self.endpoint = endpoint
         self.index_name = index_name
@@ -484,7 +500,9 @@ class OpenSearchKeywordProvider:
         elif username and password:
             client_kwargs["http_auth"] = (username, password)
 
-        self._client: opensearchpy.OpenSearch = opensearchpy.OpenSearch(**client_kwargs)
+        self._client: opensearchpy.OpenSearch = client_module.OpenSearch(
+            **client_kwargs
+        )
 
     def build(self, documents: list[KeywordDocument]) -> None:
         """Build OpenSearch index from structured keyword documents.
@@ -662,6 +680,14 @@ class HybridSearchExecutor:
         self.keyword_weight = keyword_weight
         self.rrf_k = rrf_k
         self.keyword_index_config = keyword_index_config
+        if (
+            self.strategy == KeywordSearchStrategy.FALLBACK_BM25
+            and keyword_index_config is not None
+            and keyword_index_config.provider == "opensearch"
+        ):
+            # Fail when the tool is built, not later in build_keyword_index,
+            # which degrades to semantic-only search on errors.
+            require_opensearch()
         self._chunk_decoder = chunk_decoder
         self._keyword_index: (
             InMemoryBM25KeywordProvider | OpenSearchKeywordProvider | None
@@ -766,6 +792,8 @@ class HybridSearchExecutor:
                 self._keyword_index = provider_inst
                 span.set_attribute("keyword_index.status", "success")
                 logger.debug(f"Built keyword index with {len(chunks)} documents")
+            except MissingExtraError:
+                raise
             except Exception as e:
                 span.set_attribute("keyword_index.status", "failed")
                 span.record_exception(e)

@@ -14,6 +14,8 @@ import threading
 
 import click
 
+from holodeck.lib.extras import MissingExtraError
+
 
 class LazyGroup(click.Group):
     """A ``click.Group`` whose subcommands are given as ``"module:attribute"``."""
@@ -27,6 +29,19 @@ class LazyGroup(click.Group):
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self._lazy_subcommands = dict(lazy_subcommands or {})
         self._load_lock = threading.Lock()
+
+    def invoke(self, ctx: click.Context) -> object:
+        """Run the subcommand; report a missing install extra in one line.
+
+        A command that needs an optional extra raises ``MissingExtraError``.
+        Print its message (which carries the install command) without a
+        traceback and exit 2, like a usage error.
+        """
+        try:
+            return super().invoke(ctx)
+        except MissingExtraError as error:
+            click.echo(f"Error: {error}", err=True)
+            raise click.exceptions.Exit(2) from None
 
     def list_commands(self, ctx: click.Context) -> list[str]:
         """Return all command names sorted, as ``click.Group`` does."""

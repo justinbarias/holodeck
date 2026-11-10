@@ -13,6 +13,8 @@ best candidate is written to `results/optimizer/<run-id>/best.yaml`.
 
 ## Quick start
 
+The optimizer needs the `optimizer` extra (Optuna), plus the extras of the metrics it scores, for example `pip install "holodeck-ai[optimizer,eval,nlp]"`. Without it, the command prints the install command and exits.
+
 Add an `evaluations.optimizer` block to an agent that already has metrics (see [Configuration](#configuration) below), then run:
 
 ```bash

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: evaluation, optimizer and OpenSearch dependencies are install extras.** `pip install holodeck-ai` no longer installs DeepEval, `anthropic`, `ollama` (new `eval` extra), `nltk`, `rouge-score`, `sacrebleu` (new `nlp` extra), `optuna` (new `optimizer` extra) or `opensearch-py` (new `opensearch` extra). MkDocs Material and Twine left the runtime requirements for the `dev` extra. The new `all` extra installs every runtime extra. A test run whose configuration selects a metric without its extra stops before any agent or model call and prints the install command (`MissingExtraError`); `holodeck test optimize` and an OpenSearch keyword index do the same. Commands that do not use these features still start. Vector store `MissingClientError` is now a `MissingExtraError` with the same attributes. Upgrade commands:
+
+| You ran | Now run |
+| --- | --- |
+| `pip install holodeck-ai` and use DeepEval or NLP metrics | `pip install "holodeck-ai[eval,nlp]"` |
+| `pip install holodeck-ai` and use `holodeck test optimize` | `pip install "holodeck-ai[optimizer]"` (add `eval,nlp` for its metrics) |
+| `pip install holodeck-ai` and use an OpenSearch keyword index | `pip install "holodeck-ai[opensearch]"` |
+| `pip install holodeck-ai` and want everything as before | `pip install "holodeck-ai[all]"` |
+
 ### Added
 
 - **Pipeline fingerprint, ingestion completion marker and `holodeck vectorstore`.** Retrieval collections now record the pipeline that wrote them (embedding provider, model and dimensions, parser and chunker policy and settings, record layout, contextual embeddings) in a companion `holodeck_manifest` collection; the layout of existing collections is unchanged. A tool refuses writes to a collection written by a different pipeline and lists the inputs that differ; searches still work. Collections created before this release stay usable and are marked legacy. Each ingested source is marked incomplete before its chunks are written and complete after, so an interrupted ingestion is redone on the next start. New commands: `holodeck vectorstore inspect` (read-only dry run with chunk and token estimates), `migrate` (rebuild into a new collection, resumable, verified, old collection kept), `rollback` and `prune`. See the vector stores guide.

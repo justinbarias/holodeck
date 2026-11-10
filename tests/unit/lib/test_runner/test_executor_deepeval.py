@@ -177,9 +177,7 @@ class TestCreateEvaluatorsGEval:
         mock_loader.resolve_execution_config.return_value = ExecutionConfig()
 
         # Mock GEvalEvaluator to avoid DeepEval SDK initialization
-        with patch(
-            "holodeck.lib.test_runner.executor.GEvalEvaluator"
-        ) as mock_geval_cls:
+        with patch("holodeck.lib.evaluators.deepeval.GEvalEvaluator") as mock_geval_cls:
             mock_evaluator = Mock()
             mock_evaluator.name = "Professionalism"
             mock_geval_cls.return_value = mock_evaluator
@@ -246,9 +244,7 @@ class TestCreateEvaluatorsGEval:
         mock_loader.resolve_execution_config.return_value = ExecutionConfig()
 
         # Mock GEvalEvaluator to avoid DeepEval SDK initialization
-        with patch(
-            "holodeck.lib.test_runner.executor.GEvalEvaluator"
-        ) as mock_geval_cls:
+        with patch("holodeck.lib.evaluators.deepeval.GEvalEvaluator") as mock_geval_cls:
             mock_evaluator1 = Mock()
             mock_evaluator1.name = "Helpfulness"
             mock_evaluator2 = Mock()
@@ -308,9 +304,7 @@ class TestCreateEvaluatorsGEval:
         mock_loader.resolve_execution_config.return_value = ExecutionConfig()
 
         # Mock GEvalEvaluator to avoid DeepEval SDK initialization
-        with patch(
-            "holodeck.lib.test_runner.executor.GEvalEvaluator"
-        ) as mock_geval_cls:
+        with patch("holodeck.lib.evaluators.deepeval.GEvalEvaluator") as mock_geval_cls:
             mock_evaluator = Mock()
             mock_evaluator.name = "CustomMetric"
             mock_geval_cls.return_value = mock_evaluator
@@ -362,9 +356,7 @@ class TestCreateEvaluatorsGEval:
         mock_loader.resolve_execution_config.return_value = ExecutionConfig()
 
         # Mock GEvalEvaluator to avoid DeepEval SDK initialization
-        with patch(
-            "holodeck.lib.test_runner.executor.GEvalEvaluator"
-        ) as mock_geval_cls:
+        with patch("holodeck.lib.evaluators.deepeval.GEvalEvaluator") as mock_geval_cls:
             mock_evaluator = Mock()
             mock_evaluator.name = "NoModelMetric"
             mock_geval_cls.return_value = mock_evaluator
@@ -748,9 +740,7 @@ class TestGEvalEvaluatorIntegration:
         mock_loader.resolve_execution_config.return_value = ExecutionConfig()
 
         # Mock GEvalEvaluator to capture the initialization parameters
-        with patch(
-            "holodeck.lib.test_runner.executor.GEvalEvaluator"
-        ) as mock_geval_cls:
+        with patch("holodeck.lib.evaluators.deepeval.GEvalEvaluator") as mock_geval_cls:
             mock_evaluator = Mock()
             mock_evaluator.name = "DetailedMetric"
             mock_geval_cls.return_value = mock_evaluator
