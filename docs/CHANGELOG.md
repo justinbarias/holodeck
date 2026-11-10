@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned Features
+
+- **Deployment Engine**: Registry push (`holodeck deploy push`) and cloud deployment (`holodeck deploy run`)
+- **Plugin System**: Pre-built plugin packages for common integrations
+
+---
+
+## [0.8.0] - 2026-11-10
+
+This section also lists the changes that shipped in 0.7.0 and 0.7.1, which had no section of their own.
+
 ### Upgrading from 0.7.x
 
 This release removes Semantic Kernel and splits the install into feature extras. Read this list before you upgrade. The same steps with commands are in the [upgrade guide](guides/upgrading-to-0.8.md).
@@ -119,11 +130,6 @@ Other breaking changes in this release, not part of the dependency work: Python 
 - **Dashboard skipped runs that used a code grader or a file-based skill.** Loading a stored run re-validated its agent snapshot, which imported each `type: code` grader and read each skill's `SKILL.md`. Those live next to the agent, not the results, so `holodeck test view` dropped such runs (`cannot import grader module`, `skill path is not a directory`). Stored runs now load as snapshots and skip that work; `agent.yaml` loading still checks both before any agent call.
 - **`type: code` graders now see tool invocations on single-turn test cases.** The single-turn path ran evaluations before pairing tool calls with results, so `GraderContext.tool_invocations` was always empty and any grader that checked tool calls or results scored 0, even though the test result listed the invocations. Calls are now paired once and the same list goes to the grader, the expected-tool arg matcher, and the `TestResult`. Single-turn graders also receive `test_case_name`. Multi-turn (`turns:`) cases were not affected.
 - **Code graders get their own copy of tool invocations.** A grader that edited `ctx.tool_invocations[i].args` or `.result` changed the invocations saved in the `TestResult` and seen by later graders. Each grader context now holds deep copies.
-
-### Planned Features
-
-- **Deployment Engine**: Registry push (`holodeck deploy push`) and cloud deployment (`holodeck deploy run`)
-- **Plugin System**: Pre-built plugin packages for common integrations
 
 ---
 
@@ -1056,7 +1062,8 @@ We follow [Keep a Changelog](https://keepachangelog.com/) format:
 
 ---
 
-[unreleased]: https://github.com/justinbarias/holodeck/compare/v0.6.2...HEAD
+[unreleased]: https://github.com/justinbarias/holodeck/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/justinbarias/holodeck/compare/v0.6.2...v0.8.0
 [0.6.2]: https://github.com/justinbarias/holodeck/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/justinbarias/holodeck/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/justinbarias/holodeck/compare/v0.5.2...v0.6.0
