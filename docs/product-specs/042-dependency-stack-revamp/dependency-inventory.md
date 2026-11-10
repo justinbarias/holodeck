@@ -1,6 +1,71 @@
 # Dependency inventory
 
-Status: audit baseline for [spec 042](spec.md). Re-inspected 2026-11-10 at commit `00d1ed4`, after the dependency upgrades in #419–#431. The first audit was 2026-09-06 at `3e59e1d`. This is a declaration, import and lockfile audit. It is not a measured clean-install footprint. Versions come from `uv.lock`; upstream "latest" claims are dated and sourced in the [selection evidence](../../design-docs/042-dependency-stack-revamp/selection-evidence.md).
+Status: [state after implementation](#state-after-implementation-2026-11-10) first, then the audit baseline for [spec 042](spec.md). Re-inspected 2026-11-10 at commit `00d1ed4`, after the dependency upgrades in #419–#431. The first audit was 2026-09-06 at `3e59e1d`. This is a declaration, import and lockfile audit. It is not a measured clean-install footprint. Versions come from `uv.lock`; upstream "latest" claims are dated and sourced in the [selection evidence](../../design-docs/042-dependency-stack-revamp/selection-evidence.md).
+
+## State after implementation (2026-11-10)
+
+Written from `pyproject.toml` and `uv.lock` at commit `536cad9`, the tip of the 042 stack after T23. The sections below this one record the audit that led to the work and are not rewritten. Where they disagree with this section, this section is current.
+
+Result: Semantic Kernel, `azure-ai-evaluation` and `evaluate` are in no install profile. The lock has **329** `[[package]]` entries (376 before the work, 347 after the Semantic Kernel removal). The base install resolves 143 packages (264 before). Measured sizes and start-up times are in the [baseline measurements](../../exec-plans/active/042-dependency-stack-revamp/baseline-measurements.md#result-after-spec-042). `requires-python` is `>=3.11`.
+
+### Base install (`[project].dependencies`, 35 declarations)
+
+| Dependency | Purpose |
+| --- | --- |
+| `pydantic`, `pyyaml`, `jinja2`, `python-dotenv`, `click`, `inquirerpy` | Agent models and validation, YAML, templates, environment files, the CLI and its prompts |
+| `jsonschema[format-nongpl]`, `referencing`, `lark`, `bkflow-feel`, `python-ulid` | Schema gates, FEEL decision tables, identifiers |
+| `claude-agent-sdk` (pinned) | Claude backend (Anthropic and Ollama providers) |
+| `litellm` | Embeddings and contextual-retrieval chat |
+| `mcp` (`>=1.30.0,<3`) | MCP servers and bridges |
+| `fastapi`, `starlette`, `uvicorn[standard]`, `ag-ui-protocol`, `werkzeug` | `holodeck serve` and the AG-UI protocol |
+| `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-grpc`, `opentelemetry-exporter-otlp-proto-http` | Telemetry and OTLP export |
+| `markitdown[pdf,docx,pptx,xlsx]`, `openpyxl`, `pandas`, `pdfminer.six`, `python-pptx`, `pypdf` | File parsing for retrieval and multimodal inputs |
+| `tiktoken` | Token counts for the plain text splitter |
+| `rank-bm25` | The in-process BM25 index used for lexical and hybrid search |
+| `httpx`, `aiohttp`, `urllib3`, `authlib`, `azure-core`, `cryptography` | HTTP clients, authentication and transport (several carry security lower bounds) |
+
+The base install carries no vector store client, no evaluation library, no optimizer and no docs or release tooling.
+
+### Extras (`[project.optional-dependencies]`)
+
+| Extra | Installs | Feature |
+| --- | --- | --- |
+| `eval` | `deepeval`, `anthropic`, `ollama` | DeepEval metrics and judge models |
+| `nlp` | `nltk`, `rouge-score`, `sacrebleu` | BLEU, ROUGE and METEOR |
+| `optimizer` | `optuna` | `holodeck test optimize` |
+| `opensearch` | `opensearch-py` | OpenSearch keyword index |
+| `qdrant`, `chromadb`, `postgres`, `pinecone`, `weaviate`, `azure-ai-search`, `azure-cosmos` | One native client each (`qdrant-client`, `chromadb`, `psycopg[binary,pool]` and `pgvector`, `pinecone` 10, `weaviate-client`, `azure-search-documents` and `azure-identity`, `azure-cosmos`) | Vector store providers |
+| `vectorstores` | All seven store extras | All vector stores |
+| `openai-agents` | `openai-agents`, `openai` 3 | OpenAI and Azure OpenAI backend |
+| `dashboard` | `dash`, `plotly`, `pandas` | `holodeck test view` |
+| `temporal` | `temporalio` | Temporal worker and activities |
+| `deploy`, `deploy-aws`, `deploy-gcp`, `deploy-azure`, `deploy-all` | `docker`, `boto3`, `google-cloud-run`, `azure-mgmt-appcontainers` and `azure-identity` | `holodeck deploy` and its targets |
+| `s3`, `azure-blob`, `all-sources` | `boto3`, `azure-storage-blob` | Remote file sources |
+| `otel-prometheus`, `otel-azmon`, `otel-all`, `claude-otel` | Exporters and the Claude Agent SDK instrumentation | Extra telemetry |
+| `all` | Every runtime extra above | Everything except `dev` |
+| `dev` | Test, lint and type tools, `mkdocs-material`, `mkdocstrings`, `twine`, audit tools | Development only |
+
+A command that needs a missing extra stops early and prints the install command (`MissingExtraError`).
+
+### Removed
+
+- **Semantic Kernel** and what only it needed: `azure-ai-agents`, `azure-ai-projects`, `aiortc`, `av`, `scipy`, `openapi-core`, `prance` and others. The `faiss`, `sql-server` and `azure-cosmos-mongo` providers went with it.
+- **Microsoft AI evaluation** (`azure-ai-evaluation`, `ruamel-yaml`) and **Hugging Face `evaluate`** (with `datasets`, `pyarrow`, `dill`, `multiprocess`, `xxhash`).
+- **`markitdown[all]`**: ten packages, among them `azure-ai-documentintelligence`, `azure-ai-contentunderstanding`, `youtube-transcript-api`, `speechrecognition` and `pydub`.
+- **Unused or duplicate direct declarations**: `requests` (HTTPX replaces it), `aiofiles`, `python-dateutil`, `absl-py`, `ml-dtypes`, the stale `sentry-sdk` constraint.
+- **Moved out of the base install**: DeepEval, `anthropic`, `ollama`, NLTK, `rouge-score`, `sacrebleu`, `optuna`, `opensearch-py` (now extras); `mkdocs-material` and `twine` (now `dev` only).
+- **Dependabot ignore for Pinecone majors**, and the `tool.uv.prerelease` setting.
+
+### Constraints still in `[tool.uv]`
+
+- `override-dependencies`: `pytz>=2024`. `bkflow-feel` pins `pytz<2024`, which would downgrade `pytz` and `optuna`; the FEEL conformance tests in `tests/unit/workflow/` cover the newer `pytz`.
+- `constraint-dependencies` (23 entries) are security lower bounds on transitive packages, each with its advisory in a comment in `pyproject.toml`: `filelock`, `jaraco-context`, `nltk`, `pillow`, `protobuf`, `python-multipart`, `markdown`, `pygments`, `aiohttp`, `pyjwt`, `pip`, `msgpack`, `pydantic-settings`, `joserfc`, `soupsieve`, `setuptools`, `pymdown-extensions`, `anyio`, `certifi`, `fsspec`, `multidict`, `oauthlib`, `opentelemetry-api`. Remove one when the packages that need it require a fixed version themselves.
+- No cap comes from Semantic Kernel any more. `mcp` allows 2.x (locked 2.3.0) and `pinecone` is 10.x. One cap comes from a client: `weaviate-client` needs `grpcio<1.80`, so the lock holds `grpcio` 1.78.2 for it.
+- Known issue: the locked `pypdfium2` 5.15.1 is yanked on PyPI (reason given there: closing of remaining objects on interpreter exit is broken); 5.15.2 exists. See the [technical debt tracker](../../exec-plans/tech-debt-tracker.md).
+
+## Audit baseline before the work
+
+The rest of this file is the audit as it stood at `00d1ed4`.
 
 ## What changed since 2026-09-06
 

@@ -52,6 +52,7 @@ nav:
     - Temporal Integration: guides/temporal.md
     - Temporal Worker: guides/temporal-worker.md
     - Observability: guides/observability.md
+    - Upgrading to 0.8: guides/upgrading-to-0.8.md
   - Examples:
     - Examples: examples/README.md
   - API Reference:
@@ -135,6 +136,7 @@ plugins:
           - guides/temporal.md
           - guides/temporal-worker.md
           - guides/observability.md
+          - guides/upgrading-to-0.8.md
         API Reference:
           - api/*.md
         Developer:

@@ -31,7 +31,8 @@ agent configuration -> deploy/ -> Docker image -> Azure Container Apps
 The diagram shows execution flow, not an enforced global import hierarchy.
 Vector storage runs on native adapters behind `holodeck.lib.retrieval`, and
 embeddings and contextual-retrieval chat run on LiteLLM. Semantic Kernel is no
-longer a dependency.
+longer a dependency. Evaluation runs on DeepEval, deterministic NLP metrics, and
+code graders; Microsoft AI evaluation is removed.
 
 ## Code map
 
@@ -44,9 +45,10 @@ Paths are relative to the repository root. Each directory owns the responsibilit
 | [models](src/holodeck/models) | Pydantic configuration and result contracts. `agent.py` defines `Agent`. |
 | [backends](src/holodeck/lib/backends) | Provider selection, lifecycle protocols, SDK adapters, MCP bridges, and tracing. Start at `base.py` and `selector.py`. |
 | [tools](src/holodeck/tools) | Vector search, hierarchical document retrieval, and MCP integration. |
+| [retrieval](src/holodeck/lib/retrieval) | Vector store contract (`VectorStoreAdapter`, record, filter, capability and error types), the provider registry, eight native adapters in `adapters/` (in-memory, Qdrant, Chroma, Postgres, Pinecone, Weaviate, Azure AI Search, Azure Cosmos DB NoSQL), and the pipeline fingerprint, manifest and write guard. Start at `adapter.py` and `registry.py`. |
 | [services](src/holodeck/services) | Shared services, including embedding support. |
 | [test runner](src/holodeck/lib/test_runner) | Agent execution and evaluation orchestration. Start at `executor.py`. |
-| [evaluators](src/holodeck/lib/evaluators) | NLP, Azure AI, and DeepEval metrics. |
+| [evaluators](src/holodeck/lib/evaluators) | DeepEval metrics, deterministic NLP metrics (BLEU, ROUGE, METEOR), and code graders. |
 | [eval run](src/holodeck/lib/eval_run) | Result serialization, metadata, redaction, and atomic file writes. |
 | [optimizer](src/holodeck/optimizer) | Candidate proposals, scoring, and optimization artifacts. |
 | [chat](src/holodeck/chat) | Interactive sessions, execution, and streaming. |
@@ -83,7 +85,17 @@ Decision-table loading occurs at import time in a sibling module, outside the wo
 Table changes require the same replay-versioning discipline as workflow code changes.
 
 External API tools use MCP. Local retrieval tools use shared initialization and
-provider-specific adapters. These boundaries let both runtimes reuse tool behavior.
+the adapters behind `holodeck.lib.retrieval`: tools depend on the contract, not on a
+store client. An adapter declares its capabilities, and an unsupported operation
+raises before ingestion. A collection records the pipeline that wrote it in a
+manifest, and a tool refuses writes from a different pipeline. These boundaries
+let both runtimes reuse tool behavior.
+
+The base install carries the runtime, the Claude backend, parsing and serving.
+Features are install extras: evaluation (`eval`, `nlp`), `optimizer`, `opensearch`,
+one extra per vector store, `openai-agents`, `dashboard`, `temporal`, `deploy*`,
+and the aggregate `all`. A command that needs a missing extra stops early with the
+install command. `make verify-profiles` installs the built wheel for each profile.
 
 ## Data, external systems, and operations
 
