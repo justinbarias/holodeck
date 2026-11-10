@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Remaining major upgrades.** `temporalio` 1.32 → 1.35 (exact pin), `opensearch-py` 2.8 → 3.2, `dash` 3.4 → 4.5, `twine` 6.2 → 7.0 and `ml-dtypes` 0.4 → 0.6. `twine` 6.2 could not read wheels with metadata 2.5, so the release `twine check` was failing. `pinecone` stays on `~=7.0`: Semantic Kernel's connector fails to import with 8+, and 7.1+ requires `packaging<25`, below the `virtualenv` security floor.
+
 - **Faster CLI start.** Commands now load only their own modules. Every command used to import the evaluation stack (pandas, DeepEval), Semantic Kernel and the agent SDKs at startup: a first `holodeck init` in a fresh environment drops from about 25 s to 1 s. `holodeck test` still loads what it needs. This also fixes subprocess tests that timed out on busy CI runners.
 
 - **DeepEval 4 and ChromaDB 1.5.** `deepeval` 3.8.9 → 4.3.3. It needs `posthog` 7, which `chromadb` 1.0.x rejects, so the `chromadb` extras now allow `<1.6` (locked 1.5.9). DeepEval 4 also accepts reasoning-model judges such as `gpt-6-luna`, which 3.8.9 rejected (it sent `temperature: 0`). The four ignored `chromadb` advisories are unchanged by 1.5.9.
