@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Native Weaviate adapter.** The `weaviate` provider runs on the asynchronous `weaviate-client` 4.x with native vector, BM25 and hybrid search, filtered reads, cursor pagination and source replacement. New `weaviate` extra (`weaviate-client>=4.24,<5`, also in `vectorstores`). The lock adds `weaviate-client` 4.24.1 and `validators` 0.36.0 and moves `grpcio` 1.85.1 to 1.78.2 (the client requires `grpcio<1.80`). The Semantic Kernel path never worked against a server, so no stored collections change; free-text record IDs are now stored as UUIDv5 with the original in a `holodeck_id` property, collection names are normalized to Weaviate's rules, and unknown database settings are an error. See the vector stores guide.
+
 - **OpenAI Agents native backend** (Feature #035) — `model.provider: openai` and `azure_openai` now run on a first-class backend built directly on the OpenAI Agents SDK (`Agent` + `Runner`), replacing the former Semantic Kernel agent path. Verified end-to-end against Azure OpenAI with the financial-assistant sample (hierarchical-document RAG over Qdrant + numeric eval).
   - **Tools**: Python `function` tools, plus `vectorstore` and `hierarchical_document` RAG tools (reusing the same `.search()`/embedding layer as the Claude backend; surfaced to the model as `{name}_search`).
   - **MCP**: `stdio` / `sse` / `http` transports map to the SDK MCP server classes with `${VAR}` env/header substitution and per-server `allowed_tools` static filtering; `transport: websocket` is skipped with a warning.

@@ -21,11 +21,17 @@ from holodeck.lib.retrieval.adapters.sk_bridge import (
     SKInMemoryAdapter,
     SKQdrantAdapter,
 )
+from holodeck.lib.retrieval.adapters.weaviate import WeaviateAdapter
 from tests.contract.retrieval import pinecone_local
 
 QDRANT_URL = "http://127.0.0.1:6333"
 CHROMA_URL = "http://127.0.0.1:8765"
 POSTGRES_URL = "postgresql://postgres:holodeck@127.0.0.1:54329/holodeck"
+WEAVIATE_CONNECTION = {
+    "local_host": "127.0.0.1",
+    "local_port": 8089,
+    "local_grpc_port": 50059,
+}
 
 
 @dataclass(frozen=True)
@@ -105,6 +111,11 @@ TARGETS: list[ContractTarget] = [
             schema, {"connection_string": POSTGRES_URL}
         ),
         available=port_open("127.0.0.1", 54329),
+    ),
+    ContractTarget(
+        name="weaviate",
+        build=lambda schema: WeaviateAdapter.create(schema, WEAVIATE_CONNECTION),
+        available=port_open("127.0.0.1", 8089),
     ),
     ContractTarget(
         name="pinecone-local",

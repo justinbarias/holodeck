@@ -50,6 +50,7 @@ uv add holodeck-ai[qdrant]        # Qdrant
 uv add holodeck-ai[postgres]      # PostgreSQL with pgvector
 uv add holodeck-ai[chromadb]      # ChromaDB
 uv add holodeck-ai[pinecone]      # Pinecone
+uv add holodeck-ai[weaviate]      # Weaviate
 uv add holodeck-ai[vectorstores]  # all of the above
 ```
 
@@ -63,6 +64,7 @@ The same extras work with `pip install holodeck-ai[<extra>]`.
 | `chromadb`  | Lightweight development, Python-native | Low              |
 | `postgres`  | Existing PostgreSQL infrastructure     | Medium           |
 | `pinecone`  | Serverless, managed cloud              | Low              |
+| `weaviate`  | Self-hosted or cloud, native hybrid search | Medium       |
 | `in-memory` | Testing and prototyping                | None             |
 
 See the [Tools Guide](tools.md) for the complete list.
@@ -270,6 +272,52 @@ Record IDs must be ASCII (at most 512 characters). A source file with a non-ASCI
 
 > **Note**: Pinecone Local reached end of life on 2026-10-07. The last emulator image (`ghcr.io/pinecone-io/pinecone-local:latest`, 1.0.0-rc0) speaks the pre-10 control plane, so the 10.x client cannot create indexes on it. HoloDeck's own tests use it with a small test-only control plane. For local development use the cloud service, or the in-memory, Qdrant or ChromaDB providers.
 
+### Weaviate
+
+[Weaviate](https://weaviate.io/) is an open-source vector database with a managed cloud. HoloDeck uses the `weaviate-client` 4.x asynchronous client (`holodeck-ai[weaviate]`) and supports every retrieval operation, including Weaviate's own hybrid search (vector plus BM25), so a `hybrid` tool does not build an in-process keyword index.
+
+```yaml
+# A server, for example Docker on this machine
+database:
+  provider: weaviate
+  local_host: localhost
+  local_port: 8080        # optional, default 8080
+  local_grpc_port: 50051  # optional, default 50051
+
+# Weaviate Cloud
+database:
+  provider: weaviate
+  url: https://my-cluster.weaviate.cloud
+  api_key: ${WEAVIATE_API_KEY}
+```
+
+| Setting | Meaning |
+|---------|---------|
+| `url`, `api_key` | Weaviate Cloud cluster (`https://` URL or host name) and its API key. The key is required. |
+| `local_host`, `local_port`, `local_grpc_port` | A server over plain HTTP and gRPC. Set `api_key` too when the server uses API key authentication. |
+| `connection_string` | `https://<cluster>` for Weaviate Cloud, or `http://host[:port]` for a server. Explicit settings win. |
+| `collection_name` | Collection name instead of the default. |
+
+`WEAVIATE_URL`, `WEAVIATE_LOCAL_HOST`, `WEAVIATE_LOCAL_PORT`, `WEAVIATE_LOCAL_GRPC_PORT` and `WEAVIATE_API_KEY` are used when the settings name no server. Set exactly one of a cloud `url` and `local_host`; unknown settings are an error. The embedded Weaviate mode that Semantic Kernel offered (`use_embed`) is not supported; run a server.
+
+To start a local server:
+
+```bash
+docker run -d -p 8080:8080 -p 50051:50051 \
+  -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true \
+  -e PERSISTENCE_DATA_PATH=/var/lib/weaviate \
+  -e DEFAULT_VECTORIZER_MODULE=none \
+  cr.weaviate.io/semitechnologies/weaviate:1.40.4
+```
+
+**Stored layout.** One Weaviate collection per HoloDeck collection, with the first letter upper-cased and every character outside `A-Z a-z 0-9 _` replaced by `_` (`documents_dim1536` becomes `Documents_dim1536`). It holds one self-provided named vector `embedding` (cosine, flat index), one property per data field, and a `holodeck_id` text property. The record ID is the object UUID: a UUID is stored as it is, any other ID (chunk IDs are free text) becomes a stable UUIDv5 of the collection and the ID, and the original goes into `holodeck_id`. Fields marked `indexed` get a filter index, and string fields use field tokenization, so a filter such as `source_path` matches the whole value exactly and case-sensitively; other fields have no index, and a filter on one is an error. This is the layout Semantic Kernel's Weaviate connector writes, apart from the property indexes and `holodeck_id`.
+
+Limits to know:
+
+- Semantic Kernel's Weaviate path never worked against a server (its cosine setting was rejected and it could not store free-text IDs), so there are no earlier HoloDeck Weaviate collections to migrate.
+- Weaviate returns at most `QUERY_MAXIMUM_RESULTS` (10,000) results for one query. Replacing the chunks of a single source file that has more chunks than that fails with an error instead of leaving stale chunks.
+- An existing collection must have the `embedding` named vector with cosine distance and matching property types, or HoloDeck raises an error and leaves it alone.
+
 ---
 
 ## Connection string formats
@@ -305,6 +353,15 @@ For remote Qdrant, add `api_key: ${QDRANT_API_KEY}`.
 ### Pinecone
 
 Pinecone uses API key authentication, or the `pinecone://pc-abc123@my-namespace` connection-string form (the key keeps its case; a namespace after `@` is lower-cased, as in earlier releases, so existing data stays visible; a `/namespace` path and the `namespace` setting keep their case).
+
+### Weaviate
+
+| Format | Example |
+|--------|---------|
+| Server (plain HTTP) | `http://localhost:8080` |
+| Weaviate Cloud | `https://my-cluster.weaviate.cloud` |
+
+For Weaviate Cloud, add `api_key: ${WEAVIATE_API_KEY}`.
 
 ---
 

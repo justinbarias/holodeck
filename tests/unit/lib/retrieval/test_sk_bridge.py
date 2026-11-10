@@ -33,6 +33,7 @@ from holodeck.lib.retrieval.adapters.sk_bridge import (
     SKBridgeAdapter,
     SKPineconeAdapter,
     SKQdrantAdapter,
+    SKWeaviateAdapter,
     build_definition,
 )
 from holodeck.lib.retrieval.registry import PROVIDERS
@@ -140,9 +141,10 @@ def test_definition_has_one_key_and_one_cosine_vector_field() -> None:
 
 
 # Providers that moved to a native adapter; their bridge class stays until T16.
-NATIVE = {"qdrant": "QdrantAdapter"}
+NATIVE = {"qdrant": "QdrantAdapter", "weaviate": "WeaviateAdapter"}
 BRIDGE_CLASSES: dict[str, type[SKBridgeAdapter]] = {
     "qdrant": SKQdrantAdapter,
+    "weaviate": SKWeaviateAdapter,
 }
 
 
@@ -179,14 +181,14 @@ def test_missing_client_without_an_extra_keeps_the_package_hint() -> None:
     with (
         patch(
             "holodeck.lib.vector_store.get_collection_class",
-            side_effect=ImportError("no weaviate"),
+            side_effect=ImportError("no faiss"),
         ),
         pytest.raises(MissingClientError) as raised,
     ):
-        create_adapter("weaviate", _schema(), {})
+        create_adapter("faiss", _schema(), {})
 
-    assert "pip install weaviate-client" in str(raised.value)
-    assert raised.value.provider == "weaviate"
+    assert "pip install faiss-cpu" in str(raised.value)
+    assert raised.value.provider == "faiss"
 
 
 # provider -> operations the bridge supports today

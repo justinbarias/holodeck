@@ -118,6 +118,9 @@ qdrant = [
 chromadb = [
     "chromadb>=0.5,<1.6",
 ]
+weaviate = [
+    "weaviate-client>=4.24,<5",
+]
 
 # Convenience group for all vector stores
 vectorstores = [
@@ -126,6 +129,7 @@ vectorstores = [
     "pgvector>=0.5,<1.0",
     "qdrant-client>=1.18,<2.0",
     "chromadb>=0.5,<1.6",
+    "weaviate-client>=4.24,<5",
 ]
 
 # OpenTelemetry exporters (install only what you need)
