@@ -24,7 +24,7 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "openai"  # 3.x needs litellm and openai-agents 0.21+ together
         update-types: ["version-update:semver-major"]
-      - dependency-name: "azure-mgmt-appcontainers"  # 5.x needs the deployer moved to its new API
+      - dependency-name: "pinecone"  # Semantic Kernel's connector needs ~=7.0; 8+ fails to import
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
