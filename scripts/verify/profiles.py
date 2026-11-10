@@ -134,6 +134,7 @@ EXTRA_MODULES: dict[str, tuple[str, ...]] = {
     "azure-blob": ("azure.storage.blob",),
     "all-sources": ("boto3", "azure.storage.blob"),
     "temporal": ("temporalio",),
+    "graphiti": ("graphiti_core", "neo4j"),
 }
 # The aggregate extra: every row above.
 ALL_EXTRA = "all"
@@ -171,6 +172,8 @@ PACKAGES: tuple[Package, ...] = (
     Package("dash", "dash", ("dashboard",)),
     Package("agents", "openai-agents", ("openai-agents",)),
     Package("temporalio", "temporalio", ("temporal",)),
+    Package("graphiti_core", "graphiti-core", ("graphiti",)),
+    Package("neo4j", "neo4j", ("graphiti",)),
     Package("qdrant_client", "qdrant-client", ("qdrant", "vectorstores")),
     Package("chromadb", "chromadb", ("chromadb", "vectorstores")),
     Package("psycopg", "psycopg", ("postgres", "vectorstores")),
@@ -280,6 +283,12 @@ PROFILES: tuple[Profile, ...] = (
         "features",
         probes=("temporal-imports",),
         cli=("worker-help",),
+    ),
+    Profile(
+        "graphiti",
+        ("graphiti",),
+        "features",
+        probes=("graphiti-imports",),
     ),
     Profile(
         "deploy",

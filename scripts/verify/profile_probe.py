@@ -512,6 +512,18 @@ def check_temporal_imports(spec: Spec) -> str:
     return "holodeck.temporal and temporalio.worker import"
 
 
+def check_graphiti_imports(spec: Spec) -> str:
+    """Graphiti and the clients the memory backend builds import (spec 043)."""
+    from graphiti_core import Graphiti  # noqa: F401
+    from graphiti_core.driver.neo4j_driver import Neo4jDriver  # noqa: F401
+    from graphiti_core.llm_client.anthropic_client import (  # noqa: F401
+        AnthropicClient,
+    )
+    from graphiti_core.search.search_filters import SearchFilters  # noqa: F401
+
+    return "graphiti_core, its Neo4j driver and Anthropic client import"
+
+
 def check_deploy_imports(spec: Spec) -> str:
     """The deploy engine and its cloud deployers import."""
     import holodeck.deploy  # noqa: F401
@@ -544,6 +556,7 @@ CHECKS: dict[str, Callable[[Spec], str]] = {
     "backends-import": check_backends_import,
     "dashboard-imports": check_dashboard_imports,
     "temporal-imports": check_temporal_imports,
+    "graphiti-imports": check_graphiti_imports,
     "deploy-imports": check_deploy_imports,
 }
 
