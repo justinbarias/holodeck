@@ -52,6 +52,7 @@ uv add holodeck-ai[chromadb]      # ChromaDB
 uv add holodeck-ai[pinecone]      # Pinecone
 uv add holodeck-ai[weaviate]      # Weaviate
 uv add holodeck-ai[azure-ai-search]  # Azure AI Search
+uv add holodeck-ai[azure-cosmos]  # Azure Cosmos DB NoSQL
 uv add holodeck-ai[vectorstores]  # all of the above
 ```
 
@@ -67,6 +68,7 @@ The same extras work with `pip install holodeck-ai[<extra>]`.
 | `pinecone`  | Serverless, managed cloud              | Low              |
 | `weaviate`  | Self-hosted or cloud, native hybrid search | Medium       |
 | `azure-ai-search` | Azure-hosted search, native hybrid | Medium         |
+| `azure-cosmos-nosql` | Existing Azure Cosmos DB accounts | Medium        |
 | `in-memory` | Testing and prototyping                | None             |
 
 See the [Tools Guide](tools.md) for the complete list.
@@ -300,6 +302,17 @@ database:
   provider: azure-ai-search
   connection_string: https://my-service.search.windows.net
   api_key: ${AZURE_AI_SEARCH_API_KEY}   # omit to use Microsoft Entra ID
+### Azure Cosmos DB NoSQL
+
+HoloDeck uses the `azure-cosmos` async client (`holodeck-ai[azure-cosmos]`) and stores each collection in one container of a Cosmos DB for NoSQL account. The provider name is `azure-cosmos-nosql`:
+
+```yaml
+database:
+  provider: azure-cosmos-nosql
+  url: https://my-account.documents.azure.com:443/
+  key: ${COSMOS_KEY}
+  database_name: holodeck
+  create_database: true   # optional
 ```
 
 | Setting | Meaning |
@@ -343,6 +356,25 @@ Unknown settings are an error. The index is created on first use with a key fiel
 Azure indexes documents asynchronously. After a write, HoloDeck checks for up to 10 seconds that a search shows the last document, then continues with a warning. The document count is approximate while indexing runs.
 
 > **Note**: Azure AI Search has no local emulator, and this adapter has been verified only against an in-memory fake of the client and against the SDK's request shapes with a stubbed transport. It has not been run against the Azure service. Ordering of string keys in range filters, indexing delay, and score values are therefore unobserved. Treat the first run on a real service as a check, and report problems.
+| `url` (or `endpoint`), `key` | Account URL and key. The environment variables `AZURE_COSMOS_DB_NO_SQL_URL` and `AZURE_COSMOS_DB_NO_SQL_KEY` are the fallbacks. Token credentials cannot be set from YAML. |
+| `connection_string` | The portal form `AccountEndpoint=...;AccountKey=...;` instead of `url` and `key`. |
+| `database_name` | Database that holds the container. Fallback: `AZURE_COSMOS_DB_NO_SQL_DATABASE_NAME`. |
+| `create_database` | Create the database when it is missing. Default `false`: a missing database is an error. |
+| `vector_index` | `flat`, `quantizedFlat` or `diskANN`, for a container HoloDeck creates. Default: `flat` up to 505 dimensions, `quantizedFlat` above (4096 at most). |
+| `full_text_search` | `true` creates a full-text policy and index and uses the service's hybrid search (`ORDER BY RANK RRF`). Default `false`. See below. |
+| `partition_key` | Only `id` or `/id`. |
+
+The account needs the vector search capability (`EnableNoSQLVectorSearch`). `full_text_search` also needs the full-text search capability. Unknown settings are an error.
+
+**Layout.** The container has the collection's name and the partition key `/id`. A document is `{id, <fields>, embedding}`. The vector embedding policy is `float32`, `cosine`, with the collection's dimensions. Fields that are neither `indexed` nor full-text are excluded from the index, and so is the vector. This is the layout Semantic Kernel created, so containers created before the move keep working. HoloDeck never changes an existing container. It rejects one with other dimensions or another partition key (`IncompatibleCollectionError`).
+
+**Vector index.** Semantic Kernel always used `flat`, which Cosmos DB limits to 505 dimensions, so it could not create a container for the default 1536-dimension embeddings. HoloDeck chooses `quantizedFlat` there. Cosmos DB cannot change a vector index in place, so set `vector_index` before the first run.
+
+**Record IDs.** Cosmos DB rejects item IDs with `/`, `\`, `?` or `#`, and HoloDeck chunk IDs often contain a file path. An ID that Cosmos DB accepts is stored unchanged. Any other ID is stored as `~hd~` plus the URL-safe base64 of the ID, and the original is kept in the `holodeck_id` field. HoloDeck decodes the ID on every read.
+
+**Hybrid search.** With `full_text_search: false` (the default) HoloDeck fuses its own BM25 results with the vector results, as it does for Postgres. With `true`, the keyword leg runs in Cosmos DB. This needs a full-text index. Cosmos DB cannot add one to an existing container, and Semantic Kernel never created one. For a container from the old path, keep the default or use a new container (a new `collection_name`). HoloDeck reports a container without the index with `IncompatibleCollectionError`. The service does not return the fused score, so hybrid results carry a rank-based score: only their order means something.
+
+**What was verified where.** The adapter passes the shared contract suite on the Linux Cosmos DB emulator (`mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview`, `--protocol http`) for every operation except hybrid search. It passes the whole suite, hybrid search included, on a test fake of the container API. The emulator accepts only the `diskANN` index, does not check the account key, does not report the vector embedding policy back, and does not support full-text search (`FullTextScore`, `RRF`): it drops the full-text policy and index. So `full_text_search: true`, the `ORDER BY RANK RRF` query, the `flat` and `quantizedFlat` indexes, key authentication and throttling have **not run against a Cosmos DB service**. The hybrid query text follows the service documentation and is checked by unit tests only.
 
 ---
 
@@ -396,6 +428,13 @@ Pinecone uses API key authentication, or the `pinecone://pc-abc123@my-namespace`
 | Weaviate Cloud | `https://my-cluster.weaviate.cloud` |
 
 For Weaviate Cloud, add `api_key: ${WEAVIATE_API_KEY}`.
+### Azure Cosmos DB NoSQL
+
+| Format | Example |
+|--------|---------|
+| URL and key | `url: https://my-account.documents.azure.com:443/` and `key: ...` |
+| Portal form | `AccountEndpoint=https://my-account.documents.azure.com:443/;AccountKey=...;` |
+| Local emulator | `url: http://127.0.0.1:8081` (the emulator's published key) |
 
 ---
 

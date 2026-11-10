@@ -675,6 +675,19 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-cosmos"
+version = "4.17.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d0/6d/5604820fa3417d98e61c57d07447500fce600d10695bed02f396c2d548b7/azure_cosmos-4.17.1.tar.gz", hash = "sha256:d692928a54d88163e96d41d8f899229ca2f6a6bf21973ece2bfc1f72d4b4edd8", size = 2494950, upload-time = "2026-09-16T22:21:15.154Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/04/d99d0b32c9265d0890b071fc062ae76c0dedc94a8071b9c36c8b0962d6a2/azure_cosmos-4.17.1-py3-none-any.whl", hash = "sha256:a33b796d055d1923b6dc7b6195aa1cfb5ae786dbc38771bb4ad702b0e5ec18db", size = 505766, upload-time = "2026-09-16T22:21:17.575Z" },
+]
+
+[[package]]
 name = "azure-identity"
 version = "1.27.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2520,6 +2533,9 @@ azure-ai-search = [
 azure-blob = [
     { name = "azure-storage-blob" },
 ]
+azure-cosmos = [
+    { name = "azure-cosmos" },
+]
 chromadb = [
     { name = "chromadb" },
 ]
@@ -2602,6 +2618,7 @@ temporal = [
     { name = "temporalio" },
 ]
 vectorstores = [
+    { name = "azure-cosmos" },
     { name = "azure-identity" },
     { name = "azure-search-documents" },
     { name = "chromadb" },
@@ -2630,6 +2647,8 @@ requires-dist = [
     { name = "authlib", specifier = ">=1.9.1" },
     { name = "azure-ai-evaluation", specifier = ">=1.13.0,<2.0.0" },
     { name = "azure-core", specifier = ">=1.38.0" },
+    { name = "azure-cosmos", marker = "extra == 'azure-cosmos'", specifier = ">=4.17,<5" },
+    { name = "azure-cosmos", marker = "extra == 'vectorstores'", specifier = ">=4.17,<5" },
     { name = "azure-identity", marker = "extra == 'azure-ai-search'", specifier = ">=1.15.0" },
     { name = "azure-identity", marker = "extra == 'deploy-all'", specifier = ">=1.15.0" },
     { name = "azure-identity", marker = "extra == 'deploy-azure'", specifier = ">=1.15.0" },
@@ -2729,7 +2748,7 @@ requires-dist = [
     { name = "weaviate-client", marker = "extra == 'weaviate'", specifier = ">=4.24,<5" },
     { name = "werkzeug", specifier = ">=3.1.9" },
 ]
-provides-extras = ["all-sources", "azure-ai-search", "azure-blob", "chromadb", "claude-otel", "dashboard", "deploy", "deploy-all", "deploy-aws", "deploy-azure", "deploy-gcp", "dev", "openai-agents", "otel-all", "otel-azmon", "otel-prometheus", "pinecone", "postgres", "qdrant", "s3", "temporal", "vectorstores", "weaviate"]
+provides-extras = ["all-sources", "azure-ai-search", "azure-blob", "azure-cosmos", "chromadb", "claude-otel", "dashboard", "deploy", "deploy-all", "deploy-aws", "deploy-azure", "deploy-gcp", "dev", "openai-agents", "otel-all", "otel-azmon", "otel-prometheus", "pinecone", "postgres", "qdrant", "s3", "temporal", "vectorstores", "weaviate"]
 
 [package.metadata.requires-dev]
 dev = [

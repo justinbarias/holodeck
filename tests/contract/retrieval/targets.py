@@ -17,6 +17,7 @@ from holodeck.lib.retrieval.adapters.azure_ai_search import (
     AzureSearchSettings,
 )
 from holodeck.lib.retrieval.adapters.chroma import ChromaAdapter
+from holodeck.lib.retrieval.adapters.cosmos_nosql import CosmosNoSqlAdapter
 from holodeck.lib.retrieval.adapters.in_memory import InMemoryAdapter
 from holodeck.lib.retrieval.adapters.postgres import PostgresAdapter
 from holodeck.lib.retrieval.adapters.qdrant import QdrantAdapter
@@ -26,7 +27,7 @@ from holodeck.lib.retrieval.adapters.sk_bridge import (
     SKQdrantAdapter,
 )
 from holodeck.lib.retrieval.adapters.weaviate import WeaviateAdapter
-from tests.contract.retrieval import pinecone_local
+from tests.contract.retrieval import cosmos_emulator, cosmos_fake, pinecone_local
 from tests.contract.retrieval.azure_search_fake import FakeSearchService
 
 QDRANT_URL = "http://127.0.0.1:6333"
@@ -141,4 +142,15 @@ TARGETS: list[ContractTarget] = [
         available=pinecone_local.skip_reason,
     ),
     ContractTarget(name="azure-ai-search:fake", build=build_azure_fake),
+    ContractTarget(
+        name="azure-cosmos-nosql:emulator",
+        build=lambda schema: CosmosNoSqlAdapter.create(
+            schema, cosmos_emulator.connection()
+        ),
+        available=cosmos_emulator.skip_reason,
+    ),
+    ContractTarget(
+        name="azure-cosmos-nosql:fake",
+        build=cosmos_fake.FakeCosmosAdapter.build,
+    ),
 ]

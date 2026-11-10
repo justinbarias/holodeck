@@ -126,6 +126,9 @@ chromadb = [
 weaviate = [
     "weaviate-client>=4.24,<5",
 ]
+azure-cosmos = [
+    "azure-cosmos>=4.17,<5",
+]
 
 # Convenience group for all vector stores
 vectorstores = [
@@ -137,6 +140,7 @@ vectorstores = [
     "qdrant-client>=1.18,<2.0",
     "chromadb>=0.5,<1.6",
     "weaviate-client>=4.24,<5",
+    "azure-cosmos>=4.17,<5",
 ]
 
 # OpenTelemetry exporters (install only what you need)
