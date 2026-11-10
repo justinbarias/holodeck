@@ -12,7 +12,7 @@ from __future__ import annotations
 import importlib
 from types import ModuleType
 
-from holodeck.lib.errors import HoloDeckError
+from holodeck.lib.errors import UserFixableError
 
 
 def install_command(extra: str) -> str:
@@ -20,7 +20,7 @@ def install_command(extra: str) -> str:
     return f"pip install 'holodeck-ai[{extra}]'"
 
 
-class MissingExtraError(HoloDeckError):
+class MissingExtraError(UserFixableError):
     """A feature needs an install extra that is not installed.
 
     Attributes:

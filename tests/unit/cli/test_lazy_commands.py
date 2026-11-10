@@ -18,6 +18,8 @@ from click.testing import CliRunner
 
 from holodeck.cli.lazy_group import LazyGroup
 from holodeck.cli.main import main
+from holodeck.lib.extras import MissingExtraError
+from holodeck.lib.retrieval import RetiredProviderError
 
 HEAVY = ("pandas", "deepeval", "claude_agent_sdk", "agents")
 # Modules from optional install extras (042 T21) and from dev-only tooling.
@@ -174,3 +176,36 @@ def test_concurrent_first_lookups_all_get_the_command() -> None:
     assert len(results) == 8
     assert all(isinstance(r, click.Command) for r in results), results
     assert len({id(r) for r in results}) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            MissingExtraError("Qdrant", "qdrant"),
+            "Error: Qdrant needs the 'qdrant' extra",
+        ),
+        (
+            RetiredProviderError("faiss", "Use 'chromadb' instead."),
+            "Config Error: Vector store provider 'faiss' is no longer supported. "
+            "Use 'chromadb' instead.",
+        ),
+    ],
+    ids=["missing-extra", "retired-provider"],
+)
+def test_user_fixable_errors_print_one_line_and_exit_2(
+    error: Exception, expected: str
+) -> None:
+    @click.group(cls=LazyGroup)
+    def group() -> None:
+        pass
+
+    @group.command()
+    def boom() -> None:
+        raise error
+
+    result = CliRunner().invoke(group, ["boom"])
+    assert result.exit_code == 2
+    assert expected in result.output
+    assert "Traceback" not in result.output

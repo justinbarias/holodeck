@@ -15,7 +15,9 @@ from pathlib import Path
 
 import pytest
 
+from holodeck.lib.retrieval import StoreConnectionError
 from holodeck.lib.retrieval.registry import PROVIDERS
+from scripts.verify import profile_probe as probe_module
 from scripts.verify.procs import Check
 from scripts.verify.profile_probe import CHECKS as PROBE_CHECKS
 from scripts.verify.profile_probe import OFFLINE_SETTINGS, format_result
@@ -36,6 +38,7 @@ from scripts.verify.profiles import (
     overrides_from_pyproject,
     parse_probe_output,
     pip_check_problems,
+    pip_check_verdict,
     present_modules,
     profile_by_name,
     render_profile,
@@ -291,6 +294,83 @@ def test_pip_check_ignores_only_overridden_requirements() -> None:
     ]
     assert len(pip_check_problems(PIP_CHECK, [])) == 2
     assert pip_check_problems("All installed packages are compatible", []) == []
+
+
+OVERRIDE_ONLY = """\
+Checked 143 packages in 22ms
+Found 1 incompatibility
+The package `bkflow-feel` requires `pytz<2024`, but `2026.6` is installed
+"""
+
+
+def test_pip_check_clean_pass() -> None:
+    output = "All installed packages are compatible"
+    assert pip_check_verdict(0, output, ["pytz"]) == []
+
+
+def test_pip_check_passes_when_only_override_targets_conflict() -> None:
+    assert pip_check_verdict(1, OVERRIDE_ONLY, ["pytz"]) == []
+
+
+def test_pip_check_fails_on_an_extra_conflict() -> None:
+    problems = pip_check_verdict(1, PIP_CHECK, ["pytz"])
+    assert problems == ["The package `foo` requires `bar>=2`, but `1.0` is installed"]
+
+
+def test_pip_check_fails_on_a_timeout() -> None:
+    (problem,) = pip_check_verdict(124, "timed out after 120s", ["pytz"])
+    assert "timed out" in problem
+
+
+def test_pip_check_fails_on_an_execution_error() -> None:
+    (problem,) = pip_check_verdict(2, "error: no such interpreter", ["pytz"])
+    assert "exited 2" in problem
+    assert "no such interpreter" in problem
+
+
+def test_pip_check_fails_on_unparsable_output_with_a_nonzero_exit() -> None:
+    (problem,) = pip_check_verdict(1, "something unexpected", ["pytz"])
+    assert "no parsable report" in problem
+
+
+# -- The adapter probe ----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        TypeError("unexpected keyword argument"),
+        AttributeError("no attribute"),
+        ImportError("cannot import name"),
+        RuntimeError("anything else"),
+    ],
+    ids=lambda error: type(error).__name__,
+)
+def test_adapter_probe_fails_on_programming_errors(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    def fail(spec: object, provider: str, workdir: str) -> None:
+        raise error
+
+    monkeypatch.setattr(probe_module, "_adapter_for", fail)
+    with pytest.raises(AssertionError, match=type(error).__name__):
+        probe_module.check_adapter_constructs({"store_provider": "qdrant"})
+
+
+@pytest.mark.parametrize(
+    "error",
+    [StoreConnectionError("qdrant", "refused"), ConnectionError(), TimeoutError()],
+    ids=lambda error: type(error).__name__,
+)
+def test_adapter_probe_allows_connection_errors(
+    monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    def fail(spec: object, provider: str, workdir: str) -> None:
+        raise error
+
+    monkeypatch.setattr(probe_module, "_adapter_for", fail)
+    detail = probe_module.check_adapter_constructs({"store_provider": "qdrant"})
+    assert "unreachable" in detail
 
 
 # -- Tables -------------------------------------------------------------------

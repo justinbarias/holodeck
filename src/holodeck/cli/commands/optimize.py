@@ -358,7 +358,12 @@ def optimize(
         )
         click.echo(f"Artifacts written to {run_dir}", err=json_progress)
 
-    except (OptimizerError, MissingExtraError) as exc:
+    except MissingExtraError as exc:
+        # Keep the machine-readable fatal event, then let the CLI group print
+        # the install command and exit 2 like every other missing extra.
+        emitter.emit(ErrorEvent(message=str(exc), fatal=True))
+        raise
+    except OptimizerError as exc:
         emitter.emit(ErrorEvent(message=str(exc), fatal=True))
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)

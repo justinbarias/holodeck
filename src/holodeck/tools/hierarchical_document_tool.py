@@ -48,7 +48,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from holodeck.lib.file_processor import PARSER_POLICY
-from holodeck.lib.keyword_search import HybridSearchExecutor
+from holodeck.lib.keyword_search import (
+    HybridSearchExecutor,
+    require_keyword_index_client,
+)
 from holodeck.lib.retrieval import (
     Operation,
     Record,
@@ -426,11 +429,22 @@ class HierarchicalDocumentTool(
         self._collection_schema = schema
         self._connection = dict(connection_kwargs)
         self._adapter.capabilities.require(*_REQUIRED_OPERATIONS)
+        self._check_keyword_index_dependency()
 
         logger.debug(
             f"Collection setup: provider={self._provider}, "
             f"dimensions={self._embedding_dimensions}"
         )
+
+    def _check_keyword_index_dependency(self) -> None:
+        """Fail now if the configured keyword index needs a missing extra.
+
+        Raises:
+            MissingExtraError: The OpenSearch index will be used and
+                opensearch-py is not installed.
+        """
+        if self._adapter is not None:
+            require_keyword_index_client(self._adapter, self.config.keyword_index)
 
     def pipeline_inputs(self) -> PipelineInputs:
         """Return the inputs of this tool's ingestion pipeline (FR-023)."""

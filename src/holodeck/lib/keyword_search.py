@@ -390,6 +390,27 @@ def require_opensearch() -> ModuleType:
     return require_extra("opensearchpy", "opensearch", OPENSEARCH_FEATURE)
 
 
+def require_keyword_index_client(
+    adapter: VectorStoreAdapter, keyword_index_config: KeywordIndexConfig | None
+) -> None:
+    """Raise ``MissingExtraError`` if the keyword index needs a missing client.
+
+    The OpenSearch index is built only when the store has no native hybrid
+    search. Callers run this before ingestion, so a missing ``opensearch``
+    extra fails before any embedding call or store write.
+
+    Raises:
+        MissingExtraError: ``opensearch`` is configured, will be used, and
+            opensearch-py is not installed.
+    """
+    if (
+        keyword_index_config is not None
+        and keyword_index_config.provider == "opensearch"
+        and not adapter.capabilities.supports(Operation.HYBRID_SEARCH)
+    ):
+        require_opensearch()
+
+
 class OpenSearchKeywordProvider:
     """OpenSearch-backed keyword search provider with multi-field indexing.
 
@@ -680,14 +701,9 @@ class HybridSearchExecutor:
         self.keyword_weight = keyword_weight
         self.rrf_k = rrf_k
         self.keyword_index_config = keyword_index_config
-        if (
-            self.strategy == KeywordSearchStrategy.FALLBACK_BM25
-            and keyword_index_config is not None
-            and keyword_index_config.provider == "opensearch"
-        ):
-            # Fail when the tool is built, not later in build_keyword_index,
-            # which degrades to semantic-only search on errors.
-            require_opensearch()
+        # Fail when the tool is built, not later in build_keyword_index,
+        # which degrades to semantic-only search on errors.
+        require_keyword_index_client(adapter, keyword_index_config)
         self._chunk_decoder = chunk_decoder
         self._keyword_index: (
             InMemoryBM25KeywordProvider | OpenSearchKeywordProvider | None

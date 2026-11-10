@@ -174,12 +174,14 @@ def check_vectorstore_roundtrip(spec: Spec) -> str:
             (docs / "note.txt").write_text(
                 "HoloDeck runs agents from YAML. Vector search finds documents."
             )
-            config = ToolConfig(
-                name="kb",
-                description="profile check",
-                source=str(docs),
-                embedding_dimensions=8,
-                top_k=3,
+            config = ToolConfig.model_validate(
+                {
+                    "name": "kb",
+                    "description": "profile check",
+                    "source": str(docs),
+                    "embedding_dimensions": 8,
+                    "top_k": 3,
+                }
             )
             tool = VectorStoreTool(config, base_dir=directory)
             await tool.initialize(provider_type="openai", force_ingest=True)
@@ -226,7 +228,6 @@ def check_qdrant_tool_names_extra(spec: Spec) -> str:
     import logging
 
     from holodeck.lib.extras import MissingExtraError
-    from holodeck.models.tool import DatabaseConfig
     from holodeck.models.tool import VectorstoreTool as ToolConfig
     from holodeck.tools.vectorstore_tool import VectorStoreTool
 
@@ -240,12 +241,14 @@ def check_qdrant_tool_names_extra(spec: Spec) -> str:
     async def run() -> VectorStoreTool:
         with tempfile.TemporaryDirectory() as directory:
             (Path(directory) / "note.txt").write_text("HoloDeck profile check.")
-            config = ToolConfig(
-                name="kb",
-                description="profile check",
-                source=directory,
-                embedding_dimensions=8,
-                database=DatabaseConfig(provider="qdrant", location=":memory:"),
+            config = ToolConfig.model_validate(
+                {
+                    "name": "kb",
+                    "description": "profile check",
+                    "source": directory,
+                    "embedding_dimensions": 8,
+                    "database": {"provider": "qdrant", "location": ":memory:"},
+                }
             )
             tool = VectorStoreTool(config, base_dir=directory)
             await tool.initialize(provider_type="openai", force_ingest=True)
@@ -361,13 +364,21 @@ def check_executor_builds_evaluators(spec: Spec) -> str:
 
 def check_optimizer_study(spec: Spec) -> str:
     """The numeric proposer builds an Optuna study and suggests a value."""
+    from holodeck.models.agent import Agent
     from holodeck.optimizer.config import NumericAxis
     from holodeck.optimizer.proposers.numeric import NumericProposer
 
     proposer = NumericProposer(
         [NumericAxis(path="model.temperature", type="float", range=[0.0, 1.0])], seed=7
     )
-    proposer.begin(None, None)
+    agent = Agent.model_validate(
+        {
+            "name": "profile-check",
+            "model": {"provider": "openai", "name": "gpt-4o"},
+            "instructions": {"inline": "Profile check."},
+        }
+    )
+    proposer.begin(agent, None)
     proposal = asyncio.run(proposer.ask())
     if proposal is None:
         raise AssertionError("the proposer suggested nothing")
@@ -395,17 +406,27 @@ def _adapter_for(spec: Spec, provider: str, workdir: str) -> Any:
 
 
 def check_adapter_constructs(spec: Spec) -> str:
-    """The profile's store adapter builds; only a store error may follow."""
-    from holodeck.lib.retrieval import MissingClientError
+    """The profile's store adapter builds without a network connection.
+
+    Construction succeeds, or fails only with a connection error that names an
+    unreachable store (``StoreConnectionError``, ``ConnectionError``,
+    ``TimeoutError``). Anything else is a defect in the adapter or the client
+    library (``TypeError``, ``AttributeError``, ``ImportError``, a missing
+    client) and fails the probe.
+    """
+    from holodeck.lib.retrieval import StoreConnectionError
 
     provider = spec["store_provider"]
     with tempfile.TemporaryDirectory() as workdir:
         try:
             adapter = _adapter_for(spec, provider, workdir)
-        except MissingClientError:
-            raise
-        except Exception as error:  # noqa: BLE001
-            return f"settings/connection error only: {type(error).__name__}"
+        except (StoreConnectionError, ConnectionError, TimeoutError) as error:
+            return f"store unreachable, as allowed: {type(error).__name__}"
+        except Exception as error:
+            raise AssertionError(
+                f"{provider} adapter construction failed: "
+                f"{type(error).__name__}: {error}"
+            ) from error
         asyncio.run(adapter.close())
     return f"{provider} adapter built"
 

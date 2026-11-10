@@ -13,6 +13,7 @@ Test IDs:
 """
 
 import logging
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from types import SimpleNamespace
@@ -2942,3 +2943,55 @@ class TestInitializeRebuild:
             result = await tool._ingest_documents(force_ingest=False)
 
             assert result == 1  # One file discovered, one skipped
+
+
+class TestOpenSearchExtraCheckedBeforeIngestion:
+    """The ``opensearch`` extra is checked when the tool initializes (042).
+
+    A missing extra must fail before any embedding call or store write, not
+    after the corpus has been contextualized, embedded and stored.
+    """
+
+    @staticmethod
+    def _opensearch_config(tmp_path: Path) -> HierarchicalDocumentToolConfig:
+        return create_config(
+            tmp_path,
+            keyword_index={
+                "provider": "opensearch",
+                "endpoint": "https://opensearch.test:9200",
+                "index_name": "docs",
+            },
+        )
+
+    @pytest.mark.asyncio
+    async def test_missing_extra_fails_before_embedding_or_storage(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from holodeck.lib.extras import MissingExtraError
+
+        monkeypatch.setitem(sys.modules, "opensearchpy", None)
+        tool = HierarchicalDocumentTool(self._opensearch_config(tmp_path))
+        embedding_service = MagicMock()
+        embedding_service.generate_embeddings = AsyncMock(return_value=[[0.1] * 1536])
+        tool.set_embedding_service(embedding_service)
+        adapter = _fake("in-memory")
+        adapter.upsert = AsyncMock(wraps=adapter.upsert)  # type: ignore[method-assign]
+
+        with (
+            patch.object(tool, "_create_adapter_with_fallback", return_value=adapter),
+            pytest.raises(MissingExtraError, match=r"holodeck-ai\[opensearch\]"),
+        ):
+            await tool.initialize(force_ingest=True)
+
+        assert embedding_service.generate_embeddings.await_count == 0
+        assert adapter.upsert.await_count == 0
+
+    def test_native_hybrid_provider_does_not_need_the_extra(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A native-hybrid store never builds the OpenSearch index."""
+        monkeypatch.setitem(sys.modules, "opensearchpy", None)
+        tool = HierarchicalDocumentTool(self._opensearch_config(tmp_path))
+        tool._adapter = _fake("qdrant", native_hybrid=True)
+
+        tool._check_keyword_index_dependency()  # does not raise

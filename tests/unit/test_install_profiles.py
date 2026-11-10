@@ -15,6 +15,7 @@ interpreter (``sys.modules[name] = None``) and check that:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -320,9 +321,26 @@ def test_optimize_without_optuna_prints_the_install_command(tmp_path: Path) -> N
         ["test", "optimize", str(agent_yaml)], blocked=BASE_BLOCKED, cwd=tmp_path
     )
 
-    assert result.returncode != 0
+    assert result.returncode == 2, result.stdout + result.stderr
     assert "pip install 'holodeck-ai[optimizer]'" in result.stderr
     assert "Traceback" not in result.stdout + result.stderr
+
+
+def test_optimize_without_optuna_keeps_the_json_fatal_event(tmp_path: Path) -> None:
+    agent_yaml = tmp_path / "agent.yaml"
+    agent_yaml.write_text(AGENT_YAML.format(metric=METRICS["equality"]))
+
+    result = _cli(
+        ["test", "optimize", str(agent_yaml), "--progress", "json"],
+        blocked=BASE_BLOCKED,
+        cwd=tmp_path,
+    )
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    assert events[-1]["fatal"] is True
+    assert "pip install 'holodeck-ai[optimizer]'" in events[-1]["message"]
+    assert "pip install 'holodeck-ai[optimizer]'" in result.stderr
 
 
 # -- Unrelated commands still work on a base install ---------------------------
@@ -357,10 +375,13 @@ def test_base_install_loads_config_and_builds_a_metricless_executor(
     assert "OK verify-smoke-claude ['equality']" in out
 
 
-def test_base_install_runs_a_test_case_against_the_fake_provider(
-    tmp_path: Path,
-) -> None:
-    """``holodeck test run`` with no extra-backed metric, end to end, offline."""
+def _run_test_against_fake_provider(
+    tmp_path: Path, yaml_name: str, *, extra_tools_yaml: str = ""
+) -> subprocess.CompletedProcess[str]:
+    """Run ``holodeck test run`` on a smoke fixture, offline, on a base install.
+
+    *extra_tools_yaml* is inserted at the top of the fixture's ``tools:`` list.
+    """
     pytest.importorskip("agents")
     import shutil
 
@@ -368,6 +389,14 @@ def test_base_install_runs_a_test_case_against_the_fake_provider(
 
     agents_dir = tmp_path / "agents"
     shutil.copytree(ROOT / "tests" / "fixtures" / "verify", agents_dir)
+    agent_path = agents_dir / yaml_name
+    if extra_tools_yaml:
+        text = agent_path.read_text(encoding="utf-8")
+        marker = "tools:\n"
+        assert marker in text
+        agent_path.write_text(
+            text.replace(marker, marker + extra_tools_yaml, 1), encoding="utf-8"
+        )
     home = tmp_path / "home"
     home.mkdir()
     port = free_port()
@@ -380,22 +409,19 @@ def test_base_install_runs_a_test_case_against_the_fake_provider(
         "--log",
         str(tmp_path / "provider.jsonl"),
     ]
+    blocked = (*BASE_BLOCKED, "qdrant_client")
     with background(
         provider_args, cwd=ROOT, env=scrubbed_env({}), log=tmp_path / "provider.log"
     ) as provider:
         assert wait_http(f"{url}/health", provider, timeout=30) is None
         prelude = (
-            f"import sys\nfor _name in {BASE_BLOCKED!r}:\n"
-            "    sys.modules[_name] = None\n"
+            f"import sys\nfor _name in {blocked!r}:\n    sys.modules[_name] = None\n"
         )
-        result = subprocess.run(
+        return subprocess.run(
             [
                 sys.executable,
                 "-c",
-                prelude
-                + CLI.format(
-                    argv=["test", "run", str(agents_dir / "smoke-openai.yaml")]
-                ),
+                prelude + CLI.format(argv=["test", "run", str(agent_path)]),
             ],
             capture_output=True,
             text=True,
@@ -410,4 +436,36 @@ def test_base_install_runs_a_test_case_against_the_fake_provider(
                 }
             ),
         )
+
+
+def test_base_install_runs_a_test_case_against_the_fake_provider(
+    tmp_path: Path,
+) -> None:
+    """``holodeck test run`` with no extra-backed metric, end to end, offline."""
+    result = _run_test_against_fake_provider(tmp_path, "smoke-openai.yaml")
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+QDRANT_TOOL = """\
+  - name: kb
+    type: vectorstore
+    description: Knowledge base on Qdrant.
+    source: rag/kb
+    top_k: 2
+    database:
+      provider: qdrant
+      connection_string: http://127.0.0.1:6333
+"""
+
+
+def test_test_run_with_a_qdrant_tool_and_no_extra_prints_the_install_command(
+    tmp_path: Path,
+) -> None:
+    """The missing extra reaches the CLI unwrapped: one line, exit 2."""
+    result = _run_test_against_fake_provider(
+        tmp_path, "smoke-openai.yaml", extra_tools_yaml=QDRANT_TOOL
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == 2, output
+    assert "pip install 'holodeck-ai[qdrant]'" in result.stderr
+    assert "Traceback" not in output

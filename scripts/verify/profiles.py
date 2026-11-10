@@ -402,6 +402,28 @@ def pip_check_problems(output: str, overridden: Sequence[str]) -> list[str]:
     return problems
 
 
+def pip_check_verdict(
+    returncode: int, output: str, overridden: Sequence[str]
+) -> list[str]:
+    """Return what makes ``uv pip check`` fail; an empty list is a pass.
+
+    ``uv pip check`` exits 0 when every requirement holds and 1 when it lists
+    incompatibilities. Any other code (124 is a timeout, 2 an execution error)
+    fails. Exit 1 passes only when every listed incompatibility is a
+    documented override target; output that lists none fails too.
+    """
+    if returncode == 0:
+        return []
+    tail = last_lines(output) or "no output"
+    if returncode == 124:
+        return [f"uv pip check timed out: {tail}"]
+    if returncode != 1:
+        return [f"uv pip check exited {returncode}: {tail}"]
+    if not re.search(r"^The package `", output, flags=re.MULTILINE):
+        return [f"uv pip check exited 1 with no parsable report: {tail}"]
+    return pip_check_problems(output, overridden)
+
+
 def human_size(size: int) -> str:
     """Format *size* bytes as MB."""
     return f"{size / (1024 * 1024):.0f} MB"
@@ -765,8 +787,8 @@ def cli_init_scaffold(venv: VenvEnv) -> Check:
 
 def _needs_extra(name: str, venv: VenvEnv, args: Sequence[str], command: str) -> Check:
     code, out = _cli(venv, args)
-    if code == 0:
-        return Check(name, "FAIL", "exited 0 without the extra")
+    if code != 2:
+        return Check(name, "FAIL", f"exit {code}, want 2: {last_lines(out)}")
     if "Traceback" in out:
         return Check(name, "FAIL", f"traceback: {last_lines(out)}")
     if command not in out:
@@ -912,8 +934,8 @@ def run_profile(profile: Profile, workspace: Workspace, python: str) -> ProfileR
         env=env,
         timeout=CLI_TIMEOUT,
     )
-    broken = pip_check_problems(
-        checked.stdout + checked.stderr, workspace.overridden_names
+    broken = pip_check_verdict(
+        checked.returncode, checked.stdout + checked.stderr, workspace.overridden_names
     )
     result.checks.append(
         Check(

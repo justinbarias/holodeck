@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from holodeck.lib.errors import HoloDeckError
+from holodeck.lib.errors import HoloDeckError, UserFixableError
 from holodeck.lib.extras import MissingExtraError
 
 
@@ -38,7 +38,7 @@ class MissingClientError(RetrievalError, MissingExtraError):
         MissingExtraError.__init__(self, f"Vector store provider '{provider}'", extra)
 
 
-class RetiredProviderError(RetrievalError):
+class RetiredProviderError(RetrievalError, UserFixableError):
     """The provider name was supported once and has been retired."""
 
     def __init__(self, provider: str, migration: str) -> None:

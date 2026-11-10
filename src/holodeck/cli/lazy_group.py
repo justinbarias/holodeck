@@ -14,6 +14,7 @@ import threading
 
 import click
 
+from holodeck.lib.errors import UserFixableError
 from holodeck.lib.extras import MissingExtraError
 
 
@@ -31,16 +32,19 @@ class LazyGroup(click.Group):
         self._load_lock = threading.Lock()
 
     def invoke(self, ctx: click.Context) -> object:
-        """Run the subcommand; report a missing install extra in one line.
+        """Run the subcommand; report an error the user must fix in one line.
 
-        A command that needs an optional extra raises ``MissingExtraError``.
-        Print its message (which carries the install command) without a
-        traceback and exit 2, like a usage error.
+        A command that needs an optional extra raises ``MissingExtraError``;
+        one that uses a retired provider raises ``RetiredProviderError``.
+        Both are ``UserFixableError``. Command handlers let them through, and
+        this prints the message (the install command or the migration text)
+        without a traceback and exits 2, like a usage error.
         """
         try:
             return super().invoke(ctx)
-        except MissingExtraError as error:
-            click.echo(f"Error: {error}", err=True)
+        except UserFixableError as error:
+            label = "Error" if isinstance(error, MissingExtraError) else "Config Error"
+            click.echo(f"{label}: {error}", err=True)
             raise click.exceptions.Exit(2) from None
 
     def list_commands(self, ctx: click.Context) -> list[str]:

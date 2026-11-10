@@ -1100,6 +1100,29 @@ class TestRagInstanceInit:
         assert build_tools.call_args.kwargs["tool_instances"] == fake_instances
 
     @pytest.mark.asyncio
+    async def test_missing_extra_is_not_wrapped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from holodeck.lib.extras import MissingExtraError
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        backend = OpenAIAgentsBackend(_agent_with_vectorstore())
+        error = MissingExtraError("Vector store provider 'qdrant'", "qdrant")
+        with (
+            patch("agents.Agent", return_value=MagicMock()),
+            patch("agents.ModelSettings"),
+            patch("agents.set_default_openai_key"),
+            patch(
+                "holodeck.lib.tool_initializer.initialize_tools",
+                new=AsyncMock(side_effect=error),
+            ),
+            patch("holodeck.lib.backends.validators.validate_embedding_provider"),
+            pytest.raises(MissingExtraError) as raised,
+        ):
+            await backend.initialize()
+        assert raised.value is error
+
+    @pytest.mark.asyncio
     async def test_initialize_skips_rag_init_without_rag_tools(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

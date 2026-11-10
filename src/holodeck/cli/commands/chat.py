@@ -18,7 +18,12 @@ from holodeck.chat import ChatSessionManager, LiveComposer, ToolsPanel
 from holodeck.chat.executor import AgentExecutor, AgentResponse
 from holodeck.chat.progress import ChatProgressIndicator
 from holodeck.lib.backends.base import ToolEvent
-from holodeck.lib.errors import AgentInitializationError, ConfigError, ExecutionError
+from holodeck.lib.errors import (
+    AgentInitializationError,
+    ConfigError,
+    ExecutionError,
+    UserFixableError,
+)
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.observability import (
     ObservabilityContext,
@@ -226,6 +231,9 @@ def chat(
         logger.info("Chat session ended normally")
         sys.exit(0)
 
+    except UserFixableError:
+        # A missing extra or retired provider: the CLI group prints it.
+        raise
     except ConfigError as e:
         logger.error(f"Configuration error: {e}", exc_info=True)
         click.secho("Error: Failed to load agent configuration", fg="red", err=True)
@@ -314,6 +322,8 @@ async def _run_chat_session(
         try:
             logger.debug("Starting chat session")
             await session_manager.start()
+        except UserFixableError:
+            raise  # the CLI group prints it: one line, exit 2
         except Exception as e:
             logger.error(f"Failed to start session: {e}", exc_info=True)
             raise AgentInitializationError(agent.name, str(e)) from e
