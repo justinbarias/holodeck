@@ -27,6 +27,7 @@ from holodeck.lib.retrieval import (
     FieldType,
     Record,
     RecordFilter,
+    ScoredRecord,
     VectorQuery,
     VectorStoreAdapter,
 )
@@ -127,6 +128,17 @@ def _fields(record: Record) -> dict[str, object]:
     return dict(record.fields)
 
 
+def best_first(hits: list[ScoredRecord]) -> list[ScoredRecord]:
+    """Return ``hits`` with ties in ID order, after checking the ranking.
+
+    Equal scores come back in a store-dependent order, so ties are sorted.
+    The returned order itself must already be best first.
+    """
+    scores = [round(hit.score, 5) for hit in hits]
+    assert scores == sorted(scores, reverse=True), f"not ranked best first: {scores}"
+    return sorted(hits, key=lambda hit: (-round(hit.score, 5), hit.record.id))
+
+
 async def snapshot(adapter: VectorStoreAdapter) -> dict[str, Any]:
     """Every read the tools use, in comparable form."""
     ids = [record.id for record in CORPUS] + ["missing"]
@@ -161,7 +173,7 @@ async def snapshot(adapter: VectorStoreAdapter) -> dict[str, Any]:
     ):
         hits = await adapter.vector_search(query)
         # Equal scores come back in index order; compare them by ID.
-        ordered = sorted(hits, key=lambda h: (-round(h.score, 5), h.record.id))
+        ordered = best_first(hits)
         searches.append([(h.record.id, _fields(h.record), h.score) for h in ordered])
     return plain(
         {
@@ -209,7 +221,7 @@ async def snapshot_after_writes(adapter: VectorStoreAdapter) -> dict[str, Any]:
     searches = []
     for vector in ([1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]):
         hits = await adapter.vector_search(VectorQuery(vector, top_k=5))
-        ordered = sorted(hits, key=lambda h: (-round(h.score, 5), h.record.id))
+        ordered = best_first(hits)
         searches.append([(h.record.id, h.score) for h in ordered])
     return plain(
         {

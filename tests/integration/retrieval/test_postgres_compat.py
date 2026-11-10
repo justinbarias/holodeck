@@ -105,6 +105,8 @@ def _view(record: Record) -> tuple[str, dict[str, Any]]:
 
 def _ordered(hits: list[ScoredRecord]) -> list[ScoredRecord]:
     """Equal scores come back in index order; compare them by ID."""
+    scores = [round(hit.score, 5) for hit in hits]
+    assert scores == sorted(scores, reverse=True), f"not ranked best first: {scores}"
     return sorted(hits, key=lambda h: (-round(h.score, 5), h.record.id))
 
 
