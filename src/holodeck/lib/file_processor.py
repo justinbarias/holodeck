@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 
-import requests
+import httpx
 
 if TYPE_CHECKING:
     from holodeck.models.config import ExecutionConfig
@@ -270,7 +270,7 @@ class FileProcessor:
 
         for attempt in range(self.max_retries):
             try:
-                response = requests.get(url, timeout=timeout_sec)
+                response = httpx.get(url, timeout=timeout_sec, follow_redirects=True)
                 response.raise_for_status()
                 content: bytes = response.content
                 size_bytes = len(content)

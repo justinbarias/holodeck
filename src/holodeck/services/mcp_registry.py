@@ -7,9 +7,7 @@ official MCP Registry at https://registry.modelcontextprotocol.io.
 import logging
 from urllib.parse import quote
 
-import requests
-from requests.exceptions import ConnectionError as RequestsConnectionError
-from requests.exceptions import Timeout
+import httpx
 
 from holodeck.lib.errors import (
     RegistryAPIError,
@@ -62,7 +60,7 @@ class MCPRegistryClient:
         """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
-        self._session = requests.Session()
+        self._session = httpx.Client(follow_redirects=True)
 
     def __enter__(self) -> "MCPRegistryClient":
         """Enter context manager."""
@@ -221,7 +219,7 @@ class MCPRegistryClient:
         method: str,
         url: str,
         params: dict[str, str | int] | None = None,
-    ) -> requests.Response:
+    ) -> httpx.Response:
         """Execute HTTP request with error handling.
 
         Args:
@@ -243,18 +241,18 @@ class MCPRegistryClient:
                 params=params,
                 timeout=self.timeout,
             )
-        except Timeout as e:
+        except httpx.TimeoutException as e:
             raise RegistryConnectionError(
                 self.base_url,
                 original_error=e,
             ) from e
-        except RequestsConnectionError as e:
+        except httpx.TransportError as e:
             raise RegistryConnectionError(
                 self.base_url,
                 original_error=e,
             ) from e
 
-        if not response.ok:
+        if response.is_error:
             detail = None
             try:
                 error_body = response.json()

@@ -139,7 +139,7 @@ class TestFileProcessorDownloads:
         """Test successful file download."""
         processor = FileProcessor(download_timeout_ms=30000)
 
-        with mock.patch("requests.get") as mock_get:
+        with mock.patch("httpx.get") as mock_get:
             mock_get.return_value = mock.Mock(content=b"PDF content", status_code=200)
 
             result = processor._download_file("https://example.com/file.pdf")
@@ -151,7 +151,7 @@ class TestFileProcessorDownloads:
         """Test retry logic for failed downloads."""
         processor = FileProcessor(max_retries=3)
 
-        with mock.patch("requests.get") as mock_get, mock.patch("time.sleep"):
+        with mock.patch("httpx.get") as mock_get, mock.patch("time.sleep"):
             mock_get.side_effect = [
                 Exception("Timeout"),
                 Exception("Timeout"),
@@ -167,7 +167,7 @@ class TestFileProcessorDownloads:
         """Test handling when max retries exceeded."""
         processor = FileProcessor(max_retries=3)
 
-        with mock.patch("requests.get") as mock_get, mock.patch("time.sleep"):
+        with mock.patch("httpx.get") as mock_get, mock.patch("time.sleep"):
             mock_get.side_effect = Exception("Timeout")
 
             result = processor._download_file("https://example.com/file.pdf")
