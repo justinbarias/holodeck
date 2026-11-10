@@ -16,7 +16,20 @@ Usage:
 
 from contextvars import ContextVar
 
+from pydantic import ValidationInfo
+
 # Base directory for the current agent configuration file.
 # Set at CLI entry point, available throughout the request lifecycle.
 # Used to resolve relative file paths in tool configurations.
 agent_base_dir: ContextVar[str | None] = ContextVar("agent_base_dir", default=None)
+
+# Pydantic validation-context key for loading a stored agent snapshot, such as
+# a persisted EvalRun. A snapshot only records its config: validators check
+# its shape and skip work that needs the agent's directory (reading skill
+# files, importing grader modules), since the run may be opened elsewhere.
+STORED_SNAPSHOT = "stored_snapshot"
+
+
+def is_stored_snapshot(info: ValidationInfo) -> bool:
+    """Return True when the model is validated as a stored snapshot."""
+    return bool(info.context and info.context.get(STORED_SNAPSHOT))

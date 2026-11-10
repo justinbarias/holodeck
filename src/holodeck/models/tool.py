@@ -23,11 +23,12 @@ from pydantic import (
     Field,
     SecretStr,
     Tag,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
 
-from holodeck.config.context import agent_base_dir
+from holodeck.config.context import agent_base_dir, is_stored_snapshot
 from holodeck.lib.skills import SkillLoadError, load_skill_definition, resolve_skill_dir
 from holodeck.models.llm import LLMProvider
 
@@ -964,13 +965,13 @@ class SkillTool(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_form(self) -> "SkillTool":
+    def _validate_form(self, info: ValidationInfo) -> "SkillTool":
         """Enforce the inline / file-based contract.
 
         Exactly one of ``instructions`` or ``path`` must be set. Inline skills
         require a non-empty ``description``. File-based skills must resolve to
         a directory with a valid ``SKILL.md``; a missing ``description`` is
-        filled from its frontmatter.
+        filled from its frontmatter. A stored snapshot skips the file check.
         """
         has_inline = self.instructions is not None
         has_path = self.path is not None
@@ -984,6 +985,9 @@ class SkillTool(BaseModel):
                 raise ValueError("skill instructions must be non-empty")
             if self.description is None or not self.description.strip():
                 raise ValueError("inline skill requires a non-empty description")
+            return self
+
+        if is_stored_snapshot(info):
             return self
 
         base_dir_value = agent_base_dir.get()

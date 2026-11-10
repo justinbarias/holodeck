@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Dashboard skipped runs that used a code grader or a file-based skill.** Loading a stored run re-validated its agent snapshot, which imported each `type: code` grader and read each skill's `SKILL.md`. Those live next to the agent, not the results, so `holodeck test view` dropped such runs (`cannot import grader module`, `skill path is not a directory`). Stored runs now load as snapshots and skip that work; `agent.yaml` loading still checks both before any agent call.
 - **`type: code` graders now see tool invocations on single-turn test cases.** The single-turn path ran evaluations before pairing tool calls with results, so `GraderContext.tool_invocations` was always empty and any grader that checked tool calls or results scored 0, even though the test result listed the invocations. Calls are now paired once and the same list goes to the grader, the expected-tool arg matcher, and the `TestResult`. Single-turn graders also receive `test_case_name`. Multi-turn (`turns:`) cases were not affected.
 - **Code graders get their own copy of tool invocations.** A grader that edited `ctx.tool_invocations[i].args` or `.result` changed the invocations saved in the `TestResult` and seen by later graders. Each grader context now holds deep copies.
 
