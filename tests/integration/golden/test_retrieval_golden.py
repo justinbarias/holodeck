@@ -133,10 +133,11 @@ PROVIDERS = [
 # Behaviors the goldens freeze that look like defects. They are recorded in the
 # expected files so a later change that fixes them shows up as a reviewed diff.
 _CHROMA_NOTE = (
-    "ChromaCollection returns cosine distance (1 - similarity) as the score, "
-    "and HoloDeck sorts scores descending, so semantic results come back "
-    "worst-first (the top-k set is right, its order and scores are inverted). "
-    "min_score keeps results whose distance is at least the threshold."
+    "Chroma returns cosine distance. Until 042 T4 HoloDeck used that distance "
+    "as the score and sorted it descending, so semantic results came back "
+    "worst-first and min_score kept results whose distance was at least the "
+    "threshold. The adapter now returns similarity (1 - distance), so the best "
+    "match ranks first and min_score filters by similarity."
 )
 _QDRANT_KEYWORD_NOTE = (
     "search_mode=keyword returns no results on Qdrant: the in-process BM25 "

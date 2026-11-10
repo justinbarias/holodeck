@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Retrieval tools use HoloDeck's vector store adapter contract.** `vectorstore` and `hierarchical_document` tools no longer call Semantic Kernel collections directly; collection names and stored layout are unchanged. A changed file's stale chunks are now removed on re-ingestion, and a `hierarchical_document` tool on a provider without filtered reads (pinecone, faiss, azure-ai-search, azure-cosmos-*, sql-server) now fails before ingestion instead of re-ingesting silently.
+
 - **Fewer direct dependencies.** `aiofiles`, `python-dateutil`, `absl-py`, `ml-dtypes`, `requests` and the stale `sentry-sdk` constraint are no longer declared; nothing in `src/` imports them. `aiofiles` and `ml-dtypes` leave the lockfile (376 to 374 packages). The remote file download and the MCP registry client now use `httpx` instead of `requests` (redirects are followed; timeouts are unchanged). `anthropic` and `ollama` stay declared because DeepEval's Anthropic and Ollama judge models need them.
 
 - **Remaining major upgrades.** `temporalio` 1.32 → 1.35 (exact pin), `opensearch-py` 2.8 → 3.2, `dash` 3.4 → 4.5, `twine` 6.2 → 7.0 and `ml-dtypes` 0.4 → 0.6. `twine` 6.2 could not read wheels with metadata 2.5, so the release `twine check` was failing. `pinecone` stays on `~=7.0`: Semantic Kernel's connector fails to import with 8+, and 7.1+ requires `packaging<25`, below the `virtualenv` security floor.
@@ -61,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **ChromaDB search results came back worst-first.** Chroma returns a cosine distance, which was used as the similarity score, so semantic results were ranked in reverse and `min_similarity_score` / `min_score` kept the least similar chunks. Scores are now `1 - distance`, so the best match ranks first.
 - **Dashboard skipped runs that used a code grader or a file-based skill.** Loading a stored run re-validated its agent snapshot, which imported each `type: code` grader and read each skill's `SKILL.md`. Those live next to the agent, not the results, so `holodeck test view` dropped such runs (`cannot import grader module`, `skill path is not a directory`). Stored runs now load as snapshots and skip that work; `agent.yaml` loading still checks both before any agent call.
 - **`type: code` graders now see tool invocations on single-turn test cases.** The single-turn path ran evaluations before pairing tool calls with results, so `GraderContext.tool_invocations` was always empty and any grader that checked tool calls or results scored 0, even though the test result listed the invocations. Calls are now paired once and the same list goes to the grader, the expected-tool arg matcher, and the `TestResult`. Single-turn graders also receive `test_case_name`. Multi-turn (`turns:`) cases were not affected.
 - **Code graders get their own copy of tool invocations.** A grader that edited `ctx.tool_invocations[i].args` or `.result` changed the invocations saved in the `TestResult` and seen by later graders. Each grader context now holds deep copies.

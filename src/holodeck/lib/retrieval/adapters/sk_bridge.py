@@ -23,8 +23,9 @@ Records cross SK as plain dicts, not as generated record classes.
 Native operations
 -----------------
 SK cannot filter, page, count or hybrid-search the way the tools need, so the
-logic of ``collection_filter.py`` and ``keyword_search.py`` is copied into the
-provider classes below. Capabilities list what works today and nothing more.
+provider classes below hold that logic (it used to live in the tools,
+``collection_filter.py`` and ``keyword_search.py``; T4 removed it there).
+Capabilities list what works today and nothing more.
 
 Lifecycle
 ---------
@@ -884,8 +885,9 @@ class SKChromaAdapter(SKBridgeAdapter):
     """ChromaDB through SK's collection and the chroma client it wraps.
 
     SK writes with ``add``, which ignores an existing ID, so upsert goes to
-    the chroma collection directly. SK returns the cosine distance as the
-    score, which becomes ``1 - distance`` here.
+    the chroma collection directly: existing IDs are deleted, then all
+    records are added. SK returns the cosine distance as the score, which
+    becomes ``1 - distance`` here.
     """
 
     PROVIDER = "chromadb"
@@ -928,8 +930,17 @@ class SKChromaAdapter(SKBridgeAdapter):
             {k: v for k, v in row.items() if k not in (key_field, vector_field)}
             for row in rows
         ]
-        self._native(collection).upsert(
-            ids=[row[key_field] for row in rows],
+        ids = [row[key_field] for row in rows]
+        native = self._native(collection)
+        # Replace with delete + add, not chroma's upsert: against the Chroma
+        # 1.0 server, records written with upsert were intermittently missing
+        # from query results (about 1 run in 30 of the retrieval goldens;
+        # 0 in 60 with add). See the 042 exec plan, T4.
+        existing = native.get(ids=ids, include=[]).get("ids") or []
+        if existing:
+            native.delete(ids=list(existing))
+        native.add(
+            ids=ids,
             embeddings=[row[vector_field] for row in rows],
             metadatas=metadatas if metadatas[0] else None,
         )
