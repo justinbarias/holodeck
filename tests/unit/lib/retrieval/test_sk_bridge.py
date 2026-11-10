@@ -7,7 +7,7 @@ import tomllib
 import uuid
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from semantic_kernel.data.vector import (
@@ -19,6 +19,7 @@ from holodeck.lib.retrieval import (
     CollectionSchema,
     FieldSpec,
     FieldType,
+    HybridQuery,
     MissingClientError,
     Operation,
     Record,
@@ -314,3 +315,139 @@ def test_filters_become_sk_lambda_strings() -> None:
     assert adapter._filter_expression(RecordFilter()) is None
     with pytest.raises(SchemaError):
         adapter._filter_expression(RecordFilter.where(nope="x"))
+
+
+# -- Qdrant native hybrid (moved from keyword_search in 042 T4) ----------------
+
+
+@pytest.mark.parametrize(
+    ("text", "tokens"),
+    [
+        ("Abiomed ABMD", ["abiomed", "abmd"]),
+        ("A pile of foo", ["pile", "of", "foo"]),  # one-char tokens dropped
+        ("... ?!", []),
+        ("Apple, Inc. 2024", ["apple", "inc", "2024"]),
+        ("apple apple AAPL apple", ["apple", "aapl"]),
+        ("", []),
+    ],
+)
+def test_qdrant_query_tokens(text: str, tokens: list[str]) -> None:
+    assert sk_bridge._tokenize(text) == tokens
+
+
+def _qdrant_with_points(points: list[Any]) -> tuple[SKQdrantAdapter, MagicMock]:
+    adapter, collection = _fake_adapter(SKQdrantAdapter)
+    client = MagicMock()
+    client.query_points = AsyncMock(return_value=MagicMock(points=points))
+    collection.qdrant_client = client
+    collection.collection_name = "docs"
+    return adapter, client
+
+
+@pytest.mark.asyncio
+async def test_qdrant_hybrid_uses_match_text_per_token_and_rrf() -> None:
+    from qdrant_client.http import models as qm
+
+    point = MagicMock(id="chunk-1", score=0.9, payload={"content": "x"})
+    adapter, client = _qdrant_with_points([point])
+
+    hits = await adapter.hybrid_search(
+        HybridQuery("Abiomed ABMD", [0.1] * 4, top_k=5, text_field="content")
+    )
+
+    assert [(hit.record.id, hit.score) for hit in hits] == [("chunk-1", 0.9)]
+    kwargs = client.query_points.await_args.kwargs
+    assert kwargs["collection_name"] == "docs"
+    assert kwargs["limit"] == 5
+    vector_leg, keyword_leg = kwargs["prefetch"]
+    assert vector_leg.using == "embedding"
+    assert vector_leg.limit >= 20  # wider than top_k
+    should = keyword_leg.filter.should
+    assert [c.match.text for c in should] == ["abiomed", "abmd"]
+    assert all(isinstance(c.match, qm.MatchText) for c in should)
+    assert all(c.key == "content" for c in should)
+    assert kwargs["query"].fusion == qm.Fusion.RRF
+
+
+@pytest.mark.asyncio
+async def test_qdrant_hybrid_without_tokens_searches_by_vector_only() -> None:
+    adapter, client = _qdrant_with_points([])
+
+    await adapter.hybrid_search(
+        HybridQuery("... ?!", [0.1] * 4, top_k=5, text_field="content")
+    )
+
+    assert len(client.query_points.await_args.kwargs["prefetch"]) == 1
+
+
+# -- Qdrant payload indexes (moved from HierarchicalDocumentTool in 042 T4) ----
+
+
+def _qdrant_for_indexes(
+    schema: CollectionSchema, side_effect: Exception | None = None
+) -> tuple[SKQdrantAdapter, MagicMock, MagicMock]:
+    collection = MagicMock(name="sk_collection")
+    collection.collection_exists = AsyncMock(return_value=True)
+    collection.collection_name = schema.name
+    client = MagicMock()
+    client.create_payload_index = AsyncMock(side_effect=side_effect)
+    collection.qdrant_client = client
+    with patch.object(
+        SKBridgeAdapter, "_make_factory", return_value=lambda: collection
+    ):
+        return SKQdrantAdapter(schema, {}), collection, client
+
+
+@pytest.mark.asyncio
+async def test_qdrant_ensure_collection_indexes_the_hierarchical_fields() -> None:
+    from qdrant_client.http import models as qm
+
+    from holodeck.lib.retrieval.schemas import hierarchical_schema
+
+    adapter, _, client = _qdrant_for_indexes(hierarchical_schema(4, "tool"))
+
+    await adapter.ensure_collection()
+
+    schemas = {
+        call.kwargs["field_name"]: call.kwargs["field_schema"]
+        for call in client.create_payload_index.await_args_list
+    }
+    keyword = {
+        "source_path",
+        "section_id",
+        "defined_term",
+        "defined_term_normalized",
+    }
+    assert set(schemas) == keyword | {"chunk_index", "searchable_text"}
+    for name in keyword:
+        assert isinstance(schemas[name], qm.KeywordIndexParams)
+    assert isinstance(schemas["chunk_index"], qm.IntegerIndexParams)
+    text = schemas["searchable_text"]
+    assert isinstance(text, qm.TextIndexParams)
+    assert (text.min_token_len, text.max_token_len, text.lowercase) == (2, 20, True)
+
+
+@pytest.mark.asyncio
+async def test_qdrant_payload_indexes_are_created_once_per_adapter() -> None:
+    adapter, _, client = _qdrant_for_indexes(_schema_with_filters())
+
+    await adapter.ensure_collection()
+    calls = client.create_payload_index.await_count
+    await adapter.ensure_collection()
+
+    assert calls == 2
+    assert client.create_payload_index.await_count == calls
+
+
+@pytest.mark.asyncio
+async def test_qdrant_index_failure_is_logged_not_raised(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    adapter, _, client = _qdrant_for_indexes(
+        _schema_with_filters(), side_effect=RuntimeError("boom")
+    )
+
+    await adapter.ensure_collection()
+
+    assert client.create_payload_index.await_count == 2
+    assert "Qdrant payload index failed for 'source_path'" in caplog.text

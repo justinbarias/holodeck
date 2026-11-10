@@ -127,7 +127,7 @@ Severity: **High** means a test cannot detect the regression its name describes.
 | [services/mcp_registry.py](../../src/holodeck/services/mcp_registry.py) | 29.0 % | Only the live tests in [test_mcp_registry_client.py](../../tests/integration/test_mcp_registry_client.py) exercise it. `SKIP_NETWORK_TESTS` defaults to `true`, so all 19 are skipped. CLI tests mock the client. |
 | [lib/logging_utils.py](../../src/holodeck/lib/logging_utils.py) | 39.7 % | No test references it |
 | [cli/commands/chat.py](../../src/holodeck/cli/commands/chat.py) | 75.2 % | See H2 |
-| [lib/collection_filter.py](../../src/holodeck/lib/collection_filter.py) | 79.8 % | The `TestWeaviate` class ([test_collection_filter.py:294](../../tests/unit/lib/test_collection_filter.py)) skips because `weaviate-client` is not part of `--all-extras`. The same is true in CI. |
+| `lib/collection_filter.py` (removed in 042 T4) | 79.8 % | The `TestWeaviate` class (`test_collection_filter.py:294`, removed with the module) skips because `weaviate-client` is not part of `--all-extras`. The same is true in CI. |
 | [serve/protocols/agui.py](../../src/holodeck/serve/protocols/agui.py) | 81.7 % | Lines 834-865 are not covered |
 
 - Fix: add `httpx.MockTransport` tests for the `mcp_registry` HTTP and error mapping. Add a `CliRunner` test for `holodeck test view` against a fixture run file. Either add `weaviate-client` to a test extra or accept the gap in writing.

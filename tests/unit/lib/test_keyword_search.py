@@ -14,13 +14,61 @@ This module tests the tiered keyword search implementation including:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-if TYPE_CHECKING:
-    pass
+from holodeck.lib.retrieval import (
+    Capabilities,
+    CollectionSchema,
+    FieldSpec,
+    Operation,
+    Record,
+)
+from holodeck.lib.retrieval.schemas import chunk_from_record
+from tests.unit.tools.fakes import ALL_OPERATIONS, FakeAdapter, fused
+
+_NATIVE_HYBRID = {"azure-ai-search", "weaviate", "qdrant", "azure-cosmos-nosql"}
+_DIMENSIONS = 3
+
+
+def _adapter(
+    provider: str = "in-memory",
+    records: tuple[Record, ...] = (),
+    hybrid_hits: tuple[Record, ...] = (),
+) -> FakeAdapter:
+    """A fake adapter whose capabilities match ``provider`` today."""
+    operations = set(ALL_OPERATIONS)
+    if provider not in _NATIVE_HYBRID:
+        operations.discard(Operation.HYBRID_SEARCH)
+    schema = CollectionSchema(
+        "chunks",
+        _DIMENSIONS,
+        (
+            FieldSpec("content"),
+            FieldSpec("source_path"),
+            FieldSpec("searchable_text", full_text=True),
+        ),
+    )
+    adapter = FakeAdapter(
+        schema,
+        provider=provider,
+        operations=operations,
+        hybrid_hits=[
+            fused(record, 0.9 - 0.1 * rank) for rank, record in enumerate(hybrid_hits)
+        ],
+    )
+    adapter._records.update({record.id: record for record in records})
+    return adapter
+
+
+def _record(record_id: str, vector: tuple[float, ...] = (0.1, 0.2, 0.3)) -> Record:
+    return Record(
+        id=record_id,
+        fields={"content": f"text of {record_id}", "source_path": f"/{record_id}.md"},
+        vector=vector,
+    )
 
 
 class TestKeywordSearchStrategy:
@@ -705,8 +753,7 @@ class TestHybridSearchExecutor:
             KeywordSearchStrategy,
         )
 
-        mock_collection = MagicMock()
-        executor = HybridSearchExecutor("azure-ai-search", mock_collection)
+        executor = HybridSearchExecutor(_adapter("azure-ai-search"))
 
         assert executor.strategy == KeywordSearchStrategy.NATIVE_HYBRID
 
@@ -717,8 +764,7 @@ class TestHybridSearchExecutor:
             KeywordSearchStrategy,
         )
 
-        mock_collection = MagicMock()
-        executor = HybridSearchExecutor("in-memory", mock_collection)
+        executor = HybridSearchExecutor(_adapter("in-memory"))
 
         assert executor.strategy == KeywordSearchStrategy.FALLBACK_BM25
 
@@ -728,8 +774,7 @@ class TestHybridSearchExecutor:
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import DocumentChunk
 
-        mock_collection = MagicMock()
-        executor = HybridSearchExecutor("in-memory", mock_collection)
+        executor = HybridSearchExecutor(_adapter("in-memory"))
 
         chunks = [
             DocumentChunk(
@@ -760,8 +805,7 @@ class TestHybridSearchExecutor:
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import ChunkType, DocumentChunk
 
-        mock_collection = MagicMock()
-        executor = HybridSearchExecutor("in-memory", mock_collection)
+        executor = HybridSearchExecutor(_adapter("in-memory"))
 
         chunks = [
             DocumentChunk(
@@ -808,53 +852,42 @@ class TestHybridSearchExecutor:
 
     @pytest.mark.asyncio
     async def test_search_routes_to_native_hybrid(self) -> None:
-        """Test search() routes to native hybrid_search for supported providers."""
+        """search() uses adapter.hybrid_search when the adapter supports it."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
 
-        # Mock collection with async context manager
-        mock_result = MagicMock()
-        mock_result.record = MagicMock()
-        mock_result.record.id = "chunk1"
-        mock_result.score = 0.9
+        adapter = _adapter("weaviate", hybrid_hits=(_record("chunk1"),))
+        executor = HybridSearchExecutor(adapter)
 
-        async def mock_results():
-            yield mock_result
+        results = await executor.search("test query", [0.1, 0.2, 0.3], top_k=5)
 
-        mock_search_results = MagicMock()
-        mock_search_results.results = mock_results()
+        assert results == [("chunk1", 0.9)]
+        (query,) = adapter.hybrid_queries
+        assert query.text == "test query"
+        assert list(query.vector) == [0.1, 0.2, 0.3]
+        assert query.top_k == 5
+        assert query.text_field == "searchable_text"
 
-        mock_collection = MagicMock()
-        mock_coll_instance = AsyncMock()
-        mock_coll_instance.hybrid_search = AsyncMock(return_value=mock_search_results)
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_coll_instance)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
+    @pytest.mark.asyncio
+    async def test_strategy_follows_capabilities_not_the_name(self) -> None:
+        """A provider name never decides the strategy; capabilities do."""
+        from holodeck.lib.keyword_search import (
+            HybridSearchExecutor,
+            KeywordSearchStrategy,
+        )
 
-        executor = HybridSearchExecutor("weaviate", mock_collection)
+        adapter = _adapter("in-memory")
+        adapter._capabilities = Capabilities("in-memory", ALL_OPERATIONS)
 
-        await executor.search("test query", [0.1, 0.2, 0.3], top_k=5)
+        executor = HybridSearchExecutor(adapter)
 
-        # Should have called hybrid_search
-        mock_coll_instance.hybrid_search.assert_called_once()
+        assert executor.strategy == KeywordSearchStrategy.NATIVE_HYBRID
 
     @pytest.mark.asyncio
     async def test_graceful_degradation_on_bm25_failure(self) -> None:
         """Test falls back to semantic-only when BM25 build fails."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
 
-        mock_collection = MagicMock()
-        mock_coll_instance = AsyncMock()
-
-        async def mock_results():
-            yield MagicMock(record=MagicMock(id="chunk1"), score=0.9)
-
-        mock_search_results = MagicMock()
-        mock_search_results.results = mock_results()
-        mock_coll_instance.search = AsyncMock(return_value=mock_search_results)
-
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_coll_instance)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        executor = HybridSearchExecutor("in-memory", mock_collection)
+        executor = HybridSearchExecutor(_adapter(records=(_record("chunk1"),)))
 
         # Simulate keyword index not being available
         executor._keyword_index = None
@@ -863,7 +896,8 @@ class TestHybridSearchExecutor:
         results = await executor.search("test query", [0.1, 0.2, 0.3], top_k=5)
 
         # Should return results from semantic search
-        assert len(results) > 0
+        assert [chunk_id for chunk_id, _ in results] == ["chunk1"]
+        assert results[0][1] == pytest.approx(1.0)
 
 
 class TestNativeHybridIndexBuild:
@@ -875,8 +909,7 @@ class TestNativeHybridIndexBuild:
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import DocumentChunk
 
-        mock_collection = MagicMock()
-        executor = HybridSearchExecutor("qdrant", mock_collection)
+        executor = HybridSearchExecutor(_adapter("qdrant"))
 
         chunks = [
             DocumentChunk(
@@ -910,8 +943,7 @@ class TestNativeHybridIndexBuild:
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import DocumentChunk
 
-        mock_collection = MagicMock()
-        executor = HybridSearchExecutor("chromadb", mock_collection)
+        executor = HybridSearchExecutor(_adapter("chromadb"))
 
         chunks = [
             DocumentChunk(
@@ -929,349 +961,62 @@ class TestNativeHybridIndexBuild:
 
 
 class TestNativeHybridInlineChunkDecode:
-    """Native-hybrid populates _chunk_map inline from query payloads."""
+    """Native-hybrid populates _chunk_map inline from returned records."""
 
     @pytest.mark.asyncio
-    async def test_qdrant_search_decodes_payloads_into_chunk_map(self) -> None:
-        from types import SimpleNamespace
-
+    async def test_native_search_decodes_records_into_chunk_map(self) -> None:
         from holodeck.lib.keyword_search import HybridSearchExecutor
-        from holodeck.lib.structured_chunker import DocumentChunk
 
-        def decoder(payload: dict[str, object]) -> DocumentChunk:
-            return DocumentChunk(
-                id=str(payload["id"]),
-                source_path=str(payload.get("source_path", "")),
-                chunk_index=0,
-                content=str(payload.get("content", "")),
-                contextualized_content=str(payload.get("content", "")),
-            )
+        adapter = _adapter(
+            "qdrant", hybrid_hits=(_record("chunk_a"), _record("chunk_b"))
+        )
+        executor = HybridSearchExecutor(adapter, chunk_decoder=chunk_from_record)
 
-        qdrant_client = AsyncMock()
-        qdrant_client.query_points.return_value = SimpleNamespace(
-            points=[
-                SimpleNamespace(
-                    id="chunk_a",
-                    score=0.9,
-                    payload={"content": "hello", "source_path": "/a.md"},
-                ),
-                SimpleNamespace(
-                    id="chunk_b",
-                    score=0.7,
-                    payload={"content": "world", "source_path": "/b.md"},
-                ),
-            ]
+        results = await executor._native_hybrid_search(
+            query="hello world", query_embedding=[0.1, 0.2, 0.3], top_k=2
         )
 
-        coll_ctx = AsyncMock()
-        coll_ctx.__aenter__.return_value = SimpleNamespace(
-            qdrant_client=qdrant_client,
-            collection_name="test",
-        )
-        coll_ctx.__aexit__.return_value = None
-
-        executor = HybridSearchExecutor("qdrant", coll_ctx, chunk_decoder=decoder)
-        results = await executor._native_hybrid_search_qdrant(
-            query="hello world",
-            query_embedding=[0.1, 0.2],
-            top_k=2,
-        )
-
-        qdrant_client.query_points.assert_called_once()
-        kwargs = qdrant_client.query_points.call_args.kwargs
-        assert kwargs["with_payload"] is True
-        assert results == [("chunk_a", 0.9), ("chunk_b", 0.7)]
+        assert results == [("chunk_a", 0.9), ("chunk_b", 0.8)]
         # _chunk_map populated inline so the caller can resolve ids
         # without a follow-up retrieve call.
-        assert executor.get_chunk("chunk_a") is not None
-        assert executor.get_chunk("chunk_a").content == "hello"
-        assert executor.get_chunk("chunk_b").source_path == "/b.md"
+        chunk_a = executor.get_chunk("chunk_a")
+        assert chunk_a is not None
+        assert chunk_a.content == "text of chunk_a"
+        chunk_b = executor.get_chunk("chunk_b")
+        assert chunk_b is not None
+        assert chunk_b.source_path == "/chunk_b.md"
 
     @pytest.mark.asyncio
-    async def test_qdrant_search_skips_payload_when_no_decoder(self) -> None:
-        from types import SimpleNamespace
-
+    async def test_native_search_without_decoder_caches_nothing(self) -> None:
         from holodeck.lib.keyword_search import HybridSearchExecutor
 
-        qdrant_client = AsyncMock()
-        qdrant_client.query_points.return_value = SimpleNamespace(points=[])
-        coll_ctx = AsyncMock()
-        coll_ctx.__aenter__.return_value = SimpleNamespace(
-            qdrant_client=qdrant_client,
-            collection_name="test",
-        )
-        coll_ctx.__aexit__.return_value = None
+        adapter = _adapter("qdrant", hybrid_hits=(_record("chunk_a"),))
+        executor = HybridSearchExecutor(adapter, chunk_decoder=None)
 
-        executor = HybridSearchExecutor("qdrant", coll_ctx, chunk_decoder=None)
-        await executor._native_hybrid_search_qdrant(
-            query="hello", query_embedding=[0.1], top_k=2
+        results = await executor._native_hybrid_search(
+            query="hello", query_embedding=[0.1, 0.2, 0.3], top_k=2
         )
-        kwargs = qdrant_client.query_points.call_args.kwargs
-        assert kwargs["with_payload"] is False
+
+        assert results == [("chunk_a", 0.9)]
+        assert executor.get_chunk("chunk_a") is None
 
     @pytest.mark.asyncio
-    async def test_qdrant_decoder_failure_does_not_drop_result(self) -> None:
+    async def test_decoder_failure_does_not_drop_result(self) -> None:
         """A misbehaving decoder is logged + skipped; the (id, score) still flows."""
-        from types import SimpleNamespace
-
         from holodeck.lib.keyword_search import HybridSearchExecutor
 
-        def broken_decoder(payload: dict[str, object]) -> object:
+        def broken_decoder(record: Record) -> Any:
             raise RuntimeError("boom")
 
-        qdrant_client = AsyncMock()
-        qdrant_client.query_points.return_value = SimpleNamespace(
-            points=[SimpleNamespace(id="chunk_x", score=0.5, payload={"id": "chunk_x"})]
-        )
-        coll_ctx = AsyncMock()
-        coll_ctx.__aenter__.return_value = SimpleNamespace(
-            qdrant_client=qdrant_client,
-            collection_name="test",
-        )
-        coll_ctx.__aexit__.return_value = None
+        adapter = _adapter("weaviate", hybrid_hits=(_record("chunk_x"),))
+        executor = HybridSearchExecutor(adapter, chunk_decoder=broken_decoder)
 
-        executor = HybridSearchExecutor(
-            "qdrant", coll_ctx, chunk_decoder=broken_decoder
+        results = await executor._native_hybrid_search(
+            query="hi", query_embedding=[0.1, 0.2, 0.3], top_k=1
         )
-        results = await executor._native_hybrid_search_qdrant(
-            query="hi", query_embedding=[0.1], top_k=1
-        )
-        assert results == [("chunk_x", 0.5)]
+
+        assert results == [("chunk_x", 0.9)]
         assert executor.get_chunk("chunk_x") is None  # decode failed, not cached
-
-    @pytest.mark.asyncio
-    async def test_sk_path_decodes_record_into_chunk_map(self) -> None:
-        """Non-qdrant native-hybrid (SK hybrid_search) feeds records through decoder."""
-        from types import SimpleNamespace
-
-        from holodeck.lib.keyword_search import HybridSearchExecutor
-        from holodeck.lib.structured_chunker import DocumentChunk
-
-        def decoder(payload: dict[str, object]) -> DocumentChunk:
-            return DocumentChunk(
-                id=str(payload["id"]),
-                source_path=str(payload.get("source_path", "")),
-                chunk_index=0,
-                content=str(payload.get("content", "")),
-                contextualized_content=str(payload.get("content", "")),
-            )
-
-        # SK record + result shape: result.record and result.score.
-        record = SimpleNamespace(id="sk_chunk", content="hi", source_path="/sk.md")
-        result = SimpleNamespace(record=record, score=0.8)
-
-        async def aiter_results():
-            yield result
-
-        search_results = SimpleNamespace(results=aiter_results())
-
-        coll_inner = MagicMock()
-        coll_inner.hybrid_search = AsyncMock(return_value=search_results)
-        coll_ctx = AsyncMock()
-        coll_ctx.__aenter__.return_value = coll_inner
-        coll_ctx.__aexit__.return_value = None
-
-        executor = HybridSearchExecutor(
-            "azure-ai-search", coll_ctx, chunk_decoder=decoder
-        )
-        results = await executor._native_hybrid_search(
-            query="hi", query_embedding=[0.1], top_k=1
-        )
-
-        assert results == [("sk_chunk", 0.8)]
-        cached = executor.get_chunk("sk_chunk")
-        assert cached is not None
-        assert cached.content == "hi"
-        assert cached.source_path == "/sk.md"
-
-    @pytest.mark.asyncio
-    async def test_sk_path_decoder_failure_does_not_drop_result(self) -> None:
-        """SK-path decoder exceptions are logged; (id, score) still returned."""
-        from types import SimpleNamespace
-
-        from holodeck.lib.keyword_search import HybridSearchExecutor
-
-        def broken_decoder(payload: dict[str, object]) -> object:
-            raise RuntimeError("boom")
-
-        record = SimpleNamespace(id="sk_x", content="x")
-        result = SimpleNamespace(record=record, score=0.4)
-
-        async def aiter_results():
-            yield result
-
-        search_results = SimpleNamespace(results=aiter_results())
-        coll_inner = MagicMock()
-        coll_inner.hybrid_search = AsyncMock(return_value=search_results)
-        coll_ctx = AsyncMock()
-        coll_ctx.__aenter__.return_value = coll_inner
-        coll_ctx.__aexit__.return_value = None
-
-        executor = HybridSearchExecutor(
-            "weaviate", coll_ctx, chunk_decoder=broken_decoder
-        )
-        results = await executor._native_hybrid_search(
-            query="x", query_embedding=[0.1], top_k=1
-        )
-        assert results == [("sk_x", 0.4)]
-        assert executor.get_chunk("sk_x") is None
-
-
-class TestTokenizeQdrantQuery:
-    """Tests for the Qdrant-side tokenizer used by the native-hybrid path."""
-
-    def test_splits_on_whitespace_and_lowercases(self) -> None:
-        from holodeck.lib.keyword_search import _tokenize_qdrant_query
-
-        assert _tokenize_qdrant_query("Abiomed ABMD") == ["abiomed", "abmd"]
-
-    def test_drops_one_char_tokens(self) -> None:
-        from holodeck.lib.keyword_search import _tokenize_qdrant_query
-
-        # "a" is one char, dropped; "of" is two chars, kept
-        assert _tokenize_qdrant_query("A pile of foo") == ["pile", "of", "foo"]
-
-    def test_drops_pure_punctuation(self) -> None:
-        from holodeck.lib.keyword_search import _tokenize_qdrant_query
-
-        assert _tokenize_qdrant_query("... ?!") == []
-
-    def test_handles_punctuation_inside_words(self) -> None:
-        from holodeck.lib.keyword_search import _tokenize_qdrant_query
-
-        # commas and periods get split on word boundaries
-        assert _tokenize_qdrant_query("Apple, Inc. 2024") == [
-            "apple",
-            "inc",
-            "2024",
-        ]
-
-    def test_deduplicates_repeated_tokens(self) -> None:
-        from holodeck.lib.keyword_search import _tokenize_qdrant_query
-
-        assert _tokenize_qdrant_query("apple apple AAPL apple") == ["apple", "aapl"]
-
-    def test_empty_string(self) -> None:
-        from holodeck.lib.keyword_search import _tokenize_qdrant_query
-
-        assert _tokenize_qdrant_query("") == []
-
-
-class TestNativeHybridSearchQdrant:
-    """Tests for the Qdrant-specific native-hybrid dispatch path.
-
-    Validates that the executor builds a ``query_points`` call with the
-    correct prefetch shape: one vector leg + one full-text leg whose
-    filter uses ``MatchText`` (not ``MatchAny``) per tokenized term.
-    """
-
-    @pytest.mark.asyncio
-    async def test_qdrant_uses_match_text_per_token(self) -> None:
-        from holodeck.lib.keyword_search import HybridSearchExecutor
-
-        # Mock the SK collection as an async context manager exposing
-        # the underlying qdrant client + collection_name.
-        mock_client = MagicMock()
-        mock_client.query_points = AsyncMock(
-            return_value=MagicMock(points=[MagicMock(id="chunk-1", score=0.9)])
-        )
-        mock_collection_obj = MagicMock()
-        mock_collection_obj.qdrant_client = mock_client
-        mock_collection_obj.collection_name = "test_coll"
-
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection_obj)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        executor = HybridSearchExecutor("qdrant", mock_collection)
-
-        results = await executor._native_hybrid_search(
-            "Abiomed ABMD", [0.1] * 1536, top_k=5
-        )
-
-        # Result mapping is correct
-        assert results == [("chunk-1", 0.9)]
-
-        # Inspect the query_points call shape
-        mock_client.query_points.assert_awaited_once()
-        kwargs = mock_client.query_points.await_args.kwargs
-        assert kwargs["collection_name"] == "test_coll"
-        assert kwargs["limit"] == 5
-
-        prefetch = kwargs["prefetch"]
-        assert len(prefetch) == 2, "expected vector + keyword prefetch legs"
-
-        # Vector leg
-        from qdrant_client.http import models as qm
-
-        vector_leg, keyword_leg = prefetch
-        assert vector_leg.using == "embedding"
-        assert vector_leg.limit >= 20  # wider than top_k
-
-        # Keyword leg: one MatchText per token, ORed via should=
-        assert isinstance(keyword_leg.filter, qm.Filter)
-        should = keyword_leg.filter.should
-        assert should is not None and len(should) == 2
-        for cond, expected_token in zip(should, ["abiomed", "abmd"], strict=True):
-            assert isinstance(cond, qm.FieldCondition)
-            assert cond.key == "searchable_text"
-            assert isinstance(cond.match, qm.MatchText)
-            assert cond.match.text == expected_token
-
-        # Fusion is RRF
-        assert isinstance(kwargs["query"], qm.FusionQuery)
-        assert kwargs["query"].fusion == qm.Fusion.RRF
-
-    @pytest.mark.asyncio
-    async def test_qdrant_empty_tokens_falls_back_to_vector_only(self) -> None:
-        """If the query has no usable tokens, keyword leg is omitted."""
-        from holodeck.lib.keyword_search import HybridSearchExecutor
-
-        mock_client = MagicMock()
-        mock_client.query_points = AsyncMock(return_value=MagicMock(points=[]))
-        mock_collection_obj = MagicMock()
-        mock_collection_obj.qdrant_client = mock_client
-        mock_collection_obj.collection_name = "test_coll"
-
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection_obj)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        executor = HybridSearchExecutor("qdrant", mock_collection)
-        await executor._native_hybrid_search("... ?!", [0.1] * 1536, top_k=5)
-
-        prefetch = mock_client.query_points.await_args.kwargs["prefetch"]
-        assert len(prefetch) == 1  # vector only — no keyword leg
-
-    @pytest.mark.asyncio
-    async def test_non_qdrant_provider_uses_sk_hybrid_search(self) -> None:
-        """Other native-hybrid providers stay on SK's coll.hybrid_search()."""
-        from holodeck.lib.keyword_search import HybridSearchExecutor
-
-        # Build a fake SK collection with hybrid_search returning one record
-        record = MagicMock(id="ax-1")
-        result = MagicMock()
-        result.record = record
-        result.score = 0.7
-
-        async def async_iter():
-            yield result
-
-        search_results = MagicMock()
-        search_results.results = async_iter()
-
-        mock_collection_obj = MagicMock()
-        mock_collection_obj.hybrid_search = AsyncMock(return_value=search_results)
-
-        mock_collection = MagicMock()
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection_obj)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        executor = HybridSearchExecutor("azure-ai-search", mock_collection)
-        results = await executor._native_hybrid_search("query", [0.1] * 8, top_k=5)
-
-        assert results == [("ax-1", 0.7)]
-        mock_collection_obj.hybrid_search.assert_awaited_once()
 
 
 class TestOpenTelemetry:
@@ -1309,20 +1054,7 @@ class TestOpenTelemetry:
         """Test HybridSearchExecutor.search() emits OpenTelemetry span."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
 
-        mock_collection = MagicMock()
-        mock_coll_instance = AsyncMock()
-
-        async def mock_results():
-            yield MagicMock(record=MagicMock(id="chunk1"), score=0.9)
-
-        mock_search_results = MagicMock()
-        mock_search_results.results = mock_results()
-        mock_coll_instance.search = AsyncMock(return_value=mock_search_results)
-
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_coll_instance)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        executor = HybridSearchExecutor("in-memory", mock_collection)
+        executor = HybridSearchExecutor(_adapter(records=(_record("chunk1"),)))
 
         with patch("holodeck.lib.keyword_search.tracer") as mock_tracer:
             mock_span = MagicMock()
@@ -1789,8 +1521,7 @@ class TestProviderRouter:
         )
         from holodeck.lib.structured_chunker import DocumentChunk
 
-        mock_collection = MagicMock()
-        executor = HybridSearchExecutor("in-memory", mock_collection)
+        executor = HybridSearchExecutor(_adapter("in-memory"))
 
         chunks = [
             DocumentChunk(
@@ -1816,9 +1547,8 @@ class TestProviderRouter:
         from holodeck.models.tool import KeywordIndexConfig
 
         config = KeywordIndexConfig(provider="in-memory")
-        mock_collection = MagicMock()
         executor = HybridSearchExecutor(
-            "in-memory", mock_collection, keyword_index_config=config
+            _adapter("in-memory"), keyword_index_config=config
         )
 
         chunks = [
@@ -1849,7 +1579,6 @@ class TestProviderRouter:
             endpoint="https://search.example.com:9200",
             index_name="test-index",
         )
-        mock_collection = MagicMock()
 
         with patch("opensearchpy.OpenSearch") as mock_os_cls:
             mock_client = MagicMock()
@@ -1858,7 +1587,7 @@ class TestProviderRouter:
 
             with patch("opensearchpy.helpers.bulk", return_value=(1, [])):
                 executor = HybridSearchExecutor(
-                    "in-memory", mock_collection, keyword_index_config=config
+                    _adapter("in-memory"), keyword_index_config=config
                 )
                 chunks = [
                     DocumentChunk(
@@ -1883,8 +1612,7 @@ class TestKeywordIndexBuildOTel:
         from holodeck.lib.keyword_search import HybridSearchExecutor
         from holodeck.lib.structured_chunker import DocumentChunk
 
-        mock_collection = MagicMock()
-        executor = HybridSearchExecutor("in-memory", mock_collection)
+        executor = HybridSearchExecutor(_adapter("in-memory"))
 
         chunks = [
             DocumentChunk(
@@ -1929,7 +1657,6 @@ class TestKeywordIndexBuildOTel:
             endpoint="https://search.example.com:9200",
             index_name="test-index",
         )
-        mock_collection = MagicMock()
 
         with patch("holodeck.lib.keyword_search.tracer") as mock_tracer:
             mock_span = MagicMock()
@@ -1946,7 +1673,7 @@ class TestKeywordIndexBuildOTel:
                 side_effect=ConnectionError("connect failed"),
             ):
                 executor = HybridSearchExecutor(
-                    "in-memory", mock_collection, keyword_index_config=config
+                    _adapter("in-memory"), keyword_index_config=config
                 )
                 chunks = [
                     DocumentChunk(
@@ -1973,8 +1700,7 @@ class TestOpenSearchGracefulDegradation:
         """Test keyword_search() returns [] when provider search raises."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
 
-        mock_collection = MagicMock()
-        executor = HybridSearchExecutor("in-memory", mock_collection)
+        executor = HybridSearchExecutor(_adapter("in-memory"))
 
         # Set up a mock keyword index that raises on search
         mock_index = MagicMock()
@@ -1991,20 +1717,7 @@ class TestOpenSearchGracefulDegradation:
         """Test _fallback_hybrid_search returns semantic-only on keyword error."""
         from holodeck.lib.keyword_search import HybridSearchExecutor
 
-        mock_collection = MagicMock()
-        mock_coll_instance = AsyncMock()
-
-        async def mock_results():
-            yield MagicMock(record=MagicMock(id="chunk1"), score=0.9)
-
-        mock_search_results = MagicMock()
-        mock_search_results.results = mock_results()
-        mock_coll_instance.search = AsyncMock(return_value=mock_search_results)
-
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_coll_instance)
-        mock_collection.__aexit__ = AsyncMock(return_value=None)
-
-        executor = HybridSearchExecutor("in-memory", mock_collection)
+        executor = HybridSearchExecutor(_adapter(records=(_record("chunk1"),)))
 
         # Set up a mock keyword index that raises on search
         mock_index = MagicMock()
@@ -2029,14 +1742,13 @@ class TestOpenSearchGracefulDegradation:
             endpoint="https://search.example.com:9200",
             index_name="test-index",
         )
-        mock_collection = MagicMock()
 
         with patch(
             "opensearchpy.OpenSearch",
             side_effect=ConnectionError("connect failed"),
         ):
             executor = HybridSearchExecutor(
-                "in-memory", mock_collection, keyword_index_config=config
+                _adapter("in-memory"), keyword_index_config=config
             )
             chunks = [
                 DocumentChunk(

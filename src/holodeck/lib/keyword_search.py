@@ -28,8 +28,12 @@ Usage:
     strategy = get_keyword_search_strategy("azure-ai-search")
 
     # Create executor and search
-    executor = HybridSearchExecutor("azure-ai-search", collection)
+    executor = HybridSearchExecutor(adapter)
     results = await executor.search(query, query_embedding, top_k=10)
+
+The executor depends on ``VectorStoreAdapter`` only. Whether a provider runs
+hybrid search natively comes from ``adapter.capabilities``; provider-specific
+query building lives in the adapters.
 """
 
 from __future__ import annotations
@@ -43,6 +47,14 @@ from typing import TYPE_CHECKING, Any, Protocol, TypedDict, runtime_checkable
 
 from opentelemetry import trace
 
+from holodeck.lib.retrieval import (
+    HybridQuery,
+    Operation,
+    Record,
+    VectorQuery,
+    VectorStoreAdapter,
+)
+
 if TYPE_CHECKING:
     from holodeck.lib.structured_chunker import DocumentChunk
     from holodeck.models.tool import KeywordIndexConfig
@@ -51,33 +63,6 @@ logger = logging.getLogger(__name__)
 
 # OpenTelemetry tracer for search operations
 tracer = trace.get_tracer("holodeck.keyword_search")
-
-
-# Tokens shorter than this are dropped from the Qdrant full-text leg. Single
-# characters and one-letter tokens generate too many false matches when ORed
-# across thousands of chunks; two chars is the smallest useful unit (covers
-# short tickers like "K", "C" would still get caught via vector similarity).
-_QDRANT_MIN_TOKEN_LEN = 2
-_QDRANT_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
-
-
-def _tokenize_qdrant_query(query: str) -> list[str]:
-    """Tokenize a free-text query into terms for Qdrant ``MatchText`` clauses.
-
-    Splits on word boundaries, lowercases, and drops tokens shorter than
-    :data:`_QDRANT_MIN_TOKEN_LEN`. Duplicates are removed while preserving
-    first-seen order so ``MatchText`` clauses don't blow up for repeated
-    keywords. Returns an empty list for queries that contain no usable
-    tokens (e.g. punctuation only).
-    """
-    seen: set[str] = set()
-    tokens: list[str] = []
-    for raw in _QDRANT_TOKEN_RE.findall(query.lower()):
-        if len(raw) < _QDRANT_MIN_TOKEN_LEN or raw in seen:
-            continue
-        seen.add(raw)
-        tokens.append(raw)
-    return tokens
 
 
 class KeywordSearchStrategy(str, Enum):
@@ -94,8 +79,9 @@ class KeywordSearchStrategy(str, Enum):
     FALLBACK_BM25 = "fallback_bm25"
 
 
-# Provider capability sets based on Semantic Kernel support
-# See: https://learn.microsoft.com/en-us/semantic-kernel/concepts/vector-store-connectors/hybrid-search
+# Reference sets of provider names. The executor decides by
+# ``adapter.capabilities`` (``Operation.HYBRID_SEARCH``); these sets document
+# the same split and serve ``get_keyword_search_strategy`` callers.
 
 NATIVE_HYBRID_PROVIDERS: set[str] = {
     "azure-ai-search",
@@ -104,7 +90,7 @@ NATIVE_HYBRID_PROVIDERS: set[str] = {
     "mongodb",  # MongoDB Atlas via MongoDBAtlasStore
     "azure-cosmos-nosql",
 }
-"""Providers that support native hybrid search via collection.hybrid_search()."""
+"""Providers that support native hybrid search via ``adapter.hybrid_search``."""
 
 FALLBACK_BM25_PROVIDERS: set[str] = {
     "postgres",
@@ -684,45 +670,49 @@ class HybridSearchExecutor:
 
     Attributes:
         provider: Vector store provider name
-        collection: Semantic Kernel vector store collection
+        adapter: The vector store adapter the tool owns
         strategy: Determined keyword search strategy
 
     Example:
-        >>> executor = HybridSearchExecutor("weaviate", collection)
+        >>> executor = HybridSearchExecutor(adapter)
         >>> executor.build_keyword_index(documents)  # Optional for fallback
         >>> results = await executor.search(query, embedding, top_k=10)
     """
 
     def __init__(
         self,
-        provider: str,
-        collection: Any,
+        adapter: VectorStoreAdapter,
         semantic_weight: float = 0.5,
         keyword_weight: float = 0.3,
         rrf_k: int = 60,
         keyword_index_config: KeywordIndexConfig | None = None,
-        chunk_decoder: Callable[[dict[str, Any]], DocumentChunk] | None = None,
+        chunk_decoder: Callable[[Record], DocumentChunk] | None = None,
     ) -> None:
         """Initialize the hybrid search executor.
 
         Args:
-            provider: Vector store provider name (determines strategy)
-            collection: Semantic Kernel vector store collection instance
+            adapter: Vector store adapter. Its capabilities decide the
+                strategy: native hybrid when it supports
+                ``Operation.HYBRID_SEARCH``, BM25 fallback otherwise.
             semantic_weight: Weight for semantic results in RRF fusion (default 0.5)
             keyword_weight: Weight for keyword results in RRF fusion (default 0.3)
             rrf_k: RRF ranking constant (default 60)
             keyword_index_config: Keyword index backend configuration.
                 If None, defaults to in-memory BM25.
             chunk_decoder: Optional callback to reconstruct a
-                ``DocumentChunk`` from a raw payload dict. Required for
+                ``DocumentChunk`` from a stored record. Required for
                 native-hybrid providers — search pulls payloads inline
                 and the executor populates ``_chunk_map`` so the caller
                 can resolve ids via ``get_chunk`` without a second
                 round-trip. Unused by the BM25 fallback path.
         """
-        self.provider = provider
-        self.collection = collection
-        self.strategy = get_keyword_search_strategy(provider)
+        self.adapter = adapter
+        self.provider = adapter.provider
+        self.strategy = (
+            KeywordSearchStrategy.NATIVE_HYBRID
+            if adapter.capabilities.supports(Operation.HYBRID_SEARCH)
+            else KeywordSearchStrategy.FALLBACK_BM25
+        )
         self.semantic_weight = semantic_weight
         self.keyword_weight = keyword_weight
         self.rrf_k = rrf_k
@@ -734,7 +724,7 @@ class HybridSearchExecutor:
         self._chunk_map: dict[str, DocumentChunk] = {}
 
         logger.debug(
-            f"HybridSearchExecutor initialized: provider={provider}, "
+            f"HybridSearchExecutor initialized: provider={self.provider}, "
             f"strategy={self.strategy.value}, "
             f"weights=semantic:{semantic_weight}/keyword:{keyword_weight}, "
             f"rrf_k={rrf_k}"
@@ -768,7 +758,7 @@ class HybridSearchExecutor:
         self._chunk_map = {c.id: c for c in chunks}
 
         # Native-hybrid providers (qdrant) handle the keyword leg inside the
-        # vector store at query time (see _native_hybrid_search_*). The
+        # vector store at query time (see _native_hybrid_search). The
         # in-process BM25/OpenSearch index would never be read, so skip the
         # tokenize-and-build pass entirely. _chunk_map is still useful as a
         # cache for get_chunks() lookups; it just doesn't need to be the
@@ -928,17 +918,13 @@ class HybridSearchExecutor:
         query_embedding: list[float],
         top_k: int,
     ) -> list[tuple[str, float]]:
-        """Execute native hybrid search using the provider's hybrid API.
+        """Execute native hybrid search through the adapter.
 
-        Dispatches by provider because SK's generic ``coll.hybrid_search()``
-        is broken for Qdrant: it builds the keyword leg with
-        ``MatchAny(any=[kw])`` (exact-value equality) over a single ``values``
-        argument that gets iterated character-by-character when a string is
-        passed. The result is a keyword filter that matches zero documents
-        in a free-text field, silently degrading hybrid → vector-only.
-        For Qdrant we drop down to the raw client and use ``MatchText``
-        (Qdrant's full-text primitive) per whitespace-tokenized query term.
-        Other native-hybrid providers keep the SK path.
+        The adapter builds the provider's query (for Qdrant: a vector leg and
+        a ``MatchText`` leg fused with RRF) over the ``searchable_text``
+        field, which ``HierarchicalDocumentTool`` fills at write time.
+        Returned records are decoded inline so the caller can resolve ids via
+        ``get_chunk`` without a second round-trip.
 
         Args:
             query: Search query string
@@ -948,139 +934,25 @@ class HybridSearchExecutor:
         Returns:
             List of (chunk_id, score) tuples
         """
-        if self.provider == "qdrant":
-            return await self._native_hybrid_search_qdrant(
-                query, query_embedding, top_k
-            )
-
-        results: list[tuple[str, float]] = []
-
-        async with self.collection as coll:
-            search_results = await coll.hybrid_search(
-                query,
+        hits = await self.adapter.hybrid_search(
+            HybridQuery(
+                text=query,
                 vector=query_embedding,
-                vector_property_name="embedding",
-                # `searchable_text` is the concat field carrying
-                # contextualized_content + parent_chain + section_id +
-                # defined_term + cross_refs + filename. Built at write
-                # time by HierarchicalDocumentTool._build_searchable_text;
-                # marked is_full_text_indexed=True on the record class.
-                additional_property_name="searchable_text",
-                top=top_k,
+                top_k=top_k,
+                text_field="searchable_text",
             )
+        )
 
-            async for result in search_results.results:
-                record = result.record if hasattr(result, "record") else result[0]
-                score = result.score if hasattr(result, "score") else result[1]
-                # SK records are HierarchicalDocumentRecord instances — feed
-                # them through chunk_decoder so the tool can resolve via
-                # get_chunk(id) without a second round-trip. Decoder is
-                # tolerant of either a dict or a record-with-fields, since
-                # different SK backends shape the record differently.
-                if self._chunk_decoder is not None:
-                    try:
-                        payload: dict[str, Any]
-                        if hasattr(record, "__dict__"):
-                            payload = {
-                                k: v
-                                for k, v in record.__dict__.items()
-                                if not k.startswith("_")
-                            }
-                        elif isinstance(record, dict):
-                            payload = dict(record)
-                        else:
-                            payload = {}
-                        payload.setdefault("id", str(record.id))
-                        chunk = self._chunk_decoder(payload)
-                        self._chunk_map[chunk.id] = chunk
-                    except Exception as e:
-                        logger.debug(f"chunk_decoder failed for id={record.id}: {e}")
-                results.append((str(record.id), float(score)))
-
-        return results
-
-    async def _native_hybrid_search_qdrant(
-        self,
-        query: str,
-        query_embedding: list[float],
-        top_k: int,
-    ) -> list[tuple[str, float]]:
-        """Qdrant-native hybrid search bypassing SK's broken keyword leg.
-
-        Builds a two-source RRF fusion query directly against the Qdrant
-        client: one vector prefetch and one full-text prefetch where each
-        token from the query is matched with ``MatchText`` (the correct
-        full-text primitive) and OR-combined via ``should=``. Uses a wider
-        prefetch pool than SK's hardcoded ``limit=options.top`` so the
-        fusion stage actually has candidates to merge.
-
-        If the query tokenizes to nothing (e.g. punctuation only), falls
-        back to vector-only so ``FusionQuery`` still has a non-empty source.
-
-        Args:
-            query: Search query string
-            query_embedding: Pre-computed query embedding vector
-            top_k: Maximum number of results
-
-        Returns:
-            List of (chunk_id, score) tuples
-        """
-        from qdrant_client.http import models as qm
-
-        tokens = _tokenize_qdrant_query(query)
-        # Prefetch ~4x the requested top_k (min 20) so RRF has enough
-        # candidates from each leg to find overlap. SK hardcodes top_k,
-        # which makes hybrid degenerate to vector-only on narrow queries.
-        prefetch_limit = max(top_k * 4, 20)
-
-        prefetch: list[qm.Prefetch] = [
-            qm.Prefetch(
-                query=query_embedding,
-                using="embedding",
-                limit=prefetch_limit,
-            ),
-        ]
-        if tokens:
-            text_clauses = [
-                qm.FieldCondition(
-                    key="searchable_text",
-                    match=qm.MatchText(text=tok),
-                )
-                for tok in tokens
-            ]
-            prefetch.append(
-                qm.Prefetch(
-                    filter=qm.Filter(should=text_clauses),  # type: ignore[arg-type]
-                    limit=prefetch_limit,
-                )
-            )
-
-        async with self.collection as coll:
-            client = coll.qdrant_client
-            response = await client.query_points(
-                collection_name=coll.collection_name,
-                prefetch=prefetch,
-                query=qm.FusionQuery(fusion=qm.Fusion.RRF),
-                limit=top_k,
-                with_payload=self._chunk_decoder is not None,
-                with_vectors=False,
-            )
-
-        # Inline-decode payloads so the tool can resolve ids via
-        # get_chunk() without a follow-up retrieve. Native-hybrid skips
-        # the startup corpus reload, so _chunk_map is otherwise empty.
         results: list[tuple[str, float]] = []
-        for p in response.points:
-            chunk_id = str(p.id)
-            if self._chunk_decoder is not None and p.payload:
-                payload = dict(p.payload)
-                payload.setdefault("id", chunk_id)
+        for hit in hits:
+            record = hit.record
+            if self._chunk_decoder is not None:
                 try:
-                    chunk = self._chunk_decoder(payload)
+                    chunk = self._chunk_decoder(record)
                     self._chunk_map[chunk.id] = chunk
                 except Exception as e:  # decoder failures shouldn't sink the query
-                    logger.debug(f"chunk_decoder failed for id={chunk_id}: {e}")
-            results.append((chunk_id, float(p.score)))
+                    logger.debug(f"chunk_decoder failed for id={record.id}: {e}")
+            results.append((record.id, float(hit.score)))
         return results
 
     async def _fallback_hybrid_search(
@@ -1105,17 +977,10 @@ class HybridSearchExecutor:
         from holodeck.lib.hybrid_search import reciprocal_rank_fusion
 
         # Vector (semantic) search
-        vector_results: list[tuple[str, float]] = []
-        async with self.collection as coll:
-            search_results = await coll.search(
-                vector=query_embedding,
-                top=top_k,
-            )
-
-            async for result in search_results.results:
-                record = result.record if hasattr(result, "record") else result[0]
-                score = result.score if hasattr(result, "score") else result[1]
-                vector_results.append((record.id, float(score)))
+        hits = await self.adapter.vector_search(
+            VectorQuery(vector=query_embedding, top_k=top_k)
+        )
+        vector_results = [(hit.record.id, float(hit.score)) for hit in hits]
 
         # Keyword search
         bm25_results: list[tuple[str, float]] = []

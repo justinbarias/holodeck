@@ -18,7 +18,7 @@ Usage:
         def __init__(self, config):
             self.config = config
             self._embedding_service = None
-            self._collection = None
+            self._adapter = None
             self._provider = "in-memory"
             self._embedding_dimensions = None
 """
@@ -26,9 +26,11 @@ Usage:
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from holodeck.lib.retrieval import CollectionSchema, VectorStoreAdapter
     from holodeck.models.tool import DatabaseConfig
 
 logger = logging.getLogger(__name__)
@@ -63,21 +65,21 @@ class EmbeddingServiceMixin:
 
 
 class DatabaseConfigMixin:
-    """Mixin for database configuration resolution and collection creation.
+    """Mixin for database configuration resolution and adapter creation.
 
     Provides methods for resolving database configuration from various formats
-    (None, string reference, DatabaseConfig object) and creating vector store
-    collections with automatic fallback to in-memory storage.
+    (None, string reference, DatabaseConfig object), creating the vector store
+    adapter with automatic fallback to in-memory storage, and closing it.
 
     Required instance attributes (set by subclass __init__):
         config: Any - tool configuration with .name and .database attributes
         _provider: str - stores the resolved provider name
-        _collection: Any - stores the created collection instance
+        _adapter: VectorStoreAdapter | None - the tool's vector store adapter
         _embedding_dimensions: int | None - embedding dimensions
     """
 
     _provider: str
-    _collection: Any
+    _adapter: VectorStoreAdapter | None
     _embedding_dimensions: int | None
 
     def _resolve_database_config(
@@ -131,67 +133,59 @@ class DatabaseConfigMixin:
         # None - use in-memory
         return "in-memory", {}
 
-    def _create_collection_with_fallback(
+    def _create_adapter_with_fallback(
         self,
         provider: str,
-        dimensions: int,
-        connection_kwargs: dict[str, Any],
-        record_class: type[Any] | None = None,
-        definition: Any | None = None,
-    ) -> Any:
-        """Create a vector store collection with fallback to in-memory.
+        schema: CollectionSchema,
+        connection_kwargs: Mapping[str, object],
+    ) -> VectorStoreAdapter:
+        """Create the vector store adapter with fallback to in-memory.
 
-        Attempts to create a collection with the specified provider. If creation
-        fails (e.g., database unreachable), falls back to in-memory storage.
+        Attempts to create the adapter for the configured provider. If that
+        fails (unknown provider, client library missing, invalid settings),
+        falls back to in-memory storage.
 
         Args:
             provider: Vector store provider name
-            dimensions: Embedding dimensions for the collection
+            schema: Collection layout (fields, dimensions, collection name)
             connection_kwargs: Provider-specific connection parameters
-            record_class: Optional custom record class for the collection
-            definition: Optional VectorStoreCollectionDefinition for structured data
 
         Returns:
-            Created collection instance
+            The adapter, which the tool owns until ``close``.
 
         Raises:
-            Exception: If in-memory provider also fails (shouldn't happen)
+            Exception: If the in-memory adapter also fails (shouldn't happen)
         """
-        from holodeck.lib.vector_store import get_collection_factory
+        from holodeck.lib.retrieval import create_adapter
 
         try:
-            factory = get_collection_factory(
-                provider=provider,
-                dimensions=dimensions,
-                record_class=record_class,
-                definition=definition,
-                **connection_kwargs,
-            )
-            collection = factory()
+            adapter = create_adapter(provider, schema, connection_kwargs)
             logger.info(
                 f"Vector store connected: provider={provider}, "
-                f"dimensions={dimensions}"
+                f"dimensions={schema.dimensions}"
             )
             self._provider = provider
-            return collection
+            return adapter
 
-        except (ImportError, ConnectionError, Exception) as e:
+        except Exception as e:
             # Fall back to in-memory storage for non-in-memory providers
             if provider != "in-memory":
                 logger.warning(
                     f"Failed to connect to {provider}: {e}. "
                     "Falling back to in-memory storage."
                 )
-                factory = get_collection_factory(
-                    provider="in-memory",
-                    dimensions=dimensions,
-                    record_class=record_class,
-                    definition=definition,
-                )
-                collection = factory()
+                adapter = create_adapter("in-memory", schema)
                 logger.info("Using in-memory vector storage (fallback)")
                 self._provider = "in-memory"
-                return collection
-            else:
-                # Don't catch errors for in-memory provider
-                raise
+                return adapter
+            # Don't catch errors for in-memory provider
+            raise
+
+    async def close(self) -> None:
+        """Release the vector store client. Safe to call more than once."""
+        if self._adapter is not None:
+            await self._adapter.close()
+
+    async def cleanup(self) -> None:
+        """Release resources; the hook backends call on teardown."""
+        await self.close()

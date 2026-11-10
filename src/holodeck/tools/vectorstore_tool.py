@@ -8,8 +8,8 @@ Features:
 - Automatic file discovery (single files or directories)
 - Support for multiple file formats (.txt, .md, .pdf, .csv, .json)
 - Text chunking with configurable size and overlap
-- Embedding generation via Semantic Kernel
-- Vector storage in Redis or in-memory
+- Embedding generation via the injected embedding service
+- Vector storage through the retrieval adapter contract (any provider)
 - Modification time tracking for incremental ingestion
 - Structured data ingestion with field mapping (vector_field, meta_fields, id_field)
 """
@@ -23,12 +23,26 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from holodeck.lib.file_processor import FileProcessor, SourceFile
-from holodeck.lib.text_chunker import TextChunker
-from holodeck.lib.vector_store import (
-    QueryResult,
-    StructuredQueryResult,
-    convert_document_to_query_result,
+from holodeck.lib.retrieval import (
+    CollectionSchema,
+    Operation,
+    ScoredRecord,
+    UnsupportedOperationError,
+    VectorQuery,
+    VectorStoreAdapter,
+    clamp_similarity,
 )
+from holodeck.lib.retrieval.schemas import (
+    DocumentChunkRecord,
+    document_schema,
+    float_field,
+    int_field,
+    structured_record,
+    structured_schema,
+    text_field,
+)
+from holodeck.lib.text_chunker import TextChunker
+from holodeck.lib.vector_store import QueryResult, StructuredQueryResult
 from holodeck.tools.base_tool import DatabaseConfigMixin, EmbeddingServiceMixin
 from holodeck.tools.common import (
     SUPPORTED_EXTENSIONS,
@@ -39,10 +53,36 @@ from holodeck.tools.common import (
 )
 
 if TYPE_CHECKING:
+    from holodeck.lib.structured_loader import StructuredDataLoader
     from holodeck.models.config import ExecutionConfig
     from holodeck.models.tool import VectorstoreTool as VectorstoreToolConfig
 
 logger = logging.getLogger(__name__)
+
+# Operations each mode uses. Checked before ingestion starts (FR-014).
+_DOCUMENT_OPERATIONS = (
+    Operation.UPSERT,
+    Operation.GET,
+    Operation.DELETE,
+    Operation.VECTOR_SEARCH,
+)
+_STRUCTURED_OPERATIONS = (Operation.UPSERT, Operation.VECTOR_SEARCH)
+
+
+def _query_result(hit: ScoredRecord) -> QueryResult:
+    """Convert a document search hit to a ``QueryResult``."""
+    record = hit.record
+    return QueryResult(
+        content=text_field(record, "content"),
+        score=clamp_similarity(hit.score),
+        source_path=text_field(record, "source_path"),
+        chunk_index=int_field(record, "chunk_index"),
+        metadata={
+            "file_type": text_field(record, "file_type"),
+            "file_size_bytes": int_field(record, "file_size_bytes"),
+            "mtime": float_field(record, "mtime"),
+        },
+    )
 
 
 def _is_qdrant_native_id(record_id: str) -> bool:
@@ -144,8 +184,8 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         # Embedding service (initialized lazily by AgentFactory)
         self._embedding_service: Any = None
 
-        # Persistent collection instance for vector store operations
-        self._collection: Any = None
+        # Vector store adapter, owned by the tool until close()
+        self._adapter: VectorStoreAdapter | None = None
         self._provider: str = "in-memory"
         self._warned_id_coercion: bool = False
 
@@ -260,25 +300,22 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         )
         return dimensions
 
-    def _setup_collection(
-        self,
-        provider_type: str,
-        record_class: type[Any] | None = None,
-        definition: Any | None = None,
-    ) -> None:
-        """Set up the collection instance based on database configuration.
+    def _setup_collection(self, provider_type: str) -> None:
+        """Set up the vector store adapter for the configured mode.
 
-        Uses DatabaseConfigMixin methods for config resolution and collection creation
-        with automatic fallback to in-memory storage.
+        Uses DatabaseConfigMixin methods for config resolution and adapter
+        creation with automatic fallback to in-memory storage, then checks
+        that the provider supports every operation the mode needs.
 
         Args:
             provider_type: LLM provider type for dimension resolution
-            record_class: Optional custom record class for the collection.
-                If None, uses DocumentRecord for unstructured documents.
-            definition: Optional VectorStoreCollectionDefinition for structured
-                data with dynamic metadata fields.
+
+        Raises:
+            UnsupportedOperationError: The provider lacks an operation the
+                configured mode needs. Raised before any ingestion.
+            SchemaError: A structured metadata field name is invalid.
         """
-        # Resolve dimensions before creating collection
+        # Resolve dimensions before creating the adapter
         if self._embedding_dimensions is None:
             self._embedding_dimensions = self._resolve_dimensions(provider_type)
 
@@ -287,19 +324,41 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             self.config.database
         )
 
-        # Use mixin to create collection with fallback
-        self._collection = self._create_collection_with_fallback(
+        schema: CollectionSchema
+        if self._is_structured_mode():
+            schema = structured_schema(
+                self._embedding_dimensions,
+                self.config.meta_fields,
+                self.config.name,
+                connection_kwargs,
+            )
+        else:
+            schema = document_schema(self._embedding_dimensions, connection_kwargs)
+
+        # Use mixin to create the adapter with fallback
+        self._adapter = self._create_adapter_with_fallback(
             provider=provider,
-            dimensions=self._embedding_dimensions,
+            schema=schema,
             connection_kwargs=connection_kwargs,
-            record_class=record_class,
-            definition=definition,
+        )
+        self._adapter.capabilities.require(
+            *(
+                _STRUCTURED_OPERATIONS
+                if self._is_structured_mode()
+                else _DOCUMENT_OPERATIONS
+            )
         )
 
         logger.debug(
             f"Collection created for provider: {self._provider}, "
             f"dimensions={self._embedding_dimensions}"
         )
+
+    def _require_adapter(self) -> VectorStoreAdapter:
+        """Return the adapter or raise when the collection is not set up."""
+        if self._adapter is None:
+            raise RuntimeError("Collection not initialized")
+        return self._adapter
 
     def _get_file_processor(self) -> FileProcessor:
         """Get or create FileProcessor instance (lazy initialization).
@@ -480,7 +539,8 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
     ) -> int:
         """Store document chunks with embeddings in vector store.
 
-        Uses Semantic Kernel collection abstraction for batch upsert operations.
+        Replaces the file's previous chunks: chunks beyond the new count,
+        left over from a longer earlier version of the file, are deleted.
 
         Args:
             source_file: SourceFile with chunks to store.
@@ -492,26 +552,16 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Raises:
             RuntimeError: If collection is not initialized.
         """
-        if self._collection is None:
-            raise RuntimeError("Collection not initialized")
+        adapter = self._require_adapter()
 
-        # Import DocumentRecord creation factory
-        from holodeck.lib.vector_store import create_document_record_class
-
-        # Create DocumentRecord class with correct dimensions
         if self._embedding_dimensions is None:
             self._embedding_dimensions = 1536
-
-        record_class = create_document_record_class(self._embedding_dimensions)
 
         source_key = self._compute_source_key(source_file.path)
         content_hash = self._compute_content_hash(source_file.path)
 
-        records: list[Any] = []
-        for idx, (chunk, embedding) in enumerate(
-            zip(source_file.chunks, embeddings, strict=False)
-        ):
-            record = record_class(
+        records = [
+            DocumentChunkRecord(
                 id=self._record_id(source_key, idx),
                 source_path=source_key,
                 chunk_index=idx,
@@ -521,14 +571,17 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                 file_type=source_file.file_type,
                 file_size_bytes=source_file.size_bytes,
                 content_hash=content_hash,
+            ).to_record()
+            for idx, (chunk, embedding) in enumerate(
+                zip(source_file.chunks, embeddings, strict=False)
             )
-            records.append(record)
+        ]
 
-        # Batch upsert using persistent collection
-        async with self._collection as collection:
-            if not await collection.collection_exists():
-                await collection.ensure_collection_exists()
-            await collection.upsert(records)
+        await adapter.ensure_collection()
+        await adapter.upsert(records)
+        stale = await self._delete_chunks_from(adapter, source_key, len(records))
+        if stale:
+            logger.debug(f"Deleted {stale} stale chunks of {source_file.path}")
 
         logger.debug(f"Stored {len(records)} chunks from {source_file.path}")
         return len(records)
@@ -566,8 +619,8 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
     async def _needs_reingest(self, file_path: Path) -> bool:
         """Check if file needs re-ingestion based on modification time.
 
-        Compares file's current mtime against stored DocumentRecord mtime.
-        Returns True if file should be re-ingested.
+        Compares file's current mtime against the stored mtime of its first
+        chunk. Returns True if file should be re-ingested.
 
         Args:
             file_path: Path to file to check.
@@ -576,37 +629,63 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             True if file needs re-ingestion (modified or not in store).
             False if file is up-to-date.
         """
-        if self._collection is None:
+        if self._adapter is None:
             return True  # No collection, must ingest
 
         source_key = self._compute_source_key(file_path)
 
-        # Query for existing record by ID pattern
-        async with self._collection as collection:
+        try:
+            # Get first chunk to check mtime (all chunks share same mtime)
+            found = await self._adapter.get([self._record_id(source_key, 0)])
+            if not found:
+                return True  # Not in store, must ingest
+            record = found[0]
+
+            if self._is_remote:
+                # For remote sources, compare content hash
+                current_hash = self._compute_content_hash(file_path)
+                stored_hash = text_field(record, "content_hash")
+                if not stored_hash:
+                    return True  # No hash stored (old record), must reingest
+                return current_hash != stored_hash
+            # For local sources, compare mtime (backward compat)
+            current_mtime = round(file_path.stat().st_mtime, 6)
+            return current_mtime > float_field(record, "mtime")
+
+        except UnsupportedOperationError:
+            raise
+        except Exception as e:
+            logger.debug(f"Could not retrieve record for {file_path}: {e}")
+            return True  # Error = must ingest
+
+    async def _delete_chunks_from(
+        self, adapter: VectorStoreAdapter, source_key: str, start: int
+    ) -> int:
+        """Delete a file's chunks from index ``start`` until one is missing.
+
+        Chunk IDs are ``{source_key}_chunk_{index}`` with no gaps, so walking
+        them by ID works on every provider, including those that cannot
+        filter by ``source_path``.
+
+        Returns:
+            Number of records deleted.
+        """
+        deleted_count = 0
+        chunk_index = start
+        while True:
+            record_id = self._record_id(source_key, chunk_index)
             try:
-                # Get first chunk to check mtime (all chunks share same mtime)
-                record_id = self._record_id(source_key, 0)
-                record = await collection.get(record_id)
-
-                if record is None:
-                    return True  # Not in store, must ingest
-
-                if self._is_remote:
-                    # For remote sources, compare content hash
-                    current_hash = self._compute_content_hash(file_path)
-                    stored_hash = getattr(record, "content_hash", "")
-                    if not stored_hash:
-                        return True  # No hash stored (old record), must reingest
-                    return current_hash != stored_hash
-                else:
-                    # For local sources, compare mtime (backward compat)
-                    current_mtime = round(file_path.stat().st_mtime, 6)
-                    stored_mtime: float = float(record.mtime)
-                    return current_mtime > stored_mtime
-
+                if not await adapter.get([record_id]):
+                    break
+                await adapter.delete([record_id])
+            except UnsupportedOperationError:
+                raise
             except Exception as e:
-                logger.debug(f"Could not retrieve record for {file_path}: {e}")
-                return True  # Error = must ingest
+                logger.debug(f"Error deleting record {record_id}: {e}")
+                break
+            deleted_count += 1
+            chunk_index += 1
+        return deleted_count
 
     async def _delete_file_records(self, file_path: Path) -> int:
         """Delete all records for a source file from vector store.
@@ -617,26 +696,11 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Returns:
             Number of records deleted.
         """
-        if self._collection is None:
+        if self._adapter is None:
             return 0
 
         source_key = self._compute_source_key(file_path)
-        deleted_count = 0
-
-        async with self._collection as collection:
-            chunk_index = 0
-            while True:
-                record_id = self._record_id(source_key, chunk_index)
-                try:
-                    record = await collection.get(record_id)
-                    if record is None:
-                        break
-                    await collection.delete(record_id)
-                    deleted_count += 1
-                    chunk_index += 1
-                except Exception as e:
-                    logger.debug(f"Error deleting record {record_id}: {e}")
-                    break
+        deleted_count = await self._delete_chunks_from(self._adapter, source_key, 0)
 
         if deleted_count > 0:
             logger.debug(f"Deleted {deleted_count} records for {file_path}")
@@ -657,7 +721,6 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             FileNotFoundError: If source file doesn't exist.
         """
         from holodeck.lib.structured_loader import StructuredDataLoader
-        from holodeck.lib.vector_store import create_structured_record_class
 
         source_path = self._resolve_source_path()
 
@@ -692,24 +755,11 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         # Validate schema before ingestion (raises ConfigError if fields missing)
         loader.validate_schema()
 
-        # Resolve dimensions before creating record class
-        if self._embedding_dimensions is None:
-            self._embedding_dimensions = self._resolve_dimensions(provider_type)
-
-        # Create structured record class and definition with metadata fields
-        record_class, definition = create_structured_record_class(
-            dimensions=self._embedding_dimensions,
-            metadata_field_names=self.config.meta_fields,
-            collection_name=self.config.name,
-        )
-
-        # Set up collection with structured record class and definition
-        self._setup_collection(
-            provider_type, record_class=record_class, definition=definition
-        )
+        # Set up the adapter with the structured schema (metadata fields)
+        self._setup_collection(provider_type)
 
         # Ingest records
-        await self._ingest_structured_records(loader, str(source_path), record_class)
+        await self._ingest_structured_records(loader, str(source_path))
 
         self.is_initialized = True
         self.last_ingest_time = datetime.now()
@@ -720,15 +770,15 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         )
 
     async def _ingest_structured_records(
-        self, loader: Any, source_path: str, record_class: type[Any]
+        self, loader: StructuredDataLoader, source_path: str
     ) -> None:
         """Ingest structured records with embeddings.
 
         Args:
             loader: StructuredDataLoader instance.
             source_path: Path to source file for record metadata.
-            record_class: Structured record class for creating records.
         """
+        adapter = self._require_adapter()
         total_records = 0
 
         for batch in loader.iter_batches():
@@ -739,7 +789,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
             embeddings = await self._embed_chunks(contents)
 
             # Create records
-            records: list[Any] = []
+            records = []
             for record_data, embedding in zip(batch, embeddings, strict=False):
                 record_id = self._coerce_record_id(record_data["id"])
                 if record_id != record_data["id"] and not self._warned_id_coercion:
@@ -750,20 +800,20 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
                         f"UUIDv5 hashes; search results carry the hash. Add the "
                         f"id column to meta_fields to keep the original key."
                     )
-                record = record_class(
-                    id=record_id,
-                    content=record_data["content"],
-                    embedding=embedding,
-                    source_file=source_path,
-                    **record_data["metadata"],
+                records.append(
+                    structured_record(
+                        record_id,
+                        content=record_data["content"],
+                        embedding=embedding,
+                        source_file=source_path,
+                        metadata=record_data["metadata"],
+                        metadata_field_names=self.config.meta_fields,
+                    )
                 )
-                records.append(record)
 
             # Upsert batch to collection
-            async with self._collection as collection:
-                if not await collection.collection_exists():
-                    await collection.ensure_collection_exists()
-                await collection.upsert(records)
+            await adapter.ensure_collection()
+            await adapter.upsert(records)
 
             total_records += len(records)
             logger.debug(f"Ingested batch of {len(records)} structured records")
@@ -954,9 +1004,7 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
     async def _search_documents(
         self, query_embedding: list[float]
     ) -> list[QueryResult]:
-        """Search documents using vector store collection.
-
-        Uses Semantic Kernel collection's native vector search capabilities.
+        """Search document chunks by vector similarity.
 
         Args:
             query_embedding: Query embedding vector.
@@ -967,33 +1015,11 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Raises:
             RuntimeError: If collection is not initialized.
         """
-        if self._collection is None:
-            raise RuntimeError("Collection not initialized")
-
-        results: list[QueryResult] = []
-
-        async with self._collection as collection:
-            search_results = await collection.search(
-                vector=query_embedding,
-                top=self.config.top_k or 5,
-            )
-
-            # Process async iterable of search results
-            # KernelSearchResults wraps results in .results attribute
-            async for result in search_results.results:
-                # Handle SK result format (may be object with attrs or tuple)
-                record = result.record if hasattr(result, "record") else result[0]
-                raw_score = result.score if hasattr(result, "score") else result[1]
-
-                similarity = max(0.0, min(1.0, raw_score))
-
-                query_result = await convert_document_to_query_result(
-                    record,
-                    score=similarity,
-                )
-                results.append(query_result)
-
-        # Results should already be sorted by SK, but ensure ordering
+        adapter = self._require_adapter()
+        hits = await adapter.vector_search(
+            VectorQuery(vector=query_embedding, top_k=self.config.top_k or 5)
+        )
+        results = [_query_result(hit) for hit in hits]
         results.sort(key=lambda r: r.score, reverse=True)
         return results
 
@@ -1045,40 +1071,28 @@ class VectorStoreTool(EmbeddingServiceMixin, DatabaseConfigMixin):
         Raises:
             RuntimeError: If collection is not initialized.
         """
-        if self._collection is None:
-            raise RuntimeError("Collection not initialized")
+        adapter = self._require_adapter()
+        hits = await adapter.vector_search(
+            VectorQuery(vector=query_embedding, top_k=self.config.top_k or 5)
+        )
 
         results: list[StructuredQueryResult] = []
-
-        async with self._collection as collection:
-            search_results = await collection.search(
-                vector=query_embedding,
-                top=self.config.top_k or 5,
-            )
-
-            async for result in search_results.results:
-                # Handle SK result format
-                record = result.record if hasattr(result, "record") else result[0]
-                raw_score = result.score if hasattr(result, "score") else result[1]
-
-                similarity = max(0.0, min(1.0, raw_score))
-
-                # Extract metadata fields from record
-                metadata: dict[str, Any] = {}
-                if self.config.meta_fields:
-                    for field in self.config.meta_fields:
-                        if hasattr(record, field):
-                            metadata[field] = getattr(record, field)
-
-                results.append(
-                    StructuredQueryResult(
-                        id=record.id,
-                        content=record.content,
-                        score=similarity,
-                        source_file=record.source_file,
-                        metadata=metadata,
-                    )
+        for hit in hits:
+            record = hit.record
+            metadata: dict[str, Any] = {
+                name: record.fields[name]
+                for name in self.config.meta_fields or ()
+                if name in record.fields
+            }
+            results.append(
+                StructuredQueryResult(
+                    id=record.id,
+                    content=text_field(record, "content"),
+                    score=clamp_similarity(hit.score),
+                    source_file=text_field(record, "source_file"),
+                    metadata=metadata,
                 )
+            )
 
         # Sort by score descending
         results.sort(key=lambda r: r.score, reverse=True)

@@ -4,11 +4,21 @@ Tests stable record keys and content-hash change detection for remote sources.
 """
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
+from holodeck.lib.retrieval import FieldValue, Record
+from holodeck.lib.retrieval.schemas import document_schema
 from holodeck.tools.vectorstore_tool import VectorStoreTool
+from tests.unit.tools.fakes import FakeAdapter
+
+
+def _adapter_with(record_id: str, **fields: FieldValue) -> FakeAdapter:
+    """An adapter holding one document record."""
+    adapter = FakeAdapter(document_schema(4))
+    adapter.put(Record(id=record_id, fields=fields, vector=[0.0] * 4))
+    return adapter
 
 
 @pytest.fixture
@@ -114,14 +124,9 @@ class TestNeedsReingestRemote:
         test_file.write_text("hello")
         content_hash = tool._compute_content_hash(test_file)
 
-        mock_record = MagicMock()
-        mock_record.content_hash = content_hash
-
-        mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=mock_record)
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=False)
-        tool._collection = mock_collection
+        tool._adapter = _adapter_with(
+            f"{tool._compute_source_key(test_file)}_chunk_0", content_hash=content_hash
+        )
 
         result = await tool._needs_reingest(test_file)
         assert result is False
@@ -135,14 +140,10 @@ class TestNeedsReingestRemote:
         test_file = tmp_path / "file.txt"
         test_file.write_text("new content")
 
-        mock_record = MagicMock()
-        mock_record.content_hash = "old_hash_value"
-
-        mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=mock_record)
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=False)
-        tool._collection = mock_collection
+        tool._adapter = _adapter_with(
+            f"{tool._compute_source_key(test_file)}_chunk_0",
+            content_hash="old_hash_value",
+        )
 
         result = await tool._needs_reingest(test_file)
         assert result is True
@@ -156,14 +157,9 @@ class TestNeedsReingestRemote:
         test_file = tmp_path / "file.txt"
         test_file.write_text("content")
 
-        mock_record = MagicMock()
-        mock_record.content_hash = ""
-
-        mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=mock_record)
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=False)
-        tool._collection = mock_collection
+        tool._adapter = _adapter_with(
+            f"{tool._compute_source_key(test_file)}_chunk_0", content_hash=""
+        )
 
         result = await tool._needs_reingest(test_file)
         assert result is True
@@ -181,19 +177,13 @@ class TestNeedsReingestRemote:
 
         tool.set_source_context(source_root=root, is_remote=True)
 
-        mock_record = MagicMock()
-        mock_record.content_hash = tool._compute_content_hash(test_file)
+        tool._adapter = _adapter_with(
+            "data/file.txt_chunk_0", content_hash=tool._compute_content_hash(test_file)
+        )
 
-        mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=mock_record)
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=False)
-        tool._collection = mock_collection
-
-        await tool._needs_reingest(test_file)
-
-        # Verify the lookup used relative key
-        mock_collection.get.assert_called_once_with("data/file.txt_chunk_0")
+        # The record is found only under the relative key, so an unchanged
+        # hash proves the lookup used it.
+        assert await tool._needs_reingest(test_file) is False
 
 
 class TestNeedsReingestLocal:
@@ -207,14 +197,9 @@ class TestNeedsReingestLocal:
         test_file.write_text("content")
         mtime = round(test_file.stat().st_mtime, 6)
 
-        mock_record = MagicMock()
-        mock_record.mtime = mtime
-
-        mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=mock_record)
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=False)
-        tool._collection = mock_collection
+        tool._adapter = _adapter_with(
+            f"{tool._compute_source_key(test_file)}_chunk_0", mtime=mtime
+        )
 
         result = await tool._needs_reingest(test_file)
         assert result is False
@@ -226,14 +211,9 @@ class TestNeedsReingestLocal:
         test_file = tmp_path / "file.txt"
         test_file.write_text("content")
 
-        mock_record = MagicMock()
-        mock_record.mtime = 1000.0  # old mtime
-
-        mock_collection = AsyncMock()
-        mock_collection.get = AsyncMock(return_value=mock_record)
-        mock_collection.__aenter__ = AsyncMock(return_value=mock_collection)
-        mock_collection.__aexit__ = AsyncMock(return_value=False)
-        tool._collection = mock_collection
+        tool._adapter = _adapter_with(
+            f"{tool._compute_source_key(test_file)}_chunk_0", mtime=1000.0
+        )  # old mtime
 
         result = await tool._needs_reingest(test_file)
         assert result is True

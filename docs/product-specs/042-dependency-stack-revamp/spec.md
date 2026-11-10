@@ -183,7 +183,7 @@ This illustrates style, not the complete record schema or a mandate to add these
 Existing focused checks for retrieval changes:
 
 ```bash
-uv run pytest tests/unit/lib/test_vector_store.py tests/unit/lib/test_collection_filter.py tests/unit/lib/test_keyword_search.py tests/unit/lib/test_text_chunker.py tests/unit/lib/test_structured_chunker.py tests/unit/tools/test_hierarchical_document_tool.py -n auto -q
+uv run pytest tests/unit/lib/test_vector_store.py tests/contract/retrieval tests/unit/lib/test_keyword_search.py tests/unit/lib/test_text_chunker.py tests/unit/lib/test_structured_chunker.py tests/unit/tools/test_hierarchical_document_tool.py -n auto -q
 uv run black --check src/holodeck tests
 uv run ruff check src/holodeck tests
 uv run mypy src/holodeck
