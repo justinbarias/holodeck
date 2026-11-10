@@ -13,7 +13,7 @@ on:
         required: false
         type: string
       holodeck_version:
-        description: 'HoloDeck package version to install (default: latest)'
+        description: 'Exact HoloDeck release to install (default: latest stable release on PyPI)'
         required: false
         type: string
   workflow_run:
@@ -89,8 +89,11 @@ jobs:
             VERSION="${{ github.event.workflow_run.head_branch }}"
             echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
           else
-            # Empty string means latest from PyPI
-            echo "version=" >> $GITHUB_OUTPUT
+            # The image installs an exact release: resolve the latest stable
+            # release on PyPI now and record it, instead of building "latest".
+            VERSION="$(curl -fsSL https://pypi.org/pypi/holodeck-ai/json | python3 -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])')"
+            echo "Resolved latest PyPI release: ${VERSION}"
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
           fi
 
       - name: Build and push Docker image

@@ -10,6 +10,7 @@ Tests cover:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -53,6 +54,27 @@ from holodeck.models.deployment import (
 def runner() -> CliRunner:
     """Create a CLI runner."""
     return CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def released_holodeck_version() -> Iterator[None]:
+    """Pretend the running HoloDeck is a published release.
+
+    A checkout reports a development version, which `deploy build` refuses to
+    install without a wheel. The image manifest needs a real Docker image, so
+    the mocked builds skip it; `test_deploy_build_manifest.py` covers it.
+    """
+    with (
+        patch(
+            "holodeck.cli.commands.deploy._installed_holodeck_version",
+            return_value="1.2.3",
+        ),
+        patch(
+            "holodeck.cli.commands.deploy._record_image_manifest",
+            return_value=Path("/tmp/manifest.json"),  # noqa: S108
+        ),
+    ):
+        yield
 
 
 @pytest.fixture

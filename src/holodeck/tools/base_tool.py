@@ -145,8 +145,9 @@ class DatabaseConfigMixin:
         """Create the vector store adapter with fallback to in-memory.
 
         Attempts to create the adapter for the configured provider. If that
-        fails (unknown provider, client library missing, invalid settings),
-        falls back to in-memory storage.
+        fails because of invalid settings or an unreachable store, falls back
+        to in-memory storage. A missing client library or a retired provider
+        is raised: the configuration cannot work until it is fixed.
 
         Args:
             provider: Vector store provider name
@@ -157,9 +158,12 @@ class DatabaseConfigMixin:
             The adapter, which the tool owns until ``close``.
 
         Raises:
+            MissingExtraError: The provider's client library is not installed.
+            RetiredProviderError: The provider name was retired.
             Exception: If the in-memory adapter also fails (shouldn't happen)
         """
-        from holodeck.lib.retrieval import create_adapter
+        from holodeck.lib.extras import MissingExtraError
+        from holodeck.lib.retrieval import RetiredProviderError, create_adapter
 
         try:
             adapter = create_adapter(provider, schema, connection_kwargs)
@@ -170,6 +174,10 @@ class DatabaseConfigMixin:
             self._provider = provider
             return adapter
 
+        except (MissingExtraError, RetiredProviderError):
+            # The configuration cannot work on this install. Storing data in
+            # memory in its place would hide that from the user.
+            raise
         except Exception as e:
             # Fall back to in-memory storage for non-in-memory providers
             if provider != "in-memory":

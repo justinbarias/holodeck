@@ -38,10 +38,12 @@ def _load(agent_config: str) -> tuple[Agent, ExecutionConfig, str]:
 
 def _run(make: Callable[[], Coroutine[object, object, T]]) -> T:
     """Run a coroutine and turn HoloDeck errors into a clean CLI error."""
-    from holodeck.lib.errors import HoloDeckError
+    from holodeck.lib.errors import HoloDeckError, UserFixableError
 
     try:
         return asyncio.run(make())
+    except UserFixableError:
+        raise  # the CLI group prints it: one line, exit 2
     except (HoloDeckError, FileNotFoundError) as error:
         raise click.ClickException(str(error)) from error
 
@@ -217,10 +219,12 @@ def migrate(
 
 
 def _run_selection(select: Callable[[], list[T]]) -> list[T]:
-    from holodeck.lib.errors import HoloDeckError
+    from holodeck.lib.errors import HoloDeckError, UserFixableError
 
     try:
         return select()
+    except UserFixableError:
+        raise
     except HoloDeckError as error:
         raise click.ClickException(str(error)) from error
 

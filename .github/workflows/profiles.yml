@@ -1,0 +1,63 @@
+name: Install profiles
+
+# Installed-wheel profile tests (042 T22): build the wheel, install each extras
+# profile into a clean venv from the lock, and run that profile's checks. See
+# scripts/verify/profiles.py and the "profiles" tier in docs/RELIABILITY.md.
+#
+# A separate workflow (not a ci.yml job) because only this one is path-filtered
+# on pull requests: it adds nothing when a PR leaves packaging and sources
+# alone. It runs on GitHub-hosted runners so it never queues behind the
+# required "test (3.11)" lane on the single self-hosted machine.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".gitignore" # an ignored file is left out of the wheel
+      - "src/**"
+      - "scripts/verify/profiles.py"
+      - "scripts/verify/profile_probe.py"
+      - ".github/workflows/profiles.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A superseded PR run only wastes runner minutes. Push runs key on the SHA.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  profiles:
+    name: profiles (${{ matrix.group }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # Four groups, not sixteen jobs: venvs in one job share the uv cache, so
+      # a package downloads once per group. `all` and `stores` dominate.
+      matrix:
+        group: [base, features, stores, all]
+    env:
+      UV_PYTHON: "3.11" # the lowest supported: catches resolution differences
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the wheel version comes from git tags (hatch-vcs)
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3 # no floating major tags since v8
+        with:
+          enable-cache: true # hosted runners start empty; keyed on uv.lock
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      # The runner environment needs only the base dependencies (httpx, for the
+      # shared verify helpers); every profile installs its own venv.
+      - name: Installed-wheel profiles (${{ matrix.group }})
+        run: uv run --no-dev python scripts/verify/profiles.py --group ${{ matrix.group }}

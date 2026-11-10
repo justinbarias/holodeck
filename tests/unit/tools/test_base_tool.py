@@ -17,7 +17,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from holodeck.lib.retrieval import CollectionSchema, FieldSpec, VectorStoreAdapter
+from holodeck.lib.retrieval import (
+    CollectionSchema,
+    FieldSpec,
+    MissingClientError,
+    RetiredProviderError,
+    VectorStoreAdapter,
+)
 from holodeck.lib.retrieval.adapters.in_memory import InMemoryAdapter
 from holodeck.tools.base_tool import DatabaseConfigMixin, EmbeddingServiceMixin
 from tests.unit.tools.fakes import FakeAdapter
@@ -156,6 +162,28 @@ class TestDatabaseConfigMixin:
         assert isinstance(result, InMemoryAdapter)
         assert result.schema == _schema()
         assert tool._provider == "in-memory"
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            MissingClientError("qdrant", "qdrant"),
+            RetiredProviderError("faiss", "Use 'chromadb'."),
+        ],
+        ids=["missing-client", "retired-provider"],
+    )
+    def test_create_adapter_does_not_fall_back_when_the_config_cannot_work(
+        self, error: Exception
+    ) -> None:
+        """A missing client or a retired provider is an error, not in-memory."""
+        tool = DatabaseTestTool()
+
+        with (
+            patch("holodeck.lib.retrieval.create_adapter", side_effect=error),
+            pytest.raises(type(error)),
+        ):
+            tool._create_adapter_with_fallback(
+                provider="qdrant", schema=_schema(), connection_kwargs={}
+            )
 
     def test_create_adapter_with_fallback_falls_back_on_error(
         self, caplog: pytest.LogCaptureFixture

@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 
 import click
 
-from holodeck.lib.errors import HoloDeckError
+from holodeck.lib.errors import HoloDeckError, UserFixableError
 from holodeck.lib.logging_config import get_logger
 
 if TYPE_CHECKING:
@@ -90,6 +90,9 @@ def worker(config_path: str, task_queue: str | None) -> None:
             config = _with_task_queue(config, task_queue)
 
         asyncio.run(_run_worker(config))
+    except UserFixableError:
+        # A missing extra or retired provider: the CLI group prints it.
+        raise
     except HoloDeckError as exc:
         logger.error(f"Worker failed to start: {exc}", exc_info=True)
         click.secho("Error: Failed to start the Temporal worker", fg="red", err=True)

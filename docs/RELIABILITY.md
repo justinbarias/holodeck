@@ -29,7 +29,7 @@ That gap is tracked in [technical debt](exec-plans/tech-debt-tracker.md).
 
 ## Verify suite
 
-`make verify` runs the three offline tiers. Run `make verify-live` separately when you have credentials.
+`make verify` runs the three offline tiers. Run `make verify-profiles` when packaging changes and `make verify-live` when you have credentials; neither is part of `make verify`.
 The `/verify` skill ([SKILL.md](../.claude/skills/verify/SKILL.md)) selects tiers from the changed files.
 
 | Tier | Command | Proves | Credentials |
@@ -37,6 +37,7 @@ The `/verify` skill ([SKILL.md](../.claude/skills/verify/SKILL.md)) selects tier
 | fast | `make verify-fast` | Harness, lock, Ruff, Black, MyPy and schema checks pass, and the full pytest suite passes | None |
 | deps | `make verify-deps` | The lock is current. No unreviewed pip-audit advisory exists. npm audit of `sample/copilotkit` passes (skipped when that sample is absent) | None (network to the advisory databases) |
 | smoke | `make verify-smoke` | Both backends complete real `holodeck test run` and `holodeck serve` AG-UI turns, including a tool call and thread isolation | None |
+| profiles | `make verify-profiles` | The built wheel installs and works in a clean venv for each extras profile, and unselected packages are absent (details below) | None (network to the package index) |
 | live | `make verify-live` | Every tool type each backend supports, a vector store case on every supported provider, plus serve AG-UI turns, against real providers; traces in a local Aspire dashboard | `CLAUDE_CODE_OAUTH_TOKEN` (Claude), `OPENAI_API_KEY` (OpenAI, and embeddings for both); Docker for the vector stores and Aspire; optional `PINECONE_API_KEY` and `AZURE_AI_SEARCH_ENDPOINT` + `AZURE_AI_SEARCH_API_KEY` |
 | providers | `make verify-providers` | Only the vector store matrix of the live tier: the provider table below, with no AG-UI turns | Same as live |
 
@@ -54,6 +55,25 @@ It also asserts that no request for thread B carries thread A's text.
 Artifacts, including the provider request log, go to `.verify/smoke/<UTC timestamp>/`.
 On Linux the Claude backend needs `bubblewrap` (`bwrap`): the Claude Code CLI will not start without it while HoloDeck's default subprocess env scrubbing is on. Smoke fails fast with an install hint when it is missing.
 CI runs this tier on Python 3.11. A weekly [scheduled workflow](../.github/workflows/scheduled-verify.yml) runs `verify-deps` and `verify-smoke`.
+
+**profiles.** [profiles.py](../scripts/verify/profiles.py) builds the wheel once, then for each profile creates a throwaway venv on Python 3.11 (the lowest supported; `--python` overrides it) and installs the wheel with that profile's extras.
+The versions come from `uv.lock` (`uv export` as constraints, plus the `[tool.uv]` overrides), so a run is reproducible and a new upstream release cannot fail it.
+Checks run inside the venv from an empty directory ([profile_probe.py](../scripts/verify/profile_probe.py) and `holodeck` processes), so the source tree cannot be imported by accident.
+Each profile asserts that the modules its extras provide import, and that every other feature package is absent by import and by installed distribution name. `semantic-kernel`, `azure-ai-evaluation` and `evaluate` are absent in every profile, `all` included, and `uv pip check` reports no broken requirements (the `pytz` override aside).
+
+| Profile | Extras | Feature checks |
+| --- | --- | --- |
+| `base` | none | `--version`, `--help` and every command's `--help`; `holodeck init` from the packaged templates; the config loader; an in-memory `vectorstore` tool round trip with placeholder embeddings; each missing store client names its extra; a DeepEval metric under `holodeck test run`, `test optimize` and `test view` each exit non-zero with the install command and no traceback |
+| `eval-nlp` | `eval`, `nlp` | DeepEval evaluators and judge models construct (no model call); BLEU and ROUGE score offline; METEOR scores or names the NLTK download command; the executor builds every metric |
+| `optimizer`, `opensearch` | the extra | An Optuna study suggests a value; the OpenSearch index builds against an unreachable host |
+| `openai-agents`, `dashboard`, `temporal`, `deploy` | `openai-agents`, `dashboard`, `temporal`, `deploy-all` | Both backends import; the dashboard app and assets, and `test view --help`; `holodeck worker --help` and the Temporal modules; the deploy modules and `deploy --help` |
+| one per store | `qdrant`, `chromadb`, `postgres`, `pinecone`, `weaviate`, `azure-ai-search`, `azure-cosmos` | `create_adapter` builds the store's adapter and never raises `MissingClientError`; Qdrant (`:memory:`) and Chroma (a temp directory) also run a real upsert and vector search; every other store client stays absent |
+| `all` | `all` | Every module in the wheel imports, with every extra present |
+
+`--profile NAME` (repeatable) and `--group base|features|stores|all` choose profiles; `--keep` leaves the venvs for debugging.
+Run it after any change to `pyproject.toml`, `uv.lock`, the extras or a lazy import. It downloads and unpacks hundreds of packages per profile, so it is not in `make verify`.
+CI runs it as the `profiles` job of [profiles.yml](../.github/workflows/profiles.yml): four matrix groups on GitHub-hosted runners (so it never queues behind the self-hosted `test` lane) with Python 3.11 and the uv cache. It runs on pull requests that change `pyproject.toml`, `uv.lock`, `.gitignore`, `src/` or the verifier, and on every push to `main`.
+A new extra needs a row in `EXTRA_MODULES`; `tests/unit/test_verify_profiles.py` fails without one.
 
 **live.** [live.py](../scripts/verify/live.py) runs the [live validation loop](../AGENTS.md) without the CopilotKit browser step.
 It runs each backend whose credential is set. Put credentials in `.verify/live.env` (gitignored; copy [live.env.example](../tests/fixtures/verify/live.env.example)). Shell variables win.
@@ -127,16 +147,20 @@ The former local sample, `sample/financial-assistant/claude`, is git-ignored and
 Use the user-selected agent, registry, and target. Do not assume a personal cloud endpoint.
 
 1. Build the working-tree wheel with `uv build --wheel`. Keep exactly the intended wheel in the Docker build context.
-2. Build [docker/Dockerfile.local](../docker/Dockerfile.local) with that wheel, using `--no-cache` and the target platform.
+2. Build [docker/Dockerfile.local](../docker/Dockerfile.local) with that wheel, using `--no-cache` and the target platform. Give the image a name that is not a published tag, for example `holodeck-base-local:test`.
 3. Inspect the installed wheel version inside the image.
-4. Account for [builder.py](../src/holodeck/deploy/builder.py), which currently passes `pull=True` to Docker.
-5. Build the agent image with `holodeck deploy build`, then publish the verified tag to the authorized registry.
+4. Build the agent image with `holodeck deploy build --wheel dist/<wheel> --base-image <local base> --no-pull`. Without `--no-pull`, [builder.py](../src/holodeck/deploy/builder.py) passes `pull=True` to Docker.
+5. Publish the verified tag to the authorized registry.
 6. Deploy with `holodeck deploy run` for the selected agent configuration.
 7. Wait for health with a bounded timeout, then send a deterministic request with a known expected answer.
-8. Record the image digest, target, response, and relevant telemetry.
+8. Record the image digest, target, response, and relevant telemetry. Keep the build manifest (`.holodeck/builds/<tag>.json`).
 
-`pull=True` can replace a locally tagged base image with its published registry version.
-If validation requires a temporary local override, keep that edit isolated and restore only that edit afterward.
-Do not commit an override that disables normal base-image pulling.
+By default the build pulls the base image, which can replace a locally tagged base image with its published registry version. Use `--no-pull` only for a base image you built locally.
 Azure Container Apps requires a compatible target image, commonly `linux/amd64` for this repository's deployment loop.
 Readiness and cold-start timings vary. Measure them instead of relying on the old sample's timings.
+Local image builds (steps 1 to 4) need no registry access and are safe to run. Pushing images and `holodeck deploy run` need the authorization described above.
+
+### Image pins and manifest
+
+Every image installs `holodeck-ai[extras]==X.Y.Z` with `--constraint` and `--override` files shipped in the wheel (`src/holodeck/deploy/constraints.txt` and `overrides.txt`, generated from `uv.lock`). Regenerate them with `make constraints`; `make constraints-check` fails when they are stale and runs in `make verify-fast`. A build that uses `--wheel` takes the files from that wheel. The Python base image is pinned by digest; update the digest on purpose.
+`holodeck deploy build` writes `.holodeck/builds/<tag>.json` (HoloDeck version, extras, base image reference and digest or image ID, built image ID, package list), and every image keeps its package list in `/opt/holodeck/manifest.txt`. Serving images carry only the extras the agent needs; they never carry `eval`, `nlp` or `optimizer`. See the [deployment guide](guides/deployment.md#reproducible-images).

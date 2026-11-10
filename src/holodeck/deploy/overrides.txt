@@ -1,0 +1,5 @@
+# Generated from [tool.uv] override-dependencies in pyproject.toml by
+# scripts/generate_constraints.py. Do not edit.
+# Regenerate with: make constraints
+# Installed by every HoloDeck image with --override, next to constraints.txt.
+pytz>=2024

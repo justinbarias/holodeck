@@ -33,6 +33,7 @@ from holodeck.lib.backends.base import (
     ExecutionResult,
     ToolEvent,
 )
+from holodeck.lib.errors import UserFixableError
 from holodeck.models.agent import Agent
 from holodeck.models.llm import LLMProvider, ProviderEnum
 from holodeck.models.openai_config import OpenAIConfig
@@ -1157,7 +1158,7 @@ class OpenAIAgentsBackend:
                 execution_config=agent.execution,
                 base_dir=str(base) if base is not None else None,
             )
-        except ToolInitializerError:
+        except (ToolInitializerError, UserFixableError):
             raise
         except Exception as exc:  # noqa: BLE001 - normalized to BackendInitError
             raise BackendInitError(f"Failed to initialize tools: {exc}") from exc

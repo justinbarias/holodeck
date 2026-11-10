@@ -16,7 +16,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from holodeck.lib.extras import MissingExtraError
 from holodeck.lib.litellm_support import LiteLLMEmbeddingService
+from holodeck.lib.retrieval import MissingClientError, RetiredProviderError
 from holodeck.lib.tool_initializer import (
     ToolInitializerError,
     _resolve_context_generator,
@@ -1363,3 +1365,55 @@ class TestSourceContextWiring:
             await initialize_tools(agent)
 
             mock_vs_instance.set_source_context.assert_not_called()
+
+
+# ===================================================================
+# Errors the user fixes pass through unwrapped (042 phase 7)
+# ===================================================================
+
+
+class TestUserFixableErrorsPropagate:
+    """A missing extra or retired provider is not a generic init failure."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [
+            MissingClientError("qdrant", "qdrant"),
+            RetiredProviderError("faiss", "Use 'chromadb' instead."),
+        ],
+        ids=["missing-extra", "retired-provider"],
+    )
+    async def test_vectorstore_tool_error_is_not_wrapped(
+        self, error: Exception
+    ) -> None:
+        agent = _make_agent(tools=[_make_vectorstore_tool(name="kb")])
+        mock_vs = MagicMock()
+        mock_vs.return_value.initialize = AsyncMock(side_effect=error)
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch("holodeck.tools.vectorstore_tool.VectorStoreTool", mock_vs),
+            pytest.raises(type(error)) as raised,
+        ):
+            await initialize_tools(agent)
+        assert raised.value is error
+        assert not isinstance(raised.value, ToolInitializerError)
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_tool_error_is_not_wrapped(self) -> None:
+        agent = _make_agent(tools=[_make_hierarchical_doc_tool(name="docs")])
+        error = MissingExtraError("OpenSearch keyword index", "opensearch")
+        mock_hd = MagicMock()
+        mock_hd.return_value.initialize = AsyncMock(side_effect=error)
+
+        with (
+            patch("holodeck.lib.tool_initializer.create_embedding_service"),
+            patch(
+                "holodeck.tools.hierarchical_document_tool.HierarchicalDocumentTool",
+                mock_hd,
+            ),
+            pytest.raises(MissingExtraError) as raised,
+        ):
+            await initialize_tools(agent)
+        assert raised.value is error

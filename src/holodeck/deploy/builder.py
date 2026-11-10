@@ -202,6 +202,7 @@ class ContainerBuilder:
         labels: dict[str, str] | None = None,
         dockerfile: str = "Dockerfile",
         platform: str = "linux/amd64",
+        pull: bool = True,
         **build_kwargs: Any,
     ) -> BuildResult:
         """Build a container image from the specified context.
@@ -213,6 +214,9 @@ class ContainerBuilder:
             labels: Optional OCI labels to apply
             dockerfile: Path to Dockerfile relative to context
             platform: Target platform for the image (default: linux/amd64)
+            pull: Pull the base image first (default). False builds on the
+                base image already in the local daemon, for a base image that
+                was built locally and is not in a registry.
             **build_kwargs: Additional arguments passed to Docker build
 
         Returns:
@@ -238,7 +242,7 @@ class ContainerBuilder:
                 labels=labels or {},
                 rm=True,  # Remove intermediate containers
                 platform=platform,
-                pull=True,  # Always pull base image
+                pull=pull,  # Pull the base image unless the caller opts out
                 **build_kwargs,
             )
 
@@ -276,3 +280,102 @@ class ContainerBuilder:
                     message=f"Docker error during build: {e}",
                 ) from e
             raise
+
+    def inspect_image(self, reference: str) -> ImageRef:
+        """Look up an image in the local daemon.
+
+        Args:
+            reference: Image tag or ID.
+
+        Returns:
+            The image ID and, when the image came from a registry, the
+            registry digest of ``reference``'s repository. A locally built
+            image has no digest; ``digest`` is then None.
+
+        Raises:
+            DeploymentError: If the daemon does not know the image.
+        """
+        from docker.errors import DockerException
+
+        try:
+            image = self.client.images.get(reference)
+        except DockerException as e:
+            raise DeploymentError(
+                operation="build",
+                message=f"Cannot inspect image {reference}: {e}",
+            ) from e
+        return ImageRef(
+            reference=reference,
+            image_id=image.id or "",
+            digest=_pick_repo_digest(
+                reference, list(image.attrs.get("RepoDigests", []))
+            ),
+        )
+
+    def read_image_file(self, image: str, path: str) -> str:
+        """Read one text file out of an image without running it.
+
+        Args:
+            image: Image ID or tag.
+            path: Absolute path of the file inside the image.
+
+        Raises:
+            DeploymentError: If the file cannot be read.
+        """
+        import io
+        import tarfile
+
+        from docker.errors import DockerException
+
+        container = None
+        try:
+            container = self.client.containers.create(image)
+            stream, _ = container.get_archive(path)
+            payload = b"".join(stream)
+            with tarfile.open(fileobj=io.BytesIO(payload)) as archive:
+                member = archive.next()
+                extracted = archive.extractfile(member) if member else None
+                if extracted is None:
+                    raise DeploymentError(
+                        operation="build", message=f"{path} is not a file in {image}"
+                    )
+                return extracted.read().decode("utf-8")
+        except DockerException as e:
+            raise DeploymentError(
+                operation="build",
+                message=f"Cannot read {path} from image {image}: {e}",
+            ) from e
+        finally:
+            if container is not None:
+                container.remove(force=True)
+
+
+@dataclass(frozen=True)
+class ImageRef:
+    """An image as the local daemon knows it.
+
+    Attributes:
+        reference: The tag or ID that was looked up.
+        image_id: Image ID (``sha256:...``), the digest of the image config.
+        digest: Registry digest (``sha256:...``) of the repository in
+            ``reference``; None for an image that was only built locally.
+    """
+
+    reference: str
+    image_id: str
+    digest: str | None = None
+
+
+def _pick_repo_digest(reference: str, repo_digests: list[str]) -> str | None:
+    """Return the digest in ``repo@sha256:...`` entries that matches ``reference``."""
+    if not repo_digests:
+        return None
+    repository = reference.split("@", 1)[0]
+    # A tag's colon follows the last slash; a registry port's colon precedes it.
+    if ":" in repository.rsplit("/", 1)[-1]:
+        repository = repository.rsplit(":", 1)[0]
+    for entry in repo_digests:
+        repo, _, digest = entry.partition("@")
+        if repo == repository:
+            return digest
+    return repo_digests[0].partition("@")[2] or None

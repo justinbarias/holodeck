@@ -27,6 +27,8 @@ htmlcov/
 .env
 .env.*
 !.env.example
+# The init templates ship .env.example.j2; an ignored file is left out of the wheel.
+!.env.example.j2
 *.log
 bandit-report.json
 coverage.xml

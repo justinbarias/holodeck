@@ -20,7 +20,7 @@ NC := $(shell tput sgr0 2>/dev/null)
         lint format type-check security clean clean-all \
         pre-commit ci ci-github build docs run docker-build docker-run \
         check-python check-uv init \
-        verify verify-fast verify-deps verify-smoke verify-live verify-providers
+        verify verify-fast verify-deps verify-smoke verify-profiles verify-live verify-providers
 
 #################################
 # Help and Verification Targets #
@@ -421,6 +421,12 @@ schema: ## Regenerate schemas/agent.schema.json from the Agent model
 schema-check: ## Verify the committed agent.schema.json matches the model
 	uv run python scripts/generate_agent_schema.py --check
 
+constraints: ## Regenerate src/holodeck/deploy/constraints.txt from uv.lock
+	uv run python scripts/generate_constraints.py
+
+constraints-check: ## Verify the shipped image constraints match uv.lock
+	uv run python scripts/generate_constraints.py --check
+
 harness-check: ## Validate the repository knowledge map without installing dependencies
 	python3 scripts/check_harness.py
 
@@ -440,6 +446,7 @@ verify-fast: ## Static gates, schema check and the full test suite
 	uv run black --check src tests scripts
 	uv run mypy src --ignore-missing-imports --no-error-summary
 	$(MAKE) schema-check
+	$(MAKE) constraints-check
 	uv run pytest tests -n auto -q
 
 verify-deps: ## Lock check plus pip-audit and npm audit with expiring ignores
@@ -448,6 +455,9 @@ verify-deps: ## Lock check plus pip-audit and npm audit with expiring ignores
 
 verify-smoke: ## Offline end-to-end: test run + serve AG-UI on both backends (fake provider)
 	uv run python scripts/verify/smoke.py
+
+verify-profiles: ## Installed-wheel profiles: build the wheel, install each extras profile in a clean venv, run its checks (downloads packages; PROFILE_ARGS="--profile base --keep")
+	uv run python scripts/verify/profiles.py $(PROFILE_ARGS)
 
 verify-live: ## Live: every tool type per backend with credentials set, vector stores + Aspire in Docker (LIVE_ARGS="--backend claude --no-infra --limit N")
 	uv run python scripts/verify/live.py $(LIVE_ARGS)

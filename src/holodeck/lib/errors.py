@@ -11,6 +11,15 @@ class HoloDeckError(Exception):
     pass
 
 
+class UserFixableError(HoloDeckError):
+    """An error the user fixes by changing the install or the configuration.
+
+    Initialization code that wraps failures into a generic error (tool
+    initializer, backends) re-raises these unchanged. The CLI group prints
+    them as one line, without a traceback, and exits 2.
+    """
+
+
 class ConfigError(HoloDeckError):
     """Exception raised for configuration errors.
 

@@ -37,23 +37,10 @@ from holodeck.lib.backends.base import (
 from holodeck.lib.backends.selector import BackendSelector
 from holodeck.lib.chat_history_utils import extract_tool_names
 from holodeck.lib.evaluators.base import BaseEvaluator
-from holodeck.lib.evaluators.deepeval import (
-    AnswerRelevancyEvaluator,
-    ContextualPrecisionEvaluator,
-    ContextualRecallEvaluator,
-    ContextualRelevancyEvaluator,
-    FaithfulnessEvaluator,
-    GEvalEvaluator,
-)
 from holodeck.lib.evaluators.deepeval.config import DeepEvalModelConfig
 from holodeck.lib.evaluators.deterministic import (
     EqualityEvaluator,
     NumericEvaluator,
-)
-from holodeck.lib.evaluators.nlp_metrics import (
-    BLEUEvaluator,
-    METEOREvaluator,
-    ROUGEEvaluator,
 )
 from holodeck.lib.evaluators.response_path import extract as _extract_response_path
 from holodeck.lib.file_processor import FileProcessor
@@ -270,15 +257,22 @@ class RAGEvaluatorConstructor(Protocol):
         ...
 
 
-# Mapping of RAG metric types to their evaluator classes
-# Used to eliminate repetitive if/elif chains in _create_evaluators
-RAG_EVALUATOR_MAP: dict[RAGMetricType, RAGEvaluatorConstructor] = {
-    RAGMetricType.FAITHFULNESS: FaithfulnessEvaluator,
-    RAGMetricType.CONTEXTUAL_RELEVANCY: ContextualRelevancyEvaluator,
-    RAGMetricType.CONTEXTUAL_PRECISION: ContextualPrecisionEvaluator,
-    RAGMetricType.CONTEXTUAL_RECALL: ContextualRecallEvaluator,
-    RAGMetricType.ANSWER_RELEVANCY: AnswerRelevancyEvaluator,
-}
+def rag_evaluator_class(metric_type: RAGMetricType) -> RAGEvaluatorConstructor:
+    """Return the DeepEval evaluator class for *metric_type*.
+
+    Imported on use: DeepEval is the optional ``eval`` extra, and the package
+    raises ``MissingExtraError`` with the install command when it is absent.
+    """
+    from holodeck.lib.evaluators import deepeval
+
+    classes: dict[RAGMetricType, RAGEvaluatorConstructor] = {
+        RAGMetricType.FAITHFULNESS: deepeval.FaithfulnessEvaluator,
+        RAGMetricType.CONTEXTUAL_RELEVANCY: deepeval.ContextualRelevancyEvaluator,
+        RAGMetricType.CONTEXTUAL_PRECISION: deepeval.ContextualPrecisionEvaluator,
+        RAGMetricType.CONTEXTUAL_RECALL: deepeval.ContextualRecallEvaluator,
+        RAGMetricType.ANSWER_RELEVANCY: deepeval.AnswerRelevancyEvaluator,
+    }
+    return classes[metric_type]
 
 
 def validate_tool_calls(
@@ -631,6 +625,8 @@ class TestExecutor:
                 llm_model = metric_config.model or default_model
                 deepeval_config = self._build_deepeval_config(llm_model)
 
+                from holodeck.lib.evaluators.deepeval import GEvalEvaluator
+
                 # Use metric name as the evaluator key
                 evaluators[metric_config.name] = GEvalEvaluator(
                     name=metric_config.name,
@@ -655,18 +651,17 @@ class TestExecutor:
 
                 # Map RAGMetricType to evaluator class and create instance
                 metric_name = metric_config.metric_type.value
-                evaluator_class = RAG_EVALUATOR_MAP.get(metric_config.metric_type)
-                if evaluator_class:
-                    evaluators[metric_name] = evaluator_class(
-                        model_config=deepeval_config,
-                        threshold=metric_config.threshold,
-                        include_reason=metric_config.include_reason,
-                        observability_config=observability_config,
-                    )
-                    logger.debug(
-                        f"Created RAG evaluator: type={metric_name}, "
-                        f"threshold={metric_config.threshold}"
-                    )
+                evaluator_class = rag_evaluator_class(metric_config.metric_type)
+                evaluators[metric_name] = evaluator_class(
+                    model_config=deepeval_config,
+                    threshold=metric_config.threshold,
+                    include_reason=metric_config.include_reason,
+                    observability_config=observability_config,
+                )
+                logger.debug(
+                    f"Created RAG evaluator: type={metric_name}, "
+                    f"threshold={metric_config.threshold}"
+                )
                 continue
 
             # Handle code-grader metrics. CodeMetric does NOT register a
@@ -682,13 +677,21 @@ class TestExecutor:
             # Handle standard EvaluationMetric types
             metric_name = metric_config.metric
 
-            # NLP metrics
-            if metric_name == "bleu":
-                evaluators[metric_name] = BLEUEvaluator()
-            elif metric_name == "rouge":
-                evaluators[metric_name] = ROUGEEvaluator()
-            elif metric_name == "meteor":
-                evaluators[metric_name] = METEOREvaluator()
+            # NLP metrics (the optional ``nlp`` extra; each evaluator checks
+            # its library at construction, before any agent call).
+            if metric_name in ("bleu", "rouge", "meteor"):
+                from holodeck.lib.evaluators.nlp_metrics import (
+                    BLEUEvaluator,
+                    METEOREvaluator,
+                    ROUGEEvaluator,
+                )
+
+                nlp_classes: dict[str, type[BaseEvaluator]] = {
+                    "bleu": BLEUEvaluator,
+                    "rouge": ROUGEEvaluator,
+                    "meteor": METEOREvaluator,
+                }
+                evaluators[metric_name] = nlp_classes[metric_name]()
 
             # US4 — deterministic evaluators (zero-LLM). Registered under the
             # metric-name key so ``_run_evaluations`` at

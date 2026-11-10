@@ -18,6 +18,7 @@ from typing import Any
 import click
 
 from holodeck.lib.errors import OptimizerError
+from holodeck.lib.extras import MissingExtraError, require_extra
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.observability import (
     ObservabilityContext,
@@ -44,6 +45,8 @@ from holodeck.optimizer.proposers.textual import TextualProposer, load_critic_ap
 from holodeck.optimizer.scorer import score
 
 logger = get_logger(__name__)
+
+OPTIMIZER_FEATURE = "The optimizer (holodeck test optimize)"
 
 
 def _resolve_config(
@@ -215,6 +218,9 @@ def optimize(
     )
 
     try:
+        # Optuna is the optional ``optimizer`` extra: fail before any work.
+        require_extra("optuna", "optimizer", OPTIMIZER_FEATURE)
+
         from holodeck.config.loader import load_agent_with_config
 
         agent, _resolved, loader = load_agent_with_config(agent_config)
@@ -352,6 +358,11 @@ def optimize(
         )
         click.echo(f"Artifacts written to {run_dir}", err=json_progress)
 
+    except MissingExtraError as exc:
+        # Keep the machine-readable fatal event, then let the CLI group print
+        # the install command and exit 2 like every other missing extra.
+        emitter.emit(ErrorEvent(message=str(exc), fatal=True))
+        raise
     except OptimizerError as exc:
         emitter.emit(ErrorEvent(message=str(exc), fatal=True))
         click.echo(f"Error: {exc}", err=True)

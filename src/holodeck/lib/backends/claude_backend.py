@@ -105,7 +105,7 @@ from holodeck.lib.backends.validators import (
     validate_response_format,
     validate_working_directory,
 )
-from holodeck.lib.errors import ConfigError
+from holodeck.lib.errors import ConfigError, UserFixableError
 from holodeck.lib.instruction_resolver import resolve_instructions
 from holodeck.lib.observability import get_observability_context
 from holodeck.models.agent import Agent
@@ -2097,7 +2097,7 @@ class ClaudeBackend:
             self._initialized = True
 
         except Exception as exc:
-            if not isinstance(exc, BackendInitError):
+            if not isinstance(exc, BackendInitError | UserFixableError):
                 raise BackendInitError(
                     f"Claude backend initialization failed: {exc}"
                 ) from exc
@@ -2324,7 +2324,7 @@ class ClaudeBackend:
             )
             self._tool_instances = instances
             self._owned_tools = list(instances.values())
-        except ToolInitializerError:
+        except (ToolInitializerError, UserFixableError):
             raise
         except Exception as exc:
             raise BackendInitError(f"Failed to initialize tools: {exc}") from exc

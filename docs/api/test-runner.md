@@ -42,19 +42,20 @@ substring matching. Returns `True`, `False`, or `None` (when validation is skipp
 
 Protocol that defines the common constructor signature shared by all RAG evaluator
 classes (`FaithfulnessEvaluator`, `ContextualRelevancyEvaluator`, etc.). Used as the
-value type in `RAG_EVALUATOR_MAP`.
+return type of `rag_evaluator_class`.
 
 ::: holodeck.lib.test_runner.executor.RAGEvaluatorConstructor
     options:
       docstring_style: google
       show_source: true
 
-### RAG_EVALUATOR_MAP
+### rag_evaluator_class
 
-Module-level dictionary mapping `RAGMetricType` enum members to their evaluator
-constructor. Eliminates repetitive `if/elif` chains when creating RAG evaluators.
+Returns the evaluator class for a `RAGMetricType`. It imports DeepEval on use, so
+the test runner loads without the `eval` extra; a missing extra raises
+`MissingExtraError` with the install command.
 
-::: holodeck.lib.test_runner.executor.RAG_EVALUATOR_MAP
+::: holodeck.lib.test_runner.executor.rag_evaluator_class
     options:
       docstring_style: google
       show_source: true

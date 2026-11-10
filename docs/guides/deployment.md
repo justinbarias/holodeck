@@ -59,6 +59,9 @@ holodeck deploy build <agent_config> [OPTIONS]
 | `agent_config`  | Path to agent.yaml                            | `agent.yaml` |
 | `--tag`         | Custom tag (overrides strategy)               | None         |
 | `--no-cache`    | Build without Docker cache                    | `false`      |
+| `--wheel`       | HoloDeck wheel to install instead of the PyPI release (needed for a development version) | None |
+| `--base-image`  | Base image reference                          | `ghcr.io/justinbarias/holodeck-base:<version>` (`:latest` with `--wheel`) |
+| `--no-pull`     | Use the base image already in the local Docker daemon | `false` |
 | `--dry-run`     | Show what would be built without executing    | `false`      |
 | `--verbose, -v` | Verbose debug logging                         | `false`      |
 | `--quiet, -q`   | Suppress progress output                      | `false`      |
@@ -69,6 +72,57 @@ Exit codes: `0` success · `2` configuration error · `3` Docker/deployment erro
 holodeck deploy build --dry-run            # preview Dockerfile
 holodeck deploy build agent.yaml --tag v1.0.0
 holodeck deploy build --no-cache           # force fresh build
+holodeck deploy build --wheel dist/holodeck_ai-0.7.2.dev64-py3-none-any.whl   # development build
+```
+
+---
+
+## Reproducible images
+
+Every image installs one exact HoloDeck version, with dependency versions taken from that release's lock file. Two builds of the same HoloDeck version resolve the same packages.
+
+| What | How it is pinned |
+| --- | --- |
+| HoloDeck | `holodeck-ai[extras]==X.Y.Z`, the version of the `holodeck` CLI that runs `deploy build`. No `--prerelease` flag. |
+| Dependencies | `--constraint` with `constraints.txt`, shipped inside the wheel and generated from `uv.lock` (`make constraints`). `overrides.txt` carries the `[tool.uv] override-dependencies` the lock was resolved with. `deploy build` copies both into the build context. |
+| Base image | `ghcr.io/justinbarias/holodeck-base:X.Y.Z`, the base image of the same release. The Python image under it is pinned by digest in [docker/Dockerfile](https://github.com/justinbarias/holodeck/blob/main/docker/Dockerfile); uv is pinned by version and digest. |
+| Extras | Chosen from the agent file (below), written sorted into the Dockerfile and the `com.holodeck.extras` label. |
+
+A development version such as `0.7.2.dev61` is not on PyPI. `deploy build` then needs a wheel: build one with `uv build --wheel`, keep it in `./dist` or pass `--wheel`. The image installs that wheel and the constraints inside it. Without a wheel the build stops with that instruction before it starts Docker.
+
+### Image manifest
+
+Each build writes `.holodeck/builds/<tag>.json` next to `agent.yaml`:
+
+- HoloDeck version, install source (`pypi` or `wheel`, with the wheel's SHA-256), extras, and the SHA-256 of the constraints and overrides files.
+- The base image reference, its registry digest, and its image ID. A base image built locally has no registry digest; `digest` is `null` and the image ID identifies it.
+- The built image's reference and image ID. `digest` stays `null` until you push the image; read it from the registry then.
+- Every installed package as `name==version`, sorted.
+
+The same package list is inside the image at `/opt/holodeck/manifest.txt` (`docker run --rm --entrypoint cat <image> /opt/holodeck/manifest.txt`). The manifest has no timestamps, so two builds of the same inputs give the same file except for the image ID.
+
+### Which extras an image gets
+
+`holodeck deploy build` installs the extras the agent file needs. Serving images never get `eval`, `nlp` or `optimizer`: an image runs `holodeck serve`, not `holodeck test`.
+
+| The agent file has | Extra |
+| --- | --- |
+| `model.provider: openai` or `azure_openai` | `openai-agents` |
+| `model.provider: anthropic` or `ollama`, with `observability.enabled` and `traces.enabled` | `claude-otel` |
+| Vector store or hierarchical document tool, `database.provider` | `qdrant`, `chromadb`, `postgres`, `pinecone`, `weaviate`, `azure-ai-search`, or `azure-cosmos` (for `azure-cosmos-nosql`); `in-memory` needs none |
+| Tool `source` that starts with `az://` or `s3://` | `azure-blob` or `s3` |
+| `hierarchical_document` tool with `keyword_index.provider: opensearch` | `opensearch` |
+| `observability.exporters.prometheus` or `azure_monitor` enabled | `otel-prometheus` or `otel-azmon` |
+
+A database named by reference and not resolved from global configuration adds no extra. The `temporal` extra (for `holodeck worker`) is not chosen from the agent file: `deploy build` generates a `holodeck serve` image only.
+
+To add an extra by hand, build your own image (see [DIY deployment](#diy-deployment)) from the base image of the HoloDeck version you run, and install with the constraints that ship in the package:
+
+```dockerfile
+RUN CONSTRAINTS="$(python -c "import importlib.util as u; print(u.find_spec('holodeck').submodule_search_locations[0] + '/deploy')")" \
+    && uv pip install --system --no-cache \
+        --constraint "${CONSTRAINTS}/constraints.txt" --override "${CONSTRAINTS}/overrides.txt" \
+        "holodeck-ai[temporal]==0.7.1"
 ```
 
 ---
@@ -188,10 +242,10 @@ Build and deploy containers manually without the CLI.
 ### Base image
 
 ```
-ghcr.io/justinbarias/holodeck-base:latest
+ghcr.io/justinbarias/holodeck-base:<holodeck-version>
 ```
 
-Includes Python 3.13 with HoloDeck installed, `curl` for health checks, a non-root `holodeck` user, and `/app` as the working directory.
+Use the tag of the HoloDeck release you run (for example `0.7.1`), not `latest`. Includes Python 3.13 with that HoloDeck version installed, its package list in `/opt/holodeck/manifest.txt`, `curl` for health checks, a non-root `holodeck` user, and `/app` as the working directory.
 
 ### Build context
 
@@ -207,7 +261,7 @@ build-context/
 ### Dockerfile
 
 ```dockerfile
-FROM ghcr.io/justinbarias/holodeck-base:latest
+FROM ghcr.io/justinbarias/holodeck-base:0.7.1
 
 LABEL org.opencontainers.image.title="my-agent"
 LABEL org.opencontainers.image.version="v1.0.0"
@@ -253,7 +307,7 @@ exec holodeck serve /app/agent.yaml \
 | `HOLODECK_PROTOCOL`     | Protocol type               | `rest`            |
 | `HOLODECK_AGENT_CONFIG` | Path to agent configuration | `/app/agent.yaml` |
 
-OCI labels: `org.opencontainers.image.title` (agent name), `.version`, `.created` (ISO 8601), `.source`, and `com.holodeck.managed` (marker for HoloDeck images).
+OCI labels: `org.opencontainers.image.title` (agent name), `.version`, `.created` (ISO 8601), `.source`, `com.holodeck.managed` (marker for HoloDeck images), and, on images from `deploy build`, `com.holodeck.version` and `com.holodeck.extras`.
 
 ### Build and run
 

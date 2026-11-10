@@ -14,7 +14,12 @@ from typing import Any
 
 import click
 
-from holodeck.lib.errors import ConfigError, EvaluationError, ExecutionError
+from holodeck.lib.errors import (
+    ConfigError,
+    EvaluationError,
+    ExecutionError,
+    UserFixableError,
+)
 from holodeck.lib.eval_run import (
     build_eval_run_metadata,
     write_eval_run,
@@ -374,6 +379,9 @@ def run(
             logger.info("Exiting with success status (all tests passed)")
             sys.exit(0)
 
+    except UserFixableError:
+        # A missing extra or retired provider: the CLI group prints it.
+        raise
     except ConfigError as e:
         logger.error(f"Configuration error: {e}", exc_info=True)
         click.echo(f"Configuration Error: {e}", err=True)

@@ -102,6 +102,8 @@ Strict string equality with optional normalization. Score is `1.0` on match, `0.
 
 Token / n-gram overlap against `ground_truth`. All score `0.0`–`1.0` (higher is better).
 
+`bleu`, `rouge` and `meteor` need the `nlp` extra: `pip install "holodeck-ai[nlp]"`. Without it, `holodeck test` stops before running any test case and prints that command.
+
 | `metric` | Measures | Use for |
 |----------|----------|---------|
 | `f1_score` | Token-level precision/recall balance | Exact word matching matters |
@@ -126,6 +128,8 @@ If the data is missing, the metric fails with an error that names the missing re
 ---
 
 ## DeepEval metrics (`type: geval`, `type: rag`)
+
+These metrics need the `eval` extra: `pip install "holodeck-ai[eval]"`. Without it, `holodeck test` stops before running any test case and prints that command.
 
 DeepEval provides LLM-as-a-judge evaluation. It works with any configured provider (Ollama for free local eval, or OpenAI / Anthropic / Azure OpenAI). Set `temperature: 0.0` for deterministic scoring.
 

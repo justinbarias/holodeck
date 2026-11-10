@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
-from holodeck.lib.errors import ConfigError
+from holodeck.lib.errors import ConfigError, UserFixableError
 from holodeck.lib.logging_config import get_logger, setup_logging
 from holodeck.lib.observability import (
     ObservabilityContext,
@@ -167,6 +167,9 @@ def serve(
             )
         )
 
+    except UserFixableError:
+        # A missing extra or retired provider: the CLI group prints it.
+        raise
     except ConfigError as e:
         logger.error(f"Configuration error: {e}", exc_info=True)
         click.secho("Error: Failed to load agent configuration", fg="red", err=True)

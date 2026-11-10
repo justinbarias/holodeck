@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from holodeck.lib.errors import HoloDeckError
+from holodeck.lib.errors import HoloDeckError, UserFixableError
 from holodeck.lib.source_resolver import SourceResolver
 from holodeck.models.llm import ProviderEnum
 
@@ -222,6 +222,8 @@ async def initialize_tools(
 
     try:
         embedding_service = create_embedding_service(agent)
+    except UserFixableError:
+        raise
     except Exception as exc:
         raise ToolInitializerError(
             f"Failed to create embedding service: {exc}"
@@ -405,6 +407,8 @@ async def _initialize_vectorstore_tools(
                 )
                 instances[tool_config.name] = tool
                 logger.info("Initialized vectorstore tool: %s", tool_config.name)
+            except UserFixableError:
+                raise
             except Exception as exc:
                 raise ToolInitializerError(
                     f"Failed to initialize vectorstore tool "
@@ -613,6 +617,8 @@ async def initialize_hierarchical_doc_tools(
                     "Initialized hierarchical document tool: %s",
                     tool_config.name,
                 )
+            except UserFixableError:
+                raise
             except Exception as exc:
                 raise ToolInitializerError(
                     f"Failed to initialize hierarchical document tool "

@@ -3436,6 +3436,53 @@ class TestInitializeTools:
             mock_ctx.get.return_value = "/base"
             await backend._initialize_tools()
 
+    @pytest.mark.asyncio
+    async def test_missing_extra_is_not_wrapped(self) -> None:
+        """A missing extra reaches the CLI as itself, not a BackendInitError."""
+        from holodeck.lib.extras import MissingExtraError
+        from holodeck.models.tool import VectorstoreTool
+
+        agent = _make_agent()
+        backend = ClaudeBackend(agent=agent)
+        backend._agent = MagicMock()
+        backend._agent.tools = [MagicMock(spec=VectorstoreTool)]
+        error = MissingExtraError("Vector store provider 'qdrant'", "qdrant")
+
+        with (
+            patch("holodeck.config.context.agent_base_dir") as mock_ctx,
+            patch(
+                "holodeck.lib.tool_initializer.initialize_tools",
+                new_callable=AsyncMock,
+                side_effect=error,
+            ),
+            pytest.raises(MissingExtraError) as raised,
+        ):
+            mock_ctx.get.return_value = "/base"
+            await backend._initialize_tools()
+        assert raised.value is error
+
+    @pytest.mark.asyncio
+    async def test_initialize_does_not_wrap_a_missing_extra(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The outer ``initialize`` wrapper lets the error through too."""
+        from holodeck.lib.extras import MissingExtraError
+
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        backend = ClaudeBackend(agent=_make_agent())
+        error = MissingExtraError("Vector store provider 'qdrant'", "qdrant")
+        with (
+            patch.object(
+                ClaudeBackend,
+                "_initialize_tools",
+                new_callable=AsyncMock,
+                side_effect=error,
+            ),
+            patch("holodeck.lib.backends.claude_backend.validate_nodejs"),
+            pytest.raises(MissingExtraError),
+        ):
+            await backend.initialize()
+
 
 # ---------------------------------------------------------------------------
 # T032 — _activate_instrumentation() error branches

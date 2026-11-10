@@ -36,6 +36,42 @@ variables, instruction files, and optional Node.js installation for Claude agent
 
 ---
 
+## `holodeck.deploy.extras` -- Extras for a serving image
+
+Chooses the `holodeck-ai` extras an agent needs. Provider extras come from the
+retrieval registry.
+
+::: holodeck.deploy.extras.required_extras
+    options:
+      docstring_style: google
+      show_source: true
+
+---
+
+## `holodeck.deploy.install` -- Which HoloDeck an image installs
+
+An image installs one exact version: a PyPI release, or a wheel for a
+development version. The constraints and overrides files come from the package
+being installed.
+
+::: holodeck.deploy.install.resolve_install
+    options:
+      docstring_style: google
+      show_source: true
+
+---
+
+## `holodeck.deploy.manifest` -- Image manifest
+
+The manifest `holodeck deploy build` writes to `.holodeck/builds/<tag>.json`.
+
+::: holodeck.deploy.manifest.build_manifest
+    options:
+      docstring_style: google
+      show_source: true
+
+---
+
 ## `holodeck.deploy.builder` -- Container image building
 
 Builds Docker images via the Docker SDK and provides helpers for tag generation

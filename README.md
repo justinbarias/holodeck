@@ -40,6 +40,18 @@ pip install 'holodeck-ai[openai-agents]'
 # with RAG: pip install 'holodeck-ai[openai-agents,qdrant]'
 ```
 
+Evaluation metrics, the optimizer and the OpenSearch keyword index are extras too:
+
+| Extra | Enables |
+| --- | --- |
+| `eval` | DeepEval metrics (`type: geval`, `type: rag`) |
+| `nlp` | NLP metrics (`bleu`, `rouge`, `meteor`) |
+| `optimizer` | `holodeck test optimize` |
+| `opensearch` | OpenSearch keyword index |
+| `all` | Every extra |
+
+Upgrading? If you ran evaluations with a plain `pip install holodeck-ai`, now run `pip install "holodeck-ai[eval,nlp]"`. For everything as before, run `pip install "holodeck-ai[all]"`. See the [install profiles](docs/getting-started/installation.md#install-profiles).
+
 ### Create Your First Agent
 
 Use the interactive wizard to create a new agent:

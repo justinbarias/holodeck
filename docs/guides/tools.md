@@ -285,7 +285,7 @@ In `hybrid` mode, the three weights must sum to 1.0. Pick modes by query type: `
 
 ### Keyword index: OpenSearch (production)
 
-For large corpora or multi-instance deployments, offload BM25 to an external OpenSearch cluster:
+For large corpora or multi-instance deployments, offload BM25 to an external OpenSearch cluster. This needs the `opensearch` extra (`pip install "holodeck-ai[opensearch]"`); without it, the tool fails when it is built and prints that command.
 
 ```yaml
 keyword_index:

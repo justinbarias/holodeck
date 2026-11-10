@@ -41,15 +41,19 @@ Functions:
     compute_meteor: Compute METEOR score with stemmer and synonyms
 """
 
-# DeepEval evaluators and configuration
-from holodeck.lib.evaluators.deepeval import (
-    DEFAULT_MODEL_CONFIG,
-    DeepEvalBaseEvaluator,
-    DeepEvalError,
-    DeepEvalModelConfig,
-    GEvalEvaluator,
-    ProviderNotSupportedError,
-)
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from holodeck.lib.evaluators.deepeval import (
+        DEFAULT_MODEL_CONFIG,
+        DeepEvalBaseEvaluator,
+        DeepEvalError,
+        DeepEvalModelConfig,
+        GEvalEvaluator,
+        ProviderNotSupportedError,
+    )
 
 __all__ = [
     # DeepEval exports
@@ -60,3 +64,12 @@ __all__ = [
     "GEvalEvaluator",
     "ProviderNotSupportedError",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Load DeepEval exports on first use (the ``eval`` extra is optional)."""
+    if name in __all__:
+        from holodeck.lib.evaluators import deepeval
+
+        return getattr(deepeval, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
