@@ -169,9 +169,9 @@ Consolidate the existing native Qdrant code into the adapter. This is the highes
 
 #### Checkpoint B
 
-- [ ] Five providers run without the SK bridge.
-- [ ] `make verify-live` passes with Qdrant, Chroma and Postgres.
-- [ ] Adversarial review of the stack so far.
+- [x] Five providers run without the SK bridge.
+- [x] `make verify-live` passes with Qdrant, Chroma and Postgres.
+- [x] Adversarial review of the stack so far.
 
 ### Phase 3: Remaining providers
 
@@ -179,30 +179,30 @@ Consolidate the existing native Qdrant code into the adapter. This is the highes
 
 `faiss`, `sql-server` and `azure-cosmos-mongo` have no install extra, sample or live test today.
 
-- [ ] Maintainer decides per provider: build an adapter, or retire.
-- [ ] A retired provider fails config validation with a migration message before any agent call, and has a changelog entry and a migration note.
+- [x] Maintainer decides per provider: build an adapter, or retire.
+- [x] A retired provider fails config validation with a migration message before any agent call, and has a changelog entry and a migration note.
 
 **Verify:** config tests for each decision.
 **Depends on:** T2. **Size:** S. **Model:** Fable inline. **Spec:** FR-014.
 
 #### T10. Weaviate adapter
 
-- [ ] Contract suite passes against Weaviate in Docker, with native hybrid.
-- [ ] New `weaviate` extra.
+- [x] Contract suite passes against Weaviate in Docker, with native hybrid.
+- [x] New `weaviate` extra.
 
 **Depends on:** T4. **Size:** M. **Model:** Opus `medium`.
 
 #### T11. Azure AI Search adapter
 
-- [ ] Contract suite passes with mocked transport; native hybrid mapped.
-- [ ] New `azure-ai-search` extra. Live run needs Azure credentials; otherwise recorded as open.
+- [x] Contract suite passes with mocked transport; native hybrid mapped.
+- [x] New `azure-ai-search` extra. Live run needs Azure credentials; otherwise recorded as open.
 
 **Depends on:** T4. **Size:** M. **Model:** Opus `medium`.
 
 #### T12. Azure Cosmos NoSQL adapter
 
-- [ ] Contract suite passes against the Cosmos emulator in Docker.
-- [ ] New `azure-cosmos` extra.
+- [x] Contract suite passes against the Cosmos emulator in Docker.
+- [x] New `azure-cosmos` extra.
 
 **Depends on:** T4. **Size:** M. **Model:** Opus `medium`.
 
@@ -387,6 +387,12 @@ T0 ──┬─ T1 (independent PR)
 ## Progress and decisions
 
 - 2026-11-10: The maintainer delegated the open questions. Decisions: (1) `faiss`, `sql-server` and `azure-cosmos-mongo` are retired with a config-time migration error (T9); (2) Pinecone and Azure AI Search use local or mocked evidence and their live items stay open; (3) the fingerprint is stored per collection (T15); (4) extra names are fixed in T21. Each phase is one PR on a single `gh stack`, with one Codex review round per phase.
+- 2026-11-10: Phase 2 verify passed (`make verify`; `make verify-live` 31 passed, 0 failed, 0 skipped, with Qdrant, Chroma and Postgres tool cases on both backends). The Codex review gave ten findings; all are fixed with a regression test each. One part stays open for T15: `HierarchicalDocumentTool` cannot tell a first ingestion that stopped midway from a complete one without a stored chunk count or completion flag.
+- 2026-11-10: T9 to T13 done. `faiss`, `sql-server` and `azure-cosmos-mongo` are retired (the maintainer confirmed `sql-server` on 2026-11-10); config naming one fails at validation with the migration text, and stored runs still load. Native adapters for Weaviate, Azure AI Search and Cosmos DB NoSQL are in. No provider uses the SK bridge any more. T13 has nothing to build.
+  - Weaviate: all ten operations, verified on Weaviate 1.40 in Docker. `weaviate-client` needs `grpcio<1.80`, so the lock moves `grpcio` from 1.85 to 1.78.
+  - Azure AI Search: all ten operations, verified on a fake service and on the real SDK over a stub transport. **Live evidence stays open.**
+  - Cosmos DB NoSQL: verified on the Linux emulator except hybrid search, which the emulator cannot run; hybrid is opt-in (`full_text_search: true`) and verified on a fake only. **Live evidence stays open.**
+  - The SK paths for Weaviate, Azure AI Search and Cosmos could not create a collection at all, so there is no stored data to migrate for them.
 - 2026-11-10: T5 to T8 done. Native adapters for Qdrant, Chroma, Postgres and Pinecone replace the bridge for those providers.
   - Qdrant: layout, point IDs, payload indexes and hybrid ranking proven equal to the SK path in both directions (`tests/integration/retrieval/test_qdrant_compat.py`); goldens unchanged.
   - Chroma: writes are delete-then-add. Chroma 1.5.9 `upsert` and `update` drop a row from the vector index in about 5% of 36-chunk ingests (reproduced; `add` never did in 220 runs). A unit test forbids `upsert` and `update`. The sync client is used for HTTP too, off the event loop, because the async client has no public close.

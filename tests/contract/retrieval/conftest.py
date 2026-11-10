@@ -29,7 +29,7 @@ def make_schema() -> CollectionSchema:
             FieldSpec("source_path", FieldType.STRING, indexed=True),
             FieldSpec("chunk_index", FieldType.INTEGER, indexed=True),
             FieldSpec("content", FieldType.STRING, full_text=True),
-            FieldSpec("mtime", FieldType.FLOAT),
+            FieldSpec("mtime", FieldType.FLOAT, indexed=True),
             FieldSpec("pinned", FieldType.BOOLEAN),
         ),
     )

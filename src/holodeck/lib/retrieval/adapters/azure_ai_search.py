@@ -207,6 +207,7 @@ from holodeck.lib.retrieval.types import (
     ScoredRecord,
     ScoreKind,
     clamp_similarity,
+    normalize_filter_value,
 )
 from holodeck.lib.retrieval.types import (
     VectorQuery as HoloVectorQuery,
@@ -957,7 +958,8 @@ class AzureAISearchAdapter(BaseVectorStoreAdapter):
                         f"Field '{clause.field}' is not indexed, so Azure AI Search "
                         "cannot filter on it."
                     )
-                clauses.append(f"{spec.name} eq {_odata_literal(spec, clause.value)}")
+                value = normalize_filter_value(spec, clause.value)
+                clauses.append(f"{spec.name} eq {_odata_literal(spec, value)}")
         clauses.extend(extra)
         return " and ".join(clauses) or None
 

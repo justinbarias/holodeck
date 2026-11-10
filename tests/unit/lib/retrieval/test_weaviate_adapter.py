@@ -474,7 +474,7 @@ def test_no_clauses_means_no_filter() -> None:
         (RecordFilter.where(source_path=None), "never null"),
         (RecordFilter.where(source_path=3), "has another type"),
         (RecordFilter.where(chunk_index="1"), "has another type"),
-        (RecordFilter.where(chunk_index=True), "has another type"),
+        (RecordFilter.where(chunk_index=True), "boolean is not a number"),
         (RecordFilter.where(chunk_index=1.5), "has another type"),
         (RecordFilter.where(pinned=1), "has another type"),
         (RecordFilter.where(note="x"), "not indexed"),

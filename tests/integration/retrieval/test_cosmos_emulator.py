@@ -130,11 +130,11 @@ async def test_a_filter_on_a_field_excluded_from_the_index_still_runs(
     await adapter.upsert(
         [
             make_record("a", [1.0, 0.0, 0.0, 0.0], mtime=1.5),
-            make_record("b", [0.0, 1.0, 0.0, 0.0], mtime=2.5),
+            make_record("b", [0.0, 1.0, 0.0, 0.0], mtime=2.5, pinned=True),
         ]
     )
-    # mtime is neither indexed nor full-text, so the container excludes its path.
-    assert [r.id for r in await adapter.find(RecordFilter.where(mtime=2.5))] == ["b"]
+    # pinned is neither indexed nor full-text, so the container excludes its path.
+    assert [r.id for r in await adapter.find(RecordFilter.where(pinned=True))] == ["b"]
 
 
 async def test_the_container_is_created_with_the_adapters_policies(
@@ -155,7 +155,7 @@ async def test_the_container_is_created_with_the_adapters_policies(
     assert isinstance(indexing, dict)
     assert indexing["vectorIndexes"] == adapter.indexing_policy()["vectorIndexes"]
     excluded = {item["path"] for item in indexing["excludedPaths"]}
-    assert {'/"mtime"/*', '/"pinned"/*', '/"embedding"/*'} <= excluded
+    assert {'/"pinned"/*', '/"embedding"/*'} <= excluded
 
 
 async def test_the_client_can_be_reused_after_close(

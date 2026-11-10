@@ -152,6 +152,7 @@ from holodeck.lib.retrieval.types import (
     ScoreKind,
     VectorQuery,
     clamp_similarity,
+    normalize_filter_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -955,7 +956,7 @@ class CosmosNoSqlAdapter(BaseVectorStoreAdapter):
         for clause in record_filter.all_of:
             spec = self._schema.field(clause.field)
             reference = self._ref(spec.name)
-            value = _stored(spec, clause.value)
+            value = _stored(spec, normalize_filter_value(spec, clause.value))
             if value is None:
                 clauses.append(f"IS_NULL({reference})")
             else:

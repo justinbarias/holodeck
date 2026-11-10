@@ -71,7 +71,8 @@ class FieldSpec:
     Attributes:
         name: Field name as stored.
         type: Storage type.
-        indexed: True when exact-match filters use this field.
+        indexed: True when exact-match filters use this field. Filter only
+            on indexed fields: some stores reject a filter on any other.
         full_text: True when lexical search uses this field.
     """
 

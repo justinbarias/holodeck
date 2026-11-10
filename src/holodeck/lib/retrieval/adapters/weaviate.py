@@ -145,6 +145,7 @@ from holodeck.lib.retrieval.types import (
     ScoreKind,
     VectorQuery,
     clamp_similarity,
+    normalize_filter_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -826,7 +827,7 @@ class WeaviateAdapter(BaseVectorStoreAdapter):
                 )
             clauses.append(
                 Filter.by_property(spec.name).equal(
-                    self._filter_value(spec, clause.value)
+                    self._filter_value(spec, normalize_filter_value(spec, clause.value))
                 )
             )
         return clauses[0] if len(clauses) == 1 else Filter.all_of(clauses)
